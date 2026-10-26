@@ -86,13 +86,20 @@ fn test_ownership_dispatch_refreshes_the_primary_isolated_cache() ! {
 			assert lines.len >= 3 && lines.last() == primary, cold.output
 			helper := lines[lines.len - 2]
 			assert helper != primary && helper.contains('v3_ownership') && os.is_file(helper), cold.output
-			assert cache_refresh.collect(vroot, primary)!.any(it.module == name && mode in it.args && ('-prod' in it.args) == prod)
+			matching := cache_refresh.collect(vroot, primary)!.filter(it.module == name
+				&& mode in it.args && ('-prod' in it.args) == prod)
+			if mode == '-autofree' {
+				// Autofree keeps full local metadata in a monolithic build.
+				assert matching.len == 0
+			} else {
+				assert matching.len > 0
+			}
 			assert cache_refresh.collect(vroot, helper)!.len == 0
 			builds << args
 		}
 	}
 	requests := cache_refresh.collect(vroot, primary)!.filter(it.module == name)
-	assert requests.len == builds.len, requests.str()
+	assert requests.len == builds.filter('-ownership' in it).len, requests.str()
 	os.write_file(source, 'module ${name}\npub fn value() int { return 2 }\n')!
 	cache_refresh.refresh(primary, requests)!
 	for args in builds {
@@ -139,7 +146,7 @@ fn test_cached_vmod_roots_stop_at_project_boundaries() {
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
 	value := r"darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/include') -L$first_existing('/opt/local/lib','/opt/homebrew/lib')"
-	assert cached_resolve_relative_flag_paths(value, os.join_path(base_dir, 'source.v')) == value
+	assert cached_resolve_flag_value(value, '', os.join_path(base_dir, 'source.v')) == value
 }
 
 fn test_cached_dependency_inputs_restore_empty_variable_value() {
@@ -178,6 +185,16 @@ int external_helper(void) {
 	assert header.contains('return 42;')
 	assert header.contains('int external_helper(void);')
 	assert !header.contains('return local_helper();')
+}
+
+fn test_declaration_header_keeps_macro_static_string_definitions() {
+	source := '#define _SL(name, text, length) static const char *name = text;\n_SL(first, " __attribute__((", 16);\n_SL(second, ") && (*(", 8);\n_SL(third, "#define VALUE {", 15);\nint global = 42;\n'
+	header := declaration_header(source)
+	assert header.contains('_SL(first, " __attribute__((", 16);')
+	assert header.contains('_SL(second, ") && (*(", 8);')
+	assert header.contains('_SL(third, "#define VALUE {", 15);')
+	assert !header.contains('extern _SL(')
+	assert header.contains('extern int global;')
 }
 
 fn test_replicated_function_static_storage_detection() {
@@ -259,6 +276,57 @@ fn test_static_const_body_literals_are_preserved_and_deduplicated() {
 	assert without_duplicate_static_string_definitions(source, first) == second + 'void main__main(void) { println(_v3_lit_1_44bd54d473cd3d44); }\n'
 	assert materialize_cached_body_string_definitions('// V3CACHE_BASELINE ' + first + second) == first + second
 	assert !prune_unreferenced_static_string_definitions(source).contains('_v3_lit_1_44bd55d473cd3ef7')
+}
+
+// split_literal_definition is how cgen writes a literal too long for one C source
+// line: adjacent literals, each on a line of its own.
+fn split_literal_definition(symbol string, parts []string) string {
+	value := parts.join('')
+	return 'static const string ${symbol} = {"' + parts.join('"\n"') + '", ${value.len}, 1};\n'
+}
+
+fn test_split_literal_definitions_are_kept_or_dropped_whole() {
+	unused := split_literal_definition(cached_c_string_symbol('aaaabbbbcccc'), ['aaaa', 'bbbb',
+		'cccc'])
+	used_symbol := cached_c_string_symbol('ddddeeee')
+	used := split_literal_definition(used_symbol, ['dddd', 'eeee'])
+	short := 'static const string _v3_lit_1_44bd55d473cd3ef7 = {".", 1, 1};\n'
+	body := 'void f(void) { println(${used_symbol}); }\n'
+	source := unused + short + used + body
+	assert prune_unreferenced_static_string_definitions(source) == used + body
+	assert static_string_definitions(source) == unused + short + used
+	assert static_string_definition_texts(source) == [unused.trim_right('\n'), short.trim_right('\n'),
+		used.trim_right('\n')]
+	assert without_duplicate_static_string_definitions(source, unused + short) == used + body
+}
+
+fn test_split_literal_definitions_survive_baseline_markers() {
+	symbol := cached_c_string_symbol('aaaabbbbcccc')
+	definition := split_literal_definition(symbol, ['aaaa', 'bbbb', 'cccc'])
+	mut markers := ''
+	for line in definition.split_into_lines() {
+		markers += '// V3CACHE_BASELINE ${line}\n'
+	}
+	body := 'void f(void) { println(${symbol}); }\n'
+	assert materialize_cached_body_string_definitions(markers + body) == definition + body
+	// A real definition takes precedence over the recorded one, whole.
+	assert materialize_cached_body_string_definitions(markers + definition + body) == definition + body
+}
+
+fn test_cached_runtime_literal_rewrite_replaces_split_definitions() {
+	old_value := 'aaaabbbbcccc'
+	new_value := 'aaaabbbbdddd'
+	old_symbol := cached_c_string_symbol(old_value)
+	new_symbol := cached_c_string_symbol(new_value)
+	source := split_literal_definition(old_symbol, ['aaaa', 'bbbb', 'cccc']) +
+		'${c_body_begin}\nvoid main(void) { use(${old_symbol}); }\n'
+	rewritten := rewrite_cached_runtime_strings(source, [old_value], [new_value]) or {
+		panic('expected the split literal to be rewritten')
+	}
+	assert !rewritten.contains(old_symbol)
+	assert !rewritten.contains('"cccc"')
+	assert rewritten.count('static const string ${new_symbol} =') == 1
+	assert rewritten.contains('use(${new_symbol});')
 }
 
 fn test_type_declarations_omit_functions_with_local_typedefs() {
@@ -971,7 +1039,7 @@ fn global_qualifier_test_field(mut a flat.FlatAst, name string, type_text string
 	return a.add_node(flat.Node{
 		kind:           .field_decl
 		value:          name
-		typ:            type_text
+		typ:            flat.source_type_id(type_text)
 		payload:        flat.node_payload(qualifiers)
 		children_start: i32(start)
 		children_count: flat.child_count(1)
@@ -1179,7 +1247,7 @@ pub:
 	for i, original in original_fields {
 		cached := cached_fields[i]
 		assert cached.value == original.value
-		assert cached.typ == original.typ
+		assert cached.typ_text() == original.typ_text()
 		assert cached.generic_params() == original.generic_params()
 		assert cached.children_count == original.children_count
 		if original.children_count > 0 {

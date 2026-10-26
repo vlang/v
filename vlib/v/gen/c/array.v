@@ -2,7 +2,7 @@ module c
 
 import v.flat
 import v.gen.c.naming
-import v.types
+import v.types { unalias_type }
 import strings
 
 // array_like_type supports array like type handling for c.
@@ -11,7 +11,7 @@ fn array_like_type(t types.Type) ?types.Array {
 		return t
 	}
 	if t is types.Alias {
-		base := t.base_type
+		base := *t.base_type
 		if base is types.Array {
 			return base
 		}
@@ -21,7 +21,7 @@ fn array_like_type(t types.Type) ?types.Array {
 
 // array_fixed_type supports array fixed type handling for c.
 fn array_fixed_type(t types.Type) ?types.ArrayFixed {
-	clean := cgen_unalias_type(t)
+	clean := unalias_type(t)
 	if clean is types.ArrayFixed {
 		return clean
 	}
@@ -29,7 +29,7 @@ fn array_fixed_type(t types.Type) ?types.ArrayFixed {
 }
 
 fn fixed_array_pointer_type(t types.Type) ?types.ArrayFixed {
-	clean := if t is types.Alias { t.base_type } else { t }
+	clean := if t is types.Alias { *t.base_type } else { t }
 	if clean is types.Pointer {
 		return array_fixed_type(clean.base_type)
 	}
@@ -37,8 +37,8 @@ fn fixed_array_pointer_type(t types.Type) ?types.ArrayFixed {
 }
 
 fn (mut g FlatGen) fixed_array_decay_byte_compatible(actual types.Type, expected types.Type) bool {
-	a := cgen_unalias_type(actual)
-	e := cgen_unalias_type(expected)
+	a := unalias_type(actual)
+	e := unalias_type(expected)
 	if a is types.ArrayFixed && e is types.ArrayFixed {
 		return g.fixed_array_len_value(a) == g.fixed_array_len_value(e)
 			&& g.fixed_array_decay_byte_compatible(a.elem_type, e.elem_type)
@@ -50,8 +50,8 @@ fn (mut g FlatGen) fixed_array_decay_byte_compatible(actual types.Type, expected
 }
 
 fn (mut g FlatGen) fixed_array_decay_shape_equal(actual types.Type, expected types.Type, allow_byte_cast bool) bool {
-	a := cgen_unalias_type(actual)
-	e := cgen_unalias_type(expected)
+	a := unalias_type(actual)
+	e := unalias_type(expected)
 	if a is types.ArrayFixed {
 		return e is types.ArrayFixed && g.fixed_array_len_value(a) == g.fixed_array_len_value(e)
 			&& g.fixed_array_decay_shape_equal(a.elem_type, e.elem_type, allow_byte_cast)
@@ -93,8 +93,9 @@ fn (mut g FlatGen) gen_fixed_array_index(index_id flat.NodeId, len string) {
 		g.gen_expr(index_id)
 		return
 	}
-	index_type := cgen_unalias_type(g.usable_expr_type(index_id))
-	helper := match index_type.name() {
+	index_type := unalias_type(g.usable_expr_type(index_id))
+	index_type_name := string(index_type.name())
+	helper := match index_type_name {
 		'i64' { 'v_fixed_index_i64' }
 		'u64' { 'v_fixed_index_u64' }
 		else { 'v_fixed_index' }
@@ -104,21 +105,25 @@ fn (mut g FlatGen) gen_fixed_array_index(index_id flat.NodeId, len string) {
 	g.write(', ${len})')
 }
 
-fn (g &FlatGen) fixed_array_type_from_alias_text(type_name string) ?types.ArrayFixed {
-	mut cur := trimmed_space(type_name)
+fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayFixed {
+	mut cur := if flat.source_type_shape(type_name_id).has(.padded) {
+		flat.source_type_id(trimmed_space(flat.source_type_name(type_name_id)))
+	} else {
+		type_name_id
+	}
 	for _ in 0 .. 16 {
-		if cur.len == 0 {
+		if cur == 0 {
 			return none
 		}
 		if fixed := array_fixed_type(g.tc.parse_type(cur)) {
 			return fixed
 		}
-		mut next := g.tc.type_aliases[cur] or { '' }
-		if next.len == 0 {
-			qname := g.tc.qualify_name(cur)
-			next = g.tc.type_aliases[qname] or { '' }
+		mut next := g.tc.type_aliases.type_id(flat.source_type_name(cur)) or { u32(0) }
+		if next == 0 {
+			qname := g.tc.qualify_type_name(cur)
+			next = g.tc.type_aliases.type_id(flat.source_type_name(qname)) or { u32(0) }
 		}
-		if next.len == 0 || next == cur {
+		if next == 0 || next == cur {
 			return none
 		}
 		cur = next
@@ -126,9 +131,9 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name string) ?types.ArrayF
 	return none
 }
 
-fn runtime_array_struct_type(t types.Type) bool {
+fn runtime_array_struct_type(t &types.Type) bool {
 	if t is types.Struct {
-		return t.name == 'array' || t.name == 'Array'
+		return t.name() == 'array' || t.name() == 'Array'
 	}
 	if t is types.Alias {
 		return runtime_array_struct_type(t.base_type)
@@ -148,6 +153,18 @@ fn runtime_array_struct_index_info(t types.Type) (bool, bool) {
 	return false, false
 }
 
+fn (mut g FlatGen) array_allocation_expr(elem_type &types.Type, length string, capacity string) string {
+	ct := g.value_sizeof_target(elem_type)
+	layout := g.tc.allocation_layout(elem_type)
+	if layout.has(.aligned) {
+		return '__new_array_aligned(${length}, ${capacity}, sizeof(${ct}), __alignof__(${ct}))'
+	}
+	if !layout.has(.scanned) {
+		return '__new_array_noscan(${length}, ${capacity}, sizeof(${ct}))'
+	}
+	return 'array_new(sizeof(${ct}), ${length}, ${capacity})'
+}
+
 // gen_array_literal_value emits array literal value output for c.
 fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type) {
 	canonical_elem_type := g.canonical_import_alias_type_for_node(elem_type, &node)
@@ -155,10 +172,13 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 	sizeof_elem := g.value_sizeof_target(canonical_elem_type)
 	count := node.children_count
 	if count == 0 {
-		g.write('array_new(sizeof(${sizeof_elem}), 0, 0)')
+		g.write(g.array_allocation_expr(canonical_elem_type, '0', '0'))
 		return
 	}
-	new_fn := if count == 1 && array_literal_elem_can_use_noscan(canonical_elem_type) {
+	aligned := g.tc.requires_aligned_allocation(canonical_elem_type)
+	new_fn := if aligned {
+		'new_array_from_c_array_aligned'
+	} else if count == 1 && !g.tc.allocation_layout(canonical_elem_type).has(.scanned) {
 		'new_array_from_c_array_noscan'
 	} else {
 		'new_array_from_c_array'
@@ -186,7 +206,11 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		}
 		g.gen_expr_with_expected_type(child_id, canonical_elem_type)
 	}
-	g.write('})')
+	g.write('}')
+	if aligned {
+		g.write(', __alignof__(${sizeof_elem})')
+	}
+	g.write(')')
 }
 
 // gen_array_init_value emits a dynamic `[]T{len:, cap:, init:}` as a C value.
@@ -198,19 +222,9 @@ fn (mut g FlatGen) gen_array_init_value(node flat.Node, elem_type types.Type) {
 	init_id := g.array_init_field_value(node, 'init') or { flat.empty_node }
 	c_elem := g.value_sizeof_target(elem_type)
 	if int(init_id) < 0 {
-		g.write('array_new(sizeof(${c_elem}), ')
-		if int(len_id) >= 0 {
-			g.gen_expr_with_expected_type(len_id, types.Type(types.int_))
-		} else {
-			g.write('0')
-		}
-		g.write(', ')
-		if int(cap_id) >= 0 {
-			g.gen_expr_with_expected_type(cap_id, types.Type(types.int_))
-		} else {
-			g.write('0')
-		}
-		g.write(')')
+		length := if int(len_id) >= 0 { g.expr_to_string(len_id) } else { '0' }
+		capacity := if int(cap_id) >= 0 { g.expr_to_string(cap_id) } else { '0' }
+		g.write(g.array_allocation_expr(elem_type, length, capacity))
 		return
 	}
 	len_name := g.tmp_name()
@@ -230,7 +244,8 @@ fn (mut g FlatGen) gen_array_init_value(node flat.Node, elem_type types.Type) {
 	} else {
 		g.write('0')
 	}
-	g.write('; Array ${array_name} = array_new(sizeof(${c_elem}), ${len_name}, ${cap_name}); ')
+	allocation := g.array_allocation_expr(elem_type, len_name, cap_name)
+	g.write('; Array ${array_name} = ${allocation}; ')
 	g.write('for (${int_type} ${index_name} = 0; ${index_name} < ${array_name}.len; ${index_name}++) { ')
 	if g.node_contains_ident(init_id, 'index') {
 		g.write('${int_type} ${g.local_decl_cname('index')} = ${index_name}; ')
@@ -250,15 +265,9 @@ fn (mut g FlatGen) gen_array_init_value(node flat.Node, elem_type types.Type) {
 	g.write('} ${array_name}; })')
 }
 
-fn array_literal_elem_can_use_noscan(elem_type types.Type) bool {
-	clean := cgen_unalias_type(elem_type)
-	return clean is types.Primitive || clean is types.Char || clean is types.Rune
-		|| clean is types.ISize || clean is types.USize || clean is types.Enum
-}
-
 fn (mut g FlatGen) gen_array_equality_literal_arg(names []string, arg_idx int, arg_id flat.NodeId, node flat.Node) bool {
 	if arg_idx !in [0, 1] || node.kind != .array_literal
-		|| !names.any(it in ['array_eq_raw', 'array_eq_string', 'array_eq_array']) {
+		|| !names.any(it in ['__v3_array_eq_raw', '__v3_array_eq_string', '__v3_array_eq_array']) {
 		return false
 	}
 	if arr := array_like_type(g.usable_expr_type(arg_id)) {
@@ -405,7 +414,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			return
 		}
 	}
-	annotated_is_fixed := node.typ.len > 0 && array_fixed_type(g.parse_node_type(&node)) != none
+	annotated_is_fixed := node.typ != 0 && array_fixed_type(g.parse_node_type(&node)) != none
 	if !annotated_is_fixed
 		&& fixed_array_option_payload_type(types.unwrap_pointer(g.usable_expr_type(id))) != none {
 		g.gen_expr(id)
@@ -421,7 +430,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		g.write(').data')
 		return
 	}
-	actual := cgen_unalias_type(g.usable_expr_type(id))
+	actual := unalias_type(g.usable_expr_type(id))
 	if actual is types.Pointer && fn_type_from(actual.base_type) != none {
 		// C array parameters decay to pointers. Preserve a callback slot's
 		// address by supplying its pointer context instead of the array type.
@@ -456,8 +465,10 @@ fn (mut g FlatGen) gen_cabi_fixed_array_data_arg(id flat.NodeId, arr types.Array
 	return true
 }
 
-fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, arg_idx int, arg_id flat.NodeId, names []string) bool {
-	if arg_idx != 3 || !names.any(it in ['new_array_from_c_array', 'array__new_array_from_c_array'])
+fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, arg_idx int, arg_id flat.NodeId, name string, fallback string) bool {
+	if arg_idx != 3
+		|| (name !in ['new_array_from_c_array', 'array__new_array_from_c_array']
+			&& fallback !in ['new_array_from_c_array', 'array__new_array_from_c_array'])
 		|| arg_start + 2 >= call.children_count {
 		return false
 	}
@@ -466,7 +477,7 @@ fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, a
 	if sizeof_node.kind != .sizeof_expr || sizeof_node.value.len == 0 {
 		return false
 	}
-	elem_type := g.tc.parse_type(sizeof_node.value)
+	elem_type := g.tc.parse_type(flat.source_type_id(sizeof_node.value))
 	g.gen_fixed_array_data_arg(arg_id, types.ArrayFixed{
 		elem_type: elem_type
 	})
@@ -540,16 +551,16 @@ fn (g &FlatGen) array_init_field_value(node flat.Node, field_name string) ?flat.
 }
 
 fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected types.Type) bool {
-	expected_ptr := cgen_unalias_type(expected)
+	expected_ptr := unalias_type(expected)
 	if expected_ptr !is types.Pointer {
 		return false
 	}
-	expected_fixed := array_fixed_type(cgen_unalias_type(expected_ptr.base_type))
+	expected_fixed := array_fixed_type(unalias_type(expected_ptr.base_type))
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
 	node := g.a.nodes[int(id)]
-	mut actual := g.tc.resolve_type(id)
+	mut actual := g.body_resolve_type(id)
 	if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
 			actual = param_type
@@ -558,13 +569,13 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 	if actual is types.Pointer {
 		return false
 	}
-	if actual_fixed := array_fixed_type(cgen_unalias_type(actual)) {
-		if cgen_unalias_type(expected_ptr.base_type) is types.Void {
+	if actual_fixed := array_fixed_type(unalias_type(actual)) {
+		if unalias_type(expected_ptr.base_type) is types.Void {
 			g.gen_fixed_array_data_arg(id, actual_fixed)
 			return true
 		}
 		if fixed := expected_fixed {
-			if inner_fixed := array_fixed_type(cgen_unalias_type(actual_fixed.elem_type)) {
+			if inner_fixed := array_fixed_type(unalias_type(actual_fixed.elem_type)) {
 				if g.fixed_array_decay_shape_equal(types.Type(inner_fixed), types.Type(fixed),
 					false) {
 					if g.expr_is_addressable(id) {
@@ -676,11 +687,19 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 		if trimmed_space(literal).len > 0 {
 			data_str = literal
 		}
+		aligned := g.tc.requires_aligned_allocation(fixed.elem_type)
+		allocator := if aligned {
+			'new_array_from_c_array_aligned'
+		} else {
+			'new_array_from_c_array'
+		}
+		alignment_arg := if aligned { ', __alignof__(${c_elem})' } else { '' }
+		len_val := g.fixed_array_len_value(fixed)
+		copy_expr := '${allocator}(${len_val}, ${len_val}, sizeof(${c_elem}), &(${data_str})[0]${alignment_arg})'
 		if gated {
 			// Route gated fixed-array slices through the clamped slice_ni on a
 			// heap copy of the fixed data, matching dynamic-array semantics.
-			len_val := g.fixed_array_len_value(fixed)
-			g.write('array__slice_ni(new_array_from_c_array(${len_val}, ${len_val}, sizeof(${c_elem}), &(${data_str})[0]), ${start_str}, ${end_str})')
+			g.write('array__slice_ni(${copy_expr}, ${start_str}, ${end_str})')
 			return
 		}
 		// Copy the complete fixed array before slicing so the runtime slice helper
@@ -688,8 +707,7 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 		array_tmp := g.tmp_name()
 		start_tmp := g.tmp_name()
 		end_tmp := g.tmp_name()
-		len_val := g.fixed_array_len_value(fixed)
-		g.write('({ Array ${array_tmp} = new_array_from_c_array(${len_val}, ${len_val}, sizeof(${c_elem}), &(${data_str})[0]); int ${start_tmp} = (${start_str}); int ${end_tmp} = (${end_str}); array_slice(${array_tmp}, ${start_tmp}, ${end_tmp}); })')
+		g.write('({ Array ${array_tmp} = ${copy_expr}; int ${start_tmp} = (${start_str}); int ${end_tmp} = (${end_str}); array_slice(${array_tmp}, ${start_tmp}, ${end_tmp}); })')
 	} else if is_array {
 		arr_str := if is_ptr { '*${base_str}' } else { base_str }
 		if gated {
@@ -706,20 +724,41 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	}
 }
 
+// array_accessors_call_builtin reports whether `first()`/`last()` are emitted as calls of
+// the builtin methods, whose guard reports an empty array under the name of the method.
+// A `-no-bounds-checking` build keeps the index that `array.get` does not check there.
+fn (g &FlatGen) array_accessors_call_builtin() bool {
+	return 'no_bounds_checking' !in g.compile_defines
+}
+
+// array_accessor_index_method returns the method, `first` or `last`, that an index marked
+// by the transformer stands for (an lvalue use, such as `arr.last().field = x`) when the
+// index is emitted as a call of that method, and '' for any other index.
+fn (g &FlatGen) array_accessor_index_method(node &flat.Node) string {
+	if node.payload == 0 || !g.array_accessors_call_builtin() {
+		return ''
+	}
+	params := node.generic_params()
+	if params.len == 2 && params[0] == array_accessor_index_marker {
+		return params[1]
+	}
+	return ''
+}
+
 // gen_array_method_call emits array method call output for c.
 fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr types.Array) {
 	base_id := g.a.child(fn_node, 0)
-	mut elem_type := arr.elem_type
+	mut elem_type := *arr.elem_type
 	base_expr_type := g.usable_expr_type(base_id)
 	receiver_type0 := if g.a.nodes[int(base_id)].kind == .call {
 		declared := g.declared_call_return_type(base_id)
 		if declared !is types.Unknown && declared !is types.Void {
 			declared
 		} else {
-			base_expr_type
+			*base_expr_type
 		}
 	} else {
-		base_expr_type
+		*base_expr_type
 	}
 	receiver_type := types.unwrap_pointer(receiver_type0)
 	if receiver_arr := array_like_type(receiver_type) {
@@ -743,7 +782,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'last' {
-			if g.expr_is_stable_for_reuse(base_id) {
+			if !g.array_accessors_call_builtin() && g.expr_is_stable_for_reuse(base_id) {
 				g.write('*(${c_elem}*)array_get(')
 				if is_ptr {
 					g.write('*')
@@ -753,7 +792,8 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 				g.gen_expr(base_id)
 				g.write('${dot}len - 1)')
 			} else {
-				// The index above names the receiver twice, which would evaluate
+				// `array.last` reports an empty array under its own name. The index
+				// above also names the receiver twice, which would evaluate
 				// `make().last()` twice.
 				g.write('*(${c_elem}*)array__last(')
 				if is_ptr {
@@ -764,12 +804,21 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			}
 		}
 		'first' {
-			g.write('*(${c_elem}*)array_get(')
-			if is_ptr {
-				g.write('*')
+			if g.array_accessors_call_builtin() {
+				g.write('*(${c_elem}*)array__first(')
+				if is_ptr {
+					g.write('*')
+				}
+				g.gen_expr(base_id)
+				g.write(')')
+			} else {
+				g.write('*(${c_elem}*)array_get(')
+				if is_ptr {
+					g.write('*')
+				}
+				g.gen_expr(base_id)
+				g.write(', 0)')
 			}
-			g.gen_expr(base_id)
-			g.write(', 0)')
 		}
 		'delete_last' {
 			g.write('array__delete_last(')
@@ -898,7 +947,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			}
 		}
 		'contains' {
-			contains_fn := 'array_contains_${array_lookup_suffix(arr.elem_type)}'
+			contains_fn := '__v3_array_contains_${array_lookup_suffix(arr.elem_type)}'
 			g.write('${contains_fn}(')
 			g.gen_expr(base_id)
 			g.write(', ')
@@ -906,7 +955,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'index' {
-			index_fn := 'array_index_${array_lookup_suffix(arr.elem_type)}'
+			index_fn := '__v3_array_index_${array_lookup_suffix(arr.elem_type)}'
 			g.write('${index_fn}(')
 			g.gen_expr(base_id)
 			g.write(', ')
@@ -915,14 +964,14 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 		}
 		'last_index' {
 			if suffix := array_last_index_suffix(arr.elem_type) {
-				index_fn := 'array_last_index_${suffix}'
+				index_fn := '__v3_array_last_index_${suffix}'
 				g.write('${index_fn}(')
 				g.gen_expr(base_id)
 				g.write(', ')
 				g.gen_expr(g.a.child(&node, 1))
 				g.write(')')
 			} else {
-				g.write('array_last_index_raw(')
+				g.write('__v3_array_last_index_raw(')
 				g.gen_expr(base_id)
 				g.write(', &(${c_elem}[]){')
 				g.gen_expr_with_expected_type(g.a.child(&node, 1), arr.elem_type)
@@ -933,7 +982,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write('Array_u8__hex(')
 			if base_node.kind == .array_literal {
 				g.gen_expr_with_expected_type(base_id, types.Type(types.Array{
-					elem_type: types.Type(types.u8_)
+					elem_type: types.new_type_reference(types.Type(types.u8_))
 				}))
 			} else {
 				g.gen_expr(base_id)
@@ -947,9 +996,9 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			// Any other element type is not a thread, so route it through the normal
 			// method fallback instead of joining arbitrary array data as pthread_t handles.
 			mut is_thread := false
-			elem := cgen_unalias_type(arr.elem_type)
+			elem := unalias_type(arr.elem_type)
 			if elem is types.Struct {
-				tn := trimmed_space(elem.name)
+				tn := trimmed_space(elem.name())
 				is_thread = tn == 'thread' || tn.starts_with('thread ')
 			}
 			if is_thread {
@@ -976,7 +1025,7 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 	if fn_node.kind != .selector || fn_node.value != 'to_fixed_size' || fn_node.children_count == 0 {
 		return none
 	}
-	if node.typ.len > 0 {
+	if node.typ != 0 {
 		if fixed := array_fixed_type(g.parse_node_type(&node)) {
 			return fixed
 		}
@@ -1087,14 +1136,14 @@ fn (mut g FlatGen) gen_fixed_array_pointers_expr(base_id flat.NodeId, is_ptr boo
 // name (`thread T`); a bare `thread` denotes a void payload.
 fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_type types.Type) {
 	g.needs_thread_runtime = true
-	mut ret_name := ''
+	mut ret_name_id := u32(0)
 	if elem_type is types.Struct {
-		trimmed := trimmed_space(elem_type.name)
+		trimmed := trimmed_space(elem_type.name())
 		if trimmed != 'thread' && trimmed.starts_with('thread ') {
-			ret_name = trimmed_space(trimmed[7..])
+			ret_name_id = flat.source_type_id(trimmed_space(trimmed[7..]))
 		}
 	}
-	fn_name := g.ensure_thread_arr_wait_fn(ret_name)
+	fn_name := g.ensure_thread_arr_wait_fn(ret_name_id)
 	g.write('${fn_name}(')
 	if is_ptr {
 		g.write('*')
@@ -1106,10 +1155,10 @@ fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_
 // ensure_thread_arr_wait_fn registers (once per payload type) a function that joins
 // every thread handle in the array and, for a non-void payload, copies each thread's
 // heap-returned value into a result `[]T` (freeing the per-thread allocation).
-fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
-	is_void := ret_name.len == 0
+fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name_id u32) string {
+	is_void := ret_name_id == 0
 	if !is_void {
-		ret_type := cgen_unalias_type(g.tc.parse_type(ret_name))
+		ret_type := unalias_type(g.tc.parse_type(ret_name_id))
 		if ret_type is types.OptionType || ret_type is types.ResultType {
 			return g.ensure_thread_optional_arr_wait_fn(ret_type)
 		}
@@ -1117,7 +1166,11 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	// Match the ABI return type the spawn wrapper stores (gen_spawn_expr): an
 	// option/result payload is `__v_option_T`, a fixed-array payload its `_v_ret_*`
 	// wrapper — not the bare `c_type`, or the malloc'd and read-back layouts diverge.
-	ret_ct := if is_void { 'void' } else { g.fn_return_type_name(g.tc.parse_type(ret_name)) }
+	ret_ct := if is_void {
+		'void'
+	} else {
+		g.fn_return_type_name(g.tc.parse_type(ret_name_id))
+	}
 	key := 'threadwait|${ret_ct}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
@@ -1144,18 +1197,18 @@ fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_type types.Type) strin
 	name := g.cname('__v_thread_arr_wait_${naming.type_name_part(ret_ct)}_array')
 	g.spawn_wrapper_names[key] = name
 	base_type := match ret_type {
-		types.OptionType, types.ResultType { ret_type.base_type }
+		types.OptionType, types.ResultType { *ret_type.base_type }
 		else { return name }
 	}
 	payload := if base_type is types.Void {
 		types.Type(base_type)
 	} else {
-		types.Type(types.Array{ elem_type: base_type })
+		types.Type(types.Array{ elem_type: types.new_type_reference(types.Type(base_type)) })
 	}
 	array_result_type := if ret_type is types.OptionType {
-		types.Type(types.OptionType{ base_type: payload })
+		types.Type(types.OptionType{ base_type: types.new_type_reference(types.Type(payload)) })
 	} else {
-		types.Type(types.ResultType{ base_type: payload })
+		types.Type(types.ResultType{ base_type: types.new_type_reference(types.Type(payload)) })
 	}
 	result_ct := g.optional_type_name(array_result_type)
 	mut def := strings.new_builder(1024)
@@ -1203,7 +1256,7 @@ fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_type types.Type) strin
 }
 
 // array_lookup_suffix supports array lookup suffix handling for c.
-fn array_lookup_suffix(elem_type types.Type) string {
+fn array_lookup_suffix(elem_type &types.Type) string {
 	if elem_type is types.String {
 		return 'string'
 	}
@@ -1215,7 +1268,7 @@ fn array_lookup_suffix(elem_type types.Type) string {
 	return 'int'
 }
 
-fn array_last_index_suffix(elem_type types.Type) ?string {
+fn array_last_index_suffix(elem_type &types.Type) ?string {
 	elem_name := elem_type.name()
 	return match elem_name {
 		'string' { 'string' }
@@ -1243,20 +1296,24 @@ fn (mut g FlatGen) array_method_fallback(method string) string {
 	return best_mname
 }
 
+fn array_method_receiver_key(receiver_name_id u32, elem_type_id u32) u64 {
+	return u64(receiver_name_id) << 32 | u64(elem_type_id)
+}
+
 fn (mut g FlatGen) array_method_fallback_for_receiver(method string, base_id flat.NodeId, arr types.Array) string {
 	receiver_type := types.unwrap_pointer(g.usable_expr_type(base_id))
-	receiver_name := receiver_type.name()
-	key := '${receiver_name}|${arr.elem_type.name()}.${method}'
-	if key in g.array_method_cache {
-		return g.array_method_cache[key]
+	receiver_name_id := receiver_type.source_type_id()
+	key := array_method_receiver_key(receiver_name_id, arr.elem_type.source_type_id())
+	if cached := g.array_method_receiver_cache[key][method] {
+		return cached
 	}
 	// Preserve custom methods on aliases such as `strings.Builder = []u8`.
 	// Falling back through the erased array type can select an unrelated method
 	// that happens to have the same short name.
 	if receiver_type is types.Alias {
-		alias_method := g.resolve_method_name(receiver_name, method)
+		alias_method := g.resolve_method_name(receiver_name_id, method)
 		if alias_method.len > 0 {
-			g.array_method_cache[key] = alias_method
+			g.array_method_receiver_cache[key][method] = alias_method
 			return alias_method
 		}
 	}
@@ -1284,12 +1341,12 @@ fn (mut g FlatGen) array_method_fallback_for_receiver(method string, base_id fla
 	if best_mname.len == 0 {
 		best_mname = g.array_method_fallback(method)
 	}
-	g.array_method_cache[key] = best_mname
+	g.array_method_receiver_cache[key][method] = best_mname
 	return best_mname
 }
 
-fn (g &FlatGen) array_elem_type_matches(expected types.Type, actual types.Type) bool {
-	if expected.name() == actual.name() {
+fn (g &FlatGen) array_elem_type_matches(expected &types.Type, actual &types.Type) bool {
+	if expected.source_type_id() == actual.source_type_id() {
 		return true
 	}
 	return g.tc.c_type(expected) == g.tc.c_type(actual)
@@ -1381,7 +1438,7 @@ fn (mut g FlatGen) gen_index_overload_set(node flat.Node, lhs flat.Node, base_id
 fn (mut g FlatGen) gen_index_overload_compound_set(lhs flat.Node, base_id flat.NodeId, base_type types.Type, setter types.CallInfo, getter types.CallInfo, assign_op flat.Op, infix_op flat.Op, rhs_id flat.NodeId) {
 	recv_tmp := g.tmp_name()
 	index_tmp := g.tmp_name()
-	recv_type := if base_type is types.Pointer { base_type.base_type } else { base_type }
+	recv_type := if base_type is types.Pointer { *base_type.base_type } else { base_type }
 	recv_ct := g.value_c_type(recv_type)
 	index_ct := g.value_c_type(setter.params[1])
 	g.write('{ ${recv_ct}* ${recv_tmp} = ')
@@ -1466,7 +1523,7 @@ fn (mut g FlatGen) index_overload_cached_getter_call_string(recv_tmp string, ind
 	return result
 }
 
-fn index_overload_compound_type_is_string(typ types.Type) bool {
+fn index_overload_compound_type_is_string(typ &types.Type) bool {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	return clean is types.String
 }
@@ -1538,7 +1595,7 @@ fn (mut g FlatGen) gen_slice_index_array_value(node flat.Node, elem_type types.T
 }
 
 fn (mut g FlatGen) gen_slice_index_value_from_index_range(node flat.Node) {
-	slice_type := g.tc.parse_type('SliceIndex')
+	slice_type := g.tc.parse_type(flat.source_type_id('SliceIndex'))
 	ct := g.value_c_type(slice_type)
 	g.write('(${ct}){.is_range = true')
 	if node.children_count > 1 {
@@ -1563,7 +1620,7 @@ fn (mut g FlatGen) gen_slice_index_value_from_index_range(node flat.Node) {
 }
 
 fn (mut g FlatGen) gen_slice_index_value(id flat.NodeId) {
-	slice_type := g.tc.parse_type('SliceIndex')
+	slice_type := g.tc.parse_type(flat.source_type_id('SliceIndex'))
 	ct := g.value_c_type(slice_type)
 	if int(id) < 0 {
 		g.write('(${ct}){0}')
@@ -1598,16 +1655,16 @@ fn (mut g FlatGen) gen_slice_index_value(id flat.NodeId) {
 	g.write('}')
 }
 
-fn cgen_is_builtin_slice_index_type(typ types.Type) bool {
-	clean0 := select_receive_unalias_type(typ)
+fn cgen_is_builtin_slice_index_type(typ &types.Type) bool {
+	clean0 := unalias_type(typ)
 	clean := types.unwrap_pointer(clean0)
 	return clean.name() in ['SliceIndex', 'builtin.SliceIndex']
 }
 
 fn cgen_builtin_slice_index_array_elem(typ types.Type) ?types.Type {
-	clean := select_receive_unalias_type(typ)
+	clean := unalias_type(typ)
 	if clean is types.Array && cgen_is_builtin_slice_index_type(clean.elem_type) {
-		return clean.elem_type
+		return *clean.elem_type
 	}
 	return none
 }
@@ -1623,7 +1680,7 @@ fn (mut g FlatGen) gen_index_operator_get_call(node &flat.Node) bool {
 	if info.params.len < 2 {
 		return false
 	}
-	g.write(g.cname(g.index_operator_call_name(info, base_type, '[]')))
+	g.write(g.index_operator_call_c_name(info, base_type, '[]'))
 	g.write('(')
 	g.gen_index_operator_receiver_arg(base_id, base_type, info.params[0])
 	g.write(', ')
@@ -1656,7 +1713,7 @@ fn (mut g FlatGen) gen_index_operator_assign(node flat.Node, lhs flat.Node, base
 fn (mut g FlatGen) gen_index_operator_set_call(lhs flat.Node, setter types.CallInfo, base_type types.Type, value_id flat.NodeId) {
 	base_id := g.a.child(&lhs, 0)
 	index_id := g.a.child(&lhs, 1)
-	g.write(g.cname(g.index_operator_call_name(setter, base_type, '[]=')))
+	g.write(g.index_operator_call_c_name(setter, base_type, '[]='))
 	g.write('(')
 	g.gen_index_operator_receiver_arg(base_id, base_type, setter.params[0])
 	g.write(', ')
@@ -1681,7 +1738,7 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 	g.write('; ${g.value_c_type(index_storage)} ${index_tmp} = ')
 	g.gen_expr_with_expected_type(index_id, index_storage)
 	g.write('; ')
-	g.write(g.cname(g.index_operator_call_name(setter, base_type, '[]=')))
+	g.write(g.index_operator_call_c_name(setter, base_type, '[]='))
 	g.write('(')
 	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, setter.params[0])
 	g.write(', ')
@@ -1734,7 +1791,7 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 	g.writeln('); }')
 }
 
-fn (g &FlatGen) index_operator_type_is_string_like(typ types.Type) bool {
+fn (g &FlatGen) index_operator_type_is_string_like(typ &types.Type) bool {
 	if typ is types.String {
 		return true
 	}
@@ -1744,7 +1801,7 @@ fn (g &FlatGen) index_operator_type_is_string_like(typ types.Type) bool {
 	return false
 }
 
-fn (g &FlatGen) index_operator_compound_operator_method(getter_type types.Type, setter_type types.Type, op flat.Op) ?string {
+fn (g &FlatGen) index_operator_compound_operator_method(getter_type &types.Type, setter_type &types.Type, op flat.Op) ?string {
 	if method_name := g.assign_struct_operator_method(getter_type, op) {
 		return method_name
 	}
@@ -1752,7 +1809,7 @@ fn (g &FlatGen) index_operator_compound_operator_method(getter_type types.Type, 
 }
 
 fn (mut g FlatGen) gen_index_operator_get_call_from_temps(getter types.CallInfo, recv_tmp string, recv_storage types.Type, index_tmp string, index_storage types.Type) {
-	g.write(g.cname(g.index_operator_call_name(getter, recv_storage, '[]')))
+	g.write(g.index_operator_call_c_name(getter, recv_storage, '[]'))
 	g.write('(')
 	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, getter.params[0])
 	g.write(', ')
@@ -1780,13 +1837,25 @@ fn (mut g FlatGen) gen_index_operator_tmp_arg(index_tmp string, actual types.Typ
 	g.write(index_tmp)
 }
 
-fn (g &FlatGen) index_operator_call_name(info types.CallInfo, base_type types.Type, method string) string {
+// index_operator_call_c_name returns the C name of the `[]` or `[]=` method that an
+// index expression on base_type calls. A generic specialization can be registered under
+// its C name, so the resolved name can already be lowered; c_name would move a name
+// that is already in the operator namespace out of it again.
+fn (g &FlatGen) index_operator_call_c_name(info types.CallInfo, base_type &types.Type, method string) string {
+	name := g.index_operator_call_name(info, base_type, method)
+	if name.starts_with(naming.operator_method_c_prefix) {
+		return name
+	}
+	return g.cname(name)
+}
+
+fn (g &FlatGen) index_operator_call_name(info types.CallInfo, base_type &types.Type, method string) string {
 	if !info.name.contains('[') {
 		return info.name
 	}
 	receiver_type := types.unwrap_pointer(base_type)
-	receiver_name := receiver_type.name()
-	if receiver_name.len == 0 {
+	receiver_name := receiver_type.source_type_id()
+	if receiver_name == 0 {
 		return info.name
 	}
 	if resolved := g.resolve_concrete_generic_method_name(receiver_name, method) {
@@ -1921,9 +1990,21 @@ fn (mut g FlatGen) gen_scalar_array_push_call_stmt(id flat.NodeId, node flat.Nod
 	callee_id := g.a.child(&node, 0)
 	callee := g.a.nodes[int(callee_id)]
 	resolved := g.call_key(id, target)
+	// A call through a global of this name is the program's own. The transformer
+	// records the helper as the target of an append it lowered, which tells the two
+	// apart where the module has such a global.
+	if _ := g.global_type_for_ident(target) {
+		recorded := g.tc.resolved_call_name(id) or { '' }
+		if recorded != target {
+			return false
+		}
+	}
+	// Outside `main` the key of the runtime helper is its module-qualified spelling,
+	// which names no function. Only a key that does name one belongs to the program.
 	if callee.kind != .ident || g.selector_base_is_local_value(target)
 		|| g.non_generic_fn_decl_exists_in_module(target, g.tc.cur_module)
-		|| resolved !in [target, 'builtin.${target}'] {
+		|| (resolved !in [target, 'builtin.${target}']
+			&& (resolved in g.tc.fn_param_types || resolved in g.tc.fn_ret_types)) {
 		return false
 	}
 	array_id := g.a.child(&node, 1)
@@ -2024,15 +2105,15 @@ fn (mut g FlatGen) gen_direct_array_elem_store(node flat.Node, arr_type types.Ar
 			return true
 		}
 	}
+	if method_name := g.assign_struct_operator_method(elem_type, node.op) {
+		g.write('${value_text} = ${g.cname(method_name)}(${value_text}, ')
+		g.gen_expr_with_expected_type(rhs_id, elem_type)
+		g.writeln('); ${lhs_text} = ${value_text}; }')
+		return true
+	}
 	if assign_op == .power {
 		g.write('${value_text} = ')
-		if method_name := g.assign_struct_operator_method(elem_type, node.op) {
-			g.write('${g.cname(method_name)}(${value_text}, ')
-			g.gen_expr_with_expected_type(rhs_id, elem_type)
-			g.write(')')
-		} else {
-			g.gen_power_expr_from_lhs_text(value_text, rhs_id, elem_type)
-		}
+		g.gen_power_expr_from_lhs_text(value_text, rhs_id, elem_type)
 		g.writeln('; ${lhs_text} = ${value_text}; }')
 		return true
 	}
@@ -2198,16 +2279,16 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 					return
 				}
 			}
-			if node.op == .power_assign {
+			if method_name := g.assign_struct_operator_method(arr_type.elem_type, node.op) {
+				// An element type that overloads the operator calls its method, the
+				// way a compound assignment on any other lvalue does.
 				lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
-				if method_name := g.assign_struct_operator_method(arr_type.elem_type, node.op) {
-					g.write('${g.cname(method_name)}(${lhs_text}, ')
-					g.gen_expr_with_expected_type(g.a.child(&node, 1), arr_type.elem_type)
-					g.write(')')
-				} else {
-					g.gen_power_expr_from_lhs_text(lhs_text, g.a.child(&node, 1),
-						arr_type.elem_type)
-				}
+				g.write('${g.cname(method_name)}(${lhs_text}, ')
+				g.gen_expr_with_expected_type(g.a.child(&node, 1), arr_type.elem_type)
+				g.write(')')
+			} else if node.op == .power_assign {
+				lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
+				g.gen_power_expr_from_lhs_text(lhs_text, g.a.child(&node, 1), arr_type.elem_type)
 			} else if node.op in [.left_shift_assign, .right_shift_assign,
 				.right_shift_unsigned_assign] {
 				shift_op := match node.op {
@@ -2249,7 +2330,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		}
 		if base_type is types.Pointer {
 			ptr_type := base_type
-			mut expected_type := ptr_type.base_type
+			mut expected_type := *ptr_type.base_type
 			mut fixed_len := ''
 			_, fixed_is_ptr, fixed := fixed_array_index_info(base_type)
 			if fixed_is_ptr {

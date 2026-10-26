@@ -73,8 +73,8 @@ fn test_lexical_parent_cache_preserves_if_else_and_for_branch_children() {
 	lexical_parent_cache_children(mut a, .fn_decl, [outer_body])
 	mut tc := TypeChecker.new(&a)
 	tc.build_direct_parent_index(&a)
-	tc.sum_types['Value'] = ['int', 'string']
-	tc.cur_scope.insert('value', Type(SumType{ name: 'Value' }))
+	tc.sum_types.set('Value', ['int', 'string'])
+	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	for cached in [true, true, false, true] {
 		tc.cache_lexical_parents = cached
 		assert tc.lexical_smartcast_type_in_parents(then_value, 'value', false)? == Type(int_)
@@ -101,8 +101,8 @@ fn test_lexical_parent_cache_rechecks_condition_and_preceding_writes() {
 	lexical_parent_cache_children(mut a, .fn_decl, [if_node])
 	mut tc := TypeChecker.new(&a)
 	tc.build_direct_parent_index(&a)
-	tc.sum_types['Value'] = ['int', 'string']
-	tc.cur_scope.insert('value', Type(SumType{ name: 'Value' }))
+	tc.sum_types.set('Value', ['int', 'string'])
+	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	assert tc.lexical_smartcast_type_in_parents(value, 'value', false)? == Type(int_)
 	// Neither the type result nor write analysis is stored in the topology memo.
 	a.nodes[int(cond)].value = 'string'
@@ -144,6 +144,45 @@ fn test_lexical_parent_cache_forks_own_slots_and_phase_resets_drop_storage() {
 	assert isnil(tc.lexical_parent_memo)
 	forked.set_fresh_type_cache_based_on(&tc, true)
 	assert isnil(forked.lexical_parent_memo)
+}
+
+fn test_loop_narrowing_resolves_assignment_rhs_before_its_write() {
+	mut a := flat.FlatAst.new()
+	before := a.add_val(.ident, 'value')
+	lhs := a.add_val(.ident, 'value')
+	rhs_value := a.add_val(.ident, 'value')
+	one := a.add_val(.int_literal, '1')
+	rhs := lexical_parent_cache_children(mut a, .infix, [rhs_value, one])
+	a.nodes[int(rhs)].op = .plus
+	write := lexical_parent_cache_children(mut a, .assign, [lhs, rhs])
+	a.nodes[int(write)].op = .assign
+	after_int := a.add_val(.ident, 'value')
+	other_lhs := a.add_val(.ident, 'value')
+	other_rhs := a.add_val(.string_literal, 'changed')
+	other_write := lexical_parent_cache_children(mut a, .assign, [other_lhs, other_rhs])
+	a.nodes[int(other_write)].op = .assign
+	after_string := a.add_val(.ident, 'value')
+	nested := lexical_parent_cache_children(mut a, .block, [other_write, after_string])
+	cond := lexical_parent_cache_condition(mut a, 'value', 'int')
+	init := a.add(.empty)
+	post := a.add(.empty)
+	loop := lexical_parent_cache_children(mut a, .for_stmt, [init, cond, post, before, write,
+		after_int, nested])
+	lexical_parent_cache_children(mut a, .fn_decl, [loop])
+	for cached in [false, true] {
+		mut tc := TypeChecker.new(&a)
+		tc.cache_lexical_parents = cached
+		tc.build_direct_parent_index(&a)
+		tc.sum_types.set('Value', ['int', 'string'])
+		sum := Type(SumType{ name_id: flat.source_type_id('Value') })
+		tc.cur_scope.insert('value', sum)
+		tc.remember_expr_type(lhs, sum)
+		tc.remember_expr_type(other_lhs, sum)
+		assert tc.lexical_smartcast_type_in_parents(before, 'value', false)? == Type(int_)
+		assert tc.lexical_smartcast_type_in_parents(rhs_value, 'value', false)? == Type(int_)
+		assert tc.lexical_smartcast_type_in_parents(after_int, 'value', false)? == Type(int_)
+		assert tc.lexical_smartcast_type_in_parents(after_string, 'value', false) == none
+	}
 }
 
 fn test_lexical_parent_cache_matches_uncached_reachability_and_diagnostics() {

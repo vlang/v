@@ -5,11 +5,13 @@ import sync.stdatomic
 import time
 
 const epoll_wait_timeout_ms = 100
+
+// Pending readiness stays queued in epoll; a worker need not reserve one slot per connection.
+const epoll_event_batch_size = 256
 const status_408_response = 'HTTP/1.1 408 Request Timeout\r\nContent-Type: text/plain\r\nContent-Length: 19\r\nConnection: close\r\n\r\n408 Request Timeout'.bytes()
 
-// Per-connection buffer capacities. Both buffers are allocated once per connection
-// and reused for its whole lifetime — capacity is kept across requests, so the
-// steady state does zero per-request buffer allocation.
+// Normal-sized buffers are reused across requests; oversized buffers are trimmed
+// once their contents have been consumed.
 const read_buf_cap = 8 * 1024
 const write_buf_cap = 16 * 1024
 // Initial size of the flat fd-indexed connection table; it doubles on demand.
@@ -22,6 +24,7 @@ const sendfile_chunk = 1024 * 1024
 const max_pending_write = 8 * 1024 * 1024
 const max_pooled_read_cap = 64 * 1024
 const max_pooled_write_cap = 64 * 1024
+const max_pooled_conns = 16
 
 enum FlushResult {
 	closed
@@ -140,13 +143,14 @@ mut:
 // table plus the free-list of retired ConnStates (each keeping its buffers).
 struct Worker {
 mut:
-	server       &Server = unsafe { nil }
-	epoll_fd     int
-	listen_fd    int
-	conns        []&ConnState
-	free_conns   []&ConnState
-	parked       int     // connections with an armed read/write deadline (gates the sweep)
-	worker_state voidptr // this worker thread's ServerConfig.make_state value (nil if unset)
+	server                &Server = unsafe { nil }
+	epoll_fd              int
+	listen_fd             int
+	conns                 []&ConnState
+	free_conns            []&ConnState
+	last_timeout_sweep_ns i64
+	parked                int     // connections with an armed read/write deadline (gates the sweep)
+	worker_state          voidptr // this worker thread's ServerConfig.make_state value (nil if unset)
 }
 
 fn close_socket(fd int) bool {
@@ -288,7 +292,7 @@ fn clear_active(mut w Worker, mut cs ConnState) {
 }
 
 // close_conn removes fd from epoll, closes it, and returns its ConnState to the
-// per-worker free-list with its buffers retained (length reset, capacity kept).
+// bounded per-worker free-list with normal-sized buffers retained.
 // Every field a fresh ConnState would have is reset so no stale state bleeds into
 // the next connection that reuses this slot.
 @[direct_array_access]
@@ -316,18 +320,6 @@ fn close_conn(mut w Worker, fd int) {
 					unsafe { prealloc_scope_free_after(cs.request_arena) }
 				}
 			}
-			if cs.read_buf.cap > max_pooled_read_cap {
-				unsafe { cs.read_buf.free() }
-				cs.read_buf = []u8{len: 0, cap: read_buf_cap}
-			} else {
-				unsafe { cs.read_buf.len = 0 }
-			}
-			if cs.write_buf.cap > max_pooled_write_cap {
-				unsafe { cs.write_buf.free() }
-				cs.write_buf = []u8{len: 0, cap: write_buf_cap}
-			} else {
-				unsafe { cs.write_buf.len = 0 }
-			}
 			cs.write_off = 0
 			cs.file_fd = -1
 			cs.file_off = 0
@@ -338,7 +330,7 @@ fn close_conn(mut w Worker, fd int) {
 			cs.write_start_ns = 0
 			cs.request_arena = unsafe { nil }
 			w.conns[fd] = unsafe { nil }
-			w.free_conns << cs
+			recycle_conn_state(mut w, mut cs)
 		}
 	}
 	remove_fd_from_epoll(w.epoll_fd, fd)
@@ -371,10 +363,6 @@ fn detach_conn(mut w Worker, fd int) {
 			abandon_request_arena_current_thread(cs.request_arena)
 		}
 	}
-	unsafe {
-		cs.read_buf.len = 0
-		cs.write_buf.len = 0
-	}
 	cs.write_off = 0
 	cs.file_fd = -1
 	cs.file_off = 0
@@ -385,8 +373,39 @@ fn detach_conn(mut w Worker, fd int) {
 	cs.write_start_ns = 0
 	cs.request_arena = unsafe { nil }
 	w.conns[fd] = unsafe { nil }
-	w.free_conns << cs
+	recycle_conn_state(mut w, mut cs)
 	remove_fd_from_epoll(w.epoll_fd, fd)
+}
+
+// recycle_conn_state bounds retained state unless the allocator requires reuse.
+fn recycle_conn_state(mut w Worker, mut cs ConnState) {
+	$if !prealloc {
+		if w.free_conns.len >= max_pooled_conns {
+			// The worker has removed every reference to this retired state.
+			unsafe {
+				cs.read_buf.free()
+				cs.write_buf.free()
+				free(cs)
+			}
+			return
+		}
+	}
+	// Prealloc cannot reclaim individual states, so keep them reachable for reuse.
+	compact_read_buf(mut cs, cs.read_buf.len)
+	reset_write_buf(mut cs)
+	w.free_conns << cs
+}
+
+// reset_write_buf resets drained output, retaining storage when prealloc requires reuse.
+fn reset_write_buf(mut cs ConnState) {
+	$if !prealloc {
+		if cs.write_buf.cap > max_pooled_write_cap {
+			unsafe { cs.write_buf.free() }
+			cs.write_buf = []u8{cap: write_buf_cap}
+			return
+		}
+	}
+	unsafe { cs.write_buf.len = 0 }
 }
 
 // mark_read_deadline arms/clears the read deadline for a partially-read request.
@@ -409,9 +428,9 @@ fn mark_read_deadline(mut w Worker, mut cs ConnState) {
 fn drain_file(fd int, mut cs ConnState) int {
 	for cs.file_remaining > 0 {
 		want := if cs.file_remaining > sendfile_chunk {
-			usize(sendfile_chunk)
+			uint(sendfile_chunk)
 		} else {
-			usize(cs.file_remaining)
+			uint(cs.file_remaining)
 		}
 		sent := sendfile_without_sigpipe(fd, cs.file_fd, &cs.file_off, want)
 		if sent > 0 {
@@ -442,7 +461,7 @@ fn drain_file(fd int, mut cs ConnState) int {
 fn flush_batch(mut w Worker, fd int, mut cs ConnState) FlushResult {
 	// Phase 1: the buffered response bytes (status lines, headers, small bodies).
 	for cs.write_off < cs.write_buf.len {
-		n := C.send(fd, unsafe { &u8(cs.write_buf.data) + cs.write_off }, usize(cs.write_buf.len - cs.write_off), C.MSG_NOSIGNAL)
+		n := C.send(fd, unsafe { &u8(cs.write_buf.data) + cs.write_off }, uint(cs.write_buf.len - cs.write_off), C.MSG_NOSIGNAL)
 		if n > 0 {
 			cs.write_off += n
 			continue
@@ -478,9 +497,7 @@ fn flush_batch(mut w Worker, fd int, mut cs ConnState) FlushResult {
 		}
 	}
 	// Everything sent. Recycle the write buffer and settle the connection.
-	unsafe {
-		cs.write_buf.len = 0
-	}
+	reset_write_buf(mut cs)
 	cs.write_off = 0
 	if cs.write_start_ns != 0 {
 		cs.write_start_ns = 0
@@ -526,12 +543,29 @@ fn has_pending_response(cs &ConnState) bool {
 // (partial / not-yet-framed) request at the front of the buffer.
 @[direct_array_access; inline]
 fn compact_read_buf(mut cs ConnState, pos int) {
-	if pos <= 0 {
+	if pos < 0 {
 		return
 	}
 	leftover := cs.read_buf.len - pos
+	$if !prealloc {
+		if cs.read_buf.cap > max_pooled_read_cap && leftover <= read_buf_cap {
+			mut trimmed := []u8{len: leftover, cap: read_buf_cap}
+			// Request handlers have finished with consumed bytes; preserve pipelined input.
+			unsafe {
+				if leftover > 0 {
+					vmemcpy(trimmed.data, &u8(cs.read_buf.data) + pos, leftover)
+				}
+				cs.read_buf.free()
+			}
+			cs.read_buf = trimmed
+			return
+		}
+	}
+	if pos == 0 {
+		return
+	}
 	if leftover > 0 {
-		unsafe { C.memmove(cs.read_buf.data, &u8(cs.read_buf.data) + pos, usize(leftover)) }
+		unsafe { C.memmove(cs.read_buf.data, &u8(cs.read_buf.data) + pos, uint(leftover)) }
 	}
 	unsafe {
 		cs.read_buf.len = leftover
@@ -624,7 +658,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 				return flush_batch(mut w, fd, mut cs) != .closed
 			}
 			decoded.client_conn_fd = fd
-			decoded.client_conn_handle = usize(fd)
+			decoded.client_conn_handle = uint(fd)
 			decoded.user_data = w.server.user_data
 			decoded.worker_state = w.worker_state
 			mut ctl := ResponseControl{}
@@ -694,7 +728,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 				return flush_batch(mut w, fd, mut cs) != .closed
 			}
 			decoded.client_conn_fd = fd
-			decoded.client_conn_handle = usize(fd)
+			decoded.client_conn_handle = uint(fd)
 			decoded.user_data = w.server.user_data
 			decoded.worker_state = w.worker_state
 			mut resp := w.server.request_handler(decoded) or {
@@ -825,7 +859,7 @@ fn serve_conn(mut w Worker, fd int, mut cs ConnState) {
 			}
 		}
 		spare := cs.read_buf.cap - cs.read_buf.len
-		n := C.recv(fd, unsafe { &u8(cs.read_buf.data) + cs.read_buf.len }, usize(spare), 0)
+		n := C.recv(fd, unsafe { &u8(cs.read_buf.data) + cs.read_buf.len }, uint(spare), 0)
 		if n < 0 {
 			if C.errno == C.EAGAIN {
 				break // socket drained
@@ -949,13 +983,17 @@ fn handle_accept_loop(mut w Worker) {
 }
 
 // sweep_timeouts closes connections whose read/write deadline elapsed. Only runs
-// when something is parked, so it costs nothing on an idle/fast server.
+// when something is parked, at most once per epoll wait timeout interval.
 @[direct_array_access]
 fn sweep_timeouts(mut w Worker) {
 	if w.server.timeout_in_seconds <= 0 || w.parked == 0 {
 		return
 	}
-	now := time.sys_mono_now()
+	now := i64(time.sys_mono_now())
+	if now - w.last_timeout_sweep_ns < i64(epoll_wait_timeout_ms) * time.millisecond {
+		return
+	}
+	w.last_timeout_sweep_ns = now
 	timeout_ns := i64(w.server.timeout_in_seconds) * 1_000_000_000
 	for fd in 0 .. w.conns.len {
 		cs := w.conns[fd]
@@ -994,13 +1032,23 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	if server.make_state != unsafe { nil } {
 		w.worker_state = server.make_state()
 	}
-	mut events := [max_connection_size]C.epoll_event{}
+	mut events := [epoll_event_batch_size]C.epoll_event{}
 	for {
 		if server.is_shutting_down() && server.active_request_count() == 0 {
 			close_worker_clients(mut w)
 			return
 		}
-		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, epoll_wait_timeout_ms)
+		mut wait_ms := epoll_wait_timeout_ms
+		if server.timeout_in_seconds > 0 && w.parked > 0 {
+			// A skipped batch must not postpone the next sweep by another full wait.
+			elapsed_ms := (time.sys_mono_now() - w.last_timeout_sweep_ns) / time.millisecond
+			wait_ms = if elapsed_ms >= epoll_wait_timeout_ms {
+				0
+			} else {
+				epoll_wait_timeout_ms - int(elapsed_ms)
+			}
+		}
+		num_events := C.epoll_wait(epoll_fd, &events[0], events.len, wait_ms)
 		if num_events < 0 {
 			if C.errno == C.EINTR {
 				continue

@@ -7,15 +7,12 @@
 //
 module termios
 
-#include <termios.h>
-#include <sys/ioctl.h>
-
 // https://github.com/apple/darwin-xnu/blob/main/bsd/sys/termios.h
 
 const cclen = 20
 
-type TcFlag = usize
-type Speed = usize
+type TcFlag = uint
+type Speed = uint
 type Cc = u8
 
 // Termios stores the terminal options
@@ -40,14 +37,14 @@ fn C.ioctl(fd i32, request u64, args ...voidptr) i32
 // for the underlying C.termios structure
 @[inline]
 pub fn flag(value int) TcFlag {
-	return usize(value)
+	return uint(value)
 }
 
 // invert is a platform dependant way to bitwise NOT (~) TcFlag
 // as its length varies across platforms
 @[inline]
 pub fn invert(value TcFlag) TcFlag {
-	return ~usize(value)
+	return ~uint(value)
 }
 
 pub struct Termios {
@@ -93,5 +90,5 @@ pub fn set_state(fd int, new_state Termios) int {
 
 // disable_echo disables echoing characters as they are typed, when that Termios state is later set with termios.set_state(fd,t).
 pub fn (mut t Termios) disable_echo() {
-	t.c_lflag &= invert(usize(C.ECHO))
+	t.c_lflag &= invert(uint(C.ECHO))
 }

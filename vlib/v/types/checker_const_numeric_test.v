@@ -21,6 +21,82 @@ fn numeric_const_type_name(tc &TypeChecker, name string) string {
 	return typ.name()
 }
 
+fn test_numeric_const_lookup_keeps_lexical_values_and_hides_main_suffixes() {
+	_, mut tc := numeric_const_fixture('module_visibility', 'module main
+const base = 100
+const hidden = 42
+const helper_value = 7
+const helper_delta = base
+fn main() {}
+')
+	tc.const_exprs['helper.base'] = tc.const_exprs['helper_value'] or { panic('missing value') }
+	tc.const_exprs['helper.delta'] = tc.const_exprs['helper_delta'] or { panic('missing delta') }
+	tc.const_modules['helper.base'] = 'helper'
+	tc.const_modules['helper.delta'] = 'helper'
+	// A suffix index must not expose a bare main constant to an imported helper.
+	tc.const_suffixes['hidden'] = 'hidden'
+	view := tc.fork_type_parse_view(tc.cur_file, 'helper')
+	assert (view.const_int_value_in_module('delta', 'helper', []string{}) or { panic('missing value') }) == 7
+	if value := view.const_int_value_in_module('hidden', 'helper', []string{}) {
+		assert false, 'invisible main constant folded as ${value}'
+	}
+}
+
+fn test_numeric_const_literal_shortcut_preserves_names_and_expression_lookup() {
+	_, mut tc := numeric_const_fixture('literal_lookup', 'module main
+enum NumericChoice {
+ small = 3
+ large = 9
+}
+const base = 11
+const _123 = 17
+const helper_value = 21
+fn main() {}
+')
+	for literal, expected in {
+		'16':    16
+		'1_024': 1024
+		'0x1_f': 31
+		'0o17':  15
+		'0b110': 6
+	} {
+		assert (tc.const_int_value(literal, []string{}) or { panic('missing ${literal}') }) == expected
+	}
+	assert tc.const_int_value('16', ['16']) == none
+	assert (tc.const_int_value('_123', []string{}) or { panic('missing named const') }) == 17
+	assert (tc.const_int_value('-16', []string{}) or { panic('missing signed literal') }) == -16
+	assert (tc.const_int_value('+16', []string{}) or { panic('missing signed literal') }) == 16
+	assert (tc.const_int_value('u16(2)', []string{}) or { panic('missing cast') }) == 2
+	assert (tc.const_int_value('NumericChoice.large', []string{}) or { panic('missing enum') }) == 9
+	assert (tc.const_int_value('base + 0x10', []string{}) or { panic('missing arithmetic') }) == 27
+	tc.const_exprs['helper.base'] = tc.const_exprs['helper_value'] or { panic('missing value') }
+	tc.const_modules['helper.base'] = 'helper'
+	assert (tc.const_int_value_in_module('base', 'helper', []string{}) or { panic('missing module const') }) == 21
+}
+
+fn test_module_const_shortcut_preserves_failed_evaluation_and_seen_fallback() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.const_exprs['helper.value'] = a.add_val(.ident, 'missing')
+	tc.const_modules['helper.value'] = 'helper'
+	tc.const_exprs['value'] = a.add_val(.int_literal, '41')
+	tc.const_modules['value'] = 'builtin'
+	// Finding a module binding ends lookup even when its initializer is unresolved.
+	assert tc.const_int_value_in_module('value', 'helper', []string{}) == none
+	// A binding already in the dependency chain is skipped before evaluating it.
+	assert (tc.const_int_value_in_module('value', 'helper', ['helper.value']) or {
+		panic('missing fallback')
+	}) == 41
+	tc.const_exprs['helper.value'] = a.add_val(.int_literal, '13')
+	assert (tc.const_int_value_in_module('value', 'helper', []string{}) or {
+		panic('missing module const')
+	}) == 13
+	tc.const_exprs.delete('helper.value')
+	assert (tc.const_int_value_in_module('value', 'helper', []string{}) or {
+		panic('missing fallback')
+	}) == 41
+}
+
 fn test_independent_numeric_const_initializer_uses_actual_literal_shapes() {
 	a, tc := numeric_const_fixture('shapes', 'module main
 type Count = u64
@@ -88,15 +164,15 @@ fn main() {}
 
 fn test_independent_numeric_const_initializer_rejects_type_annotation_dependencies() {
 	mut a := flat.FlatAst.new()
-	literal := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: 'Number' })
+	literal := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: flat.source_type_id('Number') })
 	assert !independent_numeric_const_initializer(&a, literal)
-	a.nodes[int(literal)].typ = 'u64'
+	a.nodes[int(literal)].typ = flat.source_type_u64
 	assert independent_numeric_const_initializer(&a, literal)
 	children := a.begin_children()
 	a.add_child(literal)
 	array := a.add_node(flat.Node{
 		kind:           .array_literal
-		typ:            '[bound]u64'
+		typ:            flat.source_type_id('[bound]u64')
 		children_start: children
 		children_count: 1
 	})

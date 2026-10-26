@@ -1,13 +1,16 @@
 // vtest vflags: -gc boehm -d no_gc_thread_local_alloc -d use_bundled_libgc
 module main
 
+// The collector owns the full statistics layout and its function declaration.
+#include <gc.h>
+
 struct C.GC_prof_stats_s {
-	bytes_allocd_since_gc  usize
-	allocd_bytes_before_gc usize
-	gc_no                  usize
+	bytes_allocd_since_gc  uint
+	allocd_bytes_before_gc uint
+	gc_no                  uint
 }
 
-fn C.GC_get_prof_stats(&C.GC_prof_stats_s, usize) usize
+fn C.GC_get_prof_stats(&C.GC_prof_stats_s, uint) uint
 
 fn map_equality_allocations() (u64, u64) {
 	mut stats := C.GC_prof_stats_s{}

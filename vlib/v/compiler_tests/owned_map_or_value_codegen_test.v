@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_owned_map_or_values_acquire_independent_storage() {
@@ -68,9 +69,9 @@ fn byte_copy(entries &map[string][]u8) []u8 {
 
 fn move_indexed() string {
  mut entries := {"found": "moved".to_owned()}
- address := unsafe { usize(entries["found"].str) }
+ address := unsafe { uint(entries["found"].str) }
  item := entries["found"] or { "fallback".to_owned() }
- assert unsafe { usize(item.str) } == address
+ assert unsafe { uint(item.str) } == address
  return item
 }
 
@@ -110,7 +111,7 @@ fn main() {
   assert copied[0].text == "first"
   assert copied[1].text == "second"
   assert copied[2].text == "third"
-  assert unsafe { usize(copied.data) != usize(builder.entries["found"].data) }
+  assert unsafe { uint(copied.data) != uint(builder.entries["found"].data) }
   copied[0].text = "changed".repeat(1)
   assert builder.entries["found"][0].text == "first"
   drop_owned(copied)
@@ -121,7 +122,7 @@ fn main() {
  {
   bytes := {"found": [u8(1), 2, 3]}
   mut copied := byte_copy(&bytes)
-  assert unsafe { usize(copied.data) != usize(bytes["found"].data) }
+  assert unsafe { uint(copied.data) != uint(bytes["found"].data) }
   copied[0] = 4
   assert bytes["found"] == [u8(1), 2, 3]
  }

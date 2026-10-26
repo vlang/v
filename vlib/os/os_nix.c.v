@@ -1,14 +1,6 @@
 module os
 
-#include <dirent.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/utsname.h>
-#include <sys/types.h>
-#include <sys/statvfs.h>
-#include <sys/wait.h>
-#include <utime.h>
-#insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
+#flag @VEXEROOT/vlib/os/execute_capture_nix.o
 
 // short_path is a Windows-only helper that returns the DOS 8.3 short path.
 // On non-Windows platforms it simply returns the given path unchanged,
@@ -58,11 +50,11 @@ fn C.uname(name &C.utsname) i32
 
 fn C.symlink(&char, &char) i32
 
-fn C.readlink(&char, &char, usize) i32
+fn C.readlink(&char, &char, uint) i32
 
 fn C.link(&char, &char) i32
 
-fn C.gethostname(&char, usize) i32
+fn C.gethostname(&char, uint) i32
 
 // Note: not available on Android fn C.getlogin_r(&char, int) int
 fn C.getlogin() &char
@@ -84,6 +76,26 @@ enum GlobMatch {
 	start_and_ends_with
 	contains
 	any
+}
+
+fn glob_match_wildcard(name string, pattern string) bool {
+	parts := pattern.split('*')
+	if !name.starts_with(parts[0]) {
+		return false
+	}
+	mut pos := parts[0].len
+	for i in 1 .. parts.len {
+		part := parts[i]
+		if part == '' {
+			continue
+		}
+		if i == parts.len - 1 {
+			return name.ends_with(part) && name.len - part.len >= pos
+		}
+		offset := name[pos..].index(part) or { return false }
+		pos += offset + part.len
+	}
+	return true
 }
 
 fn glob_match(dir string, pattern string, next_pattern string, mut matches []string) []string {
@@ -146,8 +158,8 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 				f.ends_with(pat)
 			}
 			.start_and_ends_with {
-				p := pat.split('*')
-				f.starts_with(p[0]) && f.ends_with(p[1])
+				// Keep the original edge wildcards and match every interior piece in order.
+				glob_match_wildcard(f, if pattern == '**' { next_pattern } else { pattern })
 			}
 			.contains {
 				f.contains(pat)
@@ -294,6 +306,9 @@ pub fn loginname() !string {
 }
 
 // ls returns ![]string of the files and dirs in the given `path` ( os.ls uses C.readdir ). Symbolic links are returned to be files. For recursive list see os.walk functions.
+// The entries come in the order the operating system reports them, which os.ls does not sort.
+// That order differs between platforms and filesystems, so call `.sort()` on the result when
+// a stable order is needed.
 // See also: `os.walk`, `os.walk_ext`, `os.is_dir`, `os.is_file`
 // Example:
 // ```
@@ -617,10 +632,10 @@ pub fn page_size() int {
 }
 
 struct C.statvfs {
-	f_bsize  usize
-	f_blocks usize
-	f_bfree  usize
-	f_bavail usize
+	f_bsize  uint
+	f_blocks uint
+	f_bfree  uint
+	f_bavail uint
 }
 
 // disk_usage returns disk usage of `path`.

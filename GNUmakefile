@@ -104,6 +104,18 @@ TCCOS := windows
 endif
 
 TCCARCH := $(shell uname -m 2>/dev/null || echo unknown)
+# A 32-bit userland can run on a 64-bit kernel (Raspberry Pi OS 32-bit on a Pi 4/5,
+# an armhf or i386 container), where `uname -m` names the kernel's architecture.
+# The C compiler, the TCC bundle and the bootstrap follow the userland, whose word
+# size `getconf LONG_BIT` reports.
+ifeq ($(shell getconf LONG_BIT 2>/dev/null),32)
+ifneq ($(filter aarch64 arm64 armv8%,$(TCCARCH)),)
+	TCCARCH := armv7l
+endif
+ifeq ($(TCCARCH),x86_64)
+	TCCARCH := i686
+endif
+endif
 
 ifeq ($(TCCARCH),x86_64)
 	TCCARCH := amd64
@@ -169,13 +181,21 @@ endif
 # on a Unix-like host. Keep the temporary v1 on the full compatibility path so
 # it can create v2 before either the compiler driver or v1_fallback exists.
 BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
-BOOTSTRAP_VC_SOURCES := $(VC)/$(VCFILE)
+BOOTSTRAP_VC_EXTRA_SOURCES :=
 # Portable vc snapshots generated before the OpenBSD entropy and semaphore guards
 # still reference two libc symbols that OpenBSD does not provide. Supply the small
 # bootstrap-only compatibility implementations until vc is regenerated.
 ifdef OPENBSD
 BOOTSTRAP_VC_CC_CFLAGS += -DSYS_getrandom=0
-BOOTSTRAP_VC_SOURCES += $(VROOT)/cmd/tools/openbsd_vc_compat.c
+BOOTSTRAP_VC_EXTRA_SOURCES += $(VROOT)/cmd/tools/openbsd_vc_compat.c
+endif
+# Portable vc snapshots guard android_print with `defined(__ANDROID__) && !defined(__TERMUX__)`.
+# Termux's compiler does not predefine __TERMUX__, so a native Termux bootstrap must define it;
+# otherwise v1 references android_print, which only the android target links (#30279).
+ifdef ANDROID
+ifneq ($(or $(TERMUX_VERSION),$(findstring com.termux,$(PREFIX))),)
+BOOTSTRAP_VC_CC_CFLAGS += -D__TERMUX__
+endif
 endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
@@ -186,12 +206,14 @@ ifeq ($(filter -gc -gc=%,$(VFLAGS)),)
 	BOOTSTRAP_GC_VFLAG := -gc none
 endif
 ifneq ($(filter $(_SYS),Linux FreeBSD NetBSD OpenBSD DragonFly),)
-ifneq ($(filter $(TCCARCH),arm64 aarch64),)
+ifneq ($(filter $(TCCARCH),arm64 aarch64 arm),)
 ifeq ($(filter -cc,$(VFLAGS)),)
 ifeq ($(findstring -cc=,$(VFLAGS)),)
 	# Bundled TCC can hang, fail, or miscompile V while bootstrapping on ARM64,
 	# so keep both `v1 -> v2` and `v2 -> v` on the same system compiler
-	# unless the user overrode it explicitly.
+	# unless the user overrode it explicitly. On 32-bit ARM, TCC cannot link V
+	# itself: the Thumb-2 C startup code of armhf distributions calls into libc
+	# with a branch that cannot reach across V's text, and TCC adds no veneer.
 	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
 	BOOTSTRAP_VC_CCOMPILER_VFLAG := $(BOOTSTRAP_CCOMPILER_VFLAG)
 endif
@@ -236,7 +258,9 @@ BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 -lbcrypt || cmd/tools/cc_compilation_failed_windows.sh
+	powershell -NoProfile -ExecutionPolicy Bypass -File "$(VROOT)/cmd/tools/vc_compat_uint.ps1" -Source "$(VC)/$(VCFILE)" -Destination "$(VC)/v_win_compat.c"
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) "$(VC)/v_win_compat.c" $(LDFLAGS) -lws2_32 -lbcrypt || cmd/tools/cc_compilation_failed_windows.sh
+	$(RM) "$(VC)/v_win_compat.c"
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
@@ -248,12 +272,8 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-ifdef MAC
-# Stream guards for stale snapshots directly to the compiler, keeping one v.c.
-	bash "$(VROOT)/cmd/tools/macos_vc_compat.sh" "$(VC)/$(VCFILE)" $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
-else
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) $(BOOTSTRAP_VC_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
-endif
+# Stream compatibility fixes for stale snapshots to the compiler, keeping one v.c.
+	sh "$(VROOT)/cmd/tools/vc_compat.sh" "$(VC)/$(VCFILE)" $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) -- $(BOOTSTRAP_VC_EXTRA_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || sh cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif

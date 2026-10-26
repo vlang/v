@@ -1,4 +1,5 @@
 import os
+import json2
 
 const vls_test_vexe = @VEXE
 const vls_test_vroot = os.dir(vls_test_vexe)
@@ -42,4 +43,66 @@ fn test_vls_source_update_recovers_missing_executable() ! {
 	assert compile_args[2..] == ['-o', exec_path, source_dir]
 	manifest := os.read_file(os.join_path(home_dir, '.vls', 'vls.config.json'))!
 	assert manifest.contains(exec_path)
+}
+
+fn test_vls_check_without_installation_reports_state() ! {
+	// --check must report the state and exit 0, not raise error 101
+	// with a backtrace because parse() forced language server mode
+	test_root := os.join_path(os.vtmp_dir(), 'vls check ${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	os.mkdir_all(test_root)!
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	tool_source := os.join_path(vls_test_vroot, 'cmd', 'tools', 'vls.v')
+	tool_exe := $if windows { os.join_path(test_root, 'vls_check.exe') } $else { os.join_path(test_root, 'vls_check') }
+	build_result := os.exec([vls_test_vexe, '-o', tool_exe, tool_source])
+	assert build_result.exit_code == 0, build_result.output
+	empty_home := os.join_path(test_root, 'empty home')
+	os.mkdir_all(empty_home)!
+	home_var := $if windows { 'USERPROFILE' } $else { 'HOME' }
+	old_home := os.getenv(home_var)
+	os.setenv(home_var, empty_home, true)
+	defer {
+		os.setenv(home_var, old_home, true)
+	}
+	result := os.exec([tool_exe, '--check'])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('not installed'), result.output
+}
+
+fn test_vls_check_reports_manifest_and_stale_installations() ! {
+	test_root := os.join_path(os.vtmp_dir(), 'vls installed check ${os.getpid()}')
+	os.mkdir_all(test_root)!
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	tool_source := os.join_path(vls_test_vroot, 'cmd', 'tools', 'vls.v')
+	tool_exe := os.join_path(test_root, 'vls_check' + $if windows { '.exe' } $else { '' })
+	build_result := os.exec([vls_test_vexe, '-o', tool_exe, tool_source])
+	assert build_result.exit_code == 0, build_result.output
+	vls_home := os.join_path(test_root, 'home')
+	os.mkdir_all(os.join_path(vls_home, '.vls'))!
+	home_var := $if windows { 'USERPROFILE' } $else { 'HOME' }
+	old_home := os.getenv(home_var)
+	os.setenv(home_var, vls_home, true)
+	defer {
+		os.setenv(home_var, old_home, true)
+	}
+	manifest_path := os.join_path(vls_home, '.vls', 'vls.config.json')
+	// The updater itself is an executable fixture; --check must not launch it.
+	os.write_file(manifest_path, '{"server_path":' + json2.encode(tool_exe,
+		escape_unicode: true
+		time_as_unix:   true
+	) + '}')!
+	result := os.exec([tool_exe, '--check'])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('installed at: ${tool_exe}'), result.output
+	os.write_file(manifest_path, '{"server_path":' + json2.encode(tool_exe + '.missing',
+		escape_unicode: true
+		time_as_unix:   true
+	) + '}')!
+	stale := os.exec([tool_exe, '--check'])
+	assert stale.exit_code == 0, stale.output
+	assert stale.output.contains('not installed'), stale.output
 }

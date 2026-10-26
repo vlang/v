@@ -1,6 +1,10 @@
 #ifndef V3_PTHREAD_HELPER_H
 #define V3_PTHREAD_HELPER_H
 
+#ifndef V_PTHREAD_SCOPE
+#define V_PTHREAD_SCOPE static inline
+#endif
+
 #include <pthread.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -9,11 +13,11 @@
  * declaration used only by the helper available after includes are flattened. */
 extern int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stack_size);
 
-static inline pthread_t v3_pthread_zero(void) {
+V_PTHREAD_SCOPE pthread_t v3_pthread_zero(void) {
 	return (pthread_t)0;
 }
 
-static inline int v3_pthread_create(pthread_t *thread, size_t stack_size,
+V_PTHREAD_SCOPE int v3_pthread_create(pthread_t *thread, size_t stack_size,
 	void *(*start_routine)(void *), void *arg) {
 	pthread_attr_t attr;
 	int rc = pthread_attr_init(&attr);
@@ -36,7 +40,7 @@ static inline int v3_pthread_create(pthread_t *thread, size_t stack_size,
 	return rc;
 }
 
-static inline int v3_pthread_is_current(pthread_t thread) {
+V_PTHREAD_SCOPE int v3_pthread_is_current(pthread_t thread) {
 	return pthread_equal(pthread_self(), thread);
 }
 

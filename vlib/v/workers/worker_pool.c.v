@@ -54,20 +54,20 @@ pub fn limit_pool_size(size int) {
 // worker_stack_size resolves the per-worker stack size, honoring the
 // V3_WORKER_STACK_MB override and falling back to the default when it is unset,
 // non-numeric, or non-positive.
-fn worker_stack_size() usize {
+fn worker_stack_size() uint {
 	requested_mb := os.getenv('V3_WORKER_STACK_MB')
 	if requested_mb.len == 0 {
-		return usize(compiler_worker_stack_size)
+		return uint(compiler_worker_stack_size)
 	}
 	mb := requested_mb.int()
 	if mb <= 0 {
-		return usize(compiler_worker_stack_size)
+		return uint(compiler_worker_stack_size)
 	}
 	mut bytes := i64(mb) * 1024 * 1024
 	if bytes < min_worker_stack_size {
 		bytes = min_worker_stack_size
 	}
-	return usize(bytes)
+	return uint(bytes)
 }
 
 // Task is one type-erased compiler phase callback submitted to Pool.
@@ -314,6 +314,10 @@ fn (p &Pool) has_current_worker() bool {
 // the threads they list belong to the parent and do not exist here.
 pub fn note_fork() {
 	v3_fork_generation++
+	for i in 0 .. v3_open_pools_len {
+		mut pool := unsafe { &Pool(v3_open_pools[i]) }
+		pool.revive()
+	}
 }
 
 // revive gives a pool from an earlier fork generation a new job queue and as
@@ -380,7 +384,6 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	if tasks.len == 0 {
 		return false
 	}
-	p.revive()
 	mut batch := BatchStats{
 		tasks: u64(tasks.len)
 	}
@@ -509,6 +512,16 @@ pub fn (mut p Pool) close() {
 	if p.is_closed {
 		return
 	}
+	p.stop()
+	p.join()
+}
+
+// stop closes the pool and asks every thread to exit, without waiting for them.
+// Call join, possibly from another thread, before the pool's memory is released.
+pub fn (mut p Pool) stop() {
+	if p.is_closed {
+		return
+	}
 	p.is_closed = true
 	unregister_open_pool(p)
 	if p.generation != v3_fork_generation {
@@ -521,6 +534,10 @@ pub fn (mut p Pool) close() {
 			stop: true
 		}
 	}
+}
+
+// join waits for the threads of a stopped pool to exit.
+pub fn (mut p Pool) join() {
 	for idx, worker in p.threads {
 		if worker_thread_join(worker) != 0 {
 			panic('failed to join compiler worker ${idx}')

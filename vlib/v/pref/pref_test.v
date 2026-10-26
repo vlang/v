@@ -58,6 +58,46 @@ fn test_cache_recovery_sentinel_is_hidden_from_compiled_programs() {
 	assert name !in macos_v3_caller_environment()
 }
 
+fn test_internal_force_source_is_private_and_preserves_caller_controls() {
+	name := 'V3_INTERNAL_CACHE_FORCE_SOURCE'
+	previous := os.getenv_opt(name)
+	previous_caller := os.getenv_opt('V3_CACHE_FORCE_SOURCE')
+	previous_trace := os.getenv_opt('V3_CACHE_TRACE')
+	defer {
+		if value := previous {
+			os.setenv(name, value, true)
+		} else {
+			os.unsetenv(name)
+		}
+		if value := previous_caller {
+			os.setenv('V3_CACHE_FORCE_SOURCE', value, true)
+		} else {
+			os.unsetenv('V3_CACHE_FORCE_SOURCE')
+		}
+		if value := previous_trace {
+			os.setenv('V3_CACHE_TRACE', value, true)
+		} else {
+			os.unsetenv('V3_CACHE_TRACE')
+		}
+	}
+	os.setenv(name, '1', true)
+	os.setenv('V3_CACHE_TRACE', '1', true)
+	for caller in ['caller-control', '1', ''] {
+		os.setenv('V3_CACHE_FORCE_SOURCE', caller, true)
+		environment := macos_v3_caller_environment()
+		assert macos_v3_caller_env_value(name) == ''
+		assert name !in environment
+		assert macos_v3_caller_env_value('V3_CACHE_FORCE_SOURCE') == caller
+		assert 'V3_CACHE_FORCE_SOURCE' in environment
+		assert environment['V3_CACHE_FORCE_SOURCE'] == caller
+		assert macos_v3_caller_env_value('V3_CACHE_TRACE') == '1'
+		assert environment['V3_CACHE_TRACE'] == '1'
+	}
+	os.unsetenv('V3_CACHE_FORCE_SOURCE')
+	assert macos_v3_caller_env_value('V3_CACHE_FORCE_SOURCE') == ''
+	assert 'V3_CACHE_FORCE_SOURCE' !in macos_v3_caller_environment()
+}
+
 fn test_alias_vmod_root_stops_at_project_boundaries() {
 	root := os.join_path(os.vtmp_dir(), 'v3_pref_alias_boundary_${os.getpid()}')
 	os.rmdir_all(root) or {}

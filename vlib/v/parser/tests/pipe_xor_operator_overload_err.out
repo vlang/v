@@ -1,0 +1,14 @@
+vlib/v/parser/tests/pipe_xor_operator_overload_err.vv:5:13: error: expecting method name
+    3 | }
+    4 | 
+    5 | fn (a Mask) | (b Mask) Mask {
+      |             ^
+    6 |     return Mask{a.bits | b.bits}
+    7 | }
+vlib/v/parser/tests/pipe_xor_operator_overload_err.vv:9:13: error: expecting method name
+    7 | }
+    8 | 
+    9 | fn (a Mask) ^ (b Mask) Mask {
+      |             ^
+   10 |     return Mask{a.bits ^ b.bits}
+   11 | }

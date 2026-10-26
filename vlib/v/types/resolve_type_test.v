@@ -2,13 +2,42 @@ module types
 
 import v.flat
 
+fn test_aliased_local_callback_return_type_precedes_named_function() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_val(.ident, 'h')
+	children_start := a.begin_children()
+	a.add_child(callee)
+	call := a.add_node(flat.Node{
+		kind:           .call
+		children_start: children_start
+		children_count: 1
+	})
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'callbacks'
+	tc.fn_ret_types['h'] = builtin_string_type
+	callback := Type(FnType{ return_type: builtin_int_type })
+	alias := Type(Alias{ name_id: flat.source_type_id('callbacks.Handler'), base_type: callback })
+	for typ in [callback, alias, Type(Pointer{ base_type: callback }),
+		Type(Pointer{ base_type: alias }),
+		Type(Alias{ name_id: flat.source_type_id('callbacks.Nested'), base_type: alias })] {
+		tc.cur_scope.insert('h', typ)
+		assert tc.resolve_type(call) == builtin_int_type
+	}
+	for typ in [builtin_int_type, Type(Pointer{ base_type: builtin_int_type }),
+		Type(OptionType{ base_type: callback }),
+		Type(Alias{ name_id: flat.source_type_id('callbacks.Number'), base_type: builtin_int_type })] {
+		tc.cur_scope.insert('h', typ)
+		assert tc.resolve_type(call) == builtin_string_type
+	}
+}
+
 fn integer_widen_cast(mut a flat.FlatAst, typ string) flat.NodeId {
 	value := a.add_node(flat.Node{ kind: .int_literal, value: '1' })
 	children_start := a.begin_children()
 	a.add_child(value)
 	return a.add_node(flat.Node{
 		kind:           .cast_expr
-		typ:            typ
+		typ:            flat.source_type_id(typ)
 		children_start: children_start
 		children_count: 1
 	})
@@ -55,11 +84,11 @@ fn test_integer_widening_updates_cached_ancestors_on_child_rewrite() {
 	tc.register_synth_type(outer, builtin_u64_type)
 	tc.trust_checked_expr_types = true
 	assert tc.resolve_type(outer).name() == 'u64'
-	a.nodes[int(right)].typ = 'u128'
+	a.nodes[int(right)].typ = flat.source_type_id('u128')
 	tc.invalidate_checked_expr_type(int(right))
 	assert tc.resolve_type(outer).name() == 'u128'
 	assert tc.expr_type_values[int(outer)].name() == 'u64'
-	a.nodes[int(right)].typ = 'u64'
+	a.nodes[int(right)].typ = flat.source_type_u64
 	tc.invalidate_checked_expr_type(int(right))
 	assert tc.resolve_type(outer).name() == 'u64'
 }
@@ -77,11 +106,17 @@ fn test_integer_widening_primitive_predicates_match_type_names() {
 			assert wide_integer_type_for_widening(typ) == (name in ['u128', 'i128'])
 		}
 	}
-	for typ in [Type(Alias{ name: 'sample.u64', base_type: builtin_f64_type }),
-		Type(Alias{ name: 'sample.u128', base_type: builtin_int_type }),
-		Type(Struct{ name: 'sample.i128' }),
-		Type(Pointer{ base_type: Type(Struct{ name: 'sample.u128' }) }), Type(rune_), Type(char_),
-		Type(isize_), Type(usize_), Type(unknown_type('unresolved'))] {
+	for typ in [
+		Type(Alias{ name_id: flat.source_type_id('sample.u64'), base_type: builtin_f64_type }),
+		Type(Alias{ name_id: flat.source_type_id('sample.u128'), base_type: builtin_int_type }),
+		Type(Struct{ name_id: flat.source_type_id('sample.i128') }),
+		Type(Pointer{ base_type: Type(Struct{ name_id: flat.source_type_id('sample.u128') }) }),
+		Type(rune_),
+		Type(char_),
+		Type(isize_),
+		Type(usize_),
+		Type(unknown_type('unresolved')),
+	] {
 		name := short_name_view(typ.name())
 		assert narrow_integer_type_for_widening(typ) == (name in narrow_integer_type_names)
 		assert wide_integer_type_for_widening(typ) == (name in ['u128', 'i128'])
@@ -127,8 +162,8 @@ fn test_infix_primitive_keeps_exact_declared_operator() {
 fn test_infix_primitive_keeps_alias_operator_and_primitive_fallback() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	alias := Type(Alias{ name: 'Count', base_type: Type(u64_) })
-	tc.type_aliases['Count'] = 'u64'
+	alias := Type(Alias{ name_id: flat.source_type_id('Count'), base_type: Type(u64_) })
+	tc.type_aliases.set_id('Count', flat.source_type_u64)
 	tc.fn_ret_types['Count.+'] = alias
 	tc.fn_param_types['Count.+'] = [alias, alias]
 	signature := tc.infix_operator_signature(.plus, alias) or { panic('missing alias operator') }
@@ -147,11 +182,15 @@ fn test_infix_primitive_keeps_generic_struct_phantom_and_concrete_operators() {
 	mut tc := TypeChecker.new(&a)
 	tc.structs['Box'] = []StructField{}
 	tc.struct_generic_params['Box'] = ['T']
-	tc.fn_ret_types['Box[T].+'] = Type(Struct{ name: 'Box' })
-	tc.fn_ret_type_texts['Box[T].+'] = 'Box[T]'
-	tc.fn_param_types['Box[T].+'] = [Type(Struct{ name: 'Box' }), Type(Struct{ name: 'Box' })]
-	tc.fn_param_type_texts['Box[T].+'] = ['Box[T]', 'Box[T]']
-	for lhs in [Type(Struct{ name: 'Box' }), Type(Struct{ name: 'Box[int]' })] {
+	tc.fn_ret_types['Box[T].+'] = Type(Struct{ name_id: flat.source_type_id('Box') })
+	tc.fn_ret_type_texts.set_id('Box[T].+', flat.source_type_id('Box[T]'))
+	tc.fn_param_types['Box[T].+'] = [
+		Type(Struct{ name_id: flat.source_type_id('Box') }),
+		Type(Struct{ name_id: flat.source_type_id('Box') }),
+	]
+	tc.fn_param_type_texts.set('Box[T].+', ['Box[T]', 'Box[T]'])
+	for lhs in [Type(Struct{ name_id: flat.source_type_id('Box') }),
+		Type(Struct{ name_id: flat.source_type_id('Box[int]') })] {
 		signature := tc.infix_operator_signature(.plus, lhs) or { panic('missing generic operator') }
 		assert signature.param_count == 2
 		assert signature.return_type is Struct
@@ -179,7 +218,7 @@ fn test_infix_primitive_keeps_generic_owner_metadata_candidates() {
 		key := '${owner}[T].+'
 		tc.fn_ret_types[key] = Type(u64_)
 		tc.fn_param_types[key] = [Type(u64_), Type(u64_)]
-		expected := tc.resolve_generic_struct_method('u64', '+') or { panic('missing baseline candidate ${owner}') }
+		expected := tc.resolve_generic_struct_method(flat.source_type_u64, '+') or { panic('missing baseline candidate ${owner}') }
 		signature := tc.infix_operator_signature(.plus, Type(u64_)) or { panic('missing generic fallback ${owner}') }
 		assert signature.param_count == expected.params.len
 		assert signature.return_type == expected.return_type
@@ -191,20 +230,59 @@ fn test_infix_primitive_keeps_generic_alias_redirect_metadata() {
 		mut a := flat.FlatAst.new()
 		mut tc := TypeChecker.new(&a)
 		tc.cur_module = 'dep'
-		tc.type_aliases[alias_key] = 'Box[int]'
+		tc.type_aliases.set_id(alias_key, flat.source_type_id('Box[int]'))
 		tc.struct_generic_params['Box'] = ['T']
 		tc.structs['Box'] = []StructField{}
 		tc.fn_ret_types['Box[T].+'] = Type(u64_)
 		tc.fn_param_types['Box[T].+'] = [Type(u64_), Type(u64_)]
 		if alias_key == 'dep.u64' {
 			// Builtin names are never module-qualified by this resolver.
-			assert tc.resolve_generic_struct_method('u64', '+') == none
+			assert tc.resolve_generic_struct_method(flat.source_type_u64, '+') == none
 			assert tc.infix_operator_signature(.plus, Type(u64_)) == none
 		} else {
-			expected := tc.resolve_generic_struct_method('u64', '+') or { panic('missing redirected operator') }
+			expected := tc.resolve_generic_struct_method(flat.source_type_u64, '+') or { panic('missing redirected operator') }
 			signature := tc.infix_operator_signature(.plus, Type(u64_)) or { panic('missing alias redirect fallback') }
 			assert signature.return_type == expected.return_type
 			assert signature.param_count == expected.params.len
 		}
+	}
+}
+
+fn unknown_query_wrappers(typ &Type) []Type {
+	return [
+		Type(Alias{ base_type: typ }),
+		Type(Array{ elem_type: typ }),
+		Type(ArrayFixed{ elem_type: typ, len: 2 }),
+		Type(Map{ key_type: typ, value_type: builtin_int_type }),
+		Type(Map{ key_type: builtin_int_type, value_type: typ }),
+		Type(Channel{ elem_type: typ }),
+		Type(Pointer{ base_type: typ }),
+		Type(OptionType{ base_type: typ }),
+		Type(ResultType{ base_type: typ }),
+		Type(FnType{ params: [FnParam{ typ: typ }], return_type: builtin_int_type }),
+		Type(FnType{ return_type: typ }),
+		Type(MultiReturn{ types: [Type(int_), *typ] }),
+	]
+}
+
+fn test_unknown_query_recurses_through_all_composite_types() {
+	known := Type(int_)
+	unknown := Type(Unknown{ reason: 'provisional' })
+	assert !type_contains_unknown(known)
+	assert type_contains_unknown(unknown)
+	for wrapped in unknown_query_wrappers(known) {
+		assert !type_contains_unknown(wrapped)
+	}
+	for wrapped in unknown_query_wrappers(unknown) {
+		assert type_contains_unknown(wrapped)
+		for nested in unknown_query_wrappers(wrapped) {
+			assert type_contains_unknown(nested)
+		}
+	}
+	assert !type_contains_unknown(Type(FnType{}))
+	assert !type_contains_unknown(Type(MultiReturn{}))
+	for leaf in [Type(void_), Type(string_), Type(char_), Type(rune_), Type(isize_), Type(usize_),
+		Type(Nil{}), Type(None{}), Type(Struct{}), Type(Interface{}), Type(Enum{}), Type(SumType{})] {
+		assert !type_contains_unknown(leaf)
 	}
 }

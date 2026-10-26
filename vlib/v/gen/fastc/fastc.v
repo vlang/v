@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import os
 import strings
 import time
@@ -79,7 +80,7 @@ typedef struct { void *data; void *err; unsigned char state; } __v_result;
    overflow the slot. */
 typedef union { uintptr_t word; long double alignment; void *ptr; unsigned char data[32]; } MultiReturnValue;
 typedef struct { MultiReturnValue values[8]; } MultiReturn;
-#define V_FASTC_MULTI_VALUE(expression) ({ __typeof__(expression) __vf_multi_value = (expression); MultiReturnValue __vf_multi_result; if (sizeof(__vf_multi_value) <= sizeof(__vf_multi_result.data)) memcpy(__vf_multi_result.data, &__vf_multi_value, sizeof(__vf_multi_value)); else __vf_multi_result.ptr = v_fastc_interface_box(&__vf_multi_value, sizeof(__vf_multi_value)); __vf_multi_result; })
+#define V_FASTC_MULTI_VALUE(expression) ({ __typeof__(expression) __vf_multi_value = (expression); MultiReturnValue __vf_multi_result = {0}; if (sizeof(__vf_multi_value) <= sizeof(__vf_multi_result.data)) memcpy(__vf_multi_result.data, &__vf_multi_value, sizeof(__vf_multi_value)); else __vf_multi_result.ptr = v_fastc_interface_box(&__vf_multi_value, sizeof(__vf_multi_value)); __vf_multi_result; })
 #define V_FASTC_MULTI_SOURCE(slot, size) (((size) <= sizeof((slot).data)) ? (const void *)(slot).data : (const void *)(slot).ptr)
 
 static void v_fastc_print_string(const char *value) { fputs(value ? value : "", stdout); }
@@ -288,8 +289,37 @@ static inline bool v_fastc_us_le(u64 a, i64 b) { return b >= 0 && a <= (u64)b; }
 
 '
 
-// Keep source identifiers distinct from C keywords while preserving the same
-// spelling used by the conventional C generator.
+// The allocator can itself return an Option. Small target payloads therefore
+// travel in the wrapper, without allocating or storing a pointer into that wrapper.
+const c_target_option_runtime = r'
+#define V_FASTC_OPTION_SUCCESS(wrapper, type, expression) ({ \
+    type __vf_inline_value = (expression); \
+    wrapper __vf_inline_result = {0}; \
+    if (sizeof(__vf_inline_value) <= sizeof(__vf_inline_result.inline_bits)) { \
+        memcpy(&__vf_inline_result.inline_bits, &__vf_inline_value, sizeof(__vf_inline_value)); \
+        __vf_inline_result.is_inline = 1; \
+    } else { \
+        __vf_inline_result.data = v_fastc_interface_box(&__vf_inline_value, sizeof(__vf_inline_value)); \
+    } \
+    __vf_inline_result; \
+})
+#define V_FASTC_OPTION_VALUE(type, expression) ({ \
+    __typeof__(expression) __vf_inline_option = (expression); \
+    type __vf_inline_payload; \
+    memcpy(&__vf_inline_payload, __vf_inline_option.is_inline ? (const void *)&__vf_inline_option.inline_bits : __vf_inline_option.data, sizeof(__vf_inline_payload)); \
+    __vf_inline_payload; \
+})
+/* Narrowed optional members can also be mutated. This accessor takes only
+   original wrapper storage, never the temporary used by OPTION_VALUE. */
+#define V_FASTC_OPTION_STORAGE(type, expression) ({ \
+    __typeof__(&(expression)) __vf_inline_storage = &(expression); \
+    typedef type __vf_inline_alias __attribute__((__may_alias__)); \
+    (__vf_inline_alias *)(__vf_inline_storage->is_inline ? (void *)&__vf_inline_storage->inline_bits : __vf_inline_storage->data); \
+})
+
+'
+
+// Keep V identifiers distinct from C keywords, library macros, and memory helpers.
 const fastc_c_reserved_identifiers = {
 	'array':    true
 	'asm':      true
@@ -305,6 +335,7 @@ const fastc_c_reserved_identifiers = {
 	'double':   true
 	'else':     true
 	'enum':     true
+	'errno':    true
 	'extern':   true
 	'false':    true
 	'float':    true
@@ -314,6 +345,9 @@ const fastc_c_reserved_identifiers = {
 	'inline':   true
 	'int':      true
 	'long':     true
+	'memcpy':   true
+	'memmove':  true
+	'memset':   true
 	'register': true
 	'restrict': true
 	'return':   true
@@ -338,6 +372,9 @@ const fastc_c_reserved_identifiers = {
 }
 
 fn fastc_c_identifier(name string) string {
+	if name.len > 1 && name[0] == `@` {
+		return fastc_c_identifier(name[1..])
+	}
 	if name.len < 2 || name.len > 8 {
 		return name
 	}
@@ -360,11 +397,39 @@ typedef _Bool bool;
 #endif
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* V __offsetof(T, field) */
+#define __offsetof(st, m) offsetof(st, m)
 #ifndef _WIN32
 #include <pthread.h>
+#include <unistd.h>
+#include <errno.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/wait.h>
+#include <sys/utsname.h>
+#include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <signal.h>
+#include <utime.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+extern char **environ;
+/* builtin declares these with `fn C.` and no header; the C backend provides them the same way. */
+#if (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#include <execinfo.h>
+#endif
+#if defined(__linux__) && defined(__GLIBC__)
+#include <sys/syscall.h>
+#endif
 #endif
 
 /* `C.__V_architecture` (pref.get_host_arch) resolves the host arch at C-compile time;
@@ -420,13 +485,14 @@ typedef double f64;
 typedef void *voidptr;
 typedef unsigned char *byteptr;
 typedef char *charptr;
-typedef void *chan;
+struct sync__Channel;
+typedef struct sync__Channel *chan;
 /* One multi-return component. Values up to 32 bytes are stored inline; larger
    ones are boxed and referenced through `ptr`, so no component size can
    overflow the slot. */
 typedef union { uintptr_t word; long double alignment; void *ptr; unsigned char data[32]; } MultiReturnValue;
 typedef struct { MultiReturnValue values[8]; } MultiReturn;
-#define V_FASTC_MULTI_VALUE(expression) ({ __typeof__(expression) __vf_multi_value = (expression); MultiReturnValue __vf_multi_result; if (sizeof(__vf_multi_value) <= sizeof(__vf_multi_result.data)) memcpy(__vf_multi_result.data, &__vf_multi_value, sizeof(__vf_multi_value)); else __vf_multi_result.ptr = v_fastc_interface_box(&__vf_multi_value, sizeof(__vf_multi_value)); __vf_multi_result; })
+#define V_FASTC_MULTI_VALUE(expression) ({ __typeof__(expression) __vf_multi_value = (expression); MultiReturnValue __vf_multi_result = {0}; if (sizeof(__vf_multi_value) <= sizeof(__vf_multi_result.data)) memcpy(__vf_multi_result.data, &__vf_multi_value, sizeof(__vf_multi_value)); else __vf_multi_result.ptr = v_fastc_interface_box(&__vf_multi_value, sizeof(__vf_multi_value)); __vf_multi_result; })
 #define V_FASTC_MULTI_SOURCE(slot, size) (((size) <= sizeof((slot).data)) ? (const void *)(slot).data : (const void *)(slot).ptr)
 
 #define _S(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
@@ -436,7 +502,7 @@ typedef struct { MultiReturnValue values[8]; } MultiReturn;
    freed. Boxing through malloc made every option-returning call pay for a
    locked, zero-filling allocation, so each thread bumps its boxes out of a
    private chunk instead; only oversized payloads still go through malloc. */
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(V_FASTC_TARGET_LIBC)
 typedef struct { unsigned char *cursor; unsigned char *end; } v_fastc_box_arena;
 static pthread_key_t v_fastc_box_arena_key;
 static pthread_once_t v_fastc_box_arena_once = PTHREAD_ONCE_INIT;
@@ -521,16 +587,62 @@ static inline u64 wyhash(const void *key, size_t len, u64 seed, const u64 *secre
 // c_selfhost_preamble_includes is the header block of c_selfhost_preamble;
 // a header-free build replaces it with the target's C ABI prelude.
 const c_selfhost_preamble_includes = r'#include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* V __offsetof(T, field) */
+#define __offsetof(st, m) offsetof(st, m)
 #ifndef _WIN32
 #include <pthread.h>
+#include <unistd.h>
+#include <errno.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/wait.h>
+#include <sys/utsname.h>
+#include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <signal.h>
+#include <utime.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+extern char **environ;
+/* builtin declares these with `fn C.` and no header; the C backend provides them the same way. */
+#if (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#include <execinfo.h>
+#endif
+#if defined(__linux__) && defined(__GLIBC__)
+#include <sys/syscall.h>
+#endif
 #endif
 '
 
 const c_selfhost_post_directives = r'#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
 #define pthread_rwlockattr_setkind_np(a, b) (0)
+#endif
+#if defined(__linux__)
+/* These builtin APIs are not declared by the TinyCC C99 system headers. */
+#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)
+extern int backtrace(void **, int);
+extern char **backtrace_symbols(void *const *, int);
+extern void backtrace_symbols_fd(void *const *, int, int);
+#endif
+#if defined(__GLIBC__)
+/* glibc exports `gettid` only from 2.30 on; the system call works with any glibc.
+   Strict feature modes hide `syscall` in <unistd.h>, so it is declared here. */
+long syscall(long number, ...);
+static inline pid_t v_fastc_gettid(void) { return (pid_t)syscall(SYS_gettid); }
+#define gettid v_fastc_gettid
+#else
+extern int gettid(void);
+#endif
+extern void *aligned_alloc(size_t, size_t);
 #endif
 #ifndef memory_order_relaxed
 #define memory_order_relaxed 0
@@ -755,18 +867,31 @@ enum FastcDeclaredTypeKind {
 }
 
 struct FastcFunctionSignature {
-	parameter_types          []string
+	parameter_types          flat.TypeTextList
 	parameter_mutability     []bool
-	return_type              string
-	return_types             []string
-	option_type              string
-	is_variadic              bool
-	last_parameter_is_params bool
-	is_public                bool
-	is_disabled              bool
-	is_c_extern              bool
-	module_name              string
-	path                     string
+	parameter_constness      []bool
+	parameter_generic_values []bool
+	return_type              u32
+	return_types             flat.TypeTextList
+	option_type              u32
+	// A directly returned function value is erased to voidptr in the C ABI.
+	returned_fn_parameter_types   flat.TypeTextList
+	returned_fn_return_type       u32
+	returned_fn_option_value_type u32
+	is_variadic                   bool
+	last_parameter_is_params      bool
+	is_public                     bool
+	is_disabled                   bool
+	is_c_extern                   bool
+	is_markused                   bool
+	is_global                     bool
+	// Leading array dimensions before a stored function value's signature.
+	callable_index_depth int
+	export_name          string
+	module_name          string
+	path                 string
+	// position is the byte offset of the declaration's `fn` in the file at `path`.
+	position int
 }
 
 // fastc_multi_return_literal packs already-boxed components into a MultiReturn.
@@ -782,7 +907,32 @@ fn fastc_multi_return_literal(packed_values []string) string {
 	return out.str()
 }
 
-fn fastc_string_types_equal(left []string, right []string) bool {
+// multi_return_component stores one returned value in its multi-return slot as the
+// component's declared type, which is how the caller reads it back: a number is converted
+// (`return 1, 2` for `(f64, f32)`), and a concrete value for an interface or sum type
+// component is boxed, as a single return value is.
+fn (g &Parser) multi_return_component(value string, value_type u32, index int) string {
+	mut expression := value
+	if index < g.return_types.ids.len {
+		declared_type := g.return_types.ids[index]
+		declared_layout := g.underlying_alias_type(declared_type)
+		is_number := fastc_is_integer_type(declared_layout)
+			|| declared_layout == flat.source_type_f32 || declared_layout == flat.source_type_f64
+		declared_kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(declared_type))]
+		value_kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(value_type))]
+		needs_box := g.selfhost && value_type != 0 && value_type != declared_type
+			&& (g.should_box_variant(declared_type, value_type)
+				|| (declared_kind == .interface_ && value_kind != .interface_))
+		if is_number {
+			expression = '((${fastc_output_c_type(flat.source_type_name(declared_type))})(${value}))'
+		} else if needs_box {
+			expression = g.interface_value_expression(declared_type, value_type, value)
+		}
+	}
+	return 'V_FASTC_MULTI_VALUE((${expression}))'
+}
+
+fn fastc_type_ids_equal(left []u32, right []u32) bool {
 	if left.len != right.len {
 		return false
 	}
@@ -809,7 +959,7 @@ fn fastc_bool_types_equal(left []bool, right []bool) bool {
 struct FastcLocal {
 	is_mut       bool
 	is_reference bool
-	typ          string
+	typ          u32
 	// A smart-cast that narrows a local to a concrete variant may store the narrowed value
 	// in a uniquely named C temporary rather than shadowing the local's own C name, so a
 	// later `defer` body (rendered at function scope) still binds the original name. When set,
@@ -818,19 +968,22 @@ struct FastcLocal {
 	// For a variable declared with an option type (`b ?bool`), the C `typ` is the
 	// type-erased `Option`; this keeps the wrapped value type so an `if x := b`
 	// guard on the bare variable can unwrap it.
-	option_value_type string
+	option_value_type u32
 	// For a function-pointer parameter (`f fn (int) !string`), the C `typ` is a
 	// function pointer; these record the callee's return C type and, for an option
 	// return, its wrapped value type, so `f(x)` / `f(x) or {…}` infer correctly.
-	fn_return_type       string
-	fn_option_value_type string
+	fn_return_type       u32
+	fn_option_value_type u32
+	fn_signature_key     string
 	// For a channel local (`ch chan T` / `ch := chan T{…}`), the C `typ` is the erased
 	// `chan`; this keeps the element C type so `<-ch` recovers the received value type.
-	chan_element_type string
+	chan_element_type u32
 	// For a bare-local `is` smart-cast whose `typ` is the narrowed variant, this records the
 	// original boxed sum-type/interface type. A method defined on the whole sum type (`fn (e
 	// Expr) pos()`) is not on the variant, so it dispatches on the still-live boxed original.
-	smartcast_origin_type string
+	smartcast_origin_type u32
+	// Keep the declared slot mode distinct from a narrowed payload reference.
+	smartcast_origin_is_reference bool
 	// C expression that still names the original boxed value while this local is narrowed.
 	// Mutable calls accepting the sum type must receive this storage, not the concrete payload
 	// pointer, because their ABI expects the sum-type tag/object wrapper.
@@ -840,6 +993,13 @@ struct FastcLocal {
 	// `x`/`y` for the rest of that `&&` chain. Scoped with the local, so it never leaks between
 	// functions that reuse the bool's name.
 	bool_implications []FastcBoolImplication
+}
+
+fn (local FastcLocal) original_is_reference() bool {
+	if local.smartcast_origin_type != u32(0) {
+		return local.smartcast_origin_is_reference
+	}
+	return local.is_reference
 }
 
 struct FastcLocalScopeChange {
@@ -854,25 +1014,29 @@ struct FastcFunctionDeferBlock {
 }
 
 struct FastcExpressionToken {
-	tok             token.Token
-	source          string
-	unsafe_depth    int
-	is_mut_argument bool
-	is_statement    bool
+	source               string
+	unsafe_depth         int
+	tok                  token.Token
+	chan_element_type    u32
+	option_value_type    u32
+	is_mut_argument      bool
+	is_statement         bool
+	is_capturing_closure bool
+	is_storage           bool
 mut:
+	typ u32
 	lit string
-	typ string
 }
 
 struct FastcRenderedExpression {
 	source string
-	typ    string
+	typ    u32
 }
 
 // FastcMemoEntry caches an optional lookup result, including a negative one.
 struct FastcMemoEntry {
 	found bool
-	value string
+	value u32
 }
 
 struct FastcInterpolationWidth {
@@ -882,42 +1046,48 @@ struct FastcInterpolationWidth {
 
 struct FastcStructField {
 	name                 string
-	typ                  string
+	typ                  u32
 	is_public            bool
 	is_mutable           bool
 	is_required          bool
 	is_skip              bool
 	is_function          bool
 	is_optional_function bool
+	// The field's type is spelled `voidptr`; fn types and erased type parameters are stored
+	// as `voidptr` too, and V3 accepts `nil` outside `unsafe` only for a real one.
+	is_declared_voidptr bool
 	// Shared map fields keep pointer identity even though FastC currently erases locking.
 	// Without this, copying their containing struct detaches subsequent map header updates.
-	is_shared_pointer bool
-	module_name       string
-	path              string
-	imports           map[string]string
-	default_source    string
+	is_shared_pointer      bool
+	module_name            string
+	path                   string
+	imports                map[string]string
+	default_source         string
+	default_source_offset  int
+	default_source_origins []FastcSourceOrigin
+	translated             bool
 mut:
 	default_value string
 	storage_path  []string
 	// For a `chan T` field, the erased C `typ` is `chan`; this keeps the element C type
 	// so `<-x.field` recovers the received value type.
-	chan_element_type string
+	chan_element_type u32
 	// For an option field (`f ?T`), the erased C `typ` is `Option`; this keeps the
 	// wrapped value C type so `if mut v := x.f {` binds `v` to `T` (not the default int).
-	option_value_type string
+	option_value_type u32
 	// Function fields are stored as `voidptr`; retain their signature so member calls
 	// can cast the erased storage back to a callable C function pointer.
-	fn_parameter_types   []string
-	fn_return_type       string
-	fn_option_value_type string
+	fn_parameter_types   flat.TypeTextList
+	fn_return_type       u32
+	fn_option_value_type u32
 	// Imported generic structs retain erased storage, but a concrete field like
 	// `Stack[Item]` still carries `Item` for method result/argument recovery.
-	generic_argument_type string
+	generic_argument_type u32
 }
 
 struct FastcInterfaceField {
 	name       string
-	typ        string
+	typ        u32
 	is_mutable bool
 }
 
@@ -944,10 +1114,22 @@ struct FastcSourceHeader {
 	body_spans []int
 }
 
+// FastcSourceOrigin maps a copied span in a rewritten or filtered buffer to its source file.
+struct FastcSourceOrigin {
+	filtered_offset int
+	source_offset   int
+}
+
+struct FastcDeclarationSource {
+	source  string
+	origins []FastcSourceOrigin
+}
+
 struct FastcSourceFile {
 	path                 string
 	source               string
 	source_offset        int
+	source_origins       []FastcSourceOrigin
 	source_line_offset   int
 	source_column_offset int
 	header               FastcSourceHeader
@@ -1000,8 +1182,10 @@ pub struct GenerationResult {
 pub:
 	c_pieces     []string
 	source_paths []string
-	uses_threads bool
-	c_flags      []string
+	// Only these files need the frontend pass that locates deprecated type spellings.
+	deprecated_integer_paths []string
+	uses_threads             bool
+	c_flags                  []string
 	// units describes how c_pieces split into translation units that the
 	// drivers can compile in parallel (see fastc_write_c_units).
 	units FastcUnitLayout
@@ -1097,10 +1281,11 @@ fn fastc_join_c_pieces(pieces []string) string {
 }
 
 struct FastcGlobalDeclarations {
+	uses_pthread_tls    bool
 	declarations        string
 	module_initializers map[string]string
 	composite_types     map[string]bool
-	fixed_array_types   map[string]string
+	fixed_array_types   flat.TypeTextBindings
 }
 
 struct FastcConstantDeclarations {
@@ -1109,13 +1294,13 @@ struct FastcConstantDeclarations {
 	module_initializers map[string]string
 	compile_time_values map[string]string
 	composite_types     map[string]bool
-	fixed_array_types   map[string]string
+	fixed_array_types   flat.TypeTextBindings
 
 mut:
 	// The struct fields with their defaults rendered, and their by-name index:
 	// the defaults are rendered on a worker while the constants are pre-parsed.
 	struct_field_info   map[string][]FastcStructField
-	struct_field_lookup map[string]map[string]FastcStructField
+	struct_field_lookup map[string]map[string]&FastcStructField
 }
 
 // fastc_note_field_defaults_use records that the parser consulted rendered
@@ -1130,7 +1315,7 @@ struct FastcConstantValue {
 	c_name       string
 	module_name  string
 	value        string
-	typ          string
+	typ          u32
 	dependencies []string
 	is_runtime   bool
 }
@@ -1143,20 +1328,28 @@ struct FastcComptimeCondition {
 struct FastcComptimeBlock {
 	source string
 	tok    token.Token
+	// offset is the byte offset of `source` in the source the block was scanned from.
+	offset int
 }
 
 struct FastcDeclarationAttribute {
-	tok         token.Token
-	is_enabled  bool
-	is_flag     bool
-	is_params   bool
-	is_typedef  bool
-	is_c_extern bool
+	tok            token.Token
+	is_enabled     bool
+	is_flag        bool
+	is_params      bool
+	is_typedef     bool
+	is_c_extern    bool
+	is_markused    bool
+	export_name    string
+	linker_section string
+	alignment      string
+	is_cinit       bool
+	is_packed      bool
 }
 
 struct FastcEnumInfo {
 	c_name  string
-	name    string
+	name    u32
 	fields  []string
 	is_flag bool
 }
@@ -1169,11 +1362,11 @@ struct FastcTypeDeclarations {
 	// The enum `str`/print helpers, one piece each (parallel lists).
 	enum_helper_names []string
 	enum_helper_texts []string
-	alias_base_types  map[string]string
+	alias_base_types  flat.TypeTextBindings
 	// Return type (C spelling) declared by each `type Name = fn (...) Ret` alias,
 	// keyed by the alias C name. Lets a call through such a value infer its result.
-	fn_alias_return_types map[string]string
-	enum_field_types      map[string]string
+	fn_alias_return_types flat.TypeTextBindings
+	enum_field_types      flat.TypeTextBindings
 	// Value names declared by each enum, keyed by the enum's C name, in source
 	// order. Used to unroll `$for x in Enum.values { ... }`.
 	enum_field_names map[string][]string
@@ -1196,11 +1389,17 @@ struct FastcLoopBlockResult {
 // member cannot be shadowed under its qualified source spelling, so member-chain rendering
 // consults this table while the branch is active.
 struct FastcMemberSmartcast {
-	typ           string
+	typ u32
+	// The tested value type distinguishes a reference variant from boxed value storage.
+	value_type    u32
 	source        string
-	variants      []string
+	variants      flat.TypeTextList
 	tag_source    string
 	object_source string
+	// The boxed member itself (`b->v`) and its sum or interface type. An assignment to the
+	// narrowed member stores a new boxed value there, and ends the narrowing.
+	subject_source string
+	subject_type   u32
 }
 
 // FastcBoolImplication records that a bool local (assigned a top-level `&&` chain of `is` tests,
@@ -1209,6 +1408,19 @@ struct FastcMemberSmartcast {
 struct FastcBoolImplication {
 	subject   string
 	smartcast FastcMemberSmartcast
+}
+
+// FastcTypeDescriptorMemoEntry caches an immutable descriptor lookup. Zero
+// keys are empty; each operation uses its own 64-slot direct-mapped cache.
+struct FastcTypeDescriptorMemoEntry {
+	key   u32
+	value u32
+}
+
+struct FastcTypeDescriptorMemo {
+mut:
+	semantic_keys [64]FastcTypeDescriptorMemoEntry
+	aliases       [64]FastcTypeDescriptorMemoEntry
 }
 
 struct Parser {
@@ -1226,47 +1438,56 @@ struct Parser {
 	declared_types map[string]bool
 	// Generated C spelling -> declared type key, precomputed once per program
 	// (see fastc_declared_type_c_names); semantic_type_key resolves through it.
-	declared_type_c_names     map[string]string
-	declared_type_key_by_name map[string]string
+	declared_type_c_names     flat.TypeTextBindings
+	declared_type_key_by_name flat.TypeTextBindings
+	// Only final self-host file generation opts in: both descriptor maps stay
+	// immutable for this Parser's lifetime, including module/mono switches.
+	type_descriptor_memo &FastcTypeDescriptorMemo = unsafe { nil }
 	// `__vf_`-prefixed generated C names, the only possible collisions for
 	// temporary_namespace candidates (see fastc_reserved_temporary_c_names).
 	fastc_prefixed_c_names []string
 	declared_kinds         map[string]FastcDeclaredTypeKind
 	enum_flags             map[string]bool
-	enum_field_types       map[string]string
+	enum_field_types       flat.TypeTextBindings
 	enum_field_names       map[string][]string
-	alias_base_types       map[string]string
-	fn_alias_return_types  map[string]string
+	alias_base_types       flat.TypeTextBindings
+	fn_alias_return_types  flat.TypeTextBindings
 	sum_types              map[string]bool
 	// Declared variants of each sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`.
 	// Lets an append distinguish push-many (`[]T << []T`) from boxing an array-valued
 	// variant of a recursive sum type as one element (see sumtype_has_variant).
 	sum_type_variants   map[string]bool
-	struct_fields       map[string]map[string]string
+	struct_fields       map[string]flat.TypeTextBindings
 	struct_field_info   map[string][]FastcStructField
-	struct_field_lookup map[string]map[string]FastcStructField
+	struct_field_lookup map[string]map[string]&FastcStructField
 	interface_fields    map[string]FastcInterfaceField
 	constants           map[string]string
 	constant_values     map[string]string
 	public_constants    map[string]bool
 	globals             map[string]string
+	global_suffix_index FastcGlobalSuffixIndex
 	public_globals      map[string]bool
 	used_function_names map[string]bool
 	// function_c_names overrides the conventional C spelling for selected
 	// source-level functions. It is immutable and shared by file generators.
 	function_c_names map[string]string
 	selfhost         bool
-	translated       bool
 	header_free      bool
 	// source_has_select is false only when the file provably holds no `select`
 	// word (see fastc_source_scan_flags), so block pre-scans for channel
 	// select statements can be skipped.
 	source_has_select bool = true
-	has_startup_inits bool
-	has_cleanup_hooks bool
+	// Every builtin numeric receiver lacks a source-defined arithmetic method.
+	numeric_ops_are_builtin bool
+	primitive_cmps_builtin  bool
+	has_startup_inits       bool
+	has_cleanup_hooks       bool
 mut:
+	uses_pthread_tls     bool
+	translated           bool
 	path                 string
 	source_offset        int
+	source_origins       []FastcSourceOrigin
 	source_line_offset   int
 	source_column_offset int
 	module_name          string
@@ -1295,25 +1516,30 @@ mut:
 	// Per-file memos for name lookups whose answers depend only on file-level
 	// tables (module, imports, functions, constants, globals, declared types)
 	// and are asked again for the same short name many times per file.
-	unqualified_key_memo     map[string]string
-	c_function_name_memo     map[string]string
-	nonlocal_name_type_memo  map[string]string
-	resolved_name_memo       map[string]string
-	declared_type_key_memo   map[string]FastcMemoEntry
-	locals                   map[string]FastcLocal
-	local_scope_changes      []FastcLocalScopeChange
-	local_scope_depth        int
-	functions                map[string]FastcFunctionSignature
-	constant_types           map[string]string
-	global_types             map[string]string
-	return_type              string
-	return_types             []string
-	option_return_type       string
-	current_function         string
-	current_receiver         string
-	current_method_is_static bool
-	expected_expression_type string
-	capturing_defer          bool
+	unqualified_key_memo       map[string]string
+	global_key_memo            map[string]string
+	c_function_name_memo       map[string]string
+	nonlocal_name_type_memo    flat.TypeTextBindings
+	resolved_name_memo         map[string]string
+	declared_type_key_memo     map[string]FastcMemoEntry
+	locals                     map[string]FastcLocal
+	local_scope_changes        []FastcLocalScopeChange
+	local_scope_depth          int
+	functions                  map[string]FastcFunctionSignature
+	constant_types             flat.TypeTextBindings
+	global_types               flat.TypeTextBindings
+	return_type                u32
+	return_type_is_function    bool
+	return_types_are_functions []bool
+	return_types               flat.TypeTextList
+	option_return_type         u32
+	current_function           string
+	current_receiver           u32
+	current_method_is_static   bool
+	expected_expression_type   u32
+	// Scoped to a whole nil reset of a concrete local; erased function values are excluded.
+	allows_nil_local_assignment bool
+	capturing_defer             bool
 	// next_declaration_is_unsafe records a `@[unsafe]` attribute seen just before a
 	// top-level declaration, so a function so marked parses its body as unsafe.
 	next_declaration_is_unsafe bool
@@ -1321,8 +1547,9 @@ mut:
 	// expression is captured here (typed by `or_value_expected_type`) instead of being
 	// rejected as a value-only statement.
 	or_value_capture            bool
+	or_value_scope_depth        int
 	or_value_captured           string
-	or_value_expected_type      string
+	or_value_expected_type      u32
 	defer_depth                 int
 	captured_defer_lines        []string
 	deferred_lines              []string
@@ -1335,25 +1562,27 @@ mut:
 	parsing_loop_labels         []string
 	pending_loop_label          string
 	statement_reachable         bool
-	last_expression_type        string
+	last_expression_type        u32
 	last_expression             []FastcExpressionToken
 	// Conditional expressions have no flat token list after their branches are
 	// parsed. Preserve an Option payload type for their consuming declaration.
-	last_option_value_type  string
-	last_multi_return_types []string
+	last_option_value_type  u32
+	last_multi_return_types flat.TypeTextList
 	member_smartcasts       map[string]FastcMemberSmartcast
 	// Set by `parse_type` to the wrapped value type when it parses an option type
 	// (`?T`), so the caller can record it on the declared local.
-	pending_option_value_type string
+	pending_option_value_type u32
 	// Set by `parse_type` when it parses a function type (`fn (...) R`): the C return
-	// type (`Option`/`string`/…) and, for an `!`/`?R` return, the wrapped value type.
-	// Lets a fn-typed parameter be declared as a real function pointer and its call
-	// results be type-inferred. `pending_fn_pointer` gates whether the others apply.
+	// type (`Option`/`string`/…), for an `!`/`?R` return the wrapped value type, and the
+	// C prototype of its parameters. Lets a fn-typed parameter be declared as a real
+	// function pointer and its call results be type-inferred. `pending_fn_pointer` gates
+	// whether the others apply.
 	pending_fn_pointer           bool
-	pending_fn_return_type       string
-	pending_fn_option_value_type string
+	pending_fn_return_type       u32
+	pending_fn_option_value_type u32
+	pending_fn_parameters        string
 	c_flags                      []string
-	fixed_array_types            map[string]string
+	fixed_array_types            flat.TypeTextBindings
 	composite_types              map[string]bool
 	expression_depth             int
 	// True while reading a value inside an enum-keyed map literal, so a `.field`
@@ -1366,18 +1595,18 @@ mut:
 	comparison_memo map[i64]FastcRenderedExpression
 	// Inferred types memoized per token subrange the same way, and cleared
 	// whenever the locals or the registered functions change mid-expression.
-	type_memo map[i64]string
+	type_memo map[i64]u32
 	// Method keys memoized per receiver type and method name; the key only
 	// depends on the file-level tables, so it is reset with the other memos.
-	method_key_memo map[string]map[string]string
-	// Struct field lookups memoized per receiver type and field name (a field
-	// with an empty name records a miss); reset with the other memos.
-	field_memo map[string]map[string]FastcStructField
+	method_key_memo map[u32]map[string]string
+	// Promoted struct fields memoized per receiver type and field name (nil
+	// records a miss); each record is allocated separately from the maps.
+	field_memo map[u32]map[string]&FastcStructField
 	// The render and inference passes commonly ask for the same field several
 	// times in succession. Keep that entry outside the nested maps.
-	last_field_receiver string
+	last_field_receiver u32
 	last_field_name     string
-	last_field          FastcStructField
+	last_field          &FastcStructField = unsafe { nil }
 	last_field_known    bool
 	// used_field_defaults records that a rendered struct field default was
 	// consulted (see fastc_note_field_defaults_use).
@@ -1387,10 +1616,16 @@ mut:
 	// creator/run/waiter helper definitions, and thread type -> value type.
 	spawn_typedefs     map[string]string
 	spawn_helpers      map[string]string
-	thread_value_types map[string]string
+	thread_value_types flat.TypeTextBindings
+	// Spawn pre-scans share one word check for the current scanner buffer.
+	spawn_source_pointer  voidptr
+	spawn_source_length   int
+	spawn_source_checked  bool
+	spawn_source_has_word bool
 	// Declaration-initializer parsers (constants, globals, struct field
 	// defaults) discard spawn registrations, so spawn is rejected there.
 	declaration_initializer_mode bool
+	c_global_static_initializer  bool
 	// On-demand generic-method monomorphization state (see monomorphize.v drain): mono
 	// instances still to generate, the set already generated (dedup), the signatures of the
 	// instances (a PER-PARSER map — the shared `functions` is read-only across worker
@@ -1408,7 +1643,7 @@ mut:
 // FastcMonoRequest is one queued on-demand generic method or free-function instantiation.
 struct FastcMonoRequest {
 	source_key string
-	concrete   string
+	concrete   u32
 }
 
 // fastc_comparison_memo_key identifies a token subrange within the current
@@ -1450,14 +1685,13 @@ pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 	return c_source
 }
 
-// generate_files discovers imports from the input files and emits one C translation unit for
+// generate_files discovers imports from the input files or directories and emits one C unit for
 // the complete source graph. Discovery and generation use scanner tokens only.
 pub fn generate_files(paths []string, prefs &pref.Preferences) !string {
 	generation := generate_files_with_source_paths(paths, prefs)!
 	return generation.c_source()
 }
 
-// generate_files_with_source_paths emits C and reports every source read during import discovery.
 // FastcPhaseTimer reports per-phase generation timings to stderr when
 // FASTC_BENCH_PHASES is set; it is a no-op otherwise.
 struct FastcPhaseTimer {
@@ -1483,17 +1717,25 @@ fn (mut timer FastcPhaseTimer) mark(name string) {
 	timer.last_us = now_us
 }
 
+// generate_files_with_source_paths emits C and reports every source read from entry files,
+// entry directories, and their imports.
 pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences) !GenerationResult {
 	mut timer := fastc_new_phase_timer()
 	// The resolve memo is written while the program is generated and joined
 	// once the C pieces exist.
 	mut pending_memo_store := FastcPendingMemoStore{}
 	scoped_prefs := fastc_preferences_for_entry_paths(paths, prefs)
-	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, &scoped_prefs, mut pending_memo_store)!
+	entries := fastc_expand_entry_paths(paths, &scoped_prefs)!
+	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
+	mut deprecated_integer_paths := []string{}
 	for source_file in sources {
 		source_paths << source_file.path
+		if source_file.header.module_name != 'builtin'
+			&& (source_file.source.contains('isize') || source_file.source.contains('usize')) {
+			deprecated_integer_paths << source_file.path
+		}
 	}
 	// The layout comes back through a parameter: a struct of arrays as a
 	// multi-return component is not carried correctly by the self-hosted
@@ -1504,11 +1746,12 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
-		c_pieces:     c_pieces
-		source_paths: source_paths
-		uses_threads: uses_threads
-		c_flags:      c_flags
-		units:        units
+		c_pieces:                 c_pieces
+		source_paths:             source_paths
+		deprecated_integer_paths: deprecated_integer_paths
+		uses_threads:             uses_threads
+		c_flags:                  c_flags
+		units:                    units
 	}
 }
 
@@ -1518,35 +1761,38 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 struct FastcFileGenContext {
 	prefs                     &pref.Preferences = unsafe { nil }
 	declared_types            map[string]bool
-	declared_type_c_names     map[string]string
-	declared_type_key_by_name map[string]string
+	declared_type_c_names     flat.TypeTextBindings
+	declared_type_key_by_name flat.TypeTextBindings
 	fastc_prefixed_c_names    []string
 	has_c_functions           bool
+	numeric_ops_are_builtin   bool
+	primitive_cmps_builtin    bool
 	declared_kinds            map[string]FastcDeclaredTypeKind
 	enum_flags                map[string]bool
-	enum_field_types          map[string]string
+	enum_field_types          flat.TypeTextBindings
 	enum_field_names          map[string][]string
-	alias_base_types          map[string]string
-	fn_alias_return_types     map[string]string
+	alias_base_types          flat.TypeTextBindings
+	fn_alias_return_types     flat.TypeTextBindings
 	sum_types                 map[string]bool
 	sum_type_variants         map[string]bool
-	struct_fields             map[string]map[string]string
+	struct_fields             map[string]flat.TypeTextBindings
 	struct_field_info         map[string][]FastcStructField
-	struct_field_lookup       map[string]map[string]FastcStructField
+	struct_field_lookup       map[string]map[string]&FastcStructField
 	interface_fields          map[string]FastcInterfaceField
 	constants                 map[string]string
 	constant_values           map[string]string
 	public_constants          map[string]bool
 	globals                   map[string]string
+	global_suffix_index       FastcGlobalSuffixIndex
 	public_globals            map[string]bool
 	used_function_names       map[string]bool
 	has_startup_inits         bool
 	has_cleanup_hooks         bool
 	functions                 map[string]FastcFunctionSignature
 	function_c_names          map[string]string
-	constant_types            map[string]string
-	global_types              map[string]string
-	fixed_array_types         map[string]string
+	constant_types            flat.TypeTextBindings
+	global_types              flat.TypeTextBindings
+	fixed_array_types         flat.TypeTextBindings
 	composite_types           map[string]bool
 	generic_method_sources    map[string]FastcGenericMethodSource
 	// function_ids numbers the C names of the indexed functions; a file
@@ -1566,20 +1812,20 @@ struct FastcFileGenContext {
 struct FastcFileGenResult {
 	outputs           []FastcFileGenOutput
 	composite_types   map[string]bool
-	fixed_array_types map[string]string
+	fixed_array_types flat.TypeTextBindings
 }
 
 // fastc_file_gen_result wraps serially generated outputs with their type
 // registrations.
 fn fastc_file_gen_result(outputs []FastcFileGenOutput) FastcFileGenResult {
 	mut composite_types := map[string]bool{}
-	mut fixed_array_types := map[string]string{}
+	mut fixed_array_types := flat.TypeTextBindings{}
 	for output in outputs {
 		for name, _ in output.composite_types {
 			composite_types[name] = true
 		}
-		for name, array_type in output.fixed_array_types {
-			fixed_array_types[name] = array_type
+		for name, array_type_id in output.fixed_array_types.ids {
+			fixed_array_types.set_id(name, array_type_id)
 		}
 	}
 	return FastcFileGenResult{
@@ -1606,7 +1852,7 @@ mut:
 	refs              []int
 	root_refs         []int
 	has_main_entry    bool
-	fixed_array_types map[string]string
+	fixed_array_types flat.TypeTextBindings
 	composite_types   map[string]bool
 	spawn_typedefs    map[string]string
 	spawn_helpers     map[string]string
@@ -1623,12 +1869,14 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	mut gen := Parser{
 		prefs:                     unsafe { prefs }
 		unqualified_key_memo:      map[string]string{}
+		global_key_memo:           map[string]string{}
 		c_function_name_memo:      map[string]string{}
-		nonlocal_name_type_memo:   map[string]string{}
+		nonlocal_name_type_memo:   flat.TypeTextBindings{}
 		resolved_name_memo:        map[string]string{}
 		declared_type_key_memo:    map[string]FastcMemoEntry{}
 		path:                      source_file.path
 		source_offset:             source_file.source_offset
+		source_origins:            source_file.source_origins
 		source_line_offset:        source_file.source_line_offset
 		source_column_offset:      source_file.source_column_offset
 		module_name:               source_file.header.module_name
@@ -1638,14 +1886,16 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		declared_type_key_by_name: ctx.declared_type_key_by_name
 		fastc_prefixed_c_names:    ctx.fastc_prefixed_c_names
 		has_c_functions:           ctx.has_c_functions
+		numeric_ops_are_builtin:   ctx.numeric_ops_are_builtin
+		primitive_cmps_builtin:    ctx.primitive_cmps_builtin
 		comparison_memo:           map[i64]FastcRenderedExpression{}
-		type_memo:                 map[i64]string{}
-		method_key_memo:           map[string]map[string]string{}
-		field_memo:                map[string]map[string]FastcStructField{}
+		type_memo:                 map[i64]u32{}
+		method_key_memo:           map[u32]map[string]string{}
+		field_memo:                map[u32]map[string]&FastcStructField{}
 		member_smartcasts:         map[string]FastcMemberSmartcast{}
 		spawn_typedefs:            map[string]string{}
 		spawn_helpers:             map[string]string{}
-		thread_value_types:        map[string]string{}
+		thread_value_types:        flat.TypeTextBindings{}
 		declared_kinds:            ctx.declared_kinds
 		enum_flags:                ctx.enum_flags
 		enum_field_types:          ctx.enum_field_types
@@ -1668,10 +1918,16 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		constant_values:           ctx.constant_values
 		public_constants:          ctx.public_constants
 		globals:                   ctx.globals
+		global_suffix_index:       ctx.global_suffix_index
 		public_globals:            ctx.public_globals
 		used_function_names:       ctx.used_function_names
 		function_c_names:          ctx.function_c_names
 		selfhost:                  prefs.building_v
+		type_descriptor_memo:      if prefs.building_v {
+			&FastcTypeDescriptorMemo{}
+		} else {
+			unsafe { nil }
+		}
 		translated:                source_file.header.translated
 		source_has_select:         source_file.header.has_select
 		has_startup_inits:         ctx.has_startup_inits
@@ -1686,7 +1942,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		// These maps are per-file registration deltas. The stitch pass already owns
 		// the declarations collected before file generation, so copying that shared
 		// seed into every parser only adds allocation and hashing work.
-		fixed_array_types:         map[string]string{}
+		fixed_array_types:         flat.TypeTextBindings{}
 		composite_types:           map[string]bool{}
 		deferred_lines:            []string{}
 		deferred_block_starts:     []int{}
@@ -1766,7 +2022,9 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 // generate_source_pieces emits the program as C pieces in output order; the
 // per-file bodies are referenced, not copied, so the multi-megabyte output is
 // never assembled into one buffer here.
-fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences, mut units FastcUnitLayout) !([]string, bool, []string) {
+fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[string]string, input_prefs &pref.Preferences, mut units FastcUnitLayout) !([]string, bool, []string) {
+	scoped_prefs := fastc_target_runtime_preferences(input_prefs)
+	prefs := &scoped_prefs
 	// The `int` C spelling is fixed before any source is generated, so the
 	// generation workers below all read the same width.
 	fastc_set_platform_int_bits(prefs.target.pointer_bits)
@@ -1779,7 +2037,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// Source-level generic monomorphization runs first; it is a no-op when the
 	// program has no generic function definitions (so the self-host is untouched).
 	mut timer := fastc_new_phase_timer()
-	mut sources := fastc_monomorphize_sources(input_sources, prefs)!
+	qualified_sources := fastc_sources_with_self_module_qualifiers(input_sources, prefs)!
+	mut sources := fastc_monomorphize_sources(qualified_sources, prefs)!
 	timer.mark('monomorphize')
 	mut declared_types := map[string]bool{}
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
@@ -1790,12 +2049,16 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	mut type_source_paths := map[string]bool{}
-	mut type_sources := map[string]string{}
-	mut constant_sources := map[string]string{}
+	mut type_sources := map[string]FastcDeclarationSource{}
+	mut constant_sources := map[string]FastcDeclarationSource{}
 	mut constant_spans := map[string][]int{}
-	mut global_sources := map[string]string{}
+	mut global_sources := map[string]FastcDeclarationSource{}
 	generic_method_sources := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
 	timer.mark('declaration_indexes')
+	// builtin declares IError as `pub struct C.IError`, which the index does not record, so
+	// signatures such as `fn f() IError` in selfhost sources would be undeclared. The arm64 path
+	// records the same intrinsic error interface.
+	declared_types['IError'] = true
 	// The type declarations depend only on the declaration index, so they are
 	// rendered on a worker while the signatures are collected below; the
 	// composite typedefs that precede them need both and are rendered after.
@@ -1810,15 +2073,70 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut interface_fields := map[string]FastcInterfaceField{}
 	// Interface embeds recorded as index-aligned parallel arrays (an embedder and the
 	// interface it embeds), kept flat to stay in FastC's self-hostable subset.
-	mut embed_embedders := []string{}
-	mut embed_embeddeds := []string{}
+	mut embed_embedders := []u32{}
+	mut embed_embeddeds := []u32{}
 	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
+	if prefs.target_libc_headers {
+		fastc_bind_legacy_native_aliases(mut functions)
+	}
 	timer.mark('signatures')
 	// An interface that embeds another (`interface B { A; ... }`) inherits A's
 	// methods. Copy them onto B (with the receiver re-keyed to B) so calls on a B
 	// value resolve and B gets its own dispatch table entries.
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
-	function_c_names := fastc_compact_function_c_names(functions, prefs.building_v)
+	mut function_c_names := fastc_compact_function_c_names(functions,
+		prefs.building_v && !prefs.target_libc_headers)
+	if prefs.target_libc_headers {
+		for key, signature in functions {
+			if !key.starts_with('C.') {
+				name := if key.contains('.') {
+					fastc_signature_c_name(key, signature)
+				} else {
+					fastc_c_function_name(signature.module_name, key)
+				}
+				// A main-module function already has its `main__` name; a method of a
+				// main-module type gets it here.
+				function_c_names[key] = if key.contains('.')
+					&& signature.module_name in ['', 'main'] {
+					'main__${name}'
+				} else {
+					name
+				}
+			}
+		}
+	}
+	for key, signature in functions {
+		if key == 'main' || key.contains('.') || signature.module_name !in ['', 'main'] {
+			continue
+		}
+		// A main-module function shares the `main__` namespace with the main module's
+		// constants and the global `byte`. V accepts a constant and a function of the
+		// same name, so such a function is named in FastC's own namespace instead.
+		c_name := function_c_names[key] or { fastc_c_function_name_for_key(key) }
+		if c_name.starts_with('main__')
+			&& ((constants[key] or { '' }) == c_name || (globals[key] or { '' }) == c_name) {
+			function_c_names[key] = '__vf_function_${c_name['main__'.len..]}'
+		}
+	}
+	for key, signature in functions {
+		if signature.export_name != '' && !signature.is_disabled {
+			internal_name := function_c_names[key] or { fastc_c_function_name_for_key(key) }
+			if internal_name == signature.export_name {
+				function_c_names[key] = '__vf_export_body_${signature.export_name}'
+			}
+		}
+	}
+	for key, signature in functions {
+		if signature.is_global {
+			if c_name := globals[key] {
+				function_c_names[key] = c_name
+			}
+		}
+	}
+	if prefs.is_test && 'main' in functions {
+		// A test build's main runs its tests; the program's own is an ordinary function.
+		function_c_names['main'] = 'v_fastc_program_main'
+	}
 	mut has_entry_module := false
 	for source_file in sources {
 		if source_file.header.module_name in ['', 'main'] {
@@ -1842,8 +2160,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		composite_types['Array_char_ptr'] = true
 	}
 	for signature in functions.values() {
-		fastc_register_composite_type(signature.return_type, mut composite_types)
-		for parameter_type in signature.parameter_types {
+		fastc_register_composite_type(signature.return_type_text(), mut composite_types)
+		for parameter_type in signature.parameter_types_text() {
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
@@ -1859,8 +2177,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	declared_composite_types := composite_types.clone()
 	type_declarations := type_output.declarations
 	enum_field_types := type_output.enum_field_types.clone()
-	mut constant_types := map[string]string{}
-	mut global_types := map[string]string{}
+	mut constant_types := flat.TypeTextBindings{}
+	mut global_types := flat.TypeTextBindings{}
 	mut source_imports := map[string]map[string]string{}
 	for source_file in sources {
 		source_imports[source_file.path] = source_file.header.imports.clone()
@@ -1921,6 +2239,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls, function_c_names)!
 	timer.mark('startup_initializers')
 	mut used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	for key, signature in functions {
+		if fastc_function_is_native_root(key, signature) {
+			used_function_names[key.all_after_last('.')] = true
+		}
+	}
 	if 'main' !in functions {
 		// A program without an explicit main has no entry roots to walk from, so
 		// every declared function must survive the earlier name-based body filter too.
@@ -1929,7 +2252,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 	}
 	timer.mark('wait_references')
-	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, used_function_names, prefs.building_v, prefs)
+	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, struct_field_info, used_function_names, prefs.building_v, prefs)
 	struct_field_lookup := constant_output.struct_field_lookup.move()
 	// The per-file prototype blocks are emitted as pieces too, so they are
 	// never concatenated into one buffer.
@@ -1944,8 +2267,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut output_proto_offsets := []int{cap: sources.len + 16}
 	mut body_directive_lines := []FastcCDirectiveLine{}
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
-	for name, array_type in global_output.fixed_array_types {
-		fixed_array_types[name] = array_type
+	for name, array_type_id in global_output.fixed_array_types.ids {
+		fixed_array_types.set_id(name, array_type_id)
 	}
 	mut entry_has_main := false
 	// Self-host builds drop the functions that nothing reachable refers to:
@@ -1965,6 +2288,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		declared_type_key_by_name: declared_type_key_by_name
 		fastc_prefixed_c_names:    fastc_prefixed_c_names
 		has_c_functions:           has_c_functions
+		numeric_ops_are_builtin:   prefs.building_v && fastc_numeric_arithmetic_has_no_overloads(functions, declared_type_c_names, type_output.alias_base_types, struct_fields)
+		primitive_cmps_builtin:    prefs.building_v && fastc_primitive_comparisons_have_no_overloads(functions, declared_type_c_names, type_output.alias_base_types, struct_fields)
 		declared_kinds:            declared_kinds
 		enum_flags:                enum_flags
 		enum_field_types:          enum_field_types
@@ -1984,6 +2309,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		constant_values:           constant_output.compile_time_values
 		public_constants:          public_constants
 		globals:                   globals
+		global_suffix_index:       fastc_global_suffix_index(globals, global_types)
 		public_globals:            public_globals
 		used_function_names:       used_function_names
 		has_startup_inits:         startup_initializers.len > 0
@@ -2002,7 +2328,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	generation_sources := fastc_wait_generation_fragments(mut pending_fragments)
 	timer.mark('wait_fragments')
 	generation := fastc_generate_file_outputs(&ctx, generation_sources)
-	outputs := generation.outputs
+	mut outputs := generation.outputs.clone()
+	fastc_deduplicate_fragment_prototypes(mut outputs, generation_sources)
 	timer.mark('file_outputs')
 	for output in outputs {
 		if output.failed {
@@ -2045,8 +2372,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		c_flags << output.c_flags
 	}
-	for name, array_type in generation.fixed_array_types {
-		fixed_array_types[name] = array_type
+	for name, array_type_id in generation.fixed_array_types.ids {
+		fixed_array_types.set_id(name, array_type_id)
 	}
 	for name, _ in generation.composite_types {
 		composite_types[name] = true
@@ -2060,8 +2387,15 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		body_pieces << fastc_piece(mono_definition)
 		body_len += mono_definition.len
 	}
-	synthesized_main := if has_entry_module && !entry_has_main {
-		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0, module_cleanup_calls.len > 0)
+	if prefs.is_test {
+		// The test main synthesized below is this program's entry.
+		entry_has_main = true
+	}
+	synthesized_main := if prefs.is_test {
+		fastc_synthesized_test_main(functions, function_c_names, prefs, startup_initializers.len > 0,
+			module_cleanup_calls.len > 0)!
+	} else if has_entry_module && !entry_has_main {
+		fastc_synthesized_main(prefs, startup_initializers.len > 0, module_cleanup_calls.len > 0)
 	} else {
 		''
 	}
@@ -2086,7 +2420,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	if late_composite_declarations.len > 0 {
 		late_composite_declarations.writeln('')
 	}
-	interface_dispatches := fastc_wait_interface_dispatches(mut pending_interface_dispatches)
+	mut interface_dispatches := fastc_wait_interface_dispatches(mut pending_interface_dispatches)
 	timer.mark('wait_interface_dispatches')
 	// Fixed arrays that occur only in declarations or signatures are not seen by
 	// the expression renderer, so register their raw markers before emitting typedefs.
@@ -2097,8 +2431,35 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for prototype_piece in prototype_pieces {
 		fastc_collect_referenced_fixed_array_types(prototype_piece, mut fixed_array_types)
 	}
-	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
-	preamble := if header_free {
+	for body_piece in body_pieces {
+		fastc_collect_referenced_fixed_array_types(body_piece, mut fixed_array_types)
+	}
+	for array_name in fixed_array_types.keys() {
+		array_type := fixed_array_types.value_id(array_name)
+		fastc_register_fixed_array_type(array_type, mut fixed_array_types)
+	}
+	mut scalar_fixed_array_types := flat.TypeTextBindings{}
+	mut aggregate_fixed_array_types := flat.TypeTextBindings{}
+	mut callback_fixed_array_types := flat.TypeTextBindings{}
+	for name, typ_id in fixed_array_types.ids {
+		element_type := fastc_fixed_array_element_type(typ_id) or { continue }
+		if flat.source_type_name(element_type).contains('__vf_fn_type_') {
+			callback_fixed_array_types.set_id(name, typ_id)
+		} else if fastc_primitive_c_type(flat.source_type_name(element_type)) != none
+			&& flat.source_type_name(element_type) !in ['string', 'array', 'map', 'Option', '__v_result'] {
+			scalar_fixed_array_types.set_id(name, typ_id)
+		} else {
+			aggregate_fixed_array_types.set_id(name, typ_id)
+		}
+	}
+	// Scalar wrappers must precede aliases such as `type Gf = [16]i64`.
+	// Wrappers containing V aggregates wait for those aggregate definitions.
+	scalar_fixed_array_declarations := fastc_generate_fixed_array_declarations(scalar_fixed_array_types)
+	fixed_array_declarations := fastc_generate_fixed_array_declarations(aggregate_fixed_array_types)
+	callback_fixed_array_declarations := fastc_generate_fixed_array_declarations(callback_fixed_array_types)
+	preamble := if prefs.target_libc_headers {
+		fastc_target_libc_preamble() + c_target_option_runtime
+	} else if header_free {
 		c_selfhost_preamble.replace(c_selfhost_preamble_includes, fastc_c_abi_prelude(prefs.target.os, prefs.target.arch, ''))
 	} else if prefs.building_v {
 		c_selfhost_preamble
@@ -2130,7 +2491,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		fastc_collect_c_name_ids(constant_output.macros, 0, constant_output.macros.len, function_ids, mut root_ids)
 		fastc_collect_c_name_ids(constant_output.declarations, 0, constant_output.declarations.len, function_ids, mut root_ids)
 		fastc_collect_c_name_ids(global_output.declarations, 0, global_output.declarations.len, function_ids, mut root_ids)
-		fastc_collect_c_name_ids(interface_dispatches, 0, interface_dispatches.len, function_ids, mut root_ids)
 		fastc_collect_c_name_ids(startup_initializers, 0, startup_initializers.len, function_ids, mut root_ids)
 		fastc_collect_c_name_ids(synthesized_main, 0, synthesized_main.len, function_ids, mut root_ids)
 		for _, text in spawn_typedefs {
@@ -2152,6 +2512,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		if id := function_ids['main'] {
 			root_ids << id
 		}
+		for key, signature in functions {
+			if fastc_function_is_native_root(key, signature) {
+				c_name := function_c_names[key] or { fastc_c_function_name_for_key(key) }
+				if id := function_ids[c_name] {
+					root_ids << id
+				}
+			}
+		}
 		solo_prototype_ids = root_ids.clone()
 		// The enum helpers join the walk as one more output placed after the
 		// bodies, so their unreachable pieces are dropped the same way.
@@ -2169,6 +2537,23 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			helper_len += helper_text.len
 		}
 		helper_output.ref_starts << helper_output.refs.len
+		// Interface dispatchers are ordinary callees, not entry roots. An unused
+		// dispatcher must not retain every native driver implementing its interface.
+		for definition in interface_dispatches.split('\n}\n\n') {
+			if definition == '' {
+				continue
+			}
+			text := definition + '\n}\n\n'
+			name := definition.all_before('(').all_after_last(' ')
+			helper_output.function_ids << function_ids[name] or { -1 }
+			helper_output.function_spans << helper_len
+			helper_output.function_spans << helper_len + text.len
+			helper_output.proto_spans << 0
+			helper_output.proto_spans << 0
+			fastc_collect_c_name_ids(text, 0, text.len, function_ids, mut helper_output.refs)
+			helper_output.ref_starts << helper_output.refs.len
+			helper_len += text.len
+		}
 		mut walk_outputs := outputs.clone()
 		walk_outputs << helper_output
 		mut walk_body_offsets := output_body_offsets.clone()
@@ -2178,8 +2563,12 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		dead_body_ranges, dead_proto_ranges := fastc_unreachable_function_ranges(walk_outputs, walk_body_offsets, walk_proto_offsets, function_ids.len, root_ids)
 		mut dead_file_ranges := []int{cap: dead_body_ranges.len}
 		mut dead_helper_ranges := []int{}
+		mut dead_dispatch_ranges := []int{}
 		for i := 0; i + 1 < dead_body_ranges.len; i += 2 {
-			if dead_body_ranges[i] >= body_len {
+			if dead_body_ranges[i] >= body_len + enum_helpers_len {
+				dead_dispatch_ranges << dead_body_ranges[i] - body_len - enum_helpers_len
+				dead_dispatch_ranges << dead_body_ranges[i + 1] - body_len - enum_helpers_len
+			} else if dead_body_ranges[i] >= body_len {
 				dead_helper_ranges << dead_body_ranges[i] - body_len
 				dead_helper_ranges << dead_body_ranges[i + 1] - body_len
 			} else {
@@ -2191,6 +2580,20 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		kept_conditional_ranges = fastc_subtract_ranges(kept_conditional_ranges, dead_file_ranges)
 		kept_proto_ranges = fastc_subtract_ranges(kept_proto_ranges, dead_proto_ranges)
 		kept_helper_ranges = fastc_subtract_ranges(kept_helper_ranges, dead_helper_ranges)
+		mut dispatch_pieces := []string{}
+		fastc_collect_c_piece_ranges(mut dispatch_pieces, [interface_dispatches],
+			fastc_subtract_ranges([0, interface_dispatches.len], dead_dispatch_ranges))
+		interface_dispatches = dispatch_pieces.join('')
+		fastc_collect_c_name_ids(interface_dispatches, 0, interface_dispatches.len, function_ids,
+			mut solo_prototype_ids)
+		mut helper_offset := 0
+		for helper_text in type_output.enum_helper_texts {
+			if fastc_range_is_kept(kept_helper_ranges, helper_offset, helper_offset + helper_text.len) {
+				fastc_collect_c_name_ids(helper_text, 0, helper_text.len, function_ids,
+					mut solo_prototype_ids)
+			}
+			helper_offset += helper_text.len
+		}
 		timer.mark('prune')
 	}
 	mut prototype_texts := []string{}
@@ -2203,7 +2606,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		unit_ref_starts = []int{cap: outputs.len + 1}
 		for oi, output in outputs {
 			unit_ref_starts << unit_ref_ids.len
-			unit_ref_ids << output.refs
 			tail_prototype_ids << output.root_refs
 			mut proto_cursor := 0
 			for fi, id in output.function_ids {
@@ -2217,8 +2619,15 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 				if proto_end > proto_cursor {
 					proto_cursor = proto_end
 				}
-				if proto_start >= proto_end
-					|| !fastc_range_is_kept(kept_proto_ranges, output_proto_offsets[oi] + proto_start, output_proto_offsets[oi] + proto_end) {
+				kept_prototype := proto_start < proto_end
+					&& fastc_range_is_kept(kept_proto_ranges, output_proto_offsets[oi] + proto_start, output_proto_offsets[oi] + proto_end)
+				if proto_start >= proto_end || kept_prototype {
+					// A removed function cannot require declarations in this unit.
+					// Keep definitions without an indexed prototype conservative;
+					// retained spans also contain their own definition's reference.
+					unit_ref_ids << output.refs[output.ref_starts[fi]..output.ref_starts[fi + 1]]
+				}
+				if !kept_prototype {
 					continue
 				}
 				prototype := output.prototypes[proto_start..proto_end]
@@ -2248,7 +2657,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	if hoisted_body.directive_ranges.len > 0 {
 		pieces << '\n'
 	}
-	if prefs.building_v {
+	if prefs.building_v && !prefs.target_libc_headers {
 		fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, c_selfhost_post_directives)
 	}
 	if spawn_typedefs.len > 0 {
@@ -2262,6 +2671,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		mut thread_type_names := spawn_typedefs.keys()
 		thread_type_names.sort()
 		for thread_type_name in thread_type_names {
+			if thread_type_name.starts_with('__vf_fn_type_') { continue }
 			pieces << spawn_typedefs[thread_type_name]
 			pieces << '\n'
 		}
@@ -2270,10 +2680,27 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	pieces << fastc_piece(constant_output.macros)
 	pieces << fastc_piece(type_output.declarations_head)
 	pieces << fastc_piece(composite_typedefs)
+	pieces << scalar_fixed_array_declarations
 	pieces << fastc_piece(type_declarations)
 	pieces << late_composite_declarations.str()
 	pieces << fastc_piece(fixed_array_declarations)
-	pieces << fastc_c_extern_prototypes(functions)
+	// Function signatures can refer to aliases, composite types, and fixed arrays.
+	mut function_type_names := spawn_typedefs.keys().filter(it.starts_with('__vf_fn_type_'))
+	function_type_names.sort()
+	for function_type_name in function_type_names {
+		pieces << spawn_typedefs[function_type_name]
+	}
+	pieces << fastc_piece(callback_fixed_array_declarations)
+	native_context := if prefs.target_libc_headers || c_flags.any(it.ends_with('.c') || it.ends_with('.o')) {
+		fastc_native_source_context(sources, prefs)
+	} else {
+		FastcNativeSourceContext{}
+	}
+	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context,
+		prefs.vroot)
+	if prefs.target_libc_headers {
+		pieces << fastc_target_c_extern_prototypes_for_context(functions, used_function_names, prefs, native_context)
+	}
 	extern_indexes << pieces.len
 	extern_texts << fastc_extern_declarations(constant_output.declarations, true)
 	define_texts << fastc_extern_declarations(constant_output.declarations, false)
@@ -2290,6 +2717,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		''
 	}
 	pieces << fastc_definition_prototypes(runtime_definitions)
+	target_startup := fastc_target_startup_definition(prefs, startup_initializers.len > 0)
+	pieces << fastc_definition_prototypes(target_startup)
 	for helper_text in type_output.enum_helper_texts {
 		pieces << fastc_definition_prototypes(helper_text)
 	}
@@ -2301,6 +2730,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut spawn_helper_prototypes := strings.new_builder(256)
 	for spawn_helper_name in spawn_helper_names {
 		helper_definitions := spawn_helpers[spawn_helper_name].replace('static ', '')
+		if helper_definitions.starts_with('typedef ') && !helper_definitions.contains(') {') {
+			spawn_helper_prototypes.write_string(helper_definitions)
+			spawn_helpers[spawn_helper_name] = ''
+			continue
+		}
 		spawn_helpers[spawn_helper_name] = helper_definitions
 		spawn_helper_prototypes.write_string(fastc_definition_prototypes(helper_definitions))
 	}
@@ -2352,6 +2786,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << '\n'
 	}
 	pieces << fastc_piece(synthesized_main)
+	pieces << fastc_piece(target_startup)
 	solo_end := pieces.len
 	timer.mark('assemble.head')
 	fastc_collect_c_piece_ranges(mut pieces, body_pieces, kept_conditional_ranges)
@@ -2402,7 +2837,137 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		// build rather than compile against an implicit `int` declaration.
 		c_flags << '-Werror=implicit-function-declaration'
 	}
-	return pieces, spawn_typedefs.len > 0, c_flags
+	if prune_unreachable && entry_has_main {
+		// A module imported only for V types must not compile its unused native
+		// driver. This also keeps Linux-only CAN sources out of host-side tools.
+		mut native_module_ids := map[string]int{}
+		mut native_symbol_ids := map[string]int{}
+		for key, signature in functions {
+			if !key.starts_with('C.') {
+				continue
+			}
+			if signature.module_name !in native_module_ids {
+				native_module_ids[signature.module_name] = native_module_ids.len
+			}
+			native_symbol_ids[key['C.'.len..]] = native_module_ids[signature.module_name]
+		}
+		mut live_modules := []bool{len: native_module_ids.len}
+		for source in generation_sources {
+			for imported_module in source.header.blank_imports {
+				if module_id := native_module_ids[imported_module] {
+					live_modules[module_id] = true
+				}
+			}
+		}
+		for i, output in outputs {
+			module_name := generation_sources[i].header.module_name
+			module_id := native_module_ids[module_name] or { continue }
+			// Live V functions may use native globals or header macros instead of
+			// a declared C function. Keep their module's native inputs as well.
+			for f := 0; f + 1 < output.function_spans.len; f += 2 {
+				if fastc_range_is_kept(kept_body_ranges,
+					output_body_offsets[i] + output.function_spans[f],
+					output_body_offsets[i] + output.function_spans[f + 1]) {
+					live_modules[module_id] = true
+					break
+				}
+			}
+			if module_name in global_output.module_initializers
+				|| module_name in constant_output.module_initializers {
+				live_modules[module_id] = true
+			}
+		}
+		// Only unresolved owners of C source inputs need a symbol-use scan.
+		// V bodies, blank imports and initializers already retain the other
+		// modules, and binary inputs are retained independently below.
+		mut pending_native_modules := []bool{len: native_module_ids.len}
+		mut has_pending_native_modules := false
+		for i, output in outputs {
+			module_name := generation_sources[i].header.module_name
+			module_id := native_module_ids[module_name] or { continue }
+			if live_modules[module_id] {
+				continue
+			}
+			for flag in output.c_flags {
+				if fastc_flag_is_native_input(flag) && flag.ends_with('.c') {
+					pending_native_modules[module_id] = true
+					has_pending_native_modules = true
+					break
+				}
+			}
+		}
+		if has_pending_native_modules {
+			mut pending_native_symbol_ids := map[string]int{}
+			for name, id in native_symbol_ids {
+				if pending_native_modules[id] {
+					pending_native_symbol_ids[name] = id
+				}
+			}
+			mut native_refs := []int{}
+			mut live_texts := [startup_initializers, constant_output.macros,
+				constant_output.declarations, global_output.declarations, interface_dispatches]
+			fastc_collect_c_piece_ranges(mut live_texts, body_pieces, kept_body_ranges)
+			for _, helper in spawn_helpers {
+				live_texts << helper
+			}
+			for text in live_texts {
+				fastc_collect_native_name_ids(text, pending_native_symbol_ids, mut native_refs)
+			}
+			for id in native_refs {
+				live_modules[id] = true
+			}
+		}
+		mut required_native_inputs := map[string]bool{}
+		for i, output in outputs {
+			module_name := generation_sources[i].header.module_name
+			module_id := native_module_ids[module_name] or { -1 }
+			for flag in output.c_flags {
+				if fastc_flag_is_native_input(flag) {
+					// Binary artifacts can carry constructors or registration data
+					// independently of the module's declared C functions.
+					if flag.ends_with('.c') && module_id >= 0 && !live_modules[module_id] {
+						continue
+					}
+					required_native_inputs[flag] = true
+				}
+			}
+		}
+		c_flags = c_flags.filter(!fastc_flag_is_native_input(it) || it in required_native_inputs)
+	}
+	return pieces, spawn_typedefs.len > 0 || global_output.uses_pthread_tls, c_flags
+}
+
+@[direct_array_access]
+fn fastc_collect_native_name_ids(text string, ids map[string]int, mut refs []int) {
+	mut i := 0
+	for i < text.len {
+		if text[i] in [`'`, `"`] {
+			quote := text[i]
+			i++
+			for i < text.len {
+				if text[i] == `\\` {
+					i += 2
+				} else if text[i] == quote {
+					i++
+					break
+				} else {
+					i++
+				}
+			}
+		} else if fastc_identifier_byte(text[i]) {
+			start := i
+			for i < text.len && fastc_identifier_byte(text[i]) {
+				i++
+			}
+			// The lookup does not retain the key, so borrow the live C text.
+			name := unsafe { tos(text.str + start, i - start) }
+			if id := ids[name] {
+				refs << id
+			}
+		} else {
+			i++
+		}
+	}
 }
 
 // fastc_definition_prototypes returns a prototype for every function
@@ -2427,26 +2992,96 @@ fn fastc_definition_prototypes(text string) string {
 // Such symbols come from linked system libraries rather than an included header, so C99 must
 // see their V-declared ABI before a call (matching the main C backend's behavior).
 fn fastc_c_extern_prototypes(functions map[string]FastcFunctionSignature) string {
-	mut keys := functions.keys()
+	return fastc_c_extern_prototypes_for_inputs(functions, [])
+}
+
+fn fastc_c_declaration_has_native_input(path string, inputs []string) bool {
+	if !path.ends_with('.c.v') {
+		return false
+	}
+	stem := path[..path.len - 4]
+	mut platform_stem := stem
+	for suffix in ['_nix', '_windows', '_linux', '_macos', '_darwin', '_default', '_freebsd', '_netbsd',
+		'_openbsd'] {
+		if stem.ends_with(suffix) {
+			platform_stem = stem[..stem.len - suffix.len]
+			break
+		}
+	}
+	for input in inputs {
+		if (input.ends_with('.c') || input.ends_with('.o'))
+			&& input[..input.len - 2] in [stem, platform_stem] {
+			return true
+		}
+	}
+	return false
+}
+
+// fastc_vlib_native_helper_has_input mirrors cgen: vlib's shipped native objects
+// export private facades (`v3_`, `v_runtime_`, ...) whose declaring file may include
+// an unrelated header and need not share the object's stem
+// (builtin_d_gcboehm.c.v links gc_boehm_helpers.o). The declaring vlib file must
+// itself link a native source or object.
+fn fastc_vlib_native_helper_has_input(name string, paths []string, inputs []string, context FastcNativeSourceContext, vroot string) bool {
+	if !(name.starts_with('v3_') || name.starts_with('v_runtime_') || name.starts_with('v_time_')
+		|| name.starts_with('v_builtin_') || name.starts_with('v_set_')
+		|| name.starts_with('v__gc_')) {
+		return false
+	}
+	root := vroot.replace('\\', '/').trim_right('/')
+	if root.len == 0 {
+		return false
+	}
+	vlib := '${root}/vlib/'
+	return paths.any(context.files_linking_native_sources[it]
+		&& it.replace('\\', '/').starts_with(vlib))
+		&& inputs.any((it.ends_with('.c') || it.ends_with('.o'))
+			&& it.replace('\\', '/').starts_with(vlib))
+}
+
+fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
+	return fastc_c_extern_prototypes_for_source_inputs(functions, inputs, FastcNativeSourceContext{},
+		'')
+}
+
+fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext, vroot string) string {
+	mut keys := functions.keys().filter(it.starts_with('C.'))
 	keys.sort()
 	mut out := strings.new_builder(128)
 	for key in keys {
 		signature := functions[key]
-		if !key.starts_with('C.') || !signature.is_c_extern || signature.is_disabled {
+		if signature.is_disabled {
 			continue
 		}
 		name := key.all_after_first('C.')
-		mut parameters := []string{cap: signature.parameter_types.len + 1}
-		for parameter_type in signature.parameter_types {
-			parameters << parameter_type
+		paths := context.declaration_paths[name] or { [signature.path] }
+		if !signature.is_c_extern && !paths.any(!context.files_with_headers[it]
+			&& fastc_c_declaration_has_native_input(it, inputs))
+			&& !fastc_vlib_native_helper_has_input(name, paths, inputs, context, vroot) {
+			continue
+		}
+		mut parameters := []string{cap: signature.parameter_types.ids.len + 1}
+		for i, parameter_type in signature.parameter_types_text() {
+			parameters << if i < signature.parameter_constness.len
+				&& signature.parameter_constness[i] {
+				'const ${parameter_type}'
+			} else {
+				parameter_type
+			}
 		}
 		if signature.is_variadic {
 			parameters << '...'
 		} else if parameters.len == 0 {
 			parameters << 'void'
 		}
-		out.writeln('#ifndef ${name}')
-		out.writeln('extern ${signature.return_type} ${name}(${parameters.join(', ')});')
+		// The selected pthread helper header owns these native callback signatures.
+		// Keep explicit declarations available when that header is absent.
+		if name in ['v3_pthread_zero', 'v3_pthread_create', 'v3_pthread_is_current'] {
+			out.writeln('#if !defined(${name}) && !defined(V3_PTHREAD_HELPER_H)')
+		} else {
+			out.writeln('#ifndef ${name}')
+		}
+		out.writeln('extern ${signature.return_type_text()} ${name}(${parameters.join(', ')});')
 		out.writeln('#endif')
 	}
 	return out.str()
@@ -2843,7 +3478,7 @@ fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_uni
 	for k in units.unit_starts[first_unit] .. units.unit_starts[end_unit] {
 		out.write_string(pieces[k])
 	}
-	return out.str()
+	return fastc_take_string(mut out)
 }
 
 fn fastc_descending_size_order(sizes []int) []int {
@@ -3143,32 +3778,57 @@ fn fastc_generic_method_names(generic_method_sources map[string]FastcGenericMeth
 	return names
 }
 
-// fastc_build_struct_field_lookup indexes every struct's fields by name.
-fn fastc_build_struct_field_lookup(struct_field_info map[string][]FastcStructField) map[string]map[string]FastcStructField {
-	mut struct_field_lookup := map[string]map[string]FastcStructField{}
+// fastc_build_struct_field_lookup owns the immutable records indexed by name.
+// Separate allocations keep pointers stable when the index maps grow.
+fn fastc_build_struct_field_lookup(struct_field_info map[string][]FastcStructField) map[string]map[string]&FastcStructField {
+	mut struct_field_lookup := map[string]map[string]&FastcStructField{}
 	for layout_type, fields in struct_field_info {
-		mut fields_by_name := map[string]FastcStructField{}
+		mut fields_by_name := map[string]&FastcStructField{}
 		for field in fields {
-			fields_by_name[field.name] = field
+			fields_by_name[field.name] = &FastcStructField{ ...field }
 		}
 		struct_field_lookup[layout_type] = fields_by_name.move()
 	}
 	return struct_field_lookup
 }
 
-fn fastc_synthesized_main(selfhost bool, has_startup_inits bool, has_cleanup_hooks bool) string {
+// fastc_c_main_name returns the C entry point name for the target. Windows
+// executables link with `-municode` (v.driver's Windows linker flags), whose CRT
+// startup calls `wmain` instead of `main`; the C backend emits the same entry.
+fn fastc_c_main_name(prefs &pref.Preferences) string {
+	return if prefs.normalized_target_os() == 'windows' { 'wmain' } else { 'main' }
+}
+
+// fastc_c_main_parameters returns the entry point parameter list. Selfhost builds
+// store argv in g_main_argv, which builtin.arguments decodes as wide strings on
+// Windows, so the Windows entry receives `wchar_t **argv`.
+fn fastc_c_main_parameters(prefs &pref.Preferences) string {
+	if !prefs.building_v {
+		return 'void'
+	}
+	return if prefs.normalized_target_os() == 'windows' {
+		'int argc, wchar_t **argv'
+	} else {
+		'int argc, char **argv'
+	}
+}
+
+fn fastc_synthesized_main(prefs &pref.Preferences, has_startup_inits bool, has_cleanup_hooks bool) string {
 	mut result := strings.new_builder(256)
-	parameters := if selfhost { 'int argc, char **argv' } else { 'void' }
-	result.writeln('int main(${parameters}) {')
-	result.writeln('\tsetvbuf(stdout, NULL, _IONBF, 0);')
+	selfhost := prefs.building_v
+	target_libc_headers := prefs.target_libc_headers
+	result.writeln('int ${fastc_c_main_name(prefs)}(${fastc_c_main_parameters(prefs)}) {')
+	if !target_libc_headers {
+		result.writeln('\tsetvbuf(stdout, NULL, _IONBF, 0);')
+	}
 	if selfhost {
 		result.writeln('\tg_main_argc = argc;')
 		result.writeln('\tg_main_argv = argv;')
 	}
-	if has_startup_inits {
+	if has_startup_inits && !target_libc_headers {
 		result.writeln('\tv_fastc_init_globals();')
 	}
-	if has_cleanup_hooks {
+	if has_cleanup_hooks && !target_libc_headers {
 		result.writeln('\tatexit(v_fastc_cleanup_modules);')
 	}
 	result.writeln('\treturn 0;')
@@ -3178,16 +3838,18 @@ fn fastc_synthesized_main(selfhost bool, has_startup_inits bool, has_cleanup_hoo
 }
 
 fn fastc_interface_method_signatures_match(interface_signature FastcFunctionSignature, candidate_signature FastcFunctionSignature) bool {
-	if candidate_signature.return_type != interface_signature.return_type || !fastc_string_types_equal(candidate_signature.return_types, interface_signature.return_types) || candidate_signature.option_type != interface_signature.option_type || candidate_signature.parameter_types.len != interface_signature.parameter_types.len {
+	if candidate_signature.return_type != interface_signature.return_type || !fastc_type_ids_equal(candidate_signature.return_types.ids.clone(), interface_signature.return_types.ids.clone()) || candidate_signature.option_type != interface_signature.option_type || candidate_signature.parameter_types.ids.len != interface_signature.parameter_types.ids.len {
 		return false
 	}
-	for i in 0 .. interface_signature.parameter_types.len {
-		if i > 0 && candidate_signature.parameter_types[i] != interface_signature.parameter_types[i] {
+	for i in 0 .. interface_signature.parameter_types.ids.len {
+		if i > 0 && candidate_signature.parameter_types.ids[i] != interface_signature.parameter_types.ids[i] {
 			return false
 		}
 		interface_parameter_is_mut := i < interface_signature.parameter_mutability.len && interface_signature.parameter_mutability[i]
 		candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len && candidate_signature.parameter_mutability[i]
-		if candidate_parameter_is_mut != interface_parameter_is_mut {
+		// A mutable interface can call an implementation that only reads its receiver.
+		if candidate_parameter_is_mut != interface_parameter_is_mut
+			&& !(i == 0 && interface_parameter_is_mut) {
 			return false
 		}
 	}
@@ -3198,13 +3860,13 @@ fn fastc_interface_method_signatures_match(interface_signature FastcFunctionSign
 // interface onto the interface that embeds it, re-keyed to the embedder's receiver
 // type. It runs to a fixpoint so a chain of embeds (`C { B }`, `B { A }`) inherits
 // all the way down. A method the embedder already declares directly is left as-is.
-fn fastc_promote_embedded_interface_methods(embed_embedders []string, embed_embeddeds []string, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool) {
+fn fastc_promote_embedded_interface_methods(embed_embedders []u32, embed_embeddeds []u32, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool) {
 	mut changed := true
 	for changed {
 		changed = false
 		for i := 0; i < embed_embedders.len; i++ {
-			embedder_key := embed_embedders[i]
-			embedded_key := embed_embeddeds[i]
+			embedder_key := flat.source_type_name(embed_embedders[i])
+			embedded_key := flat.source_type_name(embed_embeddeds[i])
 			embedder_type := fastc_c_declared_type_name(embedder_key)
 			prefix := embedded_key + '.'
 			for method_key in interface_methods.keys() {
@@ -3217,12 +3879,12 @@ fn fastc_promote_embedded_interface_methods(embed_embedders []string, embed_embe
 					continue
 				}
 				source := functions[method_key]
-				mut promoted_params := source.parameter_types.clone()
+				mut promoted_params := source.parameter_types.ids.clone()
 				if promoted_params.len > 0 {
-					promoted_params[0] = embedder_type
+					promoted_params[0] = flat.source_type_id(embedder_type)
 				}
 				functions[promoted_key] = FastcFunctionSignature{
-					parameter_types:          promoted_params
+					parameter_types:          flat.TypeTextList{ ids: promoted_params.clone() }
 					parameter_mutability:     source.parameter_mutability.clone()
 					return_type:              source.return_type
 					return_types:             source.return_types.clone()
@@ -3241,7 +3903,7 @@ fn fastc_promote_embedded_interface_methods(embed_embedders []string, embed_embe
 	}
 }
 
-fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, function_c_names map[string]string, interface_methods map[string]bool, used_function_names map[string]bool, selfhost bool) string {
+fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, function_c_names map[string]string, interface_methods map[string]bool, struct_field_info map[string][]FastcStructField, used_function_names map[string]bool, selfhost bool) string {
 	mut out := strings.new_builder(1024)
 	mut function_keys := functions.keys()
 	function_keys.sort()
@@ -3251,6 +3913,21 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 	}
 	mut interface_method_keys := interface_methods.keys()
 	interface_method_keys.sort()
+	// Structs may implement an interface through an embedded struct's methods.
+	mut struct_keys_by_c_type := map[string]string{}
+	mut embedding_structs := []string{}
+	for key, kind in declared_kinds {
+		if kind != .struct_ {
+			continue
+		}
+		c_type := fastc_c_declared_type_name(key)
+		struct_keys_by_c_type[c_type] = key
+		fields := struct_field_info[c_type] or { []FastcStructField{} }
+		if fields.any(it.name.starts_with('__embedded_')) {
+			embedding_structs << key
+		}
+	}
+	embedding_structs.sort()
 	for interface_key, kind in declared_kinds {
 		if kind != .interface_ {
 			continue
@@ -3261,18 +3938,18 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				continue
 			}
 			interface_signature := functions[interface_method_key]
-			if interface_signature.parameter_types.len == 0 {
+			if interface_signature.parameter_types.ids.len == 0 {
 				continue
 			}
 			interface_type := fastc_c_declared_type_name(interface_key)
-			if interface_signature.parameter_types[0] != interface_type {
+			if interface_signature.parameter_types.at(0) != interface_type {
 				continue
 			}
 			method_name := interface_method_key.all_after_last('.')
 			mut parameters := ['${interface_type} value']
 			mut arguments := []string{}
-			for i in 1 .. interface_signature.parameter_types.len {
-				parameters << '${interface_signature.parameter_types[i]} arg${i}'
+			for i in 1 .. interface_signature.parameter_types.ids.len {
+				parameters << '${fastc_output_c_type(interface_signature.parameter_types_text()[i])} arg${i}'
 				arguments << 'arg${i}'
 			}
 			c_name := if compact_name := function_c_names[interface_method_key] {
@@ -3280,13 +3957,16 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			} else {
 				fastc_method_c_name(interface_signature.module_name, interface_type, method_name)
 			}
-			out.writeln('${interface_signature.return_type} ${c_name}(${parameters.join(', ')}) {')
+			// Spelled like the methods it dispatches to: a V `int` is 64 bits wide.
+			return_c_type := fastc_output_c_type(interface_signature.return_type_text())
+			out.writeln('${return_c_type} ${c_name}(${parameters.join(', ')}) {')
 			out.writeln('\tswitch (value._typ) {')
 			candidate_count := if selfhost && method_name !in used_function_names {
 				0
 			} else {
 				function_keys.len
 			}
+			mut implemented := map[string]bool{}
 			for candidate_index in 0 .. candidate_count {
 				candidate_key := function_keys[candidate_index]
 				if candidate_key == interface_method_key || function_method_names[candidate_index] != method_name {
@@ -3300,8 +3980,9 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				if !fastc_interface_method_signatures_match(interface_signature, candidate_signature) {
 					continue
 				}
+				implemented[receiver_key] = true
 				receiver_type := fastc_c_declared_type_name(receiver_key)
-				expected_receiver := candidate_signature.parameter_types[0]
+				expected_receiver := candidate_signature.parameter_types.at(0)
 				receiver_argument := if expected_receiver.ends_with('*') {
 					'(${receiver_type} *)value._object'
 				} else {
@@ -3318,16 +3999,56 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 					fastc_method_c_name(candidate_signature.module_name, receiver_type, method_name)
 				}
 				call := '${candidate_c_name}(${receiver_argument}${call_arguments})'
-				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type == 'void' {
+				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type_text() == 'void' {
 					call + '; return;'
 				} else {
 					'return ' + call + ';'
 				}}')
 			}
-			out.writeln('\tdefault: ${if interface_signature.return_type == 'void' {
+			if candidate_count > 0 {
+				for struct_key in embedding_structs {
+					if struct_key in implemented {
+						continue
+					}
+					struct_type := fastc_c_declared_type_name(struct_key)
+					embedded := fastc_embedded_method(struct_type, method_name, interface_signature, functions, struct_field_info, struct_keys_by_c_type, 0) or {
+						continue
+					}
+					embedded_signature := functions[embedded.key]
+					field := '((${struct_type} *)value._object)->${embedded.path}'
+					receiver_argument := if embedded_signature.parameter_types.at(0).ends_with('*') {
+						'&(${field})'
+					} else {
+						field
+					}
+					call_arguments := if arguments.len > 0 {
+						',' + arguments.join(',')
+					} else {
+						''
+					}
+					embedded_c_name := if compact_name := function_c_names[embedded.key] {
+						compact_name
+					} else {
+						fastc_method_c_name(embedded_signature.module_name, fastc_c_declared_type_name(embedded.key.all_before_last('.')), method_name)
+					}
+					call := '${embedded_c_name}(${receiver_argument}${call_arguments})'
+					out.writeln('\tcase __v_typeid_${struct_type}: ${if interface_signature.return_type_text() == 'void' {
+						call + '; return;'
+					} else {
+						'return ' + call + ';'
+					}}')
+				}
+			}
+			out.writeln('\tdefault:')
+			if selfhost {
+				// No case matched: the value's type was not recognised as implementing
+				// the interface. Stop loudly rather than return a zero value.
+				out.writeln('\t\tbuiltin__panic(_S("fastc: no implementation of `${interface_key}.${method_name}` for this value"));')
+			}
+			out.writeln('\t\t${if return_c_type == 'void' {
 				'return;'
 			} else {
-				'return (' + interface_signature.return_type + '){0};'
+				'return (' + return_c_type + '){0};'
 			}}')
 			out.writeln('\t}')
 			out.writeln('}')
@@ -3335,6 +4056,43 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 		}
 	}
 	return out.str()
+}
+
+struct FastcEmbeddedMethod {
+	key  string
+	path string
+}
+
+// fastc_embedded_method finds the method an interface call reaches through the embedded
+// struct fields of `c_type`: its key and the path of `__embedded_N` fields leading to it.
+fn fastc_embedded_method(c_type string, method_name string, interface_signature FastcFunctionSignature, functions map[string]FastcFunctionSignature, struct_field_info map[string][]FastcStructField, struct_keys_by_c_type map[string]string, depth int) ?FastcEmbeddedMethod {
+	if depth > 8 {
+		return none
+	}
+	fields := struct_field_info[c_type] or { return none }
+	for field in fields {
+		if !field.name.starts_with('__embedded_') {
+			continue
+		}
+		field_type := field.typ_text()
+		embedded_key := struct_keys_by_c_type[field_type] or { continue }
+		method_key := '${embedded_key}.${method_name}'
+		if signature := functions[method_key] {
+			if fastc_interface_method_signatures_match(interface_signature, signature) {
+				return FastcEmbeddedMethod{
+					key:  method_key
+					path: field.name
+				}
+			}
+		}
+		if nested := fastc_embedded_method(field_type, method_name, interface_signature, functions, struct_field_info, struct_keys_by_c_type, depth + 1) {
+			return FastcEmbeddedMethod{
+				key:  nested.key
+				path: '${field.name}.${nested.path}'
+			}
+		}
+	}
+	return none
 }
 
 fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
@@ -3497,12 +4255,16 @@ fn fastc_function_id_table(functions map[string]FastcFunctionSignature, function
 		}
 		c_name := if compact_name := function_c_names[key] {
 			compact_name
+		} else if !key.contains('.') {
+			// A main-module function stays out of the index, so its definition is
+			// always kept.
+			continue
 		} else {
 			fastc_signature_c_name(key, signature)
 		}
 		// Only names the reference scan recognizes (a `__` separator or the
-		// `v_fastc_` prefix) are indexed; a bare main-module name stays out
-		// and its definition is always kept.
+		// `v_fastc_` prefix) are indexed; a bare main-module method name stays
+		// out and its definition is always kept.
 		if !fastc_c_name_is_indexed(c_name) {
 			continue
 		}
@@ -3519,6 +4281,18 @@ fn fastc_function_id_table(functions map[string]FastcFunctionSignature, function
 			if helper !in ids {
 				ids[helper] = ids.len
 			}
+		}
+	}
+	// Native adapters share their implementation's emitted span. References to
+	// either spelling must retain that span without adding another graph node.
+	for key, signature in functions {
+		if key.starts_with('C.') || signature.return_type_text() != 'MultiReturn'
+			|| signature.return_types.ids.len != 2 {
+			continue
+		}
+		c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+		if id := ids[c_name] {
+			ids[fastc_native_pair_wrapper_name(c_name)] = id
 		}
 	}
 	return ids
@@ -3815,4 +4589,243 @@ fn fastc_c_directive_kind(source string, start int, end int) int {
 		return 3
 	}
 	return 1
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcLocal) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcExpressionToken) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// chan_element_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcExpressionToken) chan_element_type_text() string {
+	return flat.source_type_name(value.chan_element_type)
+}
+
+// option_value_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcExpressionToken) option_value_type_text() string {
+	return flat.source_type_name(value.option_value_type)
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcRenderedExpression) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcStructField) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcInterfaceField) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcConstantValue) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcMemberSmartcast) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// return_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcFunctionSignature) return_type_text() string {
+	return flat.source_type_name(value.return_type)
+}
+
+// return_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) return_type_text() string {
+	return flat.source_type_name(value.return_type)
+}
+
+// option_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcFunctionSignature) option_type_text() string {
+	return flat.source_type_name(value.option_type)
+}
+
+// chan_element_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcLocal) chan_element_type_text() string {
+	return flat.source_type_name(value.chan_element_type)
+}
+
+// fn_option_value_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcLocal) fn_option_value_type_text() string {
+	return flat.source_type_name(value.fn_option_value_type)
+}
+
+// fn_return_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcLocal) fn_return_type_text() string {
+	return flat.source_type_name(value.fn_return_type)
+}
+
+// option_value_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcLocal) option_value_type_text() string {
+	return flat.source_type_name(value.option_value_type)
+}
+
+// smartcast_origin_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcLocal) smartcast_origin_type_text() string {
+	return flat.source_type_name(value.smartcast_origin_type)
+}
+
+// chan_element_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcStructField) chan_element_type_text() string {
+	return flat.source_type_name(value.chan_element_type)
+}
+
+// fn_option_value_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcStructField) fn_option_value_type_text() string {
+	return flat.source_type_name(value.fn_option_value_type)
+}
+
+// fn_return_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcStructField) fn_return_type_text() string {
+	return flat.source_type_name(value.fn_return_type)
+}
+
+// generic_argument_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcStructField) generic_argument_type_text() string {
+	return flat.source_type_name(value.generic_argument_type)
+}
+
+// option_value_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcStructField) option_value_type_text() string {
+	return flat.source_type_name(value.option_value_type)
+}
+
+// expected_expression_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) expected_expression_type_text() string {
+	return flat.source_type_name(value.expected_expression_type)
+}
+
+// last_expression_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) last_expression_type_text() string {
+	return flat.source_type_name(value.last_expression_type)
+}
+
+// last_option_value_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) last_option_value_type_text() string {
+	return flat.source_type_name(value.last_option_value_type)
+}
+
+// option_return_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) option_return_type_text() string {
+	return flat.source_type_name(value.option_return_type)
+}
+
+// or_value_expected_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) or_value_expected_type_text() string {
+	return flat.source_type_name(value.or_value_expected_type)
+}
+
+// pending_fn_option_value_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) pending_fn_option_value_type_text() string {
+	return flat.source_type_name(value.pending_fn_option_value_type)
+}
+
+// pending_fn_return_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) pending_fn_return_type_text() string {
+	return flat.source_type_name(value.pending_fn_return_type)
+}
+
+// pending_option_value_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) pending_option_value_type_text() string {
+	return flat.source_type_name(value.pending_option_value_type)
+}
+
+// parameter_types_text resolves indexed types at a text integration boundary.
+fn (value &FastcFunctionSignature) parameter_types_text() []string {
+	return value.parameter_types.names()
+}
+
+// return_types_text resolves indexed types at a text integration boundary.
+fn (value &FastcFunctionSignature) return_types_text() []string {
+	return value.return_types.names()
+}
+
+// fn_parameter_types_text resolves indexed types at a text integration boundary.
+fn (value &FastcStructField) fn_parameter_types_text() []string {
+	return value.fn_parameter_types.names()
+}
+
+// last_multi_return_types_text resolves indexed types at a text integration boundary.
+fn (value &Parser) last_multi_return_types_text() []string {
+	return value.last_multi_return_types.names()
+}
+
+// return_types_text resolves indexed types at a text integration boundary.
+fn (value &Parser) return_types_text() []string {
+	return value.return_types.names()
+}
+
+// current_receiver_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) current_receiver_text() string {
+	return flat.source_type_name(value.current_receiver)
+}
+
+// last_field_receiver_text resolves the indexed source type spelling.
+@[inline]
+fn (value &Parser) last_field_receiver_text() string {
+	return flat.source_type_name(value.last_field_receiver)
+}
+
+fn (smartcast &FastcMemberSmartcast) variants_text() []string {
+	return smartcast.variants.names()
+}
+
+// value_type_text resolves the tested value's indexed type spelling.
+@[inline]
+fn (smartcast &FastcMemberSmartcast) value_type_text() string {
+	return flat.source_type_name(smartcast.value_type)
+}
+
+// concrete_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FastcMonoRequest) concrete_text() string {
+	return flat.source_type_name(value.concrete)
+}
+
+// name_text resolves the enum display type spelling.
+@[inline]
+fn (info &FastcEnumInfo) name_text() string {
+	return flat.source_type_name(info.name)
 }

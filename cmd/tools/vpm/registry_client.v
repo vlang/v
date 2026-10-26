@@ -59,16 +59,25 @@ fn registry_get(url string, path string) !string {
 	return resp.body
 }
 
-// decode_registry_module reads one module body. A body that is valid JSON but
-// names no module is refused, because a registry that reports not-found in the
-// body rather than in the status line produces exactly that, and decoding it
-// would hand back a module with an empty name.
-fn decode_registry_module(url string, name string, body string) !RegistryModule {
+// decode_registry_module reads one module body and checks it against the
+// requested route. A body that is valid JSON but names no module is refused,
+// because a registry that reports not-found in the body rather than in the
+// status line produces exactly that, and decoding it would hand back a module
+// with an empty name. A body naming another module or, when a version was
+// requested, another version is refused for the same reason: the caller must
+// be able to trust that the response belongs to the requested route.
+fn decode_registry_module(url string, name string, version string, body string) !RegistryModule {
 	info := json2.decode[RegistryModule](body) or {
 		return error('the registry at `${url}` did not describe `${name}` as JSON: ${err.msg()}')
 	}
 	if info.name == '' {
 		return error('the registry at `${url}` holds no metadata for `${name}`.')
+	}
+	if info.name != name {
+		return error('the registry at `${url}` answered for `${name}` with metadata for `${info.name}`.')
+	}
+	if version != '' && info.version != version {
+		return error('the registry at `${url}` answered `${info.name}@${info.version}` for `${name}@${version}`.')
 	}
 	return info
 }
@@ -101,7 +110,7 @@ pub fn fetch_registry_versions(url string, name string) ![]string {
 // returned as a zero-valued RegistryModule, because a caller resolving a module
 // has to be able to go on to the next candidate registry.
 pub fn fetch_registry_latest(url string, name string) !RegistryModule {
-	return decode_registry_module(url, name, registry_get(url, '/${name}/@latest')!)
+	return decode_registry_module(url, name, '', registry_get(url, '/${name}/@latest')!)
 }
 
 // fetch_registry_info returns the metadata for `name` at `version`, as served by
@@ -112,7 +121,7 @@ pub fn fetch_registry_latest(url string, name string) !RegistryModule {
 // version. It is never returned as a zero-valued RegistryModule, so a caller can
 // tell a version that was never published from one whose metadata is empty.
 pub fn fetch_registry_info(url string, name string, version string) !RegistryModule {
-	return decode_registry_module(url, name, registry_get(url, '/${name}/@v/${version}.info')!)
+	return decode_registry_module(url, name, version, registry_get(url, '/${name}/@v/${version}.info')!)
 }
 
 // fetch_registry_config returns the configuration document the registry at `url`
@@ -128,25 +137,31 @@ pub fn fetch_registry_config(url string) !RegistryConfig {
 // registry_archive_base returns the base url the registry at `url` serves its
 // module archives from.
 //
-// `registry.v` still answers `/config.json` with the fixed
-// `https://example.com/downloads`, and RFC 2606 reserves that host for
-// documentation, so a base on it names no host that ever served a module. It is
-// reported as an error rather than returned, because an install pointed at a
-// placeholder would look for an archive that was never published, and no later
-// step could tell that from one that had gone missing.
+// A base on an RFC 2606 documentation domain is refused, because it names no
+// registry that served a module. The HTTP server advertises its own origin.
 pub fn registry_archive_base(url string) !string {
-	base := fetch_registry_config(url)!.dl.trim_space().trim_string_right('/')
+	return resolve_registry_archive_base(url, fetch_registry_config(url)!.dl)
+}
+
+// resolve_registry_archive_base resolves configuration URLs against the registry URL.
+fn resolve_registry_archive_base(url string, value string) !string {
+	base := value.trim_space()
 	if base == '' {
 		return error('the registry at `${url}` names no archive base in its configuration.')
 	}
-	parsed := urllib.parse(base) or {
+	reference := urllib.parse(base) or {
 		return error('the registry at `${url}` names the archive base `${base}`, which is not a url.')
+	}
+	origin := urllib.parse(url.trim_right('/') + '/')!
+	parsed := origin.resolve_reference(reference)!
+	if parsed.scheme !in ['http', 'https'] || parsed.host == '' {
+		return error('the registry at `${url}` names the archive base `${base}`, which is not an HTTP url.')
 	}
 	host := parsed.hostname().to_lower()
 	if registry_placeholder_host(host) {
 		return error('the registry at `${url}` names the placeholder archive base `${base}`.')
 	}
-	return base
+	return parsed.str().trim_right('/')
 }
 
 // registry_placeholder_host reports whether `host` is one of the RFC 2606

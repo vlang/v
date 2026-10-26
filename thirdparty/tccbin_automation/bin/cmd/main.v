@@ -9,7 +9,7 @@ const tccbin_contract_sha = $d('tccbin_contract_sha', '')
 
 fn main() {
 	if os.args.len < 2 {
-		eprintln('usage: tccbin-automation <contract|contract-binding|dry-run|staged-preflight|candidate-preflight|candidate-compose|issue-dry-run|live-state|receiver|handoff|workflow-run|validate|canonicalize|fingerprint>')
+		eprintln('usage: tccbin-automation <contract|contract-binding|dry-run|vc-lock-dry-run|staged-preflight|candidate-preflight|candidate-compose|issue-dry-run|live-state|receiver|handoff|workflow-run|validate|canonicalize|fingerprint>')
 		exit(2)
 	}
 	automation_root := os.real_path(os.join_path(os.getwd(), 'thirdparty', 'tccbin_automation'))
@@ -41,6 +41,19 @@ fn main() {
 				exit(1)
 			}
 			println('dark_mode=passed writes=0')
+		}
+		'vc-lock-dry-run' {
+			if os.args.len != 2 {
+				eprintln('usage: tccbin-automation vc-lock-dry-run')
+				exit(2)
+			}
+			update := bin.run_vc_lock_dry_run(automation_root, os.join_path(os.temp_dir(),
+				'tccbin-vc-lock-dry-run-${os.getpid()}')) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			print(update.diff)
+			println('vc_commit=${update.provenance.vc_commit} v_commit=${update.provenance.v_commit} changed=${update.changed()} writes=0')
 		}
 		'staged-preflight' {
 			if os.args.len != 7 || os.args[6] !in ['true', 'false'] {

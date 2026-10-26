@@ -39,8 +39,11 @@ pub struct ScopeBindingOwner {
 
 @[inline]
 fn scope_name_bit(name string) u64 {
-	first := if name.len > 0 { u32(name[0]) } else { 0 }
-	return u64(1) << ((first * 33 + u32(name.len)) & 63)
+	if name.len == 0 {
+		return u64(1)
+	}
+	// Distinguish equal-length identifiers sharing a prefix before probing a scope.
+	return u64(1) << ((u32(name[0]) * 33 + u32(name[name.len - 1]) * 7 + u32(name.len)) & 63)
 }
 
 @[inline]
@@ -52,8 +55,14 @@ fn scope_fast_slot(name string) int {
 	return int((u32(name[0]) * 11 + u32(name[name.len - 1]) * 2 + u32(name.len) * 3) & 31)
 }
 
+// scope_linear_names is how many bindings a scope finds by scanning its names.
+// Most scopes bind a few names; hashing a name, on insert and on a lookup that
+// misses the fast slots, costs more than comparing it with each of them. A
+// scope indexes its names in name_indexes only once it has more.
+const scope_linear_names = 8
+
 @[direct_array_access; inline]
-fn (s &Scope) own_binding_index(name string) ?int {
+fn (s &Scope) own_binding_index(name string) int {
 	if s.fast_lookup {
 		slot := scope_fast_slot(name)
 		if s.fast_generations[slot] == s.fast_generation
@@ -63,10 +72,28 @@ fn (s &Scope) own_binding_index(name string) ?int {
 			return int(s.fast_indexes[slot])
 		}
 	}
+	$if !ownership ? {
+		if s.names.len <= scope_linear_names {
+			return s.scan_own_binding_index(name)
+		}
+	}
 	if i := s.name_indexes[name] {
 		return i
 	}
-	return none
+	return -1
+}
+
+// scan_own_binding_index finds `name` among the names of a scope that has not
+// indexed them (see scope_linear_names).
+@[direct_array_access]
+fn (s &Scope) scan_own_binding_index(name string) int {
+	for i := s.names.len - 1; i >= 0; i-- {
+		bound := s.names[i]
+		if bound.len == name.len && (bound.str == name.str || bound == name) {
+			return i
+		}
+	}
+	return -1
 }
 
 @[direct_array_access; inline]
@@ -116,7 +143,11 @@ pub fn (mut s Scope) reset(parent &Scope) {
 		s.fast_generation = 1
 	}
 	$if !ownership ? {
-		s.name_indexes.clear()
+		// A small scope never indexed its names, and clearing an empty map
+		// still zeroes all of its retained capacity.
+		if s.name_indexes.len > 0 {
+			s.name_indexes.clear()
+		}
 	}
 	$if ownership ? {
 		s.generations.clear()
@@ -136,7 +167,7 @@ pub fn (s &Scope) contains(name string) bool {
 		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if scope.name_mask & bit != 0 {
-				if _ := scope.own_binding_index(name) {
+				if scope.own_binding_index(name) >= 0 {
 					return true
 				}
 			}
@@ -163,7 +194,8 @@ pub fn (s &Scope) lookup(name string) ?Type {
 		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if scope.name_mask & bit != 0 {
-				if i := scope.own_binding_index(name) {
+				i := scope.own_binding_index(name)
+				if i >= 0 {
 					return scope.types[i]
 				}
 			}
@@ -182,6 +214,50 @@ pub fn (s &Scope) lookup(name string) ?Type {
 	return none
 }
 
+// lookup_before returns the nearest binding for `name` in the scopes from this one
+// up to, but not including, `stop` (the whole chain when `stop` is nil).
+pub fn (s &Scope) lookup_before(name string, stop &Scope) ?Type {
+	if name.len == 0 {
+		return none
+	}
+	// Only the local pointer is reassigned; the scopes remain read-only.
+	mut scope := unsafe { &Scope(s) }
+	$if !ownership ? {
+		bit := scope_name_bit(name)
+		for scope != unsafe { nil } && voidptr(scope) != voidptr(stop) {
+			if scope.name_mask & bit != 0 {
+				i := scope.own_binding_index(name)
+				if i >= 0 {
+					return scope.types[i]
+				}
+			}
+			scope = scope.parent
+		}
+		return none
+	}
+	for scope != unsafe { nil } && voidptr(scope) != voidptr(stop) {
+		for i := scope.names.len - 1; i >= 0; i-- {
+			if scope.names[i] == name {
+				return scope.types[i]
+			}
+		}
+		scope = scope.parent
+	}
+	return none
+}
+
+// binds_own reports whether this scope itself, not a parent, binds `name`.
+@[inline]
+pub fn (s &Scope) binds_own(name string) bool {
+	$if !ownership ? {
+		if s.name_mask & scope_name_bit(name) == 0 {
+			return false
+		}
+		return s.own_binding_index(name) >= 0
+	}
+	return name in s.names
+}
+
 // lookup_owner returns the nearest scope that owns a visible binding for `name`.
 pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	if name.len == 0 {
@@ -196,7 +272,8 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 				scope = scope.parent
 				continue
 			}
-			if i := scope.own_binding_index(name) {
+			i := scope.own_binding_index(name)
+			if i >= 0 {
 				return ScopeBindingOwner{
 					scope:       scope
 					index:       i
@@ -226,6 +303,27 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	return none
 }
 
+// bound_type returns the current type of this binding while its scope is live.
+// It returns none after scope reuse or replacement of an ownership-mode binding.
+@[inline]
+pub fn (owner &ScopeBindingOwner) bound_type() ?Type {
+	if owner.scope == unsafe { nil } || owner.lifetime != owner.scope.lifetime
+		|| owner.index < 0 || owner.index >= owner.scope.types.len {
+		return none
+	}
+	$if ownership ? {
+		if owner.index >= owner.scope.generations.len
+			|| owner.scope.generations[owner.index] != owner.generation {
+			return none
+		}
+	} $else {
+		if owner.index >= owner.scope.names.len || owner.scope.names[owner.index] != owner.name {
+			return none
+		}
+	}
+	return owner.scope.types[owner.index]
+}
+
 // storage_key returns a stable key for this binding owner while its scope is live.
 pub fn (owner ScopeBindingOwner) storage_key() string {
 	if owner.scope == unsafe { nil } || owner.index < 0 {
@@ -238,9 +336,68 @@ fn scope_binding_storage_key(scope &Scope, lifetime int, index int, generation i
 	$if !ownership ? {
 		// The name alone would collapse every same-named binding in a
 		// function to one storage entry; keep the exact binding identity.
-		return '${voidptr(scope)}:${lifetime}:${index}'
+		// Spelled as `${voidptr(scope)}:${lifetime}:${index}`, without the
+		// interpolation machinery: every scope binding gets one.
+		return scope_binding_storage_key_text(u64(voidptr(scope)), lifetime, index)
 	}
 	return '${voidptr(scope)}:${lifetime}:${index}:${generation}'
+}
+
+// scope_binding_storage_key_text writes the lowercase hex digits of `ptr` (no
+// leading zeros, `0` for zero), then `:lifetime:index` in decimal.
+@[direct_array_access]
+fn scope_binding_storage_key_text(ptr u64, lifetime int, index int) string {
+	if lifetime < 0 || index < 0 {
+		return '${voidptr(ptr)}:${lifetime}:${index}'
+	}
+	mut buf := [64]u8{}
+	mut n := 0
+	mut shift := 60
+	for shift > 0 && (ptr >> u64(shift)) & 0xf == 0 {
+		shift -= 4
+	}
+	for shift >= 0 {
+		digit := u8((ptr >> u64(shift)) & 0xf)
+		buf[n] = if digit < 10 { `0` + digit } else { `a` + digit - 10 }
+		n++
+		shift -= 4
+	}
+	buf[n] = `:`
+	n++
+	n += write_storage_key_decimal(unsafe { &buf[n] }, lifetime)
+	buf[n] = `:`
+	n++
+	n += write_storage_key_decimal(unsafe { &buf[n] }, index)
+	// The key owns a standalone allocation, like an interpolated string.
+	mut out := unsafe { malloc_noscan(n + 1) }
+	unsafe {
+		vmemcpy(out, &buf[0], n)
+		out[n] = 0
+	}
+	return unsafe { tos(out, n) }
+}
+
+// write_storage_key_decimal writes the decimal digits of `value` (at least 0)
+// to `dst`, which has room for 20 bytes, and returns how many it wrote.
+@[direct_array_access]
+fn write_storage_key_decimal(dst &u8, value int) int {
+	mut digits := [20]u8{}
+	mut count := 0
+	mut rest := value
+	for {
+		digits[count] = u8(`0` + rest % 10)
+		count++
+		rest /= 10
+		if rest == 0 {
+			break
+		}
+	}
+	for i in 0 .. count {
+		unsafe {
+			dst[i] = digits[count - 1 - i]
+		}
+	}
+	return count
 }
 
 // belongs_to_scope reports whether this binding owner was declared directly in `scope`.
@@ -280,7 +437,8 @@ pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner)
 		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if scope.name_mask & bit != 0 {
-				if i := scope.own_binding_index(name) {
+				i := scope.own_binding_index(name)
+				if i >= 0 {
 					return voidptr(scope) == voidptr(owner.scope)
 						&& scope.lifetime == owner.lifetime && i == owner.index
 				}
@@ -301,6 +459,13 @@ pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner)
 	return false
 }
 
+// keep_string returns `text` itself. `arr << s` stores a copy of an addressable
+// string `s`; strings are immutable, so pushing `keep_string(s)` stores `s`.
+@[inline]
+fn keep_string(text string) string {
+	return text
+}
+
 // insert records or updates a type binding in this scope.
 pub fn (mut s Scope) insert(name string, typ Type) {
 	_ := s.insert_with_owner(name, typ)
@@ -310,31 +475,44 @@ pub fn (mut s Scope) insert(name string, typ Type) {
 // binding identity now visible for `name`.
 pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner {
 	$if !ownership ? {
-		if i := s.name_indexes[name] {
-			s.types[i] = typ
-			s.remember_fast_binding(name, i)
+		mut existing := -1
+		if s.names.len <= scope_linear_names {
+			existing = s.scan_own_binding_index(name)
+		} else if i := s.name_indexes[name] {
+			existing = i
+		}
+		if existing >= 0 {
+			s.types[existing] = typ
+			s.remember_fast_binding(name, existing)
 			return ScopeBindingOwner{
 				scope:       s
-				index:       i
+				index:       existing
 				lifetime:    s.lifetime
 				name:        name
-				storage_key: s.storage_keys[i]
+				storage_key: s.storage_keys[existing]
 			}
 		}
-		s.names << name
+		// Strings are immutable: the binding keeps the caller's name and the
+		// fresh key instead of a pushed copy of each.
+		s.names << keep_string(name)
 		s.types << typ
 		s.name_mask |= scope_name_bit(name)
 		index := s.names.len - 1
-		s.name_indexes[name] = index
+		if index == scope_linear_names {
+			for i, bound in s.names {
+				s.name_indexes[bound] = i
+			}
+		} else if index > scope_linear_names {
+			s.name_indexes[name] = index
+		}
 		s.remember_fast_binding(name, index)
-		storage_key := scope_binding_storage_key(s, s.lifetime, index, 0)
-		s.storage_keys << storage_key
+		s.storage_keys << scope_binding_storage_key(s, s.lifetime, index, 0)
 		return ScopeBindingOwner{
 			scope:       s
 			index:       index
 			lifetime:    s.lifetime
 			name:        name
-			storage_key: storage_key
+			storage_key: s.storage_keys[index]
 		}
 	}
 	for i := s.names.len - 1; i >= 0; i-- {

@@ -321,7 +321,7 @@ fn vls_index_between(source string, needle string, from int, to int) ?int {
 // its struct declares first.
 fn (tc &TypeChecker) vls_struct_init_hints(id flat.NodeId, node flat.Node, source string, mut hints []VlsInlayHint) {
 	// The checker keeps no type for a struct literal: it is the one it names.
-	typ := tc.expr_type(id) or { tc.parse_type(node.value.all_before('[')) }
+	typ := tc.expr_type(id) or { *tc.parse_type(flat.source_type_id(node.value.all_before('['))) }
 	fields := tc.vls_struct_fields(typ) or { return }
 	mut inits := []flat.NodeId{}
 	mut position := 0
@@ -351,7 +351,7 @@ fn (tc &TypeChecker) vls_struct_fields(typ Type) ?[]StructField {
 	if base !is Struct {
 		return none
 	}
-	name := (base as Struct).name
+	name := (base as Struct).name()
 	return tc.structs[name] or { tc.structs[name.all_before('[')] or { return none } }
 }
 

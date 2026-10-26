@@ -538,8 +538,8 @@ struct AlignedFixedHolder {
 
 fn observe_aligned_fixed(values &[]AlignedFixedItem) {
 	unsafe {
-		assert usize(&values[0]) % 64 == 0
-		assert usize(&values[1]) % 64 == 0
+		assert uint(&values[0]) % 64 == 0
+		assert uint(&values[1]) % 64 == 0
 	}
 }
 

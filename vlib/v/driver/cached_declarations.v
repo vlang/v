@@ -32,24 +32,24 @@ import v.types
 // of the compiler spells in a string literal: the functions that generated code
 // can call without a call in the program. `cached_declarations_test.v` works the
 // list out from the sources again and names what is missing here.
-const cached_runtime_function_names = ['__as_cast', '__new_array', '__new_array_noscan', 'arguments',
-	'array_sort_move', 'atoi', 'autostr_addr_pop', 'autostr_addr_type_in_stack',
-	'autostr_addr_type_push', 'builtin_init', 'closure_create_with_data', 'closure_data', 'closure_init',
-	'closure_try_destroy', 'common_parse_int', 'common_parse_uint', 'common_parse_uint2', 'copy',
-	'cstring_to_vstring', 'data_to_hex_string', 'drop_owned', 'drop_owned_v3_interface', 'eprint',
-	'eprintln', 'error', 'error_with_code', 'exit', 'fabs', 'fast_string_eq', 'format_int',
-	'format_uint', 'free', 'gc_runtime_init', 'is_digit', 'is_space', 'isnil', 'malloc', 'malloc_noscan',
-	'malloc_uncollectable', 'map_clone_int_1', 'map_clone_int_16', 'map_clone_int_2', 'map_clone_int_4',
-	'map_clone_int_8', 'map_clone_string', 'map_eq_int_1', 'map_eq_int_16', 'map_eq_int_2',
-	'map_eq_int_4', 'map_eq_int_8', 'map_eq_string', 'map_free_nop', 'map_free_string', 'map_hash_int_1',
-	'map_hash_int_16', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8', 'map_hash_string',
-	'map_map_eq', 'memdup', 'memdup_align', 'memdup_noscan', 'min', 'new_array_from_c_array',
-	'new_array_from_c_array_no_alloc', 'new_array_from_c_array_noscan', 'new_builder', 'new_map',
-	'panic', 'panic_debug', 'panic_frame_done', 'panic_frame_pop', 'panic_frame_push',
-	'panic_frame_relink', 'panic_frames_reset', 'panic_recover_frame', 'parse_int', 'parse_uint',
-	'parser', 'print', 'println', 'ptr_str', 'quote', 'recover', 'repeat', 'string_plus_many',
-	'tos2', 'v_fixed_index', 'v_fixed_index_i64', 'v_fixed_index_u64', 'v_gettid', 'vcalloc',
-	'vgc_scan_range']
+const cached_runtime_function_names = ['__as_cast', '__new_array', '__new_array_aligned',
+	'__new_array_noscan', 'arguments', 'array_sort_move', 'atoi', 'autostr_addr_pop',
+	'autostr_addr_type_in_stack', 'autostr_addr_type_push', 'builtin_init', 'closure_create_with_data',
+	'closure_data', 'closure_init', 'closure_try_destroy', 'common_parse_int', 'common_parse_uint',
+	'common_parse_uint2', 'copy', 'cstring_to_vstring', 'data_to_hex_string', 'drop_owned',
+	'drop_owned_v3_interface', 'eprint', 'eprintln', 'error', 'error_with_code', 'exit', 'fabs',
+	'fast_string_eq', 'format_int', 'format_uint', 'free', 'gc_runtime_init', 'is_digit', 'is_space',
+	'isnil', 'malloc', 'malloc_noscan', 'malloc_uncollectable', 'map_clone_int_1', 'map_clone_int_16',
+	'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8', 'map_clone_string', 'map_eq_int_1',
+	'map_eq_int_16', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8', 'map_eq_string', 'map_free_nop',
+	'map_free_string', 'map_hash_int_1', 'map_hash_int_16', 'map_hash_int_2', 'map_hash_int_4',
+	'map_hash_int_8', 'map_hash_string', 'map_map_eq', 'memdup', 'memdup_align', 'memdup_noscan',
+	'min', 'new_array_from_c_array', 'new_array_from_c_array_aligned', 'new_array_from_c_array_no_alloc',
+	'new_array_from_c_array_noscan', 'new_builder', 'new_map', 'new_map_aligned', 'panic', 'panic_debug',
+	'panic_frame_done', 'panic_frame_pop', 'panic_frame_push', 'panic_frame_relink',
+	'panic_frames_reset', 'panic_recover_frame', 'parse_int', 'parse_uint', 'parser', 'print',
+	'println', 'ptr_str', 'quote', 'recover', 'repeat', 'string_plus_many', 'tos2', 'v_fixed_index',
+	'v_fixed_index_i64', 'v_fixed_index_u64', 'v_gettid', 'vcalloc', 'vgc_scan_range']
 
 // cached_module_function_names are the plain functions of the other modules of
 // vlib that a stage of the compiler spells in a string literal, with the name of
@@ -58,16 +58,18 @@ const cached_runtime_function_names = ['__as_cast', '__new_array', '__new_array_
 // where it is not declared. `cached_declarations_test.v` works this list out again
 // as well.
 const cached_module_function_names = ['debug.after_call_hook', 'debug.before_call_hook',
-	'dl.interface_export_find', 'embed_file.join_chunks', 'json2.decode', 'json2.encode', 'math.abs',
-	'math.fmod', 'math.min', 'orm.v_sql_query_data_add', 'orm.v_sql_query_data_parentheses', 'os.exists',
-	'os.exists_in_system_path', 'os.file_ext', 'os.file_name', 'os.find_abs_path_of_executable',
-	'os.getpid', 'os.is_abs_path', 'os.is_dir', 'os.is_drive_rooted', 'os.is_executable', 'os.is_file',
-	'os.is_normal_path', 'os.is_unc_path', 'os.join_path', 'os.join_path_single',
-	'os.kind_of_existing_path', 'os.ls', 'os.mkdir', 'os.mkdir_all', 'os.posix_get_error_msg',
-	'os.read_bytes', 'os.read_file', 'os.real_path', 'os.walk', 'os.win_volume_len', 'overflow.add_i8',
-	'rand.init', 'sync.channel_select', 'sync.channel_select_lang', 'sync.cpanic', 'sync.cpanic_errno',
-	'sync.new_channel_st', 'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now',
-	'time.vpc_now_darwin', 'veb.run_at']
+	'dl.interface_export_find', 'embed_file.join_chunks', 'executable.add_live_monitored_file',
+	'executable.new_live_reload_info', 'executable.start_reloader', 'json2.decode', 'json2.encode',
+	'math.abs', 'math.fmod', 'math.min', 'orm.v_sql_query_data_add', 'orm.v_sql_query_data_parentheses',
+	'os.exists', 'os.exists_in_system_path', 'os.file_ext', 'os.file_name',
+	'os.find_abs_path_of_executable', 'os.getpid', 'os.is_abs_path', 'os.is_dir', 'os.is_drive_rooted',
+	'os.is_executable', 'os.is_file', 'os.is_normal_path', 'os.is_unc_path', 'os.join_path',
+	'os.join_path_single', 'os.kind_of_existing_path', 'os.ls', 'os.mkdir', 'os.mkdir_all',
+	'os.posix_get_error_msg', 'os.quoted_path', 'os.read_bytes', 'os.read_file', 'os.real_path',
+	'os.walk', 'os.win_volume_len', 'overflow.add_i8', 'rand.init', 'sync.channel_select',
+	'sync.channel_select_lang', 'sync.cpanic', 'sync.cpanic_errno', 'sync.new_channel_st',
+	'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now', 'time.vpc_now_darwin',
+	'veb.run_at']
 
 // cached_function_name_patterns are the names that a stage of the compiler puts
 // together when it runs, as far as its string literals show them: a name with
@@ -79,10 +81,11 @@ const cached_module_function_names = ['debug.after_call_hook', 'debug.before_cal
 // among them; neither is one that fits no function of vlib, which is the name of
 // something else: a temporary, a type, a keyword. `cached_declarations_test.v`
 // works this list out again too.
-const cached_function_name_patterns = ['*.arg*', '*.free', '*.json', '*.len', '*_break', '*_callback',
-	'*_clone', '*_ctx', '*_free', '*_hash', '*_idx', '*_key_*', '*_map_key', '*_object', '*_source',
-	'*_str', '*_thread_args', '*_value_*', '*data', '*defined', '*nil', '*void', '.arg*', 'arg*',
-	'main*', 'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*', 'ptr_*', 'voidptr*', 'vpc_*_*']
+const cached_function_name_patterns = ['*.arg*', '*.free', '*.json', '*.len', '*_aligned', '*_break',
+	'*_callback', '*_clone', '*_continue', '*_free', '*_hash', '*_idx', '*_key_*', '*_map_key',
+	'*_object', '*_source', '*_str', '*_thread_args', '*_value_*', '*data', '*defined', '*nil',
+	'*void', '.arg*', 'arg*', 'main*', 'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*', 'ptr_*',
+	'voidptr*', 'vpc_*_*']
 
 // module_lifecycle_function_names are the functions that a program calls for each
 // of its modules that has them, without a call in its source.
@@ -432,7 +435,7 @@ fn restart_v3_with_all_cached_declarations(manager &modulecache.Manager, reason 
 	if notices_printed {
 		args << v3_internal_checker_notices_printed_flag
 	}
-	restart_v3_with_args(args)
+	restart_v3_with_args(args, '')
 }
 
 // restart_v3_for_errors_of_pruned_build starts a build that left functions out

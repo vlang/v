@@ -12,11 +12,11 @@ fn staging_container_decl_source(kind flat.NodeKind, typ types.Type, marker stri
 	if captured {
 		g.defer_capture_types['staged'] = typ
 	}
-	lhs := a.add_node(flat.Node{ kind: .ident, value: 'staged', typ: typ.name() })
+	lhs := a.add_node(flat.Node{ kind: .ident, value: 'staged', typ: typ.source_type_id() })
 	rhs := a.add_node(flat.Node{
 		kind:  kind
 		value: if typ is types.Array { typ.elem_type.name() } else { typ.name() }
-		typ:   typ.name()
+		typ:   typ.source_type_id()
 	})
 	tc.register_synth_type(rhs, typ)
 	start := a.children.len
@@ -24,7 +24,7 @@ fn staging_container_decl_source(kind flat.NodeKind, typ types.Type, marker stri
 	decl := flat.Node{
 		kind:           .decl_assign
 		value:          marker
-		typ:            typ.name()
+		typ:            typ.source_type_id()
 		children_start: i32(start)
 		children_count: 2
 	}
@@ -48,9 +48,9 @@ fn test_staging_array_skips_default_allocation_and_keeps_ordinary_defaults() {
 	typ := types.Type(types.Array{ elem_type: types.Type(types.int_) })
 	assert staging_container_decl_source(.array_init, typ, '__v3_zeroed_stack_value_decl', false) == 'Array staged = {0};\n'
 	ordinary := staging_container_decl_source(.array_init, typ, '', false)
-	assert ordinary.contains('Array staged = array_new('), ordinary
+	assert ordinary.contains('Array staged = __new_array_noscan('), ordinary
 	captured := staging_container_decl_source(.array_init, typ, '__v3_zeroed_stack_value_decl', true)
-	assert captured.starts_with('staged = array_new('), captured
+	assert captured.starts_with('staged = __new_array_noscan('), captured
 }
 
 fn staging_map_choice(choice int, left map[string]int, right map[string]int) map[string]int {

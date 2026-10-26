@@ -35,6 +35,11 @@ jobs:
         os: [ubuntu-latest, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -76,8 +81,9 @@ jobs:
         if: ${{ github.event_name != 'pull_request' && success() }}
         run: |
           v retry -- v install markdown
-          v retry -- git clone https://github.com/vlang/docs --branch generator --depth 1
-          cd docs
+          rm -rf docs_generator
+          v retry -- git clone https://github.com/vlang/docs --branch generator --depth 1 docs_generator
+          cd docs_generator
           v .
 
       - name: Test vtcc

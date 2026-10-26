@@ -4,16 +4,12 @@ import os
 import net.urllib
 import encoding.html
 import strings
-import markdown
+import x.markdown
 import document as doc
 
 const css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
 const default_theme = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vdoc', 'theme')
 const link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
-
-const single_quote = "'"
-const double_quote = '"'
-const quote_escape_seq = [single_quote, '', double_quote, '']
 
 fn tabs(n int) string {
 	return '\t'.repeat(n)
@@ -483,9 +479,7 @@ fn html_highlight(code string) string {
 			buf.write_string(escape_code(code[offset..highlighted.start]))
 		}
 		raw := code[highlighted.start..highlighted.end]
-		// Module and type names are not styled in HTML yet. `module_` is a guess, that also
-		// matches variables and fields before a `.`, so it is better not to publish it as a class.
-		if highlighted.typ in [.name, .module_, .type_name] {
+		if highlighted.typ == .name {
 			buf.write_string(escape_code(raw))
 		} else {
 			buf.write_string('<span class="token ${highlighted.typ}">${escape_code(raw)}</span>')
@@ -505,23 +499,28 @@ fn escape_code(text string) string {
 fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			relative_link_base: md_link_base
+	mut renderer := markdown.HTMLRenderer{
+		opts:             markdown.Options{}
+		code_highlighter: fn (lang string, code string) string {
+			if lang == '' {
+				return html.escape(code)
+			}
+			return html_highlight(code)
+		}
+		link_base:        md_link_base
+		link_resolver:    fn (base string, url string) string {
+			return resolve_relative_markdown_link(base, url)
 		}
 	}
 	only_comments_text := dn.merge_comments_without_examples()
-	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer) or {
-		''
-	}
-	highlighted_code := html_highlight(dn.content)
+	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
-	mut deprecated_tags := dn.tags.filter(it.starts_with('deprecated'))
+	mut deprecated_tags := dn.tags.filter(is_deprecated_attribute(it))
 	if doc.should_sort {
 		deprecated_tags.sort()
 	}
-	mut tags := dn.tags.filter(!it.starts_with('deprecated'))
+	mut tags := dn.tags.filter(!is_deprecated_attribute(it))
 	if doc.should_sort {
 		tags.sort()
 	}
@@ -543,20 +542,50 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		}
 		dnw.write_string('</div>\n')
 	}
-	if deprecated_tags.len > 0 {
+	// The declarations of a symbol with variants can have different attributes, so each of them
+	// shows its own in its signature, instead of above all of them.
+	attributes_in_signatures := dn.variants.len > 0
+	if deprecated_tags.len > 0 && !attributes_in_signatures {
 		attributes :=
-			deprecated_tags.map('<div class="attribute attribute-deprecated">${it.replace_each(quote_escape_seq)}</div>\n').join('')
+			deprecated_tags.map('<div class="attribute attribute-deprecated">${html.escape(it)}</div>\n').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
-	if tags.len > 0 {
-		attributes := tags.map('<div class="attribute">${it}</div>').join('')
+	if tags.len > 0 && !attributes_in_signatures {
+		attributes := tags.map('<div class="attribute">${html.escape(it)}</div>').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>')
 	}
+	comments_apart := !head && dn.content.len > 0 && has_variant_comments(dn)
 	if !head && dn.content.len > 0 {
-		dnw.writeln('<pre class="signature">\n<code>${highlighted_code}</code></pre>')
+		dnw.write_string(declaration_html(dn, attributes_in_signatures))
+		// The comment is shown once, after all the declarations, unless they have their own.
+		if comments_apart {
+			dnw.writeln(md_content)
+		}
+		for variant in dn.variants {
+			dnw.write_string(declaration_html(variant, true))
+			if has_own_comments(variant, dn) {
+				mut variant_renderer := markdown.HTMLRenderer{
+					opts:             markdown.Options{}
+					code_highlighter: fn (lang string, code string) string {
+						if lang == '' {
+							return html.escape(code)
+						}
+						return html_highlight(code)
+					}
+					link_base:        md_link_base
+					link_resolver:    fn (base string, url string) string {
+						return resolve_relative_markdown_link(base, url)
+					}
+				}
+				variant_comments := prepare_markdown_for_html(variant.merge_comments_without_examples())
+				dnw.writeln(markdown.render(variant_comments, mut variant_renderer))
+			}
+		}
 	}
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
-	dnw.writeln('${md_content}\n')
+	if !comments_apart {
+		dnw.writeln('${md_content}\n')
+	}
 	// Write examples if any found
 	examples := dn.examples()
 	if include_examples && examples.len > 0 {
@@ -571,6 +600,22 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	return dnw_str
+}
+
+// declaration_html returns the signature of `dn`, after the platforms that it is available on,
+// since they apply to all the declarations of a group of constants.
+fn declaration_html(dn doc.DocNode, with_attributes bool) string {
+	mut result := ''
+	platforms := doc.platforms_note(dn.platforms, fn (name string) string {
+		return '<strong>${name}</strong>'
+	})
+	if platforms != '' {
+		result += '<p class="platforms">${platforms}</p>\n'
+	}
+	// The attributes are usually shown above the signature, so they are left out of it.
+	code := if with_attributes { dn.content } else { without_attribute_lines(dn.content) }
+	highlighted_code := html_highlight(code)
+	return result + '<pre class="signature">\n<code>${highlighted_code}</code></pre>\n'
 }
 
 fn prepare_markdown_for_html(text string) string {
@@ -753,38 +798,6 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	toc.writeln('</li>')
 }
 
-struct MdHtmlCodeHighlighter {
-mut:
-	language           string
-	relative_link_base string
-}
-
-fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name string, value string) string {
-	mut transformed := value
-	if p is markdown.MD_SPANTYPE && p in [.md_span_a, .md_span_img] && name in ['href', 'src'] {
-		transformed = resolve_relative_markdown_link(f.relative_link_base, value)
-	}
-	return markdown.default_html_transformer.transform_attribute(p, name, transformed)
-}
-
-fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
-	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
-		if f.language == '' {
-			return html.escape(text)
-		}
-		output := html_highlight(text)
-		// Reset the language, so that it will not persist between blocks,
-		// and will not be accidentally re-used for the next block, that may be lacking ```language :
-		unsafe {
-			f.language = ''
-		}
-		return output
-	}
-	return text
-}
-
-fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {
-	if key == 'code_language' {
-		f.language = val
-	}
-}
+// MdHtmlCodeHighlighter is no longer used; code highlighting and relative-link
+// resolution are now handled through the code_highlighter / link_resolver
+// callbacks of x.markdown's HTMLRenderer.

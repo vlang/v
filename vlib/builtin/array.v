@@ -12,7 +12,7 @@ import strings
 pub struct array {
 pub mut:
 	data   voidptr
-	offset int // in bytes (should be `usize`), to avoid copying data while making slices, unless it starts changing
+	offset int // in bytes (should be `uint`), to avoid copying data while making slices, unless it starts changing
 	len    int // length of the array in elements.
 	cap    int // capacity of the array in elements.
 	flags  ArrayFlags
@@ -59,7 +59,7 @@ fn array_data_allocation_size(total_size u64) u64 {
 @[inline]
 fn init_array_data(raw voidptr) voidptr {
 	// At most 15 bytes of padding keep both the header and element storage aligned.
-	padding := (16 - (usize(raw) + usize(array_data_header_size())) % 16) % 16
+	padding := (16 - (uint(raw) + uint(array_data_header_size())) % 16) % 16
 	unsafe {
 		data := &u8(raw) + array_data_header_size() + padding
 		header := &ArrayDataHeader(data - array_data_header_size())
@@ -83,12 +83,16 @@ fn alloc_array_data_uninit(total_size u64) voidptr {
 }
 
 @[inline]
-fn (a array) uses_noscan_data() bool {
+fn (a &array) uses_noscan_data() bool {
 	return a.flags.has(.noscan_data)
 }
 
 @[inline]
-fn (a array) alloc_array_data_like(total_size u64) voidptr {
+fn (a &array) alloc_array_data_like(total_size u64) voidptr {
+	alignment := a.data_alignment()
+	if alignment > 16 {
+		return alloc_array_data_aligned(total_size, alignment, true)
+	}
 	$if gcboehm_opt ? {
 		if a.uses_noscan_data() {
 			return alloc_array_data_noscan(total_size)
@@ -98,7 +102,11 @@ fn (a array) alloc_array_data_like(total_size u64) voidptr {
 }
 
 @[inline]
-fn (a array) alloc_array_data_like_uninit(total_size u64) voidptr {
+fn (a &array) alloc_array_data_like_uninit(total_size u64) voidptr {
+	alignment := a.data_alignment()
+	if alignment > 16 {
+		return alloc_array_data_aligned(total_size, alignment, false)
+	}
 	$if gcboehm_opt ? {
 		if a.uses_noscan_data() {
 			return alloc_array_data_noscan_uninit(total_size)
@@ -108,7 +116,7 @@ fn (a array) alloc_array_data_like_uninit(total_size u64) voidptr {
 }
 
 @[inline; unsafe]
-fn (a array) data_header() &ArrayDataHeader {
+fn (a &array) data_header() &ArrayDataHeader {
 	if !a.flags.has(.managed) || a.data == unsafe { nil } {
 		return unsafe { nil }
 	}
@@ -117,7 +125,7 @@ fn (a array) data_header() &ArrayDataHeader {
 }
 
 @[inline]
-fn (a array) buffer_has_slices() bool {
+fn (a &array) buffer_has_slices() bool {
 	if a.flags.has(array_flag_retained_aligned_fixed) {
 		return true
 	}
@@ -454,12 +462,12 @@ pub fn (mut a array) ensure_cap(required int) {
 		if a.flags.has(.noslices) && !a.flags.has(.is_slice) && !a.buffer_has_slices() {
 			unsafe {
 				$if prealloc {
-					prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size))
+					prealloc_discard_pages(a.data, uint(a.cap) * uint(a.element_size))
 				}
 				if a.flags.has(.managed) {
-					free(a.data_header().allocation)
+					free_unaliased(a.data_header().allocation)
 				} else {
-					free(a.data)
+					free_unaliased(a.data)
 				}
 			}
 		}
@@ -500,18 +508,13 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		size = u64(a.element_size)
 	}
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
-	mut data := unsafe { nil }
-	if use_noscan_data {
-		data = a.alloc_array_data_like(size)
-	} else {
-		data = alloc_array_data(size)
-	}
+	data := a.alloc_array_data_like(size)
 	arr := array{
 		element_size: a.element_size
 		data:         data
 		len:          count * a.len
 		cap:          count * a.len
-		flags:        if use_noscan_data { .managed | .noscan_data } else { .managed }
+		flags:        a.storage_flags(use_noscan_data)
 	}
 	if a.len > 0 {
 		a_total_size := u64(a.len) * u64(a.element_size)
@@ -535,22 +538,22 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 }
 
 @[inline]
-fn (a array) needs_unique_shift(required int) bool {
+fn (a &array) needs_unique_shift(required int) bool {
 	return required <= a.cap && (a.flags.has(.is_slice) || a.buffer_has_slices())
 }
 
 @[inline]
-fn (a array) needs_unique_append(required int) bool {
+fn (a &array) needs_unique_append(required int) bool {
 	return required <= a.cap && a.flags.has(.is_slice)
 }
 
 @[inline]
-fn (a array) needs_unique_shrink() bool {
+fn (a &array) needs_unique_shrink() bool {
 	return a.flags.has(.is_slice) || a.buffer_has_slices()
 }
 
 @[inline]
-fn (a array) is_slice_view() bool {
+fn (a &array) is_slice_view() bool {
 	return a.flags.has(.is_slice)
 }
 
@@ -1030,7 +1033,8 @@ fn (a array) slice(start int, _end int) array {
 	offset := u64(start) * u64(a.element_size)
 	data := unsafe { &u8(a.data) + offset }
 	l := end - start
-	mut flags := ArrayFlags.is_slice | (a.flags & ArrayFlags.managed)
+	mut flags := unsafe { ArrayFlags(u32(a.flags) & (array_alignment_mask | u32(ArrayFlags.managed))) }
+	unsafe { flags.set(.is_slice) }
 	if a.uses_noscan_data() {
 		unsafe { flags.set(.noscan_data) }
 	}
@@ -1053,7 +1057,8 @@ fn (a array) slice(start int, _end int) array {
 // This function always return a valid array.
 fn (a array) slice_ni(_start int, _end int) array {
 	unsafe { a.mark_buffer_has_slices() }
-	mut flags := ArrayFlags.is_slice | (a.flags & ArrayFlags.managed)
+	mut flags := unsafe { ArrayFlags(u32(a.flags) & (array_alignment_mask | u32(ArrayFlags.managed))) }
+	unsafe { flags.set(.is_slice) }
 	if a.uses_noscan_data() {
 		unsafe { flags.set(.noscan_data) }
 	}
@@ -1137,9 +1142,9 @@ pub fn (a &array) clone_to_depth(depth int) array {
 				data = a.alloc_array_data_like(source_capacity_in_bytes)
 			}
 		} else if copies_capacity {
-			data = alloc_array_data_uninit(source_capacity_in_bytes)
+			data = a.alloc_array_data_like_uninit(source_capacity_in_bytes)
 		} else {
-			data = alloc_array_data(source_capacity_in_bytes)
+			data = a.alloc_array_data_like(source_capacity_in_bytes)
 		}
 	}
 	mut arr := array{
@@ -1147,7 +1152,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		data:         data
 		len:          a.len
 		cap:          a.cap
-		flags:        if use_noscan_data { .managed | .noscan_data } else { .managed }
+		flags:        a.storage_flags(use_noscan_data)
 	}
 	// Recursively clone-generated elements if array element is array type
 	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
@@ -1194,9 +1199,9 @@ fn (mut a array) set(i int, val voidptr) {
 // with indexes it has already bounded, so it skips the per-element range checks
 // of `array.set`.
 @[inline; markused; unsafe]
-fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_size usize) {
-	vmemcpy(&u8(dst) + usize(di) * element_size, &u8(src) + usize(si) * element_size,
-		isize(usize(count) * element_size))
+fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_size uint) {
+	vmemcpy(&u8(dst) + uint(di) * element_size, &u8(src) + uint(si) * element_size,
+		int(uint(count) * element_size))
 }
 
 $if !v3_backend ? {
@@ -1373,7 +1378,7 @@ pub fn (a array) reverse() array {
 		data:         a.alloc_array_data_like(u64(a.cap) * u64(a.element_size))
 		len:          a.len
 		cap:          a.cap
-		flags:        if use_noscan_data { .managed | .noscan_data } else { .managed }
+		flags:        a.storage_flags(use_noscan_data)
 	}
 	for i in 0 .. a.len {
 		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }
@@ -1386,7 +1391,7 @@ pub fn (a array) reverse() array {
 pub fn (a &array) free() {
 	$if prealloc {
 		if !a.flags.has(.is_slice) && !a.flags.has(.nofree) && !a.buffer_has_retained_fixed_views() {
-			unsafe { prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size)) }
+			unsafe { prealloc_discard_pages(a.data, uint(a.cap) * uint(a.element_size)) }
 		}
 		return
 	}
@@ -1401,13 +1406,18 @@ pub fn (a &array) free() {
 	if a.flags.has(.nofree) || a.buffer_has_retained_fixed_views() {
 		return
 	}
-	mblock_ptr := &u8(u64(a.data) - u64(a.offset))
+	mblock_ptr := &u8(uint(a.data) - uint(a.offset))
 	if mblock_ptr != unsafe { nil } {
 		unsafe {
-			if a.flags.has(.managed) {
-				free(a.data_header().allocation)
+			allocation := if a.flags.has(.managed) {
+				a.data_header().allocation
 			} else {
-				free(mblock_ptr)
+				voidptr(mblock_ptr)
+			}
+			if a.flags.has(.noslices) {
+				free_unaliased(allocation)
+			} else {
+				free(allocation)
 			}
 		}
 	}
@@ -1493,6 +1503,9 @@ pub fn (a array) map(callback fn (voidptr) voidptr) array
 // The expression uses 2 'magic' variables `a` and `b` as pointers to the two elements
 // being compared.
 // Equal elements keep their original relative order.
+// Without an argument, the order is ascending by `<`; float NaNs, which `<` cannot
+// order, come last, in their original relative order. A test expression is used
+// as given, so `sort(a < b)` does not order floats around a NaN.
 //
 // Example: mut aa := [5,2,1,10]; aa.sort(); assert aa == [1,2,5,10] // will sort the array in ascending order
 // Example: mut aa := [5,2,1,10]; aa.sort(b < a); assert aa == [10,5,2,1] // will sort the array in descending order
@@ -1502,6 +1515,7 @@ pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 // sorted returns a sorted copy of the original array. The original array is *NOT* modified.
 // See also .sort() .
 // Equal elements keep their original relative order.
+// Without an argument, float NaNs come last, as in .sort() .
 // Example: assert [9,1,6,3,9].sorted() == [1,3,6,9,9]
 // Example: assert [9,1,6,3,9].sorted(b < a) == [9,9,6,3,1]
 pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
@@ -1533,7 +1547,7 @@ pub fn (mut a array) sort_with_compare(callback FnSortCB) {
 	$if freestanding {
 		panic('sort_with_compare does not work with -freestanding')
 	} $else {
-		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
+		unsafe { vqsort(a.data, uint(a.len), uint(a.element_size), callback) }
 	}
 }
 
@@ -1543,7 +1557,7 @@ pub fn (mut a array) sort_with_compare(callback FnSortCB) {
 // Equal elements keep their original relative order.
 pub fn (a &array) sorted_with_compare(callback FnSortCB) array {
 	mut r := a.clone()
-	unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }
+	unsafe { vqsort(r.data, uint(r.len), uint(r.element_size), callback) }
 	return r
 }
 
@@ -1626,7 +1640,7 @@ pub fn (b []u8) hex() string {
 pub fn copy(mut dst []u8, src []u8) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
-		unsafe { vmemmove(dst.data, src.data, isize(min) * isize(dst.element_size)) }
+		unsafe { vmemmove(dst.data, src.data, int(min) * int(dst.element_size)) }
 	}
 	return min
 }

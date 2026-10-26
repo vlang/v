@@ -11,6 +11,9 @@ on:
       - '!**/gen_vc_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
+      - '!cmd/tools/gen_vc/**'
+      - 'thirdparty/tccbin_automation/bootstrap/vc.lock'
+      - 'thirdparty/tccbin_automation/tests/workflow_contract_test.v'
   push:
     branches:
       - master
@@ -22,6 +25,9 @@ on:
       - '!**/gen_vc_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
+      - '!cmd/tools/gen_vc/**'
+      - 'thirdparty/tccbin_automation/bootstrap/vc.lock'
+      - 'thirdparty/tccbin_automation/tests/workflow_contract_test.v'
 
 permissions:
   contents: read
@@ -32,19 +38,33 @@ concurrency:
   group: gen_vc-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
+# Exactly one of the two jobs runs for each event. `deploy` publishes vlang/vc from vlang/v master
+# until the vcgen.vlang.io service takes over (see doc/vcgen_service.md): setting the repository
+# variable VCGEN_SERVICE to `live` hands publishing to the service, and `validate` runs instead.
 jobs:
-  build-vc:
+  validate:
+    if: github.event_name == 'pull_request' || github.repository != 'vlang/v' || github.ref != 'refs/heads/master' || vars.VCGEN_SERVICE == 'live'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-        if: github.event_name == 'pull_request'
+      - name: Build V
+        run: make -j4
+      - name: Generate and check v.c and v_win.c
+        run: |
+          ./v -o gen_vc cmd/tools/gen_vc
+          ./gen_vc snapshot . vc_snapshot
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master' && vars.VCGEN_SERVICE != 'live'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
       # Push runs may wait in the Actions queue while master advances. Generate from
       # the current tip when the job starts, so the snapshot can still be published.
       - uses: actions/checkout@v7
-        if: github.event_name != 'pull_request'
         with:
           persist-credentials: false
           ref: master
@@ -61,35 +81,10 @@ jobs:
           rm -rf vc
           ./v retry -- git clone --depth=1 "https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/vc.git"
 
-          rm -rf vc/v.c vc/v_win.c
-          ./v -o vc/v.c     -cross               cmd/v
-          ./v -o vc/v_win.c -cross -os windows -cc msvc cmd/v
-
-          sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v.c
-          sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v_win.c
-
-          # do some sanity checks for the generated v.c/v_win.c files. `-cross` makes `$if cross ?`
-          # (and the `?`-guarded v1_fallback/musl branches that key off it, e.g. in
-          # target-specific compiler support files resolve statically instead of compiling out empty,
-          # which is what lets GNUmakefile later recompile these snapshots with
-          # -DCUSTOM_DEFINE_v1_fallback to build v1$(EXE_EXT).
-          grep 'Turned ON custom defines: no_backtrace,cross'  vc/v.c
-          grep '#define CUSTOM_DEFINE_cross' vc/v.c
-          grep 'Turned ON custom defines: no_backtrace,cross'  vc/v_win.c
-          grep '#define CUSTOM_DEFINE_cross' vc/v_win.c
-
-          # the snapshots must not contain FastC: its libtcc linking and Mach-O signing are
-          # host specific, so e.g. macOS `make` could not compile a v.c generated on Linux.
-          # The compiler built from the snapshot rebuilds cmd/v natively, which keeps FastC.
-          # (`! grep` would not stop the step: `bash -e` ignores negated commands.)
-          if grep -q 'fastc__' vc/v.c vc/v_win.c; then
-            echo "the generated vc/v.c or vc/v_win.c contains the FastC backend"
-            exit 1
-          fi
-
-          # ensure the generated C files for the compiler, are over 5000 lines long, as a safety measure
-          [ "$(wc -l < vc/v.c)" -gt 5000 ]
-          [ "$(wc -l < vc/v_win.c)" -gt 5000 ]
+          # Writes vc/v.c and vc/v_win.c with `#define V_COMMIT_HASH "$COMMIT_HASH"` as their
+          # first line, and runs the snapshot sanity checks (cmd/tools/gen_vc/snapshot.v).
+          ./v -o gen_vc cmd/tools/gen_vc
+          ./gen_vc snapshot . vc
 
           git -C vc add v.c v_win.c
           if git -C vc diff --cached --quiet; then
@@ -103,7 +98,6 @@ jobs:
           git -C vc log -3
 
       - name: Deploy
-        if: github.event_name != 'pull_request' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

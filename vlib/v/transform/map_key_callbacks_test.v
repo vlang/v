@@ -20,8 +20,7 @@ fn test_map_callbacks_follow_target_width_not_host_width() {
 	for bits in [32, 64] {
 		types.set_platform_int_bits(bits)
 		expected := map_callback_test_integer_names((bits / 8).str())
-		for key in ['int', 'isize', 'usize', 'uint', 'voidptr', 'charptr', 'byteptr', '&int', '&Item',
-			'&&Item'] {
+		for key in ['int', 'uint', 'voidptr', 'charptr', 'byteptr', '&int', '&Item', '&&Item'] {
 			assert map_callback_test_names(key) == expected, '${bits}: ${key}'
 		}
 	}
@@ -64,13 +63,13 @@ fn test_map_callbacks_resolve_aliases_and_keep_fixed_array_helpers() {
 			'WideKey':   'u64'
 			'TinyKey':   'u8'
 			'TextKey':   'string'
-			'IndexKey':  'usize'
+			'IndexKey':  'uint'
 			'PtrKey':    'voidptr'
 			'NestedKey': 'TextKey'
 			'BlockKey':  '[2]u64'
 		}
 		for name, base in aliases {
-			tc.type_aliases[name] = base
+			tc.type_aliases.set_id(name, flat.source_type_id(base))
 			tc.type_alias_modules[name] = 'main'
 		}
 		t := Transformer{
@@ -79,10 +78,10 @@ fn test_map_callbacks_resolve_aliases_and_keep_fixed_array_helpers() {
 			cur_module: 'main'
 		}
 		for name, base in aliases {
-			hash_fn, eq_fn, clone_fn, free_fn := t.map_callback_names_for_type(name)
+			hash_fn, eq_fn, clone_fn, free_fn := t.map_callback_names_for_type(flat.source_type_id(name))
 			actual := [hash_fn, eq_fn, clone_fn, free_fn]
 			if name == 'BlockKey' {
-				prefix := '${tc.c_type(tc.parse_type(base))}_map_key'
+				prefix := '${tc.c_type(tc.parse_type(flat.source_type_id(base)))}_map_key'
 				assert actual == ['${prefix}_hash', '${prefix}_eq', '${prefix}_clone',
 					'${prefix}_free']
 			} else {

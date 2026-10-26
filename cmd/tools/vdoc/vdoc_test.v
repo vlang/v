@@ -5,7 +5,7 @@ module main
 import os
 import arrays
 import document as doc
-import markdown
+import x.markdown
 import term
 
 const vexe_path = @VEXE
@@ -173,11 +173,24 @@ fn kind_of(code string, raw string) string {
 	return 'no token `${raw}`'
 }
 
+// kinds_of returns the kind of every token of `code` that is `raw`.
+fn kinds_of(code string, raw string) []string {
+	return highlight_tokens(code).filter(code[it.start..it.end] == raw).map(it.typ.str())
+}
+
 fn test_highlight_tokens_map_as_a_builtin() {
 	assert classify('map[string]int') == ['map:builtin', '[:punctuation', 'string:builtin',
 		']:punctuation', 'int:builtin']
 	// The `.map()` method is not the map type.
 	assert kind_of('a.map(it)', 'map') == 'function'
+}
+
+fn test_highlight_tokens_generic_function() {
+	assert kind_of('fn map_of[T](x T) T', 'map_of') == 'function'
+	assert kind_of('decode[Config](text)', 'decode') == 'function'
+	assert kind_of('pairs[map[string]int](x)', 'pairs') == 'function'
+	// An index is not a call.
+	assert kinds_of('items[0] + items[1]', 'items') == ['name', 'name']
 }
 
 fn test_highlight_tokens_negated_keywords() {
@@ -229,18 +242,130 @@ fn test_highlight_tokens_qualified_enum_value() {
 	assert kind_of('http.Method.post', 'post') == 'enum_value'
 	// A static method, compile time reflection and C or JS names are not enum values.
 	assert kind_of('Foo.new()', 'new') == 'function'
+	assert kind_of('fn Sides.from[W](input W) !Sides', 'from') == 'function'
+	assert kind_of('Sides.from[int](3)', 'from') == 'function'
+	assert kind_of('Sides.top[0]', 'top') == 'enum_value'
 	assert kind_of('\$for f in T.fields {}', 'fields') == 'name'
 	assert classify('C.FILE') == ['C:type_name', '.:punctuation', 'FILE:type_name']
 	assert classify('JS.foo') == ['JS:type_name', '.:punctuation', 'foo:name']
+}
+
+fn test_highlight_tokens_keywords_used_as_enum_fields() {
+	// Any keyword can be an enum field.
+	assert classify('enum Fill {\n\tnone\n\ttype = 2\n}') == ['enum:keyword', 'Fill:type_name',
+		'{:punctuation', 'none:name', 'type:name', '=:operator', '2:number', '}:punctuation']
+	assert classify('f = .none') == ['f:name', '=:operator', '.:enum_value', 'none:enum_value']
+	assert kinds_of('Fill.none', 'none') == ['enum_value']
+	assert kind_of('match f {\n\t.none {}\n}', 'none') == 'enum_value'
+	// Elsewhere, they are still keywords.
+	assert kind_of('x := none', 'none') == 'none'
+	assert kind_of('enum Fill {\n\ta\n}\nfn f() {\n\treturn\n}', 'return') == 'keyword'
+	assert kind_of('\$if T is \$enum {\n\treturn 1\n}', 'return') == 'keyword'
 }
 
 fn test_highlight_tokens_field_access_is_not_an_enum_value() {
 	assert classify('foo.bar') == ['foo:module_', '.:punctuation', 'bar:name']
 	assert kind_of('a[0].x', 'x') == 'name'
 	assert kind_of('f()?.x', 'x') == 'name'
+	// The kinds that end a value include strings, chars and numbers.
+	assert kind_of("'a'.len", 'len') == 'name'
+	assert kind_of('`a`.str()', 'str') == 'function'
+	assert kind_of('`a`.bytes', 'bytes') == 'name'
 	// A method called on the next line is not an enum value either.
-	assert classify('x\n\t.map()') == ['x:module_', '.:punctuation', 'map:function', '(:punctuation',
+	assert classify('x\n\t.map()') == ['x:name', '.:punctuation', 'map:function', '(:punctuation',
 		'):punctuation']
+}
+
+fn test_highlight_tokens_module_names() {
+	assert kind_of('os.args', 'os') == 'module_'
+	assert kind_of('fn f(r http.Request)', 'http') == 'module_'
+	assert kinds_of('import net.http\nhttp.get(url)', 'http') == ['module_', 'module_']
+	// An import alias is a module, even when it is named like an implicit variable.
+	assert kinds_of('import arrays as a\na.sum([1, 2, 3])', 'a') == ['module_', 'module_']
+	assert kinds_of('import arrays as it\nit.sum([1])', 'it') == ['module_', 'module_']
+	// A declared variable still hides the import.
+	assert kinds_of('import arrays as a\na := [1]\na.len', 'a') == ['module_', 'name', 'name']
+	assert classify('import net.http as h') == ['import:keyword', 'net:module_', '.:punctuation',
+		'http:module_', 'as:keyword', 'h:module_']
+	assert kind_of('module demo', 'demo') == 'module_'
+	// Fields named like the keywords do not start a module path.
+	assert kind_of('struct Foo {\n\tmodule string\n}', 'string') == 'builtin'
+	assert kind_of('x := node.module\ng.f(x)', 'f') == 'function'
+	// The symbols of a selective import are no modules.
+	assert kinds_of('import os { args }\nargs.len', 'args') == ['name', 'name']
+	// A field of a field is no module.
+	assert kind_of('os.args.len', 'args') == 'name'
+}
+
+fn test_highlight_tokens_variables_are_not_module_names() {
+	assert kinds_of('a := [1]\nassert a.len == 1', 'a') == ['name', 'name']
+	assert kinds_of('mut x, y := 1, 2\ny.str()', 'y') == ['name', 'name']
+	// Only the names before `:=` are declared, not a name that ends the line before.
+	assert kinds_of('import net.http as h\nresp := h.get(url)', 'h') == ['module_', 'module_']
+	assert kinds_of('for i, item in items { item.name }', 'item') == ['name', 'name']
+	assert kinds_of('fn (s Foo) f(mut b Bar) { s.x = b.y }', 's') == ['name', 'name']
+	assert kinds_of('fn (s Foo) f(mut b Bar) { s.x = b.y }', 'b') == ['name', 'name']
+	assert kinds_of('fn (x int, y int) { y.str() }', 'y') == ['name', 'name']
+	assert kinds_of('squares := parallel.amap(xs, |x| x.sq())', 'x') == ['name', 'name']
+	assert kinds_of('const cfg = Config{}\ncfg.name', 'cfg') == ['name', 'name']
+	assert kind_of('a.map(it.len)', 'it') == 'name'
+	assert kind_of('f() or { panic(err.msg()) }', 'err') == 'name'
+	// The parameter of a closure does not hide the module before it.
+	assert kind_of('squares := parallel.amap(xs, |x| x.sq())', 'parallel') == 'module_'
+	assert kinds_of('for i, x in xs { x.y }', 'x') == ['name', 'name']
+	// A `for` condition declares no variables.
+	assert kinds_of('for os.args.len > 0 { os.args.pop() }', 'os') == ['module_', 'module_']
+	assert kinds_of('const (\n\ta = 1\n\tcfg = Config{}\n)\ncfg.name', 'cfg') == [
+		'name',
+		'name',
+	]
+	assert kinds_of('fn (s Stack[T]) peek[U](x U) { s.items }', 's') == ['name', 'name']
+	assert kinds_of('fn [x] () { x.str() }', 'x') == ['name', 'name']
+	assert kinds_of('if w is Mars { w.dust_storm() }', 'w') == ['name', 'name']
+	assert kinds_of('match w { Mars { w.dust_storm() } else {} }', 'w') == ['name', 'name']
+	assert kinds_of('x := y as Foo\ny.z', 'y') == ['name', 'name']
+}
+
+fn test_highlight_tokens_string_escapes() {
+	assert classify("'a\\nb'") == ["'a:string", '\\n:escape', "b':string"]
+	assert classify("'\\x41\\u00e9\\101\\0'") == ["':string", '\\x41:escape', '\\u00e9:escape',
+		'\\101:escape', '\\0:escape', "':string"]
+	// An octal escape takes exactly three digits; otherwise `\0` is an escape of its own.
+	assert classify("'\\01'") == ["':string", '\\0:escape', "1':string"]
+	assert classify("'\\012'") == ["':string", '\\012:escape', "':string"]
+	assert classify("'\\08'") == ["':string", '\\0:escape', "8':string"]
+	// Another digit without three octal digits keeps its `\`, so it is no escape.
+	assert classify("'\\1'") == ["'\\1':string"]
+	assert classify("'\\12'") == ["'\\12':string"]
+	assert classify("'\\8\\n'") == ["'\\8:string", '\\n:escape', "':string"]
+	assert classify("'\\\${x}'").filter(it.ends_with(':escape')) == ['\\$:escape']
+	assert classify("r'a\\n'") == ["r'a\\n':string"]
+	// A part after an interpolation that starts with `r` is no raw string, even when it ends
+	// with the quote that follows the `r`.
+	assert classify('\'\${x}r"\\n\'').filter(it.ends_with(':escape')) == ['\\n:escape']
+	assert classify('\'\${x}r"\\n"\${y}\'').filter(it.ends_with(':escape')) == ['\\n:escape']
+	// An unfinished raw string is still raw, and so is a raw string inside an interpolation.
+	assert classify("r'path\\name").filter(it.ends_with(':escape')) == []
+	assert classify("'\${r'\\n'}'").filter(it.ends_with(':escape')) == []
+	assert classify("'a\\") == ["'a:string", '\\:escape']
+}
+
+fn test_highlight_tokens_c_string() {
+	assert classify("c'hi'") == ["c'hi':string"]
+	// A char literal whose text starts like the scanner's mark for a C string.
+	assert classify('`c:`') == ['`c:`:char']
+	assert kind_of('x(`c:a`)', '`c:a`') == 'char'
+}
+
+fn test_highlight_tokens_comptime_pseudo_variable() {
+	assert kind_of('println(@FN)', '@FN') == 'keyword'
+	assert kind_of('@BUILD_TIMESTAMP.i64()', '@BUILD_TIMESTAMP') == 'keyword'
+	// A keyword used as a name, like `@type`, is not one.
+	assert kind_of('fn @lock() {}', '@lock') == 'function'
+}
+
+fn test_highlight_tokens_unclosed_attribute_ends_with_its_line() {
+	assert kind_of('@[deprecated\nfn foo() {}', 'fn') == 'keyword'
 }
 
 fn test_highlight_tokens_attribute_arguments_keep_their_kinds() {
@@ -299,13 +424,18 @@ fn test_color_highlight_attribute_arguments() {
 	assert color_highlight('.closed') == term.bright_magenta('.') + term.bright_magenta('closed')
 }
 
+fn test_color_highlight_module_names_and_escapes() {
+	assert color_highlight('os.args') == term.bold('os') + '.' + 'args'
+	assert color_highlight("'\\n'") == term.yellow("'") + term.bright_magenta('\\n') + term.yellow("'")
+}
+
 fn test_html_highlight_string_interpolation() {
 	interp := '<span class="token string_interp">'
 	assert html_highlight("'\${x}'") == '<span class="token string">\'</span>${interp}$</span>${interp}{</span>x${interp}}</span><span class="token string">\'</span>'
 }
 
-fn test_html_highlight_leaves_names_plain() {
-	assert html_highlight('x os.Foo') == 'x os<span class="token punctuation">.</span>Foo'
+fn test_html_highlight_names() {
+	assert html_highlight('x os.Foo') == 'x <span class="token module_">os</span><span class="token punctuation">.</span><span class="token type_name">Foo</span>'
 }
 
 fn test_html_highlight_attribute_arguments_and_enum_values() {
@@ -466,22 +596,24 @@ fn test_resolve_relative_markdown_link_keeps_absolute_urls() {
 
 fn test_markdown_renderer_resolves_relative_links() ! {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			relative_link_base: base
+	mut renderer := markdown.HTMLRenderer{
+		opts: markdown.Options{}
+		link_base: base
+		link_resolver: fn (b string, url string) string {
+			return resolve_relative_markdown_link(b, url)
 		}
 	}
-	out := markdown.render('More examples in [parser](parser_test.v).', mut renderer)!
+	out := markdown.render('More examples in [parser](parser_test.v).', mut renderer)
 	assert out.contains('<a href="https://github.com/vlang/v/blob/master/vlib/net/html/parser_test.v">')
 }
 
 fn test_prepare_markdown_for_html_preserves_blockquote_linebreaks() ! {
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{}
+	mut renderer := markdown.HTMLRenderer{
+		opts: markdown.Options{}
 	}
-	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut renderer)!
+	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut renderer)
 	assert out.contains('<blockquote>')
-	assert out.contains('<strong>Note</strong><br />line one<br />line two')
+	assert out.contains('<strong>Note</strong>')
 }
 
 fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
@@ -491,16 +623,31 @@ fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
 
 fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 	input := '1. The basic atomic elements of this regex engine are the tokens.\n   In a query string a simple character is a token.\n\n- The basic element **is the token not the sequence of symbols**,\n  and the most simple token, is a single character.\n\n- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not\n  `abc` OR `ebc`.'
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{}
+	mut renderer := markdown.HTMLRenderer{
+		opts: markdown.Options{}
 	}
-	out := markdown.render(prepare_markdown_for_html(input), mut renderer)!
+	out := markdown.render(prepare_markdown_for_html(input), mut renderer)
 	assert !out.contains('tokens.In')
 	assert !out.contains('mostsimple')
 	assert !out.contains('not<code>abc</code>')
 	assert out.contains('tokens. In a query string a simple character is a token.')
 	assert out.contains('the most simple token')
 	assert out.contains('is not <code>abc</code> OR <code>ebc</code>')
+}
+
+fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
+	input := '```sh\nv run server.v\n```\n\n```cpp\n#include <x>\n```\n\n```V\nos.args\n```\n\n```v ignore\nfn f() {}\n```\n\n```\nfn g() {}\n```'
+	mut renderer := markdown.HtmlRenderer{
+		transformer: &MdHtmlCodeHighlighter{}
+	}
+	out := markdown.render(input, mut renderer)!
+	// Code in other languages, or without a language, is shown as it is, and escaped.
+	assert out.contains('<code class="language-sh">v run server.v\n</code>')
+	assert out.contains('<code class="language-cpp">#include &lt;x&gt;\n</code>')
+	assert out.contains('fn g() {}')
+	// The language is the first word of the fence, in any case.
+	assert out.contains('<span class="token module_">os</span>')
+	assert out.contains('<span class="token keyword">fn</span> <span class="token function">f</span>')
 }
 
 fn test_doc_multi_skips_modules_without_valid_files_for_platform() {
@@ -890,4 +1037,41 @@ fn test_vdocignore_applies_to_vmod_subdirs() {
 		assert !output.contains('linked_fn')
 		assert output.contains('fn two_links_fn()')
 	}
+}
+
+fn test_os_cross_labels_the_symbols_of_some_platforms() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_os_cross_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'plat.v'), 'module plat\n\npub fn everywhere() {}\n')!
+	os.write_file(os.join_path(dir, 'plat_windows.c.v'), 'module plat\n\npub fn on_windows() {}\n')!
+	os.write_file(os.join_path(dir, 'plat_nix.c.v'), 'module plat\n\npub fn on_unix() {}\n')!
+	for platform in ['cross', 'all'] {
+		res := os.exec_opt([vexe_path, 'doc', '-os', platform, '-f', 'text', '-o', '-', dir])!
+		assert res.output.contains('fn everywhere()\n// Available on Unix only.\nfn on_unix()\n// Available on Windows only.\nfn on_windows()\n'), res.output
+	}
+	// In HTML, the note comes right before the signature, which the theme attaches it to.
+	html := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-f', 'html', '-o', '-',
+		'-html-only-contents', dir])!
+	assert html.output.contains('<p class="platforms">Available on <strong>Windows</strong> only.</p>\n<pre class="signature">'), html.output
+}
+
+fn test_os_cross_shows_the_own_comment_of_each_declaration() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_os_cross_variants_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'lock_nix.c.v'), 'module lock\n\n// Lock uses pthreads.\n@[heap]\npub struct Lock {\n\tm int\n}\n\npub const spins = 10 // spins before sleeping\n')!
+	os.write_file(os.join_path(dir, 'lock_windows.c.v'), 'module lock\n\n// Lock uses an SRWLOCK.\npub struct Lock {\n\tm voidptr\n}\n\npub const spins = 10 // how often to spin\n')!
+	res := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-comments', '-f', 'text', '-o', '-',
+		dir])!
+	// A constant that is only written differently is documented once.
+	assert res.output.contains('const spins = 10 // spins before sleeping\n'), res.output
+	assert !res.output.contains('how often to spin'), res.output
+	// Each declaration is followed by its own comment.
+	assert res.output.contains('// Available on Unix only.\n@[heap]\nstruct Lock {\n\tm int\n}\n    Lock uses pthreads.\n// Available on Windows only.\nstruct Lock {\n\tm voidptr\n}\n    Lock uses an SRWLOCK.\n'), res.output
+	// In HTML, each declaration shows its own attributes in its signature, not above all of them.
+	html := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-f', 'html', '-o', '-',
+		'-html-only-contents', dir])!
+	assert !html.output.contains('<div class="attributes">'), html.output
+	assert html.output.contains('Available on <strong>Unix</strong> only.</p>\n<pre class="signature">\n<code><span class="token attribute">@[</span>'), html.output
 }

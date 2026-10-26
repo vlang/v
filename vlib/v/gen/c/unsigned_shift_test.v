@@ -1,17 +1,18 @@
 module c
 
-import v.types
+import v.flat
+import v.types { unalias_type }
 
 fn test_unsigned_shift_alias_uses_underlying_width() {
 	small := types.Type(types.Alias{
-		name:      'Small'
-		base_type: types.Type(types.i8_)
+		name_id:   flat.source_type_id('Small')
+		base_type: &types.Type(types.i8_)
 	})
 	nested := types.Type(types.Alias{
-		name:      'NestedSmall'
-		base_type: small
+		name_id:   flat.source_type_id('NestedSmall')
+		base_type: &types.Type(small)
 	})
-	base := unsigned_shift_unalias_type(nested)
+	base := unalias_type(nested)
 	assert base.name() == 'i8'
 	unsigned_type, bits := unsigned_shift_parts(base.name())
 	assert unsigned_type == 'u8'

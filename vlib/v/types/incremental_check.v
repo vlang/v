@@ -386,19 +386,30 @@ fn incremental_write_node(mut b strings.Builder, node &flat.Node, children int) 
 	b.write_u8(if node.is_mut { `m` } else { `-` })
 	b.write_decimal(i64(children))
 	b.write_u8(0)
-	b.write_string(node.typ)
+	b.write_string(node.typ_text())
 	b.write_u8(0)
 	b.write_string(node.value)
 	b.write_u8(0)
 	if node.payload != 0 {
 		payload := flat.node_payload_at(node.payload)
 		if !isnil(payload) {
-			for param in payload.generic_params {
-				b.write_string(param)
+			// Keep enum backing bytes at the same position in the stable source signature.
+			if node.kind == .enum_decl && (payload.enum_backing_type != 0 || payload.generic_params.len > 0) {
+				b.write_string(flat.source_type_name(payload.enum_backing_type))
 				b.write_u8(1)
 			}
+			debugger_types := node.debugger_value_type_ids()
+			debugger_layout := debugger_types.len == int(children) && payload.generic_params.len == 1 + debugger_types.len * 2
+			for i, param in payload.generic_params {
+				b.write_string(param)
+				b.write_u8(1)
+				if debugger_layout && i > 0 && i % 2 == 1 {
+					b.write_string(flat.source_type_name(debugger_types[(i - 1) / 2]))
+					b.write_u8(1)
+				}
+			}
 			b.write_u8(2)
-			for constraint in payload.generic_constraints {
+			for constraint in payload.generic_constraints.names() {
 				b.write_string(constraint)
 				b.write_u8(1)
 			}
@@ -988,7 +999,7 @@ fn (tc &TypeChecker) incremental_touches_generics(f IncrementalFunction, generic
 		if node.kind in [.ident, .selector] && incremental_names_generic_fn(node.value, generic_fns) {
 			return true
 		}
-		if type_text_mentions_generic_application(node.typ) {
+		if type_text_mentions_generic_application(node.typ_text()) {
 			return true
 		}
 		id := flat.NodeId(idx)
@@ -1002,8 +1013,9 @@ fn (tc &TypeChecker) incremental_touches_generics(f IncrementalFunction, generic
 				return true
 			}
 		}
-		if typ := tc.cached_expr_type(id) {
-			if type_mentions_generic_application(typ) {
+		cached_type_ref0 := tc.cached_expr_type_ref(id)
+		if !isnil(cached_type_ref0) {
+			if type_mentions_generic_application(cached_type_ref0) {
 				return true
 			}
 		}
@@ -1027,12 +1039,12 @@ fn incremental_names_generic_fn(name string, generic_fns map[string]bool) bool {
 
 // type_mentions_generic_application reports whether `typ` is, or holds, an
 // instance of a generic type, as `Box[int]` and `[]Box[int]` do.
-fn type_mentions_generic_application(typ Type) bool {
+fn type_mentions_generic_application(typ &Type) bool {
 	return match typ {
-		Struct { typ.name.contains('[') }
-		Interface { typ.name.contains('[') }
-		SumType { typ.name.contains('[') }
-		Alias { typ.name.contains('[') || type_mentions_generic_application(typ.base_type) }
+		Struct { typ.name().contains('[') }
+		Interface { typ.name().contains('[') }
+		SumType { typ.name().contains('[') }
+		Alias { typ.name().contains('[') || type_mentions_generic_application(typ.base_type) }
 		Array { type_mentions_generic_application(typ.elem_type) }
 		ArrayFixed { type_mentions_generic_application(typ.elem_type) }
 		Channel { type_mentions_generic_application(typ.elem_type) }
@@ -1044,7 +1056,7 @@ fn type_mentions_generic_application(typ Type) bool {
 		OptionType { type_mentions_generic_application(typ.base_type) }
 		ResultType { type_mentions_generic_application(typ.base_type) }
 		FnType {
-			typ.params.any(type_mentions_generic_application(it))
+			typ.params.any(type_mentions_generic_application(it.typ))
 				|| type_mentions_generic_application(typ.return_type)
 		}
 		MultiReturn { typ.types.any(type_mentions_generic_application(it)) }

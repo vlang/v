@@ -1,8 +1,5 @@
 module runtime
 
-#include <mach/mach.h>
-#include <mach/task.h>
-
 @[typedef]
 pub struct C.vm_size_t {
 }
@@ -27,37 +24,22 @@ fn C.mach_port_deallocate(task C.task_t, host C.host_t) i32
 fn C.host_page_size(host C.host_t, out_page_size &C.vm_size_t) i32
 fn C.host_statistics64(host C.host_t, flavor i32, host_info_out &int, host_info_outCnt &u32) i32
 
-fn free_memory_impl() !usize {
-	$if macos {
-		mut hs := C.vm_statistics64_data_t{}
-		mut vmsz := u32(C.HOST_VM_INFO64_COUNT)
-		mut hps := u32(0)
-		mut host := C.mach_host_self()
-		defer {
-			// Critical: Release send right for host port
-			// --------------------------------------------------
-			// Mach ports are system resources. Calling mach_host_self()
-			// increments the port's reference count. We must manually release
-			// to prevent resource leaks (port exhaustion can cause kernel failures).
-			// mach_port_deallocate decrements the reference count, allowing
-			// system resource reclamation when count reaches zero.
-			// Parameters:
-			//   C.mach_task_self() - Port for current task
-			//   host - Host port to release
-			// Return value ignored (_) since we only care about resource cleanup
-			_ := C.mach_port_deallocate(C.mach_task_self(), host)
+fn C.v_runtime_free_memory_darwin(bytes &u64, code &i32) i32
+
+#flag @VEXEROOT/vlib/runtime/free_memory_darwin.o
+
+fn free_memory_impl() !uint {
+	$if macos || ios {
+		mut bytes := u64(0)
+		mut code := i32(0)
+		stage := C.v_runtime_free_memory_darwin(&bytes, &code)
+		if stage == 1 {
+			return error('free_memory: `C.host_statistics64()` return = ${code}')
 		}
-		unsafe {
-			retval_1 := C.host_statistics64(host, C.HOST_VM_INFO64, &int(&hs), &vmsz)
-			if retval_1 != C.KERN_SUCCESS {
-				return error('free_memory: `C.host_statistics64()` return = ${retval_1}')
-			}
-			retval_2 := C.host_page_size(host, &C.vm_size_t(&hps))
-			if retval_2 != C.KERN_SUCCESS {
-				return error('free_memory: `C.host_page_size()` return = ${retval_2}')
-			}
+		if stage == 2 {
+			return error('free_memory: `C.host_page_size()` return = ${code}')
 		}
-		return usize(u64(hs.free_count) * u64(hps))
+		return uint(bytes)
 	}
 	return error('free_memory: not implemented')
 }

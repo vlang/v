@@ -8,7 +8,7 @@ import net
 import time
 
 const max_thread_pool_size = runtime.nr_cpus()
-const max_connection_size = 65536 // Max events per epoll_wait
+const max_connection_size = 65536 // Listening backlog and connection capacity.
 const default_max_request_body_size = 64 * 1024 * 1024
 
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
@@ -41,7 +41,7 @@ pub mut:
 	header_fields      Slice
 	body               Slice
 	client_conn_fd     int
-	client_conn_handle usize
+	client_conn_handle uint
 	user_data          voidptr // User-defined context data (shared, set from ServerConfig.user_data)
 	// worker_state is the value ServerConfig.make_state returned on THIS worker
 	// thread (nil when no make_state is configured). It is thread-local by

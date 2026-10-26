@@ -56,7 +56,7 @@ fn test_generate_from_mod() {
 	assert nested_mod_doc.head.name == nested_mod_name
 	assert nested_mod_doc.head.content == 'module ${nested_mod_name}'
 	assert nested_mod_doc.contents.len == 3
-	assert nested_mod_doc.contents['ChunkScanner'].children.len == 3
+	assert nested_mod_doc.contents['ChunkScanner'].children.len == 4
 }
 
 fn test_tags_with_flag_struct_attribute() {
@@ -112,18 +112,35 @@ fn test_generated_enum_helpers_are_documented() {
 	}
 
 	mouse_buttons := mod_doc.contents['MouseButtons']!
-	mouse_button_methods := mouse_buttons.children.filter(it.kind == .method).map(it.name)
-	assert 'all' in mouse_button_methods
-	assert 'has' in mouse_button_methods
-	assert 'is_empty' in mouse_button_methods
+	mouse_button_methods := mouse_buttons.children.filter(it.kind == .method)
+	assert mouse_button_methods.map(it.name) == ['is_empty', 'has', 'all', 'set', 'set_all', 'clear',
+		'clear_all', 'toggle']
+	assert mouse_button_methods.map(it.content) == [
+		'pub fn (e &MouseButtons) is_empty() bool',
+		'pub fn (e &MouseButtons) has(flag MouseButtons) bool',
+		'pub fn (e &MouseButtons) all(flag MouseButtons) bool',
+		'pub fn (mut e MouseButtons) set(flag MouseButtons)',
+		'pub fn (mut e MouseButtons) set_all()',
+		'pub fn (mut e MouseButtons) clear(flag MouseButtons)',
+		'pub fn (mut e MouseButtons) clear_all()',
+		'pub fn (mut e MouseButtons) toggle(flag MouseButtons)',
+	]
+	assert mouse_button_methods.all(it.parent_name == 'MouseButtons' && it.comments.len == 1)
 
 	mouse_buttons_from := mod_doc.contents['MouseButtons.from']!
 	assert mouse_buttons_from.kind == .method
-	assert mouse_buttons_from.content.contains('MouseButtons.from')
+	assert mouse_buttons_from.content == 'pub fn MouseButtons.from[W](input W) !MouseButtons'
+	assert mouse_buttons_from.pos == mouse_buttons.pos
 
 	mouse_buttons_zero := mod_doc.contents['MouseButtons.zero']!
 	assert mouse_buttons_zero.kind == .method
-	assert mouse_buttons_zero.content.contains('MouseButtons.zero')
+	assert mouse_buttons_zero.content == 'pub fn MouseButtons.zero() MouseButtons'
+
+	// Enums without `@[flag]` only get `from`.
+	end_enum := mod_doc.contents['EndEnum']!
+	assert end_enum.children.filter(it.kind == .method).len == 0
+	assert mod_doc.contents['EndEnum.from']!.content == 'pub fn EndEnum.from[W](input W) !EndEnum'
+	assert 'EndEnum.zero' !in mod_doc.contents
 }
 
 fn test_merge_doc_comments_keeps_blockquotes_on_separate_lines() {

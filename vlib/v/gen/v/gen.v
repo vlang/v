@@ -137,6 +137,9 @@ mut:
 	// suppress_trailing_comments defers comments that belong after a surrounding
 	// delimiter, such as the opening brace of a loop.
 	suppress_trailing_comments int
+	// trailing_comment_limit holds comments after a field's root default until its
+	// suffix is written, while allowing comments inside that default to be emitted.
+	trailing_comment_limit int = -1
 	// attrs maps a declaration node id to its `@[...]` attribute strings. The parser stores
 	// attributes on a separate floating `.directive` node rather than as a child, so they are
 	// collected up-front in collect_attrs. attr_sources retains formatter-only source groups.
@@ -186,6 +189,7 @@ pub fn (mut g Gen) reset() {
 	g.in_index = false
 	g.in_string_interp = false
 	g.suppress_trailing_comments = 0
+	g.trailing_comment_limit = -1
 }
 
 // format_file parses-independent convenience: format the file whose trailing
@@ -379,7 +383,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 				legacy_imports << flat.NodeId(i)
 			} else if n.value == 'json2' {
 				json2_imports << flat.NodeId(i)
-			} else if n.typ == 'json2' {
+			} else if n.typ_text() == 'json2' {
 				return
 			}
 		}
@@ -389,7 +393,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	}
 	legacy_id := legacy_imports[0]
 	legacy := g.a.node(legacy_id)
-	if !direct[int(legacy_id)] || (legacy.typ.len > 0 && legacy.typ != 'json') {
+	if !direct[int(legacy_id)] || (legacy.typ_text().len > 0 && legacy.typ_text() != 'json') {
 		return
 	}
 	for id in json2_imports {
@@ -403,11 +407,11 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	mut qualifier := 'json2'
 	if json2_imports.len == 1 {
 		existing := g.a.node(json2_imports[0])
-		if existing.typ == '_' || g.comment_on_same_line_after(legacy.pos.offset, legacy.pos.end) {
+		if existing.typ_text() == '_' || g.comment_on_same_line_after(legacy.pos.offset, legacy.pos.end) {
 			return
 		}
-		if existing.typ.len > 0 && existing.typ != 'json2' {
-			qualifier = existing.typ
+		if existing.typ_text().len > 0 && existing.typ_text() != 'json2' {
+			qualifier = existing.typ_text()
 		}
 	}
 	if declared_names[qualifier] {
@@ -462,7 +466,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 			&& legacy.children_count > 0 {
 			return
 		}
-		if n.kind == .field_decl && n.value == n.typ && n.children_count == 0 {
+		if n.kind == .field_decl && n.value == n.typ_text() && n.children_count == 0 {
 			return
 		}
 		if n.kind == .selector && n.children_count > 0 {
@@ -656,7 +660,11 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 			continue
 		}
 		if n.kind == .import_decl {
-			local_name := if n.typ.len > 0 { n.typ } else { n.value.all_after_last('.') }
+			local_name := if n.typ_text().len > 0 {
+				n.typ_text()
+			} else {
+				n.value.all_after_last('.')
+			}
 			imported[local_name] = true
 		} else if n.kind == .decl_assign && n.children_count > 0 {
 			// A formatter parse has no checker scope information. Record declarations at
@@ -1066,7 +1074,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.string_interp(id)
 		}
 		.ident {
-			if n.typ == '__v3_formatter_raw' {
+			if n.typ_text() == '__v3_formatter_raw' {
 				source := g.a.formatter_sources[int(id)] or { n.value }
 				g.write(source.trim_space())
 			} else {
@@ -1092,7 +1100,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			child := g.a.child(n, 0)
 			cn := g.a.node(child)
 			if n.op == .not && cn.kind == .array_literal
-				&& ((n.typ.len > 0 && cn.typ == n.typ) || int(child) in g.a.formatter_sources) {
+				&& ((n.typ != 0 && cn.typ == n.typ) || int(child) in g.a.formatter_sources) {
 				g.expr(child)
 			} else if n.op == .not {
 				g.expr(child)
@@ -1165,8 +1173,8 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.array_literal(id)
 		}
 		.array_init {
-			if n.typ.len > 0 {
-				g.write(g.type_text(n.typ))
+			if n.typ_text().len > 0 {
+				g.write(g.type_text(n.typ_text()))
 			} else if n.value.len > 0 {
 				g.write('[]${g.type_text(n.value)}')
 			}
@@ -1266,7 +1274,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write(')')
 		}
 		.offsetof_expr {
-			g.write('__offsetof(${n.value}, ${n.typ})')
+			g.write('__offsetof(${n.value}, ${n.typ_text()})')
 		}
 		.block {
 			g.block_expr(id)
@@ -1285,7 +1293,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write('/* ${n.kind} */')
 		}
 	}
-	if (n.kind == .sql_expr || n.typ == '__v3_formatter_raw') && int(id) in g.a.formatter_sources {
+	if (n.kind == .sql_expr || n.typ_text() == '__v3_formatter_raw') && int(id) in g.a.formatter_sources {
 		g.skip_comments_before(n.pos.end + 1)
 	} else if g.suppress_trailing_comments == 0 {
 		g.emit_trailing_comments(n.pos.end)
@@ -1706,7 +1714,7 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		// literal, and `?Foo` as an empty node, which keeps only its source text.
 		mut type_text := ''
 		if first.kind == .array_init && first.children_count == 0 {
-			type_text = first.typ
+			type_text = first.typ_text()
 		} else if first.kind == .empty && args.len > 1 {
 			type_text = g.json_decode_type_arg_source(children[0], args[1]) or { '' }
 		}
@@ -2518,8 +2526,8 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 			if capture.is_mut {
 				g.write('mut ')
 			}
-			if capture.typ in ['shared', 'atomic'] {
-				g.write('${capture.typ} ')
+			if capture.typ_text() in ['shared', 'atomic'] {
+				g.write('${capture.typ_text()} ')
 			}
 			g.expr(capture_id)
 			if capture_i < captures.len - 1 {
@@ -2538,8 +2546,8 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 		g.write(' ')
 	}
 	g.params(id, params)
-	if n.typ.len > 0 && n.typ != 'void' {
-		g.write(' ${g.type_text(n.typ)}')
+	if n.typ_text().len > 0 && n.typ_text() != 'void' {
+		g.write(' ${g.type_text(n.typ_text())}')
 	}
 	if body.len == 0 && g.empty_braced_body_is_compact(n, n.pos.end)
 		&& !g.has_comment_between(n.pos.offset, n.pos.end) {
@@ -2958,7 +2966,7 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 	quote_str := if quote == `"` { '"' } else { "'" }
 	// Keep the source spelling of each literal part, as plain literals do.
 	literal_spellings := g.interp_literal_spellings(n, children, quote)
-	if n.typ.starts_with('js:') {
+	if n.typ_text().starts_with('js:') {
 		g.write('js')
 	}
 	g.write(quote_str)
@@ -2972,7 +2980,7 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 			g.in_string_interp = true
 			g.expr(g.a.child(c, 0))
 			g.in_string_interp = was_in_string_interp
-			g.write(':${c.typ}')
+			g.write(':${c.typ_text()}')
 			g.write('}')
 		} else {
 			g.write('\${')
@@ -2993,7 +3001,7 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 fn (g &Gen) interp_literal_spellings(n &flat.Node, children []flat.NodeId, quote u8) map[int]string {
 	mut spellings := map[int]string{}
 	source := g.source_span(n.pos.offset, n.pos.end) or { return spellings }
-	prefix_len := if n.typ.starts_with('js:') { 2 } else { 0 }
+	prefix_len := if n.typ_text().starts_with('js:') { 2 } else { 0 }
 	parts := interp_literal_parts(source, prefix_len) or { return spellings }
 	old_quote := source[prefix_len]
 	mut ci := 0
@@ -4046,7 +4054,7 @@ fn (mut g Gen) comptime_for(id flat.NodeId) {
 	if kind == 'strings' && n.children_count == 2 {
 		g.expr(g.a.child(n, 1))
 	} else {
-		g.write('${g.type_text(n.typ)}.${kind}')
+		g.write('${g.type_text(n.typ_text())}.${kind}')
 	}
 	g.write(' {')
 	g.writeln('')
@@ -4117,8 +4125,8 @@ fn (mut g Gen) select_stmt(id flat.NodeId) {
 // (without the `{}`) so it is not mistaken for the branch body.
 fn (mut g Gen) match_cond(id flat.NodeId) {
 	n := g.a.node(id)
-	if n.kind == .array_init && n.children_count == 0 && n.typ.len > 0 {
-		g.write(g.type_text(n.typ))
+	if n.kind == .array_init && n.children_count == 0 && n.typ_text().len > 0 {
+		g.write(g.type_text(n.typ_text()))
 		return
 	}
 	if n.kind == .map_init && n.children_count == 0 && n.value.len > 0 {
@@ -4158,8 +4166,8 @@ fn (mut g Gen) import_decl(id flat.NodeId) {
 	}
 	g.write('import ${n.value}')
 	last_seg := n.value.all_after_last('.')
-	if n.typ.len > 0 && n.typ != last_seg {
-		g.write(' as ${n.typ}')
+	if n.typ_text().len > 0 && n.typ_text() != last_seg {
+		g.write(' as ${n.typ_text()}')
 	}
 	symbols := g.a.children_of(n)
 	if symbols.len > 0 {
@@ -4294,8 +4302,8 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	}
 	g.write_generic_params(n)
 	g.params(id, params)
-	if n.typ.len > 0 && n.typ != 'void' {
-		g.write(' ${g.type_text(n.typ)}')
+	if n.typ_text().len > 0 && n.typ_text() != 'void' {
+		g.write(' ${g.type_text(n.typ_text())}')
 	}
 	if n.kind == .c_fn_decl {
 		g.writeln('')
@@ -4386,7 +4394,7 @@ fn (mut g Gen) params(parent_id flat.NodeId, ids []flat.NodeId) {
 }
 
 fn (g &Gen) param_type(p &flat.Node) string {
-	mut t := p.typ
+	mut t := p.typ_text()
 	if p.is_mut && p.op != .amp && t.starts_with('&') {
 		t = t[1..]
 	}
@@ -4394,11 +4402,40 @@ fn (g &Gen) param_type(p &flat.Node) string {
 }
 
 fn (g &Gen) receiver_type(rn &flat.Node) string {
-	mut t := rn.typ
+	mut t := rn.typ_text()
 	if rn.is_mut && t.starts_with('&') {
 		t = t[1..]
 	}
 	return t
+}
+
+// struct_body_start finds the opening brace without mistaking header comments for the body.
+fn (g &Gen) struct_body_start(n &flat.Node) int {
+	if !n.pos.is_valid() || n.pos.end > g.source.len {
+		return -1
+	}
+	mut cursor := n.pos.offset
+	for i := g.comment_i; i < g.comments.len; i++ {
+		comment := g.comments[i]
+		if comment.pos.offset >= n.pos.end {
+			break
+		}
+		if comment.pos.end <= cursor {
+			continue
+		}
+		if comment.pos.offset > cursor {
+			brace := g.source[cursor..comment.pos.offset].index('{') or { -1 }
+			if brace >= 0 {
+				return cursor + brace + 1
+			}
+		}
+		cursor = comment.pos.end
+	}
+	if cursor < n.pos.end {
+		brace := g.source[cursor..n.pos.end].index('{') or { return -1 }
+		return cursor + brace + 1
+	}
+	return -1
 }
 
 fn (mut g Gen) struct_decl(id flat.NodeId) {
@@ -4407,7 +4444,7 @@ fn (mut g Gen) struct_decl(id flat.NodeId) {
 	if n.op == .arrow {
 		g.write('pub ')
 	}
-	tags := n.typ
+	tags := n.typ_text()
 	kw := if tag_has(tags, 'union') { 'union ' } else { 'struct ' }
 	g.write(kw)
 	g.write(g.type_text(n.value))
@@ -4419,10 +4456,10 @@ fn (mut g Gen) struct_decl(id flat.NodeId) {
 	fields := g.a.children_of(n)
 	compact := fields.len == 0 && g.empty_braced_body_is_compact(n, n.pos.end)
 		&& !g.has_comment_between(n.pos.offset, n.pos.end)
-	g.struct_fields(fields, n.pos.end, compact)
+	g.struct_fields(fields, g.struct_body_start(n), n.pos.end, compact)
 }
 
-fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
+fn (mut g Gen) struct_fields(fields []flat.NodeId, body_start int, end int, compact bool) {
 	if fields.len > 0 || !compact {
 		g.writeln(' {')
 	} else {
@@ -4430,13 +4467,21 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 	}
 	g.indent++
 	alignments := g.aggregate_field_alignments(fields, false)
-	default_align, attr_align, comment_align := g.struct_field_suffix_alignments(fields)
+	default_align, attr_align, comment_align := g.struct_field_suffix_alignments(fields,
+		alignments, body_start)
 	mut cur_access := ''
 	mut previous := flat.empty_node
+	mut preserved_end := -1
 	for fid in fields {
 		f := g.a.node(fid)
-		g.emit_blank_line_between(previous, fid)
+		// Grouped declarations can have several nodes sharing one preserved source span.
+		if f.kind == .field_decl && f.pos.offset >= 0 && f.pos.offset < preserved_end
+			&& f.pos.end <= preserved_end {
+			previous = fid
+			continue
+		}
 		if f.kind != .field_decl {
+			g.emit_blank_line_between(previous, fid)
 			// e.g. a `$if` block inside the struct body
 			g.emit_comments_before(f.pos.offset)
 			g.source_end = int_max(g.source_end, f.pos.offset)
@@ -4446,6 +4491,38 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		}
 		gp := f.generic_params()
 		flags := if gp.len > 0 { gp[0] } else { '' }
+		if g.struct_field_preserves_attr_prefix(fid, previous, body_start) {
+			// Keep leading attributes on their original side of a formatting directive.
+			comment_i := g.comment_i
+			if int(previous) < 0 {
+				g.emit_comments_before(body_start)
+				g.source_end = int_max(g.source_end, body_start)
+			}
+			emitted_line_comment := g.comment_i > comment_i
+				&& g.comments[g.comment_i - 1].text.starts_with('//')
+			prefix := g.source[g.source_end..f.pos.end].replace('\r\n', '\n')
+			needs_comment_separator := emitted_line_comment && prefix.all_before('\n').trim_space().len > 0
+			// Retain the separator that terminates a header line comment.
+			if g.on_newline && g.out.len > 0 && g.out.last_n(1) == '\n'
+				&& (!needs_comment_separator || g.out.last_n(2) == '\n\n') {
+				g.out.go_back(1)
+			}
+			g.out.write_string(prefix)
+			g.on_newline = false
+			g.skip_comments_before(f.pos.end)
+			g.source_end = f.pos.end
+			preserved_end = f.pos.end
+			g.emit_trailing_comments(f.pos.end)
+			if !g.on_newline {
+				g.writeln('')
+			}
+			if !flags.contains('i') {
+				cur_access = access_label(flags)
+			}
+			previous = fid
+			continue
+		}
+		g.emit_blank_line_between(previous, fid)
 		access := access_label(flags)
 		if !flags.contains('i') && access != cur_access {
 			// Doc comments written below `pub:` belong to the field, so only the
@@ -4475,12 +4552,8 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		g.source_end = int_max(g.source_end, f.pos.offset)
 		is_embed := flags.contains('e')
 		mut suffix_width := 0
-		// While a comment column is being reached, the trailing comment must not be printed
-		// by the default expression's own pass: it would land before the padding.
-		pads_comment := int(fid) in comment_align
-		if pads_comment {
-			g.suppress_trailing_comments++
-		}
+		preserve_attr_suffix := g.struct_field_preserves_attr_suffix(fid)
+		pads_comment := int(fid) in comment_align && !preserve_attr_suffix
 		if is_embed {
 			g.write(g.type_text(f.value))
 		} else {
@@ -4491,20 +4564,38 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 			}
 			g.write(f.value)
 			width := alignments[int(fid)] or { prefix.len + f.value.len }
-			g.write(' '.repeat(width - prefix.len - f.value.len + 1))
-			type_text := g.type_text(f.typ)
+			type_text := g.type_text(f.typ_text())
+			mut default_pad := 0
+			if f.children_count > 0 {
+				if pad := default_align[int(fid)] {
+					default_pad = int_max(pad - type_text.len, 0)
+				}
+			}
+			mut name_pad := width - prefix.len - f.value.len + 1
+			// An embed with a default (`Inner = Inner{}`) is a field without a type. Its `=` can
+			// only line up with the defaults of the fields around it. Without those, padding the
+			// name to the empty type column would leave two or more spaces before ` = `.
+			if type_text.len == 0 && f.children_count > 0 && default_pad == 0 {
+				name_pad = 0
+			}
+			g.write(' '.repeat(name_pad))
 			g.write(type_text)
 			suffix_width = type_text.len
 			if f.children_count > 0 {
-				if pad := default_align[int(fid)] {
-					if pad > type_text.len {
-						g.write(' '.repeat(pad - type_text.len))
-					}
+				if default_pad > 0 {
+					g.write(' '.repeat(default_pad))
+					suffix_width = type_text.len + default_pad
 				}
 				g.write(' = ')
+				default_start := g.out.len
+				previous_comment_limit := g.trailing_comment_limit
+				if pads_comment || gp.len > 1 {
+					g.trailing_comment_limit = g.a.child_node(f, 0).pos.end
+				}
 				g.expr(g.a.child(f, 0))
+				g.trailing_comment_limit = previous_comment_limit
 				suffix_width = if gp.len > 1 {
-					g.struct_field_attr_default_width(fid) + 1
+					suffix_width + 3 + g.out.len - default_start
 				} else {
 					g.struct_field_default_width(fid) + 2
 				}
@@ -4512,20 +4603,32 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		}
 		if gp.len > 1 {
 			attr_text := '@[${gp[1..].join('; ')}]'
-			if pad := attr_align[int(fid)] {
-				if pad > suffix_width {
-					g.write(' '.repeat(pad - suffix_width))
+			if preserve_attr_suffix {
+				g.write(g.source[g.a.child_node(f, 0).pos.end..f.pos.end])
+				g.skip_comments_before(f.pos.end)
+			} else {
+				if pad := attr_align[int(fid)] {
+					attr_suffix_width := suffix_width + if flags.contains('v') {
+						'volatile '.len
+					} else {
+						0
+					}
+					if pad > attr_suffix_width {
+						g.write(' '.repeat(pad - attr_suffix_width))
+					}
 				}
+				g.write(' ${attr_text}')
 			}
-			g.write(' ${attr_text}')
 			suffix_width = attr_text.len
 		}
 		if pads_comment {
-			g.suppress_trailing_comments--
 			pad := comment_align[int(fid)] or { 0 }
 			if pad >= suffix_width {
 				g.write(' '.repeat(pad - suffix_width + 1))
 			}
+		}
+		if f.children_count > 0 && gp.len > 1 {
+			g.emit_comments_before(f.pos.end)
 		}
 		g.emit_trailing_comments(f.pos.end)
 		if !g.on_newline {
@@ -4546,9 +4649,9 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		g.write('pub ')
 	}
 	g.write('enum ${n.value}')
-	gp := n.generic_params()
-	if gp.len > 0 && gp[0].len > 0 {
-		g.write(' as ${gp[0]}')
+	backing := n.enum_backing_type_id()
+	if backing != 0 {
+		g.write(' as ${flat.source_type_name(backing)}')
 	}
 	end := g.a.formatter_node_ends[int(id)] or { n.pos.end }
 	// The parser can leave a nameless member behind, e.g. when the `{` sits on its own line
@@ -4744,8 +4847,8 @@ fn (mut g Gen) type_decl(id flat.NodeId) {
 	variants := g.a.children_of(n)
 	if variants.len > 0 {
 		g.sum_type_variants(variants)
-	} else if n.typ.len > 0 {
-		g.write(' = ${g.type_text(n.typ)}')
+	} else if n.typ_text().len > 0 {
+		g.write(' = ${g.type_text(n.typ_text())}')
 	}
 	if !g.on_newline {
 		g.writeln('')
@@ -4869,17 +4972,17 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 				g.write('[${mgp.join(', ')}]')
 			}
 			g.params(fid, g.a.children_of(f))
-			if f.typ.len > 0 {
-				g.write(' ${g.type_text(f.typ)}')
+			if f.typ_text().len > 0 {
+				g.write(' ${g.type_text(f.typ_text())}')
 			}
 			suffix_width = g.node_source_width(fid)
 		} else {
 			g.write(f.value)
 			suffix_width = f.value.len
-			if f.typ.len > 0 {
+			if f.typ_text().len > 0 {
 				width := alignments[int(fid)] or { f.value.len }
 				g.write(' '.repeat(width - f.value.len + 1))
-				type_text := g.type_text(f.typ)
+				type_text := g.type_text(f.typ_text())
 				g.write(type_text)
 				suffix_width = type_text.len
 			}
@@ -4941,7 +5044,11 @@ fn (mut g Gen) interface_comment_alignments(fields []flat.NodeId) map[int]int {
 			if f.op == .dot {
 				method_align.add_info(g.node_source_width(fid), line, has_break)
 			} else {
-				width := if f.typ.len > 0 { g.type_text(f.typ).len } else { f.value.len }
+				width := if f.typ_text().len > 0 {
+					g.type_text(f.typ_text()).len
+				} else {
+					f.value.len
+				}
 				field_align.add_info(width, line, has_break)
 			}
 			entries << fid
@@ -5005,22 +5112,103 @@ fn (g &Gen) struct_field_default_width(fid flat.NodeId) int {
 	return g.array_expr_width(g.a.child(f, 0))
 }
 
-fn (g &Gen) struct_field_attr_default_width(fid flat.NodeId) int {
+fn (g &Gen) has_vfmt_directive_between(start int, end int) bool {
+	for comment in g.comments {
+		if comment.pos.offset >= end {
+			break
+		}
+		if comment.pos.offset >= start {
+			text := comment.text.trim_space()
+			if text.starts_with('// vfmt off') || text.starts_with('// vfmt on') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (g &Gen) struct_field_preserves_attr_suffix(fid flat.NodeId) bool {
+	f := g.a.node(fid)
+	return f.children_count > 0 && f.generic_params().len > 1 && f.pos.end <= g.source.len
+		&& g.has_vfmt_directive_between(g.a.child_node(f, 0).pos.end, f.pos.end)
+}
+
+fn (g &Gen) struct_field_preserves_attr_prefix(fid flat.NodeId, previous flat.NodeId, body_start int) bool {
+	f := g.a.node(fid)
+	if f.generic_params().len < 2 {
+		return false
+	}
+	mut start := body_start
+	if int(previous) >= 0 {
+		p := g.a.node(previous)
+		start = p.pos.end
+	}
+	if start < 0 || start > f.pos.offset || f.pos.end > g.source.len
+		|| !g.has_vfmt_directive_between(start, f.pos.offset) {
+		return false
+	}
+	// Ignore attribute-like text in comments and directives before the first real attribute.
+	mut cursor := start
+	for comment in g.comments {
+		if comment.pos.offset >= f.pos.offset {
+			break
+		}
+		if comment.pos.end <= cursor {
+			continue
+		}
+		if comment.pos.offset > cursor {
+			attr_index := g.source[cursor..comment.pos.offset].index('@[') or { -1 }
+			if attr_index >= 0 {
+				return g.has_vfmt_directive_between(cursor + attr_index, f.pos.offset)
+			}
+		}
+		cursor = comment.pos.end
+	}
+	if cursor < f.pos.offset {
+		attr_index := g.source[cursor..f.pos.offset].index('@[') or { return false }
+		return g.has_vfmt_directive_between(cursor + attr_index, f.pos.offset)
+	}
+	return false
+}
+
+// struct_field_attr_default_width measures the formatted default, including quotes and
+// normalized expression spacing, without consuming the enclosing declaration's comments.
+fn (g &Gen) struct_field_attr_default_width(fid flat.NodeId, column int) int {
 	f := g.a.node(fid)
 	if f.children_count == 0 {
 		return 0
 	}
 	value := g.a.child_node(f, 0)
-	if value.kind == .block && value.value == 'unsafe' {
-		return 'unsafe{}'.len
+	// Leading and internal comments can make the default span several output lines.
+	// Comments after the value are emitted after its attributes by struct_fields.
+	if g.has_comment_between(f.pos.offset, value.pos.end) {
+		return 0
 	}
-	return g.struct_field_default_width(fid)
+	mut preview := Gen{
+		a:               g.a
+		out:             strings.new_builder(64)
+		indent:          g.indent
+		file_id:         g.file_id
+		source:          g.source
+		is_new_int:      g.is_new_int
+		is_translated:   g.is_translated
+		backend:         g.backend
+		formatter_types: g.formatter_types
+		migrate_json2:   g.migrate_json2
+		json_qualifier:  g.json_qualifier
+		selective_json:  g.selective_json
+	}
+	// Wrapping decisions must see the same starting column as the field's actual output.
+	preview.write(' '.repeat(column))
+	preview.expr(g.a.child(f, 0))
+	formatted := preview.out.str()[column..]
+	return if formatted.contains('\n') || formatted.contains('\r') { 0 } else { formatted.len }
 }
 
 // struct_field_suffix_alignments returns the columns for the three things that can follow a
 // field's type: its `= default`, its inline attributes and its trailing comment. The name and
 // type columns are handled by aggregate_field_alignments; these three line up what comes after.
-fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int, map[int]int, map[int]int) {
+fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments map[int]int, body_start int) (map[int]int, map[int]int, map[int]int) {
 	mut default_align := FieldAlign{
 		use_threshold: true
 	}
@@ -5033,11 +5221,20 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int
 	mut entries := []flat.NodeId{}
 	mut lines := map[int]int{}
 	mut previous := flat.empty_node
-	mut prev_state := 0
-	for fid in fields {
+	mut comment_suffixes := map[int]int{}
+	mut comment_states := map[int]int{}
+	mut comment_breaks := map[int]bool{}
+	mut comment_groups := map[int]int{}
+	mut preserved_fields := map[int]bool{}
+	mut preserved_end := -1
+	for field_i, fid in fields {
 		f := g.a.node(fid)
 		if f.kind != .field_decl || !f.pos.is_valid() {
 			previous = flat.empty_node
+			continue
+		}
+		if f.pos.offset < preserved_end && f.pos.end <= preserved_end {
+			previous = fid
 			continue
 		}
 		gp := f.generic_params()
@@ -5048,26 +5245,35 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int
 		}
 		line := g.source_line(f.pos.offset)
 		has_break := g.field_alignment_break(previous, fid)
-		type_width := g.type_text(f.typ).len
+		source_previous := if field_i > 0 { fields[field_i - 1] } else { flat.empty_node }
+		preserves_prefix := g.struct_field_preserves_attr_prefix(fid, source_previous, body_start)
+		preserves_attrs := preserves_prefix || g.struct_field_preserves_attr_suffix(fid)
+		if preserves_prefix {
+			preserved_end = f.pos.end
+		}
+		if preserves_attrs {
+			preserved_fields[int(fid)] = true
+		}
+		type_width := g.type_text(f.typ_text()).len
 		mut suffix := type_width
 		mut suffix_known := true
 		if f.children_count > 0 {
 			default_align.add_info(type_width, line, has_break)
 			default_width := g.struct_field_default_width(fid)
-			suffix = if gp.len > 1 {
-				g.struct_field_attr_default_width(fid) + 1
-			} else {
-				default_width + 2
-			}
+			suffix = default_width + 2
 			// A default that wraps over several lines has no single column to measure from.
 			suffix_known = default_width > 0
 		}
 		if gp.len > 1 {
-			attr_align.add_info(suffix, line, has_break)
 			suffix = '@[${gp[1..].join('; ')}]'.len
 			suffix_known = true
 		}
-		if suffix_known && g.has_trailing_comment(f.pos.end) {
+		// Inline comments between the root default and its attributes are emitted as suffixes.
+		has_deferred_comment := f.children_count > 0 && gp.len > 1
+			&& g.has_comment_between(g.a.child_node(f, 0).pos.end, f.pos.end)
+			&& g.has_trailing_comment(g.a.child_node(f, 0).pos.end)
+		if suffix_known && !preserves_attrs
+			&& (has_deferred_comment || g.has_trailing_comment(f.pos.end)) {
 			// Comments only line up across fields that end the same way. A `= default` or an
 			// attribute makes the text in front of the comment a different shape, so the run
 			// restarts there instead of pushing the plain fields far to the right.
@@ -5078,12 +5284,9 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int
 			} else {
 				3
 			}
-			if prev_state != state {
-				comment_align.add_new_info(suffix, line)
-			} else {
-				comment_align.add_info(suffix, line, has_break)
-			}
-			prev_state = state
+			comment_suffixes[int(fid)] = suffix
+			comment_states[int(fid)] = state
+			comment_breaks[int(fid)] = has_break
 		}
 		entries << fid
 		lines[int(fid)] = line
@@ -5092,20 +5295,73 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int
 	mut defaults := map[int]int{}
 	mut attrs := map[int]int{}
 	mut comments := map[int]int{}
+	mut attr_groups := map[int]int{}
+	mut attr_group_break := false
+	mut comment_group_break := false
+	mut prev_state := 0
 	for fid in entries {
 		f := g.a.node(fid)
 		line := lines[int(fid)]
 		gp := f.generic_params()
+		mut wraps_default := false
 		if f.children_count > 0 {
 			defaults[int(fid)] = default_align.max_len(line)
 		}
 		if gp.len > 1 {
-			attrs[int(fid)] = attr_align.max_len(line)
+			if int(fid) in preserved_fields {
+				attr_group_break = true
+				continue
+			}
+			type_width := g.type_text(f.typ_text()).len
+			padded_type_width := int_max(type_width, defaults[int(fid)] or { 0 })
+			flags := gp[0]
+			// The volatile prefix shifts the type column beyond the aligned field name.
+			volatile_width := if flags.contains('v') { 'volatile '.len } else { 0 }
+			column := g.indent * 4 + (alignments[int(fid)] or { f.value.len }) + 1 +
+				padded_type_width + 3 + volatile_width
+			default_width := g.struct_field_attr_default_width(fid, column)
+			if f.children_count == 0 || default_width > 0 {
+				// Defaults must be aligned before measuring the column for attributes.
+				suffix := volatile_width + if f.children_count > 0 {
+					padded_type_width + 3 + default_width
+				} else {
+					type_width
+				}
+				if attr_group_break {
+					attr_align.add_new_info(suffix, line)
+				} else {
+					attr_align.add_info(suffix, line, false)
+				}
+				attr_group_break = false
+				// Semicolon-separated fields can open distinct groups on the same source line.
+				attr_groups[int(fid)] = attr_align.infos.len - 1
+			} else {
+				// A multiline default separates its neighbors even on the same source line.
+				attr_group_break = true
+				wraps_default = true
+			}
 		}
-		if (gp.len > 1 || f.children_count == 0 || g.struct_field_default_width(fid) > 0)
-			&& g.has_trailing_comment(f.pos.end) {
-			comments[int(fid)] = comment_align.max_len(line)
+		if suffix := comment_suffixes[int(fid)] {
+			state := comment_states[int(fid)]
+			if comment_group_break || prev_state != state {
+				comment_align.add_new_info(suffix, line)
+			} else {
+				comment_align.add_info(suffix, line, comment_breaks[int(fid)])
+			}
+			prev_state = state
+			comment_group_break = false
+			comment_groups[int(fid)] = comment_align.infos.len - 1
 		}
+		// The next field starts several output lines later, even in compact source.
+		if wraps_default {
+			comment_group_break = true
+		}
+	}
+	for fid, group in attr_groups {
+		attrs[fid] = attr_align.infos[group].max_len
+	}
+	for fid, group in comment_groups {
+		comments[fid] = comment_align.infos[group].max_len
 	}
 	return defaults, attrs, comments
 }
@@ -5124,7 +5380,7 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 		mut alignable := false
 		if is_interface {
 			section = if f.is_mut { 'mut' } else { '' }
-			alignable = f.kind == .interface_field && f.op != .dot && f.typ.len > 0
+			alignable = f.kind == .interface_field && f.op != .dot && f.typ_text().len > 0
 		} else if f.kind == .field_decl {
 			gp := f.generic_params()
 			flags := if gp.len > 0 { gp[0] } else { '' }
@@ -5224,8 +5480,8 @@ fn (mut g Gen) const_field(fid flat.NodeId, pub_prefix string) {
 	if f.children_count > 0 {
 		g.write(' = ')
 		g.expr(g.a.child(f, 0))
-	} else if f.typ.len > 0 {
-		g.write(' ${g.type_text(f.typ)}')
+	} else if f.typ_text().len > 0 {
+		g.write(' ${g.type_text(f.typ_text())}')
 	}
 	// `g.expr` already terminated the line when it flushed a trailing `//`
 	// comment; a second newline here would add a blank line on every `vfmt`
@@ -5293,9 +5549,9 @@ fn (mut g Gen) global_field(fid flat.NodeId, group_pub bool, align_width int) {
 	g.write(head)
 	padding := if align_width > 0 { align_width - head.len + 1 } else { 1 }
 	if f.children_count > 0 {
-		if f.typ.len > 0 {
+		if f.typ_text().len > 0 {
 			g.write(' '.repeat(padding))
-			g.write(g.type_text(f.typ))
+			g.write(g.type_text(f.typ_text()))
 			g.write(' = ')
 		} else {
 			g.write(' '.repeat(padding))
@@ -5304,7 +5560,7 @@ fn (mut g Gen) global_field(fid flat.NodeId, group_pub bool, align_width int) {
 		g.expr(g.a.child(f, 0))
 	} else {
 		g.write(' '.repeat(padding))
-		g.write(g.type_text(f.typ))
+		g.write(g.type_text(f.typ_text()))
 	}
 	g.emit_trailing_comments(f.pos.end)
 	if !g.on_newline {
@@ -5325,8 +5581,8 @@ fn (mut g Gen) directive_stmt(id flat.NodeId) {
 	}
 	g.emit_attrs(id)
 	g.write('#${n.value}')
-	if n.typ.len > 0 {
-		g.write(' ${n.typ}')
+	if n.typ_text().len > 0 {
+		g.write(' ${n.typ_text()}')
 	}
 	g.writeln('')
 }
@@ -5540,6 +5796,9 @@ fn (mut g Gen) emit_comments_before(limit int) {
 fn (mut g Gen) emit_trailing_comments(end int) {
 	for g.comment_i < g.comments.len {
 		comment := g.comments[g.comment_i]
+		if g.trailing_comment_limit >= 0 && comment.pos.offset >= g.trailing_comment_limit {
+			return
+		}
 		if comment.pos.offset < end || g.source_line(comment.pos.offset) != g.source_line(end)
 			|| comment.pos.offset > g.source.len
 			|| g.source[end..comment.pos.offset].trim_space().len > 0 {
@@ -5843,9 +6102,9 @@ fn (g &Gen) string_literal_text(n &flat.Node) string {
 	is_c_string := n.kind == .char_literal && n.value.starts_with('c:')
 	prefix := if is_c_string {
 		'c'
-	} else if n.typ.starts_with('raw:') {
+	} else if n.typ_text().starts_with('raw:') {
 		'r'
-	} else if n.typ.starts_with('js:') {
+	} else if n.typ_text().starts_with('js:') {
 		'js'
 	} else {
 		''
@@ -5866,7 +6125,7 @@ fn (g &Gen) string_literal_text(n &flat.Node) string {
 			&& source[source.len - 1] == source[prefix.len] {
 			// A raw literal cannot escape its delimiter, so its quotes are part of
 			// what it can hold and are kept as written, as they were before.
-			if n.typ.starts_with('raw:') {
+			if n.typ_text().starts_with('raw:') {
 				return source
 			}
 			return requote_literal_text(source, prefix.len)
@@ -5875,11 +6134,11 @@ fn (g &Gen) string_literal_text(n &flat.Node) string {
 	if is_c_string {
 		return c_string_literal_text(n.value)
 	}
-	if n.typ.starts_with('raw:') {
-		quote := if n.typ.ends_with('"') { '"' } else { "'" }
+	if n.typ_text().starts_with('raw:') {
+		quote := if n.typ_text().ends_with('"') { '"' } else { "'" }
 		return 'r${quote}${n.value}${quote}'
 	}
-	if n.typ.starts_with('js:') {
+	if n.typ_text().starts_with('js:') {
 		return 'js${quote_string(n.value)}'
 	}
 	return quote_string(n.value)

@@ -7,7 +7,7 @@ const parallel_vlib_dir = os.dir(parallel_v3_dir)
 const parallel_v3_src = os.join_path(parallel_v3_dir, 'v.v')
 
 fn setup_parallel_v3_cache() {
-	cache_dir := os.join_path(os.temp_dir(), 'v3_parallel_cgen_cache_${os.getpid()}')
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_parallel_cgen_cache_${os.getpid()}')
 	if os.getenv('V3CACHE') == cache_dir {
 		return
 	}
@@ -19,7 +19,7 @@ fn setup_parallel_v3_cache() {
 fn build_parallel_v3() string {
 	setup_parallel_v3_cache()
 	vexe := @VEXE
-	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_cgen_test_${os.getpid()}')
+	v3_bin := os.join_path(os.vtmp_dir(), 'v3_parallel_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
 		os.exec([vexe, '-gc', 'none', '-path', '${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o',
@@ -31,7 +31,7 @@ fn build_parallel_v3() string {
 fn build_parallel_prod_v3() string {
 	setup_parallel_v3_cache()
 	vexe := @VEXE
-	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
+	v3_bin := os.join_path(os.vtmp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
 		os.exec([vexe, '-gc', 'none', '-prealloc', '-prod', '-path',
@@ -43,7 +43,7 @@ fn build_parallel_prod_v3() string {
 fn build_parallel_prealloc_prod_v3() string {
 	setup_parallel_v3_cache()
 	vexe := @VEXE
-	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_prealloc_prod_cgen_test_${os.getpid()}')
+	v3_bin := os.join_path(os.vtmp_dir(), 'v3_parallel_prealloc_prod_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
 		os.exec([vexe, '-gc', 'none', '-prod', '-prealloc', '-d', 'parallel', '-path',
@@ -54,7 +54,7 @@ fn build_parallel_prealloc_prod_v3() string {
 
 // write_parallel_module_init_project writes parallel module init project output for v3 tests.
 fn write_parallel_module_init_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	project_dir := os.join_path(os.vtmp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(os.join_path(project_dir, 'moda')) or { panic(err) }
 
@@ -114,8 +114,9 @@ pub fn value() int {
 fn test_parallel_cgen_main_emits_module_init_call() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_module_init_project('parallel_module_init')
-	c_out := os.join_path(os.temp_dir(), 'v3_parallel_module_init.c')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-o', '${c_out}'])
+	c_out := os.join_path(os.vtmp_dir(), 'v3_parallel_module_init.c')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', '-enable-globals', main_path,
+		'-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen'), compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
@@ -124,7 +125,7 @@ fn test_parallel_cgen_main_emits_module_init_call() {
 
 fn test_parallel_cgen_remaps_worker_string_ids() {
 	v3_bin := build_parallel_v3()
-	source := os.join_path(os.temp_dir(), 'v3_parallel_string_ids_${os.getpid()}.v')
+	source := os.join_path(os.vtmp_dir(), 'v3_parallel_string_ids_${os.getpid()}.v')
 	mut source_text := strings.new_builder(128_000)
 	source_text.writeln('module main')
 	source_text.writeln('')
@@ -143,9 +144,10 @@ fn test_parallel_cgen_remaps_worker_string_ids() {
 	defer {
 		os.rm(source) or {}
 	}
-	parallel_output := os.join_path(os.temp_dir(), 'v3_parallel_string_ids_${os.getpid()}.c')
-	serial_output := os.join_path(os.temp_dir(), 'v3_serial_string_ids_${os.getpid()}.c')
-	parallel_compile := os.exec(['env', 'VJOBS=4', v3_bin, '-nocache', '-o', parallel_output, source])
+	parallel_output := os.join_path(os.vtmp_dir(), 'v3_parallel_string_ids_${os.getpid()}.c')
+	serial_output := os.join_path(os.vtmp_dir(), 'v3_serial_string_ids_${os.getpid()}.c')
+	parallel_compile := os.exec(['env', 'VJOBS=4', v3_bin, '-show-timings', '-nocache', '-o',
+		parallel_output, source])
 	assert parallel_compile.exit_code == 0, parallel_compile.output
 	assert parallel_compile.output.contains('cgen (parallel)'), parallel_compile.output
 	serial_compile :=
@@ -157,7 +159,7 @@ fn test_parallel_cgen_remaps_worker_string_ids() {
 }
 
 fn write_parallel_gettid_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	project_dir := os.join_path(os.vtmp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(project_dir) or { panic(err) }
 
@@ -190,8 +192,8 @@ fn write_parallel_gettid_project(name string) string {
 fn test_parallel_cgen_merges_worker_gettid_compat() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_gettid_project('parallel_gettid_compat')
-	c_out := os.join_path(os.temp_dir(), 'v3_parallel_gettid_compat.c')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-o', '${c_out}'])
+	c_out := os.join_path(os.vtmp_dir(), 'v3_parallel_gettid_compat.c')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen'), compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
@@ -200,7 +202,7 @@ fn test_parallel_cgen_merges_worker_gettid_compat() {
 }
 
 fn write_parallel_user_main_test_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	project_dir := os.join_path(os.vtmp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(project_dir) or { panic(err) }
 
@@ -232,8 +234,9 @@ fn write_parallel_user_main_test_project(name string) string {
 fn test_parallel_cgen_worker_keeps_test_user_main_renamed() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_user_main_test_project('parallel_user_main_test_file')
-	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_user_main_test_file_out')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-b', 'c', '-o', bin_out])
+	bin_out := os.join_path(os.vtmp_dir(), 'v3_parallel_user_main_test_file_out')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', main_path, '-b', 'c', '-o',
+		bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen'), compile.output
 	run := os.exec([bin_out])
@@ -246,7 +249,7 @@ fn test_parallel_cgen_worker_keeps_test_user_main_renamed() {
 }
 
 fn write_parallel_generic_struct_method_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	project_dir := os.join_path(os.vtmp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(project_dir) or { panic(err) }
 
@@ -291,8 +294,9 @@ fn write_parallel_generic_struct_method_project(name string) string {
 fn test_parallel_cgen_worker_resolves_generic_struct_method_signature() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_generic_struct_method_project('parallel_generic_struct_method')
-	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_generic_struct_method_out')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-nocache', main_path, '-b', 'c', '-o', bin_out])
+	bin_out := os.join_path(os.vtmp_dir(), 'v3_parallel_generic_struct_method_out')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', '-nocache', main_path, '-b',
+		'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
 	run := os.exec([bin_out])
@@ -308,8 +312,8 @@ fn test_parallel_cgen_generic_optional_method_uses_concrete_optional_abi_in_call
 	v3_bin := build_parallel_v3()
 	main_path :=
 		write_parallel_generic_struct_method_project('parallel_generic_struct_optional_abi')
-	c_out := os.join_path(os.temp_dir(), 'v3_parallel_generic_struct_optional_abi.c')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-o', '${c_out}'])
+	c_out := os.join_path(os.vtmp_dir(), 'v3_parallel_generic_struct_optional_abi.c')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
 
@@ -323,7 +327,7 @@ fn test_parallel_cgen_generic_optional_method_uses_concrete_optional_abi_in_call
 }
 
 fn write_parallel_ierror_payload_success_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	project_dir := os.join_path(os.vtmp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(os.join_path(project_dir, 'payloadmod')) or { panic(err) }
 
@@ -371,8 +375,9 @@ fn test_parallel_cgen_worker_preserves_ierror_payload_success_with_builtin_error
 	v3_bin := build_parallel_v3()
 	main_path :=
 		write_parallel_ierror_payload_success_project('parallel_ierror_payload_success_${os.getpid()}')
-	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_ierror_payload_success_out_${os.getpid()}')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-nocache', main_path, '-b', 'c', '-o', bin_out])
+	bin_out := os.join_path(os.vtmp_dir(), 'v3_parallel_ierror_payload_success_out_${os.getpid()}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', '-nocache', main_path, '-b',
+		'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
 	run := os.exec([bin_out])
@@ -383,7 +388,7 @@ fn test_parallel_cgen_worker_preserves_ierror_payload_success_with_builtin_error
 }
 
 fn write_parallel_top_level_no_main_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	project_dir := os.join_path(os.vtmp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(project_dir) or { panic(err) }
 
@@ -411,8 +416,9 @@ fn write_parallel_top_level_no_main_project(name string) string {
 fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_top_level_no_main_project('parallel_top_level_no_main')
-	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_top_level_no_main_out')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-b', 'c', '-o', bin_out])
+	bin_out := os.join_path(os.vtmp_dir(), 'v3_parallel_top_level_no_main_out')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', main_path, '-b', 'c', '-o',
+		bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('transform'), compile.output
 	assert compile.output.contains('cgen'), compile.output
@@ -426,8 +432,9 @@ fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 fn test_prealloc_keeps_parallel_transform_enabled() {
 	v3_bin := build_parallel_prealloc_prod_v3()
 	main_path := write_parallel_module_init_project('parallel_prealloc_cgen_${os.getpid()}')
-	c_out := os.join_path(os.temp_dir(), 'v3_parallel_prealloc_transform_${os.getpid()}.c')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-nocache', '-b', 'c', '-o', '${c_out}', main_path])
+	c_out := os.join_path(os.vtmp_dir(), 'v3_parallel_prealloc_transform_${os.getpid()}.c')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', '-enable-globals', '-nocache',
+		'-b', 'c', '-o', '${c_out}', main_path])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('transform (parallel)'), compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
@@ -443,11 +450,11 @@ fn test_prealloc_keeps_parallel_transform_enabled() {
 
 fn test_parallel_transform_generates_v3_c_with_vjobs_4_and_12() {
 	v3_bin := build_parallel_prod_v3()
-	c_out_4 := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_4_${os.getpid()}.c')
+	c_out_4 := os.join_path(os.vtmp_dir(), 'v3_parallel_selfhost_out_4_${os.getpid()}.c')
 	os.rm(c_out_4) or {}
 	cgen_4 :=
-		os.exec(['env', 'VJOBS=4', v3_bin, '-nocache', '-building-v', '-b', 'c', '-o', '${c_out_4}',
-			'${parallel_v3_src}'])
+		os.exec(['env', 'VJOBS=4', v3_bin, '-show-timings', '-nocache', '-building-v', '-b', 'c',
+			'-o', '${c_out_4}', '${parallel_v3_src}'])
 	assert cgen_4.exit_code == 0, cgen_4.output
 	assert cgen_4.output.contains('transform (parallel)'), cgen_4.output
 	assert cgen_4.output.contains('cgen (parallel)'), cgen_4.output
@@ -460,11 +467,11 @@ fn test_parallel_transform_generates_v3_c_with_vjobs_4_and_12() {
 	assert c_code.contains('flat_cgen_chunk_thread'), c_code
 	assert c_code.contains('run_parallel_transform'), c_code
 
-	c_out_12 := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_12_${os.getpid()}.c')
+	c_out_12 := os.join_path(os.vtmp_dir(), 'v3_parallel_selfhost_out_12_${os.getpid()}.c')
 	os.rm(c_out_12) or {}
 	cgen_12 :=
-		os.exec(['env', 'VJOBS=12', v3_bin, '-nocache', '-building-v', '-b', 'c', '-o', '${c_out_12}',
-			'${parallel_v3_src}'])
+		os.exec(['env', 'VJOBS=12', v3_bin, '-show-timings', '-nocache', '-building-v', '-b', 'c',
+			'-o', '${c_out_12}', '${parallel_v3_src}'])
 	assert cgen_12.exit_code == 0, cgen_12.output
 	assert cgen_12.output.contains('transform (parallel)'), cgen_12.output
 	assert cgen_12.output.contains('cgen (parallel)'), cgen_12.output
@@ -473,13 +480,15 @@ fn test_parallel_transform_generates_v3_c_with_vjobs_4_and_12() {
 
 fn test_no_parallel_directory_selfhost_retains_parallel_support() {
 	v3_bin := build_parallel_prod_v3()
-	bin_out := os.join_path(os.temp_dir(), 'v3_no_parallel_dir_selfhost_out_${os.getpid()}')
+	bin_out := os.join_path(os.vtmp_dir(), 'v3_no_parallel_dir_selfhost_out_${os.getpid()}')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	compile :=
-		os.exec(['env', 'VJOBS=2', v3_bin, '--no-parallel', '-nocache', '-no-memory-limit', '-selfhost',
-			'-b', 'c', '-o', bin_out, parallel_v3_dir])
+		os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', '--no-parallel', '-nocache',
+			'-no-memory-limit', '-selfhost', '-b', 'c', '-o', bin_out, parallel_v3_dir])
 	assert compile.exit_code == 0, compile.output
+	// The stage table is printed, with the serial stage names.
+	assert compile.output.contains('\n  cgen '), compile.output
 	assert !compile.output.contains('transform (parallel)'), compile.output
 	assert !compile.output.contains('cgen (parallel)'), compile.output
 	assert os.exists(bin_out), compile.output
@@ -493,7 +502,7 @@ fn test_no_parallel_directory_selfhost_retains_parallel_support() {
 }
 
 fn write_no_parallel_user_define_project(name string) string {
-	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	project_dir := os.join_path(os.vtmp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(project_dir) or { panic(err) }
 
@@ -527,13 +536,15 @@ fn parallel_file_value() string {
 fn test_no_parallel_preserves_user_parallel_define_for_project() {
 	v3_bin := build_parallel_v3()
 	project_dir := write_no_parallel_user_define_project('no_parallel_user_define')
-	bin_out := os.join_path(os.temp_dir(), 'v3_no_parallel_user_define_out_${os.getpid()}')
+	bin_out := os.join_path(os.vtmp_dir(), 'v3_no_parallel_user_define_out_${os.getpid()}')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	compile :=
-		os.exec(['env', 'VJOBS=2', v3_bin, '-nocache', '--no-parallel', '-d', 'parallel', '-b',
-			'c', '-o', bin_out, project_dir])
+		os.exec(['env', 'VJOBS=2', v3_bin, '-show-timings', '-nocache', '--no-parallel', '-d',
+			'parallel', '-b', 'c', '-o', bin_out, project_dir])
 	assert compile.exit_code == 0, compile.output
+	// The stage table is printed, with the serial stage names.
+	assert compile.output.contains('\n  cgen '), compile.output
 	assert !compile.output.contains('transform (parallel)'), compile.output
 	assert !compile.output.contains('cgen (parallel)'), compile.output
 	run := os.exec([bin_out])

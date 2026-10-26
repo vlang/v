@@ -45,10 +45,38 @@ jobs:
       - name: Check pkg-config flag query selection
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./v -new-compiler vlib/v/pref/pkgconfig_test.v
+      # test_all.vsh compiles and smoke-runs the GUI examples (2048, tetris) under xvfb-run, so
+      # the X11/GL development headers and libraries that gg and sokol link against are needed.
+      - name: Install Objective-C compiler and GUI libraries
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl-dev libegl-dev libgl1-mesa-dri
+      - name: Test compiler
+        run: ./v run vlib/v/test_all.vsh --skip-units
+
+  # Section 1 of test_all.vsh, the V3 unit tests, takes several hours of serial work. Each job
+  # runs every n-th file of the sorted list (`--shard i/n`); n is the number of shards below.
+  # The matrix takes ten runners, so it runs only for pushes to master, not for pull requests.
+  unit-tests:
+    name: V3 unit tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make -j4
       - name: Install Objective-C compiler
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y gobjc
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev
       - name: Test compiler
-        run: ./v run vlib/v/test_all.vsh
+        run: ./v run vlib/v/test_all.vsh --units-only --shard ${{ matrix.shard }}/${{ strategy.job-total }}

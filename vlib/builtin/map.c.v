@@ -14,11 +14,13 @@ fn fast_string_eq(a string, b string) bool {
 	if a.len != b.len {
 		return false
 	}
-	unsafe {
-		return C.memcmp(a.str, b.str, b.len) == 0
+	$if prod && !tinyc && !msvc && !native {
+		return string_bytes_equal(a.str, b.str, b.len)
 	}
+	return unsafe { C.memcmp(a.str, b.str, b.len) == 0 }
 }
 
+@[inline]
 fn map_hash_string(pkey voidptr) u64 {
 	key := unsafe { &string(pkey) }
 	$if prod && !tinyc && !msvc {
@@ -61,7 +63,7 @@ fn map_hash_half(p &u8) u64 {
 // each 128-bit product, which `_wymix` folds into 64 bits, and three such products
 // side by side for a long key. A key of up to 16 bytes takes two products.
 // The hash is only for the maps of a program: `hash.wyhash_c` does not change.
-@[unsafe]
+@[inline; unsafe]
 fn map_hash_bytes(key &u8, len int) u64 {
 	unsafe {
 		mut p := key
@@ -69,12 +71,21 @@ fn map_hash_bytes(key &u8, len int) u64 {
 		mut a := u64(0)
 		mut b := u64(0)
 		if len <= 16 {
-			if len >= 4 {
-				// The first and the last 4 bytes, and the 4 bytes that follow or
-				// precede them in a key of 8 bytes or more: they overlap in a shorter one.
-				mid := (len >> 3) << 2
-				a = (map_hash_half(p) << 32) | map_hash_half(p + mid)
-				b = (map_hash_half(p + len - 4) << 32) | map_hash_half(p + len - 4 - mid)
+			if len >= 8 {
+				if len < 16 {
+					// These halves are adjacent, so one unaligned word load suffices.
+					first := map_hash_word(p)
+					a = (first << 32) | (first >> 32)
+					b = map_hash_word(p + len - 8)
+				} else {
+					a = (map_hash_half(p) << 32) | map_hash_half(p + 8)
+					b = (map_hash_half(p + 12) << 32) | map_hash_half(p + 4)
+				}
+			} else if len >= 4 {
+				first := map_hash_half(p)
+				last := map_hash_half(p + len - 4)
+				a = (first << 32) | first
+				b = (last << 32) | last
 			} else if len > 0 {
 				a = (u64(p[0]) << 16) | (u64(p[len >> 1]) << 8) | u64(p[len - 1])
 			}

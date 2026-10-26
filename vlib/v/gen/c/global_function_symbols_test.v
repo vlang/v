@@ -137,7 +137,9 @@ pub fn result() int { return callback + local.callback(3) }
 ') or { panic(err) }
 		} else if fixture == 'extern' {
 			header := os.join_path(dir, 'local', 'counter.h')
-			os.write_file(header, 'long long counter = 17;\n') or { panic(err) }
+			// `int64_t` is the type of the `extern` that V writes for it: `long` on
+			// 64-bit Linux, which is no `long long` for a C compiler.
+			os.write_file(header, '#include <stdint.h>\nint64_t counter = 17;\n') or { panic(err) }
 			os.write_file(os.join_path(dir, 'local', 'local.v'), 'module local
 #insert "${header}"
 @[c_extern]

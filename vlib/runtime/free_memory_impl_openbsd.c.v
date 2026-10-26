@@ -1,28 +1,22 @@
 module runtime
 
-#include <sys/sysctl.h>
-#include <uvm/uvmexp.h>
+#flag @VEXEROOT/vlib/runtime/free_memory_openbsd.o
 
-struct C.uvmexp {
-	pagesize int
-	free     int
-}
+fn C.v_runtime_openbsd_free_memory(&uint) int
 
-fn free_memory_impl() !usize {
+fn free_memory_impl() !uint {
 	$if cross ? {
 		return error('free_memory: not implemented')
 	}
 	$if !cross ? {
 		$if openbsd {
-			mib := [C.CTL_VM, C.VM_UVMEXP]!
-			mut uvm := C.uvmexp{0, 0}
-			mut len := usize(sizeof(C.uvmexp))
-			retval := unsafe { C.sysctl(&mib[0], mib.len, &uvm, &len, nil, 0) }
+			mut free_bytes := uint(0)
+			retval := C.v_runtime_openbsd_free_memory(&free_bytes)
 			c_errno := C.errno
 			if retval == -1 {
 				return error('free_memory: `C.sysctl()` return error code = ${c_errno}')
 			}
-			return usize(uvm.pagesize) * usize(uvm.free)
+			return free_bytes
 		}
 	}
 	return error('free_memory: not implemented')

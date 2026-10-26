@@ -88,6 +88,30 @@ pub fn parse_vc_bootstrap_lock(source string) !VcBootstrapLock {
 	}
 }
 
+fn render_vc_bootstrap_artifact(artifact VcBootstrapArtifact) string {
+	return '${artifact.mode} ${artifact.blob} ${artifact.byte_size} ${artifact.sha256}'
+}
+
+// render_vc_bootstrap_lock renders the six canonical records of a vc.lock for one VC commit: the
+// format, the repository, the commit and its tree, then the Git mode, blob ID, byte size, and
+// SHA-256 of `v.c` and of `v_win.c`. It parses its own output and fails unless that yields
+// `vc_lock` again, so it never emits a lock that parse_vc_bootstrap_lock would reject or read
+// differently.
+pub fn render_vc_bootstrap_lock(vc_lock VcBootstrapLock) !string {
+	source := [
+		'format=vc-lock-v1',
+		'repository=${vc_lock.repository}',
+		'commit=${vc_lock.commit}',
+		'tree=${vc_lock.tree}',
+		'v.c=${render_vc_bootstrap_artifact(vc_lock.v_c)}',
+		'v_win.c=${render_vc_bootstrap_artifact(vc_lock.v_win_c)}',
+	].join('\n') + '\n'
+	if parse_vc_bootstrap_lock(source)! != vc_lock {
+		return error('VC lock does not survive its canonical round trip')
+	}
+	return source
+}
+
 // validate_vc_bootstrap_contract binds the lock and its network-free consumer into the public
 // contract checks. The shell helper may clone only from already validated local roots.
 pub fn validate_vc_bootstrap_contract(automation_root string) !VcBootstrapLock {
@@ -121,7 +145,9 @@ pub fn validate_vc_bootstrap_contract(automation_root string) !VcBootstrapLock {
 			return error('VC bootstrap helper omits a required closed-world control')
 		}
 	}
-	if script.count('-no-parallel -nocache -cc "$cc_command"') != 3 {
+	// The three cmd/v stages all call build_v_program; each of its two branches holds one direct invocation.
+	if script.count('build_v_program "$private_contract_root/') != 3
+		|| script.count('-no-parallel -nocache -cc "$cc_command"') != 2 {
 		return error('VC bootstrap helper must compile all three V stages with explicit flags')
 	}
 	if script.count('-gc none') != 3 {
@@ -134,7 +160,7 @@ pub fn validate_vc_bootstrap_contract(automation_root string) !VcBootstrapLock {
 	if script.count('cli_path') != 3
 		|| script.count(r'$work_root/tccbin-automation${exe_suffix}') != 1
 		|| script.count(r'$cli_path') != 2 || script.count(r'${cli_path}') != 0
-		|| script.count(r'"$cli_path"') != 2 || script.count(r'-o "$cli_path"') != 1
+		|| script.count(r'"$cli_path"') != 2 || script.count(r'"$private_contract_root/v${exe_suffix}" "$cli_path" -gc none') != 1
 		|| script.count(r'binding_output=$("$cli_path" contract-binding)') != 1 {
 		return error('VC bootstrap helper must use its deterministic CLI path without publishing it')
 	}

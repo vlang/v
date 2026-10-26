@@ -28,22 +28,22 @@ const buf_out_size = 1024 * 1024
 fn C.ZSTD_versionNumber() u32
 fn C.ZSTD_versionString() charptr
 
-fn C.ZSTD_compress(voidptr, usize, voidptr, usize, i32) usize
-fn C.ZSTD_decompress(voidptr, usize, voidptr, usize) usize
-fn C.ZSTD_getFrameContentSize(voidptr, usize) u64
-fn C.ZSTD_findFrameCompressedSize(voidptr, usize) usize
-fn C.ZSTD_compressBound(usize) usize
-fn C.ZSTD_isError(usize) u32
-fn C.ZSTD_getErrorName(usize) charptr
+fn C.ZSTD_compress(voidptr, uint, voidptr, uint, i32) uint
+fn C.ZSTD_decompress(voidptr, uint, voidptr, uint) uint
+fn C.ZSTD_getFrameContentSize(voidptr, uint) u64
+fn C.ZSTD_findFrameCompressedSize(voidptr, uint) uint
+fn C.ZSTD_compressBound(uint) uint
+fn C.ZSTD_isError(uint) u32
+fn C.ZSTD_getErrorName(uint) charptr
 fn C.ZSTD_minCLevel() i32
 fn C.ZSTD_maxCLevel() i32
 fn C.ZSTD_defaultCLevel() i32
 fn C.ZSTD_createCCtx() &C.ZSTD_CCtx_s
-fn C.ZSTD_freeCCtx(voidptr) usize
-fn C.ZSTD_compressCCtx(voidptr, voidptr, usize, voidptr, usize, i32) usize
+fn C.ZSTD_freeCCtx(voidptr) uint
+fn C.ZSTD_compressCCtx(voidptr, voidptr, uint, voidptr, uint, i32) uint
 fn C.ZSTD_createDCtx() &C.ZSTD_DCtx_s
-fn C.ZSTD_freeDCtx(voidptr) usize
-fn C.ZSTD_decompressDCtx(voidptr, voidptr, usize, voidptr, usize) usize
+fn C.ZSTD_freeDCtx(voidptr) uint
+fn C.ZSTD_decompressDCtx(voidptr, voidptr, uint, voidptr, uint) uint
 
 // note : new strategies _might_ be added in the future. Only the order (from fast to strong) is guaranteed
 pub enum Strategy {
@@ -272,14 +272,14 @@ pub enum CParameter {
 
 pub struct Bounds {
 pub:
-	error       usize
+	error       uint
 	lower_bound int
 	upper_bound int
 }
 
 fn C.ZSTD_cParam_getBounds(CParameter) Bounds
-fn C.ZSTD_CCtx_setParameter(voidptr, CParameter, i32) usize
-fn C.ZSTD_CCtx_setPledgedSrcSize(voidptr, u64) usize
+fn C.ZSTD_CCtx_setParameter(voidptr, CParameter, i32) uint
+fn C.ZSTD_CCtx_setPledgedSrcSize(voidptr, u64) uint
 
 pub enum ResetDirective {
 	session_only           = 1
@@ -287,8 +287,8 @@ pub enum ResetDirective {
 	session_and_parameters = 3
 }
 
-fn C.ZSTD_CCtx_reset(voidptr, ResetDirective) usize
-fn C.ZSTD_compress2(voidptr, voidptr, usize, voidptr, usize) usize
+fn C.ZSTD_CCtx_reset(voidptr, ResetDirective) uint
+fn C.ZSTD_compress2(voidptr, voidptr, uint, voidptr, uint) uint
 
 pub enum DParameter {
 	// Select a size limit (in power of 2) beyond which
@@ -317,26 +317,26 @@ pub enum DParameter {
 }
 
 fn C.ZSTD_dParam_getBounds(DParameter) Bounds
-fn C.ZSTD_DCtx_setParameter(voidptr, DParameter, i32) usize
-fn C.ZSTD_DCtx_reset(voidptr, ResetDirective) usize
+fn C.ZSTD_DCtx_setParameter(voidptr, DParameter, i32) uint
+fn C.ZSTD_DCtx_reset(voidptr, ResetDirective) uint
 
 // streaming compression
 pub struct InBuffer {
 pub mut:
 	src  voidptr
-	size usize
-	pos  usize
+	size uint
+	pos  uint
 }
 
 pub struct OutBuffer {
 pub mut:
 	dst  voidptr
-	size usize
-	pos  usize
+	size uint
+	pos  uint
 }
 
 fn C.ZSTD_createCStream() voidptr
-fn C.ZSTD_freeCStream(voidptr) usize
+fn C.ZSTD_freeCStream(voidptr) uint
 
 pub enum EndDirective {
 	// collect more data, encoder decides when to output compressed result, for optimal compression ratio
@@ -354,21 +354,21 @@ pub enum EndDirective {
 	end      = 2
 }
 
-fn C.ZSTD_compressStream2(voidptr, &OutBuffer, &InBuffer, EndDirective) usize
-fn C.ZSTD_CStreamInSize() usize
-fn C.ZSTD_CStreamOutSize() usize
-fn C.ZSTD_initCStream(voidptr, i32) usize
-fn C.ZSTD_compressStream(voidptr, &OutBuffer, &InBuffer) usize
-fn C.ZSTD_flushStream(voidptr, &OutBuffer) usize
-fn C.ZSTD_endStream(voidptr, &OutBuffer) usize
+fn C.ZSTD_compressStream2(voidptr, &OutBuffer, &InBuffer, EndDirective) uint
+fn C.ZSTD_CStreamInSize() uint
+fn C.ZSTD_CStreamOutSize() uint
+fn C.ZSTD_initCStream(voidptr, i32) uint
+fn C.ZSTD_compressStream(voidptr, &OutBuffer, &InBuffer) uint
+fn C.ZSTD_flushStream(voidptr, &OutBuffer) uint
+fn C.ZSTD_endStream(voidptr, &OutBuffer) uint
 
 // streaming decompression
 fn C.ZSTD_createDStream() voidptr
-fn C.ZSTD_freeDStream(voidptr) usize
-fn C.ZSTD_initDStream(voidptr) usize
-fn C.ZSTD_decompressStream(voidptr, &OutBuffer, &InBuffer) usize
-fn C.ZSTD_DStreamInSize() usize
-fn C.ZSTD_DStreamOutSize() usize
+fn C.ZSTD_freeDStream(voidptr) uint
+fn C.ZSTD_initDStream(voidptr) uint
+fn C.ZSTD_decompressStream(voidptr, &OutBuffer, &InBuffer) uint
+fn C.ZSTD_DStreamInSize() uint
+fn C.ZSTD_DStreamOutSize() uint
 
 // version_number returns runtime library version, the value is (MAJOR*100*100 + MINOR*100 + RELEASE).
 pub fn version_number() u32 {
@@ -380,18 +380,18 @@ pub fn version_string() string {
 	return unsafe { tos_clone(C.ZSTD_versionString()) }
 }
 
-// is_error tells if a `usize` function result is an error code.
-pub fn is_error(code usize) bool {
+// is_error tells if a `uint` function result is an error code.
+pub fn is_error(code uint) bool {
 	return C.ZSTD_isError(code) == 1
 }
 
 // get_error_name provides readable string from an error code.
-pub fn get_error_name(code usize) string {
+pub fn get_error_name(code uint) string {
 	return unsafe { tos_clone(&u8(C.ZSTD_getErrorName(code))) }
 }
 
 // check_zstd checks the zstd error code, and return a error string.
-pub fn check_error(code usize) ! {
+pub fn check_error(code uint) ! {
 	if is_error(code) {
 		return error(get_error_name(code))
 	}
@@ -496,14 +496,14 @@ pub fn (mut c CCtx) set(c_param CParameter, val int) ! {
 // 	.zstd_e_continue => continue stream compression.
 // 	.zstd_e_flush => flush data
 // 	.zstd_e_end => it is the last frame
-pub fn (mut c CCtx) compress_stream2(output &OutBuffer, input &InBuffer, mode EndDirective) !usize {
+pub fn (mut c CCtx) compress_stream2(output &OutBuffer, input &InBuffer, mode EndDirective) !uint {
 	res := C.ZSTD_compressStream2(c.ctx, output, input, mode)
 	check_error(res)!
 	return res
 }
 
 // free_cctx free a compression context.
-pub fn (mut c CCtx) free_cctx() usize {
+pub fn (mut c CCtx) free_cctx() uint {
 	return C.ZSTD_freeCCtx(c.ctx)
 }
 
@@ -535,14 +535,14 @@ pub fn (mut d DCtx) set(d_param DParameter, val int) ! {
 
 // decompress_stream do stream decompress on `input`, and store decompressed data in `output`.
 // return remaining bytes in `input` stream
-pub fn (mut d DCtx) decompress_stream(output &OutBuffer, input &InBuffer) !usize {
+pub fn (mut d DCtx) decompress_stream(output &OutBuffer, input &InBuffer) !uint {
 	res := C.ZSTD_decompressStream(d.ctx, output, input)
 	check_error(res)!
 	return res
 }
 
 // free_cctx free a compression context
-pub fn (mut d DCtx) free_dctx() usize {
+pub fn (mut d DCtx) free_dctx() uint {
 	return C.ZSTD_freeDCtx(d.ctx)
 }
 
@@ -587,7 +587,7 @@ pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 	fout.write(buf_out[..int(output.pos)])!
 	// then, write the array.data to file
 	input.src = array.data
-	input.size = usize(array.len * int(sizeof(T)))
+	input.size = uint(array.len * int(sizeof(T)))
 	input.pos = 0
 	output.dst = buf_out.data
 	output.size = buf_out_size
@@ -618,29 +618,29 @@ pub fn load_array[T](fname string, params DecompressParams) ![]T {
 	mut len_buf := []u8{len: 8}
 	mut input := &InBuffer{}
 	mut output := &OutBuffer{}
-	mut last_ret := usize(0)
+	mut last_ret := uint(0)
 	mut last_chunk := false
 	// first, read the array.len from file
 	mut read_len := fin.read(mut buf_in)!
 	last_chunk = read_len < buf_in.len
 	input.src = buf_in.data
-	input.size = usize(read_len)
+	input.size = uint(read_len)
 	input.pos = 0
 	output.dst = len_buf.data
-	output.size = usize(len_buf.len)
+	output.size = uint(len_buf.len)
 	output.pos = 0
 	last_ret = dctx.decompress_stream(output, input)!
 	len := binary.little_endian_u64(len_buf)
 	// then, read the array.data from file
 	mut result := []T{len: int(len)}
 	output.dst = result.data
-	output.size = usize(result.len) * sizeof(T)
+	output.size = uint(result.len) * sizeof(T)
 	output.pos = 0
 	last_ret = dctx.decompress_stream(output, input)!
 	for !last_chunk {
 		read_len = fin.read(mut buf_in)!
 		last_chunk = read_len < buf_in.len
-		input.size = usize(read_len)
+		input.size = uint(read_len)
 		input.pos = 0
 		for input.pos < input.size {
 			last_ret = dctx.decompress_stream(output, input)!

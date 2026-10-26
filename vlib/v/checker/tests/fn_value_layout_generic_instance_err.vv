@@ -1,0 +1,23 @@
+// The function values of a generic instance must have the expected parameter and result
+// layouts, as outside generic functions.
+fn fixed() ?[2]int {
+	return [1, 2]!
+}
+
+fn dynamic() ?[]int {
+	return [3]
+}
+
+fn call(f fn () ?[]int) {
+	println(f() or { [] })
+}
+
+fn call_through[T](f fn () ?T) {
+	call(f)
+}
+
+fn main() {
+	call_through(fixed)
+	// An instance whose result is stored as expected is accepted.
+	call_through(dynamic)
+}

@@ -1,6 +1,7 @@
 module transform
 
 import v.flat
+import v.token
 import v.types
 
 fn literal_binding_test_node(mut a flat.FlatAst, kind flat.NodeKind, children []flat.NodeId) flat.NodeId {
@@ -15,13 +16,67 @@ fn literal_binding_test_node(mut a flat.FlatAst, kind flat.NodeKind, children []
 	})
 }
 
+fn test_array_append_does_not_consume_a_pointer_local() {
+	mut a := flat.FlatAst.new()
+	lhs := a.add_val(.ident, 'value')
+	callee := a.add_val(.ident, 'make_pointer')
+	init := literal_binding_test_node(mut a, .call, [callee])
+	decl := literal_binding_test_node(mut a, .decl_assign, [lhs, init])
+	source := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'value'
+		typ:   flat.source_type_id('&AppendNode')
+	})
+	destination := a.add_val(.ident, 'out')
+	append := literal_binding_test_node(mut a, .infix, [destination, source])
+	a.nodes[int(append)].op = .left_shift
+	stmt := literal_binding_test_node(mut a, .expr_stmt, [append])
+	literal_binding_test_node(mut a, .fn_decl, [decl, stmt])
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+	assert !t.array_append_consumes_fresh_local(source)
+}
+
+fn test_array_append_does_not_consume_static_storage() {
+	mut a := flat.FlatAst.new()
+	lhs := a.add_val(.ident, 'value')
+	init := a.add_val(.struct_init, 'AppendNode')
+	decl := literal_binding_test_node(mut a, .decl_assign, [lhs, init])
+	a.nodes[int(decl)].value = 'static'
+	source := a.add_val(.ident, 'value')
+	destination := a.add_val(.ident, 'out')
+	append := literal_binding_test_node(mut a, .infix, [destination, source])
+	a.nodes[int(append)].op = .left_shift
+	stmt := literal_binding_test_node(mut a, .expr_stmt, [append])
+	literal_binding_test_node(mut a, .fn_decl, [decl, stmt])
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+	assert !t.array_append_consumes_fresh_local(source)
+	mut locals := map[string]bool{}
+	mut uses := map[string]int{}
+	mut calls := []int{}
+	assert !t.array_append_factory_body_is_fresh(decl, mut locals, mut uses, mut calls)
+}
+
+fn test_array_append_does_not_trust_a_bodyless_factory() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.fn_decl, 'opaque_factory')
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_param_types['opaque_factory'] = []types.Type{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.prepare_array_append_tree_factories()
+	assert !t.array_append_tree_factories['opaque_factory']
+}
+
 fn literal_string_test_call(mut a flat.FlatAst, receiver flat.NodeId, method string, args []flat.NodeId) flat.NodeId {
 	selector_start := a.begin_children()
 	a.add_child(receiver)
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          method
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: selector_start
 		children_count: 1
 	})
@@ -32,7 +87,7 @@ fn literal_string_test_call(mut a flat.FlatAst, receiver flat.NodeId, method str
 	}
 	return a.add_node(flat.Node{
 		kind:           .call
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: call_start
 		children_count: flat.child_count(args.len + 1)
 	})
@@ -42,9 +97,9 @@ fn test_literal_string_call_retains_receiver_while_arguments_grow_ast() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	receiver := a.add_node(flat.Node{ kind: .string_literal, typ: 'string', value: 'abc' })
-	needle := a.add_node(flat.Node{ kind: .string_literal, typ: 'string', value: 'A' })
-	replacement := a.add_node(flat.Node{ kind: .string_literal, typ: 'string', value: 'z' })
+	receiver := a.add_node(flat.Node{ kind: .string_literal, typ: flat.source_type_string, value: 'abc' })
+	needle := a.add_node(flat.Node{ kind: .string_literal, typ: flat.source_type_string, value: 'A' })
+	replacement := a.add_node(flat.Node{ kind: .string_literal, typ: flat.source_type_string, value: 'z' })
 	lower := literal_string_test_call(mut a, needle, 'to_lower', [])
 	upper := literal_string_test_call(mut a, replacement, 'to_upper', [])
 	call := literal_string_test_call(mut a, receiver, 'replace', [lower, upper])
@@ -69,33 +124,32 @@ fn test_call_param_type_name_memo_preserves_composites_and_module_locks() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Cell'] = StructInfo{ name: 'Cell', module: 'main' }
-	t.structs['dep.Cell'] = StructInfo{ name: 'Cell', module: 'dep' }
-	cell := types.Type(types.Struct{ name: 'Cell' })
+	t.structs['Cell'] = StructInfo{ name: flat.source_type_id('Cell'), module: 'main' }
+	t.structs['dep.Cell'] = StructInfo{ name: flat.source_type_id('Cell'), module: 'dep' }
+	cell := types.Type(types.Struct{ name_id: flat.source_type_id('Cell') })
 	compound := types.Type(types.Map{
-		key_type:   types.Type(types.String{})
-		value_type: types.Type(types.Array{
-			elem_type: types.Type(types.Pointer{ base_type: cell })
+		key_type:   &types.Type(types.String{})
+		value_type: &types.Type(types.Array{
+			elem_type: &types.Type(types.Pointer{ base_type: &cell })
 		})
 	})
 	callback := types.Type(types.FnType{
-		params:      [compound]
-		params_mut:  [true]
-		return_type: types.Type(types.ResultType{ base_type: cell })
+		params:      [types.FnParam{ typ: &compound, is_mut: true }]
+		return_type: &types.Type(types.ResultType{ base_type: &cell })
 	})
 	params := [types.Type(types.int_), types.Type(types.String{}), cell, compound, callback]
 	for module_name in ['main', 'dep', 'builtin', 'dep'] {
 		t.cur_module = module_name
 		t.memo_call_param_type_names = false
 		expected := t.call_param_type_names(params)
-		configure_transformer(mut t, false, true, false, false, false, unsafe { nil })
+		configure_transformer(mut t, false, false, false, false, false, unsafe { nil })
 		assert !t.building_v
 		assert t.memo_call_param_type_names
 		assert t.call_param_type_names(params) == expected
 		assert t.call_param_type_names(params) == expected
 		if module_name == 'dep' {
-			assert expected[3] == 'map[string][]&main.Cell'
-			assert expected[4].contains('main.Cell')
+			assert expected[3] == flat.source_type_id('map[string][]&main.Cell')
+			assert flat.source_type_name(expected[4]).contains('main.Cell')
 		}
 	}
 }
@@ -106,14 +160,14 @@ fn test_nested_fn_literal_restores_outer_binding_containers_after_growth() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.cur_fn_name = 'outer'
-	t.cur_fn_ret_type = 'void'
+	t.set_cur_fn_ret_type(flat.source_type_void)
 	for i in 0 .. 128 {
-		t.set_var_type_with_raw('outer_${i}', 'int', 'OuterInt')
+		t.set_var_type_with_raw('outer_${i}', flat.source_type_int, flat.source_type_id('OuterInt'))
 	}
 	t.mark_var_as_ref_param('outer_0')
 	t.var_types[0] = VarTypeBinding{
 		...t.var_types[0]
-		heap_value_typ: 'int'
+		heap_value_typ: flat.source_type_int
 	}
 	t.fn_value_locals['outer_callback'] = 'known_callback'
 	t.mut_param_values['outer_0'] = true
@@ -126,37 +180,37 @@ fn test_nested_fn_literal_restores_outer_binding_containers_after_growth() {
 	t.local_closure_field_cleanups[73] = true
 	outer_bindings := t.var_types.clone()
 	assert t.var_type_index('outer_0') == 0
-	param := a.add_node(flat.Node{ kind: .param, value: 'outer_0', typ: 'string' })
+	param := a.add_node(flat.Node{ kind: .param, value: 'outer_0', typ: flat.source_type_string })
 	mut body := []flat.NodeId{}
 	for i in 0 .. 256 {
-		value := a.add_node(flat.Node{ kind: .int_literal, value: '${i}', typ: 'int' })
-		lhs := a.add_node(flat.Node{ kind: .ident, value: 'inner_${i}', typ: 'int' })
+		value := a.add_node(flat.Node{ kind: .int_literal, value: '${i}', typ: flat.source_type_int })
+		lhs := a.add_node(flat.Node{ kind: .ident, value: 'inner_${i}', typ: flat.source_type_int })
 		decl := literal_binding_test_node(mut a, .decl_assign, [lhs, value])
-		t.set_node_typ(int(decl), 'int')
+		t.set_node_typ(int(decl), flat.source_type_int)
 		body << decl
 	}
-	inner_value := a.add_node(flat.Node{ kind: .int_literal, value: '7', typ: 'int' })
+	inner_value := a.add_node(flat.Node{ kind: .int_literal, value: '7', typ: flat.source_type_int })
 	nested_return := literal_binding_test_node(mut a, .return_stmt, [inner_value])
 	nested := literal_binding_test_node(mut a, .fn_literal, [nested_return])
-	t.set_node_typ(int(nested), 'int')
+	t.set_node_typ(int(nested), flat.source_type_int)
 	nested_lhs := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'nested_callback'
-		typ:   'fn () int'
+		typ:   flat.source_type_id('fn () int')
 	})
 	nested_decl := literal_binding_test_node(mut a, .decl_assign, [nested_lhs, nested])
-	t.set_node_typ(int(nested_decl), 'fn () int')
+	t.set_node_typ(int(nested_decl), flat.source_type_id('fn () int'))
 	body << nested_decl
-	value := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: 'int' })
+	value := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: flat.source_type_int })
 	body << literal_binding_test_node(mut a, .return_stmt, [value])
 	block := literal_binding_test_node(mut a, .block, body)
 	literal := literal_binding_test_node(mut a, .fn_literal, [param, block])
-	t.set_node_typ(int(literal), 'int')
+	t.set_node_typ(int(literal), flat.source_type_int)
 	result := t.lift_fn_literal(literal, a.nodes[int(literal)])
 	assert a.node(result).kind == .ident
 	assert t.global_temp_counter == 2
 	assert t.cur_fn_name == 'outer'
-	assert t.cur_fn_ret_type == 'void'
+	assert t.cur_fn_ret_type_text() == 'void'
 	assert t.var_types.len == outer_bindings.len
 	assert t.var_types == outer_bindings
 	assert t.var_type_indices.len == 128
@@ -182,10 +236,10 @@ fn test_callback_payload_checks_symbolic_fixed_array_lengths() {
 	t := new_transformer(mut a, &tc, map[string]bool{})
 	int_type := types.Type(types.int_)
 	two := types.Type(types.Array{
-		elem_type: types.Type(types.ArrayFixed{ elem_type: int_type, len_expr: 'two' })
+		elem_type: &types.Type(types.ArrayFixed{ elem_type: &types.Type(int_type), len_expr: 'two' })
 	})
 	three := types.Type(types.Array{
-		elem_type: types.Type(types.ArrayFixed{ elem_type: int_type, len_expr: 'three' })
+		elem_type: &types.Type(types.ArrayFixed{ elem_type: &types.Type(int_type), len_expr: 'three' })
 	})
 	assert t.callback_payload_type_compatible(two, two, false)
 	assert !t.callback_payload_type_compatible(two, three, false)
@@ -195,9 +249,9 @@ fn test_callback_payload_checks_channel_mutability() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
-	elem_type := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
-	mutable := types.Type(types.Channel{ elem_type: elem_type, is_mut: true })
-	read_only := types.Type(types.Channel{ elem_type: elem_type })
+	elem_type := types.Type(types.Pointer{ base_type: &types.Type(types.int_) })
+	mutable := types.Type(types.Channel{ elem_type: &types.Type(elem_type), is_mut: true })
+	read_only := types.Type(types.Channel{ elem_type: &types.Type(elem_type) })
 	assert t.callback_payload_type_compatible(mutable, mutable, false)
 	assert !t.callback_payload_type_compatible(mutable, read_only, false)
 }
@@ -206,12 +260,12 @@ fn test_callback_payload_accepts_void_pointer_userdata() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
-	int_ptr := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
-	void_ptr := types.Type(types.Pointer{ base_type: types.Type(types.void_) })
-	float_ptr := types.Type(types.Pointer{ base_type: types.Type(types.f64_) })
-	int_callback := types.Type(types.FnType{ params: [int_ptr], return_type: types.Type(types.void_) })
-	void_callback := types.Type(types.FnType{ params: [void_ptr], return_type: types.Type(types.void_) })
-	float_callback := types.Type(types.FnType{ params: [float_ptr], return_type: types.Type(types.void_) })
+	int_ptr := types.Type(types.Pointer{ base_type: &types.Type(types.int_) })
+	void_ptr := types.Type(types.Pointer{ base_type: &types.Type(types.void_) })
+	float_ptr := types.Type(types.Pointer{ base_type: &types.Type(types.f64_) })
+	int_callback := types.Type(tc.fn_type([int_ptr], &types.Type(types.void_), []bool{}))
+	void_callback := types.Type(tc.fn_type([void_ptr], &types.Type(types.void_), []bool{}))
+	float_callback := types.Type(tc.fn_type([float_ptr], &types.Type(types.void_), []bool{}))
 	assert t.callback_payload_type_compatible(int_callback, void_callback, false)
 	assert t.callback_payload_type_compatible(void_callback, int_callback, false)
 	assert !t.callback_payload_type_compatible(int_callback, float_callback, false)
@@ -221,15 +275,17 @@ fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 	mut a := flat.FlatAst.new()
 	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'HeapValue' })
 	mut tc := types.TypeChecker.new(&a)
+	// Type attributes are found through the checker's declaration index,
+	// which collect builds from the declarations in the AST.
+	tc.collect(&a)
 	tc.structs['HeapValue'] = []types.StructField{}
-	tc.type_declaration_ids['HeapValue'] = [int(decl)]
 	tc.declaration_attributes[int(decl)] = ['heap']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	assert t.heap_attr_struct_type('HeapValue')
-	staging := t.make_staging_value_decl('staging', 'HeapValue')
+	assert t.heap_attr_struct_type(flat.source_type_id('HeapValue'))
+	staging := t.make_staging_value_decl('staging', flat.source_type_id('HeapValue'))
 	t.transform_decl_assign_stmt(staging, a.nodes[int(staging)])
 	assert 'staging' !in t.heaped_amp_locals
-	ordinary := t.make_decl_assign_typed('ordinary', t.zero_value_for_type('HeapValue'), 'HeapValue')
+	ordinary := t.make_decl_assign_typed('ordinary', t.zero_value_for_type(flat.source_type_id('HeapValue')), flat.source_type_id('HeapValue'))
 	t.transform_decl_assign_stmt(ordinary, a.nodes[int(ordinary)])
 	assert 'ordinary' in t.heaped_amp_locals
 }
@@ -237,7 +293,7 @@ fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 fn test_selfhost_return_alias_cache_preserves_module_and_worker_context() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['one.Value'] = 'int'
+	tc.type_aliases.set_id('one.Value', flat.source_type_int)
 	tc.structs['two.Value'] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.building_v = true
@@ -248,23 +304,23 @@ fn test_selfhost_return_alias_cache_preserves_module_and_worker_context() {
 		t.cur_module = module_name
 		for typ in ['Value', '?Value', '[]Value', 'map[string]Value', ' int '] {
 			expected := t.raw_return_type_contains_alias_uncached(typ)
-			assert t.raw_return_type_contains_alias(typ) == expected
-			assert t.raw_return_type_contains_alias(typ.clone()) == expected
+			assert t.raw_return_type_contains_alias(flat.source_type_id(typ)) == expected
+			assert t.raw_return_type_contains_alias(flat.source_type_id(typ.clone())) == expected
 		}
-		assert t.raw_return_type_contains_alias('?Value') == (module_name == 'one')
+		assert t.raw_return_type_contains_alias(flat.source_type_id('?Value')) == (module_name == 'one')
 	}
 	assert t.raw_return_alias_cache.entries.len > 0
 	mut worker := t.fork_scoped_batch_worker(&a, &tc)
 	assert worker.raw_return_alias_cache != t.raw_return_alias_cache
 	worker.cur_module = 'one'
-	assert worker.raw_return_type_contains_alias('?Value')
-	assert !t.raw_return_type_contains_alias('?Value')
+	assert worker.raw_return_type_contains_alias(flat.source_type_id('?Value'))
+	assert !t.raw_return_type_contains_alias(flat.source_type_id('?Value'))
 	// General builds continue to observe declaration changes between queries.
 	t.building_v = false
 	t.cur_module = 'one'
-	assert !t.raw_return_type_contains_alias('Late')
-	tc.type_aliases['one.Late'] = 'string'
-	assert t.raw_return_type_contains_alias('Late')
+	assert !t.raw_return_type_contains_alias(flat.source_type_id('Late'))
+	tc.type_aliases.set_id('one.Late', flat.source_type_string)
+	assert t.raw_return_type_contains_alias(flat.source_type_id('Late'))
 }
 
 fn test_enum_autostr_call_marks_synthesized_helper_used() {
@@ -276,9 +332,9 @@ fn test_enum_autostr_call_marks_synthesized_helper_used() {
 	expr := a.add_node(flat.Node{
 		kind:  .enum_val
 		value: 'ready'
-		typ:   'state.Status'
+		typ:   flat.source_type_id('state.Status')
 	})
-	call := t.enum_autostr_call(expr, 'state.Status')
+	call := t.enum_autostr_call(expr, flat.source_type_id('state.Status'))
 	assert t.used_fns['state__Status__autostr']
 	assert a.node(call).kind == .call
 }
@@ -306,17 +362,17 @@ fn test_enum_autostr_keeps_checked_types_and_resolves_declaration_spellings() {
 	t.enum_types['b.Kind'] = ['from_b']
 	t.enum_types['toml.token.Kind'] = ['eof']
 
-	assert t.enum_autostr_type_name('a.Kind') == 'a.Kind'
-	assert t.enum_autostr_type_name('b.Kind') == 'b.Kind'
-	assert (t.source_enum_type_name(file, 'a.Kind') or { '' }) == 'b.Kind'
-	assert (t.source_enum_type_name(file, 'real_a.Kind') or { '' }) == 'a.Kind'
-	assert (t.source_enum_type_name(file, 'token.Kind') or { '' }) == 'toml.token.Kind'
-	assert (t.source_enum_type_name(file, 'Kind') or { '' }) == 'b.Kind'
-	assert t.source_enum_elem_type(file, '[]token.Kind') == '[]toml.token.Kind'
-	assert t.source_enum_elem_type(file, 'string') == 'string'
+	assert flat.source_type_name(t.enum_autostr_type_name(flat.source_type_id('a.Kind'))) == 'a.Kind'
+	assert flat.source_type_name(t.enum_autostr_type_name(flat.source_type_id('b.Kind'))) == 'b.Kind'
+	assert (flat.source_type_name(t.source_enum_type_name(file, flat.source_type_id('a.Kind')) or { u32(0) })) == 'b.Kind'
+	assert (flat.source_type_name(t.source_enum_type_name(file, flat.source_type_id('real_a.Kind')) or { u32(0) })) == 'a.Kind'
+	assert (flat.source_type_name(t.source_enum_type_name(file, flat.source_type_id('token.Kind')) or { u32(0) })) == 'toml.token.Kind'
+	assert (flat.source_type_name(t.source_enum_type_name(file, flat.source_type_id('Kind')) or { u32(0) })) == 'b.Kind'
+	assert flat.source_type_name(t.source_enum_elem_type(file, flat.source_type_id('[]token.Kind'))) == '[]toml.token.Kind'
+	assert t.source_enum_elem_type(file, flat.source_type_string) == flat.source_type_string
 
-	t.set_var_type_with_raw('declared', '[]b.Kind', '[]a.Kind')
-	t.set_var_type('inferred', '[]a.Kind')
+	t.set_var_type_with_raw('declared', flat.source_type_id('[]b.Kind'), flat.source_type_id('[]a.Kind'))
+	t.set_var_type('inferred', flat.source_type_id('[]a.Kind'))
 	assert (t.declared_var_spelling('declared') or { '' }) == '[]a.Kind'
 	assert (t.declared_var_spelling('inferred') or { '' }) == ''
 }
@@ -446,23 +502,23 @@ fn test_source_split_keeps_ranges_disjoint_with_uneven_costs() {
 fn test_alias_receiver_index_preserves_integer_fallback_order() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Count'] = 'i64'
-	tc.type_aliases['OtherCount'] = 'i32'
+	tc.type_aliases.set_id('Count', flat.source_type_i64)
+	tc.type_aliases.set_id('OtherCount', flat.source_type_i32)
 	tc.fn_param_types['Plain.show'] = [types.Type(types.i64_)]
 	tc.fn_param_types['Count.show'] = [types.Type(types.i64_)]
 	tc.fn_param_types['OtherCount.show'] = [types.Type(types.i32_)]
 	tc.fn_param_types['Count.other'] = [types.Type(types.i64_)]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	assert t.resolve_alias_receiver_method('u8', 'show') or { '' } == 'Count.show'
+	assert t.resolve_alias_receiver_method(flat.source_type_u8, 'show') or { '' } == 'Count.show'
 	t.collect_alias_methods()
 	t.skip_generics = true
-	assert t.resolve_alias_receiver_method('u16', 'show') or { '' } == 'Count.show'
-	assert t.resolve_alias_receiver_method('u16', 'missing') == none
+	assert t.resolve_alias_receiver_method(flat.source_type_u16, 'show') or { '' } == 'Count.show'
+	assert t.resolve_alias_receiver_method(flat.source_type_u16, 'missing') == none
 	// Generic lowering can add signatures after preparation and uses the live table.
 	t.skip_generics = false
-	tc.type_aliases['LateCount'] = 'u64'
+	tc.type_aliases.set_id('LateCount', flat.source_type_u64)
 	tc.fn_param_types['LateCount.late'] = [types.Type(types.u64_)]
-	assert t.resolve_alias_receiver_method('u8', 'late') or { '' } == 'LateCount.late'
+	assert t.resolve_alias_receiver_method(flat.source_type_u8, 'late') or { '' } == 'LateCount.late'
 }
 
 fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
@@ -486,8 +542,8 @@ fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
 
 fn test_normalize_function_type_preserves_mut_parameter() {
 	t := Transformer{}
-	assert t.normalize_type_in_module('fn (mut Item)', 'main') == 'fn (&Item)'
-	assert t.normalize_type_in_module('fn (mut item Item) bool', 'main') == 'fn (&Item) bool'
+	assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('fn (mut Item)'), 'main')) == 'fn (&Item)'
+	assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('fn (mut item Item) bool'), 'main')) == 'fn (&Item) bool'
 }
 
 fn test_or_payload_type_qualifies_imported_generic_base() {
@@ -495,13 +551,25 @@ fn test_or_payload_type_qualifies_imported_generic_base() {
 		cur_module: 'main'
 	}
 	info := StructInfo{
-		name:   'QueryBuilder'
+		name:   flat.source_type_id('QueryBuilder')
 		module: 'orm'
 	}
 	t.structs['QueryBuilder'] = info
 	t.structs['orm.QueryBuilder'] = info
-	t.qualified_types['QueryBuilder'] = 'orm.QueryBuilder'
-	assert t.normalize_or_expr_value_type('&QueryBuilder[AggregateEntry]') == '&orm.QueryBuilder[AggregateEntry]'
+	t.qualified_types.set_id('QueryBuilder', flat.source_type_id('orm.QueryBuilder'))
+	assert flat.source_type_name(t.normalize_or_expr_value_type(flat.source_type_id('&QueryBuilder[AggregateEntry]'))) == '&orm.QueryBuilder[AggregateEntry]'
+}
+
+fn test_or_query_pairs_preserve_empty_and_void_payload_identities() {
+	t := Transformer{}
+	empty_expr, empty_payload := t.canonical_or_expr_types(0)
+	assert empty_expr == 0
+	assert empty_payload == 0
+	for wrapper in ['?', '!'] {
+		expr, payload := t.canonical_or_expr_types(flat.source_type_id(wrapper))
+		assert expr == flat.source_type_id('${wrapper}void')
+		assert payload == flat.source_type_void
+	}
 }
 
 fn test_or_payload_type_qualifies_generic_base_in_own_module() {
@@ -509,16 +577,20 @@ fn test_or_payload_type_qualifies_generic_base_in_own_module() {
 		cur_module: 'orm'
 	}
 	info := StructInfo{
-		name:   'QueryBuilder'
+		name:   flat.source_type_id('QueryBuilder')
 		module: 'orm'
 	}
 	t.structs['QueryBuilder'] = info
 	t.structs['orm.QueryBuilder'] = info
-	assert t.normalize_or_expr_value_type('&QueryBuilder[AggregateEntry]') == '&orm.QueryBuilder[AggregateEntry]'
-	expr_type, value_type := t.specialized_or_expr_types('!QueryBuilder[sapp.Event]')
+	assert flat.source_type_name(t.normalize_or_expr_value_type(flat.source_type_id('&QueryBuilder[AggregateEntry]'))) == '&orm.QueryBuilder[AggregateEntry]'
+	expr_type_source_id, value_type_source_id := t.specialized_or_expr_types(flat.source_type_id('!QueryBuilder[sapp.Event]'))
+	expr_type := flat.source_type_name(expr_type_source_id)
+	value_type := flat.source_type_name(value_type_source_id)
 	assert expr_type == '!orm.QueryBuilder[sapp.Event]'
 	assert value_type == 'orm.QueryBuilder[sapp.Event]'
-	tuple_expr_type, tuple_value_type := t.specialized_or_expr_types('!(&ui.QNode, map[string]ui.VmlEvent)')
+	tuple_expr_type_source_id, tuple_value_type_source_id := t.specialized_or_expr_types(flat.source_type_id('!(&ui.QNode, map[string]ui.VmlEvent)'))
+	tuple_expr_type := flat.source_type_name(tuple_expr_type_source_id)
+	tuple_value_type := flat.source_type_name(tuple_value_type_source_id)
 	assert tuple_expr_type == '!(&ui.QNode, map[string]ui.VmlEvent)'
 	assert tuple_value_type == '(&ui.QNode, map[string]ui.VmlEvent)'
 }
@@ -528,70 +600,70 @@ fn test_specialized_receiver_method_qualifies_imported_generic_base() {
 		cur_module: 'main'
 	}
 	info := StructInfo{
-		name:   'QueryBuilder'
+		name:   flat.source_type_id('QueryBuilder')
 		module: 'orm'
 	}
 	t.structs['QueryBuilder'] = info
 	t.structs['orm.QueryBuilder'] = info
-	t.qualified_types['QueryBuilder'] = 'orm.QueryBuilder'
-	t.fn_ret_types['orm.QueryBuilder_Foo.v_sql_insert'] = '!int'
-	assert t.resolve_specialized_generic_receiver_method('QueryBuilder[Foo]', 'v_sql_insert') or {
+	t.qualified_types.set_id('QueryBuilder', flat.source_type_id('orm.QueryBuilder'))
+	t.fn_ret_types.set_id('orm.QueryBuilder_Foo.v_sql_insert', flat.source_type_id('!int'))
+	assert t.resolve_specialized_generic_receiver_method(flat.source_type_id('QueryBuilder[Foo]'), 'v_sql_insert') or {
 		''
 	} == 'orm.QueryBuilder_Foo.v_sql_insert'
-	assert t.resolve_receiver_method_for_type('QueryBuilder_Foo', 'v_sql_insert') or { '' } == 'orm.QueryBuilder_Foo.v_sql_insert'
+	assert t.resolve_receiver_method_for_type(flat.source_type_id('QueryBuilder_Foo'), 'v_sql_insert') or { '' } == 'orm.QueryBuilder_Foo.v_sql_insert'
 }
 
 fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['AliasApp'] = 'App'
-	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_aliases.set_id('AliasApp', flat.source_type_id('App'))
+	tc.type_aliases.set_id('AliasContext', flat.source_type_id('Context'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'veb'
 	t.structs['App'] = StructInfo{}
 	t.structs['Context'] = StructInfo{
-		name:   'Context'
+		name:   flat.source_type_id('Context')
 		fields: [
 			FieldInfo{
 				name:        'Context'
-				typ:         'veb.Context'
-				raw_typ:     'veb.Context'
+				typ:         flat.source_type_id('veb.Context')
+				raw_typ:     flat.source_type_id('veb.Context')
 				is_embedded: true
 			},
 		]
 	}
 	t.structs['veb.Context'] = StructInfo{
-		name:   'Context'
+		name:   flat.source_type_id('Context')
 		module: 'veb'
 		fields: [
 			FieldInfo{
 				name:    'req'
-				typ:     'http.Request'
-				raw_typ: 'http.Request'
+				typ:     flat.source_type_id('http.Request')
+				raw_typ: flat.source_type_id('http.Request')
 			},
 		]
 	}
-	t.embedded_fields['Context'] = [
+	t.embedded_fields[flat.source_type_id('Context')] = [
 		FieldInfo{
 			name:    'Context'
-			typ:     'veb.Context'
-			raw_typ: 'veb.Context'
+			typ:     flat.source_type_id('veb.Context')
+			raw_typ: flat.source_type_id('veb.Context')
 		},
 	]
-	t.fn_ret_types['App.before_accept_loop'] = 'void'
-	t.fn_ret_types['veb.Context.before_request'] = 'void'
+	t.fn_ret_types.set_id('App.before_accept_loop', flat.source_type_void)
+	t.fn_ret_types.set_id('veb.Context.before_request', flat.source_type_void)
 
-	assert t.alias_target_type_preserving_main_lock('main.AliasApp') or { '' } == 'main.App'
-	assert t.resolve_receiver_method_for_type('main.AliasApp', 'before_accept_loop') or { '' } == 'App.before_accept_loop'
-	assert t.resolve_embedded_receiver_method('main.AliasContext', 'before_request') or { '' } == 'veb.Context.before_request'
-	assert t.receiver_method_matches_type_name('App.before_accept_loop', 'main.AliasApp')
-	path := t.embedded_receiver_path('main.AliasContext', 'veb.Context') or {
+	assert flat.source_type_name(t.alias_target_type_preserving_main_lock(flat.source_type_id('main.AliasApp')) or { u32(0) }) == 'main.App'
+	assert t.resolve_receiver_method_for_type(flat.source_type_id('main.AliasApp'), 'before_accept_loop') or { '' } == 'App.before_accept_loop'
+	assert t.resolve_embedded_receiver_method(flat.source_type_id('main.AliasContext'), 'before_request') or { '' } == 'veb.Context.before_request'
+	assert t.receiver_method_matches_type_name('App.before_accept_loop', flat.source_type_id('main.AliasApp'))
+	path := t.embedded_receiver_path(flat.source_type_id('main.AliasContext'), flat.source_type_id('veb.Context')) or {
 		assert false, 'expected the embedded veb.Context path through AliasContext'
 		return
 	}
 	assert path.len == 1
 	assert path[0].name == 'Context'
-	promoted_path := t.struct_field_path_for_field('main.AliasContext', 'req') or {
+	promoted_path := t.struct_field_path_for_field(flat.source_type_id('main.AliasContext'), 'req') or {
 		assert false, 'expected the promoted req path through AliasContext'
 		return
 	}
@@ -602,10 +674,10 @@ fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
 fn test_sql_table_name_substitutes_active_generic_parameter() {
 	t := Transformer{
 		active_generic_params:      ['T']
-		active_specialization_args: ['User']
+		active_specialization_args: flat.TypeTextList.from_names(['User'])
 	}
-	assert t.sql_resolved_table_name('T') == 'User'
-	assert t.sql_table_type_names_match('main.User', 'User')
+	assert t.sql_resolved_table_name(flat.source_type_id('T')) == flat.source_type_id('User')
+	assert t.sql_table_type_names_match(flat.source_type_id('main.User'), flat.source_type_id('User'))
 }
 
 fn test_embedded_field_path_specializes_each_owner() {
@@ -613,13 +685,13 @@ fn test_embedded_field_path_specializes_each_owner() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	outer := StructInfo{
-		fields: [FieldInfo{ name: 'Middle', typ: 'Middle[T]', is_embedded: true }]
+		fields: [FieldInfo{ name: 'Middle', typ: flat.source_type_id('Middle[T]'), is_embedded: true }]
 	}
 	middle := StructInfo{
-		fields: [FieldInfo{ name: 'Leaf', typ: 'Leaf[T]', is_embedded: true }]
+		fields: [FieldInfo{ name: 'Leaf', typ: flat.source_type_id('Leaf[T]'), is_embedded: true }]
 	}
 	leaf := StructInfo{
-		fields: [FieldInfo{ name: 'payload', typ: 'T' }]
+		fields: [FieldInfo{ name: 'payload', typ: flat.source_type_id('T') }]
 	}
 	t.structs['Outer'] = outer
 	t.structs['Outer[Choice]'] = outer
@@ -629,9 +701,9 @@ fn test_embedded_field_path_specializes_each_owner() {
 	t.structs['Leaf'] = leaf
 	t.structs['Leaf[T]'] = leaf
 	t.structs['Leaf[Choice]'] = leaf
-	path := t.struct_field_path_for_field('Outer[Choice]', 'payload') or { panic('missing embed path') }
-	assert path.map(it.typ) == ['Middle[Choice]', 'Leaf[Choice]']
-	assert t.lookup_struct_field_type(path.last().typ, 'payload') or { '' } == 'Choice'
+	path := t.struct_field_path_for_field(flat.source_type_id('Outer[Choice]'), 'payload') or { panic('missing embed path') }
+	assert path.map(it.typ_text()) == ['Middle[Choice]', 'Leaf[Choice]']
+	assert flat.source_type_name(t.lookup_struct_field_type(path.last().typ, 'payload') or { u32(0) }) == 'Choice'
 }
 
 fn test_embedded_field_path_uses_selected_struct_owner() {
@@ -644,30 +716,30 @@ fn test_embedded_field_path_uses_selected_struct_owner() {
 	t.cur_file = 'main.v'
 	t.cur_module = 'main'
 	t.structs['Outer'] = StructInfo{
-		name:   'Outer'
+		name:   flat.source_type_id('Outer')
 		module: 'main'
-		fields: [FieldInfo{ name: 'Middle', typ: 'other.Middle[int]', is_embedded: true }]
+		fields: [FieldInfo{ name: 'Middle', typ: flat.source_type_id('other.Middle[int]'), is_embedded: true }]
 	}
 	t.structs['pkg.Outer'] = StructInfo{
-		name:   'Outer'
+		name:   flat.source_type_id('Outer')
 		module: 'pkg'
-		fields: [FieldInfo{ name: 'Middle', typ: 'pkg.Middle[T]', is_embedded: true }]
+		fields: [FieldInfo{ name: 'Middle', typ: flat.source_type_id('pkg.Middle[T]'), is_embedded: true }]
 	}
 	t.structs['pkg.Middle'] = StructInfo{
-		name:   'Middle'
+		name:   flat.source_type_id('Middle')
 		module: 'pkg'
-		fields: [FieldInfo{ name: 'payload', typ: 'T' }]
+		fields: [FieldInfo{ name: 'payload', typ: flat.source_type_id('T') }]
 	}
-	path := t.struct_field_path_for_field('Outer[Choice]', 'payload') or { panic('missing selected embed path') }
+	path := t.struct_field_path_for_field(flat.source_type_id('Outer[Choice]'), 'payload') or { panic('missing selected embed path') }
 	assert path.len == 1
-	assert path[0].typ == 'pkg.Middle[Choice]'
+	assert path[0].typ_text() == 'pkg.Middle[Choice]'
 }
 
 fn test_sql_table_name_keeps_main_lock_outside_main_module() {
 	t := Transformer{
 		cur_module: 'orm'
 	}
-	assert !t.sql_table_type_names_match('main.User', 'User')
+	assert !t.sql_table_type_names_match(flat.source_type_id('main.User'), flat.source_type_id('User'))
 }
 
 fn test_normalize_type_in_module_cache_tracks_current_file() {
@@ -684,9 +756,9 @@ fn test_normalize_type_in_module_cache_tracks_current_file() {
 	}
 
 	t.cur_file = 'first.v'
-	assert t.normalize_type_in_module('dep.Type'.clone(), 'shared') == 'alpha.Type'
+	assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('dep.Type'.clone()), 'shared')) == 'alpha.Type'
 	t.cur_file = 'second.v'
-	assert t.normalize_type_in_module('dep.Type'.clone(), 'shared') == 'beta.Type'
+	assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('dep.Type'.clone()), 'shared')) == 'beta.Type'
 }
 
 fn test_normalize_type_in_module_cache_preserves_alternating_owners() {
@@ -701,11 +773,11 @@ fn test_normalize_type_in_module_cache_preserves_alternating_owners() {
 		module_type_cache: &ModuleTypeCache{}
 	}
 	for _ in 0 .. 3 {
-		assert t.normalize_type_in_module('Item'.clone(), 'alpha') == 'alpha.Item'
-		assert t.normalize_type_in_module('Item'.clone(), 'beta') == 'beta.Item'
-		assert t.normalize_type_in_module('[]&Item', 'alpha') == '[]&alpha.Item'
-		assert t.normalize_type_in_module('[]&Item', 'beta') == '[]&beta.Item'
-		assert t.normalize_type_in_module('Item', 'main') == 'Item'
+		assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('Item'.clone()), 'alpha')) == 'alpha.Item'
+		assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('Item'.clone()), 'beta')) == 'beta.Item'
+		assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('[]&Item'), 'alpha')) == '[]&alpha.Item'
+		assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('[]&Item'), 'beta')) == '[]&beta.Item'
+		assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('Item'), 'main')) == 'Item'
 	}
 }
 
@@ -716,10 +788,10 @@ fn test_module_qualified_generic_callee_is_not_treated_as_value_index() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	module_id := t.a.add_val(.ident, 'json2')
-	t.set_node_typ(int(module_id), 'unknown')
-	callee_id := t.make_selector_op(module_id, 'decode', 'string', .dot)
+	t.set_node_typ(int(module_id), flat.source_type_unknown)
+	callee_id := t.make_selector_op(module_id, 'decode', flat.source_type_string, .dot)
 	type_id := t.a.add_val(.ident, 'Payload')
-	t.set_node_typ(int(type_id), 'void')
+	t.set_node_typ(int(type_id), flat.source_type_void)
 	children_start := t.a.children.len
 	t.a.children << callee_id
 	t.a.children << type_id
@@ -800,7 +872,7 @@ fn test_generic_specialized_type_matching_preserves_name_spellings() {
 
 fn test_receiver_method_guard_accepts_short_name_for_qualified_type() {
 	t := Transformer{}
-	assert t.receiver_method_matches_type_name('Thing.str', 'pkg.Thing')
+	assert t.receiver_method_matches_type_name('Thing.str', flat.source_type_id('pkg.Thing'))
 }
 
 fn test_auto_str_helper_call_uses_type_owner_module() {
@@ -814,12 +886,12 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 		cur_file:   'main.v'
 	}
 	value := t.make_ident('pos')
-	t.stringify_stack << 'Wrapper'
-	call := t.request_auto_str_helper(value, 'v.token.Pos')
+	t.stringify_stack << flat.source_type_id('Wrapper')
+	call := t.request_auto_str_helper(value, flat.source_type_id('v.token.Pos'))
 	callee := a.child_node(a.node(call), 0)
 
 	assert callee.value == '__v3_autostr_v__token__Pos'
-	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
+	assert t.auto_str_types[flat.source_type_id('v.token.Pos')].helper_module == 'token'
 	t.synthesize_auto_str_helpers()
 	mut helper_idx := -1
 	for i, node in a.nodes {
@@ -837,13 +909,53 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	assert a.nodes[helper_idx - 1].value == 'token'
 }
 
+fn test_auto_str_helper_uses_interface_declaration_module() {
+	for owner in ['main', 'builtin', 'view'] {
+		mut a := flat.FlatAst.new()
+		file := '${owner}.v'
+		a.source_files[1] = token.File.unindexed(file, 1)
+		name := if owner == 'view' { 'view.View' } else { 'View' }
+		module_id := a.add_val(.module_decl, owner)
+		decl_id := a.add_node(flat.Node{
+			kind:  .interface_decl
+			value: 'View'
+			pos:   token.new_pos(1, 0)
+		})
+		file_children := a.children.len
+		a.children << module_id
+		a.children << decl_id
+		a.add_node(flat.Node{
+			kind:           .file
+			value:          file
+			children_start: i32(file_children)
+			children_count: 2
+		})
+		mut tc := types.TypeChecker.new(&a)
+		module_path := if owner == 'main' { a.real_source_path(file) } else { file }
+		tc.file_modules[module_path] = 'datatypes'
+		mut t := Transformer{
+			a:          &a
+			tc:         &tc
+			cur_module: 'datatypes'
+			cur_file:   'datatypes/linked_list.v'
+		}
+		value := t.make_ident('view')
+		t.stringify_stack << flat.source_type_id('Wrapper')
+		for suffix in ['', '[int]', '[pkg.Item]'] {
+			application := name + suffix
+			t.request_auto_str_helper(value, flat.source_type_id(application))
+			assert t.auto_str_types[flat.source_type_id(application)].helper_module == owner, application
+		}
+	}
+}
+
 fn test_default_clone_helper_drops_owned_rvalue_after_saving_clone() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{
 		a: &a
 	}
-	source := t.make_call_typed('make_entry', []flat.NodeId{}, 'Entry')
-	result := t.request_default_clone_helper(source, 'Entry')
+	source := t.make_call_typed('make_entry', []flat.NodeId{}, flat.source_type_id('Entry'))
+	result := t.request_default_clone_helper(source, flat.source_type_id('Entry'))
 
 	assert a.node(result).kind == .ident
 	assert t.pending_stmts.len == 3
@@ -871,8 +983,8 @@ fn test_borrowed_clone_stabilizes_nonaddressable_sources() {
 		mut t := Transformer{
 			a: &a
 		}
-		source := t.make_call_typed('borrowed_projection', []flat.NodeId{}, typ)
-		t.make_compiler_default_borrowed_clone_value(source, typ, true)
+		source := t.make_call_typed('borrowed_projection', []flat.NodeId{}, flat.source_type_id(typ))
+		t.make_compiler_default_borrowed_clone_value(source, flat.source_type_id(typ), true)
 
 		assert t.pending_stmts.len > 0
 		source_decl := a.node(t.pending_stmts[0])
@@ -885,17 +997,17 @@ fn test_program_sum_equality_helper_does_not_collide_with_cached_module_helper()
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['orm.Primitive'] = ['orm.Null', 'bool']
+	t.sum_types.set('orm.Primitive', ['orm.Null', 'bool'])
 	t.cur_module = 'orm'
 	t.cur_file = 'orm.v'
 	lhs := t.make_ident('lhs')
 	rhs := t.make_ident('rhs')
-	t.set_node_typ(int(lhs), 'orm.Primitive')
-	t.set_node_typ(int(rhs), 'orm.Primitive')
-	t.make_sum_semantic_eq_expr(lhs, rhs, 'orm.Primitive', []string{})
+	t.set_node_typ(int(lhs), flat.source_type_id('orm.Primitive'))
+	t.set_node_typ(int(rhs), flat.source_type_id('orm.Primitive'))
+	t.make_sum_semantic_eq_expr(lhs, rhs, flat.source_type_id('orm.Primitive'), []EqualityTypeVisit{})
 
 	t.sum_eq_helper_module = 'main'
-	t.make_sum_semantic_eq_expr(lhs, rhs, 'orm.Primitive', []string{})
+	t.make_sum_semantic_eq_expr(lhs, rhs, flat.source_type_id('orm.Primitive'), []EqualityTypeVisit{})
 
 	module_helper := sum_eq_helper_name('orm.Primitive')
 	program_helper := '${module_helper}__v3_program'
@@ -909,12 +1021,12 @@ fn test_sum_equality_helper_keeps_requesting_file_context() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['xml.Contents'] = ['string']
+	t.sum_types.set('xml.Contents', ['string'])
 	t.cur_module = 'xml'
 	t.cur_file = 'parser_test.v'
 	t.sum_eq_helper_module = 'xml'
 	helper := sum_eq_helper_name('xml.Contents')
-	t.build_sum_eq_helper_fn('xml.Contents', helper)
+	t.build_sum_eq_helper_fn(flat.source_type_id('xml.Contents'), helper)
 
 	mut helper_id := flat.empty_node
 	for i, node in a.nodes {
@@ -937,60 +1049,60 @@ fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 	for i in 0 .. 64 {
 		large_fields << FieldInfo{
 			name: 'value_${i}'
-			typ:  'int'
+			typ:  flat.source_type_int
 		}
 	}
 	large_fields << FieldInfo{
 		name:    'root'
-		typ:     '&Root'
-		raw_typ: '&Root'
+		typ:     flat.source_type_id('&Root')
+		raw_typ: flat.source_type_id('&Root')
 	}
 	t.structs['Root'] = StructInfo{
-		name:   'Root'
+		name:   flat.source_type_id('Root')
 		fields: [
 			FieldInfo{
 				name:    'large'
-				typ:     '&Large'
-				raw_typ: '&Large'
+				typ:     flat.source_type_id('&Large')
+				raw_typ: flat.source_type_id('&Large')
 			},
 		]
 	}
 	t.structs['Large'] = StructInfo{
-		name:   'Large'
+		name:   flat.source_type_id('Large')
 		fields: large_fields
 	}
 	t.structs['Small'] = StructInfo{
-		name:   'Small'
+		name:   flat.source_type_id('Small')
 		fields: [
 			FieldInfo{
 				name:    'root'
-				typ:     '&SmallRoot'
-				raw_typ: '&SmallRoot'
+				typ:     flat.source_type_id('&SmallRoot')
+				raw_typ: flat.source_type_id('&SmallRoot')
 			},
 		]
 	}
 	t.structs['SmallRoot'] = StructInfo{
-		name:   'SmallRoot'
+		name:   flat.source_type_id('SmallRoot')
 		fields: [
 			FieldInfo{
 				name:    'small'
-				typ:     '&Small'
-				raw_typ: '&Small'
+				typ:     flat.source_type_id('&Small')
+				raw_typ: flat.source_type_id('&Small')
 			},
 		]
 	}
-	t.stringify_stack << 'Root'
+	t.stringify_stack << flat.source_type_id('Root')
 
-	assert t.ref_value_str_reaches_large_circular_graph('Large')
+	assert t.ref_value_str_reaches_large_circular_graph(flat.source_type_id('Large'))
 	t.stringify_stack.clear()
-	t.stringify_stack << 'SmallRoot'
-	assert !t.ref_value_str_reaches_large_circular_graph('Small')
+	t.stringify_stack << flat.source_type_id('SmallRoot')
+	assert !t.ref_value_str_reaches_large_circular_graph(flat.source_type_id('Small'))
 }
 
 fn test_if_type_merge_ignores_unresolved_branch_fallbacks() {
 	t := Transformer{}
-	assert t.merge_if_expr_types('unknown', 'int') == 'int'
-	assert t.merge_if_expr_types('int', 'unknown') == 'int'
+	assert t.merge_if_expr_types(flat.source_type_unknown, flat.source_type_int) == flat.source_type_int
+	assert t.merge_if_expr_types(flat.source_type_int, flat.source_type_unknown) == flat.source_type_int
 }
 
 fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
@@ -998,24 +1110,26 @@ fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 	ident_id := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   '&Concrete'
+		typ:   flat.source_type_id('&Concrete')
 	})
+	mut type_texts_1044 := &flat.TypeTextTable{}
 	mut t := Transformer{
+		var_type_texts:           type_texts_1044
 		a:                        &a
 		in_monomorphize_scan:     true
 		cloning_generic_fn_depth: 1
 		var_types:                [
 			VarTypeBinding{
 				name:    'value'
-				typ:     'Concrete'
-				raw_typ: 'Concrete'
+				typ:     type_texts_1044.intern('Concrete')
+				raw_typ: type_texts_1044.intern('Concrete')
 			},
 		]
 		mut_param_values:         {
 			'value': true
 		}
 	}
-	assert t.generic_call_arg_type_for_inference(ident_id) == 'Concrete'
+	assert flat.source_type_name(t.generic_call_arg_type_for_inference(ident_id)) == 'Concrete'
 }
 
 fn test_lowered_generic_operator_call_records_operator_use() {
@@ -1030,17 +1144,20 @@ fn test_lowered_generic_operator_call_records_operator_use() {
 		}
 	}
 	specs := {
-		'Box[int]': 'Box'
+		flat.source_type_id('Box[int]'): flat.source_type_id('Box')
 	}
 	mut indexer := Transformer{}
 	lowered_operator_uses := indexer.lowered_generic_struct_operator_uses_for_specs(specs, decls)
-	assert 'Box_int__plus' in lowered_operator_uses
-	assert lowered_operator_uses['Box_int__plus'] == ['Box[int].+']
+	operator_c_name := '__v3_internal_symbol_op_Box_int__plus'
+	assert operator_c_name in lowered_operator_uses
+	assert lowered_operator_uses[operator_c_name] == ['Box[int].+']
+	// `Box_int__plus` is the C name of an ordinary method `plus`, not of the operator.
+	assert 'Box_int__plus' !in lowered_operator_uses
 
 	mut a := flat.FlatAst.new()
 	callee_id := a.add_node(flat.Node{
 		kind:  .ident
-		value: 'Box_int__plus'
+		value: operator_c_name
 	})
 	call_start := a.children.len
 	a.children << callee_id
@@ -1054,7 +1171,8 @@ fn test_lowered_generic_operator_call_records_operator_use() {
 	}
 	assert t.record_lowered_generic_struct_operator_call(a.nodes[int(call_id)], lowered_operator_uses)
 	assert t.used_struct_operator_fns['Box[int].+']
-	assert t.used_struct_operator_fns['Box_int__plus']
+	assert t.used_struct_operator_fns[operator_c_name]
+	assert !t.used_struct_operator_fns['Box_int__plus']
 }
 
 fn test_specialized_zero_arg_method_is_not_lowered_as_generic_cast() {
@@ -1065,7 +1183,7 @@ fn test_specialized_zero_arg_method_is_not_lowered_as_generic_cast() {
 	})
 	receiver_id := a.add_node(flat.Node{
 		kind: .ident
-		typ:  'Tree[f64]'
+		typ:  flat.source_type_id('Tree[f64]')
 	})
 	children_start := a.children.len
 	a.children << callee_id
@@ -1100,9 +1218,9 @@ fn test_typeof_display_canonicalizes_fixed_array_map_values() {
 	assert typeof_display_type_text('Pair[int[3], Box[string[2]]]') == 'Pair[[3]int, Box[[2]string]]'
 	assert typeof_display_type_text('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
-		elem_type: types.Type(types.Map{
-			key_type:   types.Type(types.String{})
-			value_type: types.Type(types.int_)
+		elem_type: &types.Type(types.Map{
+			key_type:   &types.Type(types.String{})
+			value_type: &types.Type(types.int_)
 		})
 		len:       3
 	})
@@ -1116,7 +1234,7 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	param_id := a.add_node(flat.Node{
 		kind:  .param
 		value: 'value'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	children_start := a.children.len
 	a.children << param_id
@@ -1147,15 +1265,28 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	// same single index probe, and recording it would detach the shared maps.
 	assert worker.call_param_types_from_decl('worker_missing') == none
 	assert worker.call_param_types_decl_shared
-	assert !worker.call_param_types_decl_misses['worker_missing']
-	assert !t.call_param_types_decl_misses['worker_missing']
-	assert !sibling.call_param_types_decl_misses['worker_missing']
 	assert t.call_param_types_from_decl('master_missing') == none
 	assert t.call_param_types_decl_shared
-	assert !worker.call_param_types_decl_misses['master_missing']
-	assert !sibling.call_param_types_decl_misses['master_missing']
 	assert sibling.call_param_types_from_decl('sibling_missing') == none
-	assert !t.call_param_types_decl_misses['sibling_missing']
+	assert sibling.call_param_types_decl_shared
+	late_param := a.add_node(flat.Node{ kind: .param, value: 'value', typ: flat.source_type_int })
+	late_start := a.children.len
+	a.children << late_param
+	late_decl := a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          'later'
+		children_start: late_start
+		children_count: 1
+	})
+	worker.call_param_types_decl_index = worker.call_param_types_decl_index.clone()
+	worker.add_call_param_types_decl_key('later', int(late_decl), '', 'main')
+	late := worker.call_param_types_from_decl('later') or { panic('missing signature') }
+	assert late.len == 1
+	assert late[0] == types.Type(types.int_)
+	assert !worker.call_param_types_decl_shared
+	assert int(late_decl) !in t.call_param_types_decl_cache
+	assert int(late_decl) !in sibling.call_param_types_decl_cache
+
 	t.add_call_param_types_decl_key('main.takes_string', a.nodes.len - 1, 'signature_index_test.v', 'main')
 	assert !t.call_param_types_prepared
 }
@@ -1167,12 +1298,12 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	receiver_param := a.add_node(flat.Node{
 		kind:  .param
 		value: 'app'
-		typ:   'App'
+		typ:   flat.source_type_id('App')
 	})
 	value_param := a.add_node(flat.Node{
 		kind:  .param
 		value: 'value'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	decl_children := a.children.len
 	a.children << receiver_param
@@ -1186,7 +1317,7 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'app'
-		typ:   'App'
+		typ:   flat.source_type_id('App')
 	})
 	normal_selector_children := a.children.len
 	a.children << receiver
@@ -1199,7 +1330,7 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	normal_arg := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'value'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	normal_call_children := a.children.len
 	a.children << normal_selector
@@ -1221,12 +1352,12 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	ctx_arg := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'ctx'
-		typ:   '&Context'
+		typ:   flat.source_type_id('&Context')
 	})
 	reflected_arg := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'value'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	reflected_call_children := a.children.len
 	a.children << reflected_selector
@@ -1240,7 +1371,7 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	main_ctx_arg := a.add_node(flat.Node{
 		kind:   .ident
 		value:  'ctx'
-		typ:    'main.Context'
+		typ:    flat.source_type_id('main.Context')
 		is_mut: true
 	})
 	main_ctx_call_children := a.children.len
@@ -1254,7 +1385,7 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	mut_route_arg := a.add_node(flat.Node{
 		kind:   .ident
 		value:  'item'
-		typ:    'main.Item'
+		typ:    flat.source_type_id('main.Item')
 		is_mut: true
 	})
 	reflected_route_call_children := a.children.len
@@ -1270,8 +1401,11 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	tc.structs['Context'] = []types.StructField{}
 	tc.interface_names['RouteArg'] = true
 	tc.fn_implicit_veb_ctx['App.show'] = true
-	tc.fn_param_types['App.show'] = [types.Type(types.Struct{ name: 'App' }),
-		tc.parse_type('mut Context'), types.Type(types.String{})]
+	tc.fn_param_types['App.show'] = [
+		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
+		tc.parse_type(flat.source_type_id('mut Context')),
+		types.Type(types.String{}),
+	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	normal_params := t.call_param_types_for_node('App.show', a.node(normal_call))
 	assert normal_params.len == 3
@@ -1286,8 +1420,11 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	assert t.call_param_offset_for_node('App.show', a.node(reflected_call), reflected_params) == 1
 	assert t.call_param_offset_for_node('App.show', a.node(main_ctx_call), reflected_params) == 2
 	assert t.call_param_offset_for_node('App.show', a.node(reflected_route_call), reflected_params) == 2
-	interface_params := [types.Type(types.Struct{ name: 'App' }), tc.parse_type('mut Context'),
-		types.Type(types.Interface{ name: 'RouteArg' })]
+	interface_params := [
+		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
+		tc.parse_type(flat.source_type_id('mut Context')),
+		types.Type(types.Interface{ name_id: flat.source_type_id('RouteArg') }),
+	]
 	assert t.call_param_offset_for_node('App.show', a.node(main_ctx_call), interface_params) == 2
 }
 
@@ -1296,7 +1433,7 @@ fn test_non_veb_reflected_call_keeps_receiver_param_offset() {
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'Value'
+		typ:   flat.source_type_id('Value')
 	})
 	run_selector_start := a.children.len
 	a.children << receiver
@@ -1334,13 +1471,17 @@ fn test_non_veb_reflected_call_keeps_receiver_param_offset() {
 	tc.structs['Value'] = []types.StructField{}
 	tc.structs['Config'] = []types.StructField{}
 	tc.params_structs['Config'] = true
-	tc.fn_param_types['Value.run'] = [types.Type(types.Struct{ name: 'Value' }),
-		tc.parse_type('?string')]
-	tc.fn_param_types['Value.configure'] = [types.Type(types.Struct{ name: 'Value' }),
-		types.Type(types.Struct{ name: 'Config' })]
+	tc.fn_param_types['Value.run'] = [
+		types.Type(types.Struct{ name_id: flat.source_type_id('Value') }),
+		tc.parse_type(flat.source_type_id('?string')),
+	]
+	tc.fn_param_types['Value.configure'] = [
+		types.Type(types.Struct{ name_id: flat.source_type_id('Value') }),
+		types.Type(types.Struct{ name_id: flat.source_type_id('Config') }),
+	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['Config'] = StructInfo{
-		name:      'Config'
+		name:      flat.source_type_id('Config')
 		is_params: true
 	}
 	run_params := t.call_param_types_for_node('Value.run', a.node(run_call))
@@ -1386,14 +1527,14 @@ fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
 	batch_tc.fn_param_types['main.generated'] = [types.Type(types.int_)]
 	batch_tc.fn_variadic['main.generated'] = false
 	mut batch := master.fork_scoped_batch_worker(&a, batch_tc)
-	batch.set_fn_ret_type('main.generated', 'bool')
-	assert 'main.generated' !in master.fn_ret_types
+	batch.set_fn_ret_type('main.generated', flat.source_type_bool)
+	assert !master.fn_ret_types.contains('main.generated')
 	assert 'main.generated' !in tc.fn_ret_types
 
 	master.absorb_scoped_batch(batch, unsafe { nil }, batch.a.nodes.len)
 	assert tc.sparse_resolved_call_names[10] == 'main.resolved_call'
 	assert tc.sparse_resolved_fn_values[11] == 'main.resolved_fn_value'
-	assert master.fn_ret_types['main.generated'] == 'bool'
+	assert master.fn_ret_types.value_id('main.generated') == flat.source_type_bool
 	generated_ret := tc.fn_ret_types['main.generated'] or { types.Type(types.void_) }
 	assert generated_ret == types.Type(types.bool_)
 	assert tc.fn_param_types['main.generated'][0] == types.Type(types.int_)
@@ -1404,20 +1545,20 @@ fn test_frozen_interface_boxed_types_are_read_only_in_skip_generics_workers() {
 	mut tc := types.TypeChecker.new(&a)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
 	master.skip_generics = true
-	master.interface_boxed_types['main.Reader\nmain.Source'] = true
+	master.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Source'))] = true
 	master.interface_boxed_types_done = true
 	master.interface_boxed_types_frozen = true
 	mut worker := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
 
-	worker.mark_interface_boxed_type('main.Reader', 'main.Other')
-	assert 'main.Reader\nmain.Other' !in master.interface_boxed_types
-	assert 'main.Reader\nmain.Other' !in worker.interface_boxed_types
-	assert worker.interface_boxed_types_late['main.Reader\nmain.Other']
-	assert worker.interface_boxed_type_marked('main.Reader', 'main.Other')
+	worker.mark_interface_boxed_type(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))
+	assert interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other')) !in master.interface_boxed_types
+	assert interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other')) !in worker.interface_boxed_types
+	assert worker.interface_boxed_types_late[interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))]
+	assert worker.interface_boxed_type_marked(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))
 
 	master.interface_boxed_types_frozen = false
-	master.mark_interface_boxed_type('main.Reader', 'main.Other')
-	assert master.interface_boxed_types['main.Reader\nmain.Other']
+	master.mark_interface_boxed_type(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))
+	assert master.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))]
 }
 
 fn test_multi_return_selector_suffix_does_not_match_free_fn() {
@@ -1490,18 +1631,18 @@ fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
 	tc.struct_modules['orm.QueryBuilder'] = 'orm'
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.qualify_or_storage_type('&QueryBuilder[main.User]') == '&orm.QueryBuilder[main.User]'
-	assert t.qualify_or_storage_type('(string, []string)') == '(string, []string)'
+	assert flat.source_type_name(t.qualify_or_storage_type(flat.source_type_id('&QueryBuilder[main.User]'))) == '&orm.QueryBuilder[main.User]'
+	assert flat.source_type_name(t.qualify_or_storage_type(flat.source_type_id('(string, []string)'))) == '(string, []string)'
 }
 
 fn test_immediate_closure_generic_sum_pointer_result_may_alias_capture() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types['Maybe'] = ['T', 'IError']
+	tc.sum_types.set('Maybe', ['T', 'IError'])
 	tc.sum_generic_params['Maybe'] = ['T']
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.immediate_closure_result_may_alias_capture('Maybe[&int]')
+	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('Maybe[&int]'))
 }
 
 fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
@@ -1509,22 +1650,22 @@ fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['Box'] = [types.StructField{
 		name: 'value'
-		typ:  tc.parse_type('T')
+		typ:  tc.parse_type(flat.source_type_id('T'))
 	}]
 	tc.struct_generic_params['Box'] = ['T']
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.immediate_closure_result_may_alias_capture('Box[&int]')
+	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('Box[&int]'))
 }
 
 fn test_immediate_closure_result_error_may_alias_capture() {
 	fallback := Transformer{}
-	assert fallback.immediate_closure_result_may_alias_capture('!int')
-	assert fallback.immediate_closure_result_may_alias_capture('[]int')
-	assert fallback.immediate_closure_result_may_alias_capture('map[string]int')
-	assert fallback.immediate_closure_result_may_alias_capture('chan int')
-	assert fallback.immediate_closure_result_may_alias_capture('string')
-	assert fallback.immediate_closure_result_may_alias_capture('?string')
+	assert fallback.immediate_closure_result_may_alias_capture(flat.source_type_id('!int'))
+	assert fallback.immediate_closure_result_may_alias_capture(flat.source_type_id('[]int'))
+	assert fallback.immediate_closure_result_may_alias_capture(flat.source_type_id('map[string]int'))
+	assert fallback.immediate_closure_result_may_alias_capture(flat.source_type_id('chan int'))
+	assert fallback.immediate_closure_result_may_alias_capture(flat.source_type_string)
+	assert fallback.immediate_closure_result_may_alias_capture(flat.source_type_id('?string'))
 
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -1536,13 +1677,13 @@ fn test_immediate_closure_result_error_may_alias_capture() {
 	]
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.immediate_closure_result_may_alias_capture('!int')
-	assert t.immediate_closure_result_may_alias_capture('[]int')
-	assert t.immediate_closure_result_may_alias_capture('map[string]int')
-	assert t.immediate_closure_result_may_alias_capture('chan int')
-	assert t.immediate_closure_result_may_alias_capture('string')
-	assert t.immediate_closure_result_may_alias_capture('?string')
-	assert t.immediate_closure_result_may_alias_capture('TextBox')
+	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('!int'))
+	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('[]int'))
+	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('map[string]int'))
+	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('chan int'))
+	assert t.immediate_closure_result_may_alias_capture(flat.source_type_string)
+	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('?string'))
+	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('TextBox'))
 }
 
 fn test_immediate_closure_thread_result_may_alias_capture() {
@@ -1551,18 +1692,18 @@ fn test_immediate_closure_thread_result_may_alias_capture() {
 	tc.structs['Worker'] = [
 		types.StructField{
 			name: 'handle'
-			typ:  tc.parse_type('thread int')
+			typ:  tc.parse_type(flat.source_type_id('thread int'))
 		},
 	]
 	with_checker := Transformer{
 		a:  &a
 		tc: &tc
 	}
-	assert with_checker.immediate_closure_result_may_alias_capture('thread int')
-	assert with_checker.immediate_closure_result_may_alias_capture('Worker')
+	assert with_checker.immediate_closure_result_may_alias_capture(flat.source_type_id('thread int'))
+	assert with_checker.immediate_closure_result_may_alias_capture(flat.source_type_id('Worker'))
 
 	without_checker := Transformer{}
-	assert without_checker.immediate_closure_result_may_alias_capture('thread int')
+	assert without_checker.immediate_closure_result_may_alias_capture(flat.source_type_id('thread int'))
 }
 
 fn test_transform_lane_budget_bounds_base_ast_clones() {
@@ -1610,10 +1751,120 @@ fn test_alias_cache_distinguishes_collisions_and_owned_spellings() {
 	// These distinct spellings share the sampled bytes used for the cache slot.
 	for _ in 0 .. 3 {
 		for name in ['abc.Def', 'axc.Dof'] {
-			assert t.normalize_type_alias(name.clone()) == name
-			assert t.normalize_type_alias(name.clone()) == name
+			assert flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name.clone()))) == name
+			assert flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name.clone()))) == name
 		}
 	}
+}
+
+fn test_numeric_sum_and_variant_caches_preserve_collisions_and_module_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := Transformer{
+		tc:                       &tc
+		sum_cache:                &AliasCache{}
+		variant_short_name_cache: &AliasCache{}
+	}
+	// Intern real spellings until two IDs share the direct-cache slot.
+	mut slots := [1024]u32{}
+	mut first := u32(0)
+	mut second := u32(0)
+	for i in 0 .. 1025 {
+		id := flat.source_type_id('numeric_cache_${i}.Item${i}')
+		slot := int(id & 1023)
+		if slots[slot] != 0 {
+			first = slots[slot]
+			second = id
+			break
+		}
+		slots[slot] = id
+	}
+	assert first != 0 && second != 0 && first != second
+	for id in [first, second] {
+		t.sum_types.set(flat.source_type_name(id), ['int', 'string'])
+	}
+	for _ in 0 .. 3 {
+		for id in [first, second] {
+			assert t.resolve_sum_name(id) == id
+			assert t.variant_short_name(id) == flat.source_type_id(flat.source_type_name(id).all_after_last('.'))
+		}
+	}
+	t.sum_types.set('one.Value', ['int'])
+	t.sum_types.set('two.Value', ['string'])
+	t.structs['one.Exact'] = StructInfo{ name: flat.source_type_id('one.Exact'), module: 'one' }
+	value := flat.source_type_id('Value')
+	exact := flat.source_type_id('one.Exact')
+	for module_name in ['one', 'two', 'one'] {
+		t.cur_module = module_name
+		for _ in 0 .. 2 {
+			assert t.resolve_sum_name(value) == flat.source_type_id('${module_name}.Value')
+			assert t.resolve_sum_name(exact) == 0
+		}
+		assert exact in t.sum_cache.entries
+	}
+}
+
+fn test_numeric_alias_equivalent_lists_preserve_ownership_and_module_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set_id('one.Alias', flat.source_type_int)
+	tc.type_aliases.set_id('two.Alias', flat.source_type_string)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	name := flat.source_type_id('Alias')
+	for module_name in ['one', 'two', 'one'] {
+		t.cur_module = module_name
+		mut names := t.interface_alias_equivalent_names(name)
+		assert names[0] == name
+		assert flat.source_type_id('${module_name}.Alias') in names
+		names[0] = flat.source_type_bool
+		cached := t.interface_alias_equivalent_names(name)
+		assert cached[0] == name
+		assert cached == t.interface_alias_equivalent_names_uncached(name)
+	}
+}
+
+fn test_numeric_stringify_alias_cache_preserves_module_and_worker_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set_id('one.Value', flat.source_type_int)
+	tc.type_aliases.set_id('two.Value', flat.source_type_string)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	name := flat.source_type_id('Value')
+	missing := flat.source_type_id('Missing')
+	for module_name in ['one', 'two', 'one'] {
+		t.cur_module = module_name
+		expected := if module_name == 'one' {
+			flat.source_type_int
+		} else {
+			flat.source_type_string
+		}
+		for _ in 0 .. 2 {
+			alias, target := t.lookup_str_alias(name) or { panic('missing alias') }
+			assert alias == name
+			assert target == expected
+			if _, _ := t.lookup_str_alias(missing) {
+				assert false, 'a missing alias must remain a miss'
+			}
+		}
+	}
+	mut worker := t.fork_scoped_batch_worker(&a, &tc)
+	assert worker.str_alias_cache != t.str_alias_cache
+	worker.cur_module = 'two'
+	_, worker_target := worker.lookup_str_alias(name) or { panic('missing worker alias') }
+	_, master_target := t.lookup_str_alias(name) or { panic('missing master alias') }
+	assert worker_target == flat.source_type_string
+	assert master_target == flat.source_type_int
+}
+
+fn test_numeric_type_specialization_preserves_nested_spelling_and_identity() {
+	t := Transformer{}
+	arg := flat.source_type_id('pkg.Item')
+	assert t.specialize_generic_type_name(flat.source_type_id(' T '), arg) == arg
+	assert t.specialize_generic_type_name(flat.source_type_id('[]?T'), arg) == flat.source_type_id('[]?pkg.Item')
+	assert t.specialize_generic_type_name(flat.source_type_id('map[T]&T'), arg) == flat.source_type_id('map[pkg.Item]&pkg.Item')
+	plain := flat.source_type_id(' Plain ')
+	assert t.specialize_generic_type_name(plain, arg) == plain
+	assert t.specialize_generic_type_name(flat.source_type_id('T'), u32(0)) == flat.source_type_id('T')
 }
 
 fn test_node_type_memo_reuses_capacity_when_function_range_grows() {
@@ -1630,28 +1881,28 @@ fn test_node_type_memo_reuses_capacity_when_function_range_grows() {
 	assert t.node_type_memo.values.data == values
 	assert t.node_type_memo.filled.data == filled
 	for flag in t.node_type_memo.filled {
-		assert flag == 0
+		assert flag != t.node_type_memo.generation
 	}
 }
 
 fn test_unchanged_node_text_still_invalidates_semantic_memos() {
 	mut a := flat.FlatAst.new()
-	idx := int(a.add_node(flat.Node{ kind: .ident, value: 'value', typ: 'int' }))
+	idx := int(a.add_node(flat.Node{ kind: .ident, value: 'value', typ: flat.source_type_int }))
 	mut tc := types.TypeChecker.new(&a)
 	tc.expr_type_set = []bool{len: a.nodes.len}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.begin_node_type_memo(idx, idx)
 	for change_type in [true, false] {
 		tc.expr_type_set[idx] = true
-		t.node_type_memo.filled[0] = 1
+		t.node_type_memo.filled[0] = t.node_type_memo.generation
 		if change_type {
-			t.set_node_typ(idx, 'int'.clone())
+			t.set_node_typ(idx, flat.source_type_id('int'.clone()))
 		} else {
 			t.set_node_value(idx, 'value'.clone())
 		}
 		assert !tc.expr_type_set[idx]
-		assert t.node_type_memo.filled[0] == 0
-		assert a.nodes[idx].typ == 'int'
+		assert t.node_type_memo.filled[0] != t.node_type_memo.generation
+		assert a.nodes[idx].typ_text() == 'int'
 		assert a.nodes[idx].value == 'value'
 	}
 }
@@ -1688,12 +1939,180 @@ fn test_thread_handle_array_append_does_not_clone_result_fields() {
 	assert results[1][0].values == ['second']
 }
 
+fn test_sum_resolution_preserves_reference_and_container_types() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut t := new_transformer(mut ast, &tc, map[string]bool{})
+	t.sum_types.set('model.Value', ['int', 'string'])
+	assert t.is_sum_type_name(flat.source_type_id('model.Value'))
+	wrapped := [
+		'&model.Value',
+		'?model.Value',
+		'!model.Value',
+		'[]model.Value',
+		'[2]model.Value',
+		'map[string]model.Value',
+	]
+	for name in wrapped {
+		assert !t.is_sum_type_name(flat.source_type_id(name)), name
+	}
+}
+
 fn test_builder_receiver_identity_includes_its_declaring_module() {
-	assert is_builder_type_name('strings.Builder', 'main')
-	assert is_builder_type_name('&strings.Builder', 'custom')
-	assert is_builder_type_name('Builder', 'strings')
-	assert is_builder_type_name('&Builder', 'strings')
-	assert !is_builder_type_name('Builder', 'main')
-	assert !is_builder_type_name('&Builder', 'custom')
-	assert !is_builder_type_name('custom.Builder', 'strings')
+	assert is_builder_type_name(flat.source_type_id('strings.Builder'), 'main')
+	assert is_builder_type_name(flat.source_type_id('&strings.Builder'), 'custom')
+	assert is_builder_type_name(flat.source_type_id('Builder'), 'strings')
+	assert is_builder_type_name(flat.source_type_id('&Builder'), 'strings')
+	assert !is_builder_type_name(flat.source_type_id('Builder'), 'main')
+	assert !is_builder_type_name(flat.source_type_id('&Builder'), 'custom')
+	assert !is_builder_type_name(flat.source_type_id('custom.Builder'), 'strings')
+}
+
+fn test_scoped_workers_reuse_generic_declarations_with_private_indexes() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.generic_fn_decls_cache['sample.identity'] = GenericFnDecl{ key: 'sample.identity' }
+	master.generic_receiver_methods_by_name['value'] = ['sample.Box.value']
+	master.generic_fn_call_names['identity'] = true
+	master.generic_fn_decls_ready = true
+	mut worker := master.fork_scoped_batch_worker(&a, tc.fork_for_parallel_transform(&a))
+	mut sibling := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
+	mut scanner := master.fork_scan_worker(tc.fork_for_parallel_transform(&a))
+	mut forks := [worker, sibling, scanner]
+	for mut fork in forks {
+		assert fork.generic_fn_decls_ready
+		assert 'sample.identity' in fork.cached_generic_fn_decls()
+		assert fork.generic_receiver_methods_by_name['value'] == ['sample.Box.value']
+		assert fork.generic_fn_call_names['identity']
+		fork.generic_fn_decls_cache.delete('sample.identity')
+		fork.generic_receiver_methods_by_name.delete('value')
+		fork.generic_fn_call_names.delete('identity')
+	}
+	assert 'sample.identity' in master.generic_fn_decls_cache
+	assert master.generic_receiver_methods_by_name['value'] == ['sample.Box.value']
+	assert master.generic_fn_call_names['identity']
+}
+
+fn test_enum_expected_cache_separates_type_and_both_module_contexts() {
+	mut cache := EnumExpectedCache{}
+	one := flat.source_type_id('First')
+	two := flat.source_type_id('Second')
+	key := cache.key(one, 'owner', 'caller')
+	assert key == cache.key(one, 'owner', 'caller')
+	assert key != cache.key(two, 'owner', 'caller')
+	assert key != cache.key(one, 'other', 'caller')
+	assert key != cache.key(one, 'owner', 'other')
+	assert key != cache.key(one, 'caller', 'owner')
+	cache.entries[key] = two
+	missing := cache.key(two, 'owner', 'caller')
+	cache.misses[missing] = true
+	assert cache.entries[key] == two
+	assert !cache.misses[key]
+	assert cache.misses[missing]
+	mut worker := EnumExpectedCache{}
+	worker_key := worker.key(one, 'owner', 'caller')
+	assert worker.entries.len == 0
+	assert !worker.misses[worker_key]
+	worker.entries[worker_key] = one
+	assert cache.entries[key] == two
+}
+
+fn test_sum_variant_parent_ids_preserve_order_deduplication_and_owned_results() {
+	mut t := Transformer{}
+	variant := flat.source_type_id('pkg.Child')
+	first := flat.source_type_id('pkg.FirstParent')
+	second := flat.source_type_id('pkg.SecondParent')
+	t.add_sum_variant_parent(variant, first)
+	t.add_sum_variant_parent(variant, second)
+	t.add_sum_variant_parent(variant, first)
+	assert t.is_sum_variant(variant)
+	assert t.is_sum_variant(flat.source_type_id('Child'))
+	assert !t.is_sum_variant(flat.source_type_id('Unrelated'))
+	mut parents := t.sum_type_parents_for_variant(variant)
+	assert parents == [first, second]
+	parents[0] = second
+	assert t.sum_type_parents_for_variant(variant) == [first, second]
+	assert t.sum_type_parents_for_variant(flat.source_type_id('Child')) == [first, second]
+}
+
+fn test_generic_cast_prescreen_keeps_selectively_imported_type_spellings() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_val(.ident, 'Imported')
+	value := a.add_val(.int_literal, '1')
+	call := literal_binding_test_node(mut a, .call, [callee, value])
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['library.Box'] = []types.StructField{}
+	tc.structs['library.Box[int]'] = []types.StructField{}
+	tc.file_selective_imports['caller.v\nImported'] = ['library.Box[int]']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_file = 'caller.v'
+	lowered := t.try_lower_generic_named_type_cast_call(a.nodes[int(call)]) or {
+		panic('selectively imported generic cast was skipped')
+	}
+	assert a.nodes[int(lowered)].kind == .cast_expr
+	assert a.nodes[int(lowered)].value == 'library.Box[int]'
+}
+
+fn test_pointer_storage_addresses_keep_literal_and_index_element_types() {
+	mut a := flat.FlatAst.new()
+	slot := a.add_val(.ident, 'slot')
+	external := a.add_val(.ident, 'external')
+	pointer := a.add_val(.ident, 'pointer')
+	mut_pointer := a.add_val(.ident, 'mut_pointer')
+	slot_address := literal_binding_test_node(mut a, .prefix, [slot])
+	a.nodes[int(slot_address)].op = .amp
+	external_address := literal_binding_test_node(mut a, .prefix, [external])
+	a.nodes[int(external_address)].op = .amp
+	pointer_address := literal_binding_test_node(mut a, .prefix, [pointer])
+	a.nodes[int(pointer_address)].op = .amp
+	mut_pointer_address := literal_binding_test_node(mut a, .prefix, [mut_pointer])
+	a.nodes[int(mut_pointer_address)].op = .amp
+	literal := literal_binding_test_node(mut a, .array_literal, [slot_address, external_address])
+	one := a.add_val(.int_literal, '1')
+	index := literal_binding_test_node(mut a, .index, [literal, one])
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Item'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('slot', flat.source_type_id('&Item'))
+	t.set_var_type('external', flat.source_type_id('Item'))
+	t.set_var_type('pointer', flat.source_type_id('&Item'))
+	t.set_var_type('mut_pointer', flat.source_type_id('&&Item'))
+	t.pointer_value_lvalues['slot'] = true
+	t.pointer_value_rvalues['slot'] = true
+	t.mut_param_values['mut_pointer'] = true
+	t.pointer_value_lvalues['mut_pointer'] = true
+	t.pointer_value_rvalues['mut_pointer'] = true
+	assert t.node_type(slot_address) == flat.source_type_id('&Item')
+	assert t.node_type(external_address) == flat.source_type_id('&Item')
+	assert t.node_type(pointer_address) == flat.source_type_id('&&Item')
+	assert t.node_type(mut_pointer_address) == flat.source_type_id('&&Item')
+	assert t.node_type(literal) == flat.source_type_id('[]&Item')
+	assert t.node_type(index) == flat.source_type_id('&Item')
+	lowered := t.transform_array_literal(literal, a.nodes[int(literal)])
+	assert t.node_type(lowered) == flat.source_type_id('[]&Item')
+	assert t.pointer_value_lvalues['slot']
+	assert t.pointer_value_rvalues['slot']
+	for node in a.nodes {
+		assert node.kind != .ident || node.value != 'memdup'
+	}
+}
+
+fn test_receiver_method_guard_preserves_direct_and_alias_candidates() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set_id('AliasThing', flat.source_type_id('Thing'))
+	tc.type_aliases.set_id('AliasAgain', flat.source_type_id('AliasThing'))
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'pkg'
+	for spelling in ['Thing', '&Thing', '  &&Thing  ', 'pkg.Thing', 'other.Thing'] {
+		assert t.receiver_method_matches_type_name('Thing.run', flat.source_type_id(spelling))
+	}
+	assert t.receiver_method_matches_type_name('pkg.Thing.run', flat.source_type_id('Thing'))
+	assert t.receiver_method_matches_type_name('pkg.Thing.run', flat.source_type_id('pkg.Thing'))
+	assert t.receiver_method_matches_type_name('AliasAgain.run', flat.source_type_id('AliasAgain'))
+	assert t.receiver_method_matches_type_name('AliasThing.run', flat.source_type_id('AliasAgain'))
+	assert t.receiver_method_matches_type_name('Thing.run', flat.source_type_id('main.AliasAgain'))
+	assert !t.receiver_method_matches_type_name('other.Thing.run', flat.source_type_id('Thing'))
+	assert !t.receiver_method_matches_type_name('Different.run', flat.source_type_id('AliasAgain'))
 }

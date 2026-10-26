@@ -92,15 +92,19 @@ struct ReferenceNodeC {
 type ReferenceOuterNode = ReferenceInnerNode | ReferenceNodeC
 
 fn updated_sum_array(base ReferenceNodeA, value int) []&ReferenceNode {
-	return [ReferenceNodeA{ ...base, value: value }]
+	node := ReferenceNodeA{ ...base, value: value }
+	return [&ReferenceNode(node)]
 }
 
 fn updated_nested_sum_array(base ReferenceNodeA, value int) []&&ReferenceNode {
-	return [ReferenceNodeA{ ...base, value: value }]
+	node := ReferenceNodeA{ ...base, value: value }
+	return [ReferenceNode(node)]
 }
 
 fn updated_nested_outer_sum_array(base ReferenceNodeA, value int) []&&ReferenceOuterNode {
-	return [ReferenceNodeA{ ...base, value: value }]
+	node := ReferenceNodeA{ ...base, value: value }
+	inner := ReferenceInnerNode(node)
+	return [ReferenceOuterNode(inner)]
 }
 
 fn test_struct_update_stored_as_sum_pointer() {

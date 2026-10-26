@@ -1,0 +1,12 @@
+@[attribute]
+struct Route {
+	path string
+}
+
+fn marker[T]() int {
+	return 1
+}
+
+fn main() {
+	println(marker[Route]())
+}

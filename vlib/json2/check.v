@@ -28,7 +28,7 @@ fn (mut checker Decoder) check_json_format() ! {
 	start_idx_position := checker.checker_idx
 
 	// The values nested in this one are added after it, while it is checked.
-	value_idx := checker.values_len
+	value_idx := checker.values_info.len
 
 	match checker.json[checker.checker_idx] {
 		`"` {
@@ -227,7 +227,7 @@ fn (mut checker Decoder) check_null() ! {
 
 @[markused]
 fn (mut checker Decoder) check_nested_value(message string) ! {
-	value_idx := checker.values_len
+	value_idx := checker.values_info.len
 	checker.check_json_format()!
 	value := checker.values_info[value_idx]
 	// A nested value cannot consume the final byte: its parent still needs a

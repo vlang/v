@@ -995,7 +995,10 @@ fn strip_comments(line string) string {
 				}
 			}
 			`#` {
-				if bracket_depth == 0 && brace_depth == 0 {
+				// a comment starts at a `#` that begins the line or follows white space;
+				// elsewhere (`a#b`, `file.arxml#Cluster`) it is part of the scalar
+				if bracket_depth == 0 && brace_depth == 0
+					&& (i == 0 || line[i - 1] == ` ` || line[i - 1] == `\t`) {
 					return line[..i].trim_right(' \t')
 				}
 			}

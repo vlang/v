@@ -123,6 +123,76 @@
       "auto_deprecatable": false,
       "state": "active-required",
       "effects": [{"id": "patch-0009-effect", "owner": "tinycc", "files": ["win32/include/winapi/windows.h"], "functions": ["CancelIoEx"], "required_probe_ids": ["patch-0009"]}]
+    },
+    {
+      "id": "patch-0010",
+      "path": "patches/0010-win32-include-synchapi-from-windows-h.patch",
+      "sha256": "233f60ae1d2a0a83255ffb0c650bbc54a158d1874cd0adb4506f83c437d33030",
+      "order": 10,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0010-effect", "owner": "tinycc", "files": ["win32/include/winapi/windows.h"], "functions": ["SRWLOCK"], "required_probe_ids": ["patch-0010"]}]
+    },
+    {
+      "id": "patch-0011",
+      "path": "patches/0011-win32-declare-and-export-GetTickCount64.patch",
+      "sha256": "6dc3776fcce1d30c6e6c819dae805f991076bcacc18dabb15389893b2de07bf0",
+      "order": 11,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0011-effect", "owner": "tinycc", "files": ["win32/include/winapi/winbase.h", "win32/lib/kernel32.def"], "functions": ["GetTickCount64"], "required_probe_ids": ["patch-0011"]}]
+    },
+    {
+      "id": "patch-0012",
+      "path": "patches/0012-win32-export-GetFileSizeEx-and-TryAcquireSRWLockExclusive.patch",
+      "sha256": "14740dcd269f1286380b015978e9170d57843280b308728e0ae8fc5216240dd2",
+      "order": 12,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0012-effect", "owner": "tinycc", "files": ["win32/lib/kernel32.def"], "functions": ["GetFileSizeEx", "TryAcquireSRWLockExclusive"], "required_probe_ids": ["patch-0012"]}]
+    },
+    {
+      "id": "patch-0013",
+      "path": "patches/0013-win32-declare-and-export-GetFileInformationByHandleEx.patch",
+      "sha256": "03361317262868c57a0253467e2628046c7e8985afc03744a151da1b3ac8f10d",
+      "order": 13,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0013-effect", "owner": "tinycc", "files": ["win32/include/winapi/winbase.h", "win32/lib/kernel32.def"], "functions": ["GetFileInformationByHandleEx"], "required_probe_ids": ["patch-0013"]}]
+    },
+    {
+      "id": "patch-0014",
+      "path": "patches/0014-win32-export-batched-iocp.patch",
+      "sha256": "4c91cf5658563c9479da87918dd101a8c0e640502d2c4189ac0daa7474387a30",
+      "order": 14,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0014-effect", "owner": "tinycc", "files": ["win32/lib/kernel32.def"], "functions": ["GetQueuedCompletionStatusEx", "SetFileCompletionNotificationModes"], "required_probe_ids": ["patch-0014"]}]
+    },
+    {
+      "id": "patch-0015",
+      "path": "patches/0015-win32-export-SRW-lock-functions.patch",
+      "sha256": "4110055bfd5d5a36d9faac0f445ef0b665aa2d32c8b1881b6f86ad8ae067b38b",
+      "order": 15,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0015-effect", "owner": "tinycc", "files": ["win32/lib/kernel32.def"], "functions": ["AcquireSRWLockExclusive", "AcquireSRWLockShared", "InitializeSRWLock", "ReleaseSRWLockExclusive", "ReleaseSRWLockShared", "TryAcquireSRWLockShared"], "required_probe_ids": ["patch-0015"]}]
+    },
+    {
+      "id": "patch-0016",
+      "path": "patches/0016-win32-export-bundled-kernel32-functions.patch",
+      "sha256": "b722ed4e9e28eadc28b0bb6fb8c803c5bb46328b65dde2d414e58eb5ec8a9d45",
+      "order": 16,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0016-effect", "owner": "tinycc", "files": ["win32/lib/kernel32.def"], "functions": ["CreateHardLinkW", "GetConsoleWindow", "GetCurrentProcessorNumber", "GetFinalPathNameByHandle", "GetFinalPathNameByHandleW", "GetNativeSystemInfo", "InitializeConditionVariable", "K32GetProcessMemoryInfo", "SleepConditionVariableSRW", "WakeConditionVariable"], "required_probe_ids": ["patch-0016"]}]
     }
   ],
   "transforms": [
@@ -131,7 +201,7 @@
       "path": "vlang-header-compat.patch",
       "sha256": "bc1f63053dedeae665a01ca508b6123f2145c4e1895642ca38e406f8eb7fdf55",
       "owner": "bundle-overlay",
-      "order": 10,
+      "order": 17,
       "apply_stage": "bundle-payload-post-copy",
       "effect_ids": ["header-gmtime-s", "header-condition-variable", "header-faststorefence"]
     },
@@ -140,7 +210,7 @@
       "path": "v-ae88ee5-tinycc-bdwgc.patch",
       "sha256": "3b42e3fcd1e8a544d31ccdc4a2b12b9da6ac44ce1af7562cd781fdacf6890196",
       "owner": "v-libgc",
-      "order": 11,
+      "order": 18,
       "apply_stage": "v-libgc-source-prebuild",
       "effect_ids": ["bdwgc-v-integration"]
     }
@@ -238,6 +308,13 @@
     {"id": "patch-0007", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "secure stdio success and error contracts hold"},
     {"id": "patch-0008", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "exp2 vectors and floating statuses match"},
     {"id": "patch-0009", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "CancelIoEx ABI and import resolve"},
+    {"id": "patch-0010", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "windows.h-only translation unit sees SRWLOCK; sqlite3.c SRWLOCK struct compiles with _WIN32_WINNT 0x0600"},
+    {"id": "patch-0011", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetTickCount64 declared only at _WIN32_WINNT >= 0x0600; a call resolves at link through kernel32.def"},
+    {"id": "patch-0012", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetFileSizeEx and TryAcquireSRWLockExclusive resolve at link through kernel32.def"},
+    {"id": "patch-0013", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetFileInformationByHandleEx declared only at _WIN32_WINNT >= 0x0600; a call resolves at link through kernel32.def and returns file information"},
+    {"id": "patch-0014", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetQueuedCompletionStatusEx and SetFileCompletionNotificationModes imports resolve"},
+    {"id": "patch-0015", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "the six SRW lock function imports resolve"},
+    {"id": "patch-0016", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "os, sync and runtime kernel32 imports resolve without the hand-edited kernel32.def"},
     {"id": "header-gmtime-s", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "gmtime_s compile link and consumers pass"},
     {"id": "header-condition-variable", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "condition variable include order and runtime pass"},
     {"id": "header-faststorefence", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "builtin and runtime fence behavior are isolated"},

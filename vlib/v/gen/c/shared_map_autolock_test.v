@@ -2,6 +2,9 @@ module c
 
 import os
 
+// exe_suffix is needed because os.exec spawns an absolute path as written, without adding .exe.
+const exe_suffix = $if windows { '.exe' } $else { '' }
+
 const shared_map_autolock_program = 'module main
 
 fn range_bounds(shared m map[string]int) int {
@@ -103,10 +106,49 @@ fn test_shared_map_reads_in_range_bounds_and_select_cases_are_locked() {
 	select_unlocked, select_accesses := shared_map_accesses_outside_locks(csrc, 'select_operands')
 	assert select_accesses >= 4
 	assert select_unlocked == []
-	executable := os.join_path(root, 'program')
+	executable := os.join_path(root, 'program${exe_suffix}')
 	build := os.exec([@VEXE, '-o', executable, source])
 	assert build.exit_code == 0, build.output
 	run := os.exec([executable])
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines() == ['7', '6']
+}
+
+fn test_shared_map_parameter_iteration_inside_lock() {
+	root := os.join_path(os.vtmp_dir(), 'shared_map_parameter_iteration_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'program.v')
+	os.write_file(source, 'enum Status { off on }
+fn worker(shared values map[string]Status) {
+	lock values {
+		mut count := 0
+		for key, value in values {
+			assert key == "a"
+			assert value == .on
+			count++
+		}
+		assert count == 1
+	}
+	rlock values {
+		mut count := 0
+		for key, value in values {
+			assert key == "a"
+			assert value == .on
+			count++
+		}
+		assert count == 1
+	}
+}
+fn main() {
+	shared values := map[string]Status{}
+	lock values { values["a"] = .on }
+	task := spawn worker(shared values)
+	task.wait()
+	println("ok")
+}
+')!
+	result := os.exec([@VEXE, '-new-compiler', 'run', source])
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == 'ok', result.output
 }

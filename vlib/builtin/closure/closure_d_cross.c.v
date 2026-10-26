@@ -1,0 +1,213 @@
+module closure
+
+// Portable C (`-os cross`, which vc/v.c is) is compiled later, for any architecture.
+// The `$if` expressions that define `closure_thunk` and `closure_get_data_bytes` for
+// other builds are resolved for the machine that generates the C, so a snapshot
+// generated on amd64 carried amd64 machine code to every host. Statement-level
+// `$if`s stay in that C as preprocessor `#if`s, so these functions return the code
+// for the C compiler's target. The branches mirror the constants in closure.c.v;
+// keep the two in sync.
+
+// vfmt off
+// portable_closure_thunk returns the closure thunk for the target that compiles the C.
+fn portable_closure_thunk() []u8 {
+	$if ppc64le {
+	    return [
+	    u8(0xa6), 0x02, 0x08, 0x7c,	// mflr   %r0
+	        0x05, 0x00, 0x00, 0x48,	// bl     here
+	        0xa6, 0x02, 0xc8, 0x7d,	// here:  mflr %r14
+	        0xf8, 0xbf, 0xce, 0x39,	// addi   %r14, %r14, -16392
+	        0x00, 0x00, 0xce, 0xc9,	// lfd    %f14, 0(%r14)
+	        0x08, 0x00, 0xce, 0xe9,	// ld     %r14, 8(%r14)
+	        0x78, 0x73, 0xcc, 0x7d,	// mr     %r12, %r14
+	        0xa6, 0x03, 0x08, 0x7c,	// mtlr   %r0
+	        0xa6, 0x03, 0xc9, 0x7d,	// mtctr  %r14
+	        0x20, 0x04, 0x80, 0x4e,	// bctr
+	    ]
+	} $else $if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
+	    // ppc (32-bit PowerPC) - expressed as negation of all other arches for bootstrap compat
+	    return [
+	    u8(0x7c), 0x08, 0x02, 0xa6,	// mflr   %r0
+	        0x48, 0x00, 0x00, 0x05,	// bl     here
+	        0x7d, 0x88, 0x02, 0xa6,	// here:  mflr %r12
+	        0x39, 0x8c, 0xbf, 0xf8,	// addi   %r12, %r12, -16392
+	        0xc9, 0xcc, 0x00, 0x00,	// lfd    %f14, 0(%r12)
+	        0x81, 0x8c, 0x00, 0x04,	// lwz    %r12, 4(%r12)
+	        0x7c, 0x08, 0x03, 0xa6,	// mtlr   %r0
+	        0x7d, 0x89, 0x03, 0xa6,	// mtctr  %r12
+	        0x4e, 0x80, 0x04, 0x20,	// bctr
+	    ]
+	} $else $if amd64 && windows {
+	    // Windows x64: xmm6-xmm15 are callee-saved, so the thunk must not touch xmm15.
+	    // Use the volatile xmm5 (not an argument register there). The empty REX prefix 0x40
+	    // keeps the instruction length the same as in the xmm15 variant below.
+	    return [
+	    u8(0xF3), 0x40, 0x0F, 0x7E, 0x2D, 0xF7, 0xBF, 0xFF, 0xFF,  // movq  xmm5, QWORD PTR [rip - userdata]
+	        0xFF, 0x25, 0xF9, 0xBF, 0xFF, 0xFF                     // jmp  QWORD PTR [rip - fn]
+	    ]
+	} $else $if amd64 {
+	    return [
+	    u8(0xF3), 0x44, 0x0F, 0x7E, 0x3D, 0xF7, 0xBF, 0xFF, 0xFF,  // movq  xmm15, QWORD PTR [rip - userdata]
+	        0xFF, 0x25, 0xF9, 0xBF, 0xFF, 0xFF                     // jmp  QWORD PTR [rip - fn]
+	    ]
+	} $else $if i386 {
+	    return [
+	    u8(0xe8), 0x00, 0x00, 0x00, 0x00,        // call here
+	        // here:
+	        0x59,                                // pop  ecx
+	        0x66, 0x0F, 0x6E, 0xF9,              // movd xmm7, ecx
+	        0xff, 0xA1, 0xff, 0xbf, 0xff, 0xff,  // jmp  DWORD PTR [ecx - 0x4001] # <fn>
+	    ]
+	} $else $if arm64 {
+	    return [
+	    u8(0x11), 0x00, 0xFE, 0x5C,  // ldr d17, userdata
+	        0x30, 0x00, 0xFE, 0x58,  // ldr x16, fn
+	        0x00, 0x02, 0x1F, 0xD6   // br  x16
+	    ]
+	} $else $if arm32 {
+	    return [
+	    u8(0x04), 0xC0, 0x4F, 0xE2,  // adr ip, here
+	        // here:
+	        0x01, 0xC9, 0x4C, 0xE2,  // sub  ip, ip, #0x4000
+	        0x90, 0xCA, 0x07, 0xEE,  // vmov s15, ip
+	        0x00, 0xC0, 0x9C, 0xE5,  // ldr  ip, [ip, 0]
+	        0x1C, 0xFF, 0x2F, 0xE1   // bx   ip
+	    ]
+	} $else $if rv64 {
+	    return [
+	    u8(0x97), 0xCF, 0xFF, 0xFF,  // auipc t6, 0xffffc
+	        0x03, 0xBF, 0x8F, 0x00,  // ld    t5, 8(t6)
+	        0x07, 0xB3, 0x0F, 0x00,  // fld   ft6, 0(t6)
+	        0x67, 0x00, 0x0F, 0x00,  // jr    t5
+	    ]
+	} $else $if rv32 {
+	    return [
+	    u8(0x97), 0xCF, 0xFF, 0xFF,  // auipc t6, 0xffffc
+	        0x03, 0xAF, 0x4F, 0x00,  // lw    t5, 4(t6)
+	        0x07, 0xAB, 0x0F, 0x00,  // flw   fs6, 0(t6)
+	        0x67, 0x00, 0x0F, 0x00   // jr    t5
+	    ]
+	} $else $if s390x {
+	    return [
+	    u8(0xC0), 0x10, 0xFF, 0xFF, 0xE0, 0x00,  // larl %r1, -16384
+	        0x68, 0xF0, 0x10, 0x00,              // ld   %f15, 0(%r1)
+	        0xE3, 0x10, 0x10, 0x08, 0x00, 0x04,  // lg   %r1, 8(%r1)
+	        0x07, 0xF1,                          // br   %r1
+	    ]
+	} $else $if loongarch64 {
+	    return [
+	    u8(0x92), 0xFF, 0xFF, 0x1D,  // pcaddu12i t6, -4
+	        0x48, 0x02, 0x80, 0x2B,  // fld.d     f8, t6, 0
+	        0x51, 0x22, 0xC0, 0x28,  // ld.d      t5, t6, 8
+	        0x20, 0x02, 0x00, 0x4C,  // jr        t5
+	    ]
+	} $else $if sparc64 {
+	    return [
+	    u8(0x83), 0x41, 0x40, 0x00,  // rd  %pc, %g1
+	        0x05, 0x00, 0x00, 0x10,  // sethi  %hi(0x4000), %g2
+	        0x84, 0x10, 0xa0, 0x00,  // mov  %g2, %g2   ! 4000 <main>
+	        0x82, 0x20, 0x40, 0x02,  // sub  %g1, %g2, %g1
+	        0xff, 0x18, 0x60, 0x00,  // ldd  [ %l1 ], %d62
+	        0xc2, 0x58, 0x60, 0x08,  // ldx  [ %g1 + 8 ], %g1
+	        0x81, 0xc0, 0x40, 0x00,  // jmp  %g1
+	        0x01, 0x00, 0x00, 0x00   // nop
+	    ]
+	} $else $if big_endian {
+	    return [
+	    u8(0x7C), 0x08, 0x02, 0xA6,  // mflr   %r0
+	        0x48, 0x00, 0x00, 0x05,  // bl     here
+	        0x7D, 0xC8, 0x02, 0xA6,  // here:  mflr %r14
+	        0x39, 0xCE, 0xC0, 0x08,  // addi   %r14, %r14, -16376
+	        0xC9, 0xCE, 0x00, 0x00,  // lfd    %f14, 0(%r14)      // userdata
+	        0xE9, 0xCE, 0x00, 0x08,  // ld     %r14, 8(%r14)      // func descriptor ptr
+	        0xE9, 0x8E, 0x00, 0x00,  // ld     %r12, 0(%r14)      // code addr from descriptor
+	        0xE8, 0x4E, 0x00, 0x08,  // ld     %r2,  8(%r14)      // TOC from descriptor
+	        0x7C, 0x08, 0x03, 0xA6,  // mtlr   %r0
+	        0x7D, 0x89, 0x03, 0xA6,  // mtctr  %r12
+	        0x4E, 0x80, 0x04, 0x20,  // bctr
+	    ]
+	} $else {
+	    return [u8(0)]
+	}
+}
+
+// portable_closure_get_data_bytes returns the code that reads the closure data
+// pointer, for the target that compiles the C.
+fn portable_closure_get_data_bytes() []u8 {
+	$if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
+	    // ppc (32-bit PowerPC) - expressed as negation of all other arches for bootstrap compat
+	    return [
+	    u8(0x94), 0x21, 0xff, 0xf0,	// stwu   %r1, -16(%r1)
+	        0xd9, 0xc1, 0x00, 0x08,	// stfd   %f14, 8(%r1)
+	        0x80, 0x61, 0x00, 0x08,	// lwz    %r3, 8(%r1)
+	        0x38, 0x21, 0x00, 0x10,	// addi   %r1, %r1, 16
+	        0x4e, 0x80, 0x00, 0x20,	// blr
+	    ]
+	} $else $if arm32 {
+	    return [
+	    u8(0x90), 0x0A, 0x17, 0xEE,  // vmov r0, s15
+	        0x04, 0x00, 0x10, 0xE5,  // ldr r0, [r0, #-4]
+	        0x1E, 0xFF, 0x2F, 0xE1   // bx lr
+	    ]
+	} $else $if amd64 && windows {
+	    return [
+	    u8(0x66), 0x48, 0x0F, 0x7E, 0xE8,  // movq rax, xmm5
+	        0xC3                           // ret
+	    ]
+	} $else $if amd64 {
+	    return [
+	    u8(0x66), 0x4C, 0x0F, 0x7E, 0xF8,  // movq rax, xmm15
+	        0xC3                           // ret
+	    ]
+	} $else $if i386 {
+	    return [
+	    u8(0x66), 0x0F, 0x7E, 0xF8,              // movd eax, xmm7
+	        0x8B, 0x80, 0xFB, 0xBF, 0xFF, 0xFF,  // mov eax, DWORD PTR [eax - 0x4005]
+	        0xc3                                 // ret
+	    ]
+	} $else $if arm64 {
+	    return [
+	    u8(0x20), 0x02, 0x66, 0x9E,  // fmov x0, d17
+	        0xC0, 0x03, 0x5F, 0xD6   // ret
+	    ]
+	} $else $if rv64 {
+	    return [
+	    u8(0x53), 0x05, 0x03, 0xE2,  // fmv.x.d a0, ft6
+	        0x67, 0x80, 0x00, 0x00,  // ret
+	    ]
+	} $else $if rv32 {
+	    return [
+	    u8(0x53), 0x05, 0x0B, 0xE0,  // fmv.x.w a0, fs6
+	        0x67, 0x80, 0x00, 0x00   // ret
+	    ]
+	} $else $if s390x {
+		return [
+	    u8(0xB3), 0xCD, 0x00, 0x2F,	 // lgdr %r2, %f15
+	        0x07, 0xFE,			     // br   %r14
+	    ]
+	} $else $if ppc64le {
+	    return [
+	    u8(0x66), 0x00, 0xc3, 0x7d,	// mfvsrd %r3, %f14
+	        0x20, 0x00, 0x80, 0x4e,	// blr
+	    ]
+	} $else $if loongarch64 {
+	    return [
+	    u8(0x04), 0xB9, 0x14, 0x01,  // movfr2gr.d a0, f8
+	        0x20, 0x00, 0x00, 0x4C,  // ret
+	    ]
+	} $else $if sparc64 {
+	    return [
+	    u8(0x91), 0xb0, 0x22, 0x1f,  // movdtox %f62, %o0
+	        0x81, 0xc3, 0xe0, 0x08,  // retl
+	        0x01, 0x00, 0x00, 0x00   // nop
+	    ]
+	} $else $if big_endian {
+	    return [
+	    u8(0x7d), 0xc3, 0x00, 0x66,  // mfvsrd %r3, %f14
+	        0x4e, 0x80, 0x00, 0x20   // blr
+	    ]
+	} $else {
+	    return [u8(0)]
+	}
+}
+// vfmt on

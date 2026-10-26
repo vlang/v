@@ -3,6 +3,27 @@ module transform
 import v.flat
 import v.types
 
+fn test_for_in_fixed_array_keeps_generic_element_brackets() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for source, expected in {
+		'[3]&Box[string]':         '&Box[string]'
+		'[2]&Box[map[string]int]': '&Box[map[string]int]'
+		'[2][3]int':               '[3]int'
+		'[2]int[3]':               '[2]int'
+	} {
+		assert t.for_in_fixed_array_elem_type_bytes(source) == expected
+		assert t.for_in_fixed_array_len_text(source) == if source == '[2]int[3]' {
+			'3'
+		} else if source.starts_with('[3]') {
+			'3'
+		} else {
+			'2'
+		}
+	}
+}
+
 fn test_for_in_pointer_storage_looks_through_parentheses() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -61,11 +82,11 @@ fn test_for_in_slice_type_uses_current_container_before_checker_metadata() {
 		})
 		mut tc := types.TypeChecker.new(&a)
 		stale_type := if expected == 'string' { '[]u8' } else { 'string' }
-		tc.register_synth_type(slice, tc.parse_type(stale_type))
+		tc.register_synth_type(slice, tc.parse_type(flat.source_type_id(stale_type)))
 		mut t := new_transformer(mut a, &tc, {
 			'main': true
 		})
-		t.set_var_type('route_words', container_type)
-		assert t.detect_for_in_type(a.nodes[int(loop)]) == expected
+		t.set_var_type('route_words', flat.source_type_id(container_type))
+		assert flat.source_type_name(t.detect_for_in_type(a.nodes[int(loop)])) == expected
 	}
 }

@@ -23,6 +23,12 @@ fn test_missing_bundled_gc_library_checks_only_link_inputs() {
 	assert v3_missing_bundled_gc_library(['-lgc'], root) == none
 	assert v3_missing_c_library_name("ld: library 'gc' not found") or { '' } == 'gc'
 	assert v3_missing_c_library_name('ld: library not found for -lgc') or { '' } == 'gc'
+	assert v3_missing_c_library_name('/usr/bin/ld: cannot find -lobjc: No such file or directory') or {
+		''
+	} == 'objc'
+	assert v3_missing_c_library_name('/usr/bin/ld: cannot find -l:libfoo.a: No such file or directory') or {
+		''
+	} == ':libfoo.a'
 	message := v3_missing_gc_library_message('missing libgc.a')
 	assert message.contains('Boehm GC library `missing libgc.a` was not found.')
 	assert message.contains('-d use_bundled_libgc')
@@ -62,12 +68,29 @@ fn test_v3_gc_is_disabled_for_cross_compilation() {
 	host := pref.host_target()
 	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }
 	cross_arch := if host.arch == 'amd64' { 'arm64' } else { 'amd64' }
-	assert !v3_gc_is_disabled(false, false, host.os, host.arch)
-	assert v3_gc_is_disabled(true, false, host.os, host.arch)
-	assert v3_gc_is_disabled(false, true, host.os, host.arch)
-	assert v3_gc_is_disabled(false, false, cross_os, host.arch)
-	assert v3_gc_is_disabled(false, false, host.os, cross_arch)
-	assert v3_gc_is_disabled(false, false, 'cross', host.arch)
+	for mode in ['', 'boehm', 'boehm_incr'] {
+		assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c', mode)
+		assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c', mode)
+		assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c', mode)
+		assert v3_gc_is_disabled(false, false, cross_os, host.arch, 'c', mode)
+		assert v3_gc_is_disabled(false, false, host.os, cross_arch, 'c', mode)
+		assert v3_gc_is_disabled(false, false, 'cross', host.arch, 'c', mode)
+		// The native backend never has a collector, on any host and target.
+		assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64', mode)
+	}
+}
+
+fn test_vgc_is_kept_for_cross_compilation() {
+	host := pref.host_target()
+	cross_os := if host.os == 'windows' { 'linux' } else { 'windows' }
+	cross_arch := if host.arch == 'amd64' { 'arm64' } else { 'amd64' }
+	assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c', 'vgc')
+	assert !v3_gc_is_disabled(false, false, cross_os, host.arch, 'c', 'vgc')
+	assert !v3_gc_is_disabled(false, false, host.os, cross_arch, 'c', 'vgc')
+	// The compiler itself, portable C output and the native backend have no collector.
+	assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c', 'vgc')
+	assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c', 'vgc')
+	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64', 'vgc')
 }
 
 fn test_v3_gc_mode_keeps_dynamic_boehm_define() {
@@ -173,5 +196,9 @@ fn test_precise_gc_keeps_explicit_c_compiler_selection() {
 		target:      windows_target
 	})
 	assert windows_selection.implicit_tcc == ''
-	assert windows_selection.c_compiler == 'gcc'
+	// On Windows the platform compiler is resolved to an absolute path, so a child
+	// re-exec can find it (v3_platform_c_compiler_command). Without gcc on PATH the
+	// helper falls back to the bare name, which keeps the basename check valid.
+	assert windows_selection.c_compiler == v3_platform_c_compiler_command('windows')
+	assert os.file_name(windows_selection.c_compiler).starts_with('gcc')
 }

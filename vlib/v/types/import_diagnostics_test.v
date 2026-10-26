@@ -5,6 +5,26 @@ import v.flat
 import v.parser
 import v.pref
 
+fn test_cached_header_parameter_does_not_conflict_with_merged_imports() {
+	root := os.join_path(os.vtmp_dir(), 'v3_module_cache_import_params_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for file_name in ['sample.v', 'sample.vh'] {
+		path := os.join_path(root, file_name)
+		os.write_file(path, 'module sample\nimport math.bits\npub fn prime(bits int) int { return bits }\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_semantics()
+		if file_name.ends_with('.vh') {
+			assert tc.errors.len == 0, tc.errors.str()
+		} else {
+			assert tc.errors.any(it.msg == 'duplicate of an import symbol `bits`'), tc.errors.str()
+		}
+	}
+}
+
 fn test_cached_module_header_uses_original_source_identity() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cached_module_identity_${os.getpid()}')
 	source := os.join_path(root, 'app', 'html', 'html.v')
@@ -59,7 +79,7 @@ fn test_synthetic_runtime_import_may_match_current_module() {
 	a.add_node(flat.Node{
 		kind:  .import_decl
 		value: 'sync'
-		typ:   'sync'
+		typ:   flat.source_type_id('sync')
 	})
 	mut tc := TypeChecker.new(a)
 	tc.collect(a)
@@ -95,6 +115,41 @@ fn test_explicit_unused_import_keeps_source_diagnostics() {
 	tc.check_unused_import_diagnostics()
 	assert tc.errors.len == 0, tc.errors.str()
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
+}
+
+// A submodule import names its parent module or alias in its module path,
+// which is not an attribute use of that import.
+fn test_submodule_import_path_does_not_use_parent_import() {
+	path := os.join_path(os.vtmp_dir(), 'v3_submodule_import_path_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for imports, display_name in {
+		'import term as te\nimport te.ui\n': 'te (term)'
+		'import term\nimport term.ui\n':     'term'
+	} {
+		os.write_file(path, imports)!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_unused_import_diagnostics()
+		assert tc.notices.any(it.msg.contains("module '${display_name}' is imported but never used")), '${imports}: ${tc.notices}'
+	}
+}
+
+fn test_qualified_field_and_enum_value_attributes_use_imports() {
+	path := os.join_path(os.vtmp_dir(), 'v3_qualified_member_attribute_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for declaration in ['struct Item {\n\tname string @[schema.Skip]\n}\n',
+		'enum Kind {\n\tfirst @[schema.Skip]\n}\n'] {
+		os.write_file(path, 'import schema\n${declaration}fn main() {}\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_unused_import_diagnostics()
+		assert tc.notices.len == 0, '${declaration}: ${tc.notices}'
+	}
 }
 
 fn test_sql_table_references_use_imports() {

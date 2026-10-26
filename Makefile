@@ -33,6 +33,12 @@ v:
 	@set -e; \
 	sys=`uname -s 2>/dev/null || echo unknown`; \
 	arch=`uname -m 2>/dev/null || echo unknown`; \
+	if [ "`getconf LONG_BIT 2>/dev/null`" = 32 ]; then \
+		case "$$arch" in \
+			aarch64|arm64|armv8*) arch=armv7l;; \
+			x86_64|amd64) arch=i686;; \
+		esac; \
+	fi; \
 	set -- $(CFLAGS); \
 	ccflags=; \
 	unsafe_o=0; \
@@ -107,13 +113,13 @@ v:
 			case "$$sys" in \
 				Linux|FreeBSD|NetBSD|OpenBSD|DragonFly) \
 					case "$$arch" in \
-						arm64|aarch64) bootstrap_ccompiler="$(CC)";; \
+						arm*|aarch64) bootstrap_ccompiler="$(CC)";; \
 					esac; \
 					;; \
 			esac; \
 			;; \
 	esac; \
-	$(CC) $$bootstrap_ccflags $(VC_BOOTSTRAP_DEFINE) -std=gnu11 -w -o v1 vc/v.c -lm -lpthread $$ldflags || cmd/tools/cc_compilation_failed_non_windows.sh; \
+	sh cmd/tools/vc_compat.sh vc/v.c $(CC) $$bootstrap_ccflags $(VC_BOOTSTRAP_DEFINE) -std=gnu11 -w -o v1 -- -lm -lpthread $$ldflags || sh cmd/tools/cc_compilation_failed_non_windows.sh; \
 	set -- ./v1 -no-parallel -o v2 $$bootstrap_gcflags $(VFLAGS); \
 	if [ -n "$$bootstrap_ccompiler" ]; then \
 		set -- "$$@" -cc "$$bootstrap_ccompiler"; \
@@ -148,6 +154,12 @@ v1:
 	@set -e; \
 	sys=`uname -s 2>/dev/null || echo unknown`; \
 	arch=`uname -m 2>/dev/null || echo unknown`; \
+	if [ "`getconf LONG_BIT 2>/dev/null`" = 32 ]; then \
+		case "$$arch" in \
+			aarch64|arm64|armv8*) arch=armv7l;; \
+			x86_64|amd64) arch=i686;; \
+		esac; \
+	fi; \
 	set -- $(CFLAGS); \
 	bootstrap_ccflags=; \
 	unsafe_o=0; \

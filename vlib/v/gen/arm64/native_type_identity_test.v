@@ -7,50 +7,75 @@ import v.ssa
 import v.transform
 import v.types
 
-fn test_native_compiler_type_identity_uses_the_active_payload_slot() {
+fn test_native_compiler_types_preserve_semantic_payload_identity() {
 	$if macos && arm64 {
 		type_source := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'types', 'type.v'))!
-		checker := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'types', 'checker_tail_stmt.v'))!
-		source := type_source.all_before('// clone_owned_type').replace('module types', 'module main') +
-			'\nfn type_value_words(' + checker.all_after('fn type_value_words(').all_before('// type_cache_stats') +
-			r'
+		identity_source := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'types', 'type_interner.v'))!
+		assert identity_source.contains('pub fn semantic_type_hash(')
+		assert identity_source.contains('pub fn semantic_types_equal(')
+		assert identity_source.contains('pub fn (tc &TypeChecker) fn_type(')
+		// Run the production semantic hash/equality over the real recursive Type
+		// layout; copied inline descriptors no longer have boxed payload identity.
+		identity_functions := 'pub fn semantic_type_hash(' + identity_source.all_after('pub fn semantic_type_hash(').all_before('pub fn (tc &TypeChecker) fn_type(')
+		source := type_source.all_before('// clone_owned_type').replace('module types', 'module main').replace('import v.flat', '') +
+			'\n' + identity_functions + r'
+const builtin_void_type = Type(Void{})
+const empty_type = &builtin_void_type
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.calloc(usize, usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(value voidptr, size isize) voidptr {
-    result := C.malloc(usize(size))
-    return C.memcpy(result, value, usize(size))
+fn C.malloc(uint) voidptr
+fn C.calloc(uint, uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(value voidptr, size int) voidptr {
+    result := C.malloc(uint(size))
+    return C.memcpy(result, value, uint(size))
+}
+// SSA sum storage starts with the i32 tag declared in ssa/builder.v.
+struct NativeSumHeader { typ i32 }
+fn native_sum_tag(value &Type) i32 {
+    return unsafe { (&NativeSumHeader(value)).typ }
 }
 fn main() {
     integer := Type(Primitive{props: .integer, size: 32})
     boolean := Type(Primitive{props: .boolean, size: 8})
     copied_integer := integer
-    integer_tag, integer_payload, integer_slot := type_value_words(&integer)
-    boolean_tag, boolean_payload, _ := type_value_words(&boolean)
-    copy_tag, copy_payload, copy_slot := type_value_words(&copied_integer)
-    if integer_tag != boolean_tag || integer_payload == 0 || boolean_payload == 0
-        || integer_payload == boolean_payload { C.exit(1) }
-    if copy_tag != integer_tag || copy_payload != integer_payload || copy_slot != integer_slot { C.exit(2) }
-    array := Type(Array{elem_type: integer})
-    optional_array := Type(OptionType{base_type: array})
+    if integer !is Primitive || boolean !is Primitive
+        || semantic_types_equal(&integer, &boolean)
+        || semantic_type_hash(&integer) == semantic_type_hash(&boolean) { C.exit(1) }
+    if !semantic_types_equal(&copied_integer, &integer)
+        || semantic_type_hash(&copied_integer) != semantic_type_hash(&integer) { C.exit(2) }
+    array := Type(Array{elem_type: new_type_reference(integer)})
+    optional_array := Type(OptionType{base_type: new_type_reference(array)})
     tuple := Type(MultiReturn{types: [integer, array, boolean]})
-    optional_tuple := Type(OptionType{base_type: tuple})
+    optional_tuple := Type(OptionType{base_type: new_type_reference(tuple)})
     copied_optional := optional_array
-    array_tag, array_payload, array_slot := type_value_words(&optional_array)
-    tuple_tag, tuple_payload, _ := type_value_words(&optional_tuple)
-    copied_tag, copied_payload, copied_slot := type_value_words(&copied_optional)
-    if array_tag != tuple_tag || array_payload == 0 || tuple_payload == 0
-        || array_payload == tuple_payload { C.exit(3) }
-    if copied_tag != array_tag || copied_payload != array_payload || copied_slot != array_slot { C.exit(4) }
-    first := Type(FnType{params: [integer], return_type: boolean})
-    second := Type(FnType{params: [boolean], return_type: boolean})
-    first_tag, first_payload, _ := type_value_words(&first)
-    second_tag, second_payload, _ := type_value_words(&second)
-    if first_tag != second_tag || first_payload == 0 || first_payload == second_payload { C.exit(5) }
-    zero := unsafe { &Type(C.calloc(1, usize(sizeof(Type)))) }
-    zero_tag, zero_payload, zero_slot := type_value_words(zero)
-    if zero_tag != 0 || zero_payload != 0 || zero_slot != 0 { C.exit(6) }
+    if optional_array !is OptionType || optional_tuple !is OptionType
+        || semantic_types_equal(&optional_array, &optional_tuple)
+        || semantic_type_hash(&optional_array) == semantic_type_hash(&optional_tuple) { C.exit(3) }
+    if !semantic_types_equal(&copied_optional, &optional_array)
+        || semantic_type_hash(&copied_optional) != semantic_type_hash(&optional_array) { C.exit(4) }
+    first := Type(FnType{params: [FnParam{typ: new_type_reference(integer)}], return_type: new_type_reference(boolean)})
+    second := Type(FnType{params: [FnParam{typ: new_type_reference(boolean)}], return_type: new_type_reference(boolean)})
+    if first !is FnType || second !is FnType || semantic_types_equal(&first, &second)
+        || semantic_type_hash(&first) == semantic_type_hash(&second) { C.exit(5) }
+    zero := unsafe { &Type(C.calloc(1, uint(sizeof(Type)))) }
+    if native_sum_tag(zero) != 0 { C.exit(6) }
+    valid_void := Type(Void{})
+    if native_sum_tag(&valid_void) != 1 || valid_void !is Void
+        || !semantic_types_equal(&valid_void, &builtin_void_type)
+        || semantic_type_hash(&valid_void) != semantic_type_hash(&builtin_void_type) { C.exit(6) }
+    equivalent_integer := Type(Primitive{props: .integer, size: 32})
+    equivalent_array := Type(Array{elem_type: new_type_reference(equivalent_integer)})
+    equivalent_optional := Type(OptionType{base_type: new_type_reference(equivalent_array)})
+    if !semantic_types_equal(&integer, &equivalent_integer)
+        || semantic_type_hash(&integer) != semantic_type_hash(&equivalent_integer)
+        || !semantic_types_equal(&optional_array, &equivalent_optional)
+        || semantic_type_hash(&optional_array) != semantic_type_hash(&equivalent_optional) { C.exit(7) }
+    mutable := Type(FnType{params: [FnParam{typ: new_type_reference(integer), is_mut: true}], return_type: new_type_reference(boolean)})
+    if semantic_types_equal(&first, &mutable)
+        || semantic_type_hash(&first) == semantic_type_hash(&mutable) { C.exit(8) }
+    variadic := Type(FnType{params: [FnParam{typ: new_type_reference(integer)}], return_type: new_type_reference(boolean), is_variadic: true})
+    if semantic_types_equal(&first, &variadic)
+        || semantic_type_hash(&first) == semantic_type_hash(&variadic) { C.exit(9) }
 }
 '
 		for building_v in [false, true] {

@@ -270,7 +270,7 @@ pub fn (mut f File) writeln(s string) !int {
 // write_string writes the string `s` into the file.
 // It returns how many bytes were actually written.
 pub fn (mut f File) write_string(s string) !int {
-	unsafe { f.write_full_buffer(s.str, usize(s.len))! }
+	unsafe { f.write_full_buffer(s.str, uint(s.len))! }
 	return s.len
 }
 
@@ -304,8 +304,8 @@ pub fn (mut f File) write_ptr(data voidptr, size int) int {
 // address in `buffer`, no matter how many tries/partial writes it would take.
 // The size in bytes, of the `buffer`, should be passed in `buffer_len`.
 @[unsafe]
-pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ! {
-	if buffer_len <= usize(0) {
+pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len uint) ! {
+	if buffer_len <= uint(0) {
 		return
 	}
 	if !f.is_opened {
@@ -610,7 +610,7 @@ pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := usize(sizeof(T))
+	tsize := uint(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
@@ -627,7 +627,7 @@ pub fn (mut f File) write_raw[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := usize(sizeof(T))
+	tsize := uint(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
@@ -640,7 +640,7 @@ pub fn (mut f File) write_raw_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := usize(sizeof(T))
+	tsize := uint(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}

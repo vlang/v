@@ -13,6 +13,22 @@ doc1 := toml.parse_text(<string content>) or { panic(err) }
 doc2 := toml.parse_file(<file path>) or { panic(err) }
 ```
 
+## Parser AST and table views
+
+`toml.ast.DateTime` keeps its public `date` and `time` components, including their
+text and source positions, alongside the complete date-time `text`.
+
+The public `Parser.find_table`, `find_sub_table` and `find_in_table` methods return
+`!&map[string]ast.Value`. Each reference has a heap header sharing the table's storage.
+Insertions, deletions and reservations through a view are visible through other views.
+Growing the parent table does not invalidate the reference: it holds no pointer into
+the parent's inline values. Keep shared table storage alive until all views are finished;
+use `.clone()` when an independent table is needed.
+
+`Parser.double_array_of_tables_contents(target_key)` returns a one-element
+`[]ast.Value` containing the parsed table body. It leaves the following table header
+available for the caller to continue parsing.
+
 ## Example
 
 Here we parse the official [TOML example](https://github.com/toml-lang/toml/blob/3b11f6921da7b6f5db37af039aa021fee450c091/README.md#Example)
@@ -110,6 +126,9 @@ encoded := toml.encode(config)
 assert encoded == 'host = "localhost"\nport = 5432\napp_name = "app"'
 assert toml.decode[Config](encoded)! == config
 ```
+
+String values are encoded as TOML basic strings with quotes, backslashes, and control characters
+escaped. Non-ASCII text is preserved.
 
 Map fields support string, boolean, and integer keys up to 64 bits. TOML keys are strings;
 integer keys are parsed as decimal numbers with the destination type's range,
@@ -212,3 +231,7 @@ array = [
 doc := toml.parse_text(toml_text) or { panic(err) }
 assert to.json(doc) == '{ "val": true, "table": { "array": [ { "a": "A" }, { "b": "B" } ] } }'
 ```
+
+`toml.scanner.Scanner.peek(0)` returns the byte at the current scanner position without
+advancing it, or `end_of_text` when the position is at the end of the input.
+Negative offsets look behind that position. An offset outside the input returns `end_of_text`.

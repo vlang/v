@@ -31,8 +31,8 @@ fn test_wide_values_survive_the_sizes_and_runes() {
 	// The low 64 bits are what the sizes carry, so the test value keeps a visible
 	// low-bit pattern instead of being a power of two.
 	x := (u128(1) << 100) + u128(0x1122334455667788)
-	assert isize(x) == isize(1234605616436508552)
-	assert usize(x) == usize(1234605616436508552)
+	assert int(x) == int(1234605616436508552)
+	assert uint(x) == uint(1234605616436508552)
 	assert rune(x) == rune(1432778632)
 }
 

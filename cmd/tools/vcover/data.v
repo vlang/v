@@ -25,10 +25,21 @@ mut:
 //   c) coverage data from different runs can be merged by simply reusing the same -coverage folder,
 //      or by copy/pasting all files from 1 run, to the folder of another.
 struct MetaData {
-	file          string // V source file path
-	fhash         string // fhash is the name of the meta file
-	v_version     string // the V version, used to generate the coverage meta data file
-	build_options string // the build options for the program
-	npoints       int    // the number of stored coverage points
-	points        []int  // the line numbers corresponding to each point
+mut:
+	file          string         // V source file path, normalized to `/` separators
+	fhash         string         // fhash is the name of the meta file
+	v_version     string         // the V version, used to generate the coverage meta data file
+	build_options string         // the build options for the program
+	npoints       int            // the number of stored coverage points
+	points        []int          // the line numbers corresponding to each point
+	functions     []FunctionMeta // the functions of the file, with their entry counters
+}
+
+// FunctionMeta is one function of a source file. `position` is its place in the
+// meta file's `functions` list, which is the key the `vfunctions_*.fcount` files
+// record hits under.
+struct FunctionMeta {
+	name     string // the V name, as written
+	start    int    // 1-based line of the declaration
+	position int    // place in the meta file's `functions` list
 }

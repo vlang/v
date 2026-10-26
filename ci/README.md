@@ -69,7 +69,9 @@ its checkpoints, so the following invocation starts from the beginning.
 
 The aggregate `ci` command sets `VTEST_FAIL_FAST=1` and `VJOBS=1`, overriding inherited
 values. Test and example-build sessions stop at the first reported failure, with no
-other files already running in parallel. `test-cleancode` also stops after a failed
+other files already running in parallel. The `self_tests` task retains this single-worker
+setting; standalone GitHub Actions self-test tasks still use every available CPU.
+`test-cleancode` also stops after a failed
 vetting session instead of starting formatting checks. The failed task's checkpoint
 is retained. Existing per-test retry and known-flaky-test policies are unchanged.
 
@@ -110,6 +112,15 @@ source changes. Compiler and library edits deliberately preserve progress. Use
 `ci --reset` for a complete check, after switching branches, or after removing build
 artifacts needed by later tasks. Do not run multiple `ci` jobs in the same checkout
 concurrently; they share the checkpoint and build outputs.
+
+The macOS self-tests use default module caching. Generated cleanup for detached
+thread results must also compile with older Apple Clang versions that reject
+declarations immediately after `case` labels. The focused regression checks
+uncached, cold-cache and warm-cache builds, including nested error payloads:
+
+```sh
+./v test vlib/v/gen/c/detached_spawn_cleanup_test.v
+```
 
 ### Testing the resume behavior
 

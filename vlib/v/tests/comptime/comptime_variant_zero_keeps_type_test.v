@@ -21,6 +21,27 @@ type Spot = Point
 
 type Place = Point | Spot
 
+type Collections = []Spot | map[string]Spot
+
+fn inferred_zero_type[T](_ T) string {
+	return typeof(T).name
+}
+
+fn inferred_variant_zero_types[T]() []string {
+	mut names := []string{}
+	$for variant in T.variants {
+		zero := $zero(variant.typ)
+		names << inferred_zero_type(zero)
+	}
+	return names
+}
+
+fn test_variant_zero_preserves_nested_aliases_during_inference() {
+	expected := ['[]Spot', 'map[string]Spot']
+	assert inferred_variant_zero_types[Collections]() == expected
+	assert inferred_variant_zero_types[Place]() == ['Point', 'Spot']
+}
+
 fn variant_cast_names[T]() []string {
 	mut names := []string{}
 	$for v in T.variants {
@@ -60,7 +81,6 @@ fn variant_unaliased_names[T]() []string {
 }
 
 fn test_variant_cast_keeps_a_struct_alias() {
-	// The zero value of `Spot` is a `Point`; `T(v)` still selects `Spot`.
 	assert variant_cast_names[Place]() == ['Point', 'Spot']
 	assert variant_zero_names[Place]() == ['Point', 'Spot']
 }

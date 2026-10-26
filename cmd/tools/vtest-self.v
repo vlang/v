@@ -367,7 +367,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/veb/tests/veb_app_test.v',
 	'vlib/ncurses/ncurses_test.v',
 	'vlib/v/tests/fixed_array_update_c_struct_alias_test.v',
-	'vlib/x/crypto/mldsa/mldsa_test.v',
 ]
 
 fn Config.init(vargs []string, targs []string) !Config {
@@ -468,7 +467,21 @@ fn main() {
 		eprintln('vtest-self: could not find `test-self` in os.args: ${os.args}')
 		exit(1)
 	}
-	vargs := os.args[1..args_idx]
+	mut vargs := os.args[1..args_idx].clone()
+	requested_args := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
+	mut all_requested_args := requested_args.clone()
+	all_requested_args << vargs
+	strict_v3 := ('-new-compiler' in all_requested_args && '-old-compiler' !in all_requested_args)
+		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
+	if strict_v3 {
+		// Apply environment flags to test compilation, without leaking a host C
+		// compiler choice into nested compiler invocations (for example FastC).
+		if vargs.len < requested_args.len || vargs[..requested_args.len] != requested_args {
+			vargs = requested_args.clone()
+			vargs << os.args[1..args_idx]
+		}
+		os.unsetenv('VFLAGS')
+	}
 	targs := os.args#[args_idx + 1..]
 	cfg := Config.init(vargs, targs) or {
 		eprintln(err)
@@ -494,7 +507,7 @@ fn main() {
 	if cfg.run_just_essential {
 		all_test_files = essential_list.map(os.join_path(vroot, it))
 	}
-	mut tsession := testing.new_test_session(vargs.join(' '), true)
+	mut tsession := testing.new_test_session(vargs.map(self_test_argument(it)).join(' '), true)
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator)
 		&& (shard.count == 1 || self_test_shard_for_file(it, shard.count) == shard.index))
@@ -555,4 +568,11 @@ fn main() {
 		eprintln('\nError: failed ${tsession.benchmark.nfail} times.\n')
 		exit(1)
 	}
+}
+
+fn self_test_argument(arg string) string {
+	if arg != '' && !arg.contains_any(' \t\r\n\\\'"') {
+		return arg
+	}
+	return '"' + arg.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }

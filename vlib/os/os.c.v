@@ -2,25 +2,24 @@ module os
 
 import strings
 
-#include <sys/stat.h> // #include <signal.h>
-#include <errno.h>
+// needed for os.executable() on macOS. Declared outside `$if macos`: `-cross` output
+// keeps the macOS branch of executable(), while a top-level `$if macos` is resolved
+// for the host that generates it.
+fn C._dyld_get_image_name(image u32) &char
 
-$if macos {
-	#include <mach-o/dyld.h>
-	// needed for os.executable():
-	fn C._dyld_get_image_name(image u32) &char
-}
-
-$if freebsd || openbsd {
-	#include <sys/sysctl.h>
-}
+// BSD sysctl identifiers stay in V so executable lookup does not require C headers.
+const sysctl_ctl_kern = i32(1)
+const freebsd_kern_proc = i32(14)
+const freebsd_kern_proc_pathname = i32(12)
+const openbsd_kern_proc_args = i32(55)
+const openbsd_kern_proc_argv = i32(1)
 
 @[markused]
 pub const args = arguments()
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink(pathname &char, buf &char, bufsiz usize) i32
+fn C.readlink(pathname &char, buf &char, bufsiz uint) i32
 
 fn C.getline(voidptr, voidptr, voidptr) i32
 
@@ -61,7 +60,7 @@ fn write_file_direct(path string, text string) ! {
 			return error('0 bytes written')
 		}
 		remaining -= written
-		sp = unsafe { &u8(voidptr(usize(sp) + usize(written))) }
+		sp = unsafe { &u8(voidptr(uint(sp) + uint(written))) }
 	}
 }
 
@@ -327,6 +326,11 @@ pub fn cp(src string, dst string, config CopyParams) ! {
 			if count == 0 {
 				break
 			}
+			if count < 0 {
+				C.close(fp_to)
+				C.close(fp_from)
+				return error_with_code('cp: failed to read from ${src}', int(count))
+			}
 			if C.write(fp_to, &buf[0], count) < 0 {
 				C.close(fp_to)
 				C.close(fp_from)
@@ -380,6 +384,7 @@ fn vpopen(path string) voidptr {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
+		windows_avoid_long_temp_env()
 		return C._wpopen(wpath, mode.to_wide())
 	} $else {
 		cpath := path.str
@@ -453,6 +458,7 @@ pub fn system(cmd string) int {
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"${cmd}"' } else { cmd }
 		flush_stdout()
 		flush_stderr()
+		windows_avoid_long_temp_env()
 		unsafe {
 			ret = C._wsystem(wcmd.to_wide())
 		}
@@ -501,8 +507,10 @@ pub fn system(cmd string) int {
 // whether lstat returns any result or a "not exists" error gives a clear indication of whether the path is occupied.
 pub fn exists(path string) bool {
 	$if windows {
+		// GetFileAttributesW is a Win32 call, so a longPathAware executable can use paths
+		// past MAX_PATH with it, where the CRT's _waccess cannot.
 		p := path.replace('/', '\\')
-		return C._waccess(p.to_wide(), f_ok) != -1
+		return C.GetFileAttributesW(p.to_wide()) != u32(C.INVALID_FILE_ATTRIBUTES)
 	} $else {
 		return C.access(&char(path.str), f_ok) != -1
 	}
@@ -664,7 +672,7 @@ pub fn get_raw_line() string {
 		unsafe {
 			initial_size := 256 * wide_char_size
 			mut buf := malloc_noscan(initial_size)
-			defer { buf.free() }
+			defer { unsafe { buf.free() } }
 			mut capacity := initial_size
 			mut offset := 0
 
@@ -722,7 +730,7 @@ pub fn get_raw_line() string {
 			}
 		}
 	} $else {
-		max := usize(0)
+		max := uint(0)
 		buf := &u8(unsafe { nil })
 
 		mut str := ''
@@ -774,7 +782,7 @@ pub fn get_raw_stdin() []u8 {
 			}
 		}
 	} $else {
-		max := usize(0)
+		max := uint(0)
 		buf := &u8(unsafe { nil })
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
 		$if race ? {
@@ -873,8 +881,8 @@ pub fn executable() string {
 		return unsafe { cstring_to_vstring(self_path) }
 	}
 	$if freebsd {
-		bufsize := usize(max_path_buffer_size)
-		mib := [i32(C.CTL_KERN), C.KERN_PROC, C.KERN_PROC_PATHNAME, -1]! // C `int` mib buffer
+		bufsize := uint(max_path_buffer_size)
+		mib := [sysctl_ctl_kern, freebsd_kern_proc, freebsd_kern_proc_pathname, -1]! // C `int` mib buffer
 		unsafe { C.sysctl(&mib[0], mib.len, &result[0], &bufsize, 0, 0) }
 		res := unsafe { tos_clone(&result[0]) }
 		return res
@@ -887,9 +895,9 @@ pub fn executable() string {
 		// See also https://github.com/gpakosz/whereami/blob/master/src/whereami.c#L591
 		// and https://github.com/ziglang/zig/issues/6718#issuecomment-711134120 .
 		mut pbuf := unsafe { &&u8(&result[0]) }
-		bufsize := usize(max_path_buffer_size)
+		bufsize := uint(max_path_buffer_size)
 		pid := C.getpid()
-		mib := [i32(C.CTL_KERN), C.KERN_PROC_ARGS, pid, C.KERN_PROC_ARGV]! // C `int` mib buffer
+		mib := [sysctl_ctl_kern, openbsd_kern_proc_args, pid, openbsd_kern_proc_argv]! // C `int` mib buffer
 		if unsafe { C.sysctl(&mib[0], mib.len, nil, &bufsize, nil, 0) } == 0 {
 			if bufsize > max_path_buffer_size {
 				pbuf = unsafe { &&u8(malloc(int(bufsize))) }
@@ -912,7 +920,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 		return res
 	}
 	$if dragonfly {
@@ -921,7 +929,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 		return res
 	}
 	$if linux {
@@ -930,7 +938,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 		return res
 	}
 	$if solaris {
@@ -994,6 +1002,58 @@ fn normalize_windows_extended_path_prefix(path string) string {
 	return path.clone()
 }
 
+// working_directory_is reports whether `path`, a C string, names the working directory.
+// libc decides that the same way before it resolves a relative path from a name: the
+// path of a directory that was renamed, or replaced by another, fails the comparison.
+fn working_directory_is(path &char) bool {
+	mut named := C.stat{}
+	mut current := C.stat{}
+	return C.stat(path, &named) == 0 && C.stat(c'.', &current) == 0 && named.st_dev == current.st_dev
+		&& named.st_ino == current.st_ino
+}
+
+// relative_path_from_cwd writes the working directory, a separator and `fpath` to `buf`,
+// as a C string, and returns the length of the directory's path in it. It returns 0 when
+// the working directory is not known as an absolute path, when that path no longer names
+// it, or when the result does not fit in `size` bytes. Only real_path on macOS needs it.
+fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
+	$if !macos {
+		return 0
+	} $else {
+		cwd := &u8(C.getcwd(0, 4096))
+		if cwd == unsafe { nil } {
+			return 0
+		}
+		defer {
+			// getcwd allocated the path for this call.
+			unsafe { C.free(cwd) }
+		}
+		cwd_len := int(C.strlen(&char(cwd)))
+		// `cwd` is a C string of cwd_len bytes: reading its first byte needs no bounds
+		// that V could check.
+		if cwd_len == 0 || unsafe { cwd[0] } != `/` || cwd_len + 1 + fpath.len >= size {
+			return 0
+		}
+		if !working_directory_is(&char(cwd)) {
+			return 0
+		}
+		// The copies write through raw pointers. They stay inside `buf`: the length of
+		// both parts, the separator and the terminator was compared with `size` above.
+		unsafe {
+			mut dst := &u8(buf)
+			C.memcpy(dst, cwd, uint(cwd_len))
+			mut n := cwd_len
+			if cwd[cwd_len - 1] != `/` {
+				dst[n] = `/`
+				n++
+			}
+			C.memcpy(dst + n, fpath.str, uint(fpath.len))
+			dst[n + fpath.len] = 0
+		}
+		return cwd_len
+	}
+}
+
 // real_path returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
 // See http://pubs.opengroup.org/onlinepubs/9699919799/functions/realpath.html
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
@@ -1047,7 +1107,42 @@ pub fn real_path(fpath string) string {
 			res = normalize_windows_extended_path_prefix(unsafe { string_from_wide(pu16_fullpath) })
 		}
 	} $else {
-		ret := &char(C.realpath(&char(fpath.str), &char(&fullpath[0])))
+		mut ret := &char(unsafe { nil })
+		$if macos {
+			// A path whose first byte is NUL is the empty path to libc, which names
+			// nothing. Behind the directory's name it would name the directory.
+			if fpath.len > 0 && fpath[0] != `/` && fpath[0] != 0 {
+				// A relative path is resolved against the working directory, which libc
+				// finds again on every call. The libc of macOS reads the parent directories
+				// for that, so the call costs as much as those directories are large.
+				// Naming the directory in the path resolves the same file without that
+				// lookup. Other libcs ask the kernel, and would only check its answer again.
+				mut joined := [max_path_buffer_size]u8{}
+				dir_len := relative_path_from_cwd(fpath, voidptr(&joined[0]), max_path_buffer_size)
+				if dir_len > 0 {
+					ret = &char(C.realpath(&char(&joined[0]), &char(&fullpath[0])))
+					failure := C.errno
+					// The directory can be renamed, and its name given to another one, between
+					// the check of that name and the resolution through it. The answer stands
+					// only if the name is still the working directory's afterwards.
+					separator := joined[dir_len]
+					joined[dir_len] = 0
+					still_named := working_directory_is(&char(&joined[0]))
+					joined[dir_len] = separator
+					if !still_named {
+						ret = &char(unsafe { nil })
+					} else if ret == 0
+						&& failure in [error_code_noent, error_code_notdir, error_code_denied] {
+						// What is missing or unreachable under its full name is so by its relative one.
+						unsafe { res.free() }
+						return fpath.clone()
+					}
+				}
+			}
+		}
+		if ret == 0 {
+			ret = &char(C.realpath(&char(fpath.str), &char(&fullpath[0])))
+		}
 		if ret == 0 {
 			unsafe { res.free() }
 			return fpath.clone()
@@ -1164,8 +1259,11 @@ pub fn open_append(path string) !File {
 	if isnil(file.cfile) {
 		return error_posix(msg: 'failed to create(append) file "${path}"')
 	}
-	file.is_opened = true
-	return file
+	return File{
+		cfile:     file.cfile
+		fd:        fileno(file.cfile)
+		is_opened: true
+	}
 }
 
 // execvp - loads and executes a new child process, *in place* of the current process.
@@ -1182,6 +1280,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ! {
 	cargs << &char(unsafe { nil })
 	mut res := int(0)
 	$if windows {
+		windows_avoid_long_temp_env()
 		res = C._execvp(&char(cmdpath.str), cargs.data)
 	} $else {
 		res = C.execvp(&char(cmdpath.str), cargs.data)
@@ -1207,8 +1306,16 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	for i in 0 .. cmdargs.len {
 		cargv << &char(cmdargs[i].str)
 	}
-	for i in 0 .. envs.len {
-		cenvs << &char(envs[i].str)
+	$if windows {
+		windows_avoid_long_temp_env()
+	}
+	child_envs := $if windows {
+		windows_temp_env_entries_fix(envs, windows_temp_env_candidates)
+	} $else {
+		envs
+	}
+	for i in 0 .. child_envs.len {
+		cenvs << &char(child_envs[i].str)
 	}
 	cargv << &char(unsafe { nil })
 	cenvs << &char(unsafe { nil })
@@ -1259,14 +1366,19 @@ pub fn is_atty(fd int) int {
 }
 
 // write_file_array writes the data in `buffer` to a file in `path`.
+// The file is closed on both success and write failure.
 pub fn write_file_array(path string, buffer array) ! {
 	mut f := create(path)!
-	unsafe { f.write_full_buffer(buffer.data, usize(buffer.len * buffer.element_size))! }
-	f.close()
+	defer {
+		f.close()
+	}
+	unsafe { f.write_full_buffer(buffer.data, uint(buffer.len * buffer.element_size))! }
 }
 
 // glob function searches for all the pathnames matching patterns and returns a
 // sorted list of found pathnames.
+// On Unix, each * matches zero or more characters within a path component;
+// literal pieces between multiple stars must occur in order without overlapping.
 @[manualfree]
 pub fn glob(patterns ...string) ![]string {
 	mut matches := []string{}

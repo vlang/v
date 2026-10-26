@@ -7,7 +7,7 @@ import os
 
 #flag windows -l advapi32
 
-#include "@VMODROOT/cmd/v/toolcache_windows_helpers.h"
+#flag @VMODROOT/cmd/v/toolcache_windows_helpers.o
 
 fn C.v_toolcache_move_file_ex_w(const_existing &u16, const_new &u16, flags u32) int
 
@@ -181,10 +181,25 @@ fn tool_cache_root_can_stage(path string) bool {
 	return C.v_toolcache_root_is_private(w_path) != 0
 }
 
+// tool_cache_root_problem explains why `path` cannot hold the tool cache, and returns an empty
+// string when it can.
+fn tool_cache_root_problem(path string) string {
+	if tool_cache_root_can_stage(path) {
+		return ''
+	}
+	return '`${path}` is not private: it is not owned by the current user, or its access control list lets other accounts change it'
+}
+
 // tool_cache_parents_are_trusted always accepts on Windows. Folders like `C:\Users` are not
 // owned by the current user, so the ACL check used for the cache folder would reject them.
 fn tool_cache_parents_are_trusted(_ string) bool {
 	return true
+}
+
+// tool_cache_parent_is_tolerated is never needed on Windows, where the folders above the cache
+// are not checked.
+fn tool_cache_parent_is_tolerated(_ string, _ string) bool {
+	return false
 }
 
 // make_tool_cache_root_private does nothing on Windows. There, folder access is controlled by

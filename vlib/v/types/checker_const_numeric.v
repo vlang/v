@@ -10,8 +10,8 @@ fn independent_numeric_const_initializer(a &flat.FlatAst, id flat.NodeId) bool {
 		return false
 	}
 	node := unsafe { &a.nodes[int(id)] }
-	if node.typ.len > 0 && node.typ !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32',
-		'u64', 'f32', 'f64', 'usize', 'isize'] {
+	if node.typ_text().len > 0 && node.typ_text() !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8',
+		'u16', 'u32', 'u64', 'f32', 'f64', 'uint', 'isize'] {
 		return false
 	}
 	match node.kind {
@@ -20,7 +20,7 @@ fn independent_numeric_const_initializer(a &flat.FlatAst, id flat.NodeId) bool {
 		}
 		.cast_expr {
 			if node.value !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-				'f64', 'usize', 'isize'] || node.children_count != 1 {
+				'f64', 'uint', 'isize'] || node.children_count != 1 {
 				return false
 			}
 		}
@@ -42,7 +42,7 @@ fn independent_numeric_const_initializer(a &flat.FlatAst, id flat.NodeId) bool {
 		}
 		.array_literal {
 			// Explicit array type text can contain a const dimension or alias.
-			if node.typ.len != 0 || node.children_count == 0 {
+			if node.typ_text().len != 0 || node.children_count == 0 {
 				return false
 			}
 		}

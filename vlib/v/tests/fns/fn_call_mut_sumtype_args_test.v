@@ -9,7 +9,7 @@ type Sum2 = Struct1 | Struct2 | int
 
 struct Struct2 {
 mut:
-	sum Sum2
+	sum &Sum2
 }
 
 fn update_sum_1(mut sum Sum1) {
@@ -49,11 +49,8 @@ fn test_fn_call_mut_sumtype_args() {
 }
 
 fn test_fn_call_mut_sumtype_args_field() {
-	mut s := Sum2(Struct2{
-		sum: Sum2(Struct1{
-			value: 6
-		})
-	})
+	mut child := Sum2(Struct1{ value: 6 })
+	mut s := Sum2(Struct2{ sum: &child })
 
 	update_sum_2(mut s)
 

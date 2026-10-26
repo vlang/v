@@ -125,6 +125,10 @@ fn (mut vt Vet) vet_file(path string) {
 	vt.file = path
 	mut prefs := pref.new_preferences()
 	prefs.is_fmt = true
+	// Keep every `$if` branch, like vfmt does, so that the vetted AST matches the
+	// source on every host. Otherwise the parser drops the branches for other
+	// platforms, and the lines of their multi-line strings are vetted as code.
+	prefs.preserve_comptime_conditionals = true
 	vt.vprintln("vetting file '${path}'...")
 	vt.source = os.read_file(path) or { return }
 	mut p := parser.Parser.new(prefs)
@@ -304,7 +308,7 @@ fn (mut vt Vet) visit(id flat.NodeId) {
 		vt.string_vars = map[string]bool{}
 		for child in vt.a.children_of(node) {
 			parameter := vt.a.node(child)
-			if parameter.kind == .param && parameter.typ == 'string' {
+			if parameter.kind == .param && parameter.typ_text() == 'string' {
 				vt.string_vars[parameter.value] = true
 			}
 		}

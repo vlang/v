@@ -5,6 +5,16 @@ import strings
 // Keep this marker synchronized with v.flat's static type-method name codec.
 const static_type_method_name_marker = '@static@'
 const internal_symbol_c_prefix = '__v3_internal_symbol_'
+// operator_method_c_prefix starts the C name of an operator overload method
+// (`Vec.+`). sanitize spells an operator as a word (`Vec__plus`), and an ordinary
+// method of the same receiver can have that word as its name (`Vec.plus`). No
+// source name can sanitize to a name in the internal namespace, so the two
+// cannot meet in C.
+pub const operator_method_c_prefix = '${internal_symbol_c_prefix}op_'
+// overloadable_operators lists every operator a method can overload (see
+// `token.Token.is_overloadable`), and the index operators.
+const overloadable_operators = ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '>', '<=', '>=',
+	'|', '^', '[]', '[]=']
 const max_c_collision_name_len = 8
 
 // reserved_words is a set (not a list) so `name in reserved_words` is an O(1)
@@ -13,6 +23,7 @@ const max_c_collision_name_len = 8
 const reserved_words = {
 	'auto':     true
 	'break':    true
+	'bool':     true
 	'case':     true
 	'char':     true
 	'asm':      true
@@ -54,12 +65,21 @@ const reserved_words = {
 	'while':    true
 	// The C99 header <complex.h> defines this as the keyword _Complex.
 	'complex':  true
+	// Windows headers define these as memory-model and calling-convention macros.
+	'near':     true
+	'far':      true
+	'pascal':   true
+	'cdecl':    true
+	// windef.h defines these as function-like macros, which reject a one-argument
+	// declaration (`double min(Tree* tree)`) or a two-argument definition.
+	'min':      true
+	'max':      true
 	// GNU C modes predefine these as macros (`linux` on Linux, `unix` on Unix).
 	'unix':     true
 	'linux':    true
 }
 
-// libc_collisions are libc function names that are not C keywords but clash at
+// libc_collisions are C runtime and intrinsic names that are not keywords but clash at
 // link/declaration time when a user defines a plain (module `main`) function with
 // the same name (e.g. `fn rint(...)` vs libc's `double rint(double)`). They are
 // mangled to `v_<name>` consistently at definition and call sites. `C.<name>`
@@ -68,6 +88,7 @@ const libc_collisions = {
 	'abort':    true
 	'abs':      true
 	'access':   true
+	'alloca':   true
 	'acos':     true
 	'atexit':   true
 	'ceil':     true
@@ -139,6 +160,9 @@ pub fn c_name(name string) string {
 		}
 		return name[2..]
 	}
+	if is_operator_method_name(name) {
+		return operator_method_c_name(name)
+	}
 	if name == 'malloc' {
 		return 'v_malloc'
 	}
@@ -156,13 +180,16 @@ pub fn c_name(name string) string {
 	if n == 'complex' || name == '@complex' {
 		return '${internal_symbol_c_prefix}macro_complex'
 	}
-	if n in ['mktemp', 'truncate'] {
+	if n in ['mktemp', 'truncate', 'alloca'] {
 		return '${internal_symbol_c_prefix}libc_${n}'
 	}
 	mut result := n
 	// The collision sets contain only short names; longer identifiers cannot match.
 	if (n.len <= max_c_collision_name_len && (n in reserved_words || n in libc_collisions))
 		|| is_string_literal_symbol(n) {
+		if n in ['near', 'far', 'pascal', 'cdecl', 'min', 'max'] {
+			return '${internal_symbol_c_prefix}macro_${n}'
+		}
 		if name.contains('@') {
 			result = '_v_${n}'
 		} else {
@@ -181,7 +208,40 @@ pub fn c_name(name string) string {
 // identifier fast paths because c_name applies the internal-symbol partition.
 pub fn c_name_needs_internal_namespace(name string) bool {
 	return name.contains(static_type_method_name_marker)
-		|| name.starts_with(internal_symbol_c_prefix)
+		|| name.starts_with(internal_symbol_c_prefix) || is_operator_method_name(name)
+}
+
+// is_operator_method_name reports whether name is the V name of an operator
+// overload method: a receiver, `.` and the operator (`Vec.+`, `Box[T].[]=`).
+@[direct_array_access]
+pub fn is_operator_method_name(name string) bool {
+	if name.len < 3 {
+		return false
+	}
+	match name[name.len - 1] {
+		`+`, `-`, `*`, `/`, `%`, `=`, `<`, `>`, `|`, `^`, `]` {}
+		else {
+			return false
+		}
+	}
+	dot := name.last_index_u8(`.`)
+	if dot <= 0 || name.len - dot - 1 > 3 {
+		return false
+	}
+	return unsafe { name.substr_unsafe(dot + 1, name.len) } in overloadable_operators
+}
+
+// operator_method_c_name returns the C name of the operator overload method `name`.
+// The operators of the builtin `string` keep their plain C names (`string__eq`,
+// `string__lt`, `string__plus`): the compiler and its C prelude call them by those
+// names, and only the builtin module can declare methods on `string`.
+fn operator_method_c_name(name string) string {
+	sanitized := sanitize(name)
+	receiver := name.all_before_last('.')
+	if receiver == 'string' || receiver == 'builtin.string' {
+		return sanitized
+	}
+	return operator_method_c_prefix + sanitized
 }
 
 fn static_type_method_c_name(name string) string {
@@ -286,6 +346,11 @@ fn sanitize_complex(name string) string {
 					continue
 				}
 				if next == `*` {
+					if i + 2 < name.len && name[i + 2] == `*` {
+						b.write_string('__pow')
+						i += 3
+						continue
+					}
 					b.write_string('__mul')
 					i += 2
 					continue

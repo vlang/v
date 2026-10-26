@@ -41,5 +41,5 @@ fn test_json_recursive_pointer_helpers_encode_nested_values_and_nil() {
 			'root': root
 			'nil':  nil_node
 		}
-	}, escape_unicode: true) == '{"values":[{"value":1,"next":{"value":2,"next":{"value":3}}},null],"by_name":{"root":{"value":1,"next":{"value":2,"next":{"value":3}}},"nil":null}}'
+	}, escape_unicode: true) == '{"values":[{"value":1,"next":{"value":2,"next":{"value":3}}},null],"by_name":{"nil":null,"root":{"value":1,"next":{"value":2,"next":{"value":3}}}}}'
 }

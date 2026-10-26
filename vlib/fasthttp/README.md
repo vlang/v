@@ -10,10 +10,12 @@ response bytes with a small, explicit API, and is the parallel backend used by
 - **Native I/O multiplexing**: `epoll` on Linux, `kqueue` on macOS/BSD, IOCP on
   Windows. On Linux each worker owns its own `SO_REUSEPORT` listener (kernel load
   balancing across cores).
-- **Zero per-request allocation on the hot path** (Linux): each connection owns a
-  read buffer and a write buffer that are **reused for its whole lifetime**, and
-  closed connections return their state — buffers included — to a per-worker
-  free-list. No per-connection hash maps, no per-request buffer churn.
+- **Zero per-request allocation on the hot path** (Linux): each connection reuses
+  its normal-sized read and write buffers. Oversized buffers above 64 KiB shrink
+  after their contents are consumed. Each worker retains at most 16 closed
+  connection states for reuse, releasing additional states after traffic bursts. With
+  `-prealloc`, individual allocations cannot be reclaimed, so workers retain all
+  connection states and buffer capacities for reuse instead of repeatedly replacing them.
 - **HTTP/1.1 pipelining**: several requests arriving in one read are framed
   individually and answered into one batched write. TCP-fragmented requests are
   reassembled deterministically via exact-length framing.
@@ -28,6 +30,10 @@ response bytes with a small, explicit API, and is the parallel backend used by
 - **Zero-copy file bodies**: return a `file_path` and the body is streamed with
   `sendfile(2)`.
 - **Graceful shutdown**: drain in-flight responses, then stop.
+
+Linux workers collect up to 256 epoll events per wait. Each worker reserves only that many
+event slots; the listening backlog and connection capacity remain independent of the batch size.
+Timeout sweeps run at most once per 100 ms, independently of the number of ready event batches.
 
 ## Installation
 

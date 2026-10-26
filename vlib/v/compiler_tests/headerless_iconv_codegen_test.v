@@ -6,7 +6,9 @@ const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
-fn test_iconv_include_uses_headerless_declarations() {
+// C headers are authoritative since V3 stopped scanning them: the system include
+// is kept, and the V declarations of its functions do not emit C prototypes.
+fn test_iconv_system_include_is_kept_and_its_functions_are_not_redeclared() {
 	$if windows {
 		return
 	}
@@ -32,7 +34,7 @@ fn main() {
 	to := "UTF-8"
 	from := "UTF-8"
 	cd := C.iconv_open(charptr(to.str), charptr(from.str))
-	if isize(cd) != -1 {
+	if int(cd) != -1 {
 		C.iconv_close(cd)
 	}
 	println("iconv-ok")
@@ -45,7 +47,9 @@ fn main() {
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(out + '.c') or { panic(err) }
-	assert !c_code.contains('#include <iconv.h>'), c_code
+	assert c_code.contains('#include <iconv.h>'), c_code
+	assert !c_code.contains('iconv_open(char*'), c_code
+	assert !c_code.contains('iconv_close(void*'), c_code
 
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

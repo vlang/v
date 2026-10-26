@@ -184,6 +184,21 @@ fn test_receive_all_data_chunked_copy_limit_counts_decoded_bytes() {
 	}
 }
 
+fn test_receive_all_data_chunked_default_download_limit_parses_complete_body() {
+	mut fixture := ReceiveAllDataFixture{
+		parts: ['HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nWiki\r\n', '6\r\npedia!\r\n0\r\n\r\n']
+	}
+	// download_file_with_progress defaults stop_copying_limit to 65536, so a
+	// complete chunked body that fits under it must still parse.
+	mut req := Request{ stop_copying_limit: 65536 }
+	mut content := strings.new_builder(64)
+	info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(&fixture), receive_all_data_fixture_cb)!
+	resp := parse_received_response(content.str(), info)!
+	assert resp.body == 'Wikipedia!'
+	assert !info.has_truncated_body
+	assert info.reusable
+}
+
 fn check_receive_compressed_body_with_copy_limit(body string, compressed []u8, encoding string, is_chunked bool, limit i64, expected string) ! {
 	framing := if is_chunked {
 		'Transfer-Encoding: chunked'

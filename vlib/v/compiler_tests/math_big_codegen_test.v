@@ -12,7 +12,7 @@ fn math_big_codegen_build_v3() string {
 		os.rmdir_all(cache_dir) or {}
 		os.setenv('V3CACHE', cache_dir, true)
 	}
-	v3_bin := os.join_path(os.temp_dir(), 'v3_math_big_codegen_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_math_big_codegen_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

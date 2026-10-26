@@ -4,7 +4,7 @@ module main
 #include <string.h>
 #include "@VMODROOT/vlib/v/tests/testdata/translated_fixed_array_args.h"
 
-fn C.memset(dest voidptr, value int, count usize) voidptr
+fn C.memset(dest voidptr, value int, count uint) voidptr
 
 fn sum(values &int) int { return unsafe { values[0] + values[1] } }
 
@@ -119,6 +119,7 @@ fn test_translated_array_decay_resolves_nested_aliases() {
 	assert pointer == rows
 	assert rows == pointer
 	assert pointer != [[20, 22]!, [3, 5]!]!
+	assert [[20, 22]!, [3, 5]!]! != pointer
 	copy := rows
 	assert pointer != copy
 	assert copy != pointer

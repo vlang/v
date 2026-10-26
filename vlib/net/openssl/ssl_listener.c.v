@@ -78,20 +78,20 @@ fn (mut l SSLListener) init() ! {
 
 	if l.config.in_memory_verification {
 		mut res := C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(l.sslctx,
-			l.config.cert.str, usize(l.config.cert.len))
+			l.config.cert.str, uint(l.config.cert.len))
 		if res != 1 {
 			l.shutdown() or {}
 			return error('net.openssl SSLListener.init, could not load certificate from memory')
 		}
 		res = C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(l.sslctx, l.config.cert_key.str,
-			usize(l.config.cert_key.len))
+			uint(l.config.cert_key.len))
 		if res != 1 {
 			l.shutdown() or {}
 			return error('net.openssl SSLListener.init, could not load private key from memory')
 		}
 		if l.config.validate {
 			res = C.v_net_openssl_SSL_CTX_load_verify_memory(l.sslctx, l.config.verify.str,
-				usize(l.config.verify.len))
+				uint(l.config.verify.len))
 			if res != 1 {
 				l.shutdown() or {}
 				return error('net.openssl SSLListener.init, could not load root CA from memory')
@@ -211,7 +211,7 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 		if err_res == .ssl_error_want_read {
 			timeout := ssl_remaining_timeout(deadline)
 			if timeout <= 0 {
-				return net.err_timed_out
+				return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 			}
 			conn.wait_for_read(timeout)!
 			continue
@@ -219,7 +219,7 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 		if err_res == .ssl_error_want_write {
 			timeout := ssl_remaining_timeout(deadline)
 			if timeout <= 0 {
-				return net.err_timed_out
+				return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 			}
 			conn.wait_for_write(timeout)!
 			continue

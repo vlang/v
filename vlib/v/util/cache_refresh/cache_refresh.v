@@ -4,7 +4,9 @@ import os
 import encoding.hex
 import strconv
 import strings
+import time
 import v.cmdexec
+import v.pref
 import v.tempname
 
 const record_prefix = '.vup_refresh_'
@@ -15,6 +17,12 @@ const project_record_format = 'vup-cache-refresh-4'
 const object_record_format = 'vup-cache-refresh-3'
 const cwd_record_format = 'vup-cache-refresh-2'
 const legacy_record_format = 'vup-cache-refresh-1'
+
+// request_uses_prod_tcc applies the production restriction using the recorded compiler
+// paths and working directory, including context-sensitive compiler wrappers.
+fn request_uses_prod_tcc(request Request) bool {
+	return pref.tcc_with_prod_requested_in(request.args, request.cwd)
+}
 
 // FlagGroup preserves the ordering and deduplication of a project's C directives.
 pub struct FlagGroup {
@@ -39,6 +47,13 @@ pub:
 	compile_inputs  []string          // Required caller-supplied files that existed when recorded.
 	entry_sources   map[string]string // Source identities tying a live entry to its recorded configuration.
 	legacy_headers  map[string]string // Legacy header paths and content signatures awaiting migration.
+}
+
+// RefreshOptions controls progress reporting during module cache validation.
+@[params]
+pub struct RefreshOptions {
+pub:
+	verbose bool // Report every checked configuration, including unchanged modules.
 }
 
 // root_dir returns the cache shared by the configurations of this V checkout,
@@ -540,13 +555,20 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // refresh asks the updated compiler to validate and rebuild each inventoried
 // module with its original flags and working directory. Compiler validation also
 // covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
-// reused, and each newly compiled module is announced on inherited stdout.
+// reused, and each newly compiled module is announced on streamed stdout.
 // Equivalent synthetic import sequences and live entry commands run once per configuration.
-// Progress identifies the record being checked, its compiler flags, production mode and test mode.
+// Both stop after module object validation, before compiling or linking a program unit.
+// Object compilation failures are reported even when an ordinary build could fall back.
+// Progress identifies configurations producing output, their compiler flags and build modes.
+// Successful unchanged configurations are silent unless verbose reporting is requested.
 // Records with vanished working directories, required inputs or compilers are skipped.
 // Live entries whose project source identity changed are skipped until rebuilt and recorded.
 // Legacy headers are marked migrated only after successful refreshes of their variants.
-pub fn refresh(vexe string, requests []Request) ! {
+// Disk-full failures stop remaining builds; child output is forwarded without buffering it all.
+// TinyCC production builds are never refreshed: the compiler refuses `-cc tcc` with `-prod`,
+// and records made before that rule still exist.
+pub fn refresh(vexe string, all_requests []Request, options RefreshOptions) ! {
+	requests := all_requests.filter(!request_uses_prod_tcc(it))
 	if requests.len == 0 { return }
 	dir := os.join_path(os.vtmp_dir(), 'vup_cache_refresh_${tempname.unique_token()}')
 	os.mkdir_all(dir)!
@@ -565,37 +587,12 @@ pub fn refresh(vexe string, requests []Request) ! {
 	environment['V3_CACHE_REFRESH'] = '1'
 	environment['V_SKIP_VVMRC'] = '1'
 	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
-	$if windows {
-		// os.system_args preserves redirected stdout on Windows, unlike a
-		// Process started without explicit standard handles. Give it the same
-		// environment as the Unix child, and restore the caller's afterwards.
-		previous := os.environ()
-		names := ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_FORCE_SOURCE',
-			'V3_CACHE_REFRESH_OBJECT_FLAGS', 'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V3_CACHE_REFRESH_ENTRY',
-			'VTEST_ONLY_FN', 'VTEST_SHOW_ASSERTS', 'VEXE', 'V3_CACHE_REFRESH', 'V_SKIP_VVMRC',
-			'V_MACOS_V3_NO_FALLBACK']
-		for name in names {
-			if name in environment {
-				os.setenv(name, environment[name], true)
-			} else {
-				os.unsetenv(name)
-			}
-		}
-		defer {
-			for name in names {
-				if name in previous {
-					os.setenv(name, previous[name], true)
-				} else {
-					os.unsetenv(name)
-				}
-			}
-		}
-	}
 	mut failures := []string{}
 	mut refreshed_entries := map[string]bool{}
 	mut migrated_headers := map[string]string{}
 	mut incomplete_headers := map[string]bool{}
 	mut checked_configurations := 0
+	mut reported_progress := false
 	for index, request in requests {
 		if !valid_module(request.module) { return error('invalid module ${request.module}') }
 		for path, signature in request.legacy_headers { migrated_headers[path] = signature }
@@ -682,39 +679,21 @@ pub fn refresh(vexe string, requests []Request) ! {
 			environment.delete('VTEST_ONLY_FN')
 		}
 		command << ['-skip-running', '-o', os.join_path(dir, 'refresh'), source]
-		println('> Refreshing module cache [${index + 1}/${requests.len}] (${refresh_configuration(request)}).')
-		// Keep the configuration above its child's cache notices in redirected output too.
-		flush_stdout()
-		checked_configurations++
-		mut code := -1
-		$if windows {
-			if request.show_test_stats {
-				os.setenv('VTEST_SHOW_ASSERTS', '1', true)
-			} else {
-				os.unsetenv('VTEST_SHOW_ASSERTS')
-			}
-			os.setenv('V3_CACHE_REFRESH_ENTRY', environment['V3_CACHE_REFRESH_ENTRY'], true)
-			os.setenv('V3_CACHE_REFRESH_PROJECT_FLAGS', environment['V3_CACHE_REFRESH_PROJECT_FLAGS'], true)
-			if value := environment['VTEST_ONLY_FN'] {
-				os.setenv('VTEST_ONLY_FN', value, true)
-			} else {
-				os.unsetenv('VTEST_ONLY_FN')
-			}
-			previous_dir := os.getwd()
-			if request.cwd != '' { os.chdir(request.cwd)! }
-			code = os.system_args([vexe, ...command])
-			if request.cwd != '' { os.chdir(previous_dir)! }
-		} $else {
-			mut process := os.new_process(vexe)
-			process.set_args(command)
-			if request.cwd != '' { process.set_work_folder(request.cwd) }
-			process.set_environment(environment)
-			process.wait()
-			code = process.code
-			process.close()
+		progress := if options.verbose {
+			'> Refreshing module cache [${index + 1}/${requests.len}] (${refresh_configuration(request)}).'
+		} else {
+			'> Refreshing module cache (${refresh_configuration(request)}).'
 		}
+		checked_configurations++
+		code, disk_full, reported := run_refresh_command(vexe, command, request.cwd, environment,
+			progress, options.verbose)
+		reported_progress = reported_progress || reported
 		if code != 0 {
 			failures << '${request.module} (${request.args.join(' ')})'
+			eprintln('> Module cache refresh failed [${index + 1}/${requests.len}] (${refresh_configuration(request)}; exit ${code}).')
+			if disk_full {
+				return error(failures.join(', ') + '; disk is full; cache refresh stopped. Free disk space and run v up again')
+			}
 		}
 	}
 	if failures.len > 0 { return error(failures.join(', ')) }
@@ -730,9 +709,55 @@ pub fn refresh(vexe string, requests []Request) ! {
 			return err
 		}
 	}
-	if checked_configurations > 0 {
+	if checked_configurations > 0 && reported_progress {
 		println('> Module cache refresh complete: ${checked_configurations} build configurations checked.')
 	}
+}
+
+fn run_refresh_command(vexe string, command []string, cwd string, environment map[string]string, progress string, verbose bool) (int, bool, bool) {
+	mut reported_progress := verbose
+	if reported_progress {
+		println(progress)
+		flush_stdout()
+	}
+	mut process := os.new_process(vexe)
+	process.set_args(command)
+	if cwd != '' { process.set_work_folder(cwd) }
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.run()
+	mut disk_full := false
+	mut tails := ['', '']
+	for {
+		alive := process.is_alive()
+		chunks := [process.stdout_read(), process.stderr_read()]
+		for index, chunk in chunks {
+			if chunk == '' { continue }
+			if !reported_progress {
+				// Print context before the first child output without buffering the build log.
+				println(progress)
+				flush_stdout()
+				reported_progress = true
+			}
+			if index == 0 {
+				print(chunk)
+				flush_stdout()
+			} else {
+				eprint(chunk)
+				flush_stderr()
+			}
+			text := tails[index] + chunk
+			disk_full = disk_full || text.contains('No space left on device')
+				|| text.contains('There is not enough space on the disk')
+			tails[index] = if text.len > 128 { text[text.len - 128..] } else { text }
+		}
+		if !alive && chunks.all(it == '') { break }
+		if chunks.all(it == '') { time.sleep(5 * time.millisecond) }
+	}
+	process.wait()
+	code := process.code
+	process.close()
+	return code, disk_full, reported_progress
 }
 
 fn refresh_configuration(request Request) string {

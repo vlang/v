@@ -6,39 +6,48 @@
 
 #include <stdint.h>
 #include <string.h>
-#include <stdio.h>
-
-// ============================================================
-// Thread-local storage
-// ============================================================
 #ifdef _WIN32
-  #define VGC_TLS __declspec(thread)
-#elif defined(__TINYC__)
-  #define VGC_TLS __thread
-#else
-  #define VGC_TLS __thread
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <windows.h>
 #endif
-
-static VGC_TLS int _vgc_cache_idx = -1;
-
-static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx; }
-static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
 
 // ============================================================
 // Atomic operations
 // ============================================================
 #if defined(__TINYC__)
-  // TCC: use __sync builtins
-  #define vgc_atomic_load_u32(ptr) (*(volatile uint32_t*)(ptr))
-  #define vgc_atomic_store_u32(ptr, val) do { *(volatile uint32_t*)(ptr) = (val); __sync_synchronize(); } while(0)
-  #define vgc_atomic_load_u64(ptr) (*(volatile uint64_t*)(ptr))
-  #define vgc_atomic_store_u64(ptr, val) do { *(volatile uint64_t*)(ptr) = (val); __sync_synchronize(); } while(0)
-  #define vgc_atomic_add_u64(ptr, val) __sync_add_and_fetch((volatile uint64_t*)(ptr), (uint64_t)(val))
-  #define vgc_atomic_sub_u64(ptr, val) __sync_sub_and_fetch((volatile uint64_t*)(ptr), (uint64_t)(val))
-  #define vgc_atomic_add_u32(ptr, val) __sync_add_and_fetch((volatile uint32_t*)(ptr), (uint32_t)(val))
-  #define vgc_atomic_cas_u32(ptr, expected, desired) __sync_bool_compare_and_swap((volatile uint32_t*)(ptr), *(expected), (desired))
-  #define vgc_atomic_exchange_u32(ptr, val) __sync_lock_test_and_set((volatile uint32_t*)(ptr), (val))
-  #define vgc_atomic_fence() __sync_synchronize()
+  // TCC does not implement the legacy __sync_* family: those degrade into
+  // plain function calls and then fail at link time with
+  // "unresolved reference to '__sync_add_and_fetch'" etc.
+  // Use the __atomic_* builtins instead, which lower to fixed-width helper
+  // functions provided by libtcc1.a (same approach as vlib/builtin/prealloc_atomics.h).
+  extern uint32_t __atomic_load_4(uint32_t* ptr, int order);
+  extern uint64_t __atomic_load_8(uint64_t* ptr, int order);
+  extern void __atomic_store_4(uint32_t* ptr, uint32_t val, int order);
+  extern void __atomic_store_8(uint64_t* ptr, uint64_t val, int order);
+  extern uint32_t __atomic_exchange_4(uint32_t* ptr, uint32_t val, int order);
+  extern _Bool __atomic_compare_exchange_4(uint32_t* ptr, uint32_t* expected, uint32_t desired, int success_order, int failure_order);
+  #define vgc_atomic_load_u32(ptr) ((uint32_t)__atomic_load_4((uint32_t*)(ptr), 5))
+  #define vgc_atomic_store_u32(ptr, val) __atomic_store_4((uint32_t*)(ptr), (uint32_t)(val), 5)
+  #define vgc_atomic_load_u64(ptr) ((uint64_t)__atomic_load_8((uint64_t*)(ptr), 5))
+  #define vgc_atomic_store_u64(ptr, val) __atomic_store_8((uint64_t*)(ptr), (uint64_t)(val), 5)
+  #define vgc_atomic_add_u64(ptr, val) __atomic_add_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), 5)
+  #define vgc_atomic_sub_u64(ptr, val) __atomic_sub_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), 5)
+  #define vgc_atomic_add_u32(ptr, val) __atomic_add_fetch((volatile uint32_t*)(ptr), (uint32_t)(val), 5)
+  #define vgc_atomic_cas_u32(ptr, expected, desired) __atomic_compare_exchange_4((uint32_t*)(ptr), (uint32_t*)(expected), (uint32_t)(desired), 5, 5)
+  #define vgc_atomic_exchange_u32(ptr, val) ((uint32_t)__atomic_exchange_4((uint32_t*)(ptr), (uint32_t)(val), 5))
+  #if defined(__x86_64__) || defined(__i386__)
+    #define vgc_atomic_fence() __asm__ __volatile__("mfence" ::: "memory")
+  #elif defined(__aarch64__)
+    #define vgc_atomic_fence() __asm__ __volatile__("dmb ish" ::: "memory")
+  #elif defined(__arm__)
+    #define vgc_atomic_fence() __asm__ __volatile__("dmb ish" ::: "memory")
+  #elif defined(__riscv)
+    #define vgc_atomic_fence() __asm__ __volatile__("fence rw,rw" ::: "memory")
+  #else
+    #define vgc_atomic_fence() __asm__ __volatile__("" ::: "memory")
+  #endif
 #elif defined(_MSC_VER)
   #include <intrin.h>
   #pragma intrinsic(_InterlockedCompareExchange, _InterlockedExchange, _InterlockedExchangeAdd64)
@@ -71,26 +80,156 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
 #endif
 
 // ============================================================
+// Per-thread counters
+// Only the thread that owns a counter adds to it, and any thread reads it. The add needs no
+// atomic read-modify-write then, only a load and a store that do not tear: on a 64-bit target
+// a volatile access to an aligned 8-byte word is one load or one store (like the Linux kernel's
+// READ_ONCE and WRITE_ONCE). They are macros, so that counting an allocation costs no call, even
+// without optimization.
+// ============================================================
+#if UINTPTR_MAX > 0xFFFFFFFFu
+  #define vgc_counter_load(ptr) (*(volatile uint64_t*)(ptr))
+  #define vgc_counter_add(ptr, val) ((void)(*(volatile uint64_t*)(ptr) += (uint64_t)(val)))
+#else
+  #define vgc_counter_load(ptr) vgc_atomic_load_u64(ptr)
+  #define vgc_counter_add(ptr, val) ((void)vgc_atomic_add_u64(ptr, val))
+#endif
+// Counts an object of size bytes, allocated for a request of n bytes, in the counters of a
+// thread's cache slot.
+#define vgc_count_alloc(live_ptr, alloc_ptr, size, n) (vgc_counter_add(live_ptr, size), vgc_counter_add(alloc_ptr, n))
+
+// ============================================================
+// Thread-local storage
+// Every thread allocates from its own cache, found through a per-thread cache index. If the
+// index is not really thread-local, all threads share one cache and allocate from the same
+// spans without a lock.
+// ============================================================
+#if defined(__TINYC__) && defined(_WIN32)
+  // TinyCC has no thread-local storage on Windows: `__declspec(thread)` becomes an attribute
+  // that it ignores. Keep the index in a fiber-local slot instead, stored as idx + 1 so that a
+  // thread without a value reads -1. The slot's callback also tells vgc when the thread exits
+  // (see vgc_watch_thread_exit). TinyCC's kernel32.def has no Fls* functions, so they are
+  // looked up at run time; TlsAlloc is the fallback, which has no exit callback.
+  static void vgc_thread_exit_dispatch(void* value);
+  static void WINAPI vgc_cache_idx_slot_exit(void* value) { vgc_thread_exit_dispatch(value); }
+  typedef DWORD (WINAPI *vgc_fls_alloc_fn)(void (WINAPI *)(void*));
+  typedef void* (WINAPI *vgc_fls_get_fn)(DWORD);
+  typedef BOOL (WINAPI *vgc_fls_set_fn)(DWORD, void*);
+  static DWORD _vgc_cache_idx_slot;
+  static vgc_fls_get_fn _vgc_fls_get;
+  static vgc_fls_set_fn _vgc_fls_set;
+  static uint32_t _vgc_cache_idx_slot_state; // 0: no slot yet, 1: being created, 2: ready
+  static void vgc_cache_idx_slot_init(void) {
+      uint32_t expected = 0;
+      if (!vgc_atomic_cas_u32(&_vgc_cache_idx_slot_state, &expected, 1)) {
+          // Another thread creates the slot: a second slot would lose the values in the first.
+          while (vgc_atomic_load_u32(&_vgc_cache_idx_slot_state) != 2) Sleep(0);
+          return;
+      }
+      HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+      vgc_fls_alloc_fn fls_alloc = (vgc_fls_alloc_fn)GetProcAddress(kernel32, "FlsAlloc");
+      vgc_fls_get_fn fls_get = (vgc_fls_get_fn)GetProcAddress(kernel32, "FlsGetValue");
+      vgc_fls_set_fn fls_set = (vgc_fls_set_fn)GetProcAddress(kernel32, "FlsSetValue");
+      DWORD slot = 0xFFFFFFFF; // FLS_OUT_OF_INDEXES
+      if (fls_alloc != NULL && fls_get != NULL && fls_set != NULL) slot = fls_alloc(vgc_cache_idx_slot_exit);
+      if (slot != 0xFFFFFFFF) {
+          _vgc_fls_get = fls_get;
+          _vgc_fls_set = fls_set;
+      } else {
+          slot = TlsAlloc();
+      }
+      _vgc_cache_idx_slot = slot;
+      vgc_atomic_store_u32(&_vgc_cache_idx_slot_state, 2);
+  }
+  static inline int vgc_get_cache_idx(void) {
+      if (vgc_atomic_load_u32(&_vgc_cache_idx_slot_state) != 2) vgc_cache_idx_slot_init();
+      void* value = _vgc_fls_get != NULL ? _vgc_fls_get(_vgc_cache_idx_slot) : TlsGetValue(_vgc_cache_idx_slot);
+      return (int)(intptr_t)value - 1;
+  }
+  static inline void vgc_set_cache_idx(int idx) {
+      if (vgc_atomic_load_u32(&_vgc_cache_idx_slot_state) != 2) vgc_cache_idx_slot_init();
+      void* value = (void*)(intptr_t)(idx + 1);
+      if (_vgc_fls_set != NULL) {
+          _vgc_fls_set(_vgc_cache_idx_slot, value);
+      } else {
+          TlsSetValue(_vgc_cache_idx_slot, value);
+      }
+  }
+#elif defined(__TINYC__) && defined(__APPLE__)
+  // TinyCC's Mach-O output has no working thread-local storage: writing a `__thread` variable
+  // crashes. Keep the index in a pthread key instead, stored as idx + 1 so that a thread
+  // without a value reads -1.
+  // The key also tells vgc when the thread exits (see vgc_watch_thread_exit).
+  #include <pthread.h>
+  static void vgc_thread_exit_dispatch(void* value);
+  static pthread_key_t _vgc_cache_idx_key;
+  static pthread_once_t _vgc_cache_idx_once = PTHREAD_ONCE_INIT;
+  static void vgc_cache_idx_key_create(void) { pthread_key_create(&_vgc_cache_idx_key, vgc_thread_exit_dispatch); }
+  static inline int vgc_get_cache_idx(void) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      return (int)(intptr_t)pthread_getspecific(_vgc_cache_idx_key) - 1;
+  }
+  static inline void vgc_set_cache_idx(int idx) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      pthread_setspecific(_vgc_cache_idx_key, (void*)(intptr_t)(idx + 1));
+  }
+#else
+  #if defined(_MSC_VER)
+    // MSVC, and clang in MSVC mode (clang-cl).
+    #define VGC_TLS __declspec(thread)
+  #else
+    // GCC and clang, also on Windows (MinGW): GCC ignores `__declspec(thread)` there ("'thread'
+    // attribute directive ignored"), so the index was one global that all threads shared.
+    // MinGW GCC implements `__thread` through emutls, clang through the PE .tls section.
+    #define VGC_TLS __thread
+  #endif
+// Stored as idx + 1 in a zero-initialized variable, so that a thread without a value reads -1.
+// Keep it free of a non-zero initializer: TinyCC's ELF linker (the bundled tcc 85ba3ae8, fixed
+// upstream by 128e7893) places .tdata after .bss in the same PT_LOAD segment, so the loader
+// reads the TLS init image from zero-filled memory. Every thread then started with index 0
+// (the main thread's cache), and the .tdata bytes overwrote the start of .bss instead.
+static VGC_TLS int _vgc_cache_idx_plus1;
+
+static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx_plus1 - 1; }
+static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; }
+#endif
+
+// ============================================================
 // OS memory allocation
 // ============================================================
 #ifdef _WIN32
-  #ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-  #endif
-  #include <windows.h>
   static inline void* vgc_os_alloc(size_t size) {
       return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  }
+  // The memory of an arena, for objects. VirtualAlloc hands out the lowest free addresses
+  // first: next to an executable at a low base, like TinyCC's at 4 MB, the heap started at about
+  // 9 MB, where many constants in the data segment (0x2000537) point, and the conservative scan
+  // kept objects alive through them. The top of the address space has no such neighbours.
+  static inline void* vgc_os_alloc_heap(size_t size) {
+      void* p = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
+      return p != NULL ? p : vgc_os_alloc(size);
   }
   static inline void vgc_os_free(void* ptr, size_t size) {
       (void)size;
       VirtualFree(ptr, 0, MEM_RELEASE);
   }
+  // Decommitted pages are only reserved: the next access to them faults until
+  // vgc_os_recommit commits them again.
   static inline void vgc_os_decommit(void* ptr, size_t size) {
       VirtualFree(ptr, size, MEM_DECOMMIT);
   }
+  static inline int vgc_os_recommit(void* ptr, size_t size) {
+      return VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE) != NULL;
+  }
   static inline int vgc_num_cpus(void) {
+#if defined(ALL_PROCESSOR_GROUPS)
       DWORD count = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
       return count > 0 ? (int)count : 1;
+#else
+      SYSTEM_INFO sysinfo;
+      GetSystemInfo(&sysinfo);
+      return sysinfo.dwNumberOfProcessors > 0 ? (int)sysinfo.dwNumberOfProcessors : 1;
+#endif
   }
 #else
   #include <sys/mman.h>
@@ -99,11 +238,45 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
       void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
       return (p == MAP_FAILED) ? NULL : p;
   }
+#if (defined(__APPLE__) || defined(__linux__)) && UINTPTR_MAX > 0xffffffffu
+  // The memory of an arena, for objects. Like MEM_TOP_DOWN on Windows, this keeps the heap away
+  // from small numbers: macOS hands out low addresses first, and in a large heap the arenas
+  // reached 0x300000000, where data constants like 0x300000001 point, and the conservative scan
+  // kept objects alive through them. The arenas start at the hint Go uses for the same reason,
+  // 0xc000000000, which is not a likely integer or text pattern. The hint is only advisory: when
+  // the range is taken, macOS searches upward from it, and Linux picks its default, which is
+  // already high (top down from the stack). Hints at or above 2^48 are not used, because macOS
+  // then silently returns low addresses. The caller holds vgc_heap.lock.
+  #define VGC_HEAP_HINT_BASE ((uintptr_t)0xc0 << 32)
+  #define VGC_HEAP_HINT_LIMIT ((uintptr_t)1 << 47)
+  #define VGC_HEAP_HINT_ALIGN ((uintptr_t)64 << 20)
+  static uintptr_t vgc_heap_hint = VGC_HEAP_HINT_BASE;
+  static inline void* vgc_os_alloc_heap(size_t size) {
+      uintptr_t hint = vgc_heap_hint;
+      void* p = mmap((void*)hint, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+      if (p == MAP_FAILED) {
+          return vgc_os_alloc(size);
+      }
+      uintptr_t next = (uintptr_t)p > hint ? (uintptr_t)p : hint;
+      next = (next + size + VGC_HEAP_HINT_ALIGN - 1) & ~(VGC_HEAP_HINT_ALIGN - 1);
+      vgc_heap_hint = next < VGC_HEAP_HINT_LIMIT ? next : VGC_HEAP_HINT_BASE;
+      return p;
+  }
+#else
+  // The memory of an arena, for objects (see the Windows version).
+  static inline void* vgc_os_alloc_heap(size_t size) { return vgc_os_alloc(size); }
+#endif
   static inline void vgc_os_free(void* ptr, size_t size) {
       munmap(ptr, size);
   }
+  // The pages stay mapped: the next access gets them back, zeroed or with their old contents.
   static inline void vgc_os_decommit(void* ptr, size_t size) {
       madvise(ptr, size, MADV_DONTNEED);
+  }
+  static inline int vgc_os_recommit(void* ptr, size_t size) {
+      (void)ptr;
+      (void)size;
+      return 1;
   }
   static inline int vgc_num_cpus(void) {
       long count = sysconf(_SC_NPROCESSORS_ONLN);
@@ -136,6 +309,12 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
   }
 #elif defined(__linux__) || defined(__ANDROID__)
   #include <pthread.h>
+  #if !defined(__ANDROID__) && !defined(__USE_GNU) && !defined(__cplusplus)
+    // glibc and musl declare pthread_getattr_np only with _GNU_SOURCE, which has to be defined
+    // before the first libc header. V's C output includes <pthread.h> long before this header,
+    // so declare it here; repeating a declaration is fine in C.
+    int pthread_getattr_np(pthread_t thread, pthread_attr_t* attr);
+  #endif
   static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
       pthread_attr_t attr;
       if (pthread_getattr_np(pthread_self(), &attr) != 0) return 0;
@@ -166,10 +345,135 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
       *hi = *lo + stack_size;
       return 1;
   }
+#elif defined(_WIN32)
+  static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
+      // The stack grows down from its high end. The committed part of it is one region that
+      // runs from about the current page up to that end; the whole reservation starts at the
+      // region's allocation base.
+      MEMORY_BASIC_INFORMATION mbi;
+      if (VirtualQuery((void*)&mbi, &mbi, sizeof(mbi)) == 0) return 0;
+      *lo = (uintptr_t)mbi.AllocationBase;
+      *hi = (uintptr_t)mbi.BaseAddress + (uintptr_t)mbi.RegionSize;
+      return *lo < *hi;
+  }
 #else
   static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
       (void)lo;
       (void)hi;
+      return 0;
+  }
+#endif
+
+// ============================================================
+// Registers as roots
+// ============================================================
+#include <setjmp.h>
+typedef void (*vgc_spill_fn)(void*, void*);
+static void* volatile vgc_spill_sink;
+
+// Calls fn(arg, regs) after saving the callee-saved registers in the jmp_buf at regs, in this
+// frame. A conservative scan of the stack from regs upwards then also sees pointers that the
+// callers only kept in registers. The frames of fn and of its callees lie below regs: they
+// belong to vgc, and their copies of stack and arena bounds are no roots.
+static void vgc_call_with_registers_spilled(vgc_spill_fn fn, void* arg) {
+    jmp_buf regs;
+    if (setjmp(regs) == 0) {
+        vgc_spill_sink = (void*)&regs;
+        fn(arg, (void*)&regs);
+    }
+    // The store after the call keeps fn() from becoming a tail call that would drop this frame.
+    vgc_spill_sink = NULL;
+}
+
+// ============================================================
+// Data segments (globals and consts) as roots
+// vgc_data_ranges stores the writable segments of the executable in lo/hi and returns how many
+// there are, or 0 when the platform has no way to find them.
+// ============================================================
+#if defined(__APPLE__)
+  #include <mach-o/dyld.h>
+  #include <mach-o/loader.h>
+  static int vgc_data_ranges(uintptr_t* lo, uintptr_t* hi, int max) {
+      // Image 0 is the main executable.
+      const struct mach_header* mh = _dyld_get_image_header(0);
+      if (mh == NULL || mh->magic != MH_MAGIC_64) return 0;
+      intptr_t slide = _dyld_get_image_vmaddr_slide(0);
+      const uint8_t* cmd = (const uint8_t*)mh + sizeof(struct mach_header_64);
+      int n = 0;
+      for (uint32_t i = 0; i < mh->ncmds && n < max; i++) {
+          const struct load_command* lc = (const struct load_command*)cmd;
+          if (lc->cmd == LC_SEGMENT_64) {
+              const struct segment_command_64* seg = (const struct segment_command_64*)cmd;
+              if ((seg->initprot & VM_PROT_WRITE) != 0 && seg->vmsize != 0) {
+                  lo[n] = (uintptr_t)(seg->vmaddr + slide);
+                  hi[n] = lo[n] + (uintptr_t)seg->vmsize;
+                  n++;
+              }
+          }
+          cmd += lc->cmdsize;
+      }
+      return n;
+  }
+#elif defined(__linux__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__OpenBSD__)
+  #include <link.h>
+  #if defined(__GLIBC__) && !defined(__USE_GNU)
+    // glibc declares dl_iterate_phdr and struct dl_phdr_info only with _GNU_SOURCE, which V's
+    // C output does not define before its first libc header. Declare the function, and read the
+    // leading fields of the struct through a copy of its layout.
+    struct dl_phdr_info;
+    extern int dl_iterate_phdr(int (*callback)(struct dl_phdr_info*, size_t, void*), void* data);
+    struct vgc_dl_phdr_info {
+        ElfW(Addr) dlpi_addr;
+        const char* dlpi_name;
+        const ElfW(Phdr)* dlpi_phdr;
+        ElfW(Half) dlpi_phnum;
+    };
+    #define VGC_DL_PHDR_INFO struct vgc_dl_phdr_info
+  #else
+    #define VGC_DL_PHDR_INFO struct dl_phdr_info
+  #endif
+  typedef struct { uintptr_t* lo; uintptr_t* hi; int max; int n; } vgc_data_ranges_acc;
+  static int vgc_data_ranges_cb(struct dl_phdr_info* info_arg, size_t size, void* data) {
+      (void)size;
+      VGC_DL_PHDR_INFO* info = (VGC_DL_PHDR_INFO*)(void*)info_arg;
+      vgc_data_ranges_acc* acc = (vgc_data_ranges_acc*)data;
+      for (int i = 0; i < (int)info->dlpi_phnum && acc->n < acc->max; i++) {
+          if (info->dlpi_phdr[i].p_type == PT_LOAD && (info->dlpi_phdr[i].p_flags & PF_W) != 0) {
+              uintptr_t start = (uintptr_t)info->dlpi_addr + (uintptr_t)info->dlpi_phdr[i].p_vaddr;
+              acc->lo[acc->n] = start;
+              acc->hi[acc->n] = start + (uintptr_t)info->dlpi_phdr[i].p_memsz;
+              acc->n++;
+          }
+      }
+      // The first object is the main program, which holds all of V's globals.
+      return 1;
+  }
+  static int vgc_data_ranges(uintptr_t* lo, uintptr_t* hi, int max) {
+      vgc_data_ranges_acc acc = { lo, hi, max, 0 };
+      dl_iterate_phdr(vgc_data_ranges_cb, &acc);
+      return acc.n;
+  }
+#elif defined(_WIN32)
+  static int vgc_data_ranges(uintptr_t* lo, uintptr_t* hi, int max) {
+      uint8_t* base = (uint8_t*)GetModuleHandleW(NULL);
+      if (base == NULL) return 0;
+      IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + ((IMAGE_DOS_HEADER*)base)->e_lfanew);
+      IMAGE_SECTION_HEADER* sec = IMAGE_FIRST_SECTION(nt);
+      int n = 0;
+      for (int i = 0; i < (int)nt->FileHeader.NumberOfSections && n < max; i++) {
+          if ((sec[i].Characteristics & IMAGE_SCN_MEM_WRITE) != 0 && sec[i].Misc.VirtualSize != 0) {
+              lo[n] = (uintptr_t)(base + sec[i].VirtualAddress);
+              hi[n] = lo[n] + (uintptr_t)sec[i].Misc.VirtualSize;
+              n++;
+          }
+      }
+      return n;
+  }
+#else
+  static int vgc_data_ranges(uintptr_t* lo, uintptr_t* hi, int max) {
+      (void)lo;
+      (void)hi;
+      (void)max;
       return 0;
   }
 #endif
@@ -297,9 +601,11 @@ static inline uint8_t vgc_size_class(uint32_t size) {
 // ============================================================
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
   #define vgc_cpu_pause() __asm__ __volatile__("pause")
-#elif defined(__aarch64__) || defined(_M_ARM64)
+#elif (defined(__aarch64__) || defined(_M_ARM64)) && !defined(__TINYC__)
   #define vgc_cpu_pause() __asm__ __volatile__("yield")
 #else
+  // TinyCC's arm64 assembler has no `yield`. The hint is optional: vgc_mutex_lock falls back to
+  // vgc_thread_yield() after a few rounds anyway.
   #define vgc_cpu_pause() ((void)0)
 #endif
 
@@ -307,8 +613,48 @@ static inline uint8_t vgc_size_class(uint32_t size) {
   #define vgc_thread_yield() SwitchToThread()
 #else
   #include <sched.h>
+  #include <time.h>
   #define vgc_thread_yield() sched_yield()
 #endif
+
+// vgc_now_ns returns a monotonic time in nanoseconds.
+static inline uint64_t vgc_now_ns(void) {
+#ifdef _WIN32
+    LARGE_INTEGER count, freq;
+    QueryPerformanceCounter(&count);
+    QueryPerformanceFrequency(&freq);
+    uint64_t c = (uint64_t)count.QuadPart;
+    uint64_t f = (uint64_t)freq.QuadPart;
+    return (c / f) * 1000000000ull + (c % f) * 1000000000ull / f;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+#endif
+}
+
+// vgc_backoff waits a little before the next attempt of a wait loop; `round` counts the
+// attempts, from 1. It spins at first, then gives the CPU to other threads, and from round 64
+// on, sleeps for about 50 microseconds per round on POSIX, so that a thread waiting for a
+// long stop-the-world collection or a held lock stops burning a core. Windows has no
+// sub-millisecond sleep (Sleep(1) takes a scheduler tick, about 15.6 ms), so it keeps
+// yielding there.
+static inline void vgc_backoff(int round) {
+    if (round < 16) {
+        vgc_cpu_pause();
+    } else if (round < 64) {
+        vgc_thread_yield();
+    } else {
+#ifdef _WIN32
+        SwitchToThread();
+#else
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 50000;
+        nanosleep(&ts, NULL);
+#endif
+    }
+}
 
 // ============================================================
 // Simple mutex (adaptive spinlock with backoff)
@@ -324,9 +670,16 @@ static inline void vgc_mutex_lock(volatile uint32_t* lock) {
         } else if (spin < 32) {
             for (int i = 0; i < spin; i++) vgc_cpu_pause();
         } else {
-            vgc_thread_yield();
+            // spin - 16 starts vgc_backoff in its yielding range, so the 50 us sleeps begin
+            // after 48 yields.
+            vgc_backoff(spin - 16);
         }
     }
+}
+
+static inline int vgc_mutex_trylock(volatile uint32_t* lock) {
+    uint32_t expected = 0;
+    return vgc_atomic_cas_u32(lock, &expected, 1) ? 1 : 0;
 }
 
 static inline void vgc_mutex_unlock(volatile uint32_t* lock) {
@@ -334,30 +687,38 @@ static inline void vgc_mutex_unlock(volatile uint32_t* lock) {
 }
 
 // ============================================================
-// Arena address index for O(1) pointer-to-arena lookup
-// Divides address space into 1GB chunks, maps to arena index.
+// Thread exit
+// After vgc_watch_thread_exit(idx), the calling thread calls the hook set with
+// vgc_set_thread_exit_hook when it exits, with (void*)(idx + 1). vgc then releases the
+// thread's cache slot and stops scanning its stack, which the system unmaps. The index is
+// passed in, because the thread-local variables may already be gone at that point.
 // ============================================================
-#define VGC_ADDR_SHIFT 30  // 1GB chunks
-#define VGC_ADDR_MAP_SIZE 4096
-
-// Maps (address >> 30) -> arena_index+1 (0 = not mapped)
-static uint16_t vgc_addr_map[VGC_ADDR_MAP_SIZE];
-
-static inline void vgc_addr_map_register(uintptr_t base, size_t size, int arena_idx) {
-    uintptr_t lo = base >> VGC_ADDR_SHIFT;
-    uintptr_t hi = (base + size - 1) >> VGC_ADDR_SHIFT;
-    for (uintptr_t i = lo; i <= hi && i < VGC_ADDR_MAP_SIZE; i++) {
-        vgc_addr_map[i] = (uint16_t)(arena_idx + 1);
-    }
+typedef void (*vgc_thread_exit_fn)(void*);
+static vgc_thread_exit_fn vgc_thread_exit_hook;
+static void vgc_set_thread_exit_hook(vgc_thread_exit_fn fn) { vgc_thread_exit_hook = fn; }
+static void vgc_thread_exit_dispatch(void* value) {
+    if (value != NULL && vgc_thread_exit_hook != NULL) vgc_thread_exit_hook(value);
 }
-
-// Returns arena index or -1
-static inline int vgc_addr_to_arena(uintptr_t addr) {
-    uintptr_t idx = addr >> VGC_ADDR_SHIFT;
-    if (idx >= VGC_ADDR_MAP_SIZE) return -1;
-    int v = vgc_addr_map[idx];
-    return v ? v - 1 : -1;
-}
+#if defined(__TINYC__) && (defined(_WIN32) || defined(__APPLE__))
+  // The slot that holds the cache index calls vgc_thread_exit_dispatch.
+  static void vgc_watch_thread_exit(int idx) { (void)idx; }
+#elif defined(_WIN32)
+  static DWORD vgc_thread_exit_fls = FLS_OUT_OF_INDEXES;
+  static void WINAPI vgc_thread_exit_fls_cb(void* value) { vgc_thread_exit_dispatch(value); }
+  static void vgc_watch_thread_exit(int idx) {
+      if (vgc_thread_exit_fls == FLS_OUT_OF_INDEXES) vgc_thread_exit_fls = FlsAlloc(vgc_thread_exit_fls_cb);
+      if (vgc_thread_exit_fls != FLS_OUT_OF_INDEXES) FlsSetValue(vgc_thread_exit_fls, (void*)(intptr_t)(idx + 1));
+  }
+#else
+  #include <pthread.h>
+  static pthread_key_t vgc_thread_exit_key;
+  static pthread_once_t vgc_thread_exit_once = PTHREAD_ONCE_INIT;
+  static void vgc_thread_exit_key_create(void) { pthread_key_create(&vgc_thread_exit_key, vgc_thread_exit_dispatch); }
+  static void vgc_watch_thread_exit(int idx) {
+      pthread_once(&vgc_thread_exit_once, vgc_thread_exit_key_create);
+      pthread_setspecific(vgc_thread_exit_key, (void*)(intptr_t)(idx + 1));
+  }
+#endif
 
 // ============================================================
 // Thread creation (for GC workers - avoids V's spawn which

@@ -1,7 +1,7 @@
 module c
 
 import v.flat
-import v.types
+import v.types { unalias_type }
 
 // Preamble and expression lowering for the `u128` / `i128` primitives.
 //
@@ -41,8 +41,8 @@ fn (mut g FlatGen) emit_int128_preamble() {
 
 // int128_signedness returns none unless t is one of the 128-bit integer
 // primitives. `true` means signed (`i128`), `false` means `u128`.
-fn int128_signedness(t types.Type) ?bool {
-	clean := cgen_unalias_type(t)
+fn int128_signedness(t &types.Type) ?bool {
+	clean := unalias_type(t)
 	if clean is types.Primitive {
 		if clean.props.has(.integer) && clean.size == 128 {
 			return !clean.props.has(.unsigned)
@@ -319,6 +319,9 @@ fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId
 		// The digits of a wide literal are lowered here, so the C compiler never
 		// sees an oversized constant and cannot quietly keep the low 64 bits.
 		literal := g.a.nodes[int(source_id)]
+		if literal.kind == .paren && literal.children_count == 1 {
+			return g.gen_int128_cast(target_type, g.a.child(&literal, 0))
+		}
 		if literal.kind == .int_literal {
 			if parts := int128_literal_parts(literal.value) {
 				g.write('__v_u128_make(${parts.high}ULL, ${parts.low}ULL)')
@@ -326,12 +329,21 @@ fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId
 			}
 		}
 		if literal.kind == .prefix && literal.op == .minus && literal.children_count > 0 {
-			magnitude := g.a.child_node(literal, 0)
+			mut magnitude := g.a.child_node(literal, 0)
+			for magnitude.kind == .paren && magnitude.children_count == 1 {
+				magnitude = g.a.child_node(magnitude, 0)
+			}
 			if magnitude.kind == .int_literal {
 				if parts := int128_literal_parts(magnitude.value) {
 					g.write('__v_i128_neg(__v_u128_make(${parts.high}ULL, ${parts.low}ULL))')
-					return true
+				} else {
+					// Widen before negating: a ULL magnitude above 2^63 would otherwise
+					// wrap in 64 bits and become positive before the cast to i128.
+					text := numeric_literal_c_text(magnitude)
+					unsigned_text := if text.ends_with('ULL') { text } else { text + 'ULL' }
+					g.write('__v_i128_neg(__v_i128_from_u64(${unsigned_text}))')
 				}
+				return true
 			}
 		}
 	}
@@ -407,11 +419,11 @@ fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId
 }
 
 // int128_narrow_c_type returns the C type a 128-bit value narrows into, or none
-// when the target is not a narrower integer. `isize`, `usize`, `rune` and `char`
+// when the target is not a narrower integer. `isize`, `uint`, `rune` and `char`
 // are types of their own in V rather than primitives, so they need naming here
 // too, or the cast falls through to a C cast the struct representation rejects.
 fn (mut g FlatGen) int128_narrow_c_type(t types.Type) ?string {
-	clean := cgen_unalias_type(t)
+	clean := types.Type(*unalias_type(t))
 	match clean {
 		types.Primitive {
 			if clean.props.has(.integer) && clean.size > 0 && clean.size < 128 {
@@ -572,8 +584,8 @@ fn (g &FlatGen) int128_source_is_plain_literal(id flat.NodeId) bool {
 // source_signedness_known reports whether the cast source is an integer whose
 // signedness can be read, which is what decides between the from_i64 and
 // from_u64 widening helpers.
-fn source_signedness_known(t types.Type) bool {
-	clean := cgen_unalias_type(t)
+fn source_signedness_known(t &types.Type) bool {
+	clean := unalias_type(t)
 	if clean is types.Primitive {
 		return clean.props.has(.integer)
 	}
@@ -581,9 +593,9 @@ fn source_signedness_known(t types.Type) bool {
 }
 
 // int128_source_is_signed reports whether an integer source casts with a sign
-// extension. `isize` is signed, `usize` and the unsigned primitives are not.
-fn int128_source_is_signed(t types.Type) bool {
-	clean := cgen_unalias_type(t)
+// extension. `isize` is signed, `uint` and the unsigned primitives are not.
+fn int128_source_is_signed(t &types.Type) bool {
+	clean := unalias_type(t)
 	if clean is types.Primitive {
 		return !clean.props.has(.unsigned)
 	}

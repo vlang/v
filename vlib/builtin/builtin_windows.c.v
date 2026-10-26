@@ -6,10 +6,9 @@ module builtin
 
 #include <io.h>
 #include <fcntl.h>
+#include "@VEXEROOT/vlib/builtin/core_windows.h"
 
-// Cast the V callback to the Windows SDK callback type. Clang 20 treats the
-// otherwise-compatible struct pointer mismatch as a hard error for v_win.c.
-#define v_set_unhandled_exception_filter(handler) SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER)(handler))
+#flag @VEXEROOT/vlib/builtin/core_windows.o
 
 // See https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
 // See https://www.codeproject.com/KB/string/cppstringguide1.aspx
@@ -48,12 +47,20 @@ pub type C.LPCTSTR = &C.TCHAR
 
 type C.DWORD = u32
 
+@[typedef]
+pub struct C.ULARGE_INTEGER {
+pub mut:
+	QuadPart u64
+}
+
 fn C.WriteConsoleW(voidptr, &u16, C.DWORD, &C.DWORD, voidptr) bool
 fn C.WriteFile(voidptr, &u8, C.DWORD, &C.DWORD, voidptr) bool
 fn C.ExitProcess(u32)
 fn C.GetProcessHeap() voidptr
-fn C.HeapAlloc(voidptr, u32, usize) voidptr
+fn C.HeapAlloc(voidptr, u32, uint) voidptr
 fn C.HeapFree(voidptr, u32, voidptr) bool
+fn C.CreateThread(attributes voidptr, stack_size uint, start_routine voidptr, arg voidptr, flags u32, thread_id &u32) voidptr
+fn C.v_builtin_windows_stream(index u32) voidptr
 
 fn C._setmode(int, int) int
 
@@ -169,7 +176,7 @@ fn write_buf_to_console_kernel32(fd int, buf &u8, buf_len int) bool {
 		if isnil(heap) {
 			return false
 		}
-		wide_size := usize((wide_len + 1) * int(sizeof(u16)))
+		wide_size := uint((wide_len + 1) * int(sizeof(u16)))
 		mut wide_buf := &u16(C.HeapAlloc(heap, 0, wide_size))
 		if isnil(wide_buf) {
 			return false
@@ -252,7 +259,7 @@ fn write_buf_to_fd_windows_non_minimal(fd int, buf &u8, buf_len int) {
 		return
 	}
 	mut ptr := unsafe { buf }
-	mut remaining_bytes := isize(buf_len)
+	mut remaining_bytes := int(buf_len)
 	if write_buf_to_console(fd, ptr, int(remaining_bytes)) {
 		return
 	}
@@ -260,10 +267,10 @@ fn write_buf_to_fd_windows_non_minimal(fd int, buf &u8, buf_len int) {
 	if fd == 2 {
 		stream = voidptr(C.stderr)
 	}
-	mut x := isize(0)
+	mut x := int(0)
 	unsafe {
 		for remaining_bytes > 0 {
-			x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+			x = int(C.fwrite(ptr, 1, remaining_bytes, stream))
 			if x <= 0 {
 				// GUI programs on Windows may not have a writable stdout/stderr stream.
 				break
@@ -286,6 +293,7 @@ fn builtin_init() {
 	$if v2_native_windows_pe_minimal ? {
 		return
 	} $else {
+		install_windows_stack_overflow_handler()
 		$if gcboehm ? {
 			$if !gc_warn_on_stderr ? {
 				gc_set_warn_proc(internal_gc_warn_proc_none)
@@ -350,10 +358,9 @@ fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 			return 0
 		}
 		0xC00000FD {
-			// EXCEPTION_STACK_OVERFLOW: the filter runs on what is left of the
-			// overflowed stack, so only write the message, without a backtrace.
-			msg := c'V panic: stack overflow\n'
-			write_buf_to_fd_kernel32(2, &u8(msg), vstrlen_char(msg))
+			// The overflow-only vectored handler reports this before unwinding. If
+			// disabled, leave the depleted stack to Windows' default handling.
+			return 0
 		}
 		else {
 			eprintln('Unhandled Exception 0x' + ptr_str(e.exception_record.code) + ' at ' +
@@ -383,7 +390,7 @@ struct C.MEMORY_BASIC_INFORMATION {
 	AllocationBase voidptr
 }
 
-fn C.VirtualQuery(address voidptr, buffer &C.MEMORY_BASIC_INFORMATION, length usize) usize
+fn C.VirtualQuery(address voidptr, buffer &C.MEMORY_BASIC_INFORMATION, length uint) uint
 
 fn C.GetModuleHandleW(name &u16) voidptr
 
@@ -398,6 +405,7 @@ fn is_address_in_executable(address voidptr) bool {
 }
 
 fn C.__debugbreak()
+fn C.v_builtin_windows_debugbreak()
 
 fn break_if_debugger_attached() {
 	$if tinyc {
@@ -408,7 +416,7 @@ fn break_if_debugger_attached() {
 		}
 	} $else {
 		if C.IsDebuggerPresent() {
-			C.__debugbreak()
+			C.v_builtin_windows_debugbreak()
 		}
 	}
 }

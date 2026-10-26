@@ -10,11 +10,9 @@ fn assert_vself_preserves_full_cli(output string) {
 	assert output.contains('cmd/v'), output
 }
 
-fn assert_vself_uses_single_prod_build(output string) {
+fn assert_vself_preserves_prod_options(output string) {
 	assert output.contains('-no-memory-limit'), output
 	assert output.contains('-prealloc'), output
-	assert !output.contains('-fprofile'), output
-	assert output.count('cmd/v') == 1, output
 	assert_vself_preserves_full_cli(output)
 }
 
@@ -42,6 +40,7 @@ fn main() {
 		eprintln(err)
 		exit(1)
 	}
+	os.chmod(output, 0o755) or { panic(err) }
 	println(os.args.last())
 }
 "
@@ -128,12 +127,14 @@ fn test_linux_default_self_build_preserves_full_cli() {
 			'-o', '/tmp/vself_linux_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
 	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
-	assert_vself_uses_single_prod_build(prod_result.output)
+	assert_vself_preserves_prod_options(prod_result.output)
 	vflags_parallel_result :=
 		os.exec(['env', '-u', 'CC', 'VFLAGS=-parallel-cc', 'VEXE=' + '${noop}', '${tool}', 'self',
 			'-prod', '-o', '/tmp/vself_linux_prod_vflags_test'])
 	assert vflags_parallel_result.exit_code == 0, vflags_parallel_result.output
-	assert_vself_uses_single_prod_build(vflags_parallel_result.output)
+	assert_vself_preserves_prod_options(vflags_parallel_result.output)
+	assert !vflags_parallel_result.output.contains('-fprofile'), vflags_parallel_result.output
+	assert vflags_parallel_result.output.count('cmd/v') == 1, vflags_parallel_result.output
 }
 
 fn test_macos_default_self_build_compiler_selection() {
@@ -175,7 +176,7 @@ fn test_macos_default_self_build_compiler_selection() {
 			'/tmp/vself_macos_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
 	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
-	assert_vself_uses_single_prod_build(prod_result.output)
+	assert_vself_preserves_prod_options(prod_result.output)
 	old_result :=
 		os.exec(['env', 'CC=cc', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-old-compiler',
 			'-o', '/tmp/vself_macos_old_test'])
@@ -209,7 +210,7 @@ fn test_bsd_self_build_uses_system_cc_and_v3_safeguards() {
 			'-o', '/tmp/vself_bsd_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
 	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
-	assert_vself_uses_single_prod_build(prod_result.output)
+	assert_vself_preserves_prod_options(prod_result.output)
 	tinyc_result :=
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-cc', 'tcc', '-o',
 			'/tmp/vself_bsd_tinyc_test'])
@@ -347,6 +348,65 @@ fn test_self_build_keeps_fastc_backend() {
 			'/tmp/vself_fastc_vflags_test'])
 	assert vflags_result.exit_code == 0, vflags_result.output
 	assert !vflags_result.output.contains('-compile-backend'), vflags_result.output
+}
+
+fn test_self_bootstrap_handles_the_old_peak_rss_return_type() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vself_bootstrap_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'vc'))!
+	defer { os.rmdir_all(root) or {} }
+	os.symlink(os.join_path(vroot, 'cmd'), os.join_path(root, 'cmd'))!
+	mock_source := os.join_path(root, 'mock_compiler.v')
+	os.write_file(mock_source, vself_mock_compiler_source())!
+	mock := os.join_path(root, 'stage2')
+	mock_build := os.exec([vexe, '-o', mock, mock_source])
+	assert mock_build.exit_code == 0, mock_build.output
+	tool := os.join_path(root, 'vself')
+	build := os.exec([vexe, '-o', tool, os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
+	assert build.exit_code == 0, build.output
+	// Force the first self-build to fail and exercise the C bootstrap fallback.
+	broken := os.join_path(root, 'v')
+	os.write_file(broken, '#!/bin/sh\nexit 1\n')!
+	os.chmod(broken, 0o755)!
+	os.write_file(os.join_path(root, 'vc', 'v.c'), '#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+typedef long i64;
+#define V_PEAK_RSS_SCOPE
+V_PEAK_RSS_SCOPE long long v3_bench_peak_rss_kb(void) { return 42; }
+i64 v3_bench_peak_rss_kb(void);
+int main(int argc, char **argv) {
+    const char *output = NULL;
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "-o") == 0) output = argv[i + 1];
+    }
+    if (!output || v3_bench_peak_rss_kb() != 42) return 1;
+    FILE *input = fopen(getenv("VSELF_TEST_STAGE2"), "rb");
+    FILE *dest = fopen(output, "wb");
+    if (!input || !dest) return 1;
+    int byte;
+    while ((byte = fgetc(input)) != EOF) fputc(byte, dest);
+    fclose(input);
+    if (fclose(dest) != 0 || chmod(output, 0755) != 0) return 1;
+    return 0;
+}
+')!
+	output := os.join_path(root, 'replacement')
+	// Make any attempt to launch Bash fail while leaving the system tools available.
+	no_bash := os.join_path(root, 'no_bash')
+	os.mkdir_all(no_bash)!
+	bash := os.join_path(no_bash, 'bash')
+	os.write_file(bash, '#!/bin/sh\nexit 127\n')!
+	os.chmod(bash, 0o755)!
+	result := os.exec(['env', 'PATH=${no_bash}:${os.getenv('PATH')}', 'VFLAGS=', 'VEXE=${broken}',
+		'VSELF_TEST_STAGE2=${mock}', 'VSELF_TEST_FULL_CLI=${vexe}', tool, 'self', '-o', output])
+	assert result.exit_code == 0, result.output
+	assert os.is_executable(output), result.output
+	assert !os.exists(os.join_path(root, '.vself_bootstrap_v1'))
+	assert !os.exists(os.join_path(root, '.vself_bootstrap_v2'))
 }
 
 fn test_arm64_self_build_preserves_native_options_and_full_cli() {

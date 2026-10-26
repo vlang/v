@@ -1,6 +1,7 @@
 module main
 
 import math
+import math.big
 import os
 import sync
 import strings
@@ -1066,26 +1067,27 @@ struct MetaIface117 {
 	name string
 }
 
+// Recursive metadata uses pointers so each sum type has a finite inline layout.
 // MetaArray117 represents meta array117 data used by v3 tests.
 struct MetaArray117 {
-	elem MetaType117
+	elem &MetaType117
 }
 
 // MetaMap117 represents meta map117 data used by v3 tests.
 struct MetaMap117 {
-	key MetaType117
-	val MetaType117
+	key &MetaType117
+	val &MetaType117
 }
 
 // MetaFn117 represents meta fn117 data used by v3 tests.
 struct MetaFn117 {
 	params []MetaType117
-	ret    MetaType117
+	ret    &MetaType117
 }
 
 // MetaPointer117 represents meta pointer117 data used by v3 tests.
 struct MetaPointer117 {
-	base MetaType117
+	base &MetaType117
 }
 
 // Registry117 represents registry117 data used by v3 tests.
@@ -1252,7 +1254,7 @@ fn meta_name117(t MetaType117) string {
 // meta_array_elem117 supports meta array elem117 handling for v3 tests.
 fn meta_array_elem117(t MetaType117) MetaType117 {
 	if t is MetaArray117 {
-		return t.elem
+		return *t.elem
 	}
 	return MetaType117(MetaNamed117{
 		name: 'none'
@@ -1295,13 +1297,13 @@ fn meta_iface_call117(t MetaType117) string {
 // pointer_array_elem117 supports pointer array elem117 handling for v3 tests.
 fn pointer_array_elem117(t MetaType117) string {
 	mut arr := MetaArray117{
-		elem: MetaType117(MetaNamed117{
+		elem: &MetaType117(MetaNamed117{
 			name: 'none'
 		})
 	}
 	if t is MetaPointer117 {
 		ptr := t
-		base := ptr.base
+		base := *ptr.base
 		if base is MetaArray117 {
 			arr = base
 		}
@@ -1509,13 +1511,13 @@ fn chained_if_expr_score117(value int) int {
 		})
 	} else if value == 7 {
 		MetaType117(MetaArray117{
-			elem: MetaType117(MetaNamed117{
+			elem: &MetaType117(MetaNamed117{
 				name: 'int'
 			})
 		})
 	} else {
 		MetaType117(MetaPointer117{
-			base: MetaType117(MetaNamed117{
+			base: &MetaType117(MetaNamed117{
 				name: 'fallback'
 			})
 		})
@@ -1595,7 +1597,7 @@ fn (t MetaType117) recursive_sum_method_score117() int {
 // large_sumtype_method_receiver_score117 supports large_sumtype_method_receiver_score117 handling.
 fn large_sumtype_method_receiver_score117() int {
 	typ117 := MetaType117(MetaPointer117{
-		base: MetaType117(MetaNamed117{
+		base: &MetaType117(MetaNamed117{
 			name: 'core'
 		})
 	})
@@ -1903,7 +1905,7 @@ fn sum_pointer_target119(node NestedNode119) int {
 	mut holder119 := LoopHolder119{}
 	match node {
 		NestedIfBranch119 {
-			holder119.current = unsafe { &node }
+			holder119.current = &NestedNode119(node)
 		}
 		else {}
 	}
@@ -2022,14 +2024,14 @@ fn math_generic119() int {
 
 // module_const_method119 supports module const method119 handling for v3 tests.
 fn module_const_method119() int {
-	return token.scanner_matcher.find('fn')
+	return big.three_int.int() + 80
 }
 
 // qualified_static_new119 supports qualified static new119 handling for v3 tests.
 fn qualified_static_new119() int {
-	mut matcher119 := token.KeywordsMatcherTrie.new(2)
-	matcher119.add_word('module', 71)
-	return matcher119.find('module')
+	mut files119 := token.FileSet.new()
+	file119 := files119.add_file('module.v', 71)
+	return file119.size
 }
 
 // new creates a StaticNewLocal119 value for v3 tests.
@@ -6513,11 +6515,11 @@ fn main() {
 		items:  map[string]MetaType117{}
 	}
 	registry117.items['types.Type'] = MetaType117(MetaMap117{
-		key: MetaType117(MetaNamed117{
+		key: &MetaType117(MetaNamed117{
 			name: 'string'
 		})
-		val: MetaType117(MetaArray117{
-			elem: MetaType117(MetaNamed117{
+		val: &MetaType117(MetaArray117{
+			elem: &MetaType117(MetaNamed117{
 				name: 'Type'
 			})
 		})
@@ -6534,7 +6536,7 @@ fn main() {
 		print_str('missing')
 	}
 	print_str(meta_name117(meta_array_elem117(MetaType117(MetaArray117{
-		elem: MetaType117(MetaNamed117{
+		elem: &MetaType117(MetaNamed117{
 			name: 'Type'
 		})
 	})))) // Type
@@ -6542,7 +6544,7 @@ fn main() {
 		params: [MetaType117(MetaNamed117{
 			name: 'ArrayDataHeader'
 		})]
-		ret:    MetaType117(MetaNamed117{
+		ret:    &MetaType117(MetaNamed117{
 			name: 'base_data'
 		})
 	}))) // fn(ArrayDataHeader) base_data
@@ -6645,8 +6647,8 @@ fn main() {
 
 	// 117.15 Sum fields copied to locals can be smartcast before concrete assignment.
 	print_str(pointer_array_elem117(MetaType117(MetaPointer117{
-		base: MetaType117(MetaArray117{
-			elem: MetaType117(MetaNamed117{
+		base: &MetaType117(MetaArray117{
+			elem: &MetaType117(MetaNamed117{
 				name: 'Elem'
 			})
 		})
@@ -6689,7 +6691,7 @@ fn main() {
 		ForField117{
 			name: 'elem'
 			typ:  MetaType117(MetaArray117{
-				elem: MetaType117(MetaNamed117{
+				elem: &MetaType117(MetaNamed117{
 					name: 'Type'
 				})
 			})

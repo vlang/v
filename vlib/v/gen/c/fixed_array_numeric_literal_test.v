@@ -20,7 +20,7 @@ fn test_fixed_array_numeric_literals_match_const_expression_emission() {
 		for text in texts {
 			for typ in [types.Type(types.u64_), types.Type(types.u128_), types.Type(types.i128_),
 				types.Type(types.f32_), types.Type(types.f64_), types.Type(types.Alias{
-					name:      'main.Number'
+					name_id:   flat.source_type_id('main.Number')
 					base_type: types.Type(types.u128_)
 				})] {
 				mut a := flat.FlatAst.new()
@@ -100,7 +100,7 @@ fn test_nested_fixed_array_literal_keeps_wide_alias_elements() {
 	g.a = &a
 	g.tc = &tc
 	inner_type := types.ArrayFixed{
-		elem_type: types.Type(types.Alias{ name: 'main.Number', base_type: types.Type(types.u128_) })
+		elem_type: types.Type(types.Alias{ name_id: flat.source_type_id('main.Number'), base_type: types.Type(types.u128_) })
 		len:       2
 	}
 	outer_type := types.ArrayFixed{ elem_type: types.Type(inner_type), len: 2 }
@@ -114,7 +114,7 @@ const values = [u64(0xffff_ffff_ffff_ffff), u64(0o1777777777777777777777), u64(1
 const negatives = [i64(-1), i64(-9223372036854775807)]!
 const wide = [u128(18446744073709551616), u128(340282366920938463463374607431768211455)]!
 const aliases = [Wide(u128(18446744073709551616))]!
-const platform = [int(123), isize(123), usize(123)]!
+const platform = [int(123), int(123), uint(123)]!
 fn main() {}
 ')!
 	defer { os.rm(path) or {} }

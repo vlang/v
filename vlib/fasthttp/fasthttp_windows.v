@@ -60,6 +60,7 @@ mut:
 	pos        int
 }
 
+@[heap]
 pub struct Server {
 pub:
 	family                  net.AddrFamily = .ip6
@@ -577,7 +578,7 @@ fn process_request(mut conn IocpConn, frame_total int, worker_state voidptr) {
 	}
 	// Keep legacy int fd consumers working; client_conn_handle preserves the full SOCKET.
 	decoded.client_conn_fd = int(conn.fd)
-	decoded.client_conn_handle = usize(conn.fd)
+	decoded.client_conn_handle = uint(conn.fd)
 	decoded.user_data = conn.server.user_data
 	decoded.worker_state = worker_state
 

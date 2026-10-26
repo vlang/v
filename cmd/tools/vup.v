@@ -1,6 +1,8 @@
 module main
 
 import os
+import v.cmdexec
+import v.pref
 import v.skills
 import v.util.version
 import v.util.recompilation
@@ -35,7 +37,7 @@ const args = arguments()
 const usage = 'Usage: v up [options]\n' +
 	'\n' +
 	'Options:\n' +
-	'  -v                 Print more details about the update.\n' +
+	'  -v                 Print more details, including unchanged cache configurations.\n' +
 	'  -prod              Compile the updated V with the -prod flag.\n' +
 	'  -skills            Refresh the installed agent skills that fell behind.\n' +
 	'  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.\n' +
@@ -132,6 +134,7 @@ fn main() {
 		app.show_current_v_version()
 		app.refresh_cached_modules(cached_modules)
 		app.report_skills()
+		app.report_fmt_hook()
 		return
 	}
 	if os.user_os() == 'windows' {
@@ -156,13 +159,84 @@ fn main() {
 	app.show_current_v_version()
 	app.refresh_cached_modules(cached_modules)
 	app.report_skills()
+	app.report_fmt_hook()
 }
 
 fn (app App) refresh_cached_modules(requests []cache_refresh.Request) {
-	cache_refresh.refresh(app.current_vexe_path(), requests) or {
+	cache_refresh.refresh(app.current_vexe_path(), tcc_cache_requests(app.vroot, requests),
+		verbose: app.is_verbose
+	) or {
 		eprintln('v up: refreshing cached vlib modules failed: ${err}')
 		exit(1)
 	}
+}
+
+// tcc_cache_requests selects the default compiler's caches without rebuilding
+// configurations recorded for other C compilers. Those refresh on their next build.
+fn tcc_cache_requests(root string, requests []cache_refresh.Request) []cache_refresh.Request {
+	bundled := os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe')
+	default_tcc := if os.is_executable(bundled) {
+		bundled
+	} else {
+		os.find_abs_path_of_executable('tcc') or { '' }
+	}
+	mut selected := []cache_refresh.Request{}
+	mut compiler_kinds := map[string]bool{}
+	for request in requests {
+		index := request.args.index('-cc')
+		if index < 0 {
+			if default_tcc != '' {
+				selected << cache_refresh.Request{
+					...request
+					args: [...request.args, '-cc', default_tcc]
+				}
+			}
+			continue
+		}
+		if index + 1 >= request.args.len { continue }
+		compiler := request.args[index + 1]
+		if compiler in ['tcc', 'tinyc'] {
+			selected << request
+			continue
+		}
+		path := if os.is_abs_path(compiler) {
+			compiler
+		} else if compiler.contains('/') || compiler.contains('\\') {
+			os.join_path(if request.cwd != '' { request.cwd } else { root }, compiler)
+		} else {
+			os.find_abs_path_of_executable(compiler) or { continue }
+		}
+		cwd := if request.cwd != '' { request.cwd } else { root }
+		key := path + '\x00' + cwd
+		is_tcc := compiler_kinds[key] or {
+			kind := is_tcc_cache_compiler(path, bundled, cwd)
+			compiler_kinds[key] = kind
+			kind
+		}
+		if is_tcc {
+			selected << request
+		}
+	}
+	return selected
+}
+
+fn is_tcc_cache_compiler(path string, bundled string, cwd string) bool {
+	resolved := os.real_path(path)
+	name := os.file_name(resolved).to_lower_ascii()
+	// Same file-name rule as the launcher and driver, so `notcc` or `distcc` is not TinyCC by name.
+	if resolved == os.real_path(bundled) || pref.tinycc_file_name(name) {
+		return true
+	}
+	// Match the driver's effective compiler classification, including renamed
+	// executables and wrappers whose version output identifies TinyCC.
+	if name.contains('clang') || name.contains('gcc') || name.contains('mingw')
+		|| name in ['cl', 'cl.exe'] || name.contains('msvc') || name.contains('++') {
+		return false
+	}
+	if os.user_os() in ['macos', 'ios'] && resolved == '/usr/bin/cc' { return false }
+	if !os.is_executable(path) { return false }
+	compiler_version := cmdexec.run_in(path, ['--version'], cwd).output.to_lower_ascii()
+	return pref.ccompiler_version_is_tinycc(compiler_version)
 }
 
 // skills_refresh_hint is what the report tells the user to run.
@@ -228,6 +302,47 @@ fn (app App) report_skills() {
 	for line in skills_lines(refreshable, held_back) {
 		println(line)
 	}
+}
+
+// report_fmt_hook suggests the pre-commit hook when it would help and is
+// missing: the V checkout holds V files but no hook is installed there.
+// Silent otherwise, so routine `v up` runs stay quiet.
+fn (app App) report_fmt_hook() {
+	top := git_top_level(app.vroot) or { return }
+	if os.exists(os.join_path(top, '.git', 'hooks', 'pre-commit')) {
+		return
+	}
+	if !dir_has_v_files(top) {
+		return
+	}
+	println('Tip: run `v git-fmt-hook install` inside a git repository to format V files automatically before every commit.')
+}
+
+// git_top_level climbs from `start` to the nearest directory holding `.git`.
+fn git_top_level(start string) ?string {
+	mut dir := os.abs_path(start)
+	for _ in 0 .. 255 {
+		if os.is_dir(os.join_path(dir, '.git')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return none
+}
+
+// dir_has_v_files reports whether `dir` itself holds V source files. Only the
+// top level is listed: cheap, and enough to tell a V project from elsewhere.
+fn dir_has_v_files(dir string) bool {
+	for entry in os.ls(dir) or { return false } {
+		if entry.ends_with('.v') || entry.ends_with('.vsh') {
+			return true
+		}
+	}
+	return false
 }
 
 // refresh_skills hands the refresh to `v skills`, which owns the rule for what
@@ -334,8 +449,11 @@ fn (app App) recompile_v() bool {
 	// `os.system` does preserve redirected stdout and stderr through `_wsystem`.
 	mut self_exit_code := -1
 	$if windows {
-		self_exit_code = os.system_args([vexe_path, ...(os.split_args(opts) or { panic(err) }),
-			'self'])
+		opts_args := os.split_args(opts) or { panic(err) }
+		mut self_args := [vexe_path]
+		self_args << opts_args
+		self_args << 'self'
+		self_exit_code = os.system_args(self_args)
 	} $else {
 		mut self_process := os.new_process(vexe_path)
 		self_process.set_args(if app.is_prod { ['-prod', 'self'] } else { ['self'] })

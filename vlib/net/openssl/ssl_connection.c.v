@@ -190,7 +190,7 @@ fn (mut s SSLConn) init() ! {
 			C.SSL_CTX_set_default_verify_paths(s.sslctx)
 		} else if s.config.in_memory_verification {
 			C.v_net_openssl_SSL_CTX_load_verify_memory(s.sslctx, s.config.verify.str,
-				usize(s.config.verify.len))
+				uint(s.config.verify.len))
 		} else {
 			C.SSL_CTX_load_verify_locations(s.sslctx, &char(s.config.verify.str), unsafe { nil })
 		}
@@ -206,7 +206,7 @@ fn (mut s SSLConn) init() ! {
 		}
 		certificate_result := if s.config.in_memory_verification {
 			C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(s.sslctx, s.config.cert.str,
-				usize(s.config.cert.len))
+				uint(s.config.cert.len))
 		} else {
 			C.SSL_CTX_use_certificate_chain_file(s.sslctx, &char(s.config.cert.str))
 		}
@@ -215,7 +215,7 @@ fn (mut s SSLConn) init() ! {
 		}
 		key_result := if s.config.in_memory_verification {
 			C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(s.sslctx, s.config.cert_key.str,
-				usize(s.config.cert_key.len))
+				uint(s.config.cert_key.len))
 		} else {
 			C.SSL_CTX_use_PrivateKey_file(s.sslctx, &char(s.config.cert_key.str), C.SSL_FILETYPE_PEM)
 		}
@@ -315,7 +315,7 @@ fn (s &SSLConn) verify_hostname(hostname string) ! {
 	}
 	ip_result := C.v_net_openssl_x509_check_ip_asc(cert, &char(hostname.str), 0)
 	verified := if ip_result == -2 {
-		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), usize(hostname.len), 0,
+		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), uint(hostname.len), 0,
 			unsafe { nil }) == 1
 	} else {
 		ip_result == 1
@@ -628,7 +628,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 			net.socket_error(res)!
 			return error_with_code('net.openssl select, failed: ${res}', C.errno)
 		} else if res == 0 {
-			return net.err_timed_out
+			return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 		}
 
 		res = C.FD_ISSET(handle, &set)
@@ -638,7 +638,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		return res != 0
 	}
 
-	return net.err_timed_out
+	return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 }
 
 // wait_for wraps the common wait code
@@ -648,7 +648,7 @@ fn wait_for(handle int, what Select, timeout time.Duration) ! {
 		return
 	}
 
-	return net.err_timed_out
+	return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 }
 
 // wait_for_write waits for a write io operation to be available. Pure

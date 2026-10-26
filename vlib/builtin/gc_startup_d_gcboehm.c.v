@@ -1,12 +1,28 @@
 @[has_globals]
 module builtin
 
+@[c: 'v_gc_init'; c_extern]
 fn C.GC_INIT()
+
+@[c_extern; markused]
+fn C.GC_allow_register_threads()
+
+@[c_extern]
 fn C.GC_is_init_called() int
+
+@[c_extern]
 fn C.GC_set_find_leak(int)
+
+@[c_extern]
 fn C.GC_set_all_interior_pointers(int)
+
+@[c_extern]
 fn C.GC_set_pages_executable(int)
-fn C.GC_set_free_space_divisor(usize)
+
+@[c_extern]
+fn C.GC_set_free_space_divisor(uint)
+
+@[c_extern]
 fn C.GC_enable_incremental()
 
 // v3_gcboehm_runtime_init mirrors the Boehm startup sequence emitted by the V1 C backend.

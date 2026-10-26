@@ -8,10 +8,10 @@ fn test_translated_alias_casts_preserve_argument_checks() {
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.v'), '@[translated]
 module main
-type uintptr_t = usize
+type uintptr_t = uint
 fn main() {
 	_ = uintptr_t("invalid")
-	_ = usize("invalid")
+	_ = uint("invalid")
 	_ = missing_typedef(42)
 }
 ')!
@@ -20,7 +20,7 @@ fn main() {
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('cannot cast'), result.output
 		assert result.output.contains('to `uintptr_t`'), result.output
-		assert result.output.contains('to `usize`'), result.output
+		assert result.output.contains('to `uint`'), result.output
 		assert result.output.contains('unknown function: missing_typedef'), result.output
 		assert !result.output.contains('unknown function: uintptr_t'), result.output
 	}

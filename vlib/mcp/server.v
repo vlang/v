@@ -268,6 +268,17 @@ pub fn (ctx Context) notify_progress(progress f64, total f64, message string) {
 	ctx.server.notify_progress_for(ctx.session_id, ctx.progress_token, progress, total, message)
 }
 
+// list_roots asks the client of this context's session for its roots, as
+// `Server.list_roots` does. It blocks until the answer comes, so on stdio call
+// it from another thread, e.g. `spawn` it from a `NotificationHandler`.
+pub fn (ctx Context) list_roots(timeout time.Duration) !ListRootsResult {
+	if isnil(ctx.server) {
+		return error('mcp.Context.list_roots: no server')
+	}
+	mut server := ctx.server
+	return server.list_roots(ctx.session_id, timeout)
+}
+
 // ToolAnnotations exposes the optional behavioural hints described by the
 // MCP spec (`tools/list` Annotations object).
 pub struct ToolAnnotations {
@@ -302,10 +313,10 @@ pub:
 pub struct Tool {
 pub:
 	name          string
-	title         string                     @[omitempty]
-	description   string                     @[omitempty]
+	title         string @[omitempty]
+	description   string @[omitempty]
 	input_schema  string = default_tool_input_schema @[json: inputSchema; raw]
-	output_schema string                     @[json: outputSchema; omitempty; raw]
+	output_schema string @[json: outputSchema; omitempty; raw]
 	annotations   ToolAnnotations
 	icons         []Icon @[omitempty]
 	execution     ToolExecution
@@ -394,6 +405,14 @@ pub:
 // ToolHandler handles `tools/call` for a registered tool.
 pub type ToolHandler = fn (ctx Context, arguments string) !ToolResult
 
+// NotificationHandler is called for every notification a client sends, after
+// the server has handled it: `method` is its method and `params` its raw JSON
+// params, '' when it has none. It runs on the transport's read loop, so it
+// must not wait for the client: to ask the client something in response (e.g.
+// `list_roots` after `notifications/initialized` or
+// `notifications/roots/list_changed`), `spawn` the call.
+pub type NotificationHandler = fn (ctx Context, method string, params string)
+
 // ResourceHandler handles `resources/read` for a registered resource URI.
 pub type ResourceHandler = fn (ctx Context, uri string) !ReadResourceResult
 
@@ -457,6 +476,9 @@ pub:
 	// loopback addresses (`http://localhost[:port]`, `http://127.0.0.1[:port]`,
 	// `http://[::1][:port]`, or the literal string `null`).
 	allowed_origins []string
+	// notification_handler, when set, is called for every notification a
+	// client sends (see `NotificationHandler`).
+	notification_handler NotificationHandler = unsafe { nil }
 }
 
 struct RegisteredTool {
@@ -551,9 +573,9 @@ pub:
 // ElicitSchema is the requested object schema sent to the client for elicitation.
 pub struct ElicitSchema {
 pub:
-	type_      string = 'object'  @[json: type]
-	properties string   @[raw]
-	required   []string @[omitempty]
+	type_      string = 'object' @[json: type]
+	properties string            @[raw]
+	required   []string          @[omitempty]
 }
 
 // ElicitParams are the typed parameters for elicitation/create. Set `mode`
@@ -625,6 +647,11 @@ mut:
 	// polling for a response that may take seconds to arrive. Kept outside
 	// `Session` to avoid V's pointer-in-shared-map access warnings.
 	response_signals map[string]&sync.Semaphore
+	// stdio_output is the output of the running stdio transport, if any. A
+	// message queued for the stdio session outside its read loop is written
+	// through it at once (`flush_stdio`). Kept in the shared state so that
+	// every copy of the Server sees it.
+	stdio_output &StdioOutput = unsafe { nil }
 }
 
 fn pending_signal_key(session_id string, request_id string) string {
@@ -759,7 +786,8 @@ mut:
 	http_path             string
 	allowed_origins       []string
 	enable_logging        bool
-	http_server           &http.Server = unsafe { nil }
+	notification_handler  NotificationHandler = unsafe { nil }
+	http_server           &http.Server        = unsafe { nil }
 	tools                 map[string]RegisteredTool
 	tool_names            []string
 	resources             map[string]RegisteredResource
@@ -790,6 +818,7 @@ pub fn new_server(config ServerConfig) Server {
 		http_path:             normalize_http_path(config.http_path)
 		allowed_origins:       config.allowed_origins.clone()
 		enable_logging:        config.enable_logging
+		notification_handler:  config.notification_handler
 		tools:                 map[string]RegisteredTool{}
 		resources:             map[string]RegisteredResource{}
 		resource_templates:    map[string]ResourceTemplate{}
@@ -960,6 +989,7 @@ pub fn (mut s Server) notify_log(level LogLevel, logger string, data_json string
 			s.state.sessions[id] = session
 		}
 	}
+	s.flush_stdio()
 }
 
 // list_roots issues `roots/list` to the session and waits for the response.
@@ -1029,6 +1059,7 @@ fn (mut s Server) send_server_request(session_id string, method string, params_j
 			s.state.sessions[session_id] = session
 		}
 	}
+	s.flush_stdio()
 	return s.wait_for_response(session_id, request_id_quoted, timeout)
 }
 
@@ -1117,6 +1148,7 @@ pub fn (mut s Server) notify_elicitation_complete(session_id string, elicitation
 			s.state.sessions[session_id] = session
 		}
 	}
+	s.flush_stdio()
 }
 
 // notify_resource_updated emits notifications/resources/updated to every
@@ -1140,6 +1172,7 @@ pub fn (mut s Server) notify_resource_updated(uri string) {
 	// In 2026-07-28 the opted-in resource subscriptions replace
 	// `resources/subscribe`, so a live listen stream carries this too.
 	s.fan_out_listen_notification('notifications/resources/updated', params, uri)
+	s.flush_stdio()
 }
 
 fn (mut s Server) subscribe(session_id string, uri string) {
@@ -1191,6 +1224,7 @@ fn (mut s Server) broadcast_notification(method string, params_json string) {
 	// Live 2026-07-28 listen subscriptions get the same notification, tagged
 	// per subscription and filtered by what they opted into.
 	s.fan_out_listen_notification(method, params_json, '')
+	s.flush_stdio()
 }
 
 fn (mut s Server) drain_session_notifications(session_id string) []string {
@@ -1610,6 +1644,13 @@ fn encode_prompt_message(message PromptMessage) string {
 }
 
 fn (mut s Server) serve_stdio_transport(mut reader io.Reader, mut writer io.Writer, session_id string, transport SessionTransport) ! {
+	mut output := &StdioOutput{
+		writer: writer
+	}
+	s.set_stdio_output(output)
+	defer {
+		s.set_stdio_output(unsafe { nil })
+	}
 	mut buffer := ''
 	for {
 		frame := try_extract_stdio_message(buffer) or {
@@ -1617,7 +1658,7 @@ fn (mut s Server) serve_stdio_transport(mut reader io.Reader, mut writer io.Writ
 				error_response := Response{
 					error: normalize_response_error(err)
 				}.encode()
-				writer.write(encode_stdio_message(error_response).bytes())!
+				output.write(mut s, session_id, error_response)!
 				return err
 			}
 			FrameExtraction{}
@@ -1628,29 +1669,28 @@ fn (mut s Server) serve_stdio_transport(mut reader io.Reader, mut writer io.Writ
 				error_response := Response{
 					error: normalize_response_error(err)
 				}.encode()
-				writer.write(encode_stdio_message(error_response).bytes())!
+				output.write(mut s, session_id, error_response)!
 				continue
 			}
-			if dispatch_result.has_response {
-				writer.write(encode_stdio_message(dispatch_result.response).bytes())!
-			}
-			for notification in s.drain_session_notifications(session_id) {
-				writer.write(encode_stdio_message(notification).bytes())!
-			}
+			output.write(mut s, session_id, if dispatch_result.has_response {
+				dispatch_result.response
+			} else {
+				''
+			})!
 			continue
 		}
 		mut chunk := []u8{len: 4096}
 		bytes_read := reader.read(mut chunk) or {
 			if err is os.Eof {
-				return s.finish_stdio_stream(mut writer)
+				return s.finish_stdio_stream(mut output)
 			}
 			if err is io.Eof {
-				return s.finish_stdio_stream(mut writer)
+				return s.finish_stdio_stream(mut output)
 			}
 			return err
 		}
 		if bytes_read == 0 {
-			return s.finish_stdio_stream(mut writer)
+			return s.finish_stdio_stream(mut output)
 		}
 		buffer += chunk[..bytes_read].bytestr()
 	}
@@ -1660,10 +1700,63 @@ fn (mut s Server) serve_stdio_transport(mut reader io.Reader, mut writer io.Writ
 // still open on it. A 2026-07-28 listen stream has no SubscriptionsListenResult
 // to send at this point - the channel itself is gone - so the spec's
 // `notifications/cancelled` is what the client sees.
-fn (mut s Server) finish_stdio_stream(mut writer io.Writer) ! {
-	for message in s.terminate_listen_subscriptions() {
-		writer.write(encode_stdio_message(message).bytes())!
+fn (mut s Server) finish_stdio_stream(mut output StdioOutput) ! {
+	output.mutex.lock()
+	defer {
+		output.mutex.unlock()
 	}
+	for message in s.terminate_listen_subscriptions() {
+		output.writer.write(encode_stdio_message(message).bytes())!
+	}
+}
+
+// StdioOutput is the output of a running stdio transport. Its read loop and
+// any other thread that sends the client a message (a server-initiated
+// request, a notification) write through it, one at a time.
+@[heap]
+struct StdioOutput {
+mut:
+	writer io.Writer
+	mutex  &sync.Mutex = sync.new_mutex()
+}
+
+// write writes `message`, unless it is empty, and then what is queued for the
+// session, in that order.
+fn (mut o StdioOutput) write(mut s Server, session_id string, message string) ! {
+	o.mutex.lock()
+	defer {
+		o.mutex.unlock()
+	}
+	if message != '' {
+		o.writer.write(encode_stdio_message(message).bytes())!
+	}
+	for queued in s.drain_session_notifications(session_id) {
+		o.writer.write(encode_stdio_message(queued).bytes())!
+	}
+}
+
+fn (mut s Server) set_stdio_output(output &StdioOutput) {
+	lock s.state {
+		s.state.stdio_output = output
+	}
+}
+
+// flush_stdio writes what is queued for the stdio session while a stdio
+// transport is running, so that a message queued outside its read loop goes
+// out now: otherwise it would wait until the read loop had answered the
+// client's next message, and a server-initiated request would wait for an
+// answer the client had not been asked for. A write error is left to the read
+// loop, whose next write meets it too.
+fn (s &Server) flush_stdio() {
+	mut output := unsafe { &StdioOutput(nil) }
+	rlock s.state {
+		output = s.state.stdio_output
+	}
+	if isnil(output) {
+		return
+	}
+	mut server := unsafe { s }
+	output.write(mut server, stdio_session_id, '') or {}
 }
 
 fn (mut s Server) dispatch_message(raw string, session_id string, transport SessionTransport) !DispatchResult {
@@ -2333,11 +2426,36 @@ fn (mut s Server) handle_notification(notification Notification, scope RequestSc
 			s.store_session(session)
 		}
 		'notifications/cancelled' {
-			params := notification.decode_params[CancelledParams]() or { return }
-			s.mark_cancelled(scope.session_id, params.request_id)
+			if params := notification.decode_params[CancelledParams]() {
+				s.mark_cancelled(scope.session_id, params.request_id)
+			}
 		}
 		else {}
 	}
+	s.call_notification_handler(notification, scope)
+}
+
+// call_notification_handler passes a client notification on to the server's
+// `notification_handler`, with the context of the session it came in on.
+fn (mut s Server) call_notification_handler(notification Notification, scope RequestScope) {
+	if isnil(s.notification_handler) {
+		return
+	}
+	request := Request{
+		method: notification.method
+		params: notification.params
+	}
+	ctx := if session := scope.session {
+		s.context_from_session(request, session)
+	} else {
+		Context{
+			session_id: scope.session_id
+			method:     notification.method
+			transport:  scope.transport
+			server:     unsafe { s }
+		}
+	}
+	s.notification_handler(ctx, notification.method, notification.params)
 }
 
 struct CancelledParams {
@@ -2409,6 +2527,7 @@ fn (s &Server) notify_progress_for(session_id string, progress_token string, pro
 		session.notification_queue << notification
 		s.state.sessions[session_id] = session
 	}
+	s.flush_stdio()
 }
 
 fn format_number(value f64) string {
@@ -2881,6 +3000,7 @@ fn (mut s Server) queue_stdio_notification(message string) {
 		session.notification_queue << message
 		s.state.sessions[stdio_session_id] = session
 	}
+	s.flush_stdio()
 }
 
 // fan_out_listen_notification pushes a notification to every live listen

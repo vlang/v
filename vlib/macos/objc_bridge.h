@@ -1,9 +1,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#ifdef __TINYC__
+// Older SDKs declare this Blocks API without checking __BLOCKS__. TCC cannot
+// parse block types; the bridge does not call this function.
+#define objc_enumerateClasses(...) objc_enumerateClasses(void)
+#endif
 #include <objc/message.h>
 #include <objc/runtime.h>
 #ifdef __TINYC__
+#undef objc_enumerateClasses
 // TCC reads the SDK runtime headers as plain C. Declaring the runtime types
 // here instead would conflict with any other header that includes them.
 #define __bridge
@@ -260,6 +266,14 @@ static inline void macos_objc_msg_void_rect_id(void* obj, void* sel, macos_rect 
 
 static inline void macos_objc_msg_void_point(void* obj, void* sel, macos_point point) {
 	((void (*)(void*, void*, macos_point))objc_msgSend)(obj, sel, point);
+}
+
+static inline void macos_objc_msg_void_point_id(void* obj, void* sel, macos_point point, void* a1) {
+	((void (*)(void*, void*, macos_point, void*))objc_msgSend)(obj, sel, point, a1);
+}
+
+static inline macos_point macos_objc_msg_point_id(void* obj, void* sel, void* a0) {
+	return ((macos_point (*)(void*, void*, void*))objc_msgSend)(obj, sel, a0);
 }
 
 static inline void macos_objc_msg_void_id_sel_id_id(void* obj, void* sel, void* a0, void* a1, void* a2, void* a3) {

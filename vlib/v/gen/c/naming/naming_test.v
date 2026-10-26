@@ -10,6 +10,8 @@ fn test_collision_sets_fit_lookup_length_bound() {
 }
 
 fn test_collision_lookup_length_boundary() {
+	assert c_name('bool') == 'v_bool'
+	assert c_name('C.bool') == 'bool'
 	assert c_name('volatile') == 'v_volatile'
 	assert c_name('volatilex') == 'volatilex'
 	assert c_name('snprintf') == 'v_snprintf'
@@ -92,6 +94,15 @@ fn test_gnu_predefined_macro_names_are_escaped() {
 	assert c_name('unix') == 'v_unix'
 }
 
+fn test_alloca_intrinsic_name_cannot_be_shadowed() {
+	assert c_name('alloca') == '${internal_symbol_c_prefix}libc_alloca'
+	assert c_name('@alloca') == '_v_alloca'
+	assert c_name('alloca') != c_name('v_alloca')
+	assert c_name('alloca') != c_name(c_name('alloca'))
+	assert c_name('alloca_value') == 'alloca_value'
+	assert c_name('C.alloca') == 'alloca'
+}
+
 fn test_complex_header_macro_name_is_escaped() {
 	assert c_name('complex') == '${internal_symbol_c_prefix}macro_complex'
 	assert c_name('@complex') == c_name('complex')
@@ -99,4 +110,41 @@ fn test_complex_header_macro_name_is_escaped() {
 	assert c_name('complex') != c_name('${internal_symbol_c_prefix}macro_complex')
 	assert c_name('complex_value') == 'complex_value'
 	assert c_name('C.complex') == 'complex'
+}
+
+fn test_windows_header_macro_names_are_escaped() {
+	for name in ['near', 'far', 'pascal', 'cdecl', 'min', 'max'] {
+		assert c_name(name) == '${internal_symbol_c_prefix}macro_${name}'
+		assert c_name(name) != c_name('v_${name}')
+		assert c_name(name) != c_name(c_name(name))
+		assert c_name('${name}_value') == '${name}_value'
+		assert c_name('C.${name}') == name
+	}
+}
+
+fn test_operator_method_c_names_are_disjoint_from_source_names() {
+	for op in overloadable_operators {
+		name := 'Vec.${op}'
+		assert is_operator_method_name(name)
+		c := c_name(name)
+		assert c.starts_with(operator_method_c_prefix), c
+		assert c_name_needs_internal_namespace(name)
+		// No source name can reach the operator's C name, not even its own spelling.
+		assert c_name(c) != c
+		assert c_name(c.all_after(operator_method_c_prefix).replace('__', '.')) != c
+	}
+	assert c_name('Vec.**') == '${operator_method_c_prefix}Vec__pow'
+	assert c_name('Vec.**') != c_name('Vec.mul_')
+	assert c_name('Vec.+') != c_name('Vec.plus')
+	assert c_name('mod.Vec[int].[]=') == '${operator_method_c_prefix}mod__Vec_int__op_index_set'
+}
+
+fn test_is_operator_method_name_only_matches_operator_methods() {
+	for name in ['+', '==', 'Vec', 'Vec.plus', 'Vec.mul_', 'mod.Vec[int]', 'Vec[int]', 'Vec.+=',
+		'a.b.c', 'Vec.[]x', 'Vec.&', 'Vec.<<'] {
+		assert !is_operator_method_name(name), name
+	}
+	for name in ['Vec.+', 'Vec.**', 'Vec.[]', 'Vec.[]=', 'mod.Vec[mod.T].<=', 'Vec_int.%'] {
+		assert is_operator_method_name(name), name
+	}
 }

@@ -1,7 +1,5 @@
 module flat
 
-#include "@VEXEROOT/vlib/v/flat/flat_payload_helpers.h"
-
 // C interop behind the process-wide node payload table (see node_payload in
 // flat.v): the insert spin lock and the raw chunk allocations. The table and
 // its chunks must outlive every prealloc arena, and under a tracing GC they
@@ -21,9 +19,19 @@ fn C.atomic_store_u64(voidptr, u64)
 
 fn C.atomic_load_u64(voidptr) u64
 
-fn C.v_flat_payload_ptr_get(voidptr, usize) voidptr
+fn C.cpu_relax()
 
-fn C.v_flat_payload_ptr_set(voidptr, usize, voidptr)
+@[inline]
+fn payload_ptr_get(base voidptr, index uint) voidptr {
+	// The payload chunks are arrays of pointers with validated indices.
+	return unsafe { (&voidptr(base))[index] }
+}
+
+@[inline]
+fn payload_ptr_set(base voidptr, index uint, value voidptr) {
+	// The caller owns the chunk and has reserved this index.
+	unsafe { (&voidptr(base))[index] = value }
+}
 
 // node_payload_table_load reads the published table pointer, or nil. The
 // pointer goes through the integer atomics of its width, like sync.stdatomic:
@@ -68,6 +76,10 @@ fn node_payload_lock() {
 		if C.atomic_compare_exchange_strong_u32(&g_node_payload_lock, &expected, 1) {
 			break
 		}
+		// Poll without taking exclusive cache-line ownership while a writer runs.
+		for C.atomic_load_u32(&g_node_payload_lock) != 0 {
+			C.cpu_relax()
+		}
 	}
 }
 
@@ -81,13 +93,13 @@ fn node_payload_unlock() {
 // no arena can release is right; otherwise the storage comes from
 // malloc_uncollectable, which a tracing GC scans but never reclaims, so the
 // payloads (and their generic_params arrays) stay reachable through it.
-fn node_payload_alloc_zeroed(n usize) voidptr {
+fn node_payload_alloc_zeroed(n uint) voidptr {
 	$if prealloc {
 		return unsafe { C.calloc(1, n) }
 	} $else {
-		ptr := unsafe { malloc_uncollectable(isize(n)) }
+		ptr := unsafe { malloc_uncollectable(int(n)) }
 		if !isnil(ptr) {
-			unsafe { vmemset(ptr, 0, isize(n)) }
+			unsafe { vmemset(ptr, 0, int(n)) }
 		}
 		return ptr
 	}

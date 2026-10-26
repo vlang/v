@@ -103,7 +103,7 @@ fn (tc &TypeChecker) storage_query_probe_facts_unchanged() bool {
 		|| tc.expected_expr_type != base.expected_expr_type || tc.cur_fn_ret_type != base.cur_fn_ret_type
 		|| tc.channel_send_or_expr_id != base.channel_send_or_expr_id
 		|| tc.fn_context.generic_params != base.fn_context.generic_params || tc.fn_context.return_type != base.fn_context.return_type
-		|| tc.placeholder_types != base.placeholder_types || tc.type_param_texts != base.type_param_texts
+		|| tc.placeholder_types != base.placeholder_types || tc.type_param_texts.ids != base.type_param_texts.ids
 		|| tc.type_params_expanding != base.type_params_expanding || tc.generic_decl_file != base.generic_decl_file {
 		return false
 	}
@@ -147,7 +147,7 @@ fn (tc &TypeChecker) storage_query_probe_checked_type(id flat.NodeId) ?Type {
 	}
 	mi := idx - memo.lo
 	if memo.filled[mi] == 0 { return none }
-	return memo.types[mi]
+	return *memo.types[mi]
 }
 
 fn (tc &TypeChecker) storage_query_probe_history_key(id flat.NodeId, visited []flat.NodeId, local_sources map[string]flat.NodeId) ?string {

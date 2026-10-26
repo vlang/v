@@ -1,0 +1,112 @@
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:17:17: error: invalid array element: expected `Bar`, not `Foo`
+   15 | fn main() {
+   16 |     // the first element against the element type of the context
+   17 |     bars := []Bar([Foo{1}])
+      |                    ~~~~~~
+   18 |     println(bars)
+   19 |     mut more := []Bar{}
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:20:10: error: invalid array element: expected `Bar`, not `Foo`
+   18 |     println(bars)
+   19 |     mut more := []Bar{}
+   20 |     more = [Foo{2}]
+      |             ~~~~~~
+   21 |     println(more)
+   22 |     println(takes_bars([Foo{3}, Bar{'x'}]))
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:22:22: error: invalid array element: expected `Bar`, not `Foo`
+   20 |     more = [Foo{2}]
+   21 |     println(more)
+   22 |     println(takes_bars([Foo{3}, Bar{'x'}]))
+      |                         ~~~~~~
+   23 |     // integer literals whose bits do not fit the element type, also in nested literals
+   24 |     rows := Rows([[1, 300]])
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:24:20: error: invalid array element: expected `u8`, not `int`
+   22 |     println(takes_bars([Foo{3}, Bar{'x'}]))
+   23 |     // integer literals whose bits do not fit the element type, also in nested literals
+   24 |     rows := Rows([[1, 300]])
+      |                       ~~~
+   25 |     println(rows)
+   26 |     nested := [][]u8([[u8(1), 2], [3, 256]])
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:26:36: error: invalid array element: expected `u8`, not `int`
+   24 |     rows := Rows([[1, 300]])
+   25 |     println(rows)
+   26 |     nested := [][]u8([[u8(1), 2], [3, 256]])
+      |                                       ~~~
+   27 |     println(nested)
+   28 |     bytes := []u8([1, 300])
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:28:20: error: invalid array element: expected `u8`, not `int`
+   26 |     nested := [][]u8([[u8(1), 2], [3, 256]])
+   27 |     println(nested)
+   28 |     bytes := []u8([1, 300])
+      |                       ~~~
+   29 |     println(bytes)
+   30 |     inferred := [u8(1), -129]
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:30:22: error: invalid array element: expected `u8`, not `int`
+   28 |     bytes := []u8([1, 300])
+   29 |     println(bytes)
+   30 |     inferred := [u8(1), -129]
+      |                         ~~~~
+   31 |     println(inferred)
+   32 |     small := []i8([-129, 127, 128, 256])
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:32:17: error: invalid array element: expected `i8`, not `int`
+   30 |     inferred := [u8(1), -129]
+   31 |     println(inferred)
+   32 |     small := []i8([-129, 127, 128, 256])
+      |                    ~~~~
+   33 |     println(small)
+   34 |     fits := []u8([0, 255])
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:32:33: error: invalid array element: expected `i8`, not `int`
+   30 |     inferred := [u8(1), -129]
+   31 |     println(inferred)
+   32 |     small := []i8([-129, 127, 128, 256])
+      |                                    ~~~
+   33 |     println(small)
+   34 |     fits := []u8([0, 255])
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:37:17: error: invalid array element: expected `u8`, not `int`
+   35 |     println(fits)
+   36 |     // fixed array literals take the element type of their context too
+   37 |     pair := [2]u8([300, 1]!)
+      |                    ~~~
+   38 |     println(pair)
+   39 |     println(takes_pair([1, 300]!))
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:39:25: error: invalid array element: expected `u8`, not `int`
+   37 |     pair := [2]u8([300, 1]!)
+   38 |     println(pair)
+   39 |     println(takes_pair([1, 300]!))
+      |                            ~~~
+   40 |     mut fixed := [2]u8{}
+   41 |     fixed = [1, 256]!
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:41:14: error: invalid array element: expected `u8`, not `int`
+   39 |     println(takes_pair([1, 300]!))
+   40 |     mut fixed := [2]u8{}
+   41 |     fixed = [1, 256]!
+      |                 ~~~
+   42 |     println(fixed)
+   43 |     println(Holder{
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:44:14: error: invalid array element: expected `u8`, not `int`
+   42 |     println(fixed)
+   43 |     println(Holder{
+   44 |         pair: [-1, 300]!
+      |                    ~~~
+   45 |     })
+   46 |     println(fixed_return())
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:51:22: error: cannot use `[1]f64` as `[]u8` in argument 1 to `takes_bytes`
+   49 |     println(opt_pair() or { [2]u8{} })
+   50 |     // a fixed array literal where a dynamic array is expected keeps its own type
+   51 |     println(takes_bytes([5.0]!))
+      |                         ~~~~~~
+   52 | }
+   53 |
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:63:13: error: invalid array element: expected `i8`, not `int`
+   61 | 
+   62 | fn fixed_return() [2]i8 {
+   63 |     return [1, -129]!
+      |                ~~~~
+   64 | }
+   65 |
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:67:13: error: invalid array element: expected `u8`, not `int`
+   65 | 
+   66 | fn opt_pair() ?[2]u8 {
+   67 |     return [2, 512]!
+      |                ~~~
+   68 | }
+   69 |

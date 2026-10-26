@@ -1,6 +1,6 @@
 #include <stdlib.h>
 
-fn C.malloc(size usize) voidptr
+fn C.malloc(size uint) voidptr
 fn C.free(value voidptr)
 
 @[aligned: 8]
@@ -31,7 +31,7 @@ fn test_aligned_array_cast_keeps_the_c_allocation_family() {
 }
 
 fn test_aligned_array_cast_and_literal_share_the_v_allocation_family() {
-	mut cells := unsafe { &AllocatorAlignedCells(malloc(sizeof(AllocatorAlignedCells))) }
+	mut cells := unsafe { &AllocatorAlignedCells(malloc(int(sizeof(AllocatorAlignedCells)))) }
 	assert cells != unsafe { nil }
 	unsafe {
 		cells[0] = AllocatorAlignedCell{ value: 31 }
@@ -51,7 +51,7 @@ type AllocatorCacheLines = [2]AllocatorCacheLine
 
 fn test_aligned_literal_keeps_alignment_with_the_selected_allocator() {
 	mut cells := &AllocatorCacheLines{}
-	assert usize(voidptr(cells)) % 64 == 0
+	assert uint(voidptr(cells)) % 64 == 0
 	unsafe {
 		cells[0] = AllocatorCacheLine{ value: 43 }
 		cells[1] = AllocatorCacheLine{ value: 47 }

@@ -22,18 +22,17 @@
 V `char`, `&char`, or `charptr` when you need to match C `char`, `char*`,
 or `char**`.
 
-* A V `isize` is equivalent to C `ssize_t`.
-It is a signed integer, and `isize` is guaranteed to be at least 16 bits.
-It is 32 bit on 32 bit platforms, and 64 bits on 64 bit ones.
+* A V `int` is a platform-width signed integer: 32 bits on 32-bit targets and
+64 bits on 64-bit targets.
 
-* A V `usize` is equivalent to C `size_t`.
-It is an unsigned integer, and `usize` is guaranteed to be at least 16 bits.
-It is 32 bit on 32 bit platforms, and 64 bits on 64 bit ones.
+* A V `uint` is a platform-width unsigned integer, equivalent to C `size_t` or `uintptr_t`.
+It is 32 bits on 32-bit targets and 64 bits on 64-bit targets.
 
-* A V `int` is currently equivalent to C `int`,  or `int64_t`.
-There are plans to make it equivalent to `isize`, so if you want to write C
-library wrappers, it is better to describe your `fn C.` parameters using `i32`
-instead of using `int`.
+`isize` and `usize` are deprecated. Use `int` and `uint`, respectively.
+For C library wrappers, use `i32` for C `int` parameters, fields, and return values.
+Plain `int` in a `fn C.` signature retains the C `int` ABI for compatibility.
+Use `C.ptrdiff_t` for signed pointer-width parameters and return values, including C
+`intptr_t`, `ptrdiff_t`, and `ssize_t`. It is an alias of V `int` that preserves the C ABI.
 
 
 ## Representing pointers in C and V:
@@ -49,7 +48,7 @@ unsigned char func_name(int * p, index int);
 ... then you can represent its function signature in V like this:
 
 ```v ignore
-fn C.func_name(p &int, index i32) u8
+fn C.func_name(p &i32, index i32) u8
 ```
 
 For a C output parameter, pass the address of the variable or struct field that C should update.
@@ -71,7 +70,7 @@ in a `.c.v` file, and mark a C typedef with `@[typedef]`. For example,
 ```v ignore
 @[typedef]
 struct C.Foo {
-	x int
+	x i32
 }
 ```
 
@@ -131,6 +130,12 @@ C functions, that accept `int * p` or `int arr[]` parameters.
 The type of a V function, with no receiver, is equivalent to a C function, 
 given that the types of the parameters are equivalent.
 
+Ordinary V functions named `sync` or `syncfs` can coexist with the system C functions.
+Their generated C names also remain distinct from V functions named `main__sync` or `main__syncfs`.
+Use the `C.` prefix to refer to the C function.
+For Linux bindings that declare `fn C.syncfs`, V enables GNU header declarations before
+including C headers, so `<unistd.h>` supplies the `syncfs` prototype.
+
 When a V function returns more than one value, the C function returns a struct.
 For example, these functions have equivalent types:
 ```v ignore
@@ -142,6 +147,10 @@ struct { int i; float f; } c_function(unsigned long a, signed char b);
 
 A pointer to a V function is equivalent to a pointer to a C function, when the
 functions have equivalent types.
+
+For V functions taking `...voidptr`, non-pointer scalar arguments are stored in temporaries.
+Integers and enum values narrower than the target's V `int` are widened to `int`, and `f32`
+is widened to `f64`. The callee must read each slot using its corresponding storage type.
 
 
 ## Other V types, that are currently not supported/documented for use with C:

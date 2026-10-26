@@ -390,6 +390,7 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 		}
 	}
 	g.decl_types_ready = false
+	g.selected_decl_types_ready = false
 	g.collect_declaration_signature_types()
 	for init in g.runtime_inits {
 		g.cache_collect_declaration_refs(init)
@@ -403,24 +404,38 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 			g.cache_collect_declaration_refs(encoded)
 		}
 	}
-	for _, payload in g.needed_optional_types {
+	for _, payload_id in g.needed_optional_types.ids {
+		payload := flat.source_type_name(payload_id)
 		g.cache_collect_declaration_refs(payload)
 	}
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
+	// Fixed-array typedefs are emitted even when their only use is an optional
+	// payload or an alias. Their element layouts must survive declaration pruning.
+	for _, info in g.collect_fixed_array_typedefs_needed() {
+		g.cache_require_declaration_type(info.arr, mut seen)
+	}
+	// Shared wrappers store their payload by value, including wrappers collected
+	// from fields that were only visited by compile-time reflection.
+	old_module := g.tc.cur_module
+	for _, info in g.shared_type_names {
+		g.tc.cur_module = info.module
+		g.cache_require_declaration_type(g.tc.parse_type(info.inner), mut seen)
+	}
+	g.tc.cur_module = old_module
 	for typ in g.multi_return_types {
 		g.cache_require_declaration_type(typ, mut seen)
 	}
 	for name, _ in g.tc.structs {
 		if g.cache_struct_declaration_needed(name) {
-			g.cache_require_declaration_type(types.Struct{ name: name }, mut seen)
+			g.cache_require_declaration_type(types.Struct{ name_id: flat.source_type_id(name) }, mut seen)
 		}
 	}
 	for name, _ in g.interfaces {
-		g.cache_require_declaration_type(types.Interface{ name: name }, mut seen)
+		g.cache_require_declaration_type(types.Interface{ name_id: flat.source_type_id(name) }, mut seen)
 	}
-	for name, _ in g.tc.sum_types {
+	for name, _ in g.tc.sum_types.ids {
 		if g.cache_decl_refs[g.cname(name)] {
-			g.cache_require_declaration_type(types.SumType{ name: name }, mut seen)
+			g.cache_require_declaration_type(types.SumType{ name_id: flat.source_type_id(name) }, mut seen)
 		}
 	}
 	g.collect_referenced_pruned_cache_functions()
@@ -449,8 +464,8 @@ fn (g &FlatGen) cache_function_declaration_needed(name string) bool {
 		|| g.cache_decl_refs[g.fn_c_name_in_module(owner, name)]
 }
 
-fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[string]bool) {
-	key := typ.name()
+fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[u32]bool) {
+	key := typ.source_type_id()
 	if seen[key] {
 		return
 	}
@@ -459,19 +474,19 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[s
 	g.cache_collect_declaration_refs(g.tc.c_type(typ))
 	match typ {
 		types.Struct {
-			g.cache_decl_refs[g.struct_cname(typ.name)] = true
-			for field in g.tc.structs[typ.name] or { []types.StructField{} } {
+			g.cache_decl_refs[g.struct_cname(typ.name())] = true
+			for field in g.tc.structs[typ.name()] or { []types.StructField{} } {
 				g.cache_require_declaration_type(field.typ, mut seen)
 			}
 		}
 		types.Interface {
-			for field in g.tc.interface_field_list(typ.name) {
+			for field in g.tc.interface_field_list(typ.source_type_id()) {
 				g.cache_require_declaration_type(field.typ, mut seen)
 			}
 		}
 		types.SumType {
-			for variant in g.tc.sum_types[typ.name] or { []string{} } {
-				g.cache_require_declaration_type(g.tc.parse_type(variant), mut seen)
+			for variant_source_id in g.tc.sum_types.type_ids(typ.name()) or { []u32{} } {
+				g.cache_require_declaration_type(g.tc.parse_type(variant_source_id), mut seen)
 			}
 		}
 		types.Pointer, types.OptionType, types.ResultType, types.Alias {
@@ -487,7 +502,7 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[s
 		types.FnType {
 			g.cache_require_declaration_type(typ.return_type, mut seen)
 			for param in typ.params {
-				g.cache_require_declaration_type(param, mut seen)
+				g.cache_require_declaration_type(param.typ, mut seen)
 			}
 		}
 		types.MultiReturn {

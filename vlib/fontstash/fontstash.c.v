@@ -6,6 +6,12 @@ module fontstash
 #define FONTSTASH_IMPLEMENTATION
 
 $if gcboehm ? {
+	// The implementation header expands the collector's allocation macros.
+	$if tinyc && linux {
+		#include <gc/gc.h>
+	} $else {
+		#include <gc.h>
+	}
 	#define FONTSTASH_MALLOC GC_MALLOC
 	#define FONTSTASH_REALLOC GC_REALLOC
 	#define FONTSTASH_FREE GC_FREE
@@ -15,7 +21,7 @@ $if gcboehm ? {
 #include "fontstash.h"
 #flag darwin -I/usr/local/Cellar/freetype/2.10.2/include/freetype2
 
-fn C.GC_MALLOC_ATOMIC(n usize) voidptr
+fn C.GC_MALLOC_ATOMIC(n uint) voidptr
 
 $if windows {
 	$if tinyc {
@@ -106,9 +112,9 @@ pub fn (s &Context) add_font_mem(name string, data []u8, free_data bool) int {
 		data_len := data.len
 		mut owned := &u8(nil)
 		$if gcboehm ? {
-			owned = &u8(C.GC_MALLOC_ATOMIC(usize(data_len)))
+			owned = &u8(C.GC_MALLOC_ATOMIC(uint(data_len)))
 		} $else {
-			owned = &u8(C.malloc(usize(data_len)))
+			owned = &u8(C.malloc(uint(data_len)))
 		}
 		if data_len > 0 && owned == nil {
 			data.free()

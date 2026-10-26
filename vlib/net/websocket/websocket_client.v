@@ -133,6 +133,38 @@ pub fn (mut ws Client) connect() ! {
 	ws.send_open_event()
 }
 
+// connect_with_dialer uses an owned TCP connection supplied by the caller.
+// The dialer must return a connected socket and owns failed candidates. Once
+// returned, this client owns cleanup. TLS and HTTP upgrade use the usual path.
+// Custom dialers provide their own proxy tunneling; ClientOpt.proxy_url is not
+// accepted here to avoid silently bypassing configured proxy behavior.
+pub fn (mut ws Client) connect_with_dialer(dialer fn (string) !&net.TcpConn) ! {
+	ws.assert_not_connected()!
+	if ws.proxy_url != '' { return error('custom websocket dialer cannot use proxy_url') }
+	ws.read_start = 0
+	ws.read_end = 0
+	ws.set_state(.connecting)
+	mut tcp := dialer('${ws.uri.hostname}:${ws.uri.port}')!
+	ws.conn = ws.configure_socket(mut tcp)!
+	ws.handshake()!
+	ws.set_state(.open)
+	ws.send_open_event()
+}
+
+// dispose ends a client generation after its reader and writers have joined.
+// Unlike close (which supports reconnect), it also releases the freshly reset
+// TLS context, or the initial context when dialing never produced Client.conn.
+// It is idempotent; this client must not be reconnected after disposal.
+pub fn (mut ws Client) dispose() {
+	if ws.get_state() != .closed && !isnil(ws.conn) {
+		ws.close(1000, 'connection owner ended') or {}
+	}
+	if !isnil(ws.ssl_conn) {
+		ws.ssl_conn.shutdown() or {}
+	}
+	ws.set_state(.closed)
+}
+
 // listen listens and processes incoming messages
 pub fn (mut ws Client) listen() ! {
 	mut log_msg := 'Starting client listener, server(${ws.is_server})...'
@@ -254,8 +286,12 @@ pub fn (mut ws Client) pong() ! {
 	ws.send_control_frame(.pong, 'PONG', [])!
 }
 
-// write_ptr writes len bytes provided a byteptr with a websocket messagetype
+// write_ptr writes payload_len bytes from a pointer with a websocket message type.
+// Control frame payloads larger than 125 bytes are rejected before socket access.
 pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
+	if is_control_frame(code) && payload_len > 125 {
+		return error('control frame payload exceeds 125 bytes')
+	}
 	// ws.debug_log('write_ptr code: ${code}')
 	if ws.get_state() != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
@@ -330,7 +366,8 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 	return written_len
 }
 
-// write writes a byte array with a websocket messagetype to socket
+// write writes a byte array with a websocket message type to the socket.
+// Control frame payloads may contain at most 125 bytes.
 pub fn (mut ws Client) write(bytes []u8, code OPCode) !int {
 	return ws.write_ptr(&u8(bytes.data), bytes.len, code)
 }
@@ -340,7 +377,8 @@ pub fn (mut ws Client) write_string(str string) !int {
 	return ws.write_ptr(str.str, str.len, .text_frame)
 }
 
-// close closes the websocket connection
+// close closes the websocket connection. A positive code leaves at most 123 bytes for the reason.
+// An oversized reason returns an error and still shuts down, resets, and emits the close event.
 pub fn (mut ws Client) close(code int, message string) ! {
 	ws.debug_log('sending close, ${code}, ${message}')
 	ws_state := ws.get_state()
@@ -360,6 +398,9 @@ pub fn (mut ws Client) close(code int, message string) ! {
 		code_ := conv.hton16(u16(code))
 		message_len := message.len + 2
 		mut close_frame := []u8{len: message_len}
+		defer {
+			unsafe { close_frame.free() }
+		}
 		close_frame[0] = u8(code_ & 0xFF)
 		close_frame[1] = u8(code_ >> 8)
 		// code32 = (close_frame[0] << 8) + close_frame[1]
@@ -367,7 +408,6 @@ pub fn (mut ws Client) close(code int, message string) ! {
 			close_frame[i + 2] = message[i]
 		}
 		ws.send_control_frame(.close, 'CLOSE', close_frame)!
-		unsafe { close_frame.free() }
 	} else {
 		ws.send_control_frame(.close, 'CLOSE', [])!
 	}
@@ -377,6 +417,12 @@ pub fn (mut ws Client) close(code int, message string) ! {
 // send_control_frame sends a control frame to the server
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []u8) ! {
 	ws.debug_log('send control frame ${code}, frame_type: ${frame_typ}')
+	// RFC 6455 section 5.5 caps control frames at 125 bytes of payload.
+	// Longer payloads would truncate the 7-bit length byte and desynchronise
+	// the peer's frame parser, so reject them before touching the socket.
+	if payload.len > 125 {
+		return error('control frame payload exceeds 125 bytes')
+	}
 	if ws.get_state() !in [.open, .closing] && ws.conn.sock.handle > 1 {
 		return error('socket is not connected')
 	}

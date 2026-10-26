@@ -5,11 +5,19 @@ on: [workflow_dispatch]
 permissions:
   contents: read
 
+concurrency:
+  group: debug-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   debug-msvc:
     runs-on: windows-2025
     timeout-minutes: 121
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc msvc
     steps:
       - uses: actions/checkout@v7

@@ -1,15 +1,14 @@
 module parser
 
 import v.flat
-import os
 import v.pref
 import v.token
 
 // ParsedSumVariant is one `|`-separated entry of a sum type declaration: a plain
 // variant type (`Foo`, `[]int`) or a named variant (`Count(int)`, `Void`).
 struct ParsedSumVariant {
-	text        string // the variant type text, or the name of a named variant
-	payload     string // the payload type text of a named variant
+	text        u32 // the variant type text, or the name of a named variant
+	payload     u32 // the payload type text of a named variant
 	has_payload bool
 	is_named    bool // written as `Name(...)`
 	malformed   bool // an invalid payload list was already reported
@@ -20,11 +19,12 @@ struct ParsedSumVariant {
 
 // parse_sum_type_variant finishes a sum type variant whose leading type text was
 // already parsed. A following `(` makes it a named variant with one payload type.
-fn (mut p Parser) parse_sum_type_variant(text string, start int) ParsedSumVariant {
+fn (mut p Parser) parse_sum_type_variant(text_id u32, start int) ParsedSumVariant {
+	text := flat.source_type_name(text_id)
 	name_end := p.prev_tok_end
 	if p.tok != .lpar {
 		return ParsedSumVariant{
-			text:     text
+			text:     text_id
 			start:    start
 			end:      p.prev_tok_end
 			name_end: name_end
@@ -38,7 +38,7 @@ fn (mut p Parser) parse_sum_type_variant(text string, start int) ParsedSumVarian
 				start, p.prev_tok_end)
 		}
 		return ParsedSumVariant{
-			text:      text
+			text:      text_id
 			is_named:  true
 			malformed: true
 			start:     start
@@ -77,7 +77,7 @@ fn (mut p Parser) parse_sum_type_variant(text string, start int) ParsedSumVarian
 		p.next()
 	}
 	return ParsedSumVariant{
-		text:        text
+		text:        text_id
 		payload:     payload
 		has_payload: true
 		is_named:    true
@@ -117,15 +117,15 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 			variant_ids << p.add_node(flat.Node{
 				kind:  .ident
 				value: if variant.has_payload {
-					'${variant.text}(${variant.payload})'
+					'${variant.text_text()}(${variant.payload_text()})'
 				} else {
-					variant.text
+					variant.text_text()
 				}
 				pos:   variant_pos
 			})
 			continue
 		}
-		hidden := flat.named_variant_type_name(name, variant.text)
+		hidden := flat.named_variant_type_name(name, variant.text_text())
 		// Every variant struct of a generic sum type takes all its type parameters,
 		// so `Opt[int].Nothing` names `Opt@variant@Nothing[int]` without knowing
 		// which parameters the payload uses.
@@ -146,7 +146,11 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 			kind:           .struct_decl
 			op:             if is_pub { .arrow } else { .none }
 			value:          hidden
-			typ:            if used_params.len > 0 { 'generic' } else { '' }
+			typ:            (if used_params.len > 0 {
+				flat.source_type_generic
+			} else {
+				u32(0)
+			})
 			payload:        flat.node_payload(used_params)
 			children_start: fields_start
 			children_count: flat.child_count(fields.len)
@@ -194,42 +198,45 @@ fn (mut p Parser) validate_named_sum_variants(name string, language_prefix strin
 	mut seen := map[string]bool{}
 	for variant in variants {
 		if !variant.is_named {
-			if !is_plain_capitalized_ident(variant.text) {
-				p.record_diagnostic_span('invalid sum type variant `${variant.text}`: sum type `${name}` has named variants, so each variant must be a capitalized name with an optional payload, e.g. `Value(${variant.text})`',
+			if !is_plain_capitalized_ident(variant.text_text()) {
+				p.record_diagnostic_span('invalid sum type variant `${variant.text_text()}`: sum type `${name}` has named variants, so each variant must be a capitalized name with an optional payload, e.g. `Value(${variant.text_text()})`',
 					variant.start, variant.end)
 				continue
 			}
-		} else if !is_plain_capitalized_ident(variant.text) {
-			first := if variant.text.len > 0 { variant.text[0] } else { u8(0) }
-			if first >= `a` && first <= `z` && !variant.text.contains('.')
-				&& !variant.text.contains('[') {
-				p.record_diagnostic_span('invalid sum type variant name `${variant.text}`: variant names must start with a capital letter',
+		} else if !is_plain_capitalized_ident(variant.text_text()) {
+			first := if variant.text != 0 { variant.text_text()[0] } else { u8(0) }
+			if first >= `a` && first <= `z` && !flat.source_type_shape(variant.text).has(.dotted)
+				&& !flat.source_type_shape(variant.text).has(.bracketed) {
+				p.record_diagnostic_span('invalid sum type variant name `${variant.text_text()}`: variant names must start with a capital letter',
 					variant.start, variant.name_end)
 			} else {
-				p.record_diagnostic_span('invalid sum type variant name `${variant.text}`: a variant name must be a single capitalized name',
+				p.record_diagnostic_span('invalid sum type variant name `${variant.text_text()}`: a variant name must be a single capitalized name',
 					variant.start, variant.name_end)
 			}
 			continue
 		}
-		if variant.text in seen {
-			p.record_diagnostic_span('duplicate sum type variant `${variant.text}` in `${name}`',
+		if variant.text_text() in seen {
+			p.record_diagnostic_span('duplicate sum type variant `${variant.text_text()}` in `${name}`',
 				variant.start, variant.name_end)
 			continue
 		}
-		seen[variant.text] = true
-		if variant.has_payload && !variant.malformed && variant.payload in ['none', 'void'] {
-			p.record_diagnostic_span('invalid payload type `${variant.payload}` for sum type variant `${name}.${variant.text}`',
+		seen[variant.text_text()] = true
+		if variant.has_payload && !variant.malformed && variant.payload in [
+			flat.source_type_none,
+			flat.source_type_void,
+		] {
+			p.record_diagnostic_span('invalid payload type `${variant.payload_text()}` for sum type variant `${name}.${variant.text_text()}`',
 				variant.start, variant.end)
 		}
 	}
 }
 
-// named_variant_owner returns the sum type text (`Expr`, `mod.Expr`) when the
-// selector `lhs.variant` names a sum type variant. The variant is capitalized;
+// named_variant_owner returns the source spelling ID of `Expr` or `mod.Expr` when the
+// selector `lhs.variant_text()` names a sum type variant. The variant is capitalized;
 // the owner is a capitalized type or a declared generated type. Modules,
 // constants, fields, methods and enum values are snake_case. C and JS names
 // and capitalized import aliases keep their meaning.
-fn (mut p Parser) named_variant_owner(lhs flat.NodeId, variant string) ?string {
+fn (mut p Parser) named_variant_owner(lhs flat.NodeId, variant string) ?u32 {
 	if p.prefs.is_fmt || p.is_translated || !is_plain_capitalized_ident(variant) || int(lhs) < 0
 		|| int(lhs) >= p.a.nodes.len {
 		return none
@@ -237,7 +244,7 @@ fn (mut p Parser) named_variant_owner(lhs flat.NodeId, variant string) ?string {
 	node := p.a.nodes[int(lhs)]
 	if node.kind == .ident {
 		if p.is_named_variant_owner_name(node.value) {
-			return node.value
+			return flat.source_type_id(node.value)
 		}
 		return none
 	}
@@ -245,19 +252,19 @@ fn (mut p Parser) named_variant_owner(lhs flat.NodeId, variant string) ?string {
 		base := p.a.child_node(&node, 0)
 		if base.kind == .ident && base.value in p.imported_module_names
 			&& !p.is_local_binding(base.value) && p.is_imported_named_variant_owner_name(base.value, node.value) {
-			return '${base.value}.${node.value}'
+			return flat.source_type_id('${base.value}.${node.value}')
 		}
 	}
 	// A generic sum type with explicit type arguments, `Opt[int].Some(3)`.
 	if node.kind == .index && node.children_count >= 2 && node.pos.is_valid() {
 		base_id := p.a.child(&node, 0)
-		base_text := p.named_variant_owner(base_id, variant) or { return none }
+		base_name_id := p.named_variant_owner(base_id, variant) or { return none }
 		start := clamp_source_offset(int(node.pos.offset), p.s.src.len)
 		end := clamp_source_offset(int(node.pos.end), p.s.src.len)
 		text := p.s.src[start..end]
 		bracket := text.index_u8(`[`)
 		if bracket > 0 && text.ends_with(']') {
-			return base_text + text[bracket..]
+			return flat.source_type_id(flat.source_type_name(base_name_id) + text[bracket..])
 		}
 	}
 	return none
@@ -289,7 +296,7 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 	if !p.named_variant_import_scans[key] {
 		p.named_variant_import_scans[key] = true
 		for node in p.a.nodes {
-			if node.kind != .import_decl || node.pos.id != p.cur_file_id || node.typ != module_alias {
+			if node.kind != .import_decl || node.pos.id != p.cur_file_id || node.typ_text() != module_alias {
 				continue
 			}
 			dir := p.prefs.get_module_path(node.value, p.cur_file)
@@ -298,7 +305,7 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 			}
 			for path in p.prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir,
 				p.prefs.user_defines, p.prefs.target)) {
-				source := os.read_file(path) or { continue }
+				source := p.sibling_source(path) or { continue }
 				mut declarations := Parser.new(p.prefs)
 				declarations.cur_file = path
 				declarations.s.init(p.s.current_file(), source)
@@ -329,7 +336,7 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 // followed by a capitalized variant, including an owner's generic arguments.
 fn (mut p Parser) imported_named_variant_pattern_starts_here(module_name string) bool {
 	if module_name !in p.imported_module_names || p.is_local_binding(module_name)
-		|| p.tok != .name || !p.is_imported_named_variant_owner_name(module_name, p.lit) {
+		|| p.tok != .name {
 		return false
 	}
 	mut next := p.peek()
@@ -343,19 +350,24 @@ fn (mut p Parser) imported_named_variant_pattern_starts_here(module_name string)
 	if next != .dot {
 		return false
 	}
+	// Ordinary imported constants are also valid match patterns. Resolve a
+	// generated type only after the following tokens can name its variant;
+	// otherwise that lookup needlessly indexes every file of the module.
 	return lookahead.scan() == .name && is_plain_capitalized_ident(lookahead.lit)
+		&& p.is_imported_named_variant_owner_name(module_name, p.lit)
 }
 
 // named_variant_value lowers a payload-less variant reference `Expr.Void` to
 // `Expr(Expr@variant@Void{})`. The checker reports a missing payload when the
 // variant has one.
-fn (mut p Parser) named_variant_value(sum string, variant string, lhs flat.NodeId) flat.NodeId {
-	return p.named_variant_init(sum, variant, flat.empty_node, lhs)
+fn (mut p Parser) named_variant_value(sum_id u32, variant string, lhs flat.NodeId) flat.NodeId {
+	return p.named_variant_init(sum_id, variant, flat.empty_node, lhs)
 }
 
 // named_variant_constructor lowers `Expr.Count(value)` to
 // `Expr(Expr@variant@Count{payload: value})`. The current token is `(`.
-fn (mut p Parser) named_variant_constructor(sum string, variant string, lhs flat.NodeId) flat.NodeId {
+fn (mut p Parser) named_variant_constructor(sum_id u32, variant string, lhs flat.NodeId) flat.NodeId {
+	sum := flat.source_type_name(sum_id)
 	args_start := p.tok_pos
 	p.next() // skip (
 	mut args := []flat.NodeId{}
@@ -376,11 +388,16 @@ fn (mut p Parser) named_variant_constructor(sum string, variant string, lhs flat
 		}
 		p.record_diagnostic_span(message, args_start, p.prev_tok_end)
 	}
-	return p.named_variant_init(sum, variant, if args.len > 0 { args[0] } else { flat.empty_node },
+	return p.named_variant_init(sum_id, variant, if args.len > 0 {
+		args[0]
+	} else {
+		flat.empty_node
+	},
 		lhs)
 }
 
-fn (mut p Parser) named_variant_init(sum string, variant string, payload flat.NodeId, lhs flat.NodeId) flat.NodeId {
+fn (mut p Parser) named_variant_init(sum_id u32, variant string, payload flat.NodeId, lhs flat.NodeId) flat.NodeId {
+	sum := flat.source_type_name(sum_id)
 	mut fields := []flat.NodeId{}
 	if int(payload) >= 0 {
 		fields << p.add_node_from(flat.Node{
@@ -413,8 +430,9 @@ fn (mut p Parser) named_variant_init(sum string, variant string, payload flat.No
 }
 
 // named_variant_pattern_type maps a variant written in a type position, as in
-// `e is Expr.Count` or a `match` branch, to its hidden struct name.
-fn (mut p Parser) named_variant_pattern_type(type_name string) ?string {
+// `e is Expr.Count` or a `match` branch, to its hidden struct spelling ID.
+fn (mut p Parser) named_variant_pattern_type(type_name_id u32) ?u32 {
+	type_name := flat.source_type_name(type_name_id)
 	if p.prefs.is_fmt || p.is_translated || !type_name.contains('.') {
 		return none
 	}
@@ -440,14 +458,18 @@ fn (mut p Parser) named_variant_pattern_type(type_name string) ?string {
 	if (parts.len == 1 && p.is_named_variant_owner_name(parts[0]))
 		|| (parts.len == 2 && parts[0] in p.imported_module_names
 			&& !p.is_local_binding(parts[0]) && p.is_imported_named_variant_owner_name(parts[0], parts[1])) {
-		return flat.named_variant_type_name(base, type_name[dot + 1..]) + args
+		return flat.source_type_id(flat.named_variant_type_name(base, type_name[dot + 1..]) + args)
 	}
 	return none
 }
 
 // named_variant_pattern_type_name also reads the variant after explicit type arguments.
-fn (mut p Parser) named_variant_pattern_type_name() string {
-	mut name := p.parse_type_name()
+fn (mut p Parser) named_variant_pattern_type_name() u32 {
+	return flat.source_type_id(p.named_variant_pattern_type_name_bytes())
+}
+
+fn (mut p Parser) named_variant_pattern_type_name_bytes() string {
+	mut name := p.parse_type_name_bytes()
 	if name.ends_with(']') && p.tok == .dot && p.peek() == .name {
 		p.next()
 		name += '.' + p.expect_name()
@@ -458,14 +480,15 @@ fn (mut p Parser) named_variant_pattern_type_name() string {
 // named_variant_match_pattern parses the optional payload binding of a variant
 // pattern in a `match` branch, `Expr.Count(n)` or `Expr.Count(mut n)`, after the
 // variant name. The binding is stored as a `.param` child of the pattern node.
-fn (mut p Parser) named_variant_match_pattern(type_name string, start int) ?flat.NodeId {
+fn (mut p Parser) named_variant_match_pattern(type_name_id u32, start int) ?flat.NodeId {
+	type_name := flat.source_type_name(type_name_id)
 	is_variant_spelling := type_name.contains('.')
 	if p.prefs.is_fmt {
 		if p.tok != .lpar || !is_variant_spelling {
 			return none
 		}
 		// Keep the source shape, `Expr.Count(n)`, so vfmt prints it back unchanged.
-		callee := p.match_type_pattern_node(type_name)
+		callee := p.match_type_pattern_node(type_name_id)
 		p.next() // skip (
 		mut args := []flat.NodeId{}
 		for p.tok != .rpar && p.tok != .eof {
@@ -498,7 +521,7 @@ fn (mut p Parser) named_variant_match_pattern(type_name string, start int) ?flat
 			pos:            p.span_to(start)
 		})
 	}
-	hidden := p.named_variant_pattern_type(type_name) or {
+	hidden_id := p.named_variant_pattern_type(type_name_id) or {
 		if p.tok == .lpar && is_variant_spelling && !p.is_translated {
 			p.record_diagnostic_span('`${type_name}` is not a sum type variant that can bind a payload',
 				start, p.prev_tok_end)
@@ -506,6 +529,7 @@ fn (mut p Parser) named_variant_match_pattern(type_name string, start int) ?flat
 		}
 		return none
 	}
+	hidden := flat.source_type_name(hidden_id)
 	mut binding := flat.empty_node
 	if p.tok == .lpar {
 		binding_start := p.tok_pos
@@ -587,10 +611,11 @@ fn (mut p Parser) skip_named_variant_binding_rest() {
 
 // is_expr_type_name parses the type of an `is` check. A sum type variant,
 // `e is Expr.Count`, checks for its hidden struct.
-fn (mut p Parser) is_expr_type_name() string {
+fn (mut p Parser) is_expr_type_name() u32 {
 	type_start := p.tok_pos
-	type_name := p.named_variant_pattern_type_name()
-	hidden := p.named_variant_pattern_type(type_name) or { return type_name }
+	type_name_id := p.named_variant_pattern_type_name()
+	type_name := flat.source_type_name(type_name_id)
+	hidden := p.named_variant_pattern_type(type_name_id) or { return type_name_id }
 	if p.tok == .lpar {
 		p.record_diagnostic_span('cannot bind the payload of `${type_name}` in an `is` check; use `match` to bind it',
 			type_start, p.tok_end)
@@ -643,4 +668,12 @@ fn (mut p Parser) declare_named_variant_bindings(conds []flat.NodeId) {
 			}
 		}
 	}
+}
+
+fn (variant &ParsedSumVariant) text_text() string {
+	return flat.source_type_name(variant.text)
+}
+
+fn (variant &ParsedSumVariant) payload_text() string {
+	return flat.source_type_name(variant.payload)
 }

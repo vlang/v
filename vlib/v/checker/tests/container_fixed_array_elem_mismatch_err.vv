@@ -1,0 +1,97 @@
+struct Holder {
+	rows   [][]int
+	by_key map[string][]int
+}
+
+fn return_rows() [][]int {
+	rows := [[1, 2]!, [3, 4]!]
+	return rows
+}
+
+fn return_optional_rows() ?[][]int {
+	rows := [[1, 2]!]
+	return rows
+}
+
+fn return_map() map[string][]int {
+	m := {
+		'a': [1, 2]!
+	}
+	return m
+}
+
+fn make_rows() (int, [][2]int) {
+	return 1, [[1, 2]!]
+}
+
+fn make_map() (int, map[string][2]int) {
+	return 1, {
+		'a': [1, 2]!
+	}
+}
+
+fn forward_rows() (int, [][]int) {
+	return make_rows()
+}
+
+fn forward_map() (int, map[string][]int) {
+	return make_map()
+}
+
+fn take_rows(rows [][]int) int {
+	return rows.len
+}
+
+fn take_map(m map[string][]int) int {
+	return m.len
+}
+
+fn grow_rows(mut rows [][]int) {
+	rows << [5, 6, 7]
+}
+
+fn grow_map(mut m map[string][]int) {
+	m['b'] = [5, 6, 7]
+}
+
+fn main() {
+	fixed_rows := [[1, 2]!, [3, 4]!]
+	nested := [[1, 2]!, [3, 4]!]!
+	by_key := {
+		'a': [1, 2]!
+	}
+	_ := return_rows()
+	_ := return_optional_rows() or { [][]int{} }
+	_ := return_map()
+	_, _ := forward_rows()
+	_, _ := forward_map()
+	mut rows := [][]int{}
+	rows = fixed_rows
+	rows = nested
+	mut n := 0
+	n, rows = make_rows()
+	mut fixed_of_rows := [2][]int{}
+	fixed_of_rows = nested
+	mut m := map[string][]int{}
+	m = by_key.clone()
+	n = take_rows(fixed_rows)
+	n += take_rows(nested)
+	n += take_map(by_key)
+	mut fixed_rows2 := fixed_rows.clone()
+	grow_rows(mut fixed_rows2)
+	mut nested2 := [[1, 2]!, [3, 4]!]!
+	grow_rows(mut nested2)
+	mut by_key2 := by_key.clone()
+	grow_map(mut by_key2)
+	h := Holder{
+		rows:   fixed_rows
+		by_key: by_key
+	}
+	_ := [][]int(fixed_rows)
+	_ := map[string][]int(by_key)
+	// A single fixed array is copied into a new dynamic one, also as an element.
+	mut row := []int{}
+	row = [1, 2]!
+	rows << [1, 2]!
+	println('${n} ${rows.len} ${fixed_of_rows.len} ${m.len} ${h.rows.len} ${row}')
+}

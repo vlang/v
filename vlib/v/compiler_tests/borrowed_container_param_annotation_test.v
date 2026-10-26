@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_borrowed_array_parameter_indexing_survives_generic_annotation() {
@@ -6,11 +7,11 @@ fn test_borrowed_array_parameter_indexing_survives_generic_annotation() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn identity[T](value T) T { return value }
-fn skip_table(literal &[]u8) []usize {
-	m := usize(literal.len)
-	mut skip := []usize{len: 256, init: m}
+fn skip_table(literal &[]u8) []uint {
+	m := uint(literal.len)
+	mut skip := []uint{len: 256, init: m}
 	for i := 0; i + 1 < literal.len; i++ {
-		skip[int(literal[i])] = m - 1 - usize(i)
+		skip[int(literal[i])] = m - 1 - uint(i)
 	}
 	return skip
 }

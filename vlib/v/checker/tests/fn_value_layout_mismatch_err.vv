@@ -1,0 +1,103 @@
+// A function value is called as it is, so nothing converts its arguments or its result:
+// its parameter and result types must be stored as the expected ones, also where they
+// share one C type (options, results, dynamic arrays, maps and channels).
+interface Named {
+	name() string
+}
+
+struct Item {
+	n string
+}
+
+fn (i Item) name() string {
+	return i.n
+}
+
+type Ints = []int
+
+fn fixed() ?[2]int {
+	return [1, 2]!
+}
+
+fn narrow() ?u8 {
+	return 1
+}
+
+fn narrow_result() !u8 {
+	return 1
+}
+
+fn item() ?Item {
+	return Item{'a'}
+}
+
+fn items() []Item {
+	return [Item{'a'}]
+}
+
+fn ints() ?Ints {
+	return [1]
+}
+
+fn take_wides(a []u64) {
+	println(a)
+}
+
+fn take_maybe_ints(a ?[]int) {
+	println(a)
+}
+
+fn take_wide_chan(ch chan u64) {
+	println(ch.len)
+}
+
+fn call_ints(f fn () ?[]int) {
+	println(f() or { [] })
+}
+
+fn call_wide(f fn () ?u64) {
+	println(f() or { 0 })
+}
+
+fn call_wide_result(f fn () !u64) {
+	println(f() or { 0 })
+}
+
+fn call_named(f fn () ?Named) {
+	println(f() or { Named(Item{}) }.name())
+}
+
+fn call_names(f fn () []Named) {
+	println(f().len)
+}
+
+fn call_narrows(f fn ([]u8)) {
+	f([u8(1)])
+}
+
+fn call_maybe_pair(f fn (?[2]int)) {
+	f([1, 2]!)
+}
+
+fn call_narrow_chan(f fn (chan u8)) {
+	f(chan u8{})
+}
+
+fn main() {
+	call_ints(fixed)
+	call_wide(narrow)
+	call_wide_result(narrow_result)
+	call_named(item)
+	call_names(items)
+	call_narrows(take_wides)
+	call_maybe_pair(take_maybe_ints)
+	call_narrow_chan(take_wide_chan)
+	mut cb := fn () ?[]int {
+		return none
+	}
+	cb = fixed
+	// Types stored the same way are accepted.
+	call_ints(ints)
+	cb = ints
+	println(cb() or { [] })
+}

@@ -1,0 +1,11 @@
+fn worker(shared values &map[string]int) {
+	lock values {
+		values['a'] = 1
+	}
+}
+
+fn main() {
+	shared values := map[string]int{}
+	task := spawn worker(shared &values)
+	task.wait()
+}

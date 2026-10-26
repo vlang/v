@@ -2,10 +2,6 @@ module fastc
 
 import os
 
-#include <CommonCrypto/CommonDigest.h>
-
-#include <sys/mman.h>
-
 fn C.CC_SHA256(const_data voidptr, len u32, md &u8) &u8
 
 // fastc_sign_macho_adhoc_mapped extends and patches the linker output through
@@ -20,7 +16,7 @@ fn fastc_sign_macho_adhoc_mapped(path string) ! {
 		return error('`${path}`: could not extend the Mach-O file for signing')
 	}
 	mapped := unsafe {
-		C.mmap(nil, usize(capacity), C.PROT_READ | C.PROT_WRITE, C.MAP_PRIVATE, out.fd, 0)
+		C.mmap(nil, uint(capacity), C.PROT_READ | C.PROT_WRITE, C.MAP_PRIVATE, out.fd, 0)
 	}
 	if mapped == voidptr(-1) {
 		_ = C.ftruncate(i32(out.fd), u64(original_len))
@@ -29,14 +25,14 @@ fn fastc_sign_macho_adhoc_mapped(path string) ! {
 	}
 	mut file := unsafe { mapped.vbytes(capacity) }
 	patch := fastc_patch_macho_signature(mut file, original_len, path) or {
-		unsafe { C.munmap(mapped, usize(capacity)) }
+		unsafe { C.munmap(mapped, uint(capacity)) }
 		_ = C.ftruncate(i32(out.fd), u64(original_len))
 		out.close()
 		return err
 	}
 	load_commands := file[..patch.load_end].clone()
 	tail := file[patch.tail_start..patch.final_len].clone()
-	if unsafe { C.munmap(mapped, usize(capacity)) } != 0 {
+	if unsafe { C.munmap(mapped, uint(capacity)) } != 0 {
 		out.close()
 		return error('`${path}`: could not release the mapped Mach-O image')
 	}

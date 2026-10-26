@@ -1,0 +1,67 @@
+type Val = int | string
+
+struct Box {
+mut:
+	v Val
+}
+
+fn member_assigned_another_variant(mut b Box) int {
+	if mut b.v is int {
+		b.v = 'str'
+		return b.v + 1
+	}
+	return 0
+}
+
+fn member_assigned_a_sum_value(mut b Box) int {
+	if mut b.v is int {
+		b.v = Val(5)
+		return b.v + 1
+	}
+	return 0
+}
+
+fn member_written_in_a_nested_block(mut b Box, c bool) int {
+	if mut b.v is int {
+		if c {
+			b.v = 'str'
+			return b.v + 1
+		}
+	}
+	return 0
+}
+
+fn local_written_in_a_nested_block(c bool) int {
+	mut x := Val(1)
+	if mut x is int {
+		for c {
+			x = 'str'
+			return x + 1
+		}
+	}
+	return 0
+}
+
+fn match_branch_member_assigned_another_variant(mut b Box) int {
+	match mut b.v {
+		string {
+			b.v = 5
+			return b.v.len
+		}
+		int {
+			return 0
+		}
+	}
+	return 0
+}
+
+fn main() {
+	mut b := Box{
+		v: Val(1)
+	}
+	println(member_assigned_another_variant(mut b))
+	println(member_assigned_a_sum_value(mut b))
+	println(member_written_in_a_nested_block(mut b, true))
+	println(local_written_in_a_nested_block(true))
+	println(match_branch_member_assigned_another_variant(mut b))
+}

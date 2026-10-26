@@ -7,7 +7,8 @@
 // applied by `GC_INIT()` afterwards and wins, so the test skips when one is set.
 import os
 
-fn C.GC_get_free_space_divisor() usize
+@[c_extern]
+fn C.GC_get_free_space_divisor() uint
 
 fn test_free_space_divisor_is_tuned_for_throughput() {
 	$if gcboehm_opt ? {

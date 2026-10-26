@@ -71,7 +71,7 @@ fn test_c_compiler_output_name_uses_target_postfix() {
 	assert c_compiler_output_name_for_target('windows', false, false) == 'out.exe'
 	assert c_compiler_output_name_for_target('linux', false, false) == 'out'
 	assert c_compiler_output_name_for_target('windows', true, false) == 'out'
-	assert c_compiler_output_name_for_target('windows', false, true) == 'out'
+	assert c_compiler_output_name_for_target('windows', false, true) == 'out.obj'
 }
 
 fn scan_implicit_import_source(name string, source string) ImplicitImportScan {
@@ -142,6 +142,236 @@ fn test_strings_similarity_len_fields_do_not_require_closure_runtime() {
 	mut scan := ImplicitImportScan{}
 	scan_implicit_imports(a, a.nodes.len, mut scan)
 	assert !scan.needs_closure
+}
+
+fn test_multi_value_declaration_fields_do_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('multi_value_fields', '
+struct Point {
+	x int
+}
+
+fn pair() (string, []int) {
+	return "a", [1]
+}
+
+fn triple() (int, Point, map[string]int) {
+	return 1, Point{}, {}
+}
+
+fn lengths() int {
+	text, values := pair()
+	_, point, lookup := triple()
+	return text.len + values.len + point.x + lookup.len
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_multi_value_declaration_of_values_fields_do_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('multi_value_values', '
+fn lengths() int {
+	text, values := "a", [1]
+	return text.len + values.len
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_multi_value_declaration_of_an_option_fields_do_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('multi_value_option', '
+fn pair() ?(string, []int) {
+	return "a", [1]
+}
+
+fn pair_or_error() !(string, []int) {
+	return "a", [1]
+}
+
+fn lengths() int {
+	text, values := pair() or { return 0 }
+	more, others := pair_or_error() or { return 0 }
+	if guarded, numbers := pair() {
+		return guarded.len + numbers.len
+	}
+	return text.len + values.len + more.len + others.len
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_method_value_on_multi_value_declaration_requires_closure_runtime() {
+	scan := scan_implicit_import_source('multi_value_method', '
+struct Item {}
+
+fn (item Item) len() int {
+	return 1
+}
+
+fn pair() (string, Item) {
+	return "a", Item{}
+}
+
+fn use() {
+	_, item := pair()
+	callback := item.len
+	_ = callback
+}
+')
+	assert scan.needs_closure
+}
+
+const implicit_import_item_with_len = '
+struct Item {}
+
+fn (item Item) len() int {
+	return 1
+}
+
+fn pair() (string, []int) {
+	return "a", [1]
+}
+'
+
+// branches_that_do_not_require_closure_runtime returns the names of the pairs of
+// branches with which a function does not load the closure runtime.
+fn branches_that_do_not_require_closure_runtime(cases map[string][]string) []string {
+	mut names := []string{}
+	for name, branches in cases {
+		scan := scan_implicit_import_source('branches_${name}', implicit_import_item_with_len +
+			'
+fn use(flag bool, items map[string]Item) {
+	if flag {
+		${branches[0]}
+	} else {
+		${branches[1]}
+	}
+}
+')
+		if !scan.needs_closure {
+			names << name
+		}
+	}
+	return names
+}
+
+// Branches of a function may each declare a name: one that they give two types
+// is not known, in whatever order they come, and neither is what takes its type.
+fn test_name_declared_with_two_types_requires_closure_runtime() {
+	text := 'value, _ := pair()
+		_ = value.len'
+	item := 'value := Item{}
+		callback := value.len
+		_ = callback'
+	item_copied := 'value := Item{}
+		copied := value
+		callback := copied.len
+		_ = callback'
+	assert branches_that_do_not_require_closure_runtime({
+		'text_first':        [text, item]
+		'item_first':        [item, text]
+		'copied_text_first': ['value := "a"', item_copied]
+		'copied_item_first': [item_copied, 'value := "a"']
+	}) == []
+}
+
+// And one that a branch declares with a value of a type that is not known here.
+fn test_name_declared_with_and_without_a_known_type_requires_closure_runtime() {
+	unknown := 'value := items["a"]
+		callback := value.len
+		_ = callback'
+	unknown_copied := 'value := items["a"]
+		copied := value
+		callback := copied.len
+		_ = callback'
+	assert branches_that_do_not_require_closure_runtime({
+		'text_first':        ['value := "a"', unknown]
+		'unknown_first':     [unknown, 'value := "a"']
+		'several_first':     ['value, _ := pair()', unknown]
+		'several_last':      [unknown, 'value, _ := pair()']
+		'copied_text_first': ['value := "a"', unknown_copied]
+		'copied_text_last':  [unknown_copied, 'value := "a"']
+	}) == []
+}
+
+// The names beside it keep their types: the parameters, and what is declared
+// from them, whatever the order of the declarations.
+fn test_names_beside_one_that_is_not_known_do_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('beside_unknown', implicit_import_item_with_len +
+		'
+fn use(flag bool, text string, items map[string]Item) int {
+	if flag {
+		value := "a"
+		_ = value
+	} else {
+		value := items["a"]
+		_ = value
+	}
+	first := text
+	second := first
+	third := second
+	_, numbers := pair()
+	return text.len + third.len + numbers.len
+}
+')
+	assert !scan.needs_closure
+}
+
+// scan_implicit_import_source_after_builtin scans `source` as the code of a user
+// that follows `builtin_file`, a source of builtin.
+fn scan_implicit_import_source_after_builtin(name string, builtin_file string, source string) ImplicitImportScan {
+	path := os.join_path(os.temp_dir(), 'v3_implicit_import_${name}_${os.getpid()}.v')
+	os.write_file(path, source) or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_file(os.join_path(@VEXEROOT, 'vlib', 'builtin', builtin_file))
+	mut a := p.a
+	a.user_code_start = a.nodes.len
+	p.parse_file(path)
+	mut scan := ImplicitImportScan{}
+	scan_implicit_imports(a, a.nodes.len, mut scan)
+	return scan
+}
+
+fn test_number_arithmetic_str_len_field_does_not_require_closure_runtime() {
+	scan := scan_implicit_import_source_after_builtin('number_arithmetic', 'int.v', '
+fn digits(text string, shift int) int {
+	exponent := text.len + shift - 1
+	shown := (if exponent < 0 { -exponent } else { exponent }).str()
+	scaled := (exponent * shift / 2 % 7).str()
+	return shown.len + scaled.len
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_method_value_on_overloaded_operator_result_requires_closure_runtime() {
+	scan := scan_implicit_import_source('overloaded_operator', '
+struct Vec {
+	x int
+}
+
+struct Area {
+	n int
+}
+
+fn (a Area) x() int {
+	return a.n
+}
+
+fn (a Vec) * (b Vec) Area {
+	return Area{a.x * b.x}
+}
+
+fn use(a Vec, b Vec) {
+	area := a * b
+	callback := area.x
+	_ = callback
+}
+')
+	assert scan.needs_closure
 }
 
 fn test_slice_len_fields_do_not_require_closure_runtime() {
@@ -464,5 +694,39 @@ fn test_file_index_gap_preserves_bundle_file_context() {
 		path := os.join_path(root, '${name}.v')
 		assert indexed.file_imports['${path}\nm'] == 'math'
 		assert '${name}.${name}' in indexed.fn_ret_types
+	}
+}
+
+fn test_closure_prepass_preserves_remaining_implicit_import_flags() {
+	for capturing_literal in [false, true] {
+		mut a := flat.FlatAst.new()
+		if capturing_literal {
+			capture := a.add_val(.ident, 'captured')
+			start := a.begin_children()
+			a.add_child(capture)
+			a.add_node(flat.Node{
+				kind:           .fn_literal
+				children_start: start
+				children_count: 1
+			})
+		} else {
+			a.add(.lambda_expr)
+		}
+		a.add_node(sync_import_node())
+		a.add_node(embed_file_import_node())
+		a.add_node(closure_import_node())
+		a.add_node(debugger_import_node())
+		a.add_node(overflow_import_node())
+		a.add(.lock_expr)
+		a.add_val(.struct_init, 'embed_file.EmbedFileData')
+		a.add(.debugger_stmt)
+		mut scan := ImplicitImportScan{}
+		scan_implicit_imports(&a, a.nodes.len, mut scan)
+		assert scan.node_idx == a.nodes.len
+		assert scan.needs_closure && scan.has_closure
+		assert scan.needs_sync && scan.has_sync
+		assert scan.needs_embed && scan.has_embed_import
+		assert scan.needs_debugger && scan.has_debugger
+		assert scan.has_overflow
 	}
 }

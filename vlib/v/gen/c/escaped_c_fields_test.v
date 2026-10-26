@@ -16,10 +16,10 @@ fn escaped_c_field_test_node(mut a flat.FlatAst, kind flat.NodeKind, value strin
 
 fn test_escaped_c_field_names_follow_the_resolved_owner() {
 	g := FlatGen.new()
-	c_struct := types.Type(types.Struct{ name: 'C.EscapedFields' })
-	alias := types.Type(types.Alias{ name: 'Fields', base_type: c_struct })
-	pointer := types.Type(types.Pointer{ base_type: alias })
-	pointer_alias := types.Type(types.Alias{ name: 'FieldsPtr', base_type: pointer })
+	c_struct := types.Type(types.Struct{ name_id: flat.source_type_id('C.EscapedFields') })
+	alias := types.Type(types.Alias{ name_id: flat.source_type_id('Fields'), base_type: &types.Type(c_struct) })
+	pointer := types.Type(types.Pointer{ base_type: &types.Type(alias) })
+	pointer_alias := types.Type(types.Alias{ name_id: flat.source_type_id('FieldsPtr'), base_type: &types.Type(pointer) })
 	for owner in [c_struct, alias, pointer, pointer_alias] {
 		assert g.field_c_name(owner, '@type') == 'type'
 		assert g.field_c_name(owner, '@module') == 'module'
@@ -34,9 +34,9 @@ fn test_escaped_c_field_names_follow_the_resolved_owner() {
 
 fn test_escaped_v_field_names_keep_their_existing_spelling() {
 	g := FlatGen.new()
-	v_struct := types.Type(types.Struct{ name: 'EscapedFields' })
-	alias := types.Type(types.Alias{ name: 'Fields', base_type: v_struct })
-	pointer := types.Type(types.Pointer{ base_type: alias })
+	v_struct := types.Type(types.Struct{ name_id: flat.source_type_id('EscapedFields') })
+	alias := types.Type(types.Alias{ name_id: flat.source_type_id('Fields'), base_type: &types.Type(v_struct) })
+	pointer := types.Type(types.Pointer{ base_type: &types.Type(alias) })
 	for owner in [v_struct, alias, pointer] {
 		for field in ['@type', '@struct', '@select', '_v_type', 'type', 'index', 'select', 'malloc',
 			'exit', 'byte', 'int_str', 'complex'] {
@@ -50,20 +50,20 @@ fn test_escaped_c_initializer_field_names_resolve_aliases() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['C.EscapedFields'] = []types.StructField{}
 	tc.structs['EscapedFields'] = []types.StructField{}
-	tc.type_aliases['Fields'] = 'C.EscapedFields'
+	tc.type_aliases.set_id('Fields', flat.source_type_id('C.EscapedFields'))
 	tc.type_alias_modules['Fields'] = 'main'
 	tc.cur_module = 'main'
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	assert g.init_field_c_name('C.EscapedFields', '@type') == 'type'
-	assert g.init_field_c_name('Fields', '@type') == 'type'
-	assert g.init_field_c_name('EscapedFields', '@type') == '_v_type'
-	assert g.init_field_c_name('EscapedFields', '@struct') == '_v_struct'
+	assert g.init_field_c_name(flat.source_type_id('C.EscapedFields'), '@type') == 'type'
+	assert g.init_field_c_name(flat.source_type_id('Fields'), '@type') == 'type'
+	assert g.init_field_c_name(flat.source_type_id('EscapedFields'), '@type') == '_v_type'
+	assert g.init_field_c_name(flat.source_type_id('EscapedFields'), '@struct') == '_v_struct'
 	for field in ['index', 'select', 'malloc', 'exit', 'byte', 'int_str', 'v_index', 'complex'] {
-		assert g.init_field_c_name('C.EscapedFields', field) == field
-		assert g.init_field_c_name('Fields', field) == field
-		assert g.init_field_c_name('EscapedFields', field) == c_name(field)
+		assert g.init_field_c_name(flat.source_type_id('C.EscapedFields'), field) == field
+		assert g.init_field_c_name(flat.source_type_id('Fields'), field) == field
+		assert g.init_field_c_name(flat.source_type_id('EscapedFields'), field) == c_name(field)
 	}
 }
 
@@ -72,15 +72,15 @@ fn test_sizeof_c_field_names_follow_alias_pointer_owners() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['C.Record'] = [types.StructField{ name: 'index', typ: types.Type(types.u64_) }]
 	tc.structs['Record'] = tc.structs['C.Record']
-	tc.type_aliases['RecordAlias'] = 'C.Record'
-	tc.type_aliases['RecordPointer'] = '&RecordAlias'
+	tc.type_aliases.set_id('RecordAlias', flat.source_type_id('C.Record'))
+	tc.type_aliases.set_id('RecordPointer', flat.source_type_id('&RecordAlias'))
 	tc.type_alias_modules['RecordAlias'] = 'main'
 	tc.type_alias_modules['RecordPointer'] = 'main'
 	tc.cur_module = 'main'
 	tc.push_scope()
-	tc.cur_scope.insert('record', tc.parse_type('RecordAlias'))
-	tc.cur_scope.insert('pointer', tc.parse_type('RecordPointer'))
-	tc.cur_scope.insert('value', tc.parse_type('Record'))
+	tc.cur_scope.insert('record', tc.parse_type(flat.source_type_id('RecordAlias')))
+	tc.cur_scope.insert('pointer', tc.parse_type(flat.source_type_id('RecordPointer')))
+	tc.cur_scope.insert('value', tc.parse_type(flat.source_type_id('Record')))
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -94,21 +94,18 @@ fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
 	for owner_name in ['C.CallbackHolder', 'CallbackAlias', 'CallbackPointerAlias'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
-		callback_type := types.Type(types.FnType{
-			params:      [types.Type(types.int_)]
-			return_type: types.Type(types.int_)
-		})
+		callback_type := types.Type(tc.fn_type([types.Type(types.int_)], &types.Type(types.int_), []bool{}))
 		tc.cur_module = 'main'
 		tc.structs['C.CallbackHolder'] = [types.StructField{ name: 'type', typ: callback_type, is_mut: true }]
-		tc.type_aliases['CallbackAlias'] = 'C.CallbackHolder'
-		tc.type_aliases['CallbackPointerAlias'] = '&CallbackAlias'
+		tc.type_aliases.set_id('CallbackAlias', flat.source_type_id('C.CallbackHolder'))
+		tc.type_aliases.set_id('CallbackPointerAlias', flat.source_type_id('&CallbackAlias'))
 		tc.type_alias_modules['CallbackAlias'] = 'main'
 		tc.type_alias_modules['CallbackPointerAlias'] = 'main'
-		tc.struct_field_c_abi_fns['C.CallbackHolder\ntype'] = 'fn_ptr:int|int'
+		tc.struct_field_c_abi_fns[flat.source_type_id('C.CallbackHolder')]['type'] = 'fn_ptr:int|int'
 		tc.fn_param_types['callback'] = [types.Type(types.int_)]
 		tc.fn_ret_types['callback'] = types.Type(types.int_)
 		tc.push_scope()
-		tc.cur_scope.insert('holder', tc.parse_type(owner_name))
+		tc.cur_scope.insert('holder', tc.parse_type(flat.source_type_id(owner_name)))
 		mut g := FlatGen.new()
 		g.a = &a
 		g.tc = &tc
@@ -136,12 +133,12 @@ fn test_c_callback_metadata_fallback_keeps_v_field_identity() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['Holder'] = []types.StructField{}
 	tc.structs['C.Holder'] = []types.StructField{}
-	tc.struct_field_c_abi_fns['Holder\ntype'] = 'fn_ptr:int|int'
-	tc.struct_field_c_abi_fns['C.Holder\ntype'] = 'fn_ptr:int|int'
-	tc.struct_field_c_abi_fns['C.Holder\n@type'] = 'fn_ptr:int|void*'
+	tc.struct_field_c_abi_fns[flat.source_type_id('Holder')]['type'] = 'fn_ptr:int|int'
+	tc.struct_field_c_abi_fns[flat.source_type_id('C.Holder')]['type'] = 'fn_ptr:int|int'
+	tc.struct_field_c_abi_fns[flat.source_type_id('C.Holder')]['@type'] = 'fn_ptr:int|void*'
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	assert g.struct_field_c_abi_fn_ptr_type('Holder', '@type') == none
-	assert g.struct_field_c_abi_fn_ptr_type('C.Holder', '@type') or { '' } == 'fn_ptr:int|void*'
+	assert g.struct_field_c_abi_fn_ptr_type(flat.source_type_id('Holder'), '@type') == none
+	assert g.struct_field_c_abi_fn_ptr_type(flat.source_type_id('C.Holder'), '@type') or { '' } == 'fn_ptr:int|void*'
 }

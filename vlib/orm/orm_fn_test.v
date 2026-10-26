@@ -694,6 +694,155 @@ fn test_orm_table_gen_h2() {
 	assert query == 'CREATE TABLE IF NOT EXISTS "test_table" ("id" SERIAL NOT NULL, "name" TEXT NOT NULL, PRIMARY KEY("id"));\nCOMMENT ON TABLE "test_table" IS \'test table\';\nCOMMENT ON COLUMN "test_table"."name" IS \'display name\';\nCREATE INDEX "idx_test_table" ON "test_table" ("name");'
 }
 
+fn test_orm_select_gen_vsql_offset_and_fetch() {
+	cfg := orm.SelectConfig{
+		table:      orm.Table{
+			name: 'test_table'
+		}
+		fields:     get_select_fields()
+		has_limit:  true
+		has_order:  true
+		order:      'id'
+		order_type: .desc
+		has_offset: true
+		has_where:  true
+	}
+	where := orm.QueryData{
+		fields: ['abc']
+		kinds:  [.eq]
+	}
+	query := orm.orm_select_gen_with_dialect(.vsql, cfg, '"', true, ':p', 1, where)
+	assert query == 'SELECT "id", "test", "abc" FROM "test_table" WHERE "abc" = :p1 ORDER BY "id" DESC OFFSET :p3 ROWS FETCH FIRST :p2 ROWS ONLY;'
+	limit_only := orm.orm_select_gen_with_dialect(.vsql, orm.SelectConfig{
+		...cfg
+		has_offset: false
+	}, '"', true, ':p', 1, where)
+	assert limit_only == 'SELECT "id", "test", "abc" FROM "test_table" WHERE "abc" = :p1 ORDER BY "id" DESC FETCH FIRST :p2 ROWS ONLY;'
+	// Other dialects keep LIMIT/OFFSET, also through the dialect-aware entry point.
+	assert orm.orm_select_gen_with_dialect(.pg, cfg, '"', true, '$', 1, where) == orm.orm_select_gen(cfg,
+		'"', true, '$', 1, where)
+}
+
+fn test_orm_stmt_gen_vsql_update_quotes_infix_column() {
+	table := orm.Table{
+		name: 'products'
+	}
+	operand := orm.Primitive(2)
+	data := orm.QueryData{
+		fields: ['stock']
+		data:   [
+			orm.Primitive(orm.InfixType{
+				name:     'stock'
+				operator: .add
+				right:    &operand
+			}),
+		]
+	}
+	where := orm.QueryData{
+		fields: ['id']
+		kinds:  [.eq]
+	}
+	query, returned := orm.orm_stmt_gen(.vsql, table, '"', .update, true, ':p', 1, data, where)
+	// vsql folds an undelimited `stock` to `STOCK`, which is not the column.
+	assert query == 'UPDATE "products" SET "stock" = "stock" + :p1 WHERE "id" = :p2;'
+	expression := returned.data[0] as orm.InfixType
+	assert expression.right == &operand
+	assert *expression.right == orm.Primitive(2)
+	pg_query, _ := orm.orm_stmt_gen(.pg, table, '"', .update, true, '$', 1, data, where)
+	assert pg_query == 'UPDATE "products" SET "stock" = stock + $1 WHERE "id" = $2;'
+}
+
+fn vsql_test_fields(extra_attrs []VAttribute) []orm.TableField {
+	return [
+		orm.TableField{
+			name:  'id'
+			typ:   typeof[int]().idx
+			attrs: [
+				VAttribute{
+					name: 'primary'
+				},
+				VAttribute{
+					name:    'sql'
+					has_arg: true
+					arg:     'serial'
+					kind:    .plain
+				},
+			]
+		},
+		orm.TableField{
+			name:  'name'
+			typ:   typeof[string]().idx
+			attrs: extra_attrs
+		},
+	]
+}
+
+fn test_orm_table_gen_vsql() {
+	table := orm.Table{
+		name: 'test_table'
+	}
+	query := orm.orm_table_gen(.vsql, table, '"', true, 0, vsql_test_fields([
+		VAttribute{
+			name: 'index'
+		},
+	]), sql_type_from_v, false) or { panic(err) }
+	// No `IF NOT EXISTS`, and no `CREATE INDEX`, which vsql does not have.
+	assert query == 'CREATE TABLE "test_table" ("id" SERIAL NOT NULL, "name" TEXT NOT NULL, PRIMARY KEY("id"));'
+}
+
+fn test_orm_table_gen_vsql_rejects_unsupported_constraints() {
+	table := orm.Table{
+		name: 'test_table'
+	}
+	for attr in [
+		VAttribute{
+			name: 'unique'
+		},
+		VAttribute{
+			name:    'unique'
+			has_arg: true
+			arg:     'group'
+			kind:    .string
+		},
+		VAttribute{
+			name:    'default'
+			has_arg: true
+			arg:     "'x'"
+			kind:    .string
+		},
+		VAttribute{
+			name:    'references'
+			has_arg: true
+			arg:     'other'
+			kind:    .string
+		},
+	] {
+		orm.orm_table_gen(.vsql, table, '"', true, 0, vsql_test_fields([attr]), sql_type_from_v,
+			false) or {
+			assert err.msg().starts_with('orm: vsql does not support ')
+			continue
+		}
+		assert false, 'vsql accepted `${attr.name}`'
+	}
+	unique_key_table := orm.Table{
+		name:  'test_table'
+		attrs: [
+			VAttribute{
+				name:    'unique_key'
+				has_arg: true
+				arg:     'name'
+				kind:    .string
+			},
+		]
+	}
+	orm.orm_table_gen(.vsql, unique_key_table, '"', true, 0, vsql_test_fields([]),
+		sql_type_from_v, false) or {
+		assert err.msg() == 'orm: vsql does not support UNIQUE constraints in table `test_table`'
+		return
+	}
+	assert false, 'vsql accepted `unique_key`'
+}
+
 fn reset_tenant_filter() {
 	orm.configure_tenant_filter(enabled: false, field_name: 'tenant_id')
 	orm.clear_current_tenant_id()

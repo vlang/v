@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import v.gen.c.naming
 
 const fastc_module_type_prefix = 'v.gen.fastc.'
@@ -50,25 +51,25 @@ fn fastc_c_module_name(module_name string) string {
 // query, allocating each candidate's C spelling on the way; that scan dominated
 // selfhost code generation. The first key registered for a spelling wins,
 // matching the old first-match scan over the insertion-ordered key list.
-fn fastc_declared_type_c_names(declared_types map[string]bool) map[string]string {
-	mut index := map[string]string{}
+fn fastc_declared_type_c_names(declared_types map[string]bool) flat.TypeTextBindings {
+	mut index := flat.TypeTextBindings{}
 	for key in declared_types.keys() {
 		c_name := fastc_c_declared_type_name(key)
-		if c_name !in index {
-			index[c_name] = key
+		if !index.contains(c_name) {
+			index.set(c_name, key)
 		}
 	}
 	return index
 }
 
-fn fastc_declared_type_key_by_name(declared_types map[string]bool) map[string]string {
-	mut index := map[string]string{}
+fn fastc_declared_type_key_by_name(declared_types map[string]bool) flat.TypeTextBindings {
+	mut index := flat.TypeTextBindings{}
 	for key in declared_types.keys() {
 		name := key.all_after_last('.')
-		if name in index {
-			index[name] = ''
+		if index.contains(name) {
+			index.set_id(name, 0)
 		} else {
-			index[name] = key
+			index.set(name, key)
 		}
 	}
 	return index
@@ -90,7 +91,7 @@ fn fastc_constant_key(module_name string, name string) string {
 
 fn fastc_c_constant_name(module_name string, name string) string {
 	module_prefix := if module_name == '' { 'main' } else { module_name }
-	return '${module_prefix.replace('.', '__')}__${name}'
+	return '${fastc_c_module_name(module_prefix)}__${name}'
 }
 
 fn fastc_global_key(module_name string, name string) string {
@@ -121,10 +122,18 @@ fn (g &Parser) unqualified_function_key(name string) string {
 	}
 	local_key := fastc_function_key(g.module_name, name)
 	mut key := local_key
-	if local_key !in g.functions {
-		builtin_key := fastc_function_key('builtin', name)
-		if builtin_key in g.functions {
-			key = builtin_key
+	if local_key !in g.functions && local_key !in g.mono_functions {
+		if imported_module := g.imports[fastc_selective_import_key(name)] {
+			selected_key := fastc_function_key(g.resolve_module_alias(imported_module), name)
+			if selected_key in g.functions || selected_key in g.mono_functions {
+				key = selected_key
+			}
+		}
+		if key == local_key {
+			builtin_key := fastc_function_key('builtin', name)
+			if builtin_key in g.functions {
+				key = builtin_key
+			}
 		}
 	}
 	mut w := unsafe { &Parser(g) }
@@ -140,11 +149,18 @@ fn (g &Parser) c_function_name_for_key(key string) string {
 	return g.c_function_name_or(key, fastc_c_function_name_for_key(key))
 }
 
+// c_function_name_or resolves the C symbol of function `key` for both its
+// definition and every reference to it. The program's entry (`main` of the main
+// module, outside test builds where it is an ordinary function) is named by the
+// target: `wmain` on Windows, so a call to or function value of `main` reaches
+// the symbol the entry is defined as.
 fn (g &Parser) c_function_name_or(key string, conventional string) string {
 	if cached := g.c_function_name_memo[key] {
 		return cached
 	}
-	c_name := if compact_name := g.function_c_names[key] {
+	c_name := if key == 'main' && !g.prefs.is_test {
+		fastc_c_main_name(g.prefs)
+	} else if compact_name := g.function_c_names[key] {
 		compact_name
 	} else {
 		conventional
@@ -186,11 +202,20 @@ fn fastc_signature_c_name(key string, signature FastcFunctionSignature) string {
 	}
 }
 
+// fastc_c_function_name_for_key returns the C name of the function `key`. A
+// main-module function (an unqualified key) is named `main__<name>`, as V 0.5.2
+// named it. FastC's prelude includes many libc headers (on macOS, <sys/ioctl.h>
+// also declares the socket API), so a bare name such as `bind` could redeclare a
+// libc function, and naming.c_name only knows a few of those names. The entry
+// `main` and FastC's own `__vf_` names keep their spelling.
 fn fastc_c_function_name_for_key(key string) string {
 	if key.starts_with('C.') {
 		return naming.c_name(key)
 	}
 	sanitized := naming.sanitize(key)
+	if key != 'main' && !key.contains('.') && !sanitized.starts_with('__vf_') {
+		return 'main__${sanitized}'
+	}
 	c_name := naming.c_name(key)
 	if c_name != sanitized || sanitized.starts_with('v_fastc_') || sanitized == 'byte' {
 		return '__vf_function_${sanitized}'

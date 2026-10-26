@@ -37,20 +37,20 @@ fn test_pool_preserves_recursive_phase_stack_size() {
 
 fn test_worker_stack_size_env_override_and_clamp() {
 	os.unsetenv('V3_WORKER_STACK_MB')
-	assert worker_stack_size() == usize(compiler_worker_stack_size)
+	assert worker_stack_size() == uint(compiler_worker_stack_size)
 
 	os.setenv('V3_WORKER_STACK_MB', '16', true)
-	assert worker_stack_size() == usize(16 * 1024 * 1024)
+	assert worker_stack_size() == uint(16 * 1024 * 1024)
 
 	// Below the floor is clamped up to min_worker_stack_size.
 	os.setenv('V3_WORKER_STACK_MB', '1', true)
-	assert worker_stack_size() == usize(min_worker_stack_size)
+	assert worker_stack_size() == uint(min_worker_stack_size)
 
 	// Non-numeric / non-positive values fall back to the default.
 	os.setenv('V3_WORKER_STACK_MB', 'not-a-number', true)
-	assert worker_stack_size() == usize(compiler_worker_stack_size)
+	assert worker_stack_size() == uint(compiler_worker_stack_size)
 	os.setenv('V3_WORKER_STACK_MB', '0', true)
-	assert worker_stack_size() == usize(compiler_worker_stack_size)
+	assert worker_stack_size() == uint(compiler_worker_stack_size)
 
 	os.unsetenv('V3_WORKER_STACK_MB')
 }
@@ -405,4 +405,23 @@ fn test_pool_links_with_the_bundled_tcc_on_windows() {
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'pool closed'
+}
+
+fn test_fork_revival_precedes_temporary_phase_storage() {
+	$if prealloc {
+		mut pool := new(0)
+		pool.threads << WorkerThread{}
+		register_open_pool(pool)
+		note_fork()
+		scope := unsafe { prealloc_scope_begin() }
+		mut arg := PoolTestArg{}
+		tasks := [Task{ run: pool_test_task, arg: voidptr(&arg) }]
+		pool.run(tasks)
+		assert arg.value == 1
+		assert !unsafe { prealloc_scope_owns(scope, pool.jobs) }
+		assert !unsafe { prealloc_scope_owns(scope, pool.threads.data) }
+		unsafe { prealloc_scope_end(scope) }
+		assert !pool.has_current_worker()
+		pool.close()
+	}
 }

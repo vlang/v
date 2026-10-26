@@ -9,8 +9,56 @@ struct BorrowCandidate {
 	index   int
 	nparams int
 	name    string
+}
+
+struct BorrowParamRef {
+	decl  int
+	index int
+}
+
+// The AST stays immutable during summary preparation. One mask answers the
+// mention queries for all parameters of a function, including repeated queries
+// of nested calls and selectors. Exact node IDs make collisions harmless.
+struct BorrowParamMentions {
 mut:
-	borrows bool
+	decl        int = -1
+	params      []string
+	param       string
+	bit         u64
+	generation  u32
+	ids         [4096]int
+	masks       [4096]u64
+	generations [4096]u32
+	// record_consults makes fixed_array_borrow_summary list every summary it reads
+	// in `consulted` (prescan helpers only; see BorrowBodyResult).
+	record_consults bool
+	consulted       []BorrowParamRef
+}
+
+// BorrowBodyResult is one candidate's body analysis, made before the serial fixed
+// point runs against no proven summaries. `consulted` lists the summaries it read,
+// all of them unproven. While none of those is proven yet, the serial analysis
+// takes the same path and reaches the same outcome.
+struct BorrowBodyResult {
+mut:
+	ready        bool
+	borrows      bool
+	dependencies []BorrowParamRef
+	consulted    []BorrowParamRef
+}
+
+// matches_proven_summaries reports whether no summary the prescan read has been
+// proven since, so its outcome is the serial one.
+fn (r &BorrowBodyResult) matches_proven_summaries(t &Transformer) bool {
+	if !r.ready {
+		return false
+	}
+	for param in r.consulted {
+		if t.proven_fixed_array_borrow_summary(param) {
+			return false
+		}
+	}
+	return true
 }
 
 // Compute summaries before workers rewrite function bodies. A parameter borrows when no
@@ -23,15 +71,29 @@ mut:
 // only turn one into borrowing, so the iteration ends; a recursive call through a parameter not
 // yet known to borrow leaves it escaping. Plain pointer parameters (`data &u8`) are summarised
 // as well as fixed-array ones, because that is what an element address `&a[i]` is handed to.
+//
+// Monomorphization starts from the summaries the transform stage computed before lowering and
+// summarises only the declarations appended since; a call into an earlier declaration borrows
+// as its summary says.
 fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	if isnil(t.tc) {
 		return
 	}
+	t.borrow_param_mentions = &BorrowParamMentions{}
+	defer { t.borrow_param_mentions = unsafe { nil } }
 	t.ensure_call_param_types_decl_index()
+	mut summarised := 0
+	if t.borrow_params_after_transform && t.tc.transform_borrow_node_count <= t.a.nodes.len {
+		summarised = t.tc.transform_borrow_node_count
+		for decl, summary in t.tc.transform_borrow_params {
+			t.fixed_array_borrow_params[decl] = summary
+		}
+	}
+	t.fixed_array_borrow_node_count = t.a.nodes.len
 	mut candidates := []BorrowCandidate{}
 	mut seen_decls := map[int]bool{}
 	for name, decl in t.call_param_types_decl_index {
-		if seen_decls[decl.idx] {
+		if decl.idx < summarised || seen_decls[decl.idx] {
 			continue
 		}
 		seen_decls[decl.idx] = true
@@ -56,24 +118,115 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 			}
 		}
 	}
-	mut changed := true
-	for changed {
-		changed = false
-		for mut c in candidates {
-			if c.borrows || !t.fixed_array_param_body_borrows(c) {
+	mut candidate_index := map[int][]int{}
+	for i, c in candidates {
+		mut indexes := candidate_index[c.decl] or { []int{len: c.nparams, init: -1} }
+		indexes[c.index] = i
+		candidate_index[c.decl] = indexes
+	}
+	// Inspect each body once, recording the callee parameters it requires to
+	// borrow. Propagating proven summaries through reverse edges computes the
+	// same least fixed point without revisiting escaping bodies on every round.
+	mut dependents := [][]int{len: candidates.len}
+	mut remaining := []int{len: candidates.len, init: -1}
+	mut queue := []int{}
+	mut qi := 0
+	// Bodies are analysed up front on helper threads against no proven summaries.
+	// The fixed point below keeps its order and analyses a body again itself only
+	// when a summary that analysis read has been proven by now.
+	prescanned := t.prescan_fixed_array_borrow_bodies(candidates)
+	for i, c in candidates {
+		ready := i < prescanned.results.len && prescanned.results[i].matches_proven_summaries(t)
+		mut scanned_dependencies := []BorrowParamRef{}
+		borrows := if ready {
+			prescanned.results[i].borrows
+		} else {
+			t.fixed_array_param_body_borrows(c, mut scanned_dependencies)
+		}
+		if !borrows {
+			continue
+		}
+		dependencies := if ready {
+			prescanned.results[i].dependencies
+		} else {
+			scanned_dependencies
+		}
+		remaining[i] = 0
+		for dependency in dependencies {
+			if dependency.decl < summarised {
+				if !t.fixed_array_borrow_summary(dependency) {
+					remaining[i] = -1
+					break
+				}
 				continue
 			}
-			c.borrows = true
-			mut summary := t.fixed_array_borrow_params[c.decl] or { []bool{len: c.nparams} }
-			summary[c.index] = true
-			t.fixed_array_borrow_params[c.decl] = summary
-			changed = true
+			indexes := candidate_index[dependency.decl] or { []int{} }
+			if dependency.index < 0 || dependency.index >= indexes.len
+				|| indexes[dependency.index] < 0 {
+				remaining[i] = -1
+				break
+			}
+			dependents[indexes[dependency.index]] << i
+			remaining[i]++
 		}
+		if remaining[i] == 0 {
+			queue << i
+		}
+		for qi < queue.len {
+			proven_idx := queue[qi]
+			qi++
+			proven := candidates[proven_idx]
+			mut summary := t.fixed_array_borrow_params[proven.decl] or { []bool{len: proven.nparams} }
+			summary[proven.index] = true
+			t.fixed_array_borrow_params[proven.decl] = summary
+			for dependent in dependents[proven_idx] {
+				if remaining[dependent] <= 0 {
+					continue
+				}
+				remaining[dependent]--
+				if remaining[dependent] == 0 {
+					queue << dependent
+				}
+			}
+		}
+	}
+	prescanned.release()
+	t.prepare_call_provenance_borrow_params(summarised)
+}
+
+// BorrowPrescan holds the up-front body analyses and the arenas that own them.
+struct BorrowPrescan {
+mut:
+	results []BorrowBodyResult
+	scopes  []voidptr
+}
+
+// release frees the helper arenas that hold the prescanned dependency lists.
+fn (p &BorrowPrescan) release() {
+	for scope in p.scopes {
+		transform_worker_scope_free(scope)
 	}
 }
 
-fn (mut t Transformer) fixed_array_param_body_borrows(c BorrowCandidate) bool {
+// prescan_fixed_array_borrow_body analyses one candidate on a helper transformer
+// that sees no proven summaries, and records which summaries the analysis read.
+fn (mut t Transformer) prescan_fixed_array_borrow_body(c BorrowCandidate) BorrowBodyResult {
+	mut memo := t.borrow_param_mentions
+	memo.record_consults = true
+	memo.consulted.clear()
+	mut dependencies := []BorrowParamRef{}
+	borrows := t.fixed_array_param_body_borrows(c, mut dependencies)
+	return BorrowBodyResult{
+		ready:        true
+		borrows:      borrows
+		dependencies: dependencies
+		consulted:    memo.consulted.clone()
+	}
+}
+
+fn (mut t Transformer) fixed_array_param_body_borrows(c BorrowCandidate, mut dependencies []BorrowParamRef) bool {
 	fn_node := t.a.node(flat.NodeId(c.decl))
+	t.begin_borrow_param_mentions(c, fn_node)
 	mut has_body := false
 	for j in 0 .. fn_node.children_count {
 		body_id := t.a.child(fn_node, j)
@@ -81,29 +234,106 @@ fn (mut t Transformer) fixed_array_param_body_borrows(c BorrowCandidate) bool {
 			continue
 		}
 		has_body = true
-		if !t.fixed_array_param_use_borrows(body_id, c.name, false) {
+		if !t.fixed_array_param_use_borrows(body_id, c.name, false, mut dependencies) {
 			return false
 		}
 	}
 	return has_body
 }
 
+fn (mut t Transformer) begin_borrow_param_mentions(c BorrowCandidate, node &flat.Node) {
+	if isnil(t.borrow_param_mentions) {
+		return
+	}
+	mut memo := t.borrow_param_mentions
+	if memo.decl != c.decl {
+		memo.decl = c.decl
+		memo.params.clear()
+		memo.generation++
+		if memo.generation == 0 {
+			memo.generations = [4096]u32{}
+			memo.generation = 1
+		}
+		for i in 0 .. node.children_count {
+			param := t.a.child_node(node, i)
+			if param.kind == .param {
+				memo.params << param.value
+			}
+		}
+	}
+	memo.param = c.name
+	memo.bit = 0
+	if memo.params.len <= 64 {
+		for i, name in memo.params {
+			if name == c.name {
+				memo.bit |= u64(1) << i
+			}
+		}
+	}
+}
+
+fn (t &Transformer) fixed_array_mentioned_params(id flat.NodeId) u64 {
+	idx := int(id)
+	if idx < 0 || idx >= t.a.nodes.len {
+		return 0
+	}
+	mut memo := t.borrow_param_mentions
+	slot := idx & 4095
+	if memo.generations[slot] == memo.generation && memo.ids[slot] == idx {
+		return memo.masks[slot]
+	}
+	node := t.a.node(id)
+	mut mask := u64(0)
+	if node.kind == .ident {
+		for i, param in memo.params {
+			if node.value == param {
+				mask |= u64(1) << i
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		mask |= t.fixed_array_mentioned_params(t.a.child(node, i))
+	}
+	memo.ids[slot] = idx
+	memo.masks[slot] = mask
+	memo.generations[slot] = memo.generation
+	return mask
+}
+
 fn (t &Transformer) fixed_array_call_param_borrows(name string, call flat.Node, index int) bool {
+	param := t.fixed_array_call_param_ref(name, call, index) or { return false }
+	return t.fixed_array_borrow_summary(param)
+}
+
+fn (t &Transformer) fixed_array_borrow_summary(param BorrowParamRef) bool {
+	if !isnil(t.borrow_param_mentions) && t.borrow_param_mentions.record_consults {
+		mut memo := t.borrow_param_mentions
+		memo.consulted << param
+	}
+	return t.proven_fixed_array_borrow_summary(param)
+}
+
+// proven_fixed_array_borrow_summary reports whether `param` is proven to borrow.
+fn (t &Transformer) proven_fixed_array_borrow_summary(param BorrowParamRef) bool {
+	summary := t.fixed_array_borrow_params[param.decl] or { return false }
+	return param.index >= 0 && param.index < summary.len && summary[param.index]
+}
+
+fn (t &Transformer) fixed_array_call_param_ref(name string, call flat.Node, index int) ?BorrowParamRef {
 	callee_id := t.a.child(&call, 0)
 	callee := t.a.node(callee_id)
 	if callee.kind == .ident {
-		if t.var_type(callee.value).len > 0 {
-			return false
+		if flat.source_type_name(t.var_type(callee.value)).len > 0 {
+			return none
 		}
 		// Escape prescanning precedes local type registration. Resolve lexical
 		// bindings before trusting a same-named function declaration's summary.
 		if _ := t.local_binding_before(callee.value, callee_id) {
-			return false
+			return none
 		}
 	}
-	decl := t.call_param_types_decl_index[name] or { return false }
-	summary := t.fixed_array_borrow_params[decl.idx] or { return false }
-	return index >= 0 && index < summary.len && summary[index]
+	decl := t.call_param_types_decl_index[name] or { return none }
+	return BorrowParamRef{ decl: decl.idx, index: index }
 }
 
 // fixed_array_borrow_type is an expression's type, resolved on demand when the checker has not
@@ -122,6 +352,10 @@ fn (t &Transformer) fixed_array_borrow_type(id flat.NodeId) ?types.Type {
 }
 
 fn (t &Transformer) fixed_array_expr_mentions_param(id flat.NodeId, param string) bool {
+	if !isnil(t.borrow_param_mentions) && t.borrow_param_mentions.bit != 0
+		&& t.borrow_param_mentions.param == param {
+		return t.fixed_array_mentioned_params(id) & t.borrow_param_mentions.bit != 0
+	}
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -205,7 +439,7 @@ fn (t &Transformer) fixed_array_arg_hands_param_storage(arg_id flat.NodeId, para
 // fixed_array_call_uses_borrow: every use of `param` in a call borrows — the parameter or
 // storage belonging to it handed straight to a callee parameter that borrows (the receiver of a
 // method call included), or an ordinary scalar use inside an argument.
-fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.Node, param string) bool {
+fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.Node, param string, mut dependencies []BorrowParamRef) bool {
 	if node.children_count == 0 {
 		return false
 	}
@@ -217,21 +451,35 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 	if t.fixed_array_expr_mentions_param(callee_id, param) {
 		receiver_borrows := offset == 1 && callee.kind == .selector && callee.children_count > 0
 			&& t.fixed_array_arg_hands_param_storage(t.a.child(callee, 0), param)
-			&& t.fixed_array_storage_arg_borrows(name, node, params, 0, t.a.child(callee, 0))
-		if !receiver_borrows && !t.fixed_array_param_use_borrows(callee_id, param, false) {
-			return false
+			&& t.fixed_array_storage_arg_borrows(name, node, params, 0, t.a.child(callee, 0), mut dependencies)
+		if !receiver_borrows {
+			if !t.fixed_array_param_use_borrows(callee_id, param, false, mut dependencies) {
+				return false
+			}
 		}
+		// A method callee has a function type, so it cannot provide the scalar-read
+		// alternative used for ordinary arguments below. Keep its receiver dependency.
 	}
 	for i in 1 .. node.children_count {
 		arg_id := t.a.child(&node, i)
 		if !t.fixed_array_expr_mentions_param(arg_id, param) {
 			continue
 		}
+		dependency_start := dependencies.len
 		if t.fixed_array_arg_hands_param_storage(arg_id, param)
-			&& t.fixed_array_storage_arg_borrows(name, node, params, i - 1 + offset, arg_id) {
+			&& t.fixed_array_storage_arg_borrows(name, node, params, i - 1 + offset, arg_id, mut dependencies) {
+			// A scalar use can already borrow independently of the callee's
+			// summary. Keep that alternative when the storage path is provisional.
+			if dependencies.len > dependency_start {
+				mut ordinary_dependencies := []BorrowParamRef{}
+				if t.fixed_array_param_use_borrows(arg_id, param, false, mut ordinary_dependencies) {
+					dependencies.trim(dependency_start)
+					dependencies << ordinary_dependencies
+				}
+			}
 			continue
 		}
-		if !t.fixed_array_param_use_borrows(arg_id, param, false) {
+		if !t.fixed_array_param_use_borrows(arg_id, param, false, mut dependencies) {
 			return false
 		}
 	}
@@ -243,7 +491,7 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 // (an explicit `&` never is, and a voidptr, pointer or interface parameter takes the address), and
 // passed by reference the callee's parameter must borrow. A callee whose parameters are unknown
 // borrows nothing.
-fn (t &Transformer) fixed_array_storage_arg_borrows(name string, call flat.Node, params []types.Type, index int, arg_id flat.NodeId) bool {
+fn (t &Transformer) fixed_array_storage_arg_borrows(name string, call flat.Node, params []types.Type, index int, arg_id flat.NodeId, mut dependencies []BorrowParamRef) bool {
 	if index < 0 || index >= params.len {
 		return false
 	}
@@ -255,22 +503,34 @@ fn (t &Transformer) fixed_array_storage_arg_borrows(name string, call flat.Node,
 	if !explicit_address && !arg.is_mut && copied {
 		return true
 	}
-	return t.fixed_array_call_param_borrows(name, call, index)
+	if t.fixed_array_call_param_borrows(name, call, index) {
+		return true
+	}
+	dependency := t.fixed_array_call_param_ref(name, call, index) or { return false }
+	dependencies << dependency
+	return true
 }
 
-fn (mut t Transformer) fixed_array_param_use_borrows(id flat.NodeId, param string, storage_use bool) bool {
-	if !t.fixed_array_expr_mentions_param(id, param) {
+fn (mut t Transformer) fixed_array_param_use_borrows(id flat.NodeId, param string, storage_use bool, mut dependencies []BorrowParamRef) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return true
 	}
 	node := t.a.node(id)
 	if node.kind == .ident {
-		return storage_use
+		return node.value != param || storage_use
+	}
+	// Ordinary statements just combine their children's uses. Checking whether
+	// every enclosing block mentions the parameter first repeats the same walk
+	// at each nesting level. Only special uses need that guard.
+	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr, .call, .prefix, .selector, .index]
+		&& !t.fixed_array_expr_mentions_param(id, param) {
+		return true
 	}
 	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr] {
 		return false
 	}
 	if node.kind == .call {
-		return t.fixed_array_call_uses_borrow(id, node, param)
+		return t.fixed_array_call_uses_borrow(id, node, param, mut dependencies)
 	}
 	// `*p`: a scalar read, or a write, through a pointer parameter
 	if node.kind == .prefix && node.op == .mul && node.children_count == 1 {
@@ -310,11 +570,11 @@ fn (mut t Transformer) fixed_array_param_use_borrows(id flat.NodeId, param strin
 				return false
 			}
 		}
-		if !t.fixed_array_param_use_borrows(t.a.child(node, 0), param, true) {
+		if !t.fixed_array_param_use_borrows(t.a.child(node, 0), param, true, mut dependencies) {
 			return false
 		}
 		for i in 1 .. node.children_count {
-			if !t.fixed_array_param_use_borrows(t.a.child(node, i), param, false) {
+			if !t.fixed_array_param_use_borrows(t.a.child(node, i), param, false, mut dependencies) {
 				return false
 			}
 		}
@@ -326,7 +586,7 @@ fn (mut t Transformer) fixed_array_param_use_borrows(id flat.NodeId, param strin
 	for i in 0 .. node.children_count {
 		writes_storage := i == 0 && ((node.kind in [.assign, .selector_assign, .index_assign])
 			|| (node.kind == .postfix && node.op in [.inc, .dec]))
-		if !t.fixed_array_param_use_borrows(t.a.child(node, i), param, writes_storage) {
+		if !t.fixed_array_param_use_borrows(t.a.child(node, i), param, writes_storage, mut dependencies) {
 			return false
 		}
 	}

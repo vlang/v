@@ -56,18 +56,26 @@ fn main() {
 	assert run.output.trim_space() == '12'
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('intdirect[4]={0};')
-		|| compact.contains('intdirect[4];memmove(direct,(int[4]){0},sizeof(direct));')
-		|| compact.contains('intdirect[4];memmove(direct,(int[4]){0,0,0,0},sizeof(direct));'), generated
+	// V `int` is `i64` on 64-bit targets.
+	assert compact.contains('i64direct[4]={0};')
+		|| compact.contains('i64direct[4];memmove(direct,(i64[4]){0},sizeof(direct));')
+		|| compact.contains('i64direct[4];memmove(direct,(i64[4]){0,0,0,0},sizeof(direct));'), generated
 
-	assert compact.contains('intwrapped[4]={0};') || compact.contains('intwrapped[4]={0,0,0,0};'), generated
+	assert compact.contains('i64wrapped[4]={0};') || compact.contains('i64wrapped[4]={0,0,0,0};'), generated
 	assert compact.contains('void*handles[32]={0};')
 		|| compact.contains('void*handles[32]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};'), generated
 
-	assert compact.contains('intnested[2][3]={0};')
-		|| compact.contains('intnested[2][3]={{0,0,0},{0,0,0}};'), generated
-	assert !generated.contains(' = (Array_fixed_'), generated
-	assert !generated.contains('Array_fixed_voidptr_32 handles'), generated
+	assert compact.contains('i64nested[2][3]={0};')
+		|| compact.contains('i64nested[2][3]={{0,0,0},{0,0,0}};'), generated
+	// Check only `local_score`: platform helpers linked from vlib (such as the glibc
+	// backtrace reader) may legitimately keep a fixed array on the heap.
+	body_start := generated.index('local_score(void) {') or {
+		panic('missing local_score definition:\n${generated}')
+	}
+	body_end := generated.index_after('\n}\n', body_start) or { generated.len }
+	body := generated[body_start..body_end]
+	assert !body.contains(' = (Array_fixed_'), body
+	assert !body.contains('Array_fixed_voidptr_32 handles'), body
 }
 
 fn test_struct_field_rejects_pointer_to_fixed_array_alias() {

@@ -32,28 +32,59 @@ import v.types
 // - a module that a library file belongs to or imports: that code can name the
 //   program's generics.
 //
-// V_CHECK_LIBRARY_BODIES=1 keeps every body, as before. V_DIAGNOSTICS_TRACE tells
+// V_CHECK_LIBRARY_BODIES=all keeps every body, as before. V_DIAGNOSTICS_TRACE tells
 // how many instances were cloned without their bodies.
+//
+// When the check is asked to (TypeChecker.check_program_lib_instances), an
+// instance that the program's own code asks for, as `arrays.sum(foos)` asks for
+// `arrays.sum[Foo]`, keeps its body too, and is checked as an instance of the
+// program's generics is (see TypeChecker.check_concrete_instance_members): its
+// types are the program's choice. Its body is not lowered either, so the
+// instances that it asks for in turn are the library's, and are not checked.
 struct LibraryBodies {
 mut:
-	ready     bool
-	keep_all  string              // why every library instance keeps its body, if one does
-	receivers map[string]bool     // program types with a method that has type parameters of its own
-	methods   map[string][]string // a type -> the keys of its methods
-	harmless  map[string]bool     // types that reach none of the above
+	ready         bool
+	keep_all      string           // why every library instance keeps its body, if one does
+	receivers     map[u32]bool     // program types with a method that has type parameters of its own
+	methods       map[u32][]string // a type -> the keys of its methods
+	harmless      map[u32]bool     // types that reach none of the above
+	program_specs map[string]bool  // the keys of the library instances that the program's code asks for
+	request_file  string           // the file of the call that asks for an instance, when the scan knows it
+}
+
+// note_library_instance_request remembers, in a check of the instances that the
+// program asks for, that the instance `key` of the library generic `decl` is
+// asked for by the program's own code (see LibraryBodies): the call that asks
+// for it is in `request_file`, or, when the scan does not tell, in the file of
+// the body that is being lowered.
+fn (mut t Transformer) note_library_instance_request(decl GenericFnDecl, key string) {
+	if isnil(t.tc) || !t.tc.check_concrete_generic_bodies || !t.tc.check_program_lib_instances
+		|| decl.file in t.tc.diagnostic_files {
+		return
+	}
+	request_file := if t.library_bodies.request_file != '' {
+		t.library_bodies.request_file
+	} else {
+		t.cur_file
+	}
+	if request_file in t.tc.diagnostic_files {
+		t.library_bodies.program_specs[key] = true
+	}
 }
 
 // library_instance_needs_body reports whether a check clones the body of an
 // instance of a library generic for the type arguments `args`.
-fn (mut t Transformer) library_instance_needs_body(args []string) bool {
+fn (mut t Transformer) library_instance_needs_body(args_ids []u32) bool {
 	if !t.library_bodies.ready {
 		t.prepare_library_bodies()
 	}
 	if t.library_bodies.keep_all != '' {
 		return true
 	}
-	for arg in args {
-		if t.library_type_reaches_program(arg) {
+	for arg_source_id in args_ids {
+		arg_source_id_2 := arg_source_id
+
+		if t.library_type_reaches_program(arg_source_id_2) {
 			return true
 		}
 	}
@@ -62,8 +93,8 @@ fn (mut t Transformer) library_instance_needs_body(args []string) bool {
 
 fn (mut t Transformer) prepare_library_bodies() {
 	t.library_bodies.ready = true
-	if os.getenv('V_CHECK_LIBRARY_BODIES') == '1' {
-		t.keep_library_bodies('V_CHECK_LIBRARY_BODIES=1 asks for them')
+	if os.getenv('V_CHECK_LIBRARY_BODIES') == 'all' {
+		t.keep_library_bodies('V_CHECK_LIBRARY_BODIES=all asks for them')
 		return
 	}
 	for _, decl in t.cached_generic_fn_decls() {
@@ -75,7 +106,7 @@ fn (mut t Transformer) prepare_library_bodies() {
 			return
 		}
 		receiver := generic_fn_decl_base_value(decl.node.value).all_before_last('.').trim_left('&')
-		t.library_bodies.receivers[library_type_key(receiver, decl.module)] = true
+		t.library_bodies.receivers[library_type_key(flat.source_type_id(receiver), decl.module)] = true
 	}
 	if reason := t.program_comptime_for() {
 		t.keep_library_bodies(reason)
@@ -91,9 +122,9 @@ fn (mut t Transformer) prepare_library_bodies() {
 			continue
 		}
 		receiver := key[..dot]
-		if receiver in t.tc.structs || receiver in t.tc.sum_types || receiver in t.tc.type_aliases
+		if receiver in t.tc.structs || t.tc.sum_types.contains(receiver) || t.tc.type_aliases.contains(receiver)
 			|| receiver in t.tc.enum_names {
-			t.library_bodies.methods[receiver] << key
+			t.library_bodies.methods[flat.source_type_id(receiver)] << key
 		}
 	}
 }
@@ -113,7 +144,7 @@ fn (mut t Transformer) generic_decl_receiver_is_generic(decl GenericFnDecl) bool
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind == .param {
-			t.collect_generic_param_names_from_type(child.typ, decl.module, mut params)
+			t.collect_generic_param_names_from_type(child.typ_text(), decl.module, mut params)
 			break
 		}
 	}
@@ -122,11 +153,11 @@ fn (mut t Transformer) generic_decl_receiver_is_generic(decl GenericFnDecl) bool
 
 // library_type_key spells the type `name` declared in `module_name` as the
 // checker's maps key it: bare in `main` and `builtin`, qualified elsewhere.
-fn library_type_key(name string, module_name string) string {
-	if module_name in ['', 'main', 'builtin'] || name.contains('.') {
-		return name
+fn library_type_key(name_id u32, module_name string) u32 {
+	if module_name in ['', 'main', 'builtin'] || flat.source_type_shape(name_id).has(.dotted) {
+		return name_id
 	}
-	return '${module_name}.${name}'
+	return flat.source_type_id('${module_name}.${flat.source_type_name(name_id)}')
 }
 
 // program_comptime_for tells where a function of the program without type
@@ -202,118 +233,106 @@ fn (t &Transformer) library_file_of_program_module() ?string {
 
 // library_type_reaches_program reports whether a library body given a value of
 // the type `typ` can reach, through it, what keeps the body (see LibraryBodies).
-fn (mut t Transformer) library_type_reaches_program(typ string) bool {
-	root := library_type_text(typ)
-	if t.library_bodies.harmless[root] {
-		return false
-	}
-	mut seen := map[string]bool{}
+fn (mut t Transformer) library_type_reaches_program(typ_id u32) bool {
+	root := library_type_text(typ_id)
+	if t.library_bodies.harmless[root] { return false }
+	mut seen := map[u32]bool{}
 	mut pending := [root]
 	for pending.len > 0 {
 		text := pending.pop()
-		if text.len == 0 || seen[text] || t.library_bodies.harmless[text] {
-			continue
-		}
+		if text == 0 || seen[text] || t.library_bodies.harmless[text] { continue }
 		seen[text] = true
 		pending << t.library_type_parts(text) or { return true }
 	}
-	for text, _ in seen {
-		t.library_bodies.harmless[text] = true
-	}
+	for text, _ in seen { t.library_bodies.harmless[text] = true }
 	return false
 }
 
-fn library_type_text(typ string) string {
-	text := typ.trim_space()
+fn library_type_text(typ_id u32) u32 {
+	typ := flat.source_type_name(typ_id)
+	text := library_type_text_bytes(typ)
+	return if text == typ { typ_id } else { flat.source_type_id(text) }
+}
+
+fn library_type_text_bytes(typ string) string {
+	text := trimmed_transform_text(typ)
 	return if text.starts_with('main.') { text['main.'.len..] } else { text }
 }
 
 // library_type_parts returns the types that a value of the type `text` gives a
 // library body, or none when the type keeps the body (see LibraryBodies) or is
 // not known here.
-fn (mut t Transformer) library_type_parts(text string) ?[]string {
+fn (mut t Transformer) library_type_parts(text_id u32) ?[]u32 {
+	text := flat.source_type_name(text_id)
 	for prefix in ['mut ', 'shared ', 'atomic ', '...', '&', '?', '!', '[]', 'chan ', 'thread '] {
 		if text.starts_with(prefix) {
-			return [library_type_text(text[prefix.len..])]
+			return [flat.source_type_id(library_type_text_bytes(text[prefix.len..]))]
 		}
 	}
 	if text.starts_with('map[') {
 		end := generic_matching_bracket(text, 3)
-		if end + 1 >= text.len {
-			return none
-		}
-		return [library_type_text(text[4..end]), library_type_text(text[end + 1..])]
+		if end + 1 >= text.len { return none }
+		return [flat.source_type_id(library_type_text_bytes(text[4..end])),
+			flat.source_type_id(library_type_text_bytes(text[end + 1..]))]
 	}
 	if text.starts_with('[') {
 		end := generic_matching_bracket(text, 0)
-		if end + 1 >= text.len {
-			return none
-		}
-		return [library_type_text(text[end + 1..])]
+		if end + 1 >= text.len { return none }
+		return [flat.source_type_id(library_type_text_bytes(text[end + 1..]))]
 	}
 	if text.starts_with('fn(') || text.starts_with('fn (') {
 		params, ret := fn_type_text_parts(text) or { return none }
-		mut parts := params.map(library_type_text(generic_fn_type_param_payload(it)))
-		if ret.len > 0 {
-			parts << library_type_text(ret)
-		}
+		mut parts := params.map(flat.source_type_id(library_type_text_bytes(generic_fn_type_param_payload(it))))
+		if ret.len > 0 { parts << flat.source_type_id(library_type_text_bytes(ret)) }
 		return parts
 	}
 	if text.starts_with('(') && text.ends_with(')') {
-		return split_generic_args(text[1..text.len - 1]).map(library_type_text(it))
+		return split_generic_args(text[1..text.len - 1]).map(flat.source_type_id(library_type_text_bytes(it)))
 	}
 	if text.starts_with('C.') || text.starts_with('JS.') || types.is_builtin_type_name(text) {
-		return []string{}
+		return []u32{}
 	}
 	base, args, is_app := generic_app_parts(text)
 	name := if is_app { base } else { text }
+	name_id := if is_app { flat.source_type_id(base) } else { text_id }
 	if name in ['IError', 'builtin.IError'] || name in t.tc.interface_names
-		|| name in t.library_bodies.receivers {
+		|| name_id in t.library_bodies.receivers {
 		return none
 	}
-	mut parts := []string{}
+	mut parts := []u32{}
 	if is_app {
 		// A generic type of the program keeps the body; of a library one, what it
 		// holds of the program comes in through its type arguments.
 		file := t.tc.struct_files[base] or { return none }
-		if file in t.tc.diagnostic_files {
-			return none
-		}
-		for arg in args {
-			parts << library_type_text(arg)
-		}
+		if file in t.tc.diagnostic_files { return none }
+		for arg in args { parts << flat.source_type_id(library_type_text_bytes(arg)) }
 	}
 	if fields := t.tc.structs[text] {
-		for field in fields {
-			parts << library_type_text(field.typ.name())
-		}
+		for field in fields { parts << library_type_text(field.typ.source_type_id()) }
 	} else if is_app {
 		fields := t.tc.structs[base] or { return none }
 		params := t.tc.struct_generic_params[base] or { []string{} }
+		args_ids := flat.TypeTextList.from_names(args).ids
 		for field in fields {
-			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.name(),
-				args, params))
+			parts << flat.source_type_id(library_type_text_bytes(substitute_generic_type_text_with_params_bytes(field.typ.name(),
+				args_ids, params)))
 		}
-	} else if variants := t.tc.sum_types[name] {
-		for variant in variants {
-			parts << library_type_text(variant)
+	} else if variants_source_ids := t.tc.sum_types.type_ids(name) {
+		for variant_source_id in variants_source_ids {
+			parts << library_type_text(variant_source_id)
 		}
-	} else if target := t.tc.type_aliases[name] {
-		parts << library_type_text(target)
+	} else if target_source_id := t.tc.type_aliases.type_id(name) {
+		parts << library_type_text(target_source_id)
 	} else if name !in t.tc.enum_names {
 		return none
 	}
-	for key in t.library_bodies.methods[name] {
+	for key in t.library_bodies.methods[name_id] {
 		// What a method with type parameters of its own returns depends on the
 		// types a library body passes it, which come in through its arguments.
-		if key in t.tc.fn_generic_params {
-			continue
-		}
-		if ret := t.tc.fn_ret_types[key] {
-			parts << library_type_text(ret.name())
-		}
+		if key in t.tc.fn_generic_params { continue }
+		if ret := t.tc.fn_ret_types[key] { parts << library_type_text(ret.source_type_id()) }
 		for param in t.tc.fn_param_types[key] or { []types.Type{} } {
-			parts << library_type_text(param.name())
+			parts << library_type_text(param.source_type_id())
 		}
 	}
 	return parts

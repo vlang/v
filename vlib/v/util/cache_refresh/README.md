@@ -2,6 +2,10 @@
 
 This compiler utility records how cached modules from a checkout's vlib were built,
 so `v up` can refresh them after replacing the compiler or updating their sources.
+`v up` selects only TinyCC configurations from this inventory, including its recorded
+normal/production and program/test modes. Other compilers refresh their caches on the next build.
+Only changed generated code or compilation inputs require another C compilation;
+unchanged module objects are reused without cache creation messages.
 
 - `root_dir(vroot, vexe)` locates the checkout's cache and respects `V3CACHE` and test isolation.
   Isolated cache lookup uses the supplied V compiler executable, rather than the helper process.
@@ -25,7 +29,10 @@ so `v up` can refresh them after replacing the compiler or updating their source
   Unchanged entries retain all recorded compiler, production, and test variants.
   Absolute `-file-list` files and directories accompany live entries. Directory operands
   recursively include their current sources, so newly added files are included during refresh.
-  Otherwise it compiles a temporary importer with the recorded project directives.
+  Otherwise it prepares a temporary importer with the recorded project directives.
+  Both paths stop after validating and rebuilding module objects, before compiling
+  program objects, building development libraries, or linking an executable.
+  Refreshed objects are validated against the published module interfaces before returning.
   It uses the compiler's default caching mode and preserves build modes,
   resolved compiler commands, and absolute search paths.
   A recorded working directory keeps relative C compilation inputs valid.
@@ -33,13 +40,31 @@ so `v up` can refresh them after replacing the compiler or updating their source
   Effective `-run-only` selectors and assertion display modes preserve test configurations.
   It excludes linker-only flags, including operands embedded in `-cflags`.
   It validates dependencies, reuses unchanged objects, and
-  reports newly cached modules on stdout. It never runs the generated programs.
-  Each refresh build announces its record index and total, compiler flags, production mode,
-  and program/test mode before its module notices. Indices can jump as equivalent builds
-  and unavailable inputs are skipped. A final summary counts the distinct builds checked.
+  reports modules compiled into new cached objects on stdout. It never runs the generated programs.
+  Different configurations can compile the same module separately.
+  By default, a build announces its compiler flags, production mode, and program/test mode
+  only before its first output. Successful cache checks that produce no output remain quiet.
+  A final summary counts the distinct builds checked, including reused configurations,
+  only when a child produced output. The optional `RefreshOptions{verbose: true}` argument
+  announces every checked build's record index and total and prints the summary for silent builds.
+  `v up -v` enables this verbose progress. Indices can jump as equivalent builds and
+  unavailable inputs are skipped.
   Removed modules and records with vanished working directories, required compile inputs,
   listed files or directories, or unavailable C compilers are skipped.
-  A compilation failure is returned to `v up`.
+  A compilation failure is returned to `v up`, including TinyCC module object failures.
+  Refresh does not hide an object failure by retrying a whole program without caching.
+  Child output is streamed while refresh runs. A disk-full error stops the remaining builds
+  immediately and asks for free space before another update.
+
+After a compiler update, module interfaces are regenerated and validated with the new compiler.
+Matching compiled objects can be shared across compiler configurations when their generated C,
+C compiler, compilation flags, working directory, and native dependency fingerprints match.
+The C compiler identity is independent of the V build, and unused generated string literals
+are removed from module C before comparison. Referenced version literals still require a rebuild.
+The shared object and C source are checked before reuse and linked into the new configuration
+without another C compilation. Changed generated code, flags, or native inputs require a new object.
+This preserves compiler validation while avoiding repeated compilation and duplicate object data.
+Older caches populate the shared index when their objects are next compiled.
 
 Inventory records use length-prefixed arguments and working directories to preserve
 quoting, spaces, and newlines. Records without a working directory remain readable.

@@ -1,5 +1,6 @@
 module c
 
+import v.gen.c.naming { sum_field_name }
 import v.flat
 import v.types
 
@@ -54,10 +55,15 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 				then_scope_drops_consumed = true
 			}
 		}
-		g.gen_defers_from(defer_start)
-		if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
-			g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
-			g.gen_scope_ownership_drops()
+		if !g.stmt_tail_exits(then_id) {
+			g.gen_defers_from(defer_start)
+			if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
+				g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
+				g.gen_scope_ownership_drops()
+			}
+		} else if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
+			// Keep checker cleanup-site indices aligned without emitting unreachable code.
+			g.take_scope_ownership_drop_count(1 + then_scope_drop_prefix_count)
 		}
 		g.trim_defers(defer_start)
 		g.leave_conditional_branch()
@@ -107,10 +113,14 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			if !g.block_consumes_scope_ownership_drops(else_node) {
 				else_scope_drops_consumed = true
 			}
-			g.gen_defers_from(else_defer_start)
-			if !cur.skip_ownership_drops() && !else_scope_drops_consumed {
-				g.gen_scope_ownership_drop_count(else_scope_drop_prefix_count)
-				g.gen_scope_ownership_drops()
+			if !g.stmt_tail_exits(else_id) {
+				g.gen_defers_from(else_defer_start)
+				if !cur.skip_ownership_drops() && !else_scope_drops_consumed {
+					g.gen_scope_ownership_drop_count(else_scope_drop_prefix_count)
+					g.gen_scope_ownership_drops()
+				}
+			} else if !cur.skip_ownership_drops() && !else_scope_drops_consumed {
+				g.take_scope_ownership_drop_count(1 + else_scope_drop_prefix_count)
 			}
 			g.trim_defers(else_defer_start)
 			g.leave_conditional_branch()
@@ -187,21 +197,18 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 			clean_sum = clean_sum0.base_type
 		}
 		if clean_sum is types.SumType {
-			variant_name := g.resolve_variant(clean_sum.name, cond.value)
-			variant_type := g.tc.parse_type(variant_name)
+			variant_name_id := g.resolve_variant(clean_sum.source_type_id(), flat.source_type_id(cond.value))
+			variant_name := flat.source_type_name(variant_name_id)
+			variant_type := g.tc.parse_type(variant_name_id)
 			if variant_type is types.Void {
 				return
 			}
 			variant_ct := g.tc.c_type(variant_type)
-			field_name := g.sum_field_name(variant_name)
-			is_ptr_variant := g.variant_references_sum(variant_name, clean_sum.name)
+			field_name := sum_field_name(variant_name)
 			var_name := g.local_cname(expr_node.value)
 			tmp := g.tmp_name()
-			if is_ptr_variant {
-				g.writeln('${variant_ct} ${tmp} = *${var_name}.${field_name};')
-			} else {
-				g.writeln('${variant_ct} ${tmp} = ${var_name}.${field_name};')
-			}
+			payload := g.sum_pointer_payload_expr(variant_type, '${var_name}.${field_name}')
+			g.writeln('${variant_ct} ${tmp} = ${payload};')
 			g.writeln('${variant_ct} ${var_name} = ${tmp};')
 			g.tc.cur_scope.insert(expr_node.value, variant_type)
 		}
@@ -712,7 +719,7 @@ fn (mut g FlatGen) seed_scope_from_decl(node flat.Node) {
 	// The declared type annotation is authoritative; resolving the RHS can
 	// disagree for lowered temps (`__or_val := <zero []Val>` resolving to the
 	// element sum type) and would poison every later use of the binding.
-	if node.typ.len > 0 {
+	if node.typ_text().len > 0 {
 		typ := g.parse_node_type(&node)
 		if !decl_annotation_is_unusable(typ, node.typ) {
 			g.tc.cur_scope.insert(lhs.value, typ)
@@ -745,22 +752,22 @@ fn (mut g FlatGen) if_expr_block_tail_type(block &flat.Node) types.Type {
 fn (mut g FlatGen) if_expr_tail_value_type(id flat.NodeId) types.Type {
 	t := g.usable_expr_type(id)
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return t
+		return *t
 	}
 	node := g.a.nodes[int(id)]
 	if node.kind != .or_expr || node.children_count == 0 {
-		return t
+		return *t
 	}
 	source_id := g.a.child(&node, 0)
 	source_node := g.a.nodes[int(source_id)]
 	source_type := g.optional_source_type_for_expr(source_id, g.or_expr_source_type(source_id, source_node))
 	if source_type is types.OptionType {
-		return source_type.base_type
+		return *source_type.base_type
 	}
 	if source_type is types.ResultType {
-		return source_type.base_type
+		return *source_type.base_type
 	}
-	return t
+	return *t
 }
 
 // if_expr_type supports if expr type handling for FlatGen.
@@ -795,7 +802,7 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	inferred_type := g.if_expr_type(&node)
 	ret_type := if g.expected_expr_type is types.MultiReturn {
 		types.Type(g.expected_expr_type)
-	} else if node.typ.len > 0 {
+	} else if node.typ_text().len > 0 {
 		annotated_type := g.parse_node_type(&node)
 		if annotated_type is types.Primitive && inferred_type !is types.Primitive {
 			inferred_type

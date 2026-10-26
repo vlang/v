@@ -31,9 +31,21 @@ struct Route {
 	words           []string
 	host            string
 	parameter_names []string
+	parameter_kinds []ParamKind
 mut:
 	middlewares       []RouteMiddleware
 	after_middlewares []RouteMiddleware
+}
+
+// ParamKind is the declared type of one handler parameter beyond the context,
+// recorded so the dispatcher can reject a value that cannot fill it instead
+// of coercing it to a zero. Only the types route parameters support are
+// distinguished; anything else rides through unchecked.
+enum ParamKind {
+	string_
+	integer
+	boolean
+	other
 }
 
 fn route_path_words(path string) []string {
@@ -43,39 +55,65 @@ fn route_path_words(path string) []string {
 	return path.split('/').filter(it != '')
 }
 
+// Parse and assemble route metadata once, outside controller specializations.
+fn insert_route_metadata(mut routes map[string]Route, name string, attrs []string, parameter_names []string, parameter_kinds []ParamKind) ! {
+	http_methods, route_path, host := parse_attrs(name, attrs) or {
+		return error('error parsing method attributes: ${err}')
+	}
+	routes[name] = Route{
+		methods:         http_methods
+		path:            route_path
+		words:           route_path_words(route_path)
+		host:            host
+		parameter_names: parameter_names
+		parameter_kinds: parameter_kinds
+	}
+}
+
 // Generate route structs for an app
 fn generate_routes[A, X](app &A) !map[string]Route {
-	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in A.methods {
-		$if method.return_type is Result {
-			http_methods, route_path, host := parse_attrs(method.name, method.attrs) or {
-				return error('error parsing method attributes: ${err}')
-			}
-
+		$if method.return_type is Result || method.return_type is !Result {
 			mut parameter_names := []string{}
-			for param in method.args[1..] {
-				parameter_names << param.name
+			$if method.args.len > 1 {
+				for param in method.args[1..] {
+					parameter_names << param.name
+				}
 			}
-			mut route := Route{
-				methods:         http_methods
-				path:            route_path
-				words:           route_path_words(route_path)
-				host:            host
-				parameter_names: parameter_names
+			// The kinds ride alongside the names by index. A nested `$for` over a
+			// sliced `method.args` unrolls to nothing, so this walks the full
+			// `method.params` instead and drops index 0, the request context,
+			// which the dispatcher passes separately.
+			mut parameter_kinds := []ParamKind{}
+			$for param in method.params {
+				$if param.typ is string {
+					parameter_kinds << .string_
+				} $else $if param.typ is int {
+					parameter_kinds << .integer
+				} $else $if param.typ is bool {
+					parameter_kinds << .boolean
+				} $else {
+					parameter_kinds << .other
+				}
 			}
-
-			$if A is MiddlewareApp {
-				route.middlewares = app_route_handlers(app, route_path)
-				route.after_middlewares = app_route_handlers_after(app, route_path)
+			if parameter_kinds.len > 0 {
+				parameter_kinds = parameter_kinds[1..]
 			}
-
-			routes[method.name] = route
+			insert_route_metadata(mut routes, method.name, method.attrs, parameter_names, parameter_kinds)!
 		} $else {
 			// If we have route attributes, but the wrong return type, return an error
 			if has_route_attributes(method.attrs) {
-				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result`, not `!veb.Result` or other types')
+				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result` or `!veb.Result`')
 			}
+		}
+	}
+	$if A is MiddlewareApp {
+		for name, initial in routes {
+			mut route := initial
+			route.middlewares = app_route_handlers(app, route.path)
+			route.after_middlewares = app_route_handlers_after(app, route.path)
+			routes[name] = route
 		}
 	}
 	return routes
@@ -92,6 +130,7 @@ struct SslRequestParams {
 	routes                    &map[string]Route
 	benchmark_page_generation bool
 	max_request_buffer_size   int
+	max_request_body_size     int
 }
 
 // render_request dispatches one request without starting a listener and returns
@@ -150,24 +189,73 @@ fn request_read_error_response(err IError) http.Response {
 	if err is http.HeaderLimitError {
 		return http_431
 	}
+	if err is RequestBodyLimitError {
+		return http_413_close
+	}
 	return http_400
 }
 
-fn read_request_from_buffered_reader(mut reader io.BufferedReader) !http.Request {
+// RequestBodyLimitError is the error for a request whose body has more than
+// `RunParams.max_request_body_size` bytes.
+struct RequestBodyLimitError {
+	Error
+}
+
+// msg returns the description of the error.
+fn (err RequestBodyLimitError) msg() string {
+	return 'the request body is too large'
+}
+
+// read_request_from_buffered_reader reads one request. It returns a `RequestBodyLimitError`
+// for a body of more than `max_request_body_size` bytes (0 means no limit), and does not
+// read the rest of that body.
+fn read_request_from_buffered_reader(mut reader io.BufferedReader, max_request_body_size int) !http.Request {
 	mut req := http.parse_request_head(mut reader)!
+	length_values := req.header.values(.content_length)
+	if length_values.len > 0 && req.header.contains(.transfer_encoding) {
+		return error('conflicting request body framing')
+	}
+	mut content_length_i := 0
+	for i, value in length_values {
+		length := parse_request_content_length(value)!
+		if i > 0 && length != content_length_i {
+			return error('conflicting content lengths')
+		}
+		content_length_i = length
+	}
 	if transfer_encoding_is_chunked(req.header) {
-		req.data = read_chunked_request_body(mut reader)!
+		req.data = read_chunked_request_body(mut reader, max_request_body_size)!
 		return req
 	}
-	content_length := req.header.get(.content_length) or { '0' }
-	content_length_i := content_length.int()
 	if content_length_i <= 0 {
 		return req
+	}
+	if max_request_body_size > 0 && content_length_i > max_request_body_size {
+		return RequestBodyLimitError{}
 	}
 	mut body := []u8{len: content_length_i}
 	read_exact_bytes(mut reader, mut body)!
 	req.data = body.bytestr()
 	return req
+}
+
+// parse_request_content_length rejects prefixes, signs, junk, and integer overflow.
+fn parse_request_content_length(value string) !int {
+	if value.len == 0 {
+		return error('invalid content length')
+	}
+	mut length := 0
+	for byte in value {
+		if byte < `0` || byte > `9` {
+			return error('invalid content length')
+		}
+		digit := int(byte - `0`)
+		if length > (max_int - digit) / 10 {
+			return error('content length too large')
+		}
+		length = length * 10 + digit
+	}
+	return length
 }
 
 fn transfer_encoding_is_chunked(header http.Header) bool {
@@ -180,7 +268,7 @@ fn transfer_encoding_is_chunked(header http.Header) bool {
 	return false
 }
 
-fn read_chunked_request_body(mut reader io.BufferedReader) !string {
+fn read_chunked_request_body(mut reader io.BufferedReader, max_request_body_size int) !string {
 	mut sb := strings.new_builder(1024)
 	for {
 		mut chunk_size_line := reader.read_line()!
@@ -190,6 +278,12 @@ fn read_chunked_request_body(mut reader io.BufferedReader) !string {
 		chunk_size_line = chunk_size_line.trim_space()
 		if chunk_size_line.len == 0 {
 			return error('invalid chunk size line')
+		}
+		for byte in chunk_size_line {
+			if !((byte >= `0` && byte <= `9`) || (byte >= `a` && byte <= `f`)
+				|| (byte >= `A` && byte <= `F`)) {
+				return error('invalid chunk size line')
+			}
 		}
 		chunk_size_u64 := strconv.parse_uint(chunk_size_line, 16, 64) or {
 			return error('invalid chunk size line')
@@ -206,6 +300,9 @@ fn read_chunked_request_body(mut reader io.BufferedReader) !string {
 				}
 			}
 		}
+		if max_request_body_size > 0 && chunk_size > max_request_body_size - sb.len {
+			return RequestBodyLimitError{}
+		}
 		mut chunk := []u8{len: chunk_size}
 		read_exact_bytes(mut reader, mut chunk)!
 		sb.write(chunk)!
@@ -221,7 +318,16 @@ fn read_chunked_request_body(mut reader io.BufferedReader) !string {
 fn read_exact_bytes(mut reader io.BufferedReader, mut buf []u8) ! {
 	mut offset := 0
 	for offset < buf.len {
-		offset += reader.read(mut buf[offset..])!
+		n := reader.read(mut buf[offset..]) or {
+			if err is io.Eof {
+				return error('unexpected end of request body')
+			}
+			return err
+		}
+		if n <= 0 {
+			return error('unexpected end of request body')
+		}
+		offset += n
 	}
 }
 
@@ -323,7 +429,7 @@ fn ascii_eq_ignore_case(a string, b string) bool {
 	return true
 }
 
-fn should_close_connection(req http.Request, resp http.Response, client_wants_to_close bool) bool {
+fn should_close_connection(req &http.Request, resp &http.Response, client_wants_to_close bool) bool {
 	if client_wants_to_close {
 		return true
 	}
@@ -361,42 +467,85 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	mut middleware_has_sent_response := false
 	mut not_found := false
 
-	defer {
-		// execute middleware functions after veb is done and before the response is send
-		mut was_done := true
-		$if A is MiddlewareApp {
-			if !not_found && !middleware_has_sent_response {
-				// if the middleware doesn't send an alternate response, but only changes the
-				// response object we only have to check if the `done` was previously set to true
-				was_done = user_context.Context.done
-				// reset `done` so the middleware functions can return a different response
-				// 1 time only, since the `done` guard is still present in
-				// `Context.send_response_to_client`
-				user_context.Context.done = false
-
-				// no need to check the result of `validate_middleware`, since a response has to be sent
-				// anyhow. This function makes sure no further middleware is executed.
-				validate_middleware[X](mut user_context, app_global_handlers_after(app))
-				// skip route-specific after-middleware if global already sent a response
-				if !user_context.Context.done {
-					validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
-						user_context.Context.req.method))
-					// Preserve an after-middleware response, or restore the handler response state.
-					user_context.Context.done = user_context.Context.done || was_done
-				}
+	// An app declares the peers veb may believe forwarding headers from with a
+	// `trusted_proxies` field; copy it into the request context where `ip()`
+	// reads it. This is comptime-unrolled like the middleware lookup below, so
+	// an app without the field compiles to nothing here.
+	$if A is $struct {
+		$for field in A.fields {
+			$if field.name == 'trusted_proxies' {
+				user_context.Context.trusted_proxies = app.$(field.name)
 			}
 		}
-		// send only the headers, because if the response body is too big, TcpConn code will
-		// actually block, because it has to wait for the socket to become ready to write. veb
-		// will handle this case.
-		if !was_done && !user_context.Context.done && user_context.Context.takeover_mode == .none {
-			eprintln('[veb] handler for route "${url.path}" does not send any data!')
-			// send response anyway so the connection won't block
-			// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
-		} else if user_context.Context.takeover_mode == .none {
-			// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
+	}
+
+	defer {
+		// A panicking handler must not take the server down with it. Nothing between
+		// here and the accept loop recovers, so without this the process exits.
+		// `recover()` only stops the panic when called directly in a defer block, and
+		// V does not allow `return` in one, so recovery prepares its response here and
+		// skips the after-middleware through the else branch.
+		if msg := recover() {
+			eprintln('[veb] handler for route "${url.path}" panicked: ${msg}')
+			// A takeover handler owns the connection and may already have written to it.
+			if user_context.Context.takeover_mode == .none {
+				// Discard the prepared representation, including file streaming and framing.
+				// server_error replaces and frees the old body through send_response_to_client.
+				user_context.Context.done = false
+				user_context.Context.return_type = .normal
+				user_context.Context.return_file = ''
+				user_context.Context.content_type = ''
+				user_context.Context.already_compressed = false
+				for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
+					.transfer_encoding, .trailer, .content_range, .content_disposition, .accept_ranges,
+					.etag, .last_modified, .cache_control, .expires, .age, .location] {
+					user_context.Context.res.header.delete(header)
+				}
+				user_context.server_error('Internal Server Error')
+			}
+		} else {
+			// execute middleware functions after veb is done and before the response is send
+			mut was_done := true
+			$if A is MiddlewareApp {
+				if !not_found && !middleware_has_sent_response {
+					// if the middleware doesn't send an alternate response, but only changes the
+					// response object we only have to check if the `done` was previously set to true
+					was_done = user_context.Context.done
+					// reset `done` so the middleware functions can return a different response
+					// 1 time only, since the `done` guard is still present in
+					// `Context.send_response_to_client`
+					user_context.Context.done = false
+
+					// no need to check the result of `validate_middleware`, since a response has to be sent
+					// anyhow. This function makes sure no further middleware is executed.
+					validate_middleware[X](mut user_context, app_global_handlers_after(app))
+					// skip route-specific after-middleware if global already sent a response
+					if !user_context.Context.done {
+						validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
+							user_context.Context.req.method))
+						// Preserve an after-middleware response, or restore the handler response state.
+						user_context.Context.done = user_context.Context.done || was_done
+					}
+				}
+			}
+			// send only the headers, because if the response body is too big, TcpConn code will
+			// actually block, because it has to wait for the socket to become ready to write. veb
+			// will handle this case.
+			if !was_done && !user_context.Context.done && user_context.Context.takeover_mode == .none {
+				eprintln('[veb] handler for route "${url.path}" does not send any data!')
+				// send response anyway so the connection won't block
+				// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
+			} else if user_context.Context.takeover_mode == .none {
+				// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
+			}
+			// Context.takeover_mode is set, so the user must send a response.
 		}
-		// Context.takeover_mode is set, so the user must send a response.
+		// Free the handler slots a throttle took for this request on every way
+		// out, including the 404 and refusing-middleware paths that skip the
+		// after-middleware above.
+		if user_context.Context.throttle_leases.len > 0 {
+			user_context.Context.release_throttle_leases()
+		}
 	}
 
 	is_root_path := url.path.len == 0 || url.path == '/'
@@ -479,8 +628,29 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			} else {
 				user_context.Context.form
 			}
-			for name in route.parameter_names {
-				args << data[name]
+			for i, name in route.parameter_names {
+				value := data[name]
+				if i < route.parameter_kinds.len {
+					msg := route_param_error(name, route.parameter_kinds[i], value)
+					if msg != '' {
+						user_context.request_error(msg)
+						return
+					}
+				}
+				args << value
+			}
+		} else {
+			// Path parameters arrive positionally, in the order the route declares
+			// them, which is the order the dispatcher passes them on.
+			for i, value in args {
+				if i < route.parameter_kinds.len && i < route.parameter_names.len {
+					msg := route_param_error(route.parameter_names[i], route.parameter_kinds[i],
+						value)
+					if msg != '' {
+						user_context.request_error(msg)
+						return
+					}
+				}
 			}
 		}
 		$for method in A.methods {
@@ -513,8 +683,53 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 					}
 					return
 				}
+			} $else $if method.return_type is !Result {
+				// A handler that returns `!veb.Result` answers by returning the
+				// value, and declines by returning an error, which becomes a
+				// JSON envelope through `error_with`.
+				if method.name == matched.name {
+					$if method.args.len > 1 {
+						if !matched.from_data || user_context.Context.req.method in [
+							.get,
+							.post,
+						] {
+							if !matched.from_data && args.len + 1 != method.args.len {
+								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${args.len})')
+							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+							}
+							app.$method(mut user_context, ...args) or {
+								user_context.error_with(err)
+							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+							}
+						}
+					} $else {
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+						}
+						app.$method(mut user_context) or {
+							user_context.error_with(err)
+						}
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+						}
+					}
+					return
+				}
 			}
 		}
+	}
+	// no route matched this method. A route that matches the path but not the
+	// verb is a 405 with an `Allow` header, which is what a client needs to
+	// discover the right method; a path nothing claims stays a 404.
+	// `not_found` is deliberately left false, so after-middleware such as
+	// compression still runs over the response this function sends.
+	if mismatch := select_route_ignoring_method(routes, url.path, host) {
+		user_context.method_not_allowed(allowed_methods_for_route(routes, mismatch, url.path, host))
+		return
 	}
 	// return 404
 	user_context.not_found()
@@ -529,6 +744,33 @@ struct RouteMatch {
 	route     Route
 	params    []string
 	from_data bool
+}
+
+// route_param_error checks one request value against the kind of handler
+// parameter it will fill, and returns '' when the value is acceptable. A
+// missing or unparsable value for a non-string parameter used to be coerced to
+// a zero while the handler answered 200; now it is the message for a 400.
+fn route_param_error(name string, kind ParamKind, value string) string {
+	match kind {
+		.string_, .other {
+			return ''
+		}
+		.integer {
+			if value == '' {
+				return 'missing integer value for parameter "${name}"'
+			}
+			_ = strconv.atoi(value) or {
+				return 'invalid integer value "${value}" for parameter "${name}"'
+			}
+			return ''
+		}
+		.boolean {
+			if value != 'true' && value != 'false' {
+				return 'invalid boolean value "${value}" for parameter "${name}": expected true or false'
+			}
+			return ''
+		}
+	}
 }
 
 fn select_route(routes &map[string]Route, path string, host string, method http.Method) ?RouteMatch {
@@ -568,6 +810,105 @@ fn select_route(routes &map[string]Route, path string, host string, method http.
 
 fn route_is_variadic(route_words []string) bool {
 	return route_words.len > 0 && route_words[route_words.len - 1].ends_with('...')
+}
+
+// route_path_matches reports whether a route's path matches the request path,
+// ignoring the HTTP method. Method-insensitive matching is what separates a
+// 405 ("right path, wrong verb") from a 404 ("no such path").
+fn route_path_matches(url_words []string, route_words []string) bool {
+	if route_words.len == 0 && url_words.len == 0 {
+		return true
+	}
+	if _ := route_matches(url_words, route_words) {
+		return true
+	}
+	return false
+}
+
+// select_route_ignoring_method finds a route by path and host alone. It runs
+// only on the path where select_route already failed, so it costs nothing on a
+// request that a handler answers, and it prefers an exact route over a variadic
+// one so the `Allow` header names the route the caller most likely meant.
+fn select_route_ignoring_method(routes &map[string]Route, path string, host string) ?RouteMatch {
+	is_root := path.len == 0 || path == '/'
+	if is_root {
+		if index_route := (*routes)['index'] {
+			if (index_route.host == '' || index_route.host == host)
+				&& index_route.path in ['/', '/index'] {
+				return RouteMatch{ name: 'index', route: index_route, from_data: true }
+			}
+		}
+	}
+	url_words := route_path_words(path)
+	mut variadic_match := RouteMatch{}
+	for name, route in *routes {
+		if route.host != '' && route.host != host {
+			continue
+		}
+		if !route_path_matches(url_words, route.words) {
+			continue
+		}
+		if !route_is_variadic(route.words) {
+			return RouteMatch{ name: name, route: route, from_data: !route.path.contains('/:') }
+		}
+		if should_prefer_variadic_route(route.words, variadic_match.route.words) {
+			variadic_match = RouteMatch{ name: name, route: route }
+		}
+	}
+	if variadic_match.name != '' {
+		return variadic_match
+	}
+	return none
+}
+
+// allowed_methods_for_route combines handlers for the selected resource without
+// including other route patterns that happen to match this particular URL.
+fn allowed_methods_for_route(routes &map[string]Route, selected RouteMatch, path string, host string) []http.Method {
+	is_root := path.len == 0 || path == '/'
+	selected_words := if is_root && selected.name == 'index' {
+		[]string{}
+	} else {
+		selected.route.words
+	}
+	mut allowed := []http.Method{}
+	for name, route in *routes {
+		if route.host != '' && route.host != host {
+			continue
+		}
+		// Only the index handler has the implicit / alias for /index.
+		words := if is_root && name == 'index' && route.path in ['/', '/index'] {
+			[]string{}
+		} else {
+			route.words
+		}
+		if !same_route_pattern(selected_words, words) {
+			continue
+		}
+		for method in route.methods {
+			if method !in allowed {
+				allowed << method
+			}
+		}
+	}
+	return allowed
+}
+
+fn same_route_pattern(left []string, right []string) bool {
+	if left.len != right.len {
+		return false
+	}
+	for i, word in left {
+		if word == right[i] {
+			continue
+		}
+		// Parameter names do not change the resource, but a variadic tail does.
+		if word.starts_with(':') && right[i].starts_with(':')
+			&& word.ends_with('...') == right[i].ends_with('...') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 fn should_prefer_variadic_route(candidate []string, current []string) bool {

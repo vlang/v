@@ -33,10 +33,10 @@ fn test_native_real_float_unions_share_storage_before_and_after_transform() {
 		source := r'module main
 import strconv
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(value voidptr, size isize) voidptr {
-    return C.memcpy(C.malloc(usize(size)), value, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(value voidptr, size int) voidptr {
+    return C.memcpy(C.malloc(uint(size)), value, uint(size))
 }
 fn bits64(value strconv.Float64u) u64 { return unsafe { value.u } }
 fn main() {
@@ -248,4 +248,100 @@ fn main() {
 			assert result.exit_code == 0, 'production=${production}, exit ${result.exit_code}: ${result.output}'
 		}
 	}
+}
+
+fn test_native_default_float_sort_keeps_nan_and_zero_identity() {
+	$if macos && arm64 {
+		path := os.join_path(os.vtmp_dir(), 'arm64_float_sort_${os.getpid()}.v')
+		output := path.all_before_last('.')
+		defer {
+			os.rm(path) or {}
+			os.rm(output) or {}
+		}
+		os.write_file(path, r'
+import math.bits
+
+fn main() {
+    neg64 := bits.f64_from_bits(0x8000000000000000)
+    nan64a := bits.f64_from_bits(0x7ff8000000000042)
+    nan64b := bits.f64_from_bits(0x7ff8000000000057)
+    mut values64 := [3.0, nan64a, 0.0, neg64, -2.0, 1.0, nan64b, neg64, 0.0, 1.0]
+    values64.sort()
+    expected64 := [u64(0xc000000000000000), 0, 0x8000000000000000, 0x8000000000000000, 0, 0x3ff0000000000000, 0x3ff0000000000000, 0x4008000000000000, 0x7ff8000000000042, 0x7ff8000000000057]
+    for i, x in values64 { assert bits.f64_bits(x) == expected64[i] }
+    neg32 := bits.f32_from_bits(0x80000000)
+    nan32a := bits.f32_from_bits(0x7fc00042)
+    nan32b := bits.f32_from_bits(0x7fc00057)
+    mut values32 := [f32(3.0), nan32a, f32(0.0), neg32, f32(-2.0), f32(1.0), nan32b, neg32, f32(0.0), f32(1.0)]
+    values32.sort()
+    expected32 := [u32(0xc0000000), 0, 0x80000000, 0x80000000, 0, 0x3f800000, 0x3f800000, 0x40400000, 0x7fc00042, 0x7fc00057]
+    for i, x in values32 { assert bits.f32_bits(x) == expected32[i] }
+}
+')!
+		compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'arm64', '-o', output,
+			path])
+		assert compiled.exit_code == 0, compiled.output
+		result := os.exec([output])
+		assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
+	}
+}
+
+fn test_native_mixed_fixed_f32_literal_preserves_fractional_lanes() {
+	$if !macos || !arm64 {
+		return
+	}
+	path := os.join_path(os.vtmp_dir(), 'arm64_mixed_fixed_float_${os.getpid()}.v')
+	output := path.all_before_last('.')
+	defer {
+		os.rm(path) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(path, 'module main
+fn C.exit(int)
+fn main() {
+    values := [f32(0.5), 2, 4.5, 8]!
+    if values[0] != f32(0.5) { C.exit(1) }
+    if values[1] != f32(2) { C.exit(2) }
+    if values[2] != f32(4.5) { C.exit(3) }
+    if values[3] != f32(8) { C.exit(4) }
+    negative := [f32(1), -2.5]!
+    if negative[1] != f32(-2.5) { C.exit(5) }
+}
+')!
+	compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'arm64', '-o', output, path])
+	assert compiled.exit_code == 0, compiled.output
+	result := os.exec([output])
+	assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
+}
+
+fn test_native_f32_arguments_convert_numeric_literals() {
+	$if !macos || !arm64 {
+		return
+	}
+	path := os.join_path(os.vtmp_dir(), 'arm64_f32_literal_arguments_${os.getpid()}.v')
+	output := path.all_before_last('.')
+	defer {
+		os.rm(path) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(path, 'module main
+fn C.exit(int)
+@[noinline]
+fn identity(value f32) f32 { return value }
+@[noinline]
+fn arithmetic(value f32) f32 { return (value * 2 + 4) / 2 - 1 }
+fn main() {
+    if identity(7.25) != f32(7.25) { C.exit(1) }
+    if identity(-7.25) != f32(-7.25) { C.exit(2) }
+    if identity(7) != f32(7) { C.exit(3) }
+    if identity(-7) != f32(-7) { C.exit(4) }
+    if identity(f32(7.25)) != f32(7.25) { C.exit(5) }
+    if arithmetic(7.25) != f32(8.25) { C.exit(6) }
+    if arithmetic(-7.25) != f32(-6.25) { C.exit(7) }
+}
+')!
+	compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'arm64', '-o', output, path])
+	assert compiled.exit_code == 0, compiled.output
+	result := os.exec([output])
+	assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
 }

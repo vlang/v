@@ -641,8 +641,8 @@ fn repl_literal_is_negated(line string, start int) bool {
 // repl_literal_carries_its_type reports whether the literal is already the argument of a
 // conversion, since the type that conversion names is the one that governs.
 fn repl_literal_carries_its_type(line string, start int) bool {
-	names := ['u8', 'u16', 'u32', 'u64', 'u128', 'i8', 'i16', 'i32', 'i64', 'i128', 'int', 'usize',
-		'isize', 'rune', 'char', 'f32', 'f64']
+	names := ['u8', 'u16', 'u32', 'u64', 'u128', 'i8', 'i16', 'i32', 'i64', 'i128', 'int', 'uint',
+		'usize', 'isize', 'rune', 'char', 'f32', 'f64']
 	mut k := start - 1
 	for k >= 0 && line[k] == ` ` {
 		k--

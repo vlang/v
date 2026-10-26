@@ -1,6 +1,10 @@
 module sync
 
-fn C.pthread_self() usize
+$if macos {
+	fn C.pthread_self() voidptr
+} $else {
+	fn C.pthread_self() uint
+}
 
 // thread_id returns a unique identifier for the caller thread.
 // All *currently* running threads in the same process, will have *different* thread identifiers.

@@ -7,8 +7,14 @@ struct OwnershipState {}
 pub struct OwnershipDropEntry {
 pub:
 	name             string
-	type_name        string
+	type_name        u32
 	optional_wrapper bool
+}
+
+// type_name_text resolves the indexed type spelling of a cleanup entry.
+@[inline]
+pub fn (entry &OwnershipDropEntry) type_name_text() string {
+	return flat.source_type_name(entry.type_name)
 }
 
 // ownership_drop_entries_at_return returns no destructor entries when ownership checking is disabled.
@@ -46,14 +52,19 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_fn_exit(_ string) []Ownership
 	return []OwnershipDropEntry{}
 }
 
-// ownership_drop_type_names returns no drop receiver types when ownership checking is disabled.
-pub fn (tc &TypeChecker) ownership_drop_type_names() []string {
-	return []string{}
+// ownership_fn_keeps_value_semantics reports no library bodies when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_fn_keeps_value_semantics(_ flat.Node) bool {
+	return false
 }
 
-// ownership_drop_value_type_names_by_fn returns no per-function drop types when ownership checking is disabled.
-pub fn (tc &TypeChecker) ownership_drop_value_type_names_by_fn() map[string][]string {
-	return map[string][]string{}
+// ownership_drop_type_names returns no drop receiver source IDs when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_drop_type_names() []u32 {
+	return []u32{}
+}
+
+// ownership_drop_value_type_names_by_fn returns no per-function drop source IDs when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_drop_value_type_names_by_fn() map[string][]u32 {
+	return map[string][]u32{}
 }
 
 // ownership_has_return_node reports no recorded return-node cleanup when ownership checking is disabled.
@@ -83,6 +94,16 @@ pub fn (tc &TypeChecker) ownership_expr_creates_owned_value(_ flat.NodeId) bool 
 
 // ownership_index_read_moves_value reports no moving index reads when ownership checking is disabled.
 pub fn (tc &TypeChecker) ownership_index_read_moves_value(_ flat.NodeId) bool {
+	return false
+}
+
+// ownership_sum_read_moves_value reports no consumed sum reads without ownership checking.
+pub fn (tc &TypeChecker) ownership_sum_read_moves_value(_ flat.NodeId) bool {
+	return false
+}
+
+// ownership_sum_drop_consumes_storage reports no consumed sum owners without ownership checking.
+pub fn (tc &TypeChecker) ownership_sum_drop_consumes_storage(_ flat.NodeId) bool {
 	return false
 }
 
@@ -133,3 +154,18 @@ pub fn (tc &TypeChecker) ownership_default_clone_missing_method(_ Type) ?string 
 
 // inherit_ownership_codegen_metadata_from is a no-op when ownership checking is disabled.
 pub fn (mut tc TypeChecker) inherit_ownership_codegen_metadata_from(_ &TypeChecker) {}
+
+// ownership_sum_return_sources returns no transfer sources when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_sum_return_sources(_ string, _ flat.NodeId) []OwnershipDropEntry {
+	return []OwnershipDropEntry{}
+}
+
+// ownership_sum_transfer_source returns no source when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_sum_transfer_source(_ flat.NodeId) string {
+	return ''
+}
+
+// ownership_sum_heap_sources returns no promoted sum sources when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_sum_heap_sources(_ string) []OwnershipDropEntry {
+	return []OwnershipDropEntry{}
+}

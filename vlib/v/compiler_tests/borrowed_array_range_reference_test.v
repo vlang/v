@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_borrowed_array_range_references_preserve_the_owner() {
@@ -51,15 +52,15 @@ fn disturb_stack(seed int) int {
 
 fn main() {
  mut owner := Buffer{bytes: [u8(1), 2, 3, 4]}
- address := unsafe { usize(owner.bytes.data) }
+ address := unsafe { uint(owner.bytes.data) }
  {
   mut first := owner.free_buffer(1)
-  assert unsafe { usize(first.data) == address + 1 }
+  assert unsafe { uint(first.data) == address + 1 }
   assert first.len == 3
   assert disturb_stack(5) == 13
   {
    mut second := owner.free_buffer(0)
-   assert unsafe { usize(second.data) == address }
+   assert unsafe { uint(second.data) == address }
    fill(mut second, 8)
    assert owner.bytes[0] == 8
    assert second.len == 4
@@ -70,7 +71,7 @@ fn main() {
   assert first.len == 3
  }
  assert owner.bytes == [u8(8), 9, 3, 4]
- assert unsafe { usize(owner.bytes.data) == address }
+ assert unsafe { uint(owner.bytes.data) == address }
  {
   read := forwarded(owner, 1, 3)
   zero := owner.buffer(0, 2)
@@ -79,23 +80,23 @@ fn main() {
   assert read.len == 2
   assert zero.len == 2
   assert empty.len == 0
-  assert unsafe { usize(read.data) == address + 1 }
-  assert unsafe { usize(zero.data) == address }
-  assert unsafe { usize(empty.data) == address + 2 }
+  assert unsafe { uint(read.data) == address + 1 }
+  assert unsafe { uint(zero.data) == address }
+  assert unsafe { uint(empty.data) == address + 2 }
   assert unsafe { (*read)[0] == 9 }
   assert unsafe { (*zero)[0] == 8 }
  }
  assert owner.bytes == [u8(8), 9, 3, 4]
- global_address := unsafe { usize(global_bytes.data) }
+ global_address := unsafe { uint(global_bytes.data) }
  global_range := global_view(1, 3)
- assert unsafe { usize(global_range.data) == global_address + 1 }
+ assert unsafe { uint(global_range.data) == global_address + 1 }
  assert unsafe { (*global_range)[0] == 6 }
  heap_range := heap_view()
  assert disturb_stack(12) == 27
  assert unsafe { (*heap_range)[0] == 5 }
  assert heap_range.len == 2
  mut copied := owner.copy()
- assert unsafe { usize(copied.data) != address + 1 }
+ assert unsafe { uint(copied.data) != address + 1 }
  copied[0] = 7
  assert owner.bytes[1] == 9
  assert copied[0] == 7
@@ -184,7 +185,7 @@ fn test_borrowed_string_range_headers_survive_returns_and_loop_iterations() {
  }
  fn main() {
   text := "abc\\nxyz".to_owned()
-  address := unsafe { usize(text.str) }
+  address := unsafe { uint(text.str) }
   {
    parts := split(text)
    first := view(text, 0, 4)
@@ -194,18 +195,18 @@ fn test_borrowed_string_range_headers_survive_returns_and_loop_iterations() {
    assert disturb_stack(3) == 9
    assert *parts[0] == "abc\\n"
    assert *parts[1] == "xyz"
-   assert unsafe { usize(parts[0].str) == address }
-   assert unsafe { usize(parts[1].str) == address + 4 }
+   assert unsafe { uint(parts[0].str) == address }
+   assert unsafe { uint(parts[1].str) == address + 4 }
    assert voidptr(parts[0]) != voidptr(parts[1])
    assert *full == text
-   assert unsafe { usize(full.str) == address }
+   assert unsafe { uint(full.str) == address }
    assert *first == "abc\\n"
    assert *last == "xyz"
    assert empty.len == 0
-   assert unsafe { usize(empty.str) == address + 2 }
+   assert unsafe { uint(empty.str) == address + 2 }
   }
   assert text == "abc\\nxyz"
-  assert unsafe { usize(text.str) == address }
+  assert unsafe { uint(text.str) == address }
  }
  ')!
 	for mode in ['-no-parallel', ''] {

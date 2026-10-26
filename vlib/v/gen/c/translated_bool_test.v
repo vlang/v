@@ -5,6 +5,9 @@ import v.flat
 import v.token
 import v.types
 
+// exe_suffix is needed because os.exec spawns an absolute path as written, without adding .exe.
+const exe_suffix = $if windows { '.exe' } $else { '' }
+
 fn translated_bool_test_node(mut g FlatGen, kind flat.NodeKind, value string, typ types.Type) flat.NodeId {
 	id := g.a.add_node(flat.Node{
 		kind:  kind
@@ -28,7 +31,7 @@ fn test_translated_bool_conversions_with_unsigned_char_storage() {
 	g.a = &a
 	g.tc = &tc
 	bool_type := types.Type(types.bool_)
-	alias_type := types.Type(types.Alias{ name: 'Flag', base_type: bool_type })
+	alias_type := types.Type(types.Alias{ name_id: flat.source_type_id('Flag'), base_type: &types.Type(bool_type) })
 	wide := translated_bool_test_node(mut g, .int_literal, '256', types.Type(types.int_))
 	fraction := translated_bool_test_node(mut g, .float_literal, '0.5', types.Type(types.f64_))
 	zero := translated_bool_test_node(mut g, .int_literal, '0', types.Type(types.int_))
@@ -59,7 +62,7 @@ fn test_translated_bool_conversions_with_unsigned_char_storage() {
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'main.c')
-	binary := os.join_path(dir, 'main')
+	binary := os.join_path(dir, 'main${exe_suffix}')
 	os.write_file(source, g.sb.str())!
 	build := os.exec([cc, '-std=gnu11', source, '-o', binary])
 	assert build.exit_code == 0, build.output

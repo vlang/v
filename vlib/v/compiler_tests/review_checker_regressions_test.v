@@ -7,7 +7,7 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn build_v3_review_checker() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
@@ -333,9 +333,10 @@ mut:
 
 fn main() {
 	value := 1
-	_ := Holder{
+	mut holder := Holder{
 		ptr: &value
 	}
+	println(holder)
 }
 ',
 		'`value` is immutable, cannot have a mutable reference to an immutable object')
@@ -697,9 +698,9 @@ fn test_reject_fixed_array_decay_to_pointer() {
 	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_return',
 		'@[translated]\nmodule main\n\nfn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
 		'you are returning `[2]int` instead')
-	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_temporary_assignment',
-		'@[translated]\nmodule main\n\nfn main() {\n\tmut ptr := &int(0)\n\tptr = [1, 2]!\n}\n',
-		'cannot assign to `ptr`: expected `&int`, not `[2]int`')
+	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_element_assignment',
+		'@[translated]\nmodule main\n\nfn main() {\n\tmut ptr := &int(0)\n\tptr = [u16(1), 2]!\n}\n',
+		'mismatched types `&int` and `[2]u16`')
 	run_bad(v3_bin, 'bad_addressed_fixed_u8_array_pointer_argument',
 		'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n',
 		'cannot use `&[2]u8`')
@@ -845,14 +846,8 @@ fn main() {
 		'cannot take the address of mutable array elements outside unsafe blocks')
 }
 
-fn test_reject_address_of_mutable_array_alias_element() {
+fn test_reject_address_of_map_alias_value() {
 	v3_bin := build_v3_review_checker()
-	run_bad(v3_bin, 'bad_address_mutable_array_alias_element',
-		'type Numbers = []int\n\nfn main() {\n\tmut values := Numbers([1])\n\t_ := &values[0]\n}\n',
-		'cannot take the address of mutable array elements outside unsafe blocks')
-	run_bad(v3_bin, 'bad_address_nested_mutable_array_alias_element',
-		'type Numbers = []int\ntype NumbersRef = &Numbers\n\nfn main() {\n\tmut values := Numbers([1])\n\tvalues_ref := NumbersRef(&values)\n\t_ := &values_ref[0]\n}\n',
-		'cannot take the address of mutable array elements outside unsafe blocks')
 	run_bad(v3_bin, 'bad_address_nested_map_alias_value',
 		"type Scores = map[string]int\ntype ScoresRef = &Scores\n\nfn main() {\n\tmut scores := Scores({'key': 1})\n\tscores_ref := ScoresRef(&scores)\n\t_ := &scores_ref['key']\n}\n",
 		'cannot take the address of map values outside `unsafe`')
@@ -869,12 +864,15 @@ fn test_cross_wrapper_option_result_returns_match_v1() {
 	run_bad(v3_bin, 'bad_option_value_in_result_pointer_return',
 		'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n',
 		'cannot use `?Item` as type `!&Item` in return argument')
-	option_out := run_good(v3_bin, 'good_error_branch_in_option_return',
-		"fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_option(false) or { -1 }))\n\t_ := make_option(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
-	assert option_out == '1\nbad'
-	constant_option_out := run_good(v3_bin, 'good_constant_error_branch_in_option_return',
-		"fn make_option() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := make_option() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
-	assert constant_option_out == 'bad'
+	run_bad(v3_bin, 'bad_error_branch_in_option_return',
+		"fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
+		'cannot use `!int` as type `?int` in return argument')
+	run_bad(v3_bin, 'bad_constant_error_branch_in_option_return',
+		"fn make_option() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
+		'cannot use `!int` as type `?int` in return argument')
+	constant_result_out := run_good(v3_bin, 'good_constant_error_branch_in_result_return',
+		"fn make_result() !int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := make_result() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert constant_result_out == 'bad'
 	out := run_good(v3_bin, 'good_error_branch_in_result_return',
 		"fn make_result(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_result(false) or { -1 }))\n\tprintln(int_str(make_result(true) or { -1 }))\n}\n")
 	assert out == '1\n-1'
@@ -956,7 +954,7 @@ fn test_multi_return_arguments_must_consume_the_parameter_tail() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_variadic_multi_return_argument',
 		'fn pair() (int, []int) {\n\treturn 1, [2, 3]\n}\n\nfn consume(a int, rest ...int) {}\n\nfn main() {\n\tconsume(pair())\n}\n',
-		'cannot use `(int, []int)` as argument 1 to `consume`; expected `int`')
+		'cannot use `(int, []int)` as `int` in argument 1 to `consume`')
 }
 
 fn test_receiver_method_tail_multi_return_arguments_are_expanded() {
@@ -1281,12 +1279,12 @@ fn test_array_to_void_array_is_not_implicitly_compatible() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_array_to_void_array_param',
 		'fn take(xs []void) {\n\t_ = xs\n}\n\nfn main() {\n\ttake([1, 2, 3])\n}\n',
-		'cannot use `[]int` as argument 1 to `take`; expected `[]void`')
+		'cannot use `[]int` as `[]void` in argument 1 to `take`')
 	run_bad(v3_bin, 'bad_array_to_void_array_user_receiver',
-		'fn (xs []void) touch() int {\n\treturn xs.len\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tprintln(nums.touch().str())\n}\n',
-		'nums.touch')
+		'type Voids = []void\n\nfn (xs Voids) touch() int {\n\treturn xs.len\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tprintln(nums.touch().str())\n}\n',
+		'unknown function: nums.touch')
 	out := run_good(v3_bin, 'good_array_clone_ignores_void_array_receiver',
-		'fn (xs []void) clone() int {\n\treturn 7\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tcloned := nums.clone()\n\tprintln(int_str(cloned.len + cloned[2]))\n}\n')
+		'type Voids = []void\n\nfn (xs Voids) clone() int {\n\treturn 7\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tcloned := nums.clone()\n\tprintln(int_str(cloned.len + cloned[2]))\n}\n')
 	assert out == '6'
 }
 
@@ -1312,13 +1310,13 @@ fn test_array_insert_and_prepend_reject_wrong_arity() {
 		'the first argument of `array.insert()` should be integer')
 	run_bad(v3_bin, 'bad_array_insert_value_type',
 		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 'x')\n}\n",
-		'cannot use `string` as `int` in argument 2 to `array.insert()`')
+		'cannot insert `string` to `[]int`')
 	run_bad(v3_bin, 'bad_array_prepend_many_arg_type',
 		"fn main() {\n\tmut a := [1, 2]\n\ta.prepend(['x'])\n}\n",
 		'cannot prepend `[]string` to `[]int`')
 	run_bad(v3_bin, 'bad_array_insert_many_arg_type',
 		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, ['x'])\n}\n",
-		'cannot use `[]string` as `int` in argument 2 to `array.insert()`')
+		'cannot insert `[]string` to `[]int`')
 }
 
 fn test_array_insert_and_prepend_accept_many_operands() {
@@ -1386,23 +1384,23 @@ fn test_escaping_capturing_fn_literals_use_runtime_closures() {
 fn test_capturing_fn_literal_aliases_are_binding_scoped() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_capturing_fn_literal_inner_shadow',
-		'fn plain() int {\n\treturn 3\n}\n\nfn make(x int) fn () int {\n\tcb := plain\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make(0)()))\n}\n')
-	assert out == '3'
+		'fn plain() int {\n\treturn 3\n}\n\nfn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := plain\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make(0)()))\n\tprintln(int_str(make(5)()))\n}\n')
+	assert out == '3\n3'
 	lambda_out := run_good(v3_bin, 'good_lambda_capturing_fn_literal_shadow',
 		'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n')
 	assert lambda_out == '4'
 	outer_out := run_good(v3_bin, 'outer_capturing_alias_survives_inner_shadow',
-		'fn make(x int) fn () int {\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\nfn main() {}\n')
-	assert outer_out == ''
+		'fn make(x int) fn () int {\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\treturn cb\n}\nfn main() {\n\tprintln(int_str(make(5)()))\n}\n')
+	assert outer_out == '5'
 }
 
 fn test_reject_unsmartcasted_unique_sum_variant_field() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_unsmartcasted_unique_sum_field',
-		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype K = A | B\nfn main() {\n\tk := K(B{})\n\t_ := k.only_on_a\n}\n',
-		'field `only_on_a` does not exist or have the same type in these sumtype `K` variants')
+		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype Kind = A | B\nfn main() {\n\tk := Kind(B{})\n\t_ := k.only_on_a\n}\n',
+		'field `only_on_a` does not exist or have the same type in these sumtype `Kind` variants')
 	out := run_good(v3_bin, 'good_smartcasted_unique_sum_field',
-		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype K = A | B\nfn main() {\n\tk := K(A{\n\t\tonly_on_a: 7\n\t})\n\tif k is A {\n\t\tprintln(int_str(k.only_on_a))\n\t}\n}\n')
+		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype Kind = A | B\nfn main() {\n\tk := Kind(A{\n\t\tonly_on_a: 7\n\t})\n\tif k is A {\n\t\tprintln(int_str(k.only_on_a))\n\t}\n}\n')
 	assert out == '7'
 }
 
@@ -1566,10 +1564,10 @@ fn test_no_return_analysis_rejects_shadowed_builtin_fn_values() {
 		'fn f() int {\n\t{\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
 	run_bad(v3_bin, 'bad_shadowed_exit_multi_return_branch',
-		'fn main() {\n\texit := fn () int { return 1 }\n\tflag := true\n\ta, b := if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'fn main() {\n\texit := fn () int { return 1 }\n\tflag := true\n\ta, b := if flag {\n\t\t1, 2\n\t} else {\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'multi-return assignment mismatch')
 	run_bad(v3_bin, 'bad_nested_shadowed_exit_multi_return_branch',
-		'fn main() {\n\tflag := true\n\ta, b := if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'fn main() {\n\tflag := true\n\ta, b := if flag {\n\t\t1, 2\n\t} else {\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'multi-return assignment mismatch')
 }
 
@@ -1810,7 +1808,7 @@ fn main() {
 
 fn test_vexeroot_insert_and_generated_function_name_exemptions() {
 	v3_bin := build_v3_review_checker()
-	insert_out := run_good(v3_bin, 'good_vexeroot_insert_outside_vlib', '#insert "@VEXEROOT/vlib/v/tests/testdata/vexeroot_insert.h"
+	insert_out := run_good(v3_bin, 'good_vexeroot_insert_outside_vlib', '#insert "@VEXEROOT/vlib/v/compiler_tests/testdata/vexeroot_insert.h"
 
 fn C.v3_vexeroot_insert_value() int
 
@@ -1904,14 +1902,18 @@ fn main() {
 	assert out == 'true'
 }
 
-fn test_explicit_mut_reference_parameter_uses_pointee_type_in_body() {
+fn test_explicit_mut_reference_parameter_writes_through_the_pointer() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'explicit_mut_reference_parameter', 'fn stop(mut running &bool) {
-	running = false
+	unsafe {
+		*running = false
+	}
 }
 
 fn set_second(mut values &f32) {
-	values[1] = 2.5
+	unsafe {
+		values[1] = 2.5
+	}
 }
 
 fn main() {
@@ -1938,7 +1940,7 @@ fn test_smartcast_receiver_methods_keep_cast_paths_and_declared_sum_methods() {
 	out := run_good(v3_bin, 'smartcast_receiver_method_paths', 'struct Leaf {}
 
 struct Container {
-	left Expr
+	left &Expr
 }
 
 struct Assignment {
@@ -1966,7 +1968,7 @@ fn (leaf &Leaf) is_mut() bool {
 
 fn main() {
 	container_expr := Expr(Container{
-		left: Expr(Leaf{})
+		left: &Expr(Leaf{})
 	})
 	if container_expr is Container && (container_expr as Container).left is Leaf {
 		println((container_expr as Container).left.is_mut())

@@ -105,25 +105,63 @@ fn wait_header_compile(v3_bin string, name string, source string) WaitHeaderProg
 }
 
 fn wait_header_gen_c(v3_bin string, name string, source string) string {
-	return wait_header_gen_c_for_target(v3_bin, name, source, '')
+	return wait_header_gen_c_with_args(v3_bin, name, source, [])
 }
 
+// wait_header_gen_windows_c generates headerless Windows C: without a C include
+// directive, V supplies the SDK types and the prototypes of the program's bindings.
+// Disable the stack-overflow handler, which includes the SDK headers by default.
 fn wait_header_gen_windows_c(v3_bin string, name string, source string) string {
-	return wait_header_gen_c_for_target(v3_bin, name, source, 'windows')
+	return wait_header_gen_c_with_args(v3_bin, name, source, ['-os', 'windows', '-d',
+		'no_segfault_handler'])
 }
 
-fn wait_header_gen_c_for_target(v3_bin string, name string, source string, target string) string {
-	pid := os.getpid()
-	src := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.v')
-	c_path := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.c')
+// wait_header_gen_windows_sdk_c generates Windows C for MSVC, which includes the
+// Windows SDK headers. Those headers own the CRT and WinAPI declarations.
+fn wait_header_gen_windows_sdk_c(v3_bin string, name string, source string) string {
+	return wait_header_gen_c_with_args(v3_bin, name + '_sdk', source, ['-os', 'windows', '-cc',
+		'msvc'])
+}
+
+fn wait_header_c_path(name string) string {
+	return os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${os.getpid()}.c')
+}
+
+fn wait_header_gen_c_with_args(v3_bin string, name string, source string, extra_args []string) string {
+	src := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${os.getpid()}.v')
+	c_path := wait_header_c_path(name)
 	os.write_file(src, source) or { panic(err) }
 	os.rm(c_path) or {}
 	mut args := [wait_header_exe(v3_bin), '-b', 'c', '-o', c_path]
-	if target.len > 0 { args << ['-os', target] }
+	args << extra_args
 	args << src
 	compile := wait_header_execute_without_vflags(args)
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
+}
+
+// wait_header_check_windows_c compiles generated Windows C with a MinGW cross compiler,
+// when one is installed, so that a call without a prototype fails the test.
+fn wait_header_check_windows_c(name string) {
+	mingw := os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc') or { return }
+	check := wait_header_execute_without_vflags([mingw, '-fsyntax-only',
+		'-Werror=implicit-function-declaration', wait_header_c_path(name)])
+	assert check.exit_code == 0, check.output
+}
+
+// wait_header_declares reports whether the C code has a top-level prototype of the
+// C function `name`, however its V binding spells the parameter and return types.
+fn wait_header_declares(c_code string, name string) bool {
+	for line in c_code.split_into_lines() {
+		if line.len == 0 || line[0] in [` `, `\t`, `#`, `/`] || !line.ends_with(');')
+			|| line.contains('{') {
+			continue
+		}
+		if line.contains(' ${name}(') || line.contains('*${name}(') {
+			return true
+		}
+	}
+	return false
 }
 
 fn wait_header_has_include_directive(c_code string) bool {
@@ -163,55 +201,23 @@ fn main() {
 ")
 	assert !wait_header_has_include_directive(with_os.c_code), with_os.c_code
 	assert with_os.c_code.contains('waitpid('), with_os.c_code
-	assert with_os.c_code.contains('int close(int fd);'), with_os.c_code
+	// A headerless unit declares the libc functions that the program uses from their
+	// bodyless V bindings, so the prototypes are spelled with the V types.
+	for name in ['close', 'read', 'waitpid', 'stat', 'uname', 'statvfs', 'opendir', 'readdir',
+		'closedir', 'signal', 'setenv', 'clock_gettime', 'pthread_mutex_lock', 'pthread_mutex_unlock',
+		'memset', 'memcpy', 'memmove', 'memcmp', 'strlen', 'strcmp', 'snprintf', '_exit', '__errno',
+		'__errno_location'] {
+		assert wait_header_declares(with_os.c_code, name), '${name}\n${with_os.c_code}'
+	}
 	assert with_os.c_code.contains('typedef _Bool bool;'), with_os.c_code
 	assert with_os.c_code.contains('typedef unsigned char bool;'), with_os.c_code
 	assert with_os.c_code.contains('#define __bool_true_false_are_defined 1'), with_os.c_code
 	assert with_os.c_code.contains('#if !defined(__FILE_defined) && !defined(_FILE_DEFINED) && !defined(_FILEDEFED) && !defined(__DEFINED_FILE) && !defined(_FILE_DECLARED) && !defined(__FILE_DECLARED)'), with_os.c_code
 	assert with_os.c_code.contains('typedef intptr_t ssize_t;'), with_os.c_code
-	assert with_os.c_code.contains('int setenv(const char* name, const char* value, int overwrite);'), with_os.c_code
 	assert with_os.c_code.contains('void abort(void);'), with_os.c_code
-	assert with_os.c_code.contains('void* memset(void* s, int c, size_t n);'), with_os.c_code
-	assert with_os.c_code.contains('void* memcpy(void* dest, const void* src, size_t n);'), with_os.c_code
-	assert with_os.c_code.contains('void* memmove(void* dest, const void* src, size_t n);'), with_os.c_code
-	assert with_os.c_code.contains('int memcmp(const void* s1, const void* s2, size_t n);'), with_os.c_code
-	assert with_os.c_code.contains('size_t strlen(const char* s);'), with_os.c_code
 	assert !with_os.c_code.contains('i32 strlen(char* s);'), with_os.c_code
-	assert with_os.c_code.contains('int strcmp(const char* s1, const char* s2);'), with_os.c_code
-	assert with_os.c_code.contains('int strncmp(const char* s1, const char* s2, size_t n);'), with_os.c_code
-	assert with_os.c_code.contains('char* strncpy(char* dest, const char* src, size_t n);'), with_os.c_code
-	assert with_os.c_code.contains('double floor(double x);'), with_os.c_code
-	assert with_os.c_code.contains('double ceil(double x);'), with_os.c_code
-	assert with_os.c_code.contains('float floorf(float x);'), with_os.c_code
-	assert with_os.c_code.contains('float ceilf(float x);'), with_os.c_code
-	assert with_os.c_code.contains('double sqrt(double x);'), with_os.c_code
-	assert with_os.c_code.contains('double pow(double x, double y);'), with_os.c_code
-	assert with_os.c_code.contains('double ldexp(double x, int exp);'), with_os.c_code
-	assert with_os.c_code.contains('double fmod(double x, double y);'), with_os.c_code
-	assert with_os.c_code.contains('double cos(double x);'), with_os.c_code
-	assert with_os.c_code.contains('double acos(double x);'), with_os.c_code
-	assert with_os.c_code.contains('double fabs(double x);'), with_os.c_code
-	assert with_os.c_code.contains('int open(const char* path, int flags, ...);'), with_os.c_code
-	assert with_os.c_code.contains('ssize_t read(int fd, void* buf, size_t count);'), with_os.c_code
-	assert with_os.c_code.contains('int fork(void);'), with_os.c_code
-	assert with_os.c_code.contains('int dup2(int oldfd, int newfd);'), with_os.c_code
-	assert with_os.c_code.contains('int execlp(const char* file, const char* arg, ...);'), with_os.c_code
-	assert with_os.c_code.contains('int execvp(const char* file, char* const argv[]);'), with_os.c_code
-	assert with_os.c_code.contains('void _exit(int status);'), with_os.c_code
-	ssize_typedef_idx := with_os.c_code.index('typedef intptr_t ssize_t;') or { -1 }
-	read_proto_idx := with_os.c_code.index('ssize_t read(int fd, void* buf, size_t count);') or {
-		-1
-	}
-	assert ssize_typedef_idx >= 0 && ssize_typedef_idx < read_proto_idx, with_os.c_code
-	assert with_os.c_code.contains('int access(const char* path, int mode);'), with_os.c_code
-	assert with_os.c_code.contains('char* realpath(const char* path, char* resolved_path);'), with_os.c_code
-	assert with_os.c_code.contains('char* strrchr(const char* s, int c);'), with_os.c_code
-	assert with_os.c_code.contains('char* strstr(const char* haystack, const char* needle);'), with_os.c_code
-	assert with_os.c_code.contains('int snprintf(char* str, size_t size, const char* format, ...);'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__ANDROID__)'), with_os.c_code
-	assert with_os.c_code.contains('int* __errno(void);'), with_os.c_code
 	assert with_os.c_code.contains('#define errno (*__errno())'), with_os.c_code
-	assert with_os.c_code.contains('int* __errno_location(void);'), with_os.c_code
 	assert with_os.c_code.contains('#define errno (*__errno_location())'), with_os.c_code
 	assert with_os.c_code.contains('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)'), with_os.c_code
 	assert with_os.c_code.contains('#define stdout __stdoutp'), with_os.c_code
@@ -224,8 +230,6 @@ fn main() {
 	assert with_os.c_code.contains('typedef union { unsigned char _opaque[128]; long long _align; } pthread_mutex_t;'), with_os.c_code
 	assert with_os.c_code.contains('typedef union { unsigned char _opaque[256]; long long _align; } pthread_rwlock_t;'), with_os.c_code
 	assert with_os.c_code.contains('#define PTHREAD_MUTEX_INITIALIZER'), with_os.c_code
-	assert with_os.c_code.contains('int pthread_mutex_lock(void* mutex);'), with_os.c_code
-	assert with_os.c_code.contains('int pthread_mutex_unlock(void* mutex);'), with_os.c_code
 	assert with_os.c_code.contains('typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;'), with_os.c_code
 	assert with_os.c_code.contains('struct winsize { unsigned short ws_row; unsigned short ws_col; unsigned short ws_xpixel; unsigned short ws_ypixel; };'), with_os.c_code
 	assert with_os.c_code.contains('typedef union epoll_data { void* ptr; int fd; u32 u32; u64 u64; } epoll_data_t;'), with_os.c_code
@@ -262,13 +266,10 @@ fn main() {
 	assert with_os.c_code.contains('struct stat { u64 st_ino; i64 st_size; u64 st_dev; u64 st_rdev;'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__BIGENDIAN__)'), with_os.c_code
 	assert with_os.c_code.contains('#error unsupported headerless Unix struct stat layout for this platform'), with_os.c_code
-	assert with_os.c_code.contains('int stat(const char* path, struct stat* buf);'), with_os.c_code
-	assert !with_os.c_code.contains('i32 stat(char*, void*);'), with_os.c_code
 	assert with_os.c_code.contains('i64 st_birthtime;'), with_os.c_code
 	assert with_os.c_code.contains('struct rusage { struct timeval ru_utime; struct timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss;'), with_os.c_code
 	assert with_os.c_code.contains('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)'), with_os.c_code
 	assert with_os.c_code.contains('typedef struct timespec timespec;'), with_os.c_code
-	assert with_os.c_code.contains('int clock_gettime(int clock_id, struct timespec* tp);'), with_os.c_code
 	assert !with_os.c_code.contains('typedef struct stat stat;'), with_os.c_code
 	assert !with_os.c_code.contains('typedef struct sigset_t sigset_t;'), with_os.c_code
 	assert !with_os.c_code.contains('struct winsize {\n\tws_row'), with_os.c_code
@@ -383,21 +384,33 @@ fn test_user_c_decl_emits_extern_prototype_without_headers() {
 #flag -Werror=implicit-function-declaration
 
 fn C.getppid() int
+fn C.getpgrp() int
+fn C.llabs(i64) i64
 
 fn main() {
 	println(C.getppid().str())
+	println((C.getpgrp() > 0).str())
+	println(C.llabs(-5000000000).str())
 }
 ')
 	assert !wait_header_has_include_directive(program.c_code), program.c_code
+	// Only the program declares these functions. Without a prototype, TinyCC calls them
+	// as implicitly declared `int` functions, and the 64-bit llabs result is truncated.
 	assert program.c_code.contains('int getppid(void);'), program.c_code
+	assert program.c_code.contains('int getpgrp(void);'), program.c_code
+	assert program.c_code.contains('i64 llabs(i64);'), program.c_code
 	run := os.exec([wait_header_exe(program.out)])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().int() > 0, run.output
+	lines := run.output.trim_space().split_into_lines()
+	assert lines.len == 3, run.output
+	assert lines[0].int() > 0, run.output
+	assert lines[1] == 'true', run.output
+	assert lines[2] == '5000000000', run.output
 }
 
 fn test_windows_crt_underscore_c_decls_use_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_windows_c(v3_bin, 'windows_crt_underscore_decls', 'module main
+	source := 'module main
 
 fn C._wfopen(&u16, &u16) voidptr
 fn C._wsystem(&u16) int
@@ -415,7 +428,9 @@ fn main() {
  _ = C._wchdir(p)
  _ = C._chsize_s(0, u64(0))
 }
-')
+'
+	names := ['_wfopen', '_wsystem', '_wgetenv', '_waccess', '_wchdir', '_chsize_s']
+	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'windows_crt_underscore_decls', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('#include <io.h>'), c_code
 	assert c_code.contains('#include <stdint.h>'), c_code
@@ -423,14 +438,23 @@ fn main() {
 	// with the real FILE* and wchar_t* return types.
 	assert !c_code.contains('void* _wfopen(u16*, u16*);'), c_code
 	assert !c_code.contains('void* _wgetenv(u16*);'), c_code
-	for name in ['_wfopen', '_wsystem', '_wgetenv', '_waccess', '_wchdir', '_chsize_s'] {
+	for name in names {
 		assert c_code.contains('(void)(' + name + '('), c_code
 	}
+	// Without the CRT headers, the bindings are the only declarations of these functions.
+	headerless := wait_header_gen_windows_c(v3_bin, 'windows_crt_underscore_decls', source)
+	assert !wait_header_has_include_directive(headerless), headerless
+	assert headerless.contains('int _chsize_s(int, u64);'), headerless
+	for name in names {
+		assert wait_header_declares(headerless, name), '${name}\n${headerless}'
+		assert headerless.contains('(void)(' + name + '('), headerless
+	}
+	wait_header_check_windows_c('windows_crt_underscore_decls')
 }
 
 fn test_windows_sdk_types_come_from_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_windows_c(v3_bin, 'windows_sdk_type_order', 'module main
+	source := 'module main
 
 @[typedef]
 struct C.SECURITY_ATTRIBUTES {}
@@ -442,17 +466,26 @@ fn main() {
 	attrs := &C.SECURITY_ATTRIBUTES(unsafe { nil })
 	_ = C.CreateHardLinkW(path, path, attrs)
 }
-')
+'
+	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'windows_sdk_type_order', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('SECURITY_ATTRIBUTES* attrs'), c_code
 	assert c_code.contains('CreateHardLinkW(path, path, attrs)'), c_code
 	assert !c_code.contains('typedef struct SECURITY_ATTRIBUTES {'), c_code
 	assert !c_code.contains('typedef struct SECURITY_ATTRIBUTES SECURITY_ATTRIBUTES;'), c_code
+	// Without the SDK headers, V defines the SDK layout once, not the empty view.
+	headerless := wait_header_gen_windows_c(v3_bin, 'windows_sdk_type_order', source)
+	assert !wait_header_has_include_directive(headerless), headerless
+	assert headerless.count('typedef struct SECURITY_ATTRIBUTES ') == 1, headerless
+	assert headerless.contains('typedef struct SECURITY_ATTRIBUTES { DWORD nLength; void* lpSecurityDescriptor; BOOL bInheritHandle; } SECURITY_ATTRIBUTES;'), headerless
+	assert headerless.contains('int WINAPI CreateHardLinkW(u16*, u16*, SECURITY_ATTRIBUTES*);'), headerless
+	assert headerless.contains('CreateHardLinkW(path, path, attrs)'), headerless
+	wait_header_check_windows_c('windows_sdk_type_order')
 }
 
 fn test_winapi_declarations_come_from_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_windows_c(v3_bin, 'winapi_calling_convention', 'module main
+	source := 'module main
 
 fn C.GetStdHandle(u32) voidptr
 fn C.CreateFileW(&u16, u32, u32, voidptr, u32, u32, voidptr) voidptr
@@ -462,22 +495,30 @@ fn main() {
 	_ = C.GetStdHandle(u32(0))
 	_ = C.CreateFileW(path, 0, 0, voidptr(0), 0, 0, voidptr(0))
 }
-')
+'
+	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'winapi_calling_convention', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('GetStdHandle('), c_code
 	assert c_code.contains('CreateFileW(path,'), c_code
 	assert !c_code.contains('void* WINAPI GetStdHandle(u32);'), c_code
 	assert !c_code.contains('void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), c_code
+	// Without the SDK headers, the bindings declare the WinAPI calling convention.
+	headerless := wait_header_gen_windows_c(v3_bin, 'winapi_calling_convention', source)
+	assert !wait_header_has_include_directive(headerless), headerless
+	assert headerless.contains('void* WINAPI GetStdHandle(u32);'), headerless
+	assert headerless.contains('void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), headerless
+	assert headerless.contains('CreateFileW(path,'), headerless
+	wait_header_check_windows_c('winapi_calling_convention')
 }
 
 fn test_unsuffixed_winapi_decls_use_wide_exports() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_windows_c(v3_bin, 'winapi_unsuffixed_wide_exports', 'module main
+	source := 'module main
 
 fn C.GetModuleFileName(voidptr, &u16, u32) u32
 fn C.CreateFile(&u16, u32, u32, voidptr, u32, u32, voidptr) voidptr
 fn C.LoadLibrary(&u16) voidptr
-fn C.DefWindowProc(voidptr, u32, usize, isize) isize
+fn C.DefWindowProc(voidptr, u32, uint, C.ptrdiff_t) C.ptrdiff_t
 
 fn main() {
 	path := &u16(unsafe { nil })
@@ -486,20 +527,62 @@ fn main() {
 	_ = C.LoadLibrary(path)
 	_ = voidptr(&C.DefWindowProc)
 }
-')
-	assert !c_code.contains('u32 WINAPI GetModuleFileNameW(void*, u16*, u32);'), c_code
-	assert !c_code.contains('void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), c_code
-	assert !c_code.contains('void* WINAPI LoadLibraryW(u16*);'), c_code
-	assert !c_code.contains('ptrdiff_t WINAPI DefWindowProcW(void*, u32, size_t, ptrdiff_t);'), c_code
+'
+	wide_decls := ['u32 WINAPI GetModuleFileNameW(void*, u16*, u32);',
+		'void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);',
+		'void* WINAPI LoadLibraryW(u16*);',
+		'ptrdiff_t WINAPI DefWindowProcW(void*, u32, size_t, ptrdiff_t);']
+	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'winapi_unsuffixed_wide_exports', source)
+	for decl in wide_decls {
+		assert !c_code.contains(decl), c_code
+	}
 	assert c_code.contains('#include <windows.h>'), c_code
-	assert c_code.contains('GetModuleFileNameW('), c_code
-	assert c_code.contains('CreateFileW('), c_code
-	assert c_code.contains('LoadLibraryW('), c_code
-	assert c_code.contains('(void*)(DefWindowProcW)'), c_code
-	assert !c_code.contains('GetModuleFileName('), c_code
-	assert !c_code.contains('CreateFile('), c_code
-	assert !c_code.contains('LoadLibrary('), c_code
-	assert !c_code.contains('&DefWindowProc)'), c_code
+	// Without the SDK headers, the bindings declare the wide exports themselves.
+	headerless := wait_header_gen_windows_c(v3_bin, 'winapi_unsuffixed_wide_exports', source)
+	assert !wait_header_has_include_directive(headerless), headerless
+	for decl in wide_decls {
+		assert headerless.contains(decl), headerless
+	}
+	for code in [c_code, headerless] {
+		assert code.contains('GetModuleFileNameW('), code
+		assert code.contains('CreateFileW('), code
+		assert code.contains('LoadLibraryW('), code
+		assert code.contains('(void*)(DefWindowProcW)'), code
+		assert !code.contains('GetModuleFileName('), code
+		assert !code.contains('CreateFile('), code
+		assert !code.contains('LoadLibrary('), code
+		assert !code.contains('&DefWindowProc)'), code
+	}
+	wait_header_check_windows_c('winapi_unsuffixed_wide_exports')
+}
+
+fn test_c_fn_value_keeps_its_prototype_in_serial_and_parallel_cgen() {
+	v3_bin := wait_header_build_v3()
+	source := 'module main
+
+fn C.V3WaitHeaderCallback(voidptr, u32) C.ptrdiff_t
+
+fn main() {
+	_ = voidptr(&C.V3WaitHeaderCallback)
+}
+'
+	// A serial dispatch (`VJOBS=1`, as in CI) has no workers that collect the C
+	// symbols reached by the emitted bodies, so a C function that is used only as a
+	// value lost its prototype there.
+	old_vjobs := os.getenv_opt('VJOBS')
+	defer {
+		if vjobs := old_vjobs {
+			os.setenv('VJOBS', vjobs, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	for jobs in ['1', '4'] {
+		os.setenv('VJOBS', jobs, true)
+		c_code := wait_header_gen_c(v3_bin, 'c_fn_value_prototype_jobs_${jobs}', source)
+		assert wait_header_declares(c_code, 'V3WaitHeaderCallback'), 'VJOBS=${jobs}\n${c_code}'
+		assert c_code.contains('(void*)(V3WaitHeaderCallback)'), 'VJOBS=${jobs}\n${c_code}'
+	}
 }
 
 fn test_synthesized_c_extern_prototypes_preserve_const_pointer_params() {
@@ -519,7 +602,7 @@ fn main() {
 
 fn test_windows_sync_structs_use_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_windows_c(v3_bin, 'windows_sync_struct_storage', 'module main
+	source := 'module main
 
 @[typedef]
 struct C.SRWLOCK {}
@@ -535,7 +618,8 @@ struct SyncHolder {
 fn main() {
 	_ := SyncHolder{}
 }
-')
+'
+	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'windows_sync_struct_storage', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('SRWLOCK rw;'), c_code
 	assert c_code.contains('CONDITION_VARIABLE cv;'), c_code
@@ -543,6 +627,16 @@ fn main() {
 	assert !c_code.contains('typedef struct CONDITION_VARIABLE {'), c_code
 	assert !c_code.contains('typedef struct SRWLOCK SRWLOCK;'), c_code
 	assert !c_code.contains('typedef struct CONDITION_VARIABLE CONDITION_VARIABLE;'), c_code
+	// Without the SDK headers, V defines the pointer-sized SDK storage, not the empty views.
+	headerless := wait_header_gen_windows_c(v3_bin, 'windows_sync_struct_storage', source)
+	assert !wait_header_has_include_directive(headerless), headerless
+	assert headerless.contains('SRWLOCK rw;'), headerless
+	assert headerless.contains('CONDITION_VARIABLE cv;'), headerless
+	assert headerless.count('typedef struct SRWLOCK ') == 1, headerless
+	assert headerless.count('typedef struct CONDITION_VARIABLE ') == 1, headerless
+	assert headerless.contains('typedef struct SRWLOCK { void* Ptr; } SRWLOCK;'), headerless
+	assert headerless.contains('typedef struct CONDITION_VARIABLE { void* Ptr; } CONDITION_VARIABLE;'), headerless
+	wait_header_check_windows_c('windows_sync_struct_storage')
 }
 
 fn test_epoll_data_tag_uses_headerless_preamble_definition() {
@@ -574,7 +668,7 @@ fn main() {
 
 fn test_windows_console_records_use_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_windows_c(v3_bin, 'windows_console_records', 'module main
+	source := 'module main
 
 pub union C.Event {
 	KeyEvent              C.KEY_EVENT_RECORD
@@ -662,13 +756,24 @@ fn main() {
 	_ := C.INPUT_RECORD{}
 	_ := C.CHAR_INFO{}
 }
-')
+'
+	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'windows_console_records', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('(INPUT_RECORD){0}'), c_code
 	assert c_code.contains('(CHAR_INFO){0}'), c_code
 	assert !c_code.contains('typedef struct KEY_EVENT_RECORD {'), c_code
 	assert !c_code.contains('typedef struct INPUT_RECORD {'), c_code
 	assert !c_code.contains('struct KEY_EVENT_RECORD {\n'), c_code
+	// Without the SDK headers, V defines the SDK layouts once. Its uChar keeps the
+	// two-byte WCHAR member, not the program's four-byte `rune` view.
+	headerless := wait_header_gen_windows_c(v3_bin, 'windows_console_records', source)
+	assert !wait_header_has_include_directive(headerless), headerless
+	assert headerless.contains('(INPUT_RECORD){0}'), headerless
+	assert headerless.contains('(CHAR_INFO){0}'), headerless
+	assert headerless.contains('typedef union uChar { u16 UnicodeChar; u8 AsciiChar; } uChar;'), headerless
+	assert headerless.count('typedef struct KEY_EVENT_RECORD {') == 1, headerless
+	assert headerless.count('typedef struct INPUT_RECORD {') == 1, headerless
+	wait_header_check_windows_c('windows_console_records')
 }
 
 fn test_time_import_uses_platform_tm_layout_without_headers() {
@@ -753,8 +858,8 @@ fn main() {
 ")
 	assert !wait_header_has_include_directive(program.c_code), program.c_code
 	assert program.c_code.contains('#define LOCK_EX 2'), program.c_code
-	assert program.c_code.contains('int open(const char* path, int flags, ...);'), program.c_code
-	assert !program.c_code.contains('int open(char*'), program.c_code
+	assert wait_header_declares(program.c_code, 'open'), program.c_code
+	assert wait_header_declares(program.c_code, 'close'), program.c_code
 	assert program.c_code.contains('#elif defined(_WIN32)'), program.c_code
 	assert program.c_code.contains('#define GENERIC_READ 0x80000000U'), program.c_code
 	assert program.c_code.contains('#define OPEN_ALWAYS 4'), program.c_code
@@ -773,12 +878,12 @@ fn main() {
 	assert lines[2] == '0', run.output
 }
 
-fn test_net_import_uses_headerless_socket_constants() {
+fn test_net_import_keeps_native_socket_headers() {
 	$if windows {
 		return
 	}
 	v3_bin := wait_header_build_v3()
-	program := wait_header_compile(v3_bin, 'net_socket_constants', 'module main
+	program := wait_header_compile(v3_bin, 'net_socket_headers', 'module main
 
 import net
 
@@ -806,7 +911,59 @@ fn main() {
 	println(ok.str())
 }
 ')
+	// Library bindings keep their C headers; the headerless requirement covers hello world
+	// and compiler self builds. The system headers then own the socket structs.
+	assert program.c_code.contains('#include <netdb.h>'), program.c_code
+	assert !program.c_code.contains('struct addrinfo { int ai_flags;'), program.c_code
+	run := os.exec([wait_header_exe(program.out)])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'true\ntrue\ntrue', run.output
+}
+
+fn test_socket_bindings_use_headerless_socket_preamble() {
+	$if windows {
+		return
+	}
+	v3_bin := wait_header_build_v3()
+	program := wait_header_compile(v3_bin, 'socket_preamble', 'module main
+
+@[typedef]
+struct C.addrinfo {
+mut:
+	ai_family   int
+	ai_socktype int
+	ai_flags    int
+	ai_protocol int
+	ai_addrlen  u32
+	ai_next     voidptr
+	ai_addr     voidptr
+}
+
+fn C.getaddrinfo(&char, &char, &C.addrinfo, &&C.addrinfo) int
+fn C.freeaddrinfo(&C.addrinfo)
+
+fn main() {
+	host := "127.0.0.1"
+	service := "80"
+	mut hints := C.addrinfo{}
+	unsafe { vmemset(&hints, 0, int(sizeof(hints))) }
+	hints.ai_family = C.AF_INET
+	hints.ai_socktype = C.SOCK_STREAM
+	hints.ai_flags = C.AI_PASSIVE
+	mut results := &C.addrinfo(unsafe { nil })
+	code := C.getaddrinfo(&char(host.str), &char(service.str), &hints, &results)
+	if code != 0 {
+		println("false")
+		return
+	}
+	ok := !isnil(results) && results.ai_family == C.AF_INET && results.ai_socktype == C.SOCK_STREAM
+	C.freeaddrinfo(results)
+	println(ok.str())
+}
+')
 	assert !wait_header_has_include_directive(program.c_code), program.c_code
+	assert wait_header_declares(program.c_code, 'getaddrinfo'), program.c_code
+	assert wait_header_declares(program.c_code, 'freeaddrinfo'), program.c_code
 	assert program.c_code.contains('typedef unsigned short wchar_t;'), program.c_code
 	assert program.c_code.contains('typedef unsigned int wchar_t;'), program.c_code
 	assert program.c_code.contains('typedef uintptr_t SOCKET;'), program.c_code
@@ -873,25 +1030,22 @@ fn main() {
 	assert program.c_code.contains('#define SOCK_STREAM 2'), program.c_code
 	assert program.c_code.contains('#define AI_PASSIVE 0x0008'), program.c_code
 	assert program.c_code.contains('#elif defined(__QNX__) || defined(__QNXNTO__)'), program.c_code
-
 	assert program.c_code.contains('#define O_NONBLOCK 000200'), program.c_code
 	assert program.c_code.contains('#define EINPROGRESS 236'), program.c_code
 	assert program.c_code.contains('#elif defined(__linux__) || defined(__ANDROID__)'), program.c_code
 	assert program.c_code.contains('#define EPOLLIN 0x001'), program.c_code
 	assert program.c_code.contains('#define EPOLLET (1U << 31)'), program.c_code
 	assert program.c_code.contains('#define EPOLL_CTL_ADD 1'), program.c_code
-
 	assert program.c_code.contains('#error unsupported headerless C platform constants'), program.c_code
-
 	assert program.c_code.contains('#define TCP_NODELAY 1'), program.c_code
 	run := os.exec([wait_header_exe(program.out)])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true\ntrue\ntrue', run.output
+	assert run.output.trim_space() == 'true', run.output
 }
 
-// The same system header may appear under different guards. v3 drops system
-// includes in both contexts while preserving the surrounding C directives.
-fn test_same_system_include_under_different_guards_is_dropped() {
+// The same system header may appear under different guards. An explicit include
+// stays in the C output, so each guard keeps its own copy of it.
+fn test_same_system_include_under_different_guards_is_kept_in_each_guard() {
 	$if windows {
 		return
 	}
@@ -909,8 +1063,7 @@ fn main() {
 	println('ok')
 }
 ")
-	assert !wait_header_has_include_directive(c_code), c_code
-	assert c_code.count('#include <sys/v3dup_guard.h>') == 0, c_code
-	assert c_code.contains('#ifdef __linux__\n#endif'), c_code
-	assert c_code.contains('#ifdef __APPLE__\n#endif'), c_code
+	assert c_code.count('#include <sys/v3dup_guard.h>') == 2, c_code
+	assert c_code.contains('#ifdef __linux__\n#include <sys/v3dup_guard.h>\n#endif'), c_code
+	assert c_code.contains('#ifdef __APPLE__\n#include <sys/v3dup_guard.h>\n#endif'), c_code
 }

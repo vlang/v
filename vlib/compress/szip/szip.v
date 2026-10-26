@@ -195,7 +195,7 @@ fn (mut z Zip) parse() ! {
 			continue
 		}
 		z.current = i
-		z.entries[i].data = z.read_current_data() or { []u8{} }
+		z.entries[i].data = z.read_current_data()!
 	}
 	z.current = -1
 }
@@ -216,6 +216,7 @@ pub fn (mut z Zip) open_entry_by_index(index int) ! {
 }
 
 pub fn (mut z Zip) open_entry(name string) ! {
+	z.current = -1
 	for i, e in z.entries {
 		if e.name == name {
 			z.current = i
@@ -224,7 +225,11 @@ pub fn (mut z Zip) open_entry(name string) ! {
 	}
 	// write mode: append new entry
 	if z.mode == .write || z.mode == .append {
-		z.entries << ZipEntry{ name: name, method: 0 }
+		z.entries << ZipEntry{
+			name: name
+			method: 0
+			is_dir: name.ends_with('/')
+		}
 		z.current = z.entries.len - 1
 		return
 	}
@@ -232,7 +237,7 @@ pub fn (mut z Zip) open_entry(name string) ! {
 }
 
 pub fn (mut z Zip) close_entry() {
-	// nothing special
+	z.current = -1
 }
 
 pub fn (mut z Zip) name() string {
@@ -264,8 +269,8 @@ pub fn (mut z Zip) crc32() u32 {
 }
 
 pub fn (mut z Zip) index() !int {
-	if z.current < 0 {
-		return error('szip: cannot get current index')
+	if z.current < 0 || z.current >= z.entries.len {
+		return error('szip: cannot get current index of zip entry')
 	}
 	return z.current
 }
@@ -307,7 +312,10 @@ fn (mut z Zip) read_current_data() ![]u8 {
 
 pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 	data := z.read_current_data() or { return error('szip: ${err.msg()}') }
-	n := if data.len < in_bsize { data.len } else { in_bsize }
+	if in_bsize < data.len || (data.len > 0 && buf == unsafe { nil }) {
+		return error('szip: cannot read properly data from entry')
+	}
+	n := data.len
 	if n > 0 {
 		unsafe {
 			mut dst := &u8(buf)
@@ -317,6 +325,29 @@ pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 		}
 	}
 	return n
+}
+
+// read_entry allocates the current entry's bytes; the caller must free the returned buffer.
+pub fn (mut z Zip) read_entry() !voidptr {
+	data := z.read_current_data()!
+	// Allocate one byte for empty entries too, preserving the owning-buffer API.
+	buf := malloc(if data.len == 0 { 1 } else { data.len })
+	if data.len > 0 {
+		unsafe { vmemcpy(buf, data.data, data.len) }
+	}
+	return buf
+}
+
+// create_entry writes the file at name to the current archive entry.
+pub fn (mut z Zip) create_entry(name string) ! {
+	data := os.read_bytes(name) or { return error('szip: cannot read file: ${err.msg()}') }
+	z.write_entry(data)!
+}
+
+// extract_entry writes the current archive entry to path.
+pub fn (mut z Zip) extract_entry(path string) ! {
+	data := z.read_current_data()!
+	os.write_file_array(path, data) or { return error('szip: cannot extract entry: ${err.msg()}') }
 }
 
 pub fn (mut z Zip) write_entry(data []u8) ! {
@@ -338,17 +369,12 @@ pub fn (mut z Zip) write_entry(data []u8) ! {
 		if compressed.len < data.len {
 			z.entries[z.current].method = 8
 			z.entries[z.current].csize = u64(compressed.len)
-			// store compressed in data? We need to keep compressed bytes. Use a parallel slice.
-			// We'll store compressed in entry via a separate field. Add cdata field.
 		} else {
 			z.entries[z.current].method = 0
 			z.entries[z.current].csize = u64(data.len)
 		}
 	}
 }
-
-// Need to store compressed bytes. Add cdata to ZipEntry? Let's add field.
-// (handled below by redefining ZipEntry with cdata)
 
 // ---------------------------------------------------------------------------
 // Flush (write to file)

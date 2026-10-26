@@ -132,7 +132,7 @@ pub fn (mut s Scanner) scan() !token.Token {
 			return s.new_token(.number, num, num.len)
 		}
 
-		is_signed_number := is_sign && u8(s.at()).is_digit() && !u8(s.peek(-1)).is_digit()
+		is_signed_number := is_sign && u8(s.at()).is_digit() && !u8(s.peek(-2)).is_digit()
 		is_digit := byte_c.is_digit()
 		if is_digit || is_signed_number {
 			num := s.extract_number()!
@@ -168,8 +168,8 @@ pub fn (mut s Scanner) scan() !token.Token {
 				}
 				// Date-Time in RFC 3339 is allowed to have a space between the date and time in supplement to the 'T'
 				// so we allow space characters to slip through to the parser if the space is between two digits...
-				// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '"'+u8(s.peek(-1)).ascii_str()+'" < "${ascii}" > "'+u8(s.at()).ascii_str()+'"')
-				if c == ` ` && u8(s.peek(-1)).is_digit() && u8(s.at()).is_digit() {
+				// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '"'+u8(s.peek(-2)).ascii_str()+'" < "${ascii}" > "'+u8(s.at()).ascii_str()+'"')
+				if c == ` ` && u8(s.peek(-2)).is_digit() && u8(s.at()).is_digit() {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 						'identified, what could be, a space between a RFC 3339 date and time ("${ascii}") (${ascii.len})')
 					return s.new_token(token.Kind.whitespace, ascii, ascii.len)
@@ -337,18 +337,14 @@ fn (s &Scanner) at_crlf() bool {
 }
 
 // peek returns the character code from the input text at position + `n`.
-// peek returns `end_of_text` if it can't peek `n` characters ahead.
+// Negative offsets look behind the current position; out-of-range offsets return `end_of_text`.
 @[direct_array_access; inline]
 pub fn (s &Scanner) peek(n int) u32 {
-	if s.pos + n < s.text.len {
-		// Allow peeking back - needed for spaces between date and time in RFC 3339 format :/
-		if n - 1 < 0 && s.pos + n - 1 >= 0 {
-			// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'LOOKING BAAAA-AACK - OOOVER MY SHOOOOULDEEEER "${s.text[s.pos + n-1]}"')
-			return s.text[s.pos + n - 1]
-		}
-		return s.text[s.pos + n]
+	// Check the offset before adding it, including extreme positive/negative offsets.
+	if n < -s.pos || n >= s.text.len - s.pos {
+		return end_of_text
 	}
-	return end_of_text
+	return s.text[s.pos + n]
 }
 
 // reset resets the internal state of the scanner.
@@ -434,19 +430,10 @@ fn (mut s Scanner) extract_string() !string {
 	is_multiline := s.text[s.pos + 1] == quote && s.text[s.pos + 2] == quote
 	// Check for escaped multiline quote
 	if is_multiline {
-		mls := s.extract_multiline_string()!
-		return mls
+		return s.extract_multiline_string()
 	}
 
-	// `has_newline` mirrors what `lit.contains('\n')` used to report, without
-	// re-scanning the whole literal on every byte: it is set by each append and,
-	// like `contains`, never goes back to false.
 	mut has_newline := false
-	mut lit := strings.new_builder(64)
-	defer {
-		unsafe { lit.free() }
-	}
-	lit.write_u8(quote)
 
 	for {
 		s.pos++
@@ -464,7 +451,6 @@ fn (mut s Scanner) extract_string() !string {
 		// Check for escaped chars
 		if c == u8(92) {
 			esc, skip := s.handle_escapes(quote, is_multiline)
-			lit.write_string(esc)
 			has_newline = has_newline || esc.contains('\n')
 			if skip > 0 {
 				s.pos += skip
@@ -481,11 +467,9 @@ fn (mut s Scanner) extract_string() !string {
 		if c == quote {
 			s.pos++
 			s.col++
-			lit.write_u8(quote)
-			return lit.str()
+			return s.text[start..s.pos]
 		}
 
-		lit.write_u8(c)
 		has_newline = has_newline || c == `\n`
 
 		// Don't eat multiple lines in single-line mode
@@ -494,7 +478,7 @@ fn (mut s Scanner) extract_string() !string {
 				' unfinished single-line string literal `${quote.ascii_str()}` started at ${start} (${s.line_nr},${s.col}) "${u8(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 	}
-	return lit.str()
+	return s.text[start..s.pos]
 }
 
 // extract_multiline_string collects and returns a string containing
@@ -733,6 +717,9 @@ pub fn (s &Scanner) state() State {
 }
 
 fn (mut s Scanner) validate_and_skip_headers() ! {
+	if s.pos != 0 {
+		return
+	}
 	// UTF-16 / UTF-32 headers (BE/LE)
 	s.check_utf16_or_32_bom()!
 

@@ -43,7 +43,8 @@ fn test_selfhost_parallel_workers_grow_for_struct_defaults() {
 	}
 	for parallel in [true, false] {
 		output := os.join_path(root, if parallel { 'parallel' } else { 'serial' })
-		mut args := ['-nocache', '-building-v', '-o', output]
+		// The stage table is printed only with `-v` or `-show-timings` (2a45ec1b41).
+		mut args := ['-v', '-nocache', '-building-v', '-show-timings', '-o', output]
 		if !parallel {
 			args << '-no-parallel'
 		}

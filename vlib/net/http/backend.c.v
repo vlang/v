@@ -110,7 +110,7 @@ fn (req &Request) h2_exchange(mut conn H2Conn, method Method, host_name string, 
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(h2resp.body.len))!
 	}
-	return h2_response_to_http(h2resp)
+	return h2_response_to_http(h2resp, raw_body: req.raw_response_body)
 }
 
 fn read_from_ssl_connection_cb(con voidptr, buf &u8, bufsize int) !int {

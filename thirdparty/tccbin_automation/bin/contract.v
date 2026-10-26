@@ -1871,23 +1871,7 @@ fn validate_manifest_value(automation_root string, manifest JsonValue) ![]Schema
 	header_effects := require_array_member(manifest, 'header_effects')!
 	integrations := require_array_member(manifest, 'integrations')!
 	if target_id == 'windows-amd64' {
-		expected_patch_ids := [
-			'patch-0001',
-			'patch-0002',
-			'patch-0003',
-			'patch-0004',
-			'patch-0005',
-			'patch-0006',
-			'patch-0007',
-			'patch-0008',
-			'patch-0009',
-		]
-		if patch_ids_in_order != expected_patch_ids {
-			issues << SchemaIssue{'$/patches', 'Windows must declare the nine ordered TinyCC patches'}
-		}
-		if orders != [i64(1), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] {
-			issues << SchemaIssue{'$/transforms', 'Windows patch and transform order must be exactly 1 through 11'}
-		}
+		issues << validate_windows_patch_sequence(patch_ids_in_order, orders, transforms.len)
 		mut effect_ids := header_effects.map(require_string_member(it, 'id') or { '' })
 		effect_ids.sort()
 		if effect_ids != ['header-condition-variable', 'header-faststorefence', 'header-gmtime-s'] {
@@ -1897,7 +1881,8 @@ fn validate_manifest_value(automation_root string, manifest JsonValue) ![]Schema
 			|| require_string_member(integrations[0], 'id')! != 'bdwgc-v-integration' {
 			issues << SchemaIssue{'$/integrations', 'Windows must declare V/libgc integration separately'}
 		}
-		issues << validate_windows_transforms(transforms, header_effects, integrations)!
+		issues << validate_windows_transforms(transforms, patches.len, header_effects,
+			integrations)!
 	} else if header_effects.len != 0 || integrations.len != 0 || transforms.len != 0 {
 		issues << SchemaIssue{'$', 'non-Windows Phase A effects and integrations must be explicitly empty'}
 	}
@@ -2106,7 +2091,44 @@ fn validate_manifest_source_matrix(target_id string, v_source_sha string,
 	return issues
 }
 
-fn validate_windows_transforms(transforms []JsonValue, header_effects []JsonValue,
+// windows_minimum_patch_count is the TinyCC patch count the managed baseline (7545e515) reviewed.
+// A Windows manifest may grow past it, but an empty or truncated patch list is never valid.
+pub const windows_minimum_patch_count = 9
+
+// windows_patch_id spells the Windows TinyCC patch identifier for a 1-based position.
+pub fn windows_patch_id(position int) string {
+	mut digits := position.str()
+	for digits.len < 4 {
+		digits = '0' + digits
+	}
+	return 'patch-${digits}'
+}
+
+// validate_windows_patch_sequence checks that Windows declares a contiguous run of TinyCC patches
+// `patch-0001`..`patch-NNNN`, at least windows_minimum_patch_count long, and that patches and
+// transforms together occupy declared orders exactly 1 through patches + transforms. The count is
+// read from the manifest itself so adding a patch on the bundle side needs no contract edit.
+pub fn validate_windows_patch_sequence(patch_ids_in_order []string, orders []i64,
+	transform_count int) []SchemaIssue {
+	mut issues := []SchemaIssue{}
+	mut contiguous := patch_ids_in_order.len >= windows_minimum_patch_count
+	for index, patch_id in patch_ids_in_order {
+		if patch_id != windows_patch_id(index + 1) {
+			contiguous = false
+			break
+		}
+	}
+	if !contiguous {
+		issues << SchemaIssue{'$/patches', 'Windows must declare at least ${windows_minimum_patch_count} contiguous ordered TinyCC patches named from patch-0001'}
+	}
+	expected_orders := []i64{len: patch_ids_in_order.len + transform_count, init: i64(index + 1)}
+	if orders != expected_orders {
+		issues << SchemaIssue{'$/transforms', 'Windows patch and transform order must be exactly 1 through the declared patch and transform count'}
+	}
+	return issues
+}
+
+fn validate_windows_transforms(transforms []JsonValue, patch_count int, header_effects []JsonValue,
 	integrations []JsonValue) ![]SchemaIssue {
 	mut issues := []SchemaIssue{}
 	if transforms.len != 2 {
@@ -2130,7 +2152,7 @@ fn validate_windows_transforms(transforms []JsonValue, header_effects []JsonValu
 		if require_string_member(transform, 'id')! != expected_ids[index]
 			|| require_string_member(transform, 'path')! != expected_paths[index]
 			|| require_string_member(transform, 'owner')! != expected_owners[index]
-			|| require_integer_member(transform, 'order')! != i64(index + 10)
+			|| require_integer_member(transform, 'order')! != i64(index + patch_count + 1)
 			|| require_string_member(transform, 'apply_stage')! != expected_stages[index]
 			|| actual_effects != expected_effects[index] {
 			issues << SchemaIssue{'\$/transforms/${index}', 'Windows transform binding differs from the exact reviewed tuple'}

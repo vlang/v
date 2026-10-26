@@ -63,31 +63,62 @@ fn test_program_specialization_preserves_generated_functions_without_generic_nam
 
 // test_c_name_sanitize_operator_overloads validates this v3 regression case.
 fn test_c_name_sanitize_operator_overloads() {
-	assert c_name('Point.<') == 'Point__lt'
-	assert c_name('Point.<=') == 'Point__le'
-	assert c_name('Point.>') == 'Point__gt'
-	assert c_name('Point.>=') == 'Point__ge'
-	assert c_name('Point.[]') == 'Point__op_index'
-	assert c_name('Point.[]=') == 'Point__op_index_set'
+	assert c_name('Point.<') == '__v3_internal_symbol_op_Point__lt'
+	assert c_name('Point.<=') == '__v3_internal_symbol_op_Point__le'
+	assert c_name('Point.>') == '__v3_internal_symbol_op_Point__gt'
+	assert c_name('Point.>=') == '__v3_internal_symbol_op_Point__ge'
+	assert c_name('Point.[]') == '__v3_internal_symbol_op_Point__op_index'
+	assert c_name('Point.[]=') == '__v3_internal_symbol_op_Point__op_index_set'
+	assert c_name('Point.**') == '__v3_internal_symbol_op_Point__pow'
 }
 
-fn test_operator_collision_names_preserve_short_and_long_method_names() {
+// An operator's C name never equals the C name of an ordinary method, whether or
+// not the receiver has a method named after the operator's C spelling.
+fn test_operator_c_names_differ_from_method_c_names() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	for op in ['+', '==', '[]='] {
+	for op, word in {
+		'+':   'plus'
+		'-':   'minus'
+		'*':   'mul'
+		'**':  'mul_'
+		'/':   'div'
+		'%':   'mod'
+		'==':  'eq'
+		'!=':  'ne'
+		'<':   'lt'
+		'>':   'gt'
+		'<=':  'le'
+		'>=':  'ge'
+		'|':   'or'
+		'^':   'xor'
+		'[]':  'op_index'
+		'[]=': 'op_index_set'
+	} {
 		name := 'Box.${op}'
-		ordinary := 'Box.${g.cname('T.${op}').all_after_last('__')}'
+		ordinary := 'Box.${word}'
+		assert g.direct_call_name(name) == g.cname(name)
+		assert g.direct_call_name(name) != g.cname(ordinary)
 		tc.fn_param_types[ordinary] = []types.Type{}
-		assert g.direct_call_name(name) == '${g.cname(name)}__operator'
+		assert g.direct_call_name(name) == g.cname(name)
 		assert g.direct_call_name(ordinary) == g.cname(ordinary)
+		assert g.cname(name) != g.cname(ordinary)
 	}
+	assert g.cname('Box.**') != g.cname('Box.pow')
 	for method in ['get', 'value', 'operator', 'operator[]=', '[]suffix'] {
 		name := 'Box.${method}'
 		assert g.direct_call_name(name) == g.cname(name)
 	}
+}
+
+// The builtin `string` operators keep the C names the runtime calls them by.
+fn test_builtin_string_operators_keep_runtime_c_names() {
+	assert c_name('string.==') == 'string__eq'
+	assert c_name('string.<') == 'string__lt'
+	assert c_name('string.+') == 'string__plus'
 }
 
 fn test_direct_builtin_map_set_aliases_use_the_runtime_symbol() {
@@ -152,11 +183,51 @@ fn test_c_name_pre_sanitized_classifier() {
 
 fn test_cached_cname_fast_paths_match_canonical_naming() {
 	mut g := FlatGen.new()
-	for name in ['run', 'int', 'send', 'malloc', 'int_str', 'exit', '_str_42', '_str_value', 'main.run',
-		'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=', 'pkg.Box[int].value',
-		'int@static@tag', '__v3_internal_symbol_source'] {
+	for name in ['run', 'int', 'bool', 'C.bool', 'send', 'malloc', 'int_str', 'exit', '_str_42',
+		'_str_value', 'main.run', 'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=',
+		'pkg.Box[int].value', 'int@static@tag', '__v3_internal_symbol_source'] {
 		assert g.cname(name) == c_name(name)
 	}
+}
+
+fn test_cached_cname_classifier_preserves_special_names_and_bytes() {
+	mut g := FlatGen.new()
+	for name in ['', '.', '9name', 'a..b', 'a__b.c', '__v3_internal_symbol_x',
+		'__v3_internal_symbol_x.y', 'x@static@y', 'x.[]=', 'x.+', '_str_123', 'C.name', 'C.SSL_CTX.str',
+		'complex', 'near', 'far', 'pascal', 'cdecl', 'min', 'max', 'alloca', 'v_alloca',
+		'__v3_internal_symbol_libc_alloca', 'C.alloca', 'int_str', 'malloc'] {
+		for _ in 0 .. 2 {
+			assert g.cname(name) == c_name(name), name
+		}
+	}
+	for byte in 0 .. 256 {
+		name := 'prefix' + u8(byte).ascii_str() + 'suffix'
+		assert g.cname(name) == c_name(name), byte.str()
+		assert g.cname(name.clone()) == c_name(name), byte.str()
+	}
+}
+
+fn test_cname_recent_cache_checks_content_and_reuses_equal_allocations() {
+	mut cache := CNameCache{}
+	name := 'pkg.first'
+	cache.remember(name, 'pkg__first')
+	assert cache.recent(name.clone())? == 'pkg__first'
+	// Search for a real slot collision; a collision must never supply another name's value.
+	mut collision := ''
+	for i in 0 .. 100000 {
+		candidate := 'pkg.name_${i}'
+		if candidate != name && c_name_recent_slot(candidate) == c_name_recent_slot(name) {
+			collision = candidate
+			break
+		}
+	}
+	assert collision != ''
+	assert cache.recent(collision) == none
+	cache.remember(collision, 'pkg__farst')
+	assert cache.recent(name) == none
+	assert cache.recent(collision.clone())? == 'pkg__farst'
+	cache.remember('', '')
+	assert cache.recent('')? == ''
 }
 
 fn test_c_name_sanitizes_compound_generic_type_arguments() {
@@ -202,14 +273,14 @@ fn test_struct_init_main_alias_target_keeps_declaration_scope() {
 	tc.struct_modules['Context'] = 'main'
 	tc.structs['veb.Context'] = []types.StructField{}
 	tc.struct_modules['veb.Context'] = 'veb'
-	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_aliases.set_id('AliasContext', flat.source_type_id('Context'))
 	tc.type_alias_modules['AliasContext'] = 'main'
 	tc.cur_module = 'veb'
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
 
-	assert g.struct_type_alias_target('main.AliasContext') or { '' } == 'main.Context'
+	assert flat.source_type_name(g.struct_type_alias_target(flat.source_type_id('main.AliasContext')) or { u32(0) }) == 'main.Context'
 }
 
 fn test_c_name_generated_string_symbol_collision() {
@@ -288,7 +359,7 @@ fn test_main_function_is_prefixed_when_declared_c_function_owns_name() {
 	g.a = &a
 	g.tc = &tc
 	tc.fn_ret_types['C.get_value'] = types.Type(types.int_)
-	g.fn_decl_ret_types[fn_decl_module_key('main', 'get_value')] = types.Type(types.int_)
+	g.fn_decl_ret_types[fn_decl_module_key('main', 'get_value')] = tc.parse_type(flat.source_type_id('int'))
 
 	assert g.fn_c_name_in_module('main', 'get_value') == 'main__get_value'
 	assert g.main_runtime_shadow_fn_c_name('main', 'get_value') or { '' } == 'main__get_value'
@@ -305,6 +376,58 @@ fn test_main_function_is_prefixed_when_objective_c_owns_id_name() {
 	assert g.fn_c_name_in_module('main', 'id') == 'main__id'
 	assert g.main_runtime_shadow_fn_c_name('main', 'id') or { '' } == 'main__id'
 	assert g.fn_c_name_in_module('database', 'id') == 'database__id'
+}
+
+fn test_main_sync_function_names_use_the_reserved_namespace() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for name in ['sync', 'syncfs'] {
+		internal := '__v3_internal_symbol_libc_${name}'
+		assert g.fn_c_name_in_module('main', name) == internal
+		assert g.fn_c_name_in_module('', name) == internal
+		assert g.direct_call_name(name) == internal
+		assert g.direct_call_name('main.${name}') == internal
+		assert g.callback_c_fn_name(name) == internal
+		assert g.callback_c_fn_name('main.${name}') == internal
+		assert g.fn_c_name_in_module('main', 'main__${name}') == 'main__${name}'
+		assert g.fn_c_name_in_module('main', internal) == '__v3_internal_symbol_source_${internal}'
+		assert g.fn_c_name_in_module('worker', name) == 'worker__${name}'
+		assert g.direct_call_name('C.${name}') == name
+		assert g.callback_c_fn_name('C.${name}') == name
+	}
+	tc.cur_module = 'worker'
+	assert g.direct_call_name('main.sync') == '__v3_internal_symbol_libc_sync'
+	assert g.direct_call_name('main.syncfs') == '__v3_internal_symbol_libc_syncfs'
+}
+
+fn test_main_function_names_avoid_windows_header_macros() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for name in ['near', 'far', 'pascal', 'cdecl'] {
+		internal := '__v3_internal_symbol_macro_${name}'
+		assert g.fn_c_name_in_module('main', name) == internal
+		assert g.fn_c_name_in_module('', name) == internal
+		assert g.direct_call_name(name) == internal
+		assert g.direct_call_name('main.${name}') == internal
+		assert g.callback_c_fn_name(name) == internal
+		assert g.callback_c_fn_name('main.${name}') == internal
+		assert g.fn_c_name_in_module('main', 'main__${name}') == 'main__${name}'
+		assert g.fn_c_name_in_module('main', internal) == '__v3_internal_symbol_source_${internal}'
+		assert g.fn_c_name_in_module('worker', name) == 'worker__${name}'
+		assert g.direct_call_name('C.${name}') == name
+		assert g.callback_c_fn_name('C.${name}') == name
+	}
+	tc.cur_module = 'worker'
+	for name in ['near', 'far', 'pascal', 'cdecl'] {
+		assert g.direct_call_name('main.${name}') == '__v3_internal_symbol_macro_${name}'
+		assert g.callback_c_fn_name('main.${name}') == '__v3_internal_symbol_macro_${name}'
+	}
 }
 
 fn test_target_libc_opaque_packed_struct_restores_packing() {
@@ -338,7 +461,7 @@ fn aligned_struct_decl_c(ccompiler string, attrs string, union_decl bool) string
 	node_id := a.add_node(flat.Node{
 		kind:  .struct_decl
 		value: name
-		typ:   attrs
+		typ:   flat.source_type_id(attrs)
 	})
 	mut g := FlatGen.new()
 	g.a = &a
@@ -415,9 +538,9 @@ fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 	g.a = &a
 	g.tc = &tc
 	alias_to_voidptr := types.Type(types.Alias{
-		name:      'Data'
-		base_type: types.Type(types.Pointer{
-			base_type: types.Type(types.void_)
+		name_id:   flat.source_type_id('Data')
+		base_type: &types.Type(types.Pointer{
+			base_type: &types.Type(types.void_)
 		})
 	})
 	assert !g.voidptr_method_value_arg(flat.empty_node, alias_to_voidptr)
@@ -434,17 +557,17 @@ fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
 		types.StructField{
 			name:     'veb.Context'
 			typ:      types.Type(types.Struct{
-				name: 'veb.Context'
+				name_id: flat.source_type_id('veb.Context')
 			})
 			is_embed: true
 		},
 	]
 
 	base := types.Type(types.Struct{
-		name: 'main.Context'
+		name_id: flat.source_type_id('main.Context')
 	})
 	expected := types.Type(types.Struct{
-		name: 'Context'
+		name_id: flat.source_type_id('Context')
 	})
 	assert g.embedded_receiver_path_for_expected(base, expected) == none
 	assert g.emitted_method_belongs_to_receiver(base, 'before_request', 'Context__before_request')
@@ -457,12 +580,9 @@ fn test_array_receiver_method_is_not_reselected_as_generic() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
-		GenericMethodCandidate{
-			name: 'jsonrpc.[]Request.encode_batch'
-			ret:  types.Type(types.string_)
-		},
-	]
+	g.add_generic_method_candidate(flat.source_type_id('jsonrpc'), 'encode_batch',
+		generic_method_candidate_for_decl('jsonrpc.[]Request.encode_batch', types.Type(types.string_),
+			[]types.Type{}))
 
 	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node, 'jsonrpc.[]Response.encode_batch', -1) == none
 }
@@ -479,10 +599,10 @@ fn test_context_lookup_cache_tracks_source_file_imports() {
 	g.tc = &tc
 	tc.cur_file = 'one.v'
 	assert g.import_alias_module('kind')? == 'first.token'
-	assert g.enum_selector_base_name('kind.Kind')? == 'first.token.Kind'
+	assert g.enum_selector_base_name(flat.source_type_id('kind.Kind'))? == flat.source_type_id('first.token.Kind')
 	tc.cur_file = 'two.v'
 	assert g.import_alias_module('kind')? == 'second.token'
-	assert g.enum_selector_base_name('kind.Kind')? == 'second.token.Kind'
+	assert g.enum_selector_base_name(flat.source_type_id('kind.Kind'))? == flat.source_type_id('second.token.Kind')
 }
 
 fn test_transformed_module_call_namespace_arguments() {
@@ -521,9 +641,9 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 	assert typeof_display_type_name('Pair[int[3], Box[string[2]]]') == 'Pair[[3]int, Box[[2]string]]'
 	assert typeof_display_type_name('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
-		elem_type: types.Type(types.Map{
-			key_type:   types.Type(types.String{})
-			value_type: types.Type(types.int_)
+		elem_type: &types.Type(types.Map{
+			key_type:   &types.Type(types.String{})
+			value_type: &types.Type(types.int_)
 		})
 		len:       3
 	})
@@ -536,22 +656,45 @@ fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
 	mut g := FlatGen.new()
 	g.tc = &tc
 	opaque := types.Type(types.Struct{
-		name: 'C.Foo'
+		name_id: flat.source_type_id('C.Foo')
 	})
 	assert g.fixed_array_type_has_unknown_struct(opaque)
 	assert !g.fixed_array_type_has_unknown_struct(types.Type(types.Pointer{
-		base_type: opaque
+		base_type: &types.Type(opaque)
 	}))
 }
 
 fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types['a.tast.Value'] = ['a.tast.First', 'a.tast.Target']
-	tc.sum_types['b.tast.Value'] = ['b.tast.Target', 'b.tast.Second']
+	tc.sum_types.set('a.tast.Value', ['a.tast.First', 'a.tast.Target'])
+	tc.sum_types.set('b.tast.Value', ['b.tast.Target', 'b.tast.Second'])
 	mut g := FlatGen.new()
 	g.tc = &tc
-	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
+	assert g.sum_type_index(flat.source_type_id('tast.Value'), flat.source_type_id('b.tast.Target')) == 0
+}
+
+fn test_sum_name_lookup_preserves_qualified_type_identity() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.sum_types.set('left.Value', ['left.Item', 'right.Item'])
+	tc.sum_types.set('right.Value', ['int', 'string'])
+	mut g := FlatGen.new()
+	g.tc = &tc
+	g.precompute_sum_name_lookup()
+	assert g.resolve_sum_name(flat.source_type_id('Value')) == flat.source_type_id('Value')
+	assert g.resolve_sum_name(flat.source_type_id('left.Value')) == flat.source_type_id('left.Value')
+	assert g.resolve_sum_name(flat.source_type_id('right.Value')) == flat.source_type_id('right.Value')
+	assert g.resolve_variant(flat.source_type_id('left.Value'), flat.source_type_id('Item')) == flat.source_type_id('Item')
+	assert g.sum_type_index(flat.source_type_id('left.Value'), flat.source_type_id('Item')) == 0
+	assert g.sum_type_index(flat.source_type_id('left.Value'), flat.source_type_id('left.Item')) == 1
+	assert g.sum_type_index(flat.source_type_id('left.Value'), flat.source_type_id('right.Item')) == 2
+	assert g.resolve_variant(flat.source_type_id('left.Value'), flat.source_type_id('left.Item')) == flat.source_type_id('left.Item')
+	assert g.resolve_variant(flat.source_type_id('left.Value'), flat.source_type_id('right.Item')) == flat.source_type_id('right.Item')
+	tc.sum_types.set('extra.left__Value', ['Raw__Name', 'Raw.Name'])
+	g.precompute_sum_name_lookup()
+	assert g.resolve_sum_name(flat.source_type_id('left__Value')) == flat.source_type_id('left.Value')
+	assert g.resolve_variant(flat.source_type_id('extra.left__Value'), flat.source_type_id('Raw__Name')) == flat.source_type_id('Raw__Name')
 }
 
 fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
@@ -574,17 +717,22 @@ fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
 	}, -1, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
 }
 
-fn test_typeof_type_index_fallback_uses_matching_sum_variant() {
+fn test_typeof_type_index_is_independent_of_sum_variant_order() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types['main.Value'] = ['main.Foo', 'main.Bar']
-	tc.sum_types['main.Other'] = ['main.Baz', 'main.Qux']
+	tc.cur_module = 'main'
+	tc.sum_types.set('main.Value', ['main.Foo', 'main.Bar'])
+	tc.sum_types.set('main.Other', ['main.Baz', 'main.Qux'])
+	names := ['main.Foo', 'main.Bar', 'main.Baz', 'main.Qux']
+	tc.runtime_type_indexes = types.stable_type_indexes(names.map(flat.source_type_id(it)))
 	mut g := FlatGen.new()
 	g.tc = &tc
-	assert g.type_index_for_type_name('Foo') == 1
-	assert g.type_index_for_type_name('Bar') == 2
-	assert g.type_index_for_type_name('Qux') == 2
-	assert g.type_index_for_type_name('NotVariant') == 0
+	for name in names {
+		short := name.all_after_last('.')
+		assert g.type_index_for_type_name(flat.source_type_id(short)) == tc.runtime_type_indexes[flat.source_type_id(name)]
+	}
+	assert g.type_index_for_type_name(flat.source_type_id('int')) == 8
+	assert g.type_index_for_type_name(flat.source_type_id('&int')) == 8 | (1 << 16)
 }
 
 fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
@@ -660,10 +808,20 @@ fn test_header_backed_c_declarations_skip_generated_prototypes() {
 	lib_only.note_c_include_directive('bindings', '/project/other.c.v')
 	assert !lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
 
-	// Nothing links and nothing includes: the symbol has to come from somewhere else,
-	// so V3 stays out of the way, exactly like the V1 backend.
+	// Nothing links and nothing includes: with system headers the symbol has to come
+	// from somewhere else, so V3 stays out of the way, exactly like the V1 backend.
+	mut with_system_headers := FlatGen.new()
+	with_system_headers.c_directives << CDirective{
+		text: '#include <stdio.h>'
+	}
+	assert with_system_headers.c_directives_use_system_libc()
+	assert !with_system_headers.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
+
+	// A unit without system headers has no other declaration of the binding, so it gets
+	// the prototype even for a program's own `fn C.` (#30781).
 	mut bare := FlatGen.new()
-	assert !bare.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
+	assert !bare.c_directives_use_system_libc()
+	assert bare.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
 }
 
 fn test_apple_framework_include_does_not_match_x11() {
@@ -838,10 +996,10 @@ fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
 	assert voidptr(g.generic_app_cache.base) == voidptr(own_generic_app_cache)
 	g.unique_struct_ct_cache.put('Batch', 'main__Batch')
 	g.param_types_cache['batch'] = [types.Type(types.void_)]
-	g.import_type_cache.unqualified_texts['Batch'] = 'main.Batch'
+	g.import_type_cache.unqualified_texts.put('Batch', 'main.Batch')
 	mut batch_file := g.import_type_cache.for_file('batch.v')
-	batch_file.texts['Batch'] = 'main.Batch'
-	batch_file.parsed['Batch'] = types.Type(types.void_)
+	batch_file.texts.put('Batch', 'main.Batch')
+	batch_file.parsed[flat.source_type_id('Batch')] = types.Type(types.void_)
 	g.restore_scratch_lookup_caches(saved)
 	assert voidptr(g.unique_struct_ct_cache) == voidptr(own_unique_struct_ct_cache)
 	assert voidptr(g.struct_cname_cache) == voidptr(own_struct_cname_cache)
@@ -850,7 +1008,7 @@ fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
 	assert g.unique_struct_ct_cache.get('Batch') == none
 	assert 'batch' !in g.param_types_cache
 	// The per-file child cache the batch created is dropped with it.
-	assert g.import_type_cache.unqualified_texts.len == 0
+	assert g.import_type_cache.unqualified_texts.entries.len == 0
 	assert g.import_type_cache.by_file.len == 0
 	assert isnil(g.import_type_cache.last)
 }
@@ -1101,5 +1259,613 @@ fn test_linker_object_inputs_keep_headerless_prototypes() {
 		'-Wl,-Map,/project/helper.o', '-Wl,-T,/project/helper.o', '-Wl,-install_name,/project/helper.o',
 		'-D -Wl,/project/helper.o'] {
 		assert !c_flag_links_c_source(flag), flag
+	}
+}
+
+fn test_fixed_storage_candidate_short_name_uses_last_dot_before_c_separator() {
+	g := FlatGen{}
+	cases := {
+		'':                  ''
+		'plain':             'plain'
+		'mod.name':          'name'
+		'mod__name':         'name'
+		'mod__deep__name':   'name'
+		'mod__x.name__tail': 'name__tail'
+		'mod.name__tail':    'name__tail'
+		'a___b':             'b'
+		'a.':                ''
+		'a__':               ''
+		'a_b':               'a_b'
+	}
+	for name, expected in cases {
+		assert g.fixed_storage_candidate_short_name(name) == expected
+	}
+}
+
+fn test_fixed_storage_candidate_ident_cache_checks_pointer_length_and_misses() {
+	g := FlatGen{}
+	idents := {
+		'fixed': true
+	}
+	shorts := {
+		'item': true
+	}
+	ident_filter := fixed_storage_candidate_name_filter(idents)
+	short_filter := fixed_storage_candidate_name_filter(shorts)
+	mut cache := []FixedStorageCandidateNameCacheEntry{len: 4096}
+	long_name := 'fixed_extra'
+	short_name := unsafe { long_name.substr_unsafe(0, 5) }
+	assert voidptr(long_name.str) == voidptr(short_name.str)
+	for _ in 0 .. 3 {
+		assert !g.fixed_storage_candidate_ident_matches(long_name, idents, shorts, &ident_filter, &short_filter, mut cache)
+		assert g.fixed_storage_candidate_ident_matches(short_name, idents, shorts, &ident_filter, &short_filter, mut cache)
+	}
+	for name, expected in {
+		'':                    false
+		'absent':              false
+		'fixed':               true
+		'item':                false
+		'pkg.item':            true
+		'pkg__item':           true
+		'pkg.item__tail':      false
+		'pkg__ignored.item':   true
+		'pkg__ignored.item__': false
+	} {
+		for _ in 0 .. 2 {
+			assert g.fixed_storage_candidate_ident_matches(name, idents, shorts, &ident_filter, &short_filter, mut cache) == expected, name
+		}
+		copy := name.clone()
+		assert g.fixed_storage_candidate_ident_matches(copy, idents, shorts, &ident_filter, &short_filter, mut cache) == expected, name
+	}
+	// A conflicting entry with the same length must miss on its byte pointer.
+	for i in 0 .. cache.len {
+		cache[i] = FixedStorageCandidateNameCacheEntry{
+			data:    voidptr(c'other')
+			len:     5
+			matches: false
+		}
+	}
+	assert g.fixed_storage_candidate_ident_matches('fixed', idents, shorts, &ident_filter, &short_filter, mut cache)
+}
+
+fn test_fixed_storage_candidate_cache_is_reset_between_node_scans() {
+	mut a := flat.FlatAst.new()
+	id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'fixed'
+	})
+	g := FlatGen{ a: &a }
+	for expected in [true, false, true] {
+		idents := if expected {
+			{
+				'fixed': true
+			}
+		} else {
+			map[string]bool{}
+		}
+		shorts := map[string]bool{}
+		ident_filter := fixed_storage_candidate_name_filter(idents)
+		short_filter := fixed_storage_candidate_name_filter(shorts)
+		mut scan := FixedStorageNodeScanArgs{
+			g:                      &g
+			start:                  int(id)
+			end:                    int(id) + 1
+			fixed_candidate_idents: idents
+			fixed_candidate_shorts: shorts
+			ident_filter:           &ident_filter
+			short_filter:           &short_filter
+		}
+		g.scan_fixed_storage_node_range(mut scan)
+		assert (scan.ref_items.len == 1) == expected
+		if expected {
+			assert scan.ref_items[0].id == id
+		}
+	}
+}
+
+fn test_cname_caches_unchanged_names_in_private_overlay() {
+	mut base := &CNameCache{}
+	mut g := FlatGen{ c_name_cache: base }
+	for name in ['ordinary_identifier', 'pkg__already_sanitized'] {
+		assert g.cname(name) == name
+		assert base.entries[name]! == name
+	}
+	g.c_name_cache = &CNameCache{ base: base }
+	for name in ['ordinary_identifier', 'pkg__already_sanitized'] {
+		assert g.cname(name.clone()) == name
+		assert name !in g.c_name_cache.entries
+	}
+	assert g.cname('other_identifier') == 'other_identifier'
+	assert 'other_identifier' !in base.entries
+	assert g.c_name_cache.entries['other_identifier']! == 'other_identifier'
+}
+
+fn test_local_c_function_shadow_tracks_current_calls() {
+	mut g := FlatGen.new()
+	assert !g.local_name_shadows_c_function('pkg.call')
+	g.cur_c_fn_calls['pkg__call'] = true
+	g.cur_c_fn_calls['v_malloc'] = true
+	assert g.local_name_shadows_c_function('pkg.call')
+	assert g.local_name_shadows_c_function('malloc')
+	assert !g.local_name_shadows_c_function('other')
+	g.cur_c_fn_calls.clear()
+	assert !g.local_name_shadows_c_function('pkg.call')
+	assert !g.local_name_shadows_c_function('malloc')
+}
+
+fn test_ident_function_value_keeps_local_type_precedence_and_void_fallback() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'handler')
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	tc.fn_param_types['handler'] = []types.Type{}
+	tc.fn_ret_types['handler'] = types.Type(types.int_)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	mut scope := types.new_scope(unsafe { nil })
+	tc.cur_scope = scope
+	owner := scope.insert_with_owner('handler', types.Type(types.string_))
+	assert g.ident_fn_value_c_name(id, a.nodes[int(id)], owner) == none
+	// A missing owner must retain the exact legacy lookup, including locals.
+	assert g.ident_fn_value_c_name(id, a.nodes[int(id)], types.ScopeBindingOwner{}) == none
+	void_owner := scope.insert_with_owner('handler', types.Type(types.Void{}))
+	assert g.ident_fn_value_c_name(id, a.nodes[int(id)], void_owner)? == 'handler'
+	scope.reset(unsafe { nil })
+	scope.insert('handler', types.Type(types.string_))
+	// A stale owner must read the replacement rather than its former Void type.
+	assert g.ident_fn_value_c_name(id, a.nodes[int(id)], void_owner) == none
+	scope.reset(unsafe { nil })
+	assert g.ident_fn_value_c_name(id, a.nodes[int(id)], types.ScopeBindingOwner{})? == 'handler'
+}
+
+fn test_fixed_storage_scan_items_borrows_serial_lists_and_copies_parallel_lists() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	filter := FixedStorageCandidateNameFilter{}
+	mut scans := []FixedStorageNodeScanArgs{}
+	for i in 0 .. 2 {
+		scans << FixedStorageNodeScanArgs{
+			g:                &g
+			ident_filter:     &filter
+			short_filter:     &filter
+			address_items:    [FixedStorageConstRefItem{ id: flat.NodeId(i * 10), at: i * 10 + 1 }]
+			ref_items:        [FixedStorageConstRefItem{ id: flat.NodeId(i * 10 + 2), at: i * 10 + 3 }]
+			call_base_items:  [FixedStorageConstRefItem{ id: flat.NodeId(i * 10 + 4), at: i * 10 + 5 }]
+			index_base_items: [FixedStorageConstRefItem{ id: flat.NodeId(i * 10 + 6), at: i * 10 + 7 }]
+		}
+	}
+	serial_a, serial_r, serial_c, serial_i := fixed_storage_scan_items(scans[..1])
+	assert serial_a == scans[0].address_items
+	assert serial_r == scans[0].ref_items
+	assert serial_c == scans[0].call_base_items
+	assert serial_i == scans[0].index_base_items
+	assert serial_a.data == scans[0].address_items.data
+	assert serial_r.data == scans[0].ref_items.data
+	assert serial_c.data == scans[0].call_base_items.data
+	assert serial_i.data == scans[0].index_base_items.data
+	parallel_a, parallel_r, parallel_c, parallel_i := fixed_storage_scan_items(scans)
+	assert parallel_a == [scans[0].address_items[0], scans[1].address_items[0]]
+	assert parallel_r == [scans[0].ref_items[0], scans[1].ref_items[0]]
+	assert parallel_c == [scans[0].call_base_items[0], scans[1].call_base_items[0]]
+	assert parallel_i == [scans[0].index_base_items[0], scans[1].index_base_items[0]]
+	for scan in scans {
+		assert parallel_a.data != scan.address_items.data
+		assert parallel_r.data != scan.ref_items.data
+		assert parallel_c.data != scan.call_base_items.data
+		assert parallel_i.data != scan.index_base_items.data
+	}
+	// Destroy the input buffers as the caller destroys parallel worker arenas.
+	for mut scan in scans {
+		scan.address_items[0] = FixedStorageConstRefItem{}
+		scan.ref_items[0] = FixedStorageConstRefItem{}
+		scan.call_base_items[0] = FixedStorageConstRefItem{}
+		scan.index_base_items[0] = FixedStorageConstRefItem{}
+	}
+	assert parallel_a[1].id == flat.NodeId(10)
+	assert parallel_r[1].id == flat.NodeId(12)
+	assert parallel_c[1].id == flat.NodeId(14)
+	assert parallel_i[1].id == flat.NodeId(16)
+	empty_a, empty_r, empty_c, empty_i := fixed_storage_scan_items([]FixedStorageNodeScanArgs{})
+	assert empty_a.len == 0 && empty_r.len == 0 && empty_c.len == 0 && empty_i.len == 0
+}
+
+fn test_fixed_array_len_operator_classes_cover_every_byte_and_prefix_position() {
+	assert !fixed_array_len_has_operator('')
+	for value in 0 .. 256 {
+		ch := u8(value)
+		byte_text := [ch].bytestr()
+		everywhere := ch in [`+`, `*`, `/`, `%`, `|`, `^`, `<`, `>`]
+		assert fixed_array_len_has_operator(byte_text) == everywhere, value.str()
+		assert fixed_array_len_has_operator(byte_text + 'a') == everywhere, value.str()
+		assert fixed_array_len_has_operator('a' + byte_text) == (everywhere || ch in [
+			`-`,
+			`&`,
+		]), value.str()
+	}
+	for text, expected in {
+		'&length':      false
+		'-1':           false
+		'-length':      false
+		'&length-name': true
+		'-length&mask': true
+		'pkg.length':   false
+		'αβγ':          false
+		'α+β':          true
+		'&αβγ':         false
+		'α-β':          true
+		'-αβγ':         false
+		'α&β':          true
+	} {
+		assert fixed_array_len_has_operator(text) == expected, text
+	}
+}
+
+fn test_referenced_c_struct_type_operands_preserve_ast_and_checker_context() {
+	mut a := flat.FlatAst.new()
+	for node in [
+		flat.Node{ kind: .ident, value: 'unrelated' },
+		flat.Node{ kind: .sizeof_expr, value: 'C.SizeOnly' },
+		flat.Node{ kind: .offsetof_expr, value: 'C.OffsetOnly' },
+		flat.Node{ kind: .sizeof_expr, value: 'C.Unused', children_count: 1 },
+	] {
+		a.add_node(node)
+	}
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_file = 'original.v'
+	tc.cur_module = 'original'
+	tc.file_modules['body.v'] = 'body'
+	for name in ['C.SizeOnly', 'C.OffsetOnly', 'C.Nested', 'C.Unused'] {
+		tc.structs[name] = []types.StructField{}
+	}
+	tc.structs['C.SizeOnly'] = [types.StructField{
+		name: 'nested'
+		typ:  types.Struct{ name_id: flat.source_type_id('C.Nested') }
+	}]
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.cur_fn_source_file = 'body.v'
+	before := a.nodes.clone()
+	for _ in 0 .. 2 {
+		seen := g.referenced_c_structs()
+		for name in ['C.SizeOnly', 'C.OffsetOnly', 'C.Nested'] {
+			assert seen[flat.source_type_id(name)], name
+		}
+		assert !seen[flat.source_type_id('C.Unused')]
+		assert tc.cur_file == 'original.v'
+		assert tc.cur_module == 'original'
+		assert a.nodes == before
+	}
+}
+
+fn ordinary_local_ident_output(name string, mode string, fast bool) string {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, name)
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	mut file_scope := types.new_scope(unsafe { nil })
+	mut scope := types.new_scope(file_scope)
+	tc.file_scope = file_scope
+	tc.cur_scope = scope
+	typ := if mode == 'void' { types.Type(types.Void{}) } else { types.Type(types.int_) }
+	owner := scope.insert_with_owner(name, typ)
+	if mode == 'void' {
+		tc.fn_param_types[name] = []types.Type{}
+		tc.fn_ret_types[name] = types.Type(types.int_)
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	match mode {
+		'shared' { g.local_shared_storage_by_owner[owner.storage_key()] = true }
+		'deref' { g.local_implicit_deref_by_owner[owner.storage_key()] = true }
+		'shadow' { g.shadowed_global_locals[owner.storage_key()] = true }
+		'cfn' { g.cur_c_fn_calls[g.cname(name)] = true }
+		'suffix' { tc.c_globals['C.${name}'] = types.Type(types.int_) }
+		'typedef' { g.inlined_c_typedef_names[g.cname(name)] = true }
+		'global' { g.global_modules[name] = 'other' }
+		else {}
+	}
+	g.precompute_local_global_suffix_names()
+	g.precompute_c_typedef_shadow_names()
+	if fast { g.precompute_local_name_exceptions() }
+	g.gen_nonliteral_expr(id, a.node(id))
+	return g.sb.str()
+}
+
+fn test_ordinary_local_ident_keeps_storage_rename_and_placeholder_output() {
+	for name in ['value', 'abs', 'array', 'argv', 'int_str', 'pkg.value', '__v3_internal_symbol_local'] {
+		for mode in ['', 'shared', 'deref', 'shadow', 'cfn', 'suffix', 'typedef', 'global', 'void'] {
+			legacy := ordinary_local_ident_output(name, mode, false)
+			assert ordinary_local_ident_output(name, mode, true) == legacy, '${name} / ${mode}: ${legacy}'
+		}
+	}
+}
+
+fn test_local_name_exceptions_preserve_raw_and_emitted_names_and_rebuilds() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut scope := types.new_scope(unsafe { nil })
+	owner := scope.insert_with_owner('value', types.Type(types.int_))
+	abs_owner := scope.insert_with_owner('abs', types.Type(types.int_))
+	void_owner := scope.insert_with_owner('placeholder', types.Type(types.Void{}))
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.ordinary_local_cname('value', owner) == none
+	g.precompute_local_global_suffix_names()
+	g.precompute_c_typedef_shadow_names()
+	g.precompute_local_name_exceptions()
+	assert g.ordinary_local_cname('value', owner)? == 'value'
+	assert g.ordinary_local_cname('abs', abs_owner)? == 'v_abs'
+	assert g.ordinary_local_cname('placeholder', void_owner) == none
+	g.inlined_c_typedef_names['v_abs'] = true
+	g.precompute_c_typedef_shadow_names()
+	g.precompute_local_name_exceptions()
+	assert g.ordinary_local_cname('abs', abs_owner) == none
+	g.global_modules['value'] = 'other'
+	g.precompute_local_name_exceptions()
+	assert g.ordinary_local_cname('value', owner) == none
+	g.local_global_suffix_names_ready = false
+	g.precompute_local_name_exceptions()
+	assert isnil(g.local_name_exceptions)
+	scope.reset(unsafe { nil })
+	assert g.ordinary_local_cname('value', owner) == none
+}
+
+fn test_shared_wrapper_owner_lookup_preserves_local_and_global_bindings() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert !g.local_ident_is_shared_wrapper('')
+	assert !g.local_ident_is_shared_wrapper('missing')
+	g.push_scope()
+	local := tc.cur_scope.insert_with_owner('value', types.Type(types.int_))
+	assert !g.local_ident_is_shared_wrapper('value')
+	g.declare_local_c_type(local, 'int')
+	assert !g.local_ident_is_shared_wrapper('value')
+	g.declare_local_c_type(local, '__shared__int*')
+	assert g.local_ident_is_shared_wrapper('value')
+	g.push_scope()
+	tc.cur_scope.insert('value', types.Type(types.int_))
+	assert !g.local_ident_is_shared_wrapper('value')
+	g.pop_scope()
+	assert g.local_ident_is_shared_wrapper('value')
+	g.declare_local_c_type(local, '')
+	assert !g.local_ident_is_shared_wrapper('value')
+	g.declare_local_shared_storage(local, true)
+	assert g.local_ident_is_shared_wrapper('value')
+	g.declare_local_shared_storage(local, false)
+	assert !g.local_ident_is_shared_wrapper('value')
+	g.pop_scope()
+	tc.cur_scope.insert('global_value', types.Type(types.int_))
+	g.declare_global_raw_type('global_value', flat.source_type_id('shared int'))
+	assert g.local_ident_is_shared_wrapper('global_value')
+	g.push_scope()
+	tc.cur_scope.insert('global_value', types.Type(types.int_))
+	assert !g.local_ident_is_shared_wrapper('global_value')
+}
+
+fn test_method_value_builtin_annotation_filter_preserves_unresolved_and_function_types() {
+	for type_id in [flat.source_type_string, flat.source_type_char, flat.source_type_rune,
+		flat.source_type_isize, flat.source_type_usize, flat.source_type_voidptr,
+		flat.source_type_byteptr, flat.source_type_charptr, flat.source_type_bool,
+		flat.source_type_int, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+		flat.source_type_i64, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_f32, flat.source_type_f64] {
+		assert selector_has_builtin_value_type(type_id)
+	}
+	for type_id in [u32(0), flat.source_type_void, flat.source_type_unknown, flat.source_type_generic,
+		flat.source_type_nil, flat.source_type_none, flat.source_type_id('fn () int'),
+		flat.source_type_id('&fn () int'), flat.source_type_id('Callback'),
+		flat.source_type_id('pkg.Callback'), flat.source_type_id('?int'), flat.source_type_id('&int')] {
+		assert !selector_has_builtin_value_type(type_id)
+	}
+}
+
+fn test_shared_storage_absence_tracks_globals_and_shadowed_bindings() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert !g.global_shared_storage_present
+	assert !g.local_storage_is_shared('missing')
+	g.push_scope()
+	local := tc.cur_scope.insert_with_owner('value', types.Type(types.int_))
+	assert !g.local_storage_is_shared('value')
+	g.declare_local_shared_storage(local, true)
+	assert g.local_storage_is_shared('value')
+	g.declare_local_shared_storage(local, false)
+	assert !g.local_storage_is_shared('value')
+	g.pop_scope()
+	tc.cur_scope.insert('global_value', types.Type(types.int_))
+	g.declare_global_raw_type('global_value', flat.source_type_int)
+	assert !g.global_shared_storage_present
+	assert !g.local_storage_is_shared('global_value')
+	g.declare_global_raw_type('global_value', flat.source_type_id(' shared int '))
+	assert g.global_shared_storage_present
+	assert g.local_storage_is_shared('global_value')
+	g.push_scope()
+	tc.cur_scope.insert('global_value', types.Type(types.int_))
+	assert !g.local_storage_is_shared('global_value')
+	g.pop_scope()
+	assert g.local_storage_is_shared('global_value')
+	g.declare_global_raw_type('global_value', flat.source_type_int)
+	assert !g.local_storage_is_shared('global_value')
+	// A conservative positive survives replacement until the program is reset.
+	assert g.global_shared_storage_present
+	tc.cur_module = 'dep'
+	g.declare_global_raw_type('dep.global_value', flat.source_type_id('shared int'))
+	assert g.local_storage_is_shared('global_value')
+}
+
+fn test_storage_pointer_argument_names_preserve_candidate_positions_and_indices() {
+	mut g := FlatGen.new()
+	for name in ['array_push', 'array__push', 'dep__array_push', 'dep__array__push', 'dep.array_push',
+		'dep.array__push'] {
+		for index in -1 .. 5 {
+			expected := index == 1
+			assert g.call_arg_is_storage_pointer_arg(index, name, '', '') == expected
+			assert g.call_arg_is_storage_pointer_arg(index, '', name, '') == expected
+			assert g.call_arg_is_storage_pointer_arg(index, '', '', name) == expected
+		}
+	}
+	for name in ['map__set', 'map__get', 'map__get_and_set', 'dep__map__set', 'dep__map__get',
+		'dep__map__get_and_set', 'dep.map__set', 'dep.map__get', 'dep.map__get_and_set'] {
+		for index in -1 .. 5 {
+			expected := index == 2
+			assert g.call_arg_is_storage_pointer_arg(index, name, '', '') == expected
+			assert g.call_arg_is_storage_pointer_arg(index, '', name, '') == expected
+			assert g.call_arg_is_storage_pointer_arg(index, '', '', name) == expected
+		}
+	}
+	for name in ['', 'array_push_more', 'notarray_push', 'map__get_more', 'notmap__get'] {
+		for index in -1 .. 5 {
+			assert !g.call_arg_is_storage_pointer_arg(index, name, name, name)
+		}
+	}
+}
+
+fn test_fixed_array_data_argument_rejects_other_names_and_positions_without_ast_access() {
+	mut g := FlatGen.new()
+	call := flat.Node{ children_count: 8 }
+	for name in ['new_array_from_c_array', 'array__new_array_from_c_array'] {
+		for index in -1 .. 6 {
+			if index == 3 { continue }
+			assert !g.gen_new_array_fixed_data_arg(call, 1, index, 0, name, '')
+			assert !g.gen_new_array_fixed_data_arg(call, 1, index, 0, '', name)
+		}
+	}
+	for name in ['', 'dep.new_array_from_c_array', 'new_array_from_c_array_more'] {
+		assert !g.gen_new_array_fixed_data_arg(call, 1, 3, 0, name, name)
+	}
+}
+
+fn test_call_args_reuses_function_value_parameter_count_including_empty_signature() {
+	for count in 0 .. 3 {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		callee := a.add_val(.ident, 'callback')
+		first := a.add_val(.int_literal, '7')
+		second := a.add_val(.int_literal, '8')
+		tc.register_synth_type(first, types.Type(types.int_))
+		tc.register_synth_type(second, types.Type(types.int_))
+		start := a.begin_children()
+		a.add_child(callee)
+		a.add_child(first)
+		a.add_child(second)
+		call := flat.Node{
+			kind:           .call
+			children_start: start
+			children_count: 3
+		}
+		mut params := []types.Type{}
+		for _ in 0 .. count {
+			params << types.Type(types.int_)
+		}
+		callback_type := types.Type(tc.fn_type(params, &types.Type(types.int_), []bool{}))
+		g.cur_param_types['callback'] = tc.intern_type_reference(callback_type)
+		// A declaration with the same spelling must not replace the lexical callback.
+		tc.fn_param_types['callback'] = [types.Type(types.string_)]
+		cached_name := g.call_target_name(callee)
+		cached_params := g.fn_value_call_param_types(callee)
+		g.gen_call_args('callback', call, 1)
+		fresh := g.sb.str()
+		g.sb.clear()
+		g.gen_call_args_for_callee('callback', call, 1, cached_name, cached_params)
+		reused := g.sb.str()
+		assert reused == fresh
+		assert reused == match count {
+			0 { '' }
+			1 { '7' }
+			else { '7, 8' }
+		}
+	}
+}
+
+fn test_decl_pointer_param_abi_merge_preserves_name_fallback_after_semantic_equality() {
+	array_param := types.Type(types.Array{
+		elem_type: &types.Type(types.Pointer{ base_type: &types.Type(types.int_) })
+	})
+	array_decl := types.Type(types.Array{
+		elem_type: &types.Type(types.Pointer{ base_type: &types.Type(types.int_) })
+	})
+	enum_param := types.Type(types.Enum{ name_id: flat.source_type_id('AbiEnum') })
+	enum_decl := types.Type(types.Enum{
+		name_id: flat.source_type_id('AbiEnum')
+		is_flag: true
+	})
+	assert array_param == array_decl
+	assert enum_param != enum_decl
+	assert enum_param.name() == enum_decl.name()
+	pointer_param := types.Type(types.Pointer{ base_type: &types.Type(types.int_) })
+	pointer_decl := types.Type(types.Pointer{ base_type: &types.Type(types.string_) })
+	// Repeat each case after the first replacement to cover the lazy merge's tail.
+	params := [array_param, enum_param, types.Type(types.int_), types.Type(types.int_), pointer_param,
+		array_param, enum_param, types.Type(types.int_), types.Type(types.int_), pointer_param]
+	decl_types := [array_decl, enum_decl, types.Type(types.Unknown{}), types.Type(types.Void{}),
+		pointer_decl, array_decl, enum_decl, types.Type(types.Unknown{}), types.Type(types.Void{}),
+		pointer_decl]
+	for lazy in [false, true] {
+		g := FlatGen{ lazy_param_abi_merge: lazy }
+		merged := g.merge_decl_pointer_param_abi(params, decl_types)
+		for i in 0 .. merged.len {
+			assert merged[i] == if i == 4 || i == 9 { pointer_decl } else { params[i] }
+		}
+		assert params[4] == pointer_param
+		assert params[9] == pointer_param
+		assert g.merge_decl_pointer_param_abi([array_param, enum_param], [array_decl, enum_decl]) == [
+			array_param,
+			enum_param,
+		]
+		assert g.merge_decl_pointer_param_abi([]types.Type{}, [pointer_decl]).len == 0
+		assert g.merge_decl_pointer_param_abi([pointer_param], []types.Type{}) == [pointer_param]
+		assert g.merge_decl_pointer_param_abi([pointer_param], [pointer_decl, array_decl]) == [
+			pointer_decl,
+			array_decl,
+		]
+		assert g.merge_decl_pointer_param_abi([pointer_param, array_param], [pointer_decl]) == [
+			pointer_param,
+			array_param,
+		]
+	}
+}
+
+fn test_sum_type_index_preserves_import_context_and_builtin_variants() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.qualify_name_cache = &types.QualifyNameCache{}
+	tc.cur_module = 'main'
+	tc.structs['left.Item'] = []types.StructField{}
+	tc.structs['right.Item'] = []types.StructField{}
+	tc.sum_types.set('left.Value', ['left.Item', 'int'])
+	tc.sum_types.set('right.Value', ['int', 'right.Item'])
+	tc.cur_file = 'left.v'
+	tc.register_file_import('dep', 'left')
+	tc.cur_file = 'right.v'
+	tc.register_file_import('dep', 'right')
+	mut g := FlatGen.new()
+	g.tc = &tc
+	sum_id := flat.source_type_id('dep.Value')
+	variant_id := flat.source_type_id('dep.Item')
+	for _ in 0 .. 3 {
+		tc.cur_file = 'left.v'
+		assert g.sum_type_index(sum_id, variant_id) == 1
+		assert g.sum_type_index(sum_id, flat.source_type_int) == 2
+		tc.cur_file = 'right.v'
+		assert g.sum_type_index(sum_id, variant_id) == 2
+		assert g.sum_type_index(sum_id, flat.source_type_int) == 1
 	}
 }

@@ -57,8 +57,8 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 
 	compatible_root := write_c_fn_redecl_v3_project('c_fn_compatible', {
 		'v.mod':       "Module { name: 'c_fn_compatible' }\n"
-		'moda/moda.v': 'module moda\n\nstruct C.Display {}\nstruct C.Widget {\n\tvalue int\n}\n\nfn C.compat_probe(value int, data byteptr, display voidptr, mut state usize) int\nfn C.local_make() &C.Widget\n\npub fn touch() {\n\tmut state := usize(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, mut state)\n}\n\npub fn value() int {\n\treturn C.local_make().value\n}\n'
-		'modb/modb.v': 'module modb\n\nstruct C.Display {}\nstruct C.Widget {\n\tvalue int\n}\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8, display &C.Display, state &usize) i32\nfn C.local_make() voidptr\n\npub fn touch() {\n\tmut state := usize(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, &state)\n}\n\npub fn make() voidptr {\n\treturn C.local_make()\n}\n'
+		'moda/moda.v': 'module moda\n\nstruct C.Display {}\nstruct C.Widget {\n\tvalue int\n}\n\nfn C.compat_probe(value int, data byteptr, display voidptr, mut state uint) int\nfn C.local_make() &C.Widget\n\npub fn touch() {\n\tmut state := uint(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, mut state)\n}\n\npub fn value() int {\n\treturn C.local_make().value\n}\n'
+		'modb/modb.v': 'module modb\n\nstruct C.Display {}\nstruct C.Widget {\n\tvalue int\n}\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8, display &C.Display, state &uint) i32\nfn C.local_make() voidptr\n\npub fn touch() {\n\tmut state := uint(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, &state)\n}\n\npub fn make() voidptr {\n\treturn C.local_make()\n}\n'
 		'main.v':      'module main\n\nimport moda as _\nimport modb as _\nimport net as _\n\nfn C.fcntl(fd int, cmd int, arg int) int\n\nfn main() {\n\targ := 0\n\t_ = C.fcntl(-1, 0, arg)\n}\n'
 	})!
 	defer {
@@ -90,9 +90,10 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 	assert empty_result.exit_code == 0, empty_result.output
 	generated := os.read_file(c_path)!
 	assert !generated.contains('Empty){}'), generated
-	assert generated.contains('Empty){0}'), generated
-	global_initializers := generated.split_into_lines().filter(it.contains('global_empty = '))
-	assert global_initializers.len == 1, generated
-	global_initializer := global_initializers[0]
-	assert global_initializer.contains('{0}'), global_initializer
+	// An empty struct is zero-sized under GCC and Clang, where `{0}` would be an
+	// excess initializer; E_STRUCT expands to `0` only for the padded C compilers.
+	assert generated.contains('Empty){E_STRUCT}'), generated
+	// The file-scope global relies on C's zero-initialized static storage.
+	global_decls := generated.split_into_lines().filter(it.starts_with('main__Empty global_empty'))
+	assert global_decls == ['main__Empty global_empty;'], generated
 }

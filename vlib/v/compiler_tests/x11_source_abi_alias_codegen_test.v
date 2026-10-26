@@ -54,7 +54,7 @@ fn C.XSetWMProtocols(display &C.Display, window Window, protocols &Atom, count i
 fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual &Atom, actual_format &int, count &NativeULong, bytes &NativeULong, prop &&u8) int
 fn C.take_time(value &C.NativeTime)
 
-fn helper(display &C.Display, window Window, value &&u8) usize {
+fn helper(display &C.Display, window Window, value &&u8) uint {
 	mut actual_type := Atom(0)
 	mut item_count := NativeULong(0)
 	mut bytes_after := NativeULong(0)
@@ -62,7 +62,7 @@ fn helper(display &C.Display, window Window, value &&u8) usize {
 	property := Atom(0)
 	C.XGetWindowProperty(display, window, property, 0, 1, 0, property, &actual_type,
 		&actual_format, &item_count, &bytes_after, value)
-	return usize(item_count)
+	return uint(item_count)
 }
 
 fn main() {
@@ -105,8 +105,13 @@ fn test_c_typedef_aliases_are_preserved_for_x11_abi_shapes() {
 	assert compact.contains('NativeULongbytes_after'), c_code
 	assert compact.contains('XLookupString(&event,NULL,0,&keysym,NULL);'), c_code
 	assert compact.contains('XSetWMProtocols(display,window,&protocols[0],1);'), c_code
-	assert compact.contains('XGetWindowProperty(display,window,property,0,1,0,property,&actual_type,&actual_format,&item_count,&bytes_after,value);'), c_code
-	assert compact.contains('take_time((NativeTime*)(void*)(&native_time));'), c_code
+	// `actual_format` is a V `int` (i64) passed as a C `int *`, so it goes through a C `int`
+	// temporary that is copied back after the call (25f5ced70b, int -> i64).
+	assert compact.contains('i64*_cabi_out_addr_0=&actual_format;int_cabi_out_val_0=(int)(*_cabi_out_addr_0);'), c_code
+	assert compact.contains('XGetWindowProperty(display,window,property,0,1,0,property,&actual_type,&_cabi_out_val_0,&item_count,&bytes_after,value);'), c_code
+	// A `voidptr` argument converts implicitly to the `NativeTime *` of the C prototype.
+	assert compact.contains('take_time((void*)(&native_time));'), c_code
+	assert !compact.contains('take_time((i64*)'), c_code
 
 	assert !compact.contains('u64keysym'), c_code
 	assert !compact.contains('u64protocols[1]'), c_code

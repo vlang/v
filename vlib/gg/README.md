@@ -5,6 +5,10 @@ It is currently implemented using `sokol`, and makes easy creating
 apps that just need a way to draw simple 2D shapes, and to react to
 user's keyboard/mouse input.
 
+With `ui_mode: true`, call `context.refresh_ui()` to request a redraw. The C backend accepts
+requests from any thread and preserves requests made while a frame is being drawn. Drawing and
+the trailing frames after a refresh are handled by the frame thread.
+
 ## Example
 
 ```v cgen
@@ -405,3 +409,7 @@ https://github.com/vlang/v/blob/master/examples/gg/random_stars.v
 
 A third approach, is to only upload your changing inputs to the GPU, and do all
 the calculations and drawing there in shaders.
+
+`color_from_string` accepts CSS hexadecimal colors in `#RGB`, `#RGBA`, `#RRGGBB`, and
+`#RRGGBBAA` forms. Short forms repeat each digit; alpha is the last component. Invalid
+hexadecimal digits or lengths return black, as do unknown color names.

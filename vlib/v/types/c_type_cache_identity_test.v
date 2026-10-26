@@ -11,12 +11,12 @@ fn test_c_type_cache_distinguishes_same_named_fixed_arrays() {
 	mut tc := TypeChecker.new(&a)
 
 	t3 := Type(ArrayFixed{
-		elem_type: Type(int_)
+		elem_type: &Type(int_)
 		len:       3
 		len_expr:  'size'
 	})
 	t5 := Type(ArrayFixed{
-		elem_type: Type(int_)
+		elem_type: &Type(int_)
 		len:       5
 		len_expr:  'size'
 	})
@@ -43,12 +43,12 @@ fn test_c_type_cache_reuses_entry_for_equal_types() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	first := Type(ArrayFixed{
-		elem_type: Type(int_)
+		elem_type: &Type(int_)
 		len:       7
 		len_expr:  'n'
 	})
 	again := Type(ArrayFixed{
-		elem_type: Type(int_)
+		elem_type: &Type(int_)
 		len:       7
 		len_expr:  'n'
 	})
@@ -61,7 +61,7 @@ fn test_c_type_cache_preserves_types_after_recent_slot_eviction() {
 	mut expected := []string{}
 	for size in 1 .. 2050 {
 		expected << tc.c_type(Type(ArrayFixed{
-			elem_type: Type(int_)
+			elem_type: &Type(int_)
 			len:       size
 			len_expr:  'size'
 		}))
@@ -69,7 +69,7 @@ fn test_c_type_cache_preserves_types_after_recent_slot_eviction() {
 	for i, name in expected {
 		assert name.ends_with('_${i + 1}')
 		assert tc.c_type(Type(ArrayFixed{
-			elem_type: Type(int_)
+			elem_type: &Type(int_)
 			len:       i + 1
 			len_expr:  'size'
 		})) == name
@@ -80,7 +80,7 @@ fn test_private_c_struct_names_keep_the_struct_tag() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	stat_type := Type(Struct{
-		name: 'C.__stat64'
+		name_id: flat.source_type_id('C.__stat64')
 	})
 	assert tc.c_type(stat_type) == 'struct __stat64'
 }
@@ -89,7 +89,7 @@ fn test_wsa_data_keeps_the_windows_struct_tag() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	wsa_data_type := Type(Struct{
-		name: 'C.WSAData'
+		name_id: flat.source_type_id('C.WSAData')
 	})
 	assert tc.c_type(wsa_data_type) == 'struct WSAData'
 }
@@ -99,7 +99,7 @@ fn test_private_typedef_c_struct_names_keep_the_typedef_name() {
 	mut tc := TypeChecker.new(&a)
 	tc.c_typedef_structs['C._Foo'] = true
 	typedef_type := Type(Struct{
-		name: 'C._Foo'
+		name_id: flat.source_type_id('C._Foo')
 	})
 	assert tc.c_type(typedef_type) == '_Foo'
 }

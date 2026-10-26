@@ -1,4 +1,3 @@
-// vtest build: false
 // vtest retry: 4
 import os
 import log
@@ -32,7 +31,7 @@ not very flaky way.
 TODO: Cleanup this when/if v has better process control/communication primitives.
 */
 const vexe = os.getenv('VEXE')
-const vtmp_folder = os.join_path(os.vtmp_dir(), 'live_tests')
+const vtmp_folder = os.join_path(os.vtmp_dir(), 'live_tests_${os.getpid()}')
 const main_source_file = os.join_path(vtmp_folder, 'main.v')
 const tmp_file = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
 const source_file = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')
@@ -50,6 +49,12 @@ fn get_source_template() string {
 }
 
 fn atomic_write_source(source string) {
+	// The reloader compares whole-second modification times.
+	previous_mtime := os.file_last_mod_unix(source_file)
+	for time.now().unix() <= previous_mtime {
+		time.sleep(10 * time.millisecond)
+	}
+
 	// Note: here wrtiting is done in 2 steps, since os.write_file can take some time,
 	// during which the file will be modified, but it will still be not completely written.
 	// The os.mv after that, guarantees that the reloader will see a complete valid V program.
@@ -65,7 +70,7 @@ fn testsuite_begin() {
 	os.write_file(os.join_path(vtmp_folder, 'v.mod'), '')!
 	os.cp(os.join_path(os.dir(@FILE), 'live_test_template_main.vv'), os.join_path(vtmp_folder,
 		'main.v'))!
-	if os.user_os() !in ['linux', 'solaris'] && os.getenv('FORCE_LIVE_TEST').len == 0 {
+	if os.user_os() !in ['linux', 'macos', 'solaris'] && os.getenv('FORCE_LIVE_TEST').len == 0 {
 		eprintln('Testing the runtime behaviour of -live mode,')
 		eprintln('is reliable only on Linux/macOS for now.')
 		eprintln('You can still do it by setting FORCE_LIVE_TEST=1 .')
@@ -148,7 +153,7 @@ fn remove_live_attr_from_source() {
 
 fn wait_for_file(new string) {
 	expected_file := os.join_path(vtmp_folder, new + '.txt')
-	max_wait_cycles := os.getenv_opt('WAIT_CYCLES') or { '1' }.int()
+	max_wait_cycles := os.getenv_opt('WAIT_CYCLES') or { '60000' }.int()
 	log.info('waiting max_wait_cycles: ${max_wait_cycles} for file: ${expected_file} ...')
 	mut sw := time.new_stopwatch()
 	for i := 0; i <= max_wait_cycles; i++ {
@@ -159,15 +164,16 @@ fn wait_for_file(new string) {
 			assert true
 			log.info('> done waiting for ${expected_file}, iteration: ${i:3d}, waited for: ${sw.elapsed().seconds():6.3f}s')
 			time.sleep(80 * time.millisecond)
-			break
+			return
 		}
 		time.sleep(1 * time.millisecond)
 	}
+	assert false, 'timed out waiting for ${expected_file}'
 }
 
 fn setup_cycles_environment() {
-	mut max_live_cycles := 1000 // read by live_test_template.vv
-	mut max_wait_cycles := 5000
+	mut max_live_cycles := 30000 // read by live_test_template.vv
+	mut max_wait_cycles := 60000
 	os.setenv('LIVE_CYCLES', '${max_live_cycles}', true)
 	os.setenv('WAIT_CYCLES', '${max_wait_cycles}', true)
 }

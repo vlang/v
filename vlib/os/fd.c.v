@@ -2,11 +2,6 @@ module os
 
 // low level operations with file descriptors/handles
 
-$if !windows {
-	#include <sys/select.h>
-	#include <sys/ioctl.h>
-}
-
 $if windows {
 	#include <winsock2.h>
 }
@@ -35,7 +30,7 @@ pub fn fd_write(fd int, s string) {
 			return
 		}
 		remaining = remaining - written
-		sp = unsafe { voidptr(usize(sp) + usize(written)) }
+		sp = unsafe { voidptr(uint(sp) + uint(written)) }
 	}
 }
 

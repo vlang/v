@@ -20,6 +20,11 @@ pub:
 	max_request_buffer_size   int  = 8192
 	benchmark_page_generation bool // for the "page rendered in X ms"
 	ssl_config                mbedtls.SSLConnectConfig
+	// max_request_body_size is the largest request body, in bytes, that the server accepts
+	// (64 MiB by default). It answers a request that has a larger body with `413`, and
+	// closes the connection. 0 removes the limit: a body is kept in memory, so use it only
+	// where every client is trusted. A negative value is an error.
+	max_request_body_size int = default_max_request_body_size
 }
 
 fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
@@ -45,6 +50,7 @@ fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 		} else {
 			max_read
 		}
+		max_request_body_size:     params.max_request_body_size
 	}
 	$if A is BeforeAcceptApp {
 		global_app.before_accept_loop()
@@ -73,7 +79,7 @@ fn handle_ssl_connection[A, X](mut ssl_conn mbedtls.SSLConn, params &SslRequestP
 		}
 	}
 	for {
-		req := read_request_from_buffered_reader(mut reader) or {
+		req := read_request_from_buffered_reader(mut reader, params.max_request_body_size) or {
 			if err !is io.Eof {
 				write_ssl_response(mut ssl_conn, request_read_error_response(err)) or {}
 			}

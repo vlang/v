@@ -205,11 +205,10 @@ type AliasAdd = OpAdd
 
 // The types, each as a constraint of its own; `[T Named]` is the interface
 // constraint, the rest are sets of one type.
-const operator_types = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
-	'rune', 'f32', 'f64', 'string', 'bool', 'Color', 'Perm', 'User', 'Sum', 'IntArr', 'IntArr2',
-	'StrMap', 'Fn0', 'MyInt', 'MyStr', 'MyFloat', 'Vec', 'Eq', 'OpAdd', 'OpSub', 'OpMul', 'OpDiv',
-	'OpMod', 'OpPow', 'OpLt', 'OpLtEq', 'OpAll', 'OpIdx', 'OpIdxSet', 'Meters', 'AliasAdd', 'Named',
-	'voidptr']
+const operator_types = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'uint', 'rune', 'f32',
+	'f64', 'string', 'bool', 'Color', 'Perm', 'User', 'Sum', 'IntArr', 'IntArr2', 'StrMap', 'Fn0',
+	'MyInt', 'MyStr', 'MyFloat', 'Vec', 'Eq', 'OpAdd', 'OpSub', 'OpMul', 'OpDiv', 'OpMod', 'OpPow',
+	'OpLt', 'OpLtEq', 'OpAll', 'OpIdx', 'OpIdxSet', 'Meters', 'AliasAdd', 'Named', 'voidptr']
 
 // Pointers are left to the checker: an operator on them is not checked.
 const unchecked_types = ['voidptr']

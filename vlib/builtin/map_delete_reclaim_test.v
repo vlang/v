@@ -53,6 +53,32 @@ fn test_map_delete_reclaims_dense_array_tail() {
 	}
 }
 
+fn test_map_delete_clears_value_storage_without_freeing_shared_values() {
+	value := 'retained by the caller'.clone()
+	mut m := {
+		'first':  value
+		'middle': value
+		'last':   value
+	}
+	// Inspect the backing bytes so the test does not depend on conservative GC timing.
+	raw := unsafe { (&MapLayoutForTest(&m)).data }
+	for index in [1, 2, 0] {
+		key := ['first', 'middle', 'last'][index]
+		m.delete(key)
+		for byte in 0 .. raw.value_bytes {
+			assert unsafe { raw.key_values.values[index * raw.value_bytes + byte] } == 0
+		}
+		assert value == 'retained by the caller'
+		for other_key, other_value in m {
+			assert other_key != key
+			assert other_value == value
+		}
+	}
+	assert m.len == 0
+	m['reused'] = value
+	assert m['reused'] == value
+}
+
 fn test_empty_map_defers_storage_until_first_write() {
 	// Use pointer-containing keys and values so this exercises the regular map
 	// initializer. Under gcboehm_opt, pointer-free storage uses eager no-scan
@@ -192,4 +218,25 @@ fn test_empty_map_reserve_after_deletion_and_clear() {
 	m.reserve(0)
 	m['next'] = 4
 	assert m.keys() == ['cleared', 'next']
+}
+
+fn test_small_map_reservations_survive_growth_and_deleted_slots() {
+	for capacity in [1, 2, 3, 5, 7, 8, 9] {
+		mut values := map[int]int{}
+		values.reserve(u32(capacity))
+		for key in 0 .. 32 {
+			values[key] = key * 3
+		}
+		for key in 0 .. 16 {
+			values.delete(key)
+		}
+		values.reserve(64)
+		for key in 32 .. 80 {
+			values[key] = key * 3
+		}
+		assert values.len == 64
+		for key in 16 .. 80 {
+			assert values[key] == key * 3
+		}
+	}
 }

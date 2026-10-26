@@ -20,17 +20,19 @@ import v.workers
 $if linux {
 	#include <sys/prctl.h>
 	#include <sys/syscall.h>
+	#flag @VEXEROOT/vlib/v/diagserver/syscalls_linux.o
 }
 
 fn C.waitpid(pid int, status &int, options int) int
 fn C.dup2(oldfd int, newfd int) int
 fn C._exit(code int)
 fn C.kill(pid int, sig int) int
-fn C.prctl(option int, arg2 voidptr, arg3 u64, arg4 u64, arg5 u64) int
+fn C.v3_linux_parent_death_signal(signal_number int) int
+fn C.v3_linux_memory_file(name &char) int
 fn C.lseek(fd int, offset i64, whence int) i64
 fn C.flock(i32, i32) i32
-fn C.pread(fd int, buf voidptr, count usize, offset i64) isize
-fn C.pwrite(fd int, buf voidptr, count usize, offset i64) isize
+fn C.pread(fd int, buf voidptr, count uint, offset i64) C.ptrdiff_t
+fn C.pwrite(fd int, buf voidptr, count uint, offset i64) C.ptrdiff_t
 
 // Request is what a child of the diagnostics server was made for: answering
 // `question`, the questions of a `query` line, or checking the program when it
@@ -244,7 +246,7 @@ pub fn serve() Request {
 			// the child asks: one that ended since the fork left the child to another
 			// parent, and the child ends at once.
 			$if linux {
-				if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0 {
+				if C.v3_linux_parent_death_signal(C.SIGKILL) != 0 {
 					eprintln('v-diagnostics-server: a child cannot follow the server')
 					exit(2)
 				}
@@ -349,7 +351,7 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 		// and a child that ended since the fork leaves it to end at once, as
 		// serve's children do with the server.
 		$if linux {
-			if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0 {
+			if C.v3_linux_parent_death_signal(C.SIGKILL) != 0 {
 				C._exit(2)
 			}
 		}
@@ -388,7 +390,7 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 // descriptor, and returns that descriptor, or -1 where it cannot be made.
 fn memory_file(name &char) int {
 	$if linux {
-		return unsafe { int(C.syscall(C.SYS_memfd_create, name, voidptr(0))) }
+		return C.v3_linux_memory_file(name)
 	} $else {
 		return -1
 	}
@@ -446,7 +448,7 @@ pub fn (r &Request) incremental_record() string {
 	mut out := []u8{}
 	mut chunk := []u8{len: 65536}
 	for {
-		got := C.pread(r.record_fd, unsafe { &u8(chunk.data) }, usize(chunk.len), i64(out.len))
+		got := C.pread(r.record_fd, unsafe { &u8(chunk.data) }, uint(chunk.len), i64(out.len))
 		if got < 0 && C.errno == C.EINTR {
 			continue
 		}
@@ -470,7 +472,7 @@ pub fn (r &Request) keep_incremental_record(text string) {
 	C.ftruncate(r.record_fd, u64(0))
 	mut written := 0
 	for written < text.len {
-		wrote := C.pwrite(r.record_fd, unsafe { text.str + written }, usize(text.len - written),
+		wrote := C.pwrite(r.record_fd, unsafe { text.str + written }, uint(text.len - written),
 			i64(written))
 		if wrote < 0 && C.errno == C.EINTR {
 			continue
@@ -517,7 +519,7 @@ fn read_from_start(fd int) string {
 	mut out := []u8{}
 	mut chunk := []u8{len: 65536}
 	for {
-		got := C.read(fd, unsafe { &u8(chunk.data) }, usize(chunk.len))
+		got := C.read(fd, unsafe { &u8(chunk.data) }, uint(chunk.len))
 		if got < 0 && C.errno == C.EINTR {
 			continue
 		}
@@ -964,7 +966,7 @@ fn read_into(path string, mut buffer []u8) ?int {
 	}
 	mut size := 0
 	for size < buffer.len {
-		got := C.read(fd, unsafe { &u8(buffer.data) + size }, usize(buffer.len - size))
+		got := C.read(fd, unsafe { &u8(buffer.data) + size }, uint(buffer.len - size))
 		if got < 0 {
 			if C.errno == C.EINTR {
 				continue
@@ -1037,7 +1039,7 @@ fn (mut r LineReader) read_line() ?string {
 			}
 			line << c
 		}
-		got := C.read(r.fd, unsafe { &u8(r.chunk.data) }, usize(r.chunk.len))
+		got := C.read(r.fd, unsafe { &u8(r.chunk.data) }, uint(r.chunk.len))
 		if got < 0 && C.errno == C.EINTR {
 			continue
 		}

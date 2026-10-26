@@ -80,3 +80,100 @@ fn main() {
 	assert !tc.notices.any(it.msg.contains('casting voidptr')), tc.notices.str()
 	assert !tc.errors.any(it.msg.contains('casting voidptr')), tc.errors.str()
 }
+
+// The same through a `defer`: its body stays inside the `unsafe` block that holds it,
+// while a `defer` outside of `unsafe` is still reported.
+fn test_union_field_inside_defer_in_unsafe_block_checked_out_of_context() {
+	path := os.join_path(os.vtmp_dir(), 'v3_union_unsafe_defer_${os.getpid()}.v')
+	os.write_file(path, 'module main
+union Num {
+mut:
+	inside  int
+	outside f32
+}
+__global num = Num{}
+fn main() {
+	unsafe {
+		for _ in 0 .. 1 {
+			defer {
+				println(num.inside)
+			}
+		}
+	}
+	defer {
+		println(num.outside)
+	}
+}
+')!
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	mut found := 0
+	for i, node in a.nodes {
+		if node.kind == .selector && node.value == 'inside' {
+			found++
+			tc.check_node(flat.NodeId(i))
+		}
+	}
+	assert found == 1
+	assert !tc.notices.any(it.msg.contains('reading a union field')), tc.notices.str()
+	assert !tc.errors.any(it.msg.contains('reading a union field')), tc.errors.str()
+	for i, node in a.nodes {
+		if node.kind == .selector && node.value == 'outside' {
+			found++
+			tc.check_node(flat.NodeId(i))
+		}
+	}
+	assert found == 2
+	assert tc.notices.any(it.msg.contains('reading a union field')), tc.notices.str()
+}
+
+fn test_defer_recheck_uses_lexical_unsafe_context() {
+	path := os.join_path(os.vtmp_dir(), 'v3_defer_exit_unsafe_${os.getpid()}.v')
+	os.write_file(path, 'module main
+union DeferNum {
+mut:
+	i int
+	f f32
+}
+__global defer_num = DeferNum{}
+fn safe_defer() {
+	defer { println(defer_num.i) }
+	unsafe { return }
+}
+fn unsafe_defer() {
+	unsafe { defer(fn) { println(defer_num.f) } }
+}
+fn main() {}
+' + '\nfn deep_unsafe_defer() { unsafe {\n' + '{\n'.repeat(40) +
+		'defer(fn) { println(defer_num.f) }\n' + '}\n'.repeat(40) + '} }\n')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut checked := 0
+	for i, node in a.nodes {
+		if node.kind != .defer_stmt {
+			continue
+		}
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		id := flat.NodeId(i)
+		// Both function-scoped defers in this fixture are declared in unsafe;
+		// the ordinary safe defer is not. This expectation is independent of the walk.
+		lexical_unsafe := node.value == 'function'
+		assert tc.expr_is_inside_unsafe_block(id) == lexical_unsafe
+		// Rechecks can run at returns in the opposite unsafe context.
+		exit_depth := if lexical_unsafe { 0 } else { 2 }
+		tc.unsafe_depth = exit_depth
+		tc.check_defer_body_at_lexical_unsafe_context(id, node)
+		assert tc.unsafe_depth == exit_depth
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.notices.any(it.msg.contains('reading a union field')) == !lexical_unsafe, tc.notices.str()
+		checked++
+	}
+	assert checked == 3
+}

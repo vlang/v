@@ -2,6 +2,7 @@ module token
 
 import crypto.sha256
 import hash
+import math.bits
 
 // Pos represents pos data used by token.
 // The byte offsets, span end and file id are stored as i32: a Pos is embedded in
@@ -113,6 +114,8 @@ pub:
 mut:
 	// One entry per source line, so keep it compact: offsets are file-local.
 	line_offsets []i32 = [i32(0)]
+	// Upper bounds at 256-byte boundaries narrow repeated position lookups.
+	line_pages []i32
 	// Set once the line table holds the line starts of the source.
 	has_line_index bool
 	// Keep the digest inline: stored files can outlive parser-worker preallocation scopes.
@@ -167,6 +170,7 @@ pub fn File.unindexed(name string, size int) &File {
 @[inline]
 pub fn (mut f File) add_line(offset int) {
 	f.line_offsets << i32(offset)
+	f.line_pages = []i32{}
 }
 
 // clone_index returns a copy of this file index that owns its storage: the name,
@@ -177,6 +181,7 @@ pub fn (f &File) clone_index() &File {
 		name:              f.name.clone()
 		size:              f.size
 		line_offsets:      f.line_offsets.clone()
+		line_pages:        f.line_pages.clone()
 		has_line_index:    f.has_line_index
 		source_digest:     f.source_digest
 		has_source_digest: f.has_source_digest
@@ -231,13 +236,44 @@ fn (mut f File) index_line_offsets(src string) {
 	}
 	mut offsets := []i32{len: lines}
 	mut line := 1
-	for i, c in src {
-		if c == `\n` {
+	mut i := 0
+	$if little_endian {
+		// Find the line ends eight bytes at a time: a word without one, most of
+		// them, costs a load and a test. The mask has the high bit of exactly the
+		// bytes that are `\n`, lowest address first.
+		for i + 8 <= src.len {
+			mut word := u64(0)
+			unsafe { vmemcpy(&word, src.str + i, 8) }
+			x := word ^ u64(0x0a0a0a0a0a0a0a0a)
+			mut mask := ~(((x & u64(0x7f7f7f7f7f7f7f7f)) + u64(0x7f7f7f7f7f7f7f7f)) | x | u64(0x7f7f7f7f7f7f7f7f))
+			for mask != 0 {
+				offsets[line] = i32(i + int(bits.trailing_zeros_64(mask) >> 3) + 1)
+				line++
+				mask &= mask - 1
+			}
+			i += 8
+		}
+	}
+	for i < src.len {
+		if src[i] == `\n` {
 			offsets[line] = i32(i + 1)
 			line++
 		}
+		i++
 	}
 	f.line_offsets = offsets
+	f.line_pages = []i32{}
+	if lines >= 32 && src.len <= 256 * 1024 * 1024 {
+		mut pages := []i32{len: (src.len >> 8) + 2}
+		mut next_line := 0
+		for page in 0 .. pages.len {
+			for next_line < offsets.len && offsets[next_line] <= page << 8 {
+				next_line++
+			}
+			pages[page] = i32(next_line)
+		}
+		f.line_pages = pages
+	}
 	f.has_line_index = true
 }
 
@@ -258,6 +294,7 @@ pub fn quick_sum(data &u8, len int) u64 {
 pub fn (mut f File) index_lines_without_digest(src string) {
 	_ := src
 	f.line_offsets = [i32(0)]
+	f.line_pages = []i32{}
 	f.has_line_index = false
 	f.has_source_digest = false
 }
@@ -345,9 +382,18 @@ pub fn (f &File) find_line_and_column(pos int) (int, int) {
 	return line, pos - f.line_offsets[line - 1] + 1
 }
 
-// find_line resolves find line information for token.
+// find_line resolves a byte offset using the immutable page index when available.
+@[direct_array_access]
 pub fn (f &File) find_line(pos int) int {
 	mut min, mut max := 0, f.line_offsets.len
+	if pos >= 0 && f.line_pages.len > 0 {
+		page := pos >> 8
+		if page + 1 >= f.line_pages.len {
+			return max
+		}
+		min = f.line_pages[page]
+		max = f.line_pages[page + 1]
+	}
 	for min < max {
 		mid := (min + max) / 2
 		if f.line_offsets[mid] <= pos {

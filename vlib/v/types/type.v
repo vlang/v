@@ -1,5 +1,8 @@
 module types
 
+import strings
+import v.flat
+
 // Type aliases type values used by types.
 pub type Type = Void
 	| Unknown
@@ -33,6 +36,23 @@ pub struct Void {
 
 // Unknown represents unknown data used by types.
 pub struct Unknown {
+	UnknownDataRef = empty_unknown_data
+}
+
+// == compares Unknown payloads by value.
+// Cast payload references to compare addresses before inspecting their fields.
+@[inline]
+pub fn (a Unknown) == (b Unknown) bool {
+	return voidptr(a.UnknownDataRef) == voidptr(b.UnknownDataRef) || *a.UnknownDataRef == *b.UnknownDataRef
+}
+
+const empty_unknown_data = &UnknownData{}
+
+// UnknownDataRef references the immutable payload of Unknown.
+pub type UnknownDataRef = &UnknownData
+
+// UnknownData stores the immutable fields of Unknown.
+pub struct UnknownData {
 pub:
 	reason string
 }
@@ -57,7 +77,7 @@ pub struct ISize {
 	dummy_ u8
 }
 
-// USize represents usize data used by types.
+// USize represents uint data used by types.
 pub struct USize {
 	dummy_ u8
 }
@@ -92,98 +112,205 @@ pub:
 // Array represents array data used by types.
 pub struct Array {
 pub:
-	elem_type Type
+	elem_type &Type = empty_type
 }
 
 // ArrayFixed represents array fixed data used by types.
 pub struct ArrayFixed {
+	ArrayFixedDataRef = empty_array_fixed_data
+}
+
+// == compares ArrayFixed payloads by value.
+@[inline]
+pub fn (a ArrayFixed) == (b ArrayFixed) bool {
+	return voidptr(a.ArrayFixedDataRef) == voidptr(b.ArrayFixedDataRef) || *a.ArrayFixedDataRef == *b.ArrayFixedDataRef
+}
+
+const empty_array_fixed_data = &ArrayFixedData{}
+
+// ArrayFixedDataRef references the immutable payload of ArrayFixed.
+pub type ArrayFixedDataRef = &ArrayFixedData
+
+// ArrayFixedData stores the immutable fields of ArrayFixed.
+pub struct ArrayFixedData {
 pub:
-	elem_type Type
+	elem_type &Type = empty_type
 	len       int
 	len_expr  string
 }
 
 // Channel represents channel data used by types.
 pub struct Channel {
+	ChannelDataRef = empty_channel_data
+}
+
+// == compares Channel payloads by value.
+@[inline]
+pub fn (a Channel) == (b Channel) bool {
+	return voidptr(a.ChannelDataRef) == voidptr(b.ChannelDataRef) || *a.ChannelDataRef == *b.ChannelDataRef
+}
+
+const empty_channel_data = &ChannelData{}
+
+// ChannelDataRef references the immutable payload of Channel.
+pub type ChannelDataRef = &ChannelData
+
+// ChannelData stores the immutable fields of Channel.
+pub struct ChannelData {
 pub:
-	elem_type Type
+	elem_type &Type = empty_type
 	is_mut    bool
 }
 
 // Map represents map data used by types.
 pub struct Map {
+	MapDataRef = empty_map_data
+}
+
+// == compares Map payloads by value.
+@[inline]
+pub fn (a Map) == (b Map) bool {
+	return voidptr(a.MapDataRef) == voidptr(b.MapDataRef) || *a.MapDataRef == *b.MapDataRef
+}
+
+const empty_map_data = &MapData{}
+
+// MapDataRef references the immutable payload of Map.
+pub type MapDataRef = &MapData
+
+// MapData stores the immutable fields of Map.
+pub struct MapData {
 pub:
-	key_type   Type
-	value_type Type
+	key_type   &Type = empty_type
+	value_type &Type = empty_type
 }
 
 // Pointer represents pointer data used by types.
 pub struct Pointer {
 pub:
-	base_type Type
+	base_type &Type = empty_type
 }
 
 // FnType represents fn type data used by types.
 pub struct FnType {
+	FnTypeDataRef = empty_fn_type_data
+}
+
+// == compares FnType payloads by value.
+@[inline]
+pub fn (a FnType) == (b FnType) bool {
+	return voidptr(a.FnTypeDataRef) == voidptr(b.FnTypeDataRef) || *a.FnTypeDataRef == *b.FnTypeDataRef
+}
+
+const empty_fn_type_data = &FnTypeData{}
+
+// FnTypeDataRef references the immutable payload of FnType.
+pub type FnTypeDataRef = &FnTypeData
+
+// FnTypeData stores the immutable fields of FnType.
+pub struct FnTypeData {
 pub:
-	params      []Type
-	params_mut  []bool
-	return_type Type
+	params      []FnParam
+	return_type &Type = empty_type
 	is_variadic bool // The final array parameter accepts zero or more values.
+}
+
+pub struct FnParam {
+pub:
+	typ    &Type = empty_type
+	is_mut bool
 }
 
 // OptionType represents option type data used by types.
 pub struct OptionType {
 pub:
-	base_type Type
+	base_type &Type = empty_type
 }
 
 // ResultType represents result type data used by types.
 pub struct ResultType {
 pub:
-	base_type Type
+	base_type &Type = empty_type
 }
 
 // Struct represents struct data used by types.
 pub struct Struct {
 pub:
-	name string
+	name_id u32
 }
 
 // Interface represents interface data used by types.
 pub struct Interface {
 pub:
-	name string
+	name_id u32
 }
 
 // Enum represents enum data used by types.
 pub struct Enum {
 pub:
-	name    string
+	name_id u32
 	is_flag bool
 }
 
 // SumType represents sum type data used by types.
 pub struct SumType {
 pub:
-	name string
+	name_id u32
 }
 
 // Alias represents alias data used by types.
 pub struct Alias {
+	AliasDataRef = empty_alias_data
+}
+
+// == compares Alias payloads by value.
+@[inline]
+pub fn (a Alias) == (b Alias) bool {
+	return voidptr(a.AliasDataRef) == voidptr(b.AliasDataRef) || *a.AliasDataRef == *b.AliasDataRef
+}
+
+const empty_alias_data = &AliasData{}
+
+// AliasDataRef references the immutable payload of Alias.
+pub type AliasDataRef = &AliasData
+
+// AliasData stores the immutable fields of Alias.
+pub struct AliasData {
 pub:
-	name      string
-	base_type Type
+	name_id   u32
+	base_type &Type = empty_type
 }
 
 // MultiReturn represents multi return data used by types.
 pub struct MultiReturn {
+	MultiReturnDataRef = empty_multi_return_data
+}
+
+// == compares MultiReturn payloads by value.
+@[inline]
+pub fn (a MultiReturn) == (b MultiReturn) bool {
+	return voidptr(a.MultiReturnDataRef) == voidptr(b.MultiReturnDataRef) || *a.MultiReturnDataRef == *b.MultiReturnDataRef
+}
+
+const empty_multi_return_data = &MultiReturnData{}
+
+// MultiReturnDataRef references the immutable payload of MultiReturn.
+pub type MultiReturnDataRef = &MultiReturnData
+
+// MultiReturnData stores the immutable fields of MultiReturn.
+pub struct MultiReturnData {
 pub:
-	types []Type
+	types []types.Type
+}
+
+// new_type_reference allocates a shallow copy of value with stable reference storage.
+// Nested metadata remains borrowed; clone_owned_type copies it when its arena will end.
+pub fn new_type_reference(value Type) &Type {
+	return &value
 }
 
 // clone_owned_type clones a type and all nested owned metadata.
-pub fn clone_owned_type(value Type) Type {
+pub fn clone_owned_type(value &Type) Type {
 	return match value {
 		Void {
 			Type(void_)
@@ -222,76 +349,82 @@ pub fn clone_owned_type(value Type) Type {
 		}
 		Array {
 			Type(Array{
-				elem_type: clone_owned_type(value.elem_type)
+				elem_type: new_type_reference(Type(clone_owned_type(value.elem_type)))
 			})
 		}
 		ArrayFixed {
 			Type(ArrayFixed{
-				elem_type: clone_owned_type(value.elem_type)
+				elem_type: new_type_reference(Type(clone_owned_type(value.elem_type)))
 				len:       value.len
 				len_expr:  value.len_expr.clone()
 			})
 		}
 		Channel {
 			Type(Channel{
-				elem_type: clone_owned_type(value.elem_type)
+				elem_type: new_type_reference(Type(clone_owned_type(value.elem_type)))
 				is_mut:    value.is_mut
 			})
 		}
 		Map {
 			Type(Map{
-				key_type:   clone_owned_type(value.key_type)
-				value_type: clone_owned_type(value.value_type)
+				key_type:   new_type_reference(Type(clone_owned_type(value.key_type)))
+				value_type: new_type_reference(Type(clone_owned_type(value.value_type)))
 			})
 		}
 		Pointer {
 			Type(Pointer{
-				base_type: clone_owned_type(value.base_type)
+				base_type: new_type_reference(Type(clone_owned_type(value.base_type)))
 			})
 		}
 		FnType {
+			mut params := []FnParam{cap: value.params.len}
+			for param in value.params {
+				params << FnParam{
+					typ:    new_type_reference(Type(clone_owned_type(param.typ)))
+					is_mut: param.is_mut
+				}
+			}
 			Type(FnType{
-				params:      clone_owned_types(value.params)
-				params_mut:  value.params_mut.clone()
+				params:      params
 				is_variadic: value.is_variadic
-				return_type: clone_owned_type(value.return_type)
+				return_type: new_type_reference(Type(clone_owned_type(value.return_type)))
 			})
 		}
 		OptionType {
 			Type(OptionType{
-				base_type: clone_owned_type(value.base_type)
+				base_type: new_type_reference(Type(clone_owned_type(value.base_type)))
 			})
 		}
 		ResultType {
 			Type(ResultType{
-				base_type: clone_owned_type(value.base_type)
+				base_type: new_type_reference(Type(clone_owned_type(value.base_type)))
 			})
 		}
 		Struct {
 			Type(Struct{
-				name: value.name.clone()
+				name_id: value.name_id
 			})
 		}
 		Interface {
 			Type(Interface{
-				name: value.name.clone()
+				name_id: value.name_id
 			})
 		}
 		Enum {
 			Type(Enum{
-				name:    value.name.clone()
+				name_id: value.name_id
 				is_flag: value.is_flag
 			})
 		}
 		SumType {
 			Type(SumType{
-				name: value.name.clone()
+				name_id: value.name_id
 			})
 		}
 		Alias {
 			Type(Alias{
-				name:      value.name.clone()
-				base_type: clone_owned_type(value.base_type)
+				name_id:   value.name_id
+				base_type: new_type_reference(Type(clone_owned_type(value.base_type)))
 			})
 		}
 		MultiReturn {
@@ -305,8 +438,8 @@ pub fn clone_owned_type(value Type) Type {
 // clone_owned_types clones a list of types and all nested owned metadata.
 pub fn clone_owned_types(values []Type) []Type {
 	mut cloned := []Type{cap: values.len}
-	for value in values {
-		cloned << clone_owned_type(value)
+	for i in 0 .. values.len {
+		cloned << clone_owned_type(&values[i])
 	}
 	return cloned
 }
@@ -323,15 +456,15 @@ pub:
 }
 
 // unwrap_pointer transforms unwrap pointer data for types.
-pub fn unwrap_pointer(t Type) Type {
+pub fn unwrap_pointer(t &Type) Type {
 	if t is Pointer {
-		return t.base_type
+		return *t.base_type
 	}
-	return t
+	return *t
 }
 
 // unwrap_all_pointers removes every pointer layer from t.
-pub fn unwrap_all_pointers(t Type) Type {
+pub fn unwrap_all_pointers(t &Type) Type {
 	mut clean := t
 	for clean is Pointer {
 		clean = clean.base_type
@@ -352,17 +485,20 @@ pub fn generic_base_name(name string) string {
 }
 
 // is_pointer reports whether is pointer applies in types.
-pub fn (t Type) is_pointer() bool {
+@[inline]
+pub fn (t &Type) is_pointer() bool {
 	return t is Pointer
 }
 
 // is_string reports whether is string applies in types.
-pub fn (t Type) is_string() bool {
+@[inline]
+pub fn (t &Type) is_string() bool {
 	return t is String
 }
 
 // is_integer reports whether is integer applies in types.
-pub fn (t Type) is_integer() bool {
+@[inline]
+pub fn (t &Type) is_integer() bool {
 	if t is Primitive {
 		return t.props.has(.integer)
 	}
@@ -399,7 +535,8 @@ pub fn unsigned_shift_result_type(t Type) Type {
 }
 
 // is_float reports whether is float applies in types.
-pub fn (t Type) is_float() bool {
+@[inline]
+pub fn (t &Type) is_float() bool {
 	if t is Primitive {
 		return t.props.has(.float)
 	}
@@ -407,19 +544,26 @@ pub fn (t Type) is_float() bool {
 }
 
 // name returns name data for Type.
-pub fn (t Type) name() string {
-	if t is Void {
-		return 'void'
+@[inline]
+pub fn (t &Type) name() string {
+	return match t {
+		Void { 'void' }
+		Struct, Alias, Interface, Enum, SumType { flat.source_type_name(t.name_id) }
+		Primitive { prim_name_from(t.props, t.size) }
+		String { 'string' }
+		Unknown { 'unknown' }
+		Nil { 'nil' }
+		None { 'none' }
+		Char { 'char' }
+		Rune { 'rune' }
+		ISize { 'isize' }
+		USize { 'uint' }
+		else { t.composite_name() }
 	}
-	if t is Struct {
-		return t.name
-	}
-	if t is Alias {
-		return t.name
-	}
-	if t is Primitive {
-		return prim_name_from(t.props, t.size)
-	}
+}
+
+@[direct_array_access]
+fn (t &Type) composite_name() string {
 	if t is Pointer {
 		if t.base_type is Void {
 			return 'voidptr'
@@ -429,18 +573,6 @@ pub fn (t Type) name() string {
 	if t is Array {
 		return '[]${nested_type_name(t.elem_type)}'
 	}
-	if t is Interface {
-		return t.name
-	}
-	if t is Enum {
-		return t.name
-	}
-	if t is SumType {
-		return t.name
-	}
-	if t is String {
-		return 'string'
-	}
 	if t is OptionType {
 		return '?${nested_type_name(t.base_type)}'
 	}
@@ -448,30 +580,33 @@ pub fn (t Type) name() string {
 		return '!${nested_type_name(t.base_type)}'
 	}
 	if t is FnType {
-		mut s := 'fn('
+		mut s := strings.new_builder(32 + t.params.len * 8)
+		s.write_string('fn(')
 		for i in 0 .. t.params.len {
 			if i > 0 {
-				s += ', '
+				s.write_string(', ')
 			}
-			param := fn_type_param_type(t, i)
-			if fn_type_param_is_mut(t, i) {
-				s += 'mut '
+			param := t.params[i].typ
+			if t.params[i].is_mut {
+				s.write_string('mut ')
 				if param is Pointer {
-					s += nested_type_name(param.base_type)
+					s.write_string(nested_type_name(param.base_type))
 					continue
 				}
 			}
 			if t.is_variadic && i == t.params.len - 1 && param is Array {
-				s += '...${nested_type_name(param.elem_type)}'
+				s.write_string('...')
+				s.write_string(nested_type_name(param.elem_type))
 			} else {
-				s += nested_type_name(param)
+				s.write_string(nested_type_name(param))
 			}
 		}
-		s += ')'
+		s.write_u8(`)`)
 		if t.return_type !is Void {
-			s += ' ${nested_type_name(t.return_type)}'
+			s.write_u8(` `)
+			s.write_string(nested_type_name(t.return_type))
 		}
-		return s
+		return s.str()
 	}
 	if t is Map {
 		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
@@ -489,31 +624,10 @@ pub fn (t Type) name() string {
 		}
 		return 'chan ${nested_type_name(t.elem_type)}'
 	}
-	if t is Unknown {
-		return 'unknown'
-	}
-	if t is Nil {
-		return 'nil'
-	}
-	if t is None {
-		return 'none'
-	}
-	if t is Char {
-		return 'char'
-	}
-	if t is Rune {
-		return 'rune'
-	}
-	if t is ISize {
-		return 'isize'
-	}
-	if t is USize {
-		return 'usize'
-	}
 	if t is MultiReturn {
 		mut parts := []string{cap: t.types.len}
-		for typ in t.types {
-			parts << nested_type_name(typ)
+		for i in 0 .. t.types.len {
+			parts << t.types[i].name()
 		}
 		return '(${parts.join(', ')})'
 	}
@@ -521,17 +635,8 @@ pub fn (t Type) name() string {
 }
 
 // nested_type_name supports nested type name handling for types.
-fn nested_type_name(t Type) string {
+fn nested_type_name(t &Type) string {
 	return t.name()
-}
-
-// fn_type_param_type supports fn type param type handling for types.
-fn fn_type_param_type(f FnType, idx int) Type {
-	return f.params[idx]
-}
-
-fn fn_type_param_is_mut(f FnType, idx int) bool {
-	return idx >= 0 && idx < f.params_mut.len && f.params_mut[idx]
 }
 
 // prim_name_from supports prim name from handling for types.
@@ -568,6 +673,39 @@ fn prim_name_from(props Properties, size u8) string {
 	return 'int'
 }
 
+fn primitive_source_type_id(props Properties, size u8) u32 {
+	if props.has(.boolean) {
+		return flat.source_type_bool
+	}
+	if props.has(.integer) {
+		if props.has(.unsigned) {
+			return match size {
+				8 { flat.source_type_u8 }
+				16 { flat.source_type_u16 }
+				32 { flat.source_type_u32 }
+				64 { flat.source_type_u64 }
+				else { flat.source_type_id('u${size}') }
+			}
+		}
+		return match size {
+			0 { flat.source_type_int }
+			8 { flat.source_type_i8 }
+			16 { flat.source_type_i16 }
+			32 { flat.source_type_i32 }
+			64 { flat.source_type_i64 }
+			else { flat.source_type_id('i${size}') }
+		}
+	}
+	if props.has(.float) {
+		return match size {
+			32 { flat.source_type_f32 }
+			64 { flat.source_type_f64 }
+			else { flat.source_type_id('f${size}') }
+		}
+	}
+	return flat.source_type_int
+}
+
 // prim_name supports prim name handling for types.
 fn prim_name(t Primitive) string {
 	if t.props.has(.boolean) {
@@ -600,4 +738,89 @@ fn prim_name(t Primitive) string {
 		}
 	}
 	return 'int'
+}
+
+pub const empty_type = &builtin_void_type
+
+pub fn (a Type) == (b Type) bool {
+	return semantic_types_equal(a, b)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Alias) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Enum) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Interface) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Struct) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value SumType) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// source_type_id returns an interned spelling, reusing nominal type identities directly.
+@[inline]
+pub fn (t &Type) source_type_id() u32 {
+	return match t {
+		Struct, Alias, Enum, Interface, SumType { t.name_id }
+		Void { flat.source_type_void }
+		Unknown { flat.source_type_unknown }
+		Nil { flat.source_type_nil }
+		None { flat.source_type_none }
+		String { flat.source_type_string }
+		Char { flat.source_type_char }
+		Rune { flat.source_type_rune }
+		ISize { flat.source_type_isize }
+		USize { flat.source_type_uint }
+		Primitive { primitive_source_type_id(t.props, t.size) }
+		else { flat.source_type_id(t.name()) }
+	}
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Struct) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Alias) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Enum) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Interface) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value SumType) source_type_id() u32 {
+	return value.name_id
 }

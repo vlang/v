@@ -4,10 +4,19 @@ module builtin
 // overflow, instead of the process dying silently. See segfault_handler_nix.h.
 // Native startup does not install this C runtime handler.
 $if !native && !no_segfault_handler ?&& !freestanding && !vinix {
-	#include "@VEXEROOT/vlib/builtin/segfault_handler_nix.h"
+	#flag @VEXEROOT/vlib/builtin/segfault_handler_nix.o
+	$if no_backtrace ? {
+		#flag -DCUSTOM_DEFINE_no_backtrace
+	}
 }
 
 fn C.v_install_segfault_handler(fallback voidptr, main_argv voidptr)
+
+@[markused]
+fn C.v_thread_signal_stack_enter(stack_top voidptr, stack_size uint) voidptr
+
+@[markused]
+fn C.v_thread_signal_stack_leave(alt_stack voidptr)
 
 // install_segfault_handler makes a segmentation fault print a message and a backtrace.
 // It is called by builtin_init. Only the main thread of an executable, whose C main

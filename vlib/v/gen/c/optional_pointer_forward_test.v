@@ -9,12 +9,12 @@ fn test_optional_pointer_aliases_forward_the_underlying_struct() {
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	pointee := types.Type(types.Struct{ name: 'payload.Missing' })
+	pointee := types.Type(types.Struct{ name_id: flat.source_type_id('payload.Missing') })
 	pointer_alias := types.Type(types.Alias{
-		name:      'PointerAlias'
+		name_id:   flat.source_type_id('PointerAlias')
 		base_type: types.Type(types.Pointer{ base_type: pointee })
 	})
-	struct_alias := types.Type(types.Alias{ name: 'RecordAlias', base_type: pointee })
+	struct_alias := types.Type(types.Alias{ name_id: flat.source_type_id('RecordAlias'), base_type: pointee })
 	g.optional_type_name(types.Type(types.ResultType{ base_type: pointer_alias }))
 	g.optional_type_name(types.Type(types.OptionType{
 		base_type: types.Type(types.Pointer{ base_type: struct_alias })
@@ -36,9 +36,7 @@ fn test_pruned_cached_pointer_wrappers_do_not_emit_unused_pointees() {
 	mut tc := types.TypeChecker.new(&ast)
 	for name in ['Used', 'Unused'] {
 		tc.structs['payload.${name}'] = []types.StructField{}
-		tc.const_types['payload.${name.to_lower()}'] = types.ResultType{
-			base_type: types.Pointer{ base_type: types.Type(types.Struct{ name: 'payload.${name}' }) }
-		}
+		tc.const_types['payload.${name.to_lower()}'] = *tc.parse_type(flat.source_type_id('!&payload.${name}'))
 	}
 	mut g := FlatGen.new()
 	g.a = &ast
@@ -60,9 +58,9 @@ fn test_thread_pointer_wrappers_keep_the_existing_runtime_typedef() {
 	g.a = &ast
 	g.tc = &tc
 	for name in ['thread', 'thread int'] {
-		pointee := types.Type(types.Struct{ name: name })
+		pointee := types.Type(types.Struct{ name_id: flat.source_type_id(name) })
 		pointer_alias := types.Type(types.Alias{
-			name:      'ThreadPointer'
+			name_id:   flat.source_type_id('ThreadPointer')
 			base_type: types.Type(types.Pointer{ base_type: pointee })
 		})
 		g.optional_type_name(types.Type(types.ResultType{ base_type: pointer_alias }))
@@ -83,9 +81,9 @@ fn test_optional_pointer_union_aliases_forward_the_union_tag() {
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	pointee := types.Type(types.Struct{ name: 'payload.Missing' })
+	pointee := types.Type(types.Struct{ name_id: flat.source_type_id('payload.Missing') })
 	alias := types.Type(types.Alias{
-		name:      'UnionPointer'
+		name_id:   flat.source_type_id('UnionPointer')
 		base_type: types.Type(types.Pointer{ base_type: pointee })
 	})
 	g.optional_type_name(types.Type(types.ResultType{ base_type: alias }))

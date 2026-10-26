@@ -1,0 +1,85 @@
+// A channel is shared, never converted, so its elements must be stored as the expected
+// channel's elements (aliases are transparent).
+interface Named {
+	name() string
+}
+
+struct Item {
+	n string
+}
+
+fn (i Item) name() string {
+	return i.n
+}
+
+type Byte = u8
+type Ints = []int
+
+struct Pipes {
+	wide chan u64
+}
+
+fn take_rows(ch chan []int) {
+	println(ch.len)
+}
+
+fn take_wide(ch chan u64) {
+	println(ch.len)
+}
+
+fn take_named(ch chan Named) {
+	println(ch.len)
+}
+
+fn take_wides(chs []chan u64) {
+	println(chs.len)
+}
+
+fn take_wide_map(m map[string]chan u64) {
+	println(m.len)
+}
+
+fn take_wide_ref(ch &chan u64) {
+	println(typeof(ch).name)
+}
+
+fn take_maybe_wide(ch ?chan u64) {
+	println(ch != none)
+}
+
+fn fill_wides(mut chs []chan u64) {
+	chs << chan u64{}
+}
+
+fn take_narrow(ch chan u8) {
+	println(ch.len)
+}
+
+fn narrow_as_wide(ch chan u8) chan u64 {
+	return ch
+}
+
+fn main() {
+	pairs := chan [2]int{cap: 1}
+	take_rows(pairs)
+	narrow := chan u8{cap: 1}
+	take_wide(narrow)
+	take_named(chan Item{cap: 1})
+	take_wides([narrow])
+	take_wide_map({
+		'a': narrow
+	})
+	take_wide_ref(&narrow)
+	take_maybe_wide(narrow)
+	mut narrows := [narrow]
+	fill_wides(mut narrows)
+	mut wide := chan u64{}
+	wide = narrow
+	pipes := Pipes{
+		wide: narrow
+	}
+	// Elements stored the same way are accepted.
+	take_narrow(chan Byte{cap: 1})
+	take_rows(chan Ints{cap: 1})
+	println('${narrow_as_wide(narrow).len} ${wide.len} ${pipes.wide.len}')
+}

@@ -1,9 +1,7 @@
+@[has_globals]
 module closure
 
 $if !freestanding && !vinix {
-	#include <sys/mman.h>
-	#include <pthread.h>
-
 	@[typedef]
 	struct C.pthread_mutex_t {}
 
@@ -49,7 +47,7 @@ fn closure_alloc_platform() &u8 {
 }
 
 @[inline]
-fn closure_memory_protect_platform(ptr voidptr, size isize, attr MemoryProtectAtrr) {
+fn closure_memory_protect_platform(ptr voidptr, size int, attr MemoryProtectAtrr) {
 	$if freestanding {
 		// No memory protection in freestanding mode
 	} $else {
