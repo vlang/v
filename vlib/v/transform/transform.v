@@ -5888,7 +5888,9 @@ fn (mut t Transformer) clone_scoped_worker_node(idx int, scope voidptr) {
 			}
 			node.set_generic_params(params)
 		}
-	} else if node.has_lowered_type_metadata() && transform_scope_owns(scope, node.payload_ptr()) {
+	} else if transform_scope_owns(scope, node.payload_ptr()) {
+		// Any scope-owned payload must move out, not only the lowered-type ones: call
+		// type args, debugger types and enum backing live in the same payload.
 		node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
 	}
 }
