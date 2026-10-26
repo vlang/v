@@ -85,5 +85,5 @@ fn (mut tc TypeChecker) vls_add_skipped_branches(file_id int) bool {
 // vls_twin_key tells apart the nodes of one file: the same code gets the same
 // key however many times it is parsed.
 fn vls_twin_key(node flat.Node) string {
-	return '${int(node.kind)} ${node.pos.offset} ${node.pos.end} ${node.value}'
+	return '${int(node.kind)} ${node.pos.offset} ${node.pos.end} ${node.value_text()}'
 }

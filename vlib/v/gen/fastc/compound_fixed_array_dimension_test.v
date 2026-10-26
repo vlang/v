@@ -120,7 +120,7 @@ fn test_fastc_compound_fixed_array_dimensions_keep_identifier_safe_markers() {
 		typ := fastc_fixed_array_type(dimension, 'u64')
 		assert typ.bytes().all(fastc_identifier_byte(it))
 		assert fastc_fixed_array_length(typ) or { '' } == dimension
-		initializer := fastc_array_initializer_c_type(typ)
+		initializer := fastc_array_initializer_c_type(flat.source_type_id(typ))
 		assert initializer.bytes().all(fastc_identifier_byte(it))
 	}
 }

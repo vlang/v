@@ -39,7 +39,7 @@ fn test_deprecated_integer_types_compile_as_platform_integer_types() {
 	assert aliases[1].typ == flat.source_type_uint
 	casts := a.nodes.filter(it.kind == .cast_expr)
 	assert casts.len == 1
-	assert casts[0].value == 'uint'
+	assert casts[0].value_text() == 'uint'
 }
 
 fn test_modern_integer_types_and_ordinary_names_do_not_warn() {
@@ -63,7 +63,7 @@ fn test_formatter_preserves_deprecated_integer_spellings_without_warnings() {
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	casts := a.nodes.filter(it.kind == .cast_expr)
 	assert casts.len == 1
-	assert casts[0].value == 'usize'
+	assert casts[0].value_text() == 'usize'
 }
 
 fn test_deprecated_integer_warnings_do_not_exhaust_parser_error_limit() {
