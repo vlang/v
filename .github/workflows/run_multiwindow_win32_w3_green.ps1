@@ -47,18 +47,18 @@ $cases = @(
 $surface = @(
     [pscustomobject]@{
         Path = 'vlib/x/multiwindow/service_native_win32_contract_red_test.v'
-		Hash = 'a67fe2c406bfee3a67db212679e0157a5474c1859e0971b80b3f2609f5a67664'
+		Hash = '43a451c95d3e7df849ee795aa22d06ce68fc84a28ca1fb10732339180f33cd21'
     }
     [pscustomobject]@{
         Path = 'vlib/gg/multiwindow_win32_public_services_contract_windows_test.v'
-        Hash = 'c42841ea38453a4e9041c940b73e4621ee093f82338da47adb936a094b2b09a2'
+        Hash = 'aae9e07b56175987fb94f794380c1bf0b36c53fb7ef8c7e77efc423879b43234'
     }
     [pscustomobject]@{
         Path = 'vlib/x/multiwindow/event_sequence_exhaustion_test.v'
         Hash = 'caa2c020d0d5ea50a57e8949af7f7353e82c18949edbfe226c0855f5c1bd4533'
     }
 )
-$knownCompositeSha256 = '1567c7a3a81d6a7cfe14ec231fd1f138e2fb7b116a3a944a30acd51c93f40e69'
+$knownCompositeSha256 = 'fbadc42268663be07624cb23373a235a7b2b5f528a76c7166c464a74c362ad42'
 
 function Get-W3TextSha256 {
     param(

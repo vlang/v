@@ -15,6 +15,7 @@ fn test_production_self_build_profiles_cold_serial_and_parallel_work_and_falls_b
 	}
 	root := os.join_path(os.vtmp_dir(), 'vself pgo_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'bin'))!
+	os.mkdir_all(os.join_path(root, 'thirdparty', 'tcc'))!
 	defer { os.rmdir_all(root) or {} }
 	// An old workspace must not be removed when a new self-build starts.
 	os.mkdir(os.join_path(root, '.vself_pgo'))!
@@ -22,7 +23,7 @@ fn test_production_self_build_profiles_cold_serial_and_parallel_work_and_falls_b
 	caller_profile := os.join_path(root, 'caller.profraw')
 	os.write_file(caller_profile, 'caller profile')!
 	scripts := {
-		'v':                 r'#!/bin/sh
+		'v':                      r'#!/bin/sh
 printf "BUILD %s\n" "$*" >> "$VSELF_PGO_TEST_LOG"
 previous=
 output=
@@ -37,17 +38,20 @@ case "$*" in
 esac
 chmod 755 "$output"
 '
-		'trainer':           r'#!/bin/sh
+		'trainer':                r'#!/bin/sh
 printf "TRAIN jobs=%s args=%s\n" "$VJOBS" "$*" >> "$VSELF_PGO_TEST_LOG"
 if [ -n "${VFLAGS-}" ] || [ -n "${VEXE-}" ]; then exit 3; fi
 if [ -n "${LLVM_PROFILE_FILE-}" ]; then exit 6; fi
 if [ "$V_MACOS_V3_NO_FALLBACK" != "1" ]; then exit 4; fi
 if [ "$VSELF_PGO_TEST_FAIL" = "1" ]; then exit 5; fi
+case "$*" in
+    *"-b fastc "*) if [ "${VSELF_PGO_TEST_FAIL_FASTC-}" = "1" ]; then exit 7; fi ;;
+esac
 printf "profile\n" > "$(dirname "$0")/profile/training-$VJOBS.profraw"
 '
-		'bin/clang':         '#!/bin/sh\nprintf "clang version mock\\n"\n'
-		'bin/gcc':           '#!/bin/sh\nprintf "gcc (GCC) mock\\n"\n'
-		'bin/llvm-profdata': r'#!/bin/sh
+		'bin/clang':              '#!/bin/sh\nprintf "clang version mock\\n"\n'
+		'bin/gcc':                '#!/bin/sh\nprintf "gcc (GCC) mock\\n"\n'
+		'bin/llvm-profdata':      r'#!/bin/sh
 printf "MERGE %s\n" "$*" >> "$VSELF_PGO_TEST_LOG"
 for argument in "$@"; do
     case "$argument" in
@@ -55,7 +59,8 @@ for argument in "$@"; do
     esac
 done
 '
-		'result_source':     '#!/bin/sh\nexit 0\n'
+		'result_source':          '#!/bin/sh\nexit 0\n'
+		'thirdparty/tcc/tcc.exe': '#!/bin/sh\nexit 0\n'
 	}
 	for name, source in scripts {
 		path := os.join_path(root, name)
@@ -79,7 +84,19 @@ done
 	build_calls := lines.filter(it.starts_with('BUILD '))
 	assert build_calls[0].contains('-fprofile-update=atomic'), calls
 	assert !build_calls[1].contains('-fprofile-update=atomic'), calls
-	assert lines.filter(it.starts_with('TRAIN ')).len == 2, calls
+	assert lines.filter(it.starts_with('TRAIN ')).len == 4, calls
+	assert lines.filter(it.starts_with('TRAIN ') && it.contains('-b fastc ')).len == 2, calls
+	for jobs in ['1', '2'] {
+		job_training := lines.filter(it.starts_with('TRAIN jobs=${jobs} '))
+		assert job_training.len == 2, calls
+		assert job_training.filter(it.contains('-b fastc ') && it.contains('/cmd_v_fastc_training.c ')).len == 1, calls
+		assert job_training.filter(!it.contains('-b fastc ') && it.contains('/cmd_v_training.c ')).len == 1, calls
+	}
+	for training in lines.filter(it.starts_with('TRAIN ')) {
+		assert !training.contains('-prod '), training
+		assert !training.contains('-cc '), training
+		assert training.ends_with(' cmd/v'), training
+	}
 	assert calls.contains('TRAIN jobs=2 args=-nocache '), calls
 	assert calls.contains('TRAIN jobs=1 args=-nocache '), calls
 	assert calls.contains('-building-v '), calls
@@ -158,8 +175,43 @@ done
 		serial := pgo_test_run(root, tool, extra, false, if extra.len == 0 { '1' } else { '2' }, '')
 		assert serial.exit_code == 0, serial.output
 		serial_calls := os.read_file(os.join_path(root, 'calls'))!
-		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 1, serial_calls
+		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, serial_calls
+		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ') && it.contains('-b fastc ')).len == 1, serial_calls
 	}
+	for extra in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-define', 'skip_fastc=1']] {
+		os.write_file(os.join_path(root, 'calls'), '')!
+		excluded := pgo_test_run(root, tool, extra, false, '2', '')
+		assert excluded.exit_code == 0, excluded.output
+		assert !excluded.output.contains('falling back'), excluded.output
+		excluded_calls := os.read_file(os.join_path(root, 'calls'))!
+		assert excluded_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, excluded_calls
+		assert !excluded_calls.contains('-b fastc '), excluded_calls
+	}
+	os.write_file(os.join_path(root, 'calls'), '')!
+	inherited_skip := pgo_test_run(root, tool, [], false, '2', '-d skip_fastc')
+	assert inherited_skip.exit_code == 0, inherited_skip.output
+	inherited_calls := os.read_file(os.join_path(root, 'calls'))!
+	assert inherited_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, inherited_calls
+	assert !inherited_calls.contains('-b fastc '), inherited_calls
+	os.setenv('VSELF_PGO_TEST_FAIL_FASTC', '1', true)
+	os.write_file(os.join_path(root, 'calls'), '')!
+	fastc_fallback := pgo_test_run(root, tool, [], false, '2', '')
+	os.unsetenv('VSELF_PGO_TEST_FAIL_FASTC')
+	assert fastc_fallback.exit_code == 0, fastc_fallback.output
+	assert fastc_fallback.output.contains('FastC profiling data'), fastc_fallback.output
+	assert fastc_fallback.output.contains('falling back to a regular self-build'), fastc_fallback.output
+	fastc_fallback_calls := os.read_file(os.join_path(root, 'calls'))!
+	assert fastc_fallback_calls.split_into_lines().filter(it.starts_with('BUILD ')).len == 2, fastc_fallback_calls
+	assert !fastc_fallback_calls.contains('MERGE '), fastc_fallback_calls
+	assert os.ls(root)!.filter(it.starts_with('.vself_pgo_')).len == 0
+	os.rm(os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe'))!
+	os.write_file(os.join_path(root, 'calls'), '')!
+	no_tcc := pgo_test_run(root, tool, [], false, '2', '')
+	assert no_tcc.exit_code == 0, no_tcc.output
+	assert !no_tcc.output.contains('falling back'), no_tcc.output
+	no_tcc_calls := os.read_file(os.join_path(root, 'calls'))!
+	assert no_tcc_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, no_tcc_calls
+	assert !no_tcc_calls.contains('-b fastc '), no_tcc_calls
 	os.write_file(os.join_path(root, 'calls'), '')!
 	fallback := pgo_test_run(root, tool, [], true, '2', '')
 	assert fallback.exit_code == 0, fallback.output

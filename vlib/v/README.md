@@ -686,6 +686,12 @@ full: `-g`, `-cg`, `-keepc`, `-showcc`, `-show-c-output`, shared libraries, obje
 coverage, tests, and an implicit `run` on macOS, which has its own executable cache below.
 `V3_CACHE_TRACE=1` says why an executable was not restored, and
 `V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
+The experimental unchanged-build receipt is disabled by default. Set
+`V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to enable its early executable restore for explicit binary
+outputs. Its key does not yet cover all compile-time environment, module-search, and linker
+inputs, so it can reuse stale output when those inputs change. `-nocache` and
+`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` both disable this shortcut. Missing file metadata also
+prevents publishing or restoring a receipt.
 The cache resolves the path of each module source once for a build; the table of resolved paths
 is closed when the imports are resolved, before later stages read it from several threads.
 A build that reads every module from its interface gets all the functions of those modules as
@@ -1015,6 +1021,13 @@ library instance body. Other values use reachability to omit irrelevant library 
 Set `V3_NO_CHECKED_NUMERIC_INFIX=1` to disable the checked numeric infix shortcut during
 both initial function lowering and later monomorphization. This is a diagnostic control for
 comparing generated C through the full dispatch path; ordinary compilation keeps the shortcut.
+
+### Monomorphization parallelism
+
+Generic specialization stays serial by default. Set `V3_PARALLEL_MONOMORPHIZE=1` to opt in
+when using a GCC- or Clang-built compiler. Parallel specialization remains experimental because
+nested generic-interface instantiations can lose specialization results. TinyCC-built compilers
+always specialize serially; `V3_PARALLEL_MONOMORPHIZE=0` also keeps specialization serial.
 
 ### Transform batch arenas
 

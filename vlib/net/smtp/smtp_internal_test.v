@@ -394,12 +394,8 @@ fn test_send_auth_rejects_plaintext_credentials() {
 }
 
 fn test_tls_validation_rejects_untrusted_and_mismatched_certificates_before_auth() ! {
-	python := os.find_abs_path_of_executable('python3') or {
-		os.find_abs_path_of_executable('python') or {
-			eprintln('Skipping SMTP TLS integration test: Python is not installed')
-			return
-		}
-	}
+	helper := os.join_path(@VMODROOT, 'vlib', 'net', 'smtp', 'testdata', 'smtp_tls_test_server.v')
+	assert os.exists(helper)
 	cert_dir := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert')
 	server_cert := os.join_path(cert_dir, 'server.crt')
 	server_key := os.join_path(cert_dir, 'server.key')
@@ -408,25 +404,24 @@ fn test_tls_validation_rejects_untrusted_and_mismatched_certificates_before_auth
 	assert os.exists(server_cert) && os.exists(server_key) && os.exists(ca_bundle)
 
 	for starttls in [false, true] {
-		assert smtp_tls_test_case(python, starttls, 'localhost', ca_bundle, server_cert,
+		assert smtp_tls_test_case(helper, starttls, 'localhost', ca_bundle, server_cert,
 			server_key)! == 'CONNECTED:AUTH'
-		assert smtp_tls_test_case(python, starttls, '127.0.0.1', ca_bundle, server_cert,
+		assert smtp_tls_test_case(helper, starttls, '127.0.0.1', ca_bundle, server_cert,
 			server_key)! == 'REJECTED:NO_AUTH'
-		assert smtp_tls_test_case(python, starttls, 'localhost', untrusted_bundle, server_cert,
+		assert smtp_tls_test_case(helper, starttls, 'localhost', untrusted_bundle, server_cert,
 			server_key)! == 'REJECTED:NO_AUTH'
 	}
 }
 
-fn smtp_tls_test_case(python string, starttls bool, hostname string, verify string, cert string,
+fn smtp_tls_test_case(helper string, starttls bool, hostname string, verify string, cert string,
 	key string) !string {
-	helper := os.join_path(@VMODROOT, 'vlib', 'net', 'smtp', 'smtp_tls_test_server.py')
-	assert os.exists(helper)
 	prefix := os.join_path(os.temp_dir(), 'v_smtp_tls_${rand.uuid_v4()}')
 	ready_path := '${prefix}.ready'
 	result_path := '${prefix}.result'
-	mut server := os.new_process(python)
+	mut server := os.new_process(@VEXE)
 	server.set_work_folder(@VMODROOT)
 	server.set_args([
+		'run',
 		helper,
 		if starttls { 'starttls' } else { 'implicit' },
 		hostname,

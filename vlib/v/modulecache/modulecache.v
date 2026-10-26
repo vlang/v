@@ -1874,6 +1874,18 @@ pub fn (m &Manager) valid_program_executable(source_files []string, generation_s
 	identity := m.program_executable_identity(source_files, generation_signature, dependency_inputs,
 		link_signature) or { return none }
 	if !stamp.starts_with(identity) {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			actual_lines := stamp.split_into_lines()
+			expected_lines := identity.split_into_lines()
+			mut line := 0
+			for line < actual_lines.len && line < expected_lines.len
+				&& actual_lines[line] == expected_lines[line] {
+				line++
+			}
+			actual := if line < actual_lines.len { actual_lines[line] } else { '<missing>' }
+			expected := if line < expected_lines.len { expected_lines[line] } else { '<missing>' }
+			eprintln('  V3 program executable miss: stamp line ${line + 1}: cached=${actual} expected=${expected}')
+		}
 		trace_program_executable_miss('the inputs of the program changed')
 		return none
 	}
@@ -2271,8 +2283,25 @@ pub fn header_signature(header string) string {
 
 // file_signature returns a stable content signature for a cache input file.
 pub fn file_signature(path string) string {
-	content := os.read_bytes(path) or { return '' }
-	return hash_bytes(u64(1469598103934665603), content).hex()
+	mut file := os.open(path) or { return '' }
+	defer { file.close() }
+	mut hash := u64(1469598103934665603)
+	mut buffer := []u8{len: 64 * 1024}
+	for {
+		read := file.read(mut buffer) or {
+			if err is os.Eof {
+				break
+			}
+			return ''
+		}
+		if read == 0 {
+			break
+		}
+		for value in buffer[..read] {
+			hash = (hash ^ u64(value)) * u64(1099511628211)
+		}
+	}
+	return hash.hex()
 }
 
 fn sanitize_name(name string) string {
@@ -6026,6 +6055,30 @@ fn cached_embed_file_path_edit(source string, start int, vroot string, source_fi
 		end:         content_end + 1
 		replacement: "'${escape_v_string(path)}'"
 	}
+}
+
+// embedded_source_paths lists the resolved `$embed_file` paths in one source
+// file. Callers use it to keep resources that cached declaration bodies omit in
+// the whole-program cache identity.
+pub fn embedded_source_paths(source_file string, vroot string) []string {
+	source := os.read_file(source_file) or { return [] }
+	mut paths := []string{}
+	mut search_from := 0
+	for {
+		marker := source.index_after('$embed_file', search_from) or { break }
+		search_from = marker + '$embed_file'.len
+		edit := cached_embed_file_path_edit(source, marker, vroot, source_file) or { continue }
+		if edit.replacement.len < 3 {
+			continue
+		}
+		escaped_path := edit.replacement[1..edit.replacement.len - 1]
+		path := cached_unescape_v_string(escaped_path)
+		if os.is_file(path) && path !in paths {
+			paths << path
+		}
+		search_from = edit.end
+	}
+	return paths
 }
 
 fn cached_unescape_v_string(value string) string {

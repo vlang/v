@@ -1,6 +1,22 @@
 module types
 
+import os
 import v.flat
+import v.parser
+import v.pref
+
+fn source_value_tail_checker(name string, source string) &TypeChecker {
+	path := os.join_path(os.vtmp_dir(), 'source_value_tail_${name}_${os.getpid()}.v')
+	os.write_file(path, source) or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	return tc
+}
 
 fn test_type_expression_source_operands_keep_independent_annotations() {
 	mut a := flat.FlatAst.new()
@@ -137,6 +153,8 @@ fn test_generic_call_rejects_source_backed_option_and_result_type_names() {
 			children_count: 1
 		})
 		mut tc := TypeChecker.new(&a)
+		// These synthetic nodes have no source positions for diagnostic filtering.
+		tc.diagnose_unknown_calls = true
 		tc.reset_node_caches(a.nodes.len)
 		tc.fn_ret_types['known'] = Type(int_)
 		tc.check_call(call_id, a.nodes[int(call_id)])
@@ -149,7 +167,8 @@ fn test_generic_call_rejects_source_backed_option_and_result_type_names() {
 
 fn test_generic_struct_init_inference_reads_source_operand_and_legacy_fallback() {
 	mut a := flat.FlatAst.new()
-	module_id := a.add_val(.module_decl, 'main')
+	// Non-main declarations are registered with a module-qualified name.
+	module_id := a.add_val(.module_decl, 'fixture')
 	source_field := a.add_node(flat.Node{
 		kind:  .field_decl
 		value: 'value'
@@ -198,15 +217,54 @@ fn test_generic_struct_init_inference_reads_source_operand_and_legacy_fallback()
 	assert a.nodes[int(indexed)].value == ''
 	mut tc := TypeChecker.new(&a)
 	tc.reset_node_caches(a.nodes.len)
-	tc.cur_module = 'main'
+	tc.cur_module = 'fixture'
 	tc.top_level_idx = [i32(module_id), i32(declaration)]
-	tc.structs['main.Box'] = [StructField{ name: 'value', typ: unknown_type('T') }]
-	tc.struct_generic_params['main.Box'] = ['T']
+	tc.structs['fixture.Box'] = [StructField{ name: 'value', typ: unknown_type('T') }]
+	tc.struct_generic_params['fixture.Box'] = ['T']
 	for node in [legacy, a.nodes[int(canonicalized)], a.nodes[int(indexed)]] {
 		inferred := tc.infer_generic_struct_init_type(node) or {
 			panic('failed to infer Box from original struct operand')
 		}
-		assert inferred.source_type_id() == flat.source_type_id('main.Box[string]')
+		assert inferred.source_type_id() == flat.source_type_id('fixture.Box[string]')
 		assert node.typ == checked_id
+	}
+}
+
+fn test_parsed_generic_calls_reject_option_and_result_type_names() {
+	for index, spelling in ['?int', '!int'] {
+		tc := source_value_tail_checker('generic_call_${index}', 'module main
+fn known[T]() {}
+fn main() { known[${spelling}]() }
+')
+		assert tc.errors.len == 1, tc.errors.str()
+		assert tc.errors[0].kind == .call_arg_mismatch
+		assert tc.errors[0].msg == 'cannot use Option type name as concrete type'
+		type_arg := tc.a.nodes[int(tc.errors[0].node)]
+		assert type_arg.source_value_id() == flat.source_type_id(spelling)
+	}
+}
+
+fn test_parsed_generic_struct_inference_preserves_module_registration() {
+	for module_name in ['main', 'fixture'] {
+		tc := source_value_tail_checker('struct_${module_name}', 'module ${module_name}
+struct Box[T] { value T }
+fn main() {
+ box := Box{value: "hello"}
+ _ = box.value
+}
+')
+		assert tc.errors.len == 0, tc.errors.str()
+		expected := if module_name == 'main' { 'Box[string]' } else { 'fixture.Box[string]' }
+		mut found := false
+		for index, node in tc.a.nodes {
+			if node.kind != .struct_init {
+				continue
+			}
+			found = true
+			assert node.source_value_id() == flat.source_type_id('Box')
+			inferred := tc.expr_type(flat.NodeId(index)) or { panic('missing inferred Box type') }
+			assert inferred.source_type_id() == flat.source_type_id(expected)
+		}
+		assert found
 	}
 }

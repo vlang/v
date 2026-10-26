@@ -1,5 +1,6 @@
 module transform
 
+import os
 import v.flat
 import v.types
 
@@ -161,6 +162,47 @@ fn test_scoped_batch_specialization_names_outlive_scratch_scope() {
 	assert t.a.specialized_fn_files[3] == 'builtin.v'
 }
 
+fn test_monomorph_release_preserves_cross_worker_specialization_contexts() {
+	$if prealloc {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		a.specialized_fn_modules[0] = 'builtin'
+		a.specialized_fn_files[0] = 'builtin.v'
+		mut module_ptrs := [3]voidptr{}
+		mut file_ptrs := [3]voidptr{}
+		for idx in 1 .. 4 {
+			scope := transform_worker_scope_begin(true)
+			module_name := 'worker_${idx}'.clone()
+			file := 'worker_${idx}.v'.clone()
+			assert transform_scope_owns(scope, module_name.str)
+			assert transform_scope_owns(scope, file.str)
+			module_ptrs[idx - 1] = module_name.str
+			file_ptrs[idx - 1] = file.str
+			transform_worker_scope_leave(scope)
+			// A nested declaration can be discovered by one worker and emitted
+			// by another, including the master. Its context is not a node payload.
+			a.specialized_fn_nodes[idx] = true
+			a.specialized_fn_modules[idx] = module_name
+			a.specialized_fn_files[idx] = file
+			t.monomorph_worker_scopes << scope
+		}
+		t.release_monomorph_worker_scopes()
+		assert t.monomorph_worker_scopes.len == 0
+		for idx in 1 .. 4 {
+			// Small arenas may be recycled instead of unmapped immediately.
+			// Check ownership before dereferencing potentially released strings.
+			assert voidptr(a.specialized_fn_modules[idx].str) != module_ptrs[idx - 1]
+			assert voidptr(a.specialized_fn_files[idx].str) != file_ptrs[idx - 1]
+			assert a.specialized_fn_nodes[idx]
+			assert a.specialized_fn_modules[idx] == 'worker_${idx}'
+			assert a.specialized_fn_files[idx] == 'worker_${idx}.v'
+		}
+		assert a.specialized_fn_modules[0] == 'builtin'
+		assert a.specialized_fn_files[0] == 'builtin.v'
+	}
+}
+
 fn test_generic_unresolved_cache_owns_scoped_module() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -220,6 +262,9 @@ fn test_transform_fork_reads_and_merges_source_fn_values() {
 }
 
 fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
+	old_jobs := os.getenv('VJOBS')
+	defer { os.setenv('VJOBS', old_jobs, true) }
+	os.setenv('VJOBS', '2', true)
 	mut a := flat.FlatAst.new()
 	param_id := a.add_node(flat.Node{
 		kind:  .param
@@ -284,6 +329,8 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	t.parallel_monomorphize = false
 	t.scope_parallel_workers = true
 	t.scoped_monomorphize = true
+	// Exhaust direct emission so the drain exercises its scoped batch path.
+	t.direct_monomorph_specs = direct_monomorph_spec_budget
 	t.defer_nested_generic_emissions = true
 	for arg in ['int', 'string'] {
 		t.request_generic_fn_specialization(decl, flat.TypeTextList.from_names([arg]).ids)

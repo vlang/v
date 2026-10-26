@@ -821,7 +821,7 @@ fn test_orm_table_gen_vsql_constraints() {
 		'"name" TEXT NOT NULL, PRIMARY KEY("id"), UNIQUE("name")'
 		'"name" TEXT NOT NULL, UNIQUE("name"), PRIMARY KEY("id")'
 		'"name" TEXT DEFAULT \'x\' NOT NULL, PRIMARY KEY("id")'
-		'"name" TEXT REFERENCES "other"("id"), PRIMARY KEY("id")'
+		'"name" TEXT REFERENCES "other"("id"), PRIMARY KEY("id")',
 	]
 	for i, attr in attrs {
 		query := orm.orm_table_gen(.vsql, table, '"', true, 0, vsql_test_fields([attr]),

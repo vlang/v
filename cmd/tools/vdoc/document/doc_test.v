@@ -95,8 +95,10 @@ pub:
 	assert pipeline_container.content == '@[heap]
 pub struct PipelineContainer {
 pub mut:
-	alpha sgl.Pipeline
-	add   sgl.Pipeline
+	alpha    render.Pipeline
+	add      render.Pipeline
+	multiply render.Pipeline
+	screen   render.Pipeline
 }'
 	assert pipeline_container.attrs == {
 		'heap': '@[heap]'

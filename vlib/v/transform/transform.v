@@ -2420,6 +2420,10 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		// publish all worker-owned node strings while their arenas are still live.
 		t.a.promote_transform_texts_from(0, stage_scope)
 		t.monomorph_profile('mono wrapper text table: ${time.ticks() - debug_started} ms')
+		if !isnil(t.tc) {
+			mut mtc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+			mtc.clone_transform_metadata_owned()
+		}
 		t.release_monomorph_worker_scopes()
 		transform_stage_scope_resume(stage_scope, parent_state)
 	} else {
@@ -2453,6 +2457,21 @@ fn (mut t Transformer) release_monomorph_worker_scopes() {
 	// scope was retained. Keep it unconditional so the driver does not need a
 	// second full-AST canonicalization pass after this function returns.
 	t.a.intern_node_texts_from(0)
+	if t.monomorph_worker_scopes.len > 0 {
+		// A declaration discovered by a helper can be emitted by the master or
+		// another helper. Its module/file strings are not node payloads, so the
+		// node publication pass above does not preserve them before arena release.
+		mut modules := map[int]string{}
+		for idx, module_name in t.a.specialized_fn_modules {
+			modules[idx] = module_name.clone()
+		}
+		t.a.specialized_fn_modules = modules.move()
+		mut files := map[int]string{}
+		for idx, file in t.a.specialized_fn_files {
+			files[idx] = file.clone()
+		}
+		t.a.specialized_fn_files = files.move()
+	}
 	t.monomorph_profile('mono wrapper intern: ${time.ticks() - started} ms')
 	if !free_worker_scopes_parallel(t.a, t.monomorph_worker_scopes) {
 		for scope in t.monomorph_worker_scopes {
