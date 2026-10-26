@@ -108,7 +108,7 @@ fn test_reading_zipping_files() {
 			assert name in file_name_list
 
 			zp.read_entry_buf(buf, buf_size)!
-			buf[data_len] = 0
+			(&u8(buf))[data_len] = 0
 			tmp_str := tos(buf, data_len)
 
 			assert tmp_str[0..4] == 'file'
