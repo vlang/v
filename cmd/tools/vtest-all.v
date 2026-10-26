@@ -275,10 +275,9 @@ fn get_all_commands() []Command {
 		rmfile: 'vtmp_prealloc'
 	}
 	res << Command{
-		line:          '${vexe} -o vtmp_ntransformer -new-transformer cmd/v'
-		okmsg:         'V can compile itself with -new-transformer.'
-		rmfile:        'vtmp_ntransformer'
-		v3_compatible: false
+		line:   '${vexe} -o vtmp_serial_transform -no-parallel cmd/v'
+		okmsg:  'V can compile itself with serial transformation and C generation.'
+		rmfile: 'vtmp_serial_transform'
 	}
 	$if linux {
 		res << Command{

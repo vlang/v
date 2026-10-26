@@ -83,7 +83,11 @@ fn test_pointer_field_receiver_does_not_retain_its_owner() {
 		tc.fn_param_types['Node.element'] = [types.Type(types.Pointer{ base_type: node_type })]
 		result_type := types.Type(types.Struct{ name_id: flat.source_type_id('Element') })
 		tc.fn_ret_types['Node.element'] = result_type
-		receiver := t.make_selector(owner, 'node', flat.source_type_id(if is_pointer { '&Node' } else { 'Node' }))
+		receiver := t.make_selector(owner, 'node', flat.source_type_id(if is_pointer {
+			'&Node'
+		} else {
+			'Node'
+		}))
 		tc.register_synth_type(receiver, receiver_type)
 		method := t.make_selector(receiver, 'element', 0)
 		start := a.children.len

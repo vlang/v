@@ -23,6 +23,10 @@ It works, by running these in succession:
 * `v check-md -hide-warnings .`
 * `v install nedpals.args`
 
+The self-build checks include serial transformation and C generation with `-no-parallel`.
+Transformation always runs in the current compiler; the historical `-new-transformer` switch
+is no longer needed.
+
 # Details:
 
 In the `v` repo there are many tests. The main types are:
