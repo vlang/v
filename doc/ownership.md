@@ -92,6 +92,8 @@ Returning a scalar field or scalar array element copies its value, including whe
 a pointer to local storage. Scalar copies do not keep a reference to that storage.
 Interpolation with multiple parts copies their storage. A sole string part can pass through
 unchanged, and closures retain their captured references.
+Capturing an owned aggregate transfers its root and owned descendants together. Earlier moves
+and active borrows still prevent capture, and the transferred source cannot be reused afterward.
 Escaped interpolation text stays literal through compile-time reflection and promoted defaults.
 Literal text supplied by reflected attributes or source-location variables follows the same rule.
 

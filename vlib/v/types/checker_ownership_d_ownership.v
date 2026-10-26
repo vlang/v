@@ -5723,29 +5723,33 @@ fn (mut tc TypeChecker) ownership_consume_fn_literal_capture(name string, fn_nam
 	mut captures := []OwnershipCaptureBinding{}
 	st := tc.ownership_state()
 	source_type := tc.resolve_type(pos)
-	if name in st.owned_vars || tc.ownership_type_is_owned(source_type) {
+	owned_root := name in st.owned_vars || name in st.moved_vars
+		|| tc.ownership_type_is_owned(source_type)
+	mut names := []string{}
+	if owned_root {
+		names << name
+	}
+	names << tc.ownership_owned_descendant_names(name)
+	// A capture transfers one subtree. Check every source before recording moves so that
+	// its root and descendants cannot conflict with transfers from this same capture.
+	for source_name in names {
+		if !tc.ownership_can_move_var(source_name, fn_name, pos) {
+			return captures
+		}
+	}
+	if owned_root {
 		if name !in st.owned_vars {
 			tc.ownership_mark_owned(name, source_type, pos)
 		}
 		tc.ownership_reject_global_move(name, pos, fn_name, false)
-		type_name := tc.ownership_type_name_for_var(name)
-		if tc.ownership_move_var_result(name, fn_name, pos, false, '', true) {
-			captures << OwnershipCaptureBinding{
-				name:      name
-				type_name: type_name
-				pos:       pos
-			}
-		}
 	}
-	for source_name in tc.ownership_owned_descendant_names(name) {
-		type_name := tc.ownership_type_name_for_var(source_name)
-		if tc.ownership_move_var_result(source_name, fn_name, pos, false, '', true) {
-			captures << OwnershipCaptureBinding{
-				name:      source_name
-				type_name: type_name
-				pos:       pos
-			}
+	for source_name in names {
+		captures << OwnershipCaptureBinding{
+			name:      source_name
+			type_name: tc.ownership_type_name_for_var(source_name)
+			pos:       pos
 		}
+		tc.ownership_record_var_move(source_name, fn_name, pos, false, '', true)
 	}
 	return captures
 }
@@ -12631,6 +12635,14 @@ fn (mut tc TypeChecker) ownership_move_var(name string, target string, pos flat.
 }
 
 fn (mut tc TypeChecker) ownership_move_var_result(name string, target string, pos flat.NodeId, is_fn_call bool, fn_name string, suggest_clone bool) bool {
+	if !tc.ownership_can_move_var(name, target, pos) {
+		return false
+	}
+	tc.ownership_record_var_move(name, target, pos, is_fn_call, fn_name, suggest_clone)
+	return true
+}
+
+fn (mut tc TypeChecker) ownership_can_move_var(name string, target string, pos flat.NodeId) bool {
 	mut st := tc.ownership_state()
 	if moved := tc.ownership_moved_conflict(name) {
 		// Autofree retains V1's aliasing semantics. Aggregate lowering can first
@@ -12661,6 +12673,11 @@ fn (mut tc TypeChecker) ownership_move_var_result(name string, target string, po
 		tc.record_error(.assignment_mismatch, msg, pos)
 		return false
 	}
+	return true
+}
+
+fn (mut tc TypeChecker) ownership_record_var_move(name string, target string, pos flat.NodeId, is_fn_call bool, fn_name string, suggest_clone bool) {
+	mut st := tc.ownership_state()
 	tname := st.owned_var_types.type_id(name) or { flat.source_type_string }
 	tc.ownership_mark_index_move_read(name, pos)
 	st.owned_vars.delete(name)
@@ -12673,7 +12690,6 @@ fn (mut tc TypeChecker) ownership_move_var_result(name string, target string, po
 		type_name:     tname
 		suggest_clone: suggest_clone
 	}
-	return true
 }
 
 fn (mut tc TypeChecker) ownership_moved_conflict(name string) ?OwnershipMovedConflict {
