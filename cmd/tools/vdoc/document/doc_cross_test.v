@@ -186,6 +186,25 @@ fn test_a_doc_comment_on_one_platform_documents_the_symbol() {
 	assert d.contents['run']!.merge_comments().trim_space() == 'run runs.'
 }
 
+fn test_available_on_host() {
+	host := host_platform()
+	assert available_on_host(DocNode{})
+	assert available_on_host(DocNode{
+		platforms: [host]
+	})
+	other := if host == .windows { Platform.linux } else { Platform.windows }
+	assert !available_on_host(DocNode{
+		platforms: [other]
+	})
+	// A variant for the host makes the symbol available.
+	assert available_on_host(DocNode{
+		platforms: [other]
+		variants:  [DocNode{
+			platforms: [host]
+		}]
+	})
+}
+
 fn test_merge_platforms() {
 	assert merge_platforms([.linux], [.windows]) == [.linux, .windows]
 	assert merge_platforms([.windows], [.linux, .windows]) == [.linux, .windows]
@@ -230,6 +249,7 @@ fn test_cross_selects_the_host_variants_examples() {
 	d := generate(dir, true, true, .cross)!
 	node := d.contents['shared']!
 	assert node.platforms == [other]
+	assert available_on_host(node)
 	declarations := declarations_on_host(node)
 	assert declarations.len == 1
 	assert declarations[0].platforms == [host]

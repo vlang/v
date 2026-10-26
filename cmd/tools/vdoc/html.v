@@ -522,13 +522,15 @@ fn escape_code(text string) string {
 	return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 }
 
-fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
-	mut dnw := strings.new_builder(200)
-	head_tag := if head { 'h1' } else { 'h2' }
-	mut renderer := markdown.HTMLRenderer{
-		opts:             markdown.Options{}
+// new_doc_markdown_renderer preserves the documentation renderer options and V highlighting.
+fn new_doc_markdown_renderer(md_link_base string) markdown.HTMLRenderer {
+	return markdown.HTMLRenderer{
+		opts:             markdown.Options{
+			parser_opts:   markdown.ParserOptions{ auto_heading_id: true }
+			renderer_opts: markdown.RendererOptions{ unsafe_: true }
+		}
 		code_highlighter: fn (lang string, code string) string {
-			if lang == '' {
+			if lang.to_lower() != 'v' {
 				return html.escape(code)
 			}
 			return html_highlight(code)
@@ -538,8 +540,21 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 			return resolve_relative_markdown_link(base, url)
 		}
 	}
+}
+
+// render_doc_markdown retains the existing list boundary whitespace in generated docs.
+fn render_doc_markdown(source string, mut renderer markdown.HTMLRenderer) string {
+	return markdown.render(source, mut renderer).trim_space()
+		.replace('</li>\n</ul>', '</li></ul>')
+		.replace('</li>\n</ol>', '</li></ol>')
+}
+
+fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
+	mut dnw := strings.new_builder(200)
+	head_tag := if head { 'h1' } else { 'h2' }
+	mut renderer := new_doc_markdown_renderer(md_link_base)
 	only_comments_text := dn.merge_comments_without_examples()
-	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer)
+	md_content := render_doc_markdown(prepare_markdown_for_html(only_comments_text), mut renderer)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
 	mut deprecated_tags := dn.tags.filter(is_deprecated_attribute(it))
@@ -590,21 +605,9 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		for variant in dn.variants {
 			dnw.write_string(declaration_html(variant, true))
 			if has_own_comments(variant, dn) {
-				mut variant_renderer := markdown.HTMLRenderer{
-					opts:             markdown.Options{}
-					code_highlighter: fn (lang string, code string) string {
-						if lang == '' {
-							return html.escape(code)
-						}
-						return html_highlight(code)
-					}
-					link_base:        md_link_base
-					link_resolver:    fn (base string, url string) string {
-						return resolve_relative_markdown_link(base, url)
-					}
-				}
+				mut variant_renderer := new_doc_markdown_renderer(md_link_base)
 				variant_comments := prepare_markdown_for_html(variant.merge_comments_without_examples())
-				dnw.writeln(markdown.render(variant_comments, mut variant_renderer))
+				dnw.writeln(render_doc_markdown(variant_comments, mut variant_renderer))
 			}
 		}
 	}

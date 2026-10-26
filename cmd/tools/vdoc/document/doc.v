@@ -404,6 +404,13 @@ pub fn host_platform() Platform {
 	return $if windows { Platform.windows } $else $if macos { Platform.macos } $else $if linux { Platform.linux } $else $if freebsd { Platform.freebsd } $else $if openbsd { Platform.openbsd } $else $if netbsd { Platform.netbsd } $else { Platform.cross }
 }
 
+// available_on_host reports whether the symbol `node` can be used on the platform that vdoc runs
+// on, like to run its examples.
+pub fn available_on_host(node DocNode) bool {
+	platforms := all_platforms(node)
+	return platforms.len == 0 || host_platform() in platforms
+}
+
 // declarations_on_host returns the declarations of node whose examples can run on this host.
 // Each declaration is checked separately because its variants can have different examples.
 pub fn declarations_on_host(node DocNode) []DocNode {

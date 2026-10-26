@@ -597,8 +597,8 @@ fn test_resolve_relative_markdown_link_keeps_absolute_urls() {
 fn test_markdown_renderer_resolves_relative_links() ! {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
 	mut renderer := markdown.HTMLRenderer{
-		opts: markdown.Options{}
-		link_base: base
+		opts:          markdown.Options{}
+		link_base:     base
 		link_resolver: fn (b string, url string) string {
 			return resolve_relative_markdown_link(b, url)
 		}
@@ -637,10 +637,8 @@ fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 
 fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
 	input := '```sh\nv run server.v\n```\n\n```cpp\n#include <x>\n```\n\n```V\nos.args\n```\n\n```v ignore\nfn f() {}\n```\n\n```\nfn g() {}\n```'
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{}
-	}
-	out := markdown.render(input, mut renderer)!
+	mut renderer := new_doc_markdown_renderer('')
+	out := markdown.render(input, mut renderer)
 	// Code in other languages, or without a language, is shown as it is, and escaped.
 	assert out.contains('<code class="language-sh">v run server.v\n</code>')
 	assert out.contains('<code class="language-cpp">#include &lt;x&gt;\n</code>')
@@ -1074,4 +1072,8 @@ fn test_os_cross_shows_the_own_comment_of_each_declaration() {
 		'-html-only-contents', dir])!
 	assert !html.output.contains('<div class="attributes">'), html.output
 	assert html.output.contains('Available on <strong>Unix</strong> only.</p>\n<pre class="signature">\n<code><span class="token attribute">@[</span>'), html.output
+}
+
+fn test_readme_plaintext_preserves_unformatted_terminal_output() {
+	assert readme_plaintext('# Title\n\nA [link](https://vlang.io), **bold**, and `code`.\n\n```v\nfn main() {}\n```') == 'Title\nA link, bold, and code.\nfn main() {}'
 }
