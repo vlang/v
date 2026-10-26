@@ -795,7 +795,9 @@ fn (mut s SSLConn) init() ! {
 
 	if unsafe { s.certs != nil } {
 		C.mbedtls_ssl_conf_ca_chain(&s.conf, &s.certs.cacert, 0)
-		C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+		if s.config.cert != '' || s.config.cert_key != '' {
+			C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+		}
 	}
 
 	if s.config.validate {
