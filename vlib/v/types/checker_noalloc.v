@@ -343,8 +343,8 @@ fn (s &NoAllocScan) type_name(id flat.NodeId, parameters map[string]u32) u32 {
 		return if typ == 0 { flat.source_type_unknown } else { typ }
 	}
 	if node.kind == .selector && node.value in ['len', 'cap'] { return flat.source_type_int }
-	if node.kind in [.struct_init, .cast_expr] && node.value != '' {
-		return flat.source_type_id(node.value)
+	if node.kind in [.struct_init, .cast_expr] && node.source_value_id() != 0 {
+		return node.source_value_id()
 	}
 	if node.kind in [.paren, .prefix, .postfix] && node.children_count > 0 {
 		child_id := s.tc.a.child(node, 0)
@@ -357,6 +357,9 @@ fn (s &NoAllocScan) type_name(id flat.NodeId, parameters map[string]u32) u32 {
 			return flat.source_type_id('&${flat.source_type_name(child_type)}')
 		}
 		if node.kind == .prefix && node.op == .mul {
+			if !flat.source_type_shape(child_type).has(.pointer) {
+				return child_type
+			}
 			return flat.source_type_id(flat.source_type_name(child_type).trim_string_left('&'))
 		}
 		return child_type
@@ -657,8 +660,8 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			}
 		}
 		.cast_expr, .as_expr {
-			target := s.tc.parse_type(if node.value != '' {
-				flat.source_type_id(node.value)
+			target := s.tc.parse_type(if node.source_value_id() != 0 {
+				node.source_value_id()
 			} else {
 				node.typ
 			})
@@ -708,7 +711,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			if node.typ != 0 && node.children_count > 0 {
 				expected := unalias_type(s.tc.parse_type(node.typ))
 				actual := unalias_type(s.tc.parse_type(s.type_name(s.tc.a.child(node, 0), parameters)))
-				if s.boxed_storage(expected) && actual.name() != expected.name() {
+				if s.boxed_storage(expected) && actual.source_type_id() != expected.source_type_id() {
 					reason = 'field conversion may allocate interface or sum-type storage'
 				}
 			}
@@ -746,7 +749,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 						reason = 'array element conversion may allocate interface or sum-type storage'
 					} else if s.owning_storage(clean.elem_type, mut seen) {
 						reason = 'appending owning elements may allocate or clone their contents'
-					} else if (rhs is Array || rhs is ArrayFixed) && rhs.name() != clean.elem_type.name() {
+					} else if (rhs is Array || rhs is ArrayFixed) && rhs.source_type_id() != clean.elem_type.source_type_id() {
 						reason = 'bulk append may allocate an aliasing-source copy'
 					} else if s.strict || !s.array_parameter(lhs, mutable_arrays) {
 						reason = 'array append may grow its buffer'
@@ -825,7 +828,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 				for i in 0 .. node.children_count {
 					actual := unalias_type(s.tc.parse_type(s.type_name(s.tc.a.child(node, i), parameters)))
 					concrete := unalias_type(unwrap_pointer(actual))
-					if actual.name() != base.name()
+					if actual.source_type_id() != base.source_type_id()
 						&& s.tc.named_type_compatible_with_ierror(concrete.source_type_id()) {
 						reason = 'returning a concrete error may allocate IError storage'
 					}

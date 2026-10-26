@@ -80,7 +80,8 @@ fn test_wasm_supported_array_elem() {
 		'bool', 'char', 'rune'] {
 		assert wasm_supported_array_elem(flat.source_type_id('[]' + t)), t
 	}
-	for t in ['', '[]', 'int', 'map[string]int', 'Point', '[2]int', '[][]int', '[]Point', '[]string'] {
+	for t in ['', '[]', 'int', 'map[string]int', 'Point', '[2]int', '[][]int', '[]Point', '[]string',
+		' []int', '[]int ', '[] int', '[]builtin.int'] {
 		assert !wasm_supported_array_elem(flat.source_type_id(t)), t
 	}
 }

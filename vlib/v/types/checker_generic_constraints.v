@@ -690,8 +690,8 @@ fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stac
 		node := tc.a.node(item.id)
 		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
 		mut texts := written_type_texts(*node)
-		if generic_body && node.kind == .struct_init && !node.value.starts_with('chan ') {
-			texts << node.value
+		if generic_body && node.kind == .struct_init && !node.value_text().starts_with('chan ') {
+			texts << node.value_text()
 		}
 		for text in texts {
 			if text.contains('[') {
@@ -722,7 +722,7 @@ struct WrittenTypeItem {
 }
 
 // written_type_texts are the types that `node` writes: in `typ` for the kinds
-// that keep a type there, in `value` for the array, map and channel literals,
+// that keep a type there, in the source operand for array, map and channel literals,
 // the casts, the tests and `sizeof` or `typeof` of a type.
 fn written_type_texts(node flat.Node) []string {
 	mut texts := []string{}
@@ -731,20 +731,20 @@ fn written_type_texts(node flat.Node) []string {
 		texts << node.typ_text()
 	}
 	// The variants of a sum type, `type Sum = Box[int] | string`.
-	if node.kind == .ident && node.value.contains('[') && node.pos.end > 0 {
-		texts << node.value
+	if node.kind == .ident && node.value_text().contains('[') && node.pos.end > 0 {
+		texts << node.value_text()
 	}
 	// An interface that an interface embeds, `Shelf[T]`, written as its name.
 	if node.kind == .interface_field && node.op != .dot && node.typ == 0
 		&& node.value.contains('[') {
-		texts << node.value
+		texts << node.value_text()
 	}
 	// A struct literal, `Box[int]{}`, is checked where it is checked; a channel,
 	// `chan Box[int]{}`, is one only by its syntax.
-	if node.value.len > 0 && (node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init]
+	if (node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init]
 		|| (node.kind in [.sizeof_expr, .typeof_expr] && node.children_count == 0)
-		|| (node.kind == .struct_init && node.value.starts_with('chan '))) {
-		texts << node.value
+		|| (node.kind == .struct_init && node.value_text().starts_with('chan '))) && node.source_value_id() != 0 {
+		texts << node.value_text()
 	}
 	return texts
 }
@@ -1763,8 +1763,9 @@ fn binding_text(binding CallBinding, name string) string {
 fn (tc &TypeChecker) generic_param_arg_pos(node flat.Node, info CallInfo, name string) token.Pos {
 	texts := tc.fn_param_type_texts.type_ids(info.name) or { []u32{} }
 	first := if info.has_receiver { 1 } else { 0 }
+	name_id := flat.source_type_id(name)
 	for param_idx in first .. texts.len {
-		if trimmed_space(flat.source_type_name(texts[param_idx])) != name {
+		if trimmed_source_type_id(texts[param_idx]) != name_id {
 			continue
 		}
 		arg_idx := param_idx - first + 1 + info.arg_offset
@@ -1779,15 +1780,15 @@ fn (tc &TypeChecker) generic_param_arg_pos(node flat.Node, info CallInfo, name s
 // struct in the body of the walk whose type arguments come from its fields,
 // `Box{ item: x }`: what they are bound to, as check_generic_call_in_body does.
 fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.Node, scope TypeParamScope, constraints map[string]GenericConstraint) {
-	if node.value.contains('[') {
+	if node.value_text().contains('[') {
 		return
 	}
-	decl := tc.generic_type_decl(flat.source_type_id(node.value)) or { return }
+	decl := tc.generic_type_decl(node.source_value_id()) or { return }
 	if decl.kind != .struct_decl {
 		return
 	}
 	params := decl.generic_params().map(it.trim_space())
-	texts := tc.infer_generic_struct_init_param_texts(node, flat.source_type_id(node.value), params)
+	texts := tc.infer_generic_struct_init_param_texts(node, node.source_value_id(), params)
 	if texts.len != params.len {
 		return
 	}
@@ -1795,7 +1796,7 @@ fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.
 	if args.any(it == 0) {
 		return
 	}
-	tc.check_generic_type_constraints(id, node.pos, flat.source_type_id(node.value), args, TypeParamScope{
+	tc.check_generic_type_constraints(id, node.pos, node.source_value_id(), args, TypeParamScope{
 		names:       scope.names
 		constraints: constraints
 	})
@@ -2266,7 +2267,7 @@ fn (mut tc TypeChecker) check_constraint_runtime_is(id flat.NodeId, node flat.No
 	subject := tc.a.node(subject_id)
 	tested := if subject.kind == .ident { subject.value } else { param }
 	test := if negated { '!is' } else { 'is' }
-	tc.record_error_at(.condition_mismatch, '`is` can only be used with sum type or interface values, not `${param}`: ${reason}; test `${param}` with `\$if ${tested} ${test} ${node.value}`',
+	tc.record_error_at(.condition_mismatch, '`is` can only be used with sum type or interface values, not `${param}`: ${reason}; test `${param}` with `\$if ${tested} ${test} ${node.value_text()}`',
 		id, node.pos)
 }
 
@@ -2427,13 +2428,13 @@ fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool
 			return true
 		}
 	}
-	builtin := match clean {
-		Array { 'array' }
-		Map { 'map' }
-		String { 'string' }
-		else { '' }
+	builtin_id := match clean {
+		Array { qualify_source_type_array }
+		Map { qualify_source_type_map }
+		String { flat.source_type_string }
+		else { u32(0) }
 	}
-	if builtin.len > 0 && tc.concrete_method_signature_key(flat.source_type_id(builtin), member) != none {
+	if builtin_id != 0 && tc.concrete_method_signature_key(builtin_id, member) != none {
 		return true
 	}
 	if is_call {
@@ -2445,7 +2446,7 @@ fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool
 	if clean is Channel && member in ['len', 'cap', 'closed'] {
 		return true
 	}
-	if builtin.len > 0 && (tc.structs[builtin] or { []StructField{} }).any(it.name == member) {
+	if builtin_id != 0 && (tc.structs[flat.source_type_name(builtin_id)] or { []StructField{} }).any(it.name == member) {
 		return true
 	}
 	return name_id != 0 && tc.struct_field_type(name_id, member) != none
@@ -2995,7 +2996,7 @@ fn (tc &TypeChecker) constraint_operator_types(constraint GenericConstraint) []T
 fn (mut tc TypeChecker) record_constraint_operator_error(id flat.NodeId, pos token.Pos, what string, constraint GenericConstraint, typ Type) {
 	message := if constraint.is_interface {
 		'${what}: its constraint `${constraint.name_text()}` does not declare it'
-	} else if typ is Struct && typ.name() == '' {
+	} else if typ is Struct && typ.source_type_id() == 0 {
 		'${what}: a struct that embeds `${constraint.family_struct_text().all_after_last('.')}` does not have it'
 	} else {
 		'${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name_text()}`, does not have it'

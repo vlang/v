@@ -269,7 +269,7 @@ fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints m
 		// interface, the types its tests name.
 		for test_idx in g.tests {
 			for t in types_of[test_idx] {
-				if !g.types.any(it.name() == t.name()) {
+				if !g.types.any(it.source_type_id() == t.source_type_id()) {
 					g.types << t
 				}
 			}
@@ -280,7 +280,7 @@ fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints m
 			mut key := ''
 			mut passes := []bool{len: conds.tests.len}
 			for test_idx in g.tests {
-				named := i < g.types.len && types_of[test_idx].any(it.name() == g.types[i].name())
+				named := i < g.types.len && types_of[test_idx].any(it.source_type_id() == g.types[i].source_type_id())
 				passes[test_idx] = named != negated[test_idx]
 				key += if passes[test_idx] { '1' } else { '0' }
 			}

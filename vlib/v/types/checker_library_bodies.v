@@ -216,7 +216,7 @@ fn (tc &TypeChecker) reach_library_fns_named_in(body LibraryFnBody, by_name map[
 		if node.kind !in [.ident, .selector, .call, .cast_expr] {
 			continue
 		}
-		value := node.value
+		value := node.value_text()
 		if value.len == 0 {
 			continue
 		}
