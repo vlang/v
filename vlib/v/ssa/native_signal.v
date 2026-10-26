@@ -5,16 +5,34 @@ fn (mut b Builder) register_native_signal_helpers() {
 	b.register_extern('sigaltstack', b.i32_type, [ptr_i8, ptr_i8])
 	b.register_extern('sigaction', b.i32_type, [b.i32_type, ptr_i8, ptr_i8])
 	b.register_extern('raise', b.i32_type, [b.i32_type])
-	action_type := b.m.type_store.register(Type{
-		kind:        .struct_t
-		fields:      [ptr_i8, b.u32_type, b.i32_type]
-		field_names: ['handler', 'mask', 'flags']
-	})
-	stack_type := b.m.type_store.register(Type{
-		kind:        .struct_t
-		fields:      [ptr_i8, b.u64_type, b.i32_type]
-		field_names: ['pointer', 'size', 'flags']
-	})
+	mut action_type := TypeID(0)
+	$if linux {
+		action_type = b.m.type_store.register(Type{
+			kind:        .struct_t
+			fields:      [ptr_i8, b.m.type_store.get_array(b.u64_type, 16), b.i32_type, ptr_i8]
+			field_names: ['handler', 'mask', 'flags', 'restorer']
+		})
+	} $else {
+		action_type = b.m.type_store.register(Type{
+			kind:        .struct_t
+			fields:      [ptr_i8, b.u32_type, b.i32_type]
+			field_names: ['handler', 'mask', 'flags']
+		})
+	}
+	mut stack_type := TypeID(0)
+	$if linux {
+		stack_type = b.m.type_store.register(Type{
+			kind:        .struct_t
+			fields:      [ptr_i8, b.i32_type, b.u64_type]
+			field_names: ['pointer', 'flags', 'size']
+		})
+	} $else {
+		stack_type = b.m.type_store.register(Type{
+			kind:        .struct_t
+			fields:      [ptr_i8, b.u64_type, b.i32_type]
+			field_names: ['pointer', 'size', 'flags']
+		})
+	}
 	fallback_addr := b.m.add_global('__ssa_signal_fallback', ptr_i8)
 	handler_id := b.register_synthetic_function('__ssa_signal_handler', b.void_type,
 		[b.i32_type, ptr_i8, ptr_i8])
@@ -46,9 +64,17 @@ fn (mut b Builder) generate_native_signal_install(func_id int, fallback_addr Val
 	allocate_stack := b.m.add_block(func_id, 'signal_allocate_stack')
 	install := b.m.add_block(func_id, 'signal_install_handlers')
 	b.block_instr3(.br, entry, b.void_type, query_ok, ValueID(check_stack), ValueID(install))
-	flags_ptr := b.block_struct_field_ptr(check_stack, old_stack, stack_type, 2)
+	mut flags_index := 2
+	$if linux {
+		flags_index = 1
+	}
+	flags_ptr := b.block_struct_field_ptr(check_stack, old_stack, stack_type, flags_index)
 	flags := b.block_instr1(.load, check_stack, b.i32_type, flags_ptr)
-	disabled_mask := b.m.get_or_add_const(b.i32_type, '4')
+	mut disabled_value := '4'
+	$if linux {
+		disabled_value = '2'
+	}
+	disabled_mask := b.m.get_or_add_const(b.i32_type, disabled_value)
 	disabled_bits := b.block_instr2(.and_, check_stack, b.i32_type, flags, disabled_mask)
 	disabled := b.block_instr2(.ne, check_stack, b.i1_type, disabled_bits, zero)
 	b.block_instr3(.br, check_stack, b.void_type, disabled, ValueID(allocate_stack), ValueID(install))
@@ -60,9 +86,16 @@ fn (mut b Builder) generate_native_signal_install(func_id int, fallback_addr Val
 	b.block_instr3(.br, allocate_stack, b.void_type, allocated, ValueID(register_stack), ValueID(install))
 	new_stack := b.block_instr0(.alloca, register_stack, b.m.type_store.get_ptr(stack_type))
 	new_stack_raw := b.block_instr1(.bitcast, register_stack, ptr_i8, new_stack)
-	for i, value in [stack_memory, stack_size, zero] {
-		field := b.block_struct_field_ptr(register_stack, new_stack, stack_type, i)
-		b.block_instr2(.store, register_stack, b.void_type, value, field)
+	$if linux {
+		for i, value in [stack_memory, zero, stack_size] {
+			field := b.block_struct_field_ptr(register_stack, new_stack, stack_type, i)
+			b.block_instr2(.store, register_stack, b.void_type, value, field)
+		}
+	} $else {
+		for i, value in [stack_memory, stack_size, zero] {
+			field := b.block_struct_field_ptr(register_stack, new_stack, stack_type, i)
+			b.block_instr2(.store, register_stack, b.void_type, value, field)
+		}
 	}
 	registered := b.block_instr3(.call, register_stack, b.i32_type, query_ref, new_stack_raw, nil_ptr)
 	registered_ok := b.block_instr2(.eq, register_stack, b.i1_type, registered, zero)
@@ -101,19 +134,34 @@ fn (mut b Builder) generate_native_signal_install_one(func_id int, action_type T
 	is_default := b.block_instr2(.eq, check_default, b.i1_type, previous_handler, nil_ptr)
 	// Darwin keeps custom and ignored actions under kernel control, including one-shot handlers.
 	b.block_instr3(.br, check_default, b.void_type, is_default, ValueID(install), ValueID(done))
-	previous_mask_ptr := b.block_struct_field_ptr(install, previous, action_type, 1)
-	previous_mask := b.block_instr1(.load, install, b.u32_type, previous_mask_ptr)
-	previous_flags_ptr := b.block_struct_field_ptr(install, previous, action_type, 2)
-	previous_flags := b.block_instr1(.load, install, b.i32_type, previous_flags_ptr)
-	preserve_flags := b.m.get_or_add_const(b.i32_type, '18')
-	preserved := b.block_instr2(.and_, install, b.i32_type, previous_flags, preserve_flags)
-	// SA_SIGINFO | SA_ONSTACK supplies the three-argument handler on the alternate stack.
-	new_flags := b.block_instr2(.or_, install, b.i32_type, preserved,
-		b.m.get_or_add_const(b.i32_type, '65'))
 	new_action := b.block_instr0(.alloca, install, b.m.type_store.get_ptr(action_type))
-	for i, value in [handler, previous_mask, new_flags] {
-		field := b.block_struct_field_ptr(install, new_action, action_type, i)
-		b.block_instr2(.store, install, b.void_type, value, field)
+	$if linux {
+		previous_mask_ptr := b.block_struct_field_ptr(install, previous, action_type, 1)
+		previous_mask := b.block_instr1(.load, install,
+			b.m.type_store.types[action_type].fields[1], previous_mask_ptr)
+		// glibc's sigaction includes a 128-byte sigset_t between the handler
+		// and flags. SA_SIGINFO | SA_ONSTACK selects the three-argument handler
+		// on the alternate signal stack.
+		new_flags := b.m.get_or_add_const(b.i32_type, '134217732')
+		for i, value in [handler, previous_mask, new_flags] {
+			field := b.block_struct_field_ptr(install, new_action, action_type, i)
+			b.block_instr2(.store, install, b.void_type, value, field)
+		}
+		restorer_ptr := b.block_struct_field_ptr(install, new_action, action_type, 3)
+		b.block_instr2(.store, install, b.void_type, nil_ptr, restorer_ptr)
+	} $else {
+		previous_mask_ptr := b.block_struct_field_ptr(install, previous, action_type, 1)
+		previous_mask := b.block_instr1(.load, install, b.u32_type, previous_mask_ptr)
+		previous_flags_ptr := b.block_struct_field_ptr(install, previous, action_type, 2)
+		previous_flags := b.block_instr1(.load, install, b.i32_type, previous_flags_ptr)
+		preserve_flags := b.m.get_or_add_const(b.i32_type, '18')
+		preserved := b.block_instr2(.and_, install, b.i32_type, previous_flags, preserve_flags)
+		new_flags := b.block_instr2(.or_, install, b.i32_type, preserved,
+			b.m.get_or_add_const(b.i32_type, '65'))
+		for i, value in [handler, previous_mask, new_flags] {
+			field := b.block_struct_field_ptr(install, new_action, action_type, i)
+			b.block_instr2(.store, install, b.void_type, value, field)
+		}
 	}
 	new_action_raw := b.block_instr1(.bitcast, install, ptr_i8, new_action)
 	b.block_instr4(.call, install, b.i32_type, action_ref, signal, new_action_raw, nil_ptr)
@@ -140,9 +188,17 @@ fn (mut b Builder) generate_native_signal_handler(func_id int, fallback_addr Val
 	b.block_instr1(.jmp, report, b.void_type, ValueID(restore_default))
 	default_action := b.block_instr0(.alloca, restore_default, b.m.type_store.get_ptr(action_type))
 	zero := b.m.get_or_add_const(b.i32_type, '0')
-	for i, value in [nil_ptr, zero, zero] {
-		field := b.block_struct_field_ptr(restore_default, default_action, action_type, i)
-		b.block_instr2(.store, restore_default, b.void_type, value, field)
+	if b.m.type_store.types[action_type].fields.len == 4 {
+		zero_mask := b.m.get_or_add_const(b.m.type_store.types[action_type].fields[1], '0')
+		for i, value in [nil_ptr, zero_mask, zero, nil_ptr] {
+			field := b.block_struct_field_ptr(restore_default, default_action, action_type, i)
+			b.block_instr2(.store, restore_default, b.void_type, value, field)
+		}
+	} else {
+		for i, value in [nil_ptr, zero, zero] {
+			field := b.block_struct_field_ptr(restore_default, default_action, action_type, i)
+			b.block_instr2(.store, restore_default, b.void_type, value, field)
+		}
 	}
 	action_raw := b.block_instr1(.bitcast, restore_default, ptr_i8, default_action)
 	action_ref := b.m.add_value(.func_ref, b.void_type, 'sigaction', b.fn_ids['sigaction'])

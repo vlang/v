@@ -7,10 +7,10 @@ fn assert_native_backend_migration(args []string) {
 	result := cmdexec.run(@VEXE, args)
 	assert result.exit_code == 1, result.output
 	assert result.output.count('`-b native` has been replaced by `-b arm64`') == 1, result.output
+	assert result.output.contains('and `-b x64`'), result.output
 	assert result.output.contains('`v -compile-backend arm64 self`'), result.output
 	assert result.output.contains('`v -b arm64 -gc none file.v`'), result.output
-	assert result.output.contains('native AMD64 backend is not available yet'), result.output
-	assert result.output.contains('`v -b c -arch amd64 file.v`'), result.output
+	assert result.output.contains('`v -b x64 file.v`'), result.output
 }
 
 fn test_native_backend_migration_precedes_input_and_dispatch_errors() {

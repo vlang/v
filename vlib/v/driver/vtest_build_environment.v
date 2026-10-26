@@ -39,7 +39,7 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 		arg := args[i]
 		has_value := i + 1 < args.len
 		if arg in ['-b', '-backend'] && has_value {
-			backend = if args[i + 1] in ['js_browser', 'js_node'] { 'js' } else { args[i + 1] }
+			backend = normalize_backend_name(args[i + 1])
 			i += 2
 		} else if arg == '-os' && has_value {
 			target_os = args[i + 1]

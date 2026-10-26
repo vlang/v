@@ -10669,14 +10669,16 @@ use `v help`, `v help build` and `v help build-c`.
 
 ### Native Backend binaries
 
-`-b native` has been replaced by `-b arm64` for native ARM64 compilation on macOS.
-Enable the backend with `v -compile-backend arm64 self`, then compile with
-`v -b arm64 file.v`. The native ARM64 backend does not link a garbage collector yet, so it
-always builds as if `-gc none` was passed.
-A native AMD64 backend is not available yet; use `v -b c -arch amd64 file.v` for AMD64
-compilation through the C backend.
+`-b native` has been replaced by `-b arm64` and `-b x64`. Enable the ARM64 backend with
+`v -compile-backend arm64 self`, then compile with `v -b arm64 file.v`. On Linux AMD64,
+the x64 backend is included by ordinary self-builds; compile directly with
+`v -b x64 file.v`. The native backends do not link a garbage collector yet, so they always
+build as if `-gc none` was passed. Add `-prod` to enable SSA optimization, scalar register
+allocation, and optimized compilation of linked native C helpers. Very large modules may
+skip the global SSA pass to bound compiler memory while retaining register allocation and
+optimized C helper compilation.
 
-Currently there is no debugging support for binaries created by the native ARM64 backend.
+Currently there is no debugging support for binaries created by the native backends.
 
 ### Javascript Backend
 

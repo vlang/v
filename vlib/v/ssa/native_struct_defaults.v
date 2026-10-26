@@ -96,7 +96,7 @@ fn (mut b Builder) nested_struct_default_value(type_name_id u32, storage_type Ty
 		&& b.m.type_store.types[storage_type].kind == .struct_t
 		&& b.default_struct_types[storage_type]
 		&& b.resolve_type(type_name_id) == storage_type {
-		return b.build_struct_init(flat.Node{
+		return b.build_struct_init(flat.NodeId(-1), flat.Node{
 			kind:  .struct_init
 			value: type_name
 			typ:   type_name_id
