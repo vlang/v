@@ -93,8 +93,12 @@ jobs:
             # Explicit `-cc tcc` is required: on Linux arm64 the Makefile
             # otherwise injects `-cc "$(CC)"` (see GNUmakefile:149-155) and
             # the bundled tcc path would never run — defeating the purpose
-            # of this diagnostic job for #27207. Capture every invocation
-            # via -showcc and the full build output to build.log.
+            # of this diagnostic job for #27207. The ANDROID block in the
+            # Makefile applies the same override under Termux, so opt out
+            # of it here (V_ANDROID_TCC=1) to keep tcc under test.
+            # Capture every invocation via -showcc and the full build
+            # output to build.log.
+            export V_ANDROID_TCC=1
             set +e
             VFLAGS="-cc tcc -showcc -stats" make 2>&1 | tee build.log
             rc=${PIPESTATUS[0]}
