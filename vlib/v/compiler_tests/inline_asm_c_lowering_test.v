@@ -186,7 +186,7 @@ fn main() {
 		; =r (character)
 	}
 	values := [u64(11), 22]!
-	base := &values[0]
+	base := unsafe { &values[0] }
 	index := u64(8)
 	mut indexed := u64(0)
 	asm amd64 {

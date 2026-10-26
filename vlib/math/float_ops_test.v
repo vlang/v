@@ -135,7 +135,7 @@ fn test_ieee_remainder_large_quotients_and_zero() {
 fn test_fma_single_rounding_and_finite_overflow_cancellation() {
 	x := 1.0 + exp2(-27.0)
 	y := 1.0 - exp2(-27.0)
-	if @BACKEND == 'c' {
+	$if @BACKEND == 'c' {
 		assert fma(x, y, -1.0) == -exp2(-54.0)
 		assert fma(max_f64, 2.0, -max_f64) == max_f64
 	}

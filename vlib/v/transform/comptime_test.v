@@ -53,7 +53,7 @@ fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
 	}
 	type_id := t.type_index(flat.source_type_id('T207'), '')
 	assert type_id > 65535
-	assert type_id != types.builtin_type_index('isize')
+	assert type_id != types.builtin_type_index('int')
 	assert type_id & (0xff << 16) == 0
 }
 
@@ -967,7 +967,7 @@ fn test_comptime_method_metadata_keeps_generic_receiver_specializations() {
 	tc.struct_generic_params['Box'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	for typ in ['int', 'string', 'int'] {
+	for typ in ['int', 'string', 'uint'] {
 		for name in ['Box[${typ}]', 'Box_${typ}'] {
 			methods := t.comptime_method_metas(flat.source_type_id(name))
 			assert methods.len == 1

@@ -28,8 +28,8 @@ fn C.goroutines_atomic_cas_ptr(ptr voidptr, expected voidptr, desired voidptr) b
 fn C.grt_spinlock_lock(lk &i32)
 fn C.grt_spinlock_unlock(lk &i32)
 
-fn C.memcpy(dest voidptr, src voidptr, n usize) voidptr
-fn C.memset(dest voidptr, ch int, n usize) voidptr
+fn C.memcpy(dest voidptr, src voidptr, n uint) voidptr
+fn C.memset(dest voidptr, ch int, n uint) voidptr
 fn C.rand() int
 
 // SpinLock - ucontext-safe lock (pthreads mutex breaks with swapcontext).

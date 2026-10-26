@@ -66,7 +66,7 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	// comment if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr:  buf
-		size: usize(sz)
+		size: uint(sz)
 	}
 
 	sg_img := gfx.make_image(&img_desc)
@@ -287,10 +287,10 @@ fn init_cube_glsl(mut app App) {
 	}
 	unsafe { vmemset(&vert_buffer_desc, 0, int(sizeof(vert_buffer_desc))) }
 
-	vert_buffer_desc.size = usize(vertices.len * int(sizeof(Vertex_t)))
+	vert_buffer_desc.size = uint(vertices.len * int(sizeof(Vertex_t)))
 	vert_buffer_desc.data = gfx.Range{
 		ptr:  vertices.data
-		size: usize(vertices.len * int(sizeof(Vertex_t)))
+		size: uint(vertices.len * int(sizeof(Vertex_t)))
 	}
 
 	vert_buffer_desc.type = .vertexbuffer
@@ -314,10 +314,10 @@ fn init_cube_glsl(mut app App) {
 	}
 	unsafe { vmemset(&index_buffer_desc, 0, int(sizeof(index_buffer_desc))) }
 
-	index_buffer_desc.size = usize(indices.len * int(sizeof(u16)))
+	index_buffer_desc.size = uint(indices.len * int(sizeof(u16)))
 	index_buffer_desc.data = gfx.Range{
 		ptr:  indices.data
-		size: usize(indices.len * int(sizeof(u16)))
+		size: uint(indices.len * int(sizeof(u16)))
 	}
 
 	index_buffer_desc.type = .indexbuffer
@@ -393,7 +393,7 @@ fn draw_cube_glsl(app App) {
 		// res is a 4x4 matrix of f32 thus: 4*16 byte of size
 		vs_uniforms_range := gfx.Range{
 			ptr:  unsafe { &tr_matrix }
-			size: usize(4 * 16)
+			size: uint(4 * 16)
 		}
 		gfx.apply_uniforms(.vs, C.SLOT_vs_params, &vs_uniforms_range)
 
@@ -407,7 +407,7 @@ fn draw_cube_glsl(app App) {
 		]!
 		fs_uniforms_range := gfx.Range{
 			ptr:  unsafe { &text_res }
-			size: usize(4 * 4)
+			size: uint(4 * 4)
 		}
 		gfx.apply_uniforms(.fs, C.SLOT_fs_params, &fs_uniforms_range)
 

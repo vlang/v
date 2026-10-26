@@ -13,7 +13,7 @@ import x.multiwindow
 struct MultiWindowBufferSlotProof {
 	status              MultiWindowResourceStatus
 	usage               gfx.Usage
-	capacity            usize
+	capacity            uint
 	last_mutation_batch u64
 	mutation_mode       MultiWindowBufferMutationMode
 	native_id           u32
@@ -271,7 +271,7 @@ fn multiwindow_run_buffer_descriptor_init(mut resources AppResourceContext, mut 
 	bytes := [u8(1), 2, 3, 4]
 	data := gfx.Range{
 		ptr:  bytes.data
-		size: usize(bytes.len)
+		size: uint(bytes.len)
 	}
 
 	for desc in [
@@ -293,7 +293,7 @@ fn multiwindow_run_buffer_descriptor_init(mut resources AppResourceContext, mut 
 			usage: .stream
 		},
 		gfx.BufferDesc{
-			size:  usize(0x80000000)
+			size:  uint(0x80000000)
 			usage: .dynamic
 		},
 	] {

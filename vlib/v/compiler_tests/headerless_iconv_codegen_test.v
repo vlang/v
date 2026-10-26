@@ -34,7 +34,7 @@ fn main() {
 	to := "UTF-8"
 	from := "UTF-8"
 	cd := C.iconv_open(charptr(to.str), charptr(from.str))
-	if isize(cd) != -1 {
+	if int(cd) != -1 {
 		C.iconv_close(cd)
 	}
 	println("iconv-ok")

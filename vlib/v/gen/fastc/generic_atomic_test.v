@@ -117,7 +117,7 @@ fn cas[T](mut here T, _ifthis T, writethis T) bool {
 fn selected_width[T](value T) int {
 	$if T is bool { return 1 }
 	$else $if T is u32 || T is i32 { return 4 }
-	$else $if T is u64 || T is i64 || T is usize || T is int { return 8 }
+	$else $if T is u64 || T is i64 || T is uint || T is int { return 8 }
 	$else { return sizeof(T) }
 }
 
@@ -139,7 +139,7 @@ fn bts[T](mut var T, bit u8) bool {
 		$if T is u32 || T is i32 || T is int {
 			old := C.vinix_ldset32(voidptr(var), u32(mask))
 			return old & u32(mask) != 0
-		} $else $if T is u64 || T is i64 || T is usize || T is isize || T is voidptr {
+		} $else $if T is u64 || T is i64 || T is uint || T is int || T is voidptr {
 			old := C.vinix_ldset64(voidptr(var), u64(mask))
 			return old & u64(mask) != 0
 		} $else { $compile_error("unsupported bit-set width") }
@@ -205,31 +205,31 @@ fn main() {
 	first := &Thread{value: 17}
 	second := &Thread{value: 18}
 	assert cas[&Thread](mut &state.slot, unsafe { nil }, first)
-	assert usize(state.slot) == usize(first)
+	assert uint(state.slot) == uint(first)
 	assert !cas(mut &state.slot, unsafe { nil }, second)
-	assert usize(state.slot) == usize(first)
+	assert uint(state.slot) == uint(first)
 	assert cas(mut &state.slot, first, second)
-	assert usize(state.slot) == usize(second)
+	assert uint(state.slot) == uint(second)
 	assert state.guard == 0x123456789abcdef0
 	mut pointer := first
 	// Explicit T selects pointer-slot mutation; an inferred bare mut pointer
 	// refers to its pointee under the ordinary V generic inference rules.
 	assert cas[&Thread](mut pointer, first, second)
-	assert usize(pointer) == usize(second)
+	assert uint(pointer) == uint(second)
 	assert forwarded_cas[&Thread](mut pointer, second, first)
-	assert usize(pointer) == usize(first)
+	assert uint(pointer) == uint(first)
 	mut other := second
 	mut slot := &pointer
 	assert cas[&&Thread](mut &slot, &pointer, &other)
-	assert usize(slot) == usize(&other)
-	assert usize(identity(second)) == usize(second)
-	assert usize(forwarded_identity[&Thread](mut pointer)) == usize(pointer)
+	assert uint(slot) == uint(&other)
+	assert uint(identity(second)) == uint(second)
+	assert uint(forwarded_identity[&Thread](mut pointer)) == uint(pointer)
 	copied_thread := forwarded_identity(mut pointer)
 	assert sizeof(copied_thread) == sizeof(Thread)
 	assert copied_thread.value == 17
 	assert copied_thread.guard == 0
 	assert forwarded_identity[int](mut state.integer) == wide
-	assert usize(forwarded_read[&Thread](mut pointer)) == usize(pointer)
+	assert uint(forwarded_read[&Thread](mut pointer)) == uint(pointer)
 	assert forwarded_read[int](mut state.integer) == wide
 	assert read_pointer_value[&Thread](mut pointer) == 17
 	assert first.value == 17
@@ -245,8 +245,8 @@ fn main() {
 	mut copied_entry := entry
 	assert !bts(mut copied_entry, u8(55))
 	assert bits == (u64(1) << 10) | (u64(1) << 55)
-	assert usize(entry) == usize(&bits)
-	assert usize(copied_entry) == usize(&bits)
+	assert uint(entry) == uint(&bits)
+	assert uint(copied_entry) == uint(&bits)
 	assert !bts(mut &state.pending_signals, u8(55))
 	assert state.pending_signals == u64(1) << 55
 	assert bts(mut &state.pending_signals, u8(55))

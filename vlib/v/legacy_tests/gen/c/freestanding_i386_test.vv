@@ -23,8 +23,8 @@ pub fn kmain() {
 	res := os.exec([@VEXE, '-cc', 'gcc', '-gc', 'none', '-no-skip-unused', '-freestanding', '-no-std', '-is_o', '-m32', '-o', '${out_c}', '${main_v}'])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated := os.read_file(out_c)!
-	assert generated.contains('VV_LOC voidptr builtin__memdup(voidptr src, isize size);')
-	assert !generated.contains('\nvoidptr builtin__memdup(voidptr src, isize size);\n')
+	assert generated.contains('VV_LOC voidptr builtin__memdup(voidptr src, int size);')
+	assert !generated.contains('\nvoidptr builtin__memdup(voidptr src, int size);\n')
 	assert generated.contains('int $0x80')
 	assert !generated.contains('"syscall \\n\\t"')
 	assert !generated.contains('mov %[arg4], %%r10')

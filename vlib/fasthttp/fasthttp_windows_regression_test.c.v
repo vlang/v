@@ -15,7 +15,7 @@ fn C.v_fasthttp_test_cancel_io(s C.SOCKET, overlapped &C.OVERLAPPED) int
 fn test_accept_wrapper_preserves_pointer_sized_socket() {
 	client_fd := C.v_fasthttp_accept(iocp_invalid_socket)
 	assert sizeof(client_fd) == sizeof(C.SOCKET)
-	assert sizeof(client_fd) == sizeof(usize)
+	assert sizeof(client_fd) == sizeof(uint)
 }
 
 fn iocp_timeout_sweep_closes_connection(read_start u64, write_start u64, active bool) bool {

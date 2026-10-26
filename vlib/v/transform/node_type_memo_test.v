@@ -117,3 +117,47 @@ fn test_struct_guess_comparison_follows_checked_ids_and_call_annotation_preceden
 	tc.register_synth_type(value, types.Type(types.Struct{ name_id: flat.source_type_id('Guess') }))
 	assert t.checker_type_over_struct_guess(value, flat.source_type_id('Guess')) == none
 }
+
+fn test_raw_checker_node_type_reference_preserves_cache_and_call_precedence() {
+	for sparse in [false, true] {
+		mut a := flat.FlatAst.new()
+		value := a.add_val(.ident, 'values')
+		void_value := a.add_val(.sql_expr, 'void_value')
+		fallback := a.add_val(.int_literal, '42')
+		call := a.add_node(flat.Node{ kind: .call, typ: flat.source_type_id('[]string') })
+		start := a.begin_children()
+		a.add_child(value)
+		decl := a.add_node(flat.Node{
+			kind:           .decl_assign
+			children_start: i32(start)
+			children_count: 1
+		})
+		mut tc := types.TypeChecker.new(&a)
+		tc.parallel_check_sparse = sparse
+		tc.register_synth_type(value, types.Type(types.Array{ elem_type: types.Type(types.bool_) }))
+		tc.register_synth_type(void_value, types.Type(types.void_))
+		tc.register_synth_type(call, types.Type(types.void_))
+		t := new_transformer(mut a, &tc, map[string]bool{})
+		for _ in 0 .. 2 {
+			assert flat.source_type_name(t.raw_checker_node_type(value)) == '[]bool'
+			assert flat.source_type_name(t.checker_expr_type_name(value) or { panic('missing array type') }) == '[]bool'
+			assert flat.source_type_name(t.infer_decl_type(a.node(decl))) == '[]bool'
+			assert t.raw_checker_node_type(void_value) == 0
+			assert t.checker_expr_type_name(void_value) == none
+			// The call annotation supplies the result when Void is not cached.
+			assert flat.source_type_name(t.raw_checker_node_type(call)) == '[]string'
+			assert flat.source_type_name(t.checker_expr_type_name(call) or { panic('missing call type') }) == '[]string'
+			// No checked value is available for this literal.
+			assert t.raw_checker_node_type(fallback) == flat.source_type_int
+			assert (t.checker_expr_type_name(fallback) or { panic('missing literal type') }) == flat.source_type_int
+			assert t.raw_checker_node_type(flat.NodeId(-1)) == 0
+		}
+		tc.register_synth_type(value, types.Type(types.Array{ elem_type: types.Type(types.u8_) }))
+		assert flat.source_type_name(t.raw_checker_node_type(value)) == '[]u8'
+		assert flat.source_type_name(t.checker_expr_type_name(value) or { panic('missing updated array type') }) == '[]u8'
+		assert flat.source_type_name(t.infer_decl_type(a.node(decl))) == '[]u8'
+	}
+	no_checker := Transformer{}
+	assert no_checker.raw_checker_node_type(flat.NodeId(0)) == 0
+	assert no_checker.checker_expr_type_name(flat.NodeId(0)) == none
+}

@@ -28,7 +28,7 @@ const source_body_marker = '// v3cache: source bodies required'
 // `recover()`. A header has the declarations of a module and not its code, so a
 // build that reads it cannot tell otherwise that the program reaches that call.
 const recover_call_marker = '// v3cache: calls recover'
-const source_signature_cache_format = 'v3-source-signature-cache-9'
+const source_signature_cache_format = 'v3-source-signature-cache-12'
 const program_executable_format = 'v3-program-executable-2'
 
 // PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
@@ -646,7 +646,7 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 	}
 	if !cacheable {
 		// Keep repeated queries consistent inside one compiler process, while
-		// ensuring another process cannot reuse an artifact whose VML input path
+		// ensuring another process cannot reuse an artifact whose compile-time input
 		// could not be extracted from source text.
 		hash = hash_bytes(hash, [u8(0xf7)])
 		hash = hash_bytes(hash, os.getpid().str().bytes())
@@ -1253,7 +1253,6 @@ fn signature_string_call_arg_prefix(source string, start int) (string, int, bool
 	return '', source.len, false, false
 }
 
-
 // file_change_signature returns a value that changes whenever the file at `path`
 // changes, appears or disappears: its metadata when the file system reports one,
 // a digest of its contents when it does not, and `missing` when nothing exists at
@@ -1367,7 +1366,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	source_details := m.source_signature_details(source_files)
 	if !source_details.cacheable {
-		cache_trace_module_miss(module_name, 'source is not cacheable')
+		cache_trace_module_miss(module_name, 'source has an unresolved compile-time input')
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
@@ -5418,6 +5417,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 		out.writeln('')
 	}
 	mut seen := map[string]bool{}
+	mut selected_imports := map[string]bool{}
 	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
@@ -5433,6 +5433,12 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 				}
 				key := decl_key(a, node)
 				if key.len > 0 && seen[key] {
+					continue
+				}
+				if node.kind == .import_decl {
+					seen[key] = true
+					out.writeln(header_import_text(a, node, import_paths, mut selected_imports))
+					out.writeln('')
 					continue
 				}
 				attrs := declaration_attrs[int(effective_id)] or { CachedDeclarationAttrs{} }
@@ -5494,10 +5500,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 		if seen[key] {
 			continue
 		}
-		text := import_text(a, node, import_paths)
-		if text.len == 0 {
-			continue
-		}
+		text := header_import_text(a, node, import_paths, mut selected_imports)
 		seen[key] = true
 		out.writeln(text)
 		out.writeln('')
@@ -6994,17 +6997,38 @@ fn cached_vmod_root(source_file string) string {
 }
 
 fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) string {
+	mut names := []string{}
+	for i in 0 .. node.children_count {
+		names << a.child_node(&node, i).value
+	}
+	return import_text_with_names(node, import_paths[node.value] or { node.value }, names)
+}
+
+// header_import_text is import_text for a module header, which joins the imports of
+// all the files of a module in one file. Two files can select the same symbol of
+// a module, which one file cannot do twice: the header selects it once.
+fn header_import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string, mut selected map[string]bool) string {
 	import_path := import_paths[node.value] or { node.value }
+	mut names := []string{}
+	for i in 0 .. node.children_count {
+		name := a.child_node(&node, i).value
+		key := '${import_path}\x00${name}'
+		if selected[key] {
+			continue
+		}
+		selected[key] = true
+		names << name
+	}
+	return import_text_with_names(node, import_path, names)
+}
+
+fn import_text_with_names(node flat.Node, import_path string, names []string) string {
 	mut text := 'import ${import_path}'
 	default_alias := import_path.all_after_last('.')
 	if node.typ != 0 && node.typ_text() != default_alias {
 		text += ' as ${node.typ_text()}'
 	}
-	if node.children_count > 0 {
-		mut names := []string{}
-		for i in 0 .. node.children_count {
-			names << a.child_node(&node, i).value
-		}
+	if names.len > 0 {
 		text += ' { ${names.join(', ')} }'
 	}
 	return text

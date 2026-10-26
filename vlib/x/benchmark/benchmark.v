@@ -17,8 +17,8 @@ pub mut:
 	start_time       time.Time       // start timestamp of timer
 	duration         time.Duration   // expected time of benchmark process
 	failed           bool            // flag of bench_func failure. true if one of bench_func run failed
-	start_memory     usize           // memory status on start benchmark
-	start_allocs     usize           // size of object allocated on heap
+	start_memory     uint            // memory status on start benchmark
+	start_allocs     uint            // size of object allocated on heap
 }
 
 // BenchmarkDefaults is params struct for providing parameters of benchmarking to setup function
@@ -220,8 +220,8 @@ struct BenchmarkResult {
 pub mut:
 	n      i64           // iterations count
 	t      time.Duration // elapsed time
-	mem    usize         // all allocated memory
-	allocs usize         // heap allocated memory
+	mem    uint          // all allocated memory
+	allocs uint          // heap allocated memory
 }
 
 // ns_per_op - elapsed time in nanoseconds per iteration

@@ -324,3 +324,50 @@ fn test_failed_assert_reports_signed_wide_integer_operands() {
 	assert lines[1] == '   left value: a = -170141183460469231731687303715884105728', result.output
 	assert lines[2] == '  right value: b = 7', result.output
 }
+
+// test_failed_assert_reports_f32_operands_with_f32_digits checks that an `f32`
+// operand prints the shortest digits of its own precision. Widened to `f64`, it
+// printed the rounding error of the `f32` value (`1.2000000476837158`).
+fn test_failed_assert_reports_f32_operands_with_f32_digits() {
+	result := run_assert_failure_source('f32_operands.v', 'struct Sx {
+	x f32
+}
+
+@[assert_continues]
+fn check() {
+	p := f32(1.2)
+	assert p == 1.3
+	s := Sx{-0.1}
+	assert s.x == 1.3
+	arr := [f32(2.2)]
+	assert arr[0] == 1.3
+	q := f32(1.2)
+	assert p != q
+}
+
+fn main() {
+	check()
+}
+')
+	lines := result.output.trim_space().split_into_lines()
+	assert lines.len >= 12, result.output
+	assert lines[1] == '   left value: p = 1.2', result.output
+	assert lines[4] == '   left value: s.x = -0.1', result.output
+	assert lines[7] == '   left value: arr[0] = 2.2', result.output
+	assert lines[10] == '   left value: p = 1.2', result.output
+	assert lines[11] == '  right value: q = 1.2', result.output
+}
+
+// test_failed_assert_reports_f32_operands_with_f32_digits_in_test_files covers the
+// report of a failed assert in a test file.
+fn test_failed_assert_reports_f32_operands_with_f32_digits_in_test_files() {
+	result := run_assert_failure_source('f32_operands_test.v', 'fn test_f32() {
+	p := f32(1.2)
+	assert p + 1 == 1.3
+}
+')
+	assert result.exit_code != 0, result.output
+	output := result.output.replace('\r\n', '\n')
+	assert output.contains('     Left value (len: 3): `2.2`\n'), output
+	assert !output.contains('2.200000047683716'), output
+}

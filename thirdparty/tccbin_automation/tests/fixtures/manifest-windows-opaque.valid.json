@@ -163,6 +163,36 @@
       "auto_deprecatable": false,
       "state": "active-required",
       "effects": [{"id": "patch-0013-effect", "owner": "tinycc", "files": ["win32/include/winapi/winbase.h", "win32/lib/kernel32.def"], "functions": ["GetFileInformationByHandleEx"], "required_probe_ids": ["patch-0013"]}]
+    },
+    {
+      "id": "patch-0014",
+      "path": "patches/0014-win32-export-batched-iocp.patch",
+      "sha256": "4c91cf5658563c9479da87918dd101a8c0e640502d2c4189ac0daa7474387a30",
+      "order": 14,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0014-effect", "owner": "tinycc", "files": ["win32/lib/kernel32.def"], "functions": ["GetQueuedCompletionStatusEx", "SetFileCompletionNotificationModes"], "required_probe_ids": ["patch-0014"]}]
+    },
+    {
+      "id": "patch-0015",
+      "path": "patches/0015-win32-export-SRW-lock-functions.patch",
+      "sha256": "4110055bfd5d5a36d9faac0f445ef0b665aa2d32c8b1881b6f86ad8ae067b38b",
+      "order": 15,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0015-effect", "owner": "tinycc", "files": ["win32/lib/kernel32.def"], "functions": ["AcquireSRWLockExclusive", "AcquireSRWLockShared", "InitializeSRWLock", "ReleaseSRWLockExclusive", "ReleaseSRWLockShared", "TryAcquireSRWLockShared"], "required_probe_ids": ["patch-0015"]}]
+    },
+    {
+      "id": "patch-0016",
+      "path": "patches/0016-win32-export-bundled-kernel32-functions.patch",
+      "sha256": "b722ed4e9e28eadc28b0bb6fb8c803c5bb46328b65dde2d414e58eb5ec8a9d45",
+      "order": 16,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0016-effect", "owner": "tinycc", "files": ["win32/lib/kernel32.def"], "functions": ["CreateHardLinkW", "GetConsoleWindow", "GetCurrentProcessorNumber", "GetFinalPathNameByHandle", "GetFinalPathNameByHandleW", "GetNativeSystemInfo", "InitializeConditionVariable", "K32GetProcessMemoryInfo", "SleepConditionVariableSRW", "WakeConditionVariable"], "required_probe_ids": ["patch-0016"]}]
     }
   ],
   "transforms": [
@@ -171,7 +201,7 @@
       "path": "vlang-header-compat.patch",
       "sha256": "bc1f63053dedeae665a01ca508b6123f2145c4e1895642ca38e406f8eb7fdf55",
       "owner": "bundle-overlay",
-      "order": 14,
+      "order": 17,
       "apply_stage": "bundle-payload-post-copy",
       "effect_ids": ["header-gmtime-s", "header-condition-variable", "header-faststorefence"]
     },
@@ -180,7 +210,7 @@
       "path": "v-ae88ee5-tinycc-bdwgc.patch",
       "sha256": "3b42e3fcd1e8a544d31ccdc4a2b12b9da6ac44ce1af7562cd781fdacf6890196",
       "owner": "v-libgc",
-      "order": 15,
+      "order": 18,
       "apply_stage": "v-libgc-source-prebuild",
       "effect_ids": ["bdwgc-v-integration"]
     }
@@ -282,6 +312,9 @@
     {"id": "patch-0011", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetTickCount64 declared only at _WIN32_WINNT >= 0x0600; a call resolves at link through kernel32.def"},
     {"id": "patch-0012", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetFileSizeEx and TryAcquireSRWLockExclusive resolve at link through kernel32.def"},
     {"id": "patch-0013", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetFileInformationByHandleEx declared only at _WIN32_WINNT >= 0x0600; a call resolves at link through kernel32.def and returns file information"},
+    {"id": "patch-0014", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetQueuedCompletionStatusEx and SetFileCompletionNotificationModes imports resolve"},
+    {"id": "patch-0015", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "the six SRW lock function imports resolve"},
+    {"id": "patch-0016", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "os, sync and runtime kernel32 imports resolve without the hand-edited kernel32.def"},
     {"id": "header-gmtime-s", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "gmtime_s compile link and consumers pass"},
     {"id": "header-condition-variable", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "condition variable include order and runtime pass"},
     {"id": "header-faststorefence", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "builtin and runtime fence behavior are isolated"},

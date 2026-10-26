@@ -141,7 +141,7 @@ fn reflection_builtin_type_kind(name string) int {
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
-		'usize' { 15 }
+		'uint' { 15 }
 		'f32' { 16 }
 		'f64' { 17 }
 		'char' { 18 }
@@ -598,7 +598,7 @@ fn (mut g FlatGen) gen_reflection_data() {
 
 	mut seen_ids := map[int]bool{}
 	builtin_names := ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'i32', 'int', 'i64',
-		'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
+		'isize', 'u8', 'u16', 'u32', 'u64', 'uint', 'f32', 'f64', 'char', 'bool', 'none', 'string',
 		'rune', 'float literal', 'int literal', 'thread']
 	for name in builtin_names {
 		g.gen_reflection_type(flat.source_type_id(name), 'builtin', reflection_builtin_type_kind(name), reflection_none_info(),

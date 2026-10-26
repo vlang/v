@@ -50,11 +50,11 @@ fn C.uname(name &C.utsname) i32
 
 fn C.symlink(&char, &char) i32
 
-fn C.readlink(&char, &char, usize) i32
+fn C.readlink(&char, &char, uint) i32
 
 fn C.link(&char, &char) i32
 
-fn C.gethostname(&char, usize) i32
+fn C.gethostname(&char, uint) i32
 
 // Note: not available on Android fn C.getlogin_r(&char, int) int
 fn C.getlogin() &char
@@ -632,10 +632,10 @@ pub fn page_size() int {
 }
 
 struct C.statvfs {
-	f_bsize  usize
-	f_blocks usize
-	f_bfree  usize
-	f_bavail usize
+	f_bsize  uint
+	f_blocks uint
+	f_bfree  uint
+	f_bavail uint
 }
 
 // disk_usage returns disk usage of `path`.

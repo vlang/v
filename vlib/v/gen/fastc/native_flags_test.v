@@ -110,10 +110,10 @@ fn test_fastc_prealloc_arena_is_separate_for_worker_threads() {
 		os.rmdir_all(root) or {}
 	}
 	os.write_file(os.join_path(root, 'main.v'), r'module main
-fn arena_root() usize {
+fn arena_root() uint {
 	values := []int{len: 64}
 	assert values.len == 64
-	return usize(g_memory_block)
+	return uint(g_memory_block)
 }
 
 fn main() {

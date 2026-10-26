@@ -197,7 +197,15 @@ fn test_rebuild_scoped_transform_signatures_and_suffix_index_after_growth() {
 		assert !signature_map_storage_owned_by_scope(scope, specialized_rebuilt)
 		assert !signature_map_storage_owned_by_scope(scope, suffix_rebuilt)
 		unsafe { prealloc_scope_free_after(scope) }
+		assert !tc.transform_signatures_changed()
+		// Completed publication leaves ordinary signature registration unlogged.
+		tc.register_generated_fn_param_types('generated.ordinary', [Type(int_)])
+		assert tc.transform_signature_names_log.len == 0
+		assert tc.fn_param_types_for_name('generated.ordinary').len == 1
+		// A later transform publication must start a fresh log in live storage.
+		tc.ensure_private_transform_signatures()
 		tc.register_generated_fn_param_types('generated.after_scope', [Type(int_)])
+		assert tc.transform_signatures_changed()
 		assert tc.transform_signature_names_log == ['generated.after_scope']
 
 		for idx in [0, 2048, 4095] {

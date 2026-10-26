@@ -95,7 +95,10 @@ mut:
 	const_exprs              map[string]flat.NodeId
 	native_initializers      map[string]NativeInitializer
 	native_initializer_order []string
+	// Declaration and emitted C names stay in their own symbol namespace.
 	struct_types             map[string]TypeID
+	multi_return_types       map[u32]TypeID
+	multi_return_field_types map[u32]map[string]u32
 	struct_field_types       flat.TypeTextBindings
 	struct_field_defaults    map[string]NativeFieldDefault
 	struct_embeds            map[TypeID][]int
@@ -195,42 +198,44 @@ pub fn build_with_used(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.Typ
 // build_with_options builds with options data for ssa.
 pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, opts BuildOptions) &Module {
 	mut b := Builder{
-		m:                  Module.new()
-		a:                  unsafe { a_ }
-		tc:                 unsafe { tc }
-		used_fns:           used_fns
-		used_fn_normalized: map[string]bool{}
-		used_fn_suffixes:   map[string]bool{}
-		vars:               map[string]ValueID{}
-		global_vars:        map[string]ValueID{}
-		global_type_names:  flat.TypeTextBindings{}
-		global_imports:     map[string]string{}
-		var_type_names:     flat.TypeTextBindings{}
-		mut_pointer_params: map[string]TypeID{}
-		mut_param_names:    map[string]bool{}
-		fn_types:           map[string]TypeID{}
-		fn_ids:             map[string]int{}
-		const_exprs:        map[string]flat.NodeId{}
-		struct_types:       map[string]TypeID{}
-		struct_field_types: flat.TypeTextBindings{}
-		option_types:       map[u32]TypeID{}
-		sum_type_variants:  flat.TypeTextListBindings{}
-		sum_type_canonical: flat.TypeTextBindings{}
-		enum_types:         map[string]bool{}
-		flag_enum_types:    map[string]bool{}
-		enum_values:        map[string]int{}
-		enum_member_values: map[string]int{}
-		enum_member_dupes:  map[string]bool{}
-		c_fn_ids:           map[string]int{}
-		c_fn_types:         map[string]TypeID{}
-		label_blocks:       map[string]BlockID{}
-		defer_body_ids:     []flat.NodeId{}
-		loop_targets:       []LoopTargets{}
-		skip_modules:       map[string]bool{}
-		type_aliases:       map[string]TypeID{}
-		source_modules:     opts.source_modules
-		source_imports:     opts.source_imports
-		exact_used_fns:     opts.exact_used_fns
+		m:                        Module.new()
+		a:                        unsafe { a_ }
+		tc:                       unsafe { tc }
+		used_fns:                 used_fns
+		used_fn_normalized:       map[string]bool{}
+		used_fn_suffixes:         map[string]bool{}
+		vars:                     map[string]ValueID{}
+		global_vars:              map[string]ValueID{}
+		global_type_names:        flat.TypeTextBindings{}
+		global_imports:           map[string]string{}
+		var_type_names:           flat.TypeTextBindings{}
+		mut_pointer_params:       map[string]TypeID{}
+		mut_param_names:          map[string]bool{}
+		fn_types:                 map[string]TypeID{}
+		fn_ids:                   map[string]int{}
+		const_exprs:              map[string]flat.NodeId{}
+		struct_types:             map[string]TypeID{}
+		multi_return_types:       map[u32]TypeID{}
+		multi_return_field_types: map[u32]map[string]u32{}
+		struct_field_types:       flat.TypeTextBindings{}
+		option_types:             map[u32]TypeID{}
+		sum_type_variants:        flat.TypeTextListBindings{}
+		sum_type_canonical:       flat.TypeTextBindings{}
+		enum_types:               map[string]bool{}
+		flag_enum_types:          map[string]bool{}
+		enum_values:              map[string]int{}
+		enum_member_values:       map[string]int{}
+		enum_member_dupes:        map[string]bool{}
+		c_fn_ids:                 map[string]int{}
+		c_fn_types:               map[string]TypeID{}
+		label_blocks:             map[string]BlockID{}
+		defer_body_ids:           []flat.NodeId{}
+		loop_targets:             []LoopTargets{}
+		skip_modules:             map[string]bool{}
+		type_aliases:             map[string]TypeID{}
+		source_modules:           opts.source_modules
+		source_imports:           opts.source_imports
+		exact_used_fns:           opts.exact_used_fns
 	}
 	b.m.track_uses = opts.track_uses
 	b.m.target = opts.target
@@ -599,16 +604,17 @@ fn (mut b Builder) register_multi_return_types() {
 // register_multi_return_type updates register multi return type state for ssa.
 fn (mut b Builder) register_multi_return_type(ret types.MultiReturn) TypeID {
 	name := b.multi_return_c_type(ret)
-	source_name := types.Type(ret).name()
+	source_id := types.Type(ret).source_type_id()
 	if typ := b.struct_types[name] {
-		b.struct_types[source_name] = typ
+		b.multi_return_types[source_id] = typ
 		return typ
 	}
 	typ_id := b.m.type_store.register(Type{
 		kind: .struct_t
 	})
 	b.struct_types[name] = typ_id
-	b.struct_types[source_name] = typ_id
+	b.multi_return_types[source_id] = typ_id
+	b.multi_return_field_types[source_id] = map[string]u32{}
 	mut field_types := []TypeID{}
 	mut field_names := []string{}
 	for i, field_type in ret.types {
@@ -616,7 +622,7 @@ fn (mut b Builder) register_multi_return_type(ret types.MultiReturn) TypeID {
 		field_name := 'arg${i}'
 		field_names << field_name
 		b.struct_field_types.set_id(name + '.' + field_name, field_type.source_type_id())
-		b.struct_field_types.set_id(source_name + '.' + field_name, field_type.source_type_id())
+		b.multi_return_field_types[source_id][field_name] = field_type.source_type_id()
 	}
 	b.m.type_store.types[typ_id] = Type{
 		kind:        .struct_t
@@ -900,6 +906,22 @@ fn (mut b Builder) register_sum_field_type(name string, module_name string, fiel
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		b.struct_field_types.set_id(module_name + '.' + short_name + '.' + field_name, field_type_id)
 	}
+}
+
+// registered_struct_type looks up an existing layout without resolving aliases or
+// changing module precedence. Source composites use spelling IDs; declaration and
+// emitted C names remain in the symbol index.
+fn (b &Builder) registered_struct_type(name_id u32) ?TypeID {
+	if typ := b.option_types[name_id] {
+		return typ
+	}
+	if typ := b.multi_return_types[name_id] {
+		return typ
+	}
+	if typ := b.struct_types[flat.source_type_name(name_id)] {
+		return typ
+	}
+	return none
 }
 
 // struct_type_id_for_decl supports struct type id for decl handling for Builder.
@@ -1774,7 +1796,7 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId, enum_name_id u32) ?int {
 			}
 			cast_name := b.qualified_expr_name(b.a.child(&node, 0))
 			if cast_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-				'usize', 'rune'] {
+				'uint', 'rune'] {
 				return none
 			}
 			return b.enum_field_expr_value(b.a.child(&node, 1), enum_name_id)
@@ -3477,7 +3499,7 @@ fn (mut b Builder) register_array_runtime_stubs() {
 
 	// Integer types only, like the C backend: the transformer lowers a float sort
 	// to its stable merge sort.
-	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'rune',
+	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint', 'rune',
 		'char'] {
 		elem_type := match sort_type {
 			'int', 'rune' { b.i32_type }
@@ -7640,19 +7662,9 @@ fn (b &Builder) for_in_container_type_name(container_id flat.NodeId) u32 {
 		return flat.source_type_id((flat.source_type_name(b.var_type_names.type_id(node.value) or { u32(0) })).trim_left('&'))
 	}
 	if node.kind == .selector && node.children_count > 0 {
-		base_type := flat.source_type_name(b.for_in_container_type_name(b.a.child(&node, 0))).trim_left('&')
-		field_key := base_type + '.' + node.value
-		if field_type_source_id := b.struct_field_types.type_id(field_key) {
-			field_type := flat.source_type_name(field_type_source_id)
-
-			return flat.source_type_id(field_type.trim_left('&'))
-		}
-		short_type := base_type.all_after('.')
-		short_key := short_type + '.' + node.value
-		if field_type_source_id := b.struct_field_types.type_id(short_key) {
-			field_type := flat.source_type_name(field_type_source_id)
-
-			return flat.source_type_id(field_type.trim_left('&'))
+		base_type := b.for_in_container_type_name(b.a.child(&node, 0))
+		if field_type_source_id := b.registered_field_type(base_type, node.value) {
+			return flat.source_type_id(flat.source_type_name(field_type_source_id).trim_left('&'))
 		}
 	}
 	return u32(0)
@@ -10691,9 +10703,7 @@ fn (b &Builder) is_sum_type_id(typ_id TypeID) bool {
 	}
 	for sum_name, _ in b.sum_type_variants.ids {
 		if canonical_source_id := b.sum_type_canonical.type_id(sum_name) {
-			canonical := flat.source_type_name(canonical_source_id)
-
-			if sum_typ := b.struct_types[canonical] {
+			if sum_typ := b.registered_struct_type(canonical_source_id) {
 				if sum_typ == typ_id {
 					return true
 				}
@@ -10709,9 +10719,7 @@ fn (b &Builder) sum_type_has_field(typ_id TypeID, field_name string) bool {
 	}
 	for sum_name, variants_id in b.sum_type_variants.ids {
 		if canonical_source_id := b.sum_type_canonical.type_id(sum_name) {
-			canonical := flat.source_type_name(canonical_source_id)
-
-			if sum_typ := b.struct_types[canonical] {
+			if sum_typ := b.registered_struct_type(canonical_source_id) {
 				if sum_typ != typ_id {
 					continue
 				}
@@ -11021,7 +11029,7 @@ fn (mut b Builder) coerce_struct_ptr_for_field(ptr_val ValueID, base_id flat.Nod
 		}
 	}
 	struct_name_id := b.pointer_cast_struct_name(base_id) or { return ptr_val }
-	if struct_id := b.struct_types[flat.source_type_name(struct_name_id)] {
+	if struct_id := b.registered_struct_type(struct_name_id) {
 		want := b.m.type_store.get_ptr(struct_id)
 		if want != ptr_typ {
 			return b.emit1(.bitcast, want, ptr_val)
@@ -11050,8 +11058,9 @@ fn (b &Builder) pointer_cast_struct_name(id flat.NodeId) ?u32 {
 		return none
 	}
 	name = name.trim_left('&')
-	if name in b.struct_types {
-		return flat.source_type_id(name)
+	name_id := flat.source_type_id(name)
+	if _ := b.registered_struct_type(name_id) {
+		return name_id
 	}
 	return none
 }
@@ -11817,7 +11826,7 @@ fn (mut b Builder) build_scalar_str_call(node flat.Node, resolved_name string, b
 	primitive_name := name.all_before_last('.')
 	if name.all_after_last('.') != 'str'
 		|| primitive_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'bool',
-			'rune', 'isize', 'usize', 'string'] {
+			'rune', 'isize', 'uint', 'string'] {
 		return none
 	}
 	mut value_id := base_id
@@ -12605,7 +12614,7 @@ fn (b &Builder) const_int_literal_value(id flat.NodeId) ?string {
 			if node.children_count == 2 {
 				callee := b.qualified_expr_name(b.a.child(&node, 0))
 				if callee in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-					'usize', 'rune'] {
+					'uint', 'rune'] {
 					return b.const_int_literal_value(b.a.child(&node, 1))
 				}
 			}
@@ -12737,19 +12746,9 @@ fn (b &Builder) expr_type_name_for_map(id flat.NodeId) u32 {
 		}
 	}
 	if node.kind == .selector && node.children_count > 0 {
-		base_type := flat.source_type_name(b.expr_type_name_for_map(b.a.child(&node, 0))).trim_left('&')
-		field_key := base_type + '.' + node.value
-		if field_type_source_id := b.struct_field_types.type_id(field_key) {
-			field_type_source_id_10 := field_type_source_id
-
-			return field_type_source_id_10
-		}
-		short_type := base_type.all_after('.')
-		short_key := short_type + '.' + node.value
-		if field_type_source_id := b.struct_field_types.type_id(short_key) {
-			field_type_source_id_11 := field_type_source_id
-
-			return field_type_source_id_11
+		base_type := b.expr_type_name_for_map(b.a.child(&node, 0))
+		if field_type_source_id := b.registered_field_type(base_type, node.value) {
+			return field_type_source_id
 		}
 	}
 	return u32(0)
@@ -13280,9 +13279,7 @@ fn (b &Builder) sum_name_for_type_id(typ_id TypeID) ?u32 {
 	}
 	for sum_name, _ in b.sum_type_variants.ids {
 		if canonical_source_id := b.sum_type_canonical.type_id(sum_name) {
-			canonical := flat.source_type_name(canonical_source_id)
-
-			if sum_typ := b.struct_types[canonical] {
+			if sum_typ := b.registered_struct_type(canonical_source_id) {
 				if sum_typ == typ_id {
 					return flat.source_type_id(sum_name)
 				}
@@ -13935,19 +13932,32 @@ fn (mut b Builder) default_field_value(struct_name_id u32, field_name string, ze
 	return zero
 }
 
-fn (b &Builder) field_type_name(struct_name_id u32, field_name string) u32 {
-	struct_name := flat.source_type_name(struct_name_id)
-	name := struct_name.trim_left('&')
-	key := name + '.' + field_name
-	if typ_source_id := b.struct_field_types.type_id(key) {
+// registered_field_type preserves exact-owner then short-name field lookup,
+// including present empty bindings. Tuple source owners stay numeric; nominal and
+// emitted C owner names retain their existing symbol index.
+fn (b &Builder) registered_field_type(struct_name_id u32, field_name string) ?u32 {
+	mut owner_id := struct_name_id
+	if flat.source_type_shape(owner_id).has(.pointer) {
+		owner_id = flat.source_type_id(flat.source_type_name(owner_id).trim_left('&'))
+	}
+	if fields := b.multi_return_field_types[owner_id] {
+		if typ_source_id := fields[field_name] {
+			return typ_source_id
+		}
+	}
+	name := flat.source_type_name(owner_id)
+	if typ_source_id := b.struct_field_types.type_id(name + '.' + field_name) {
 		return typ_source_id
 	}
 	short_name := name.all_after('.')
-	short_key := short_name + '.' + field_name
-	if typ_source_id := b.struct_field_types.type_id(short_key) {
+	if typ_source_id := b.struct_field_types.type_id(short_name + '.' + field_name) {
 		return typ_source_id
 	}
-	return u32(0)
+	return none
+}
+
+fn (b &Builder) field_type_name(struct_name_id u32, field_name string) u32 {
+	return b.registered_field_type(struct_name_id, field_name) or { u32(0) }
 }
 
 // struct_literal_type resolves a layout and its source owner in declaration lookup order.
@@ -13961,7 +13971,7 @@ fn (b &Builder) struct_literal_type(name_id u32) (TypeID, u32) {
 			return typ, flat.source_type_id(qualified_name)
 		}
 	}
-	if typ := b.struct_types[name] {
+	if typ := b.registered_struct_type(name_id) {
 		return typ, name_id
 	}
 	if typ := b.struct_types[short_name] {
@@ -14199,9 +14209,7 @@ fn (mut b Builder) resolve_type_uncached(name string) TypeID {
 		return b.i32_type
 	}
 	if canonical_source_id := b.canonical_sum_type_name(flat.source_type_id(name)) {
-		canonical := flat.source_type_name(canonical_source_id)
-
-		if typ := b.struct_types[canonical] {
+		if typ := b.registered_struct_type(canonical_source_id) {
 			return typ
 		}
 	}
@@ -14216,7 +14224,7 @@ fn (mut b Builder) resolve_type_uncached(name string) TypeID {
 			return typ
 		}
 	}
-	if typ := b.struct_types[name] {
+	if typ := b.registered_struct_type(flat.source_type_id(name)) {
 		return typ
 	}
 	if typ := b.struct_types[short_name] {
@@ -14237,7 +14245,7 @@ fn (mut b Builder) primitive_type_id(name_id u32) ?TypeID {
 		'isize' {
 			if b.m.target.ptr_size == 4 { b.i32_type } else { b.i64_type }
 		}
-		'usize' {
+		'uint' {
 			if b.m.target.ptr_size == 4 { b.u32_type } else { b.u64_type }
 		}
 		'i8', 'char' {
@@ -14331,7 +14339,6 @@ fn (mut b Builder) option_type_id_with_payload(base_name_id u32, base_typ TypeID
 		field_names: field_names
 	})
 	b.option_types[key] = typ_id
-	b.struct_types[key_text] = typ_id
 	return typ_id
 }
 

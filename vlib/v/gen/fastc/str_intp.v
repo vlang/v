@@ -35,13 +35,28 @@ fn (mut g Parser) fastc_default_struct_str_name(c_type string) ?string {
 	// Reserve the name first so a self-referential field does not recurse forever.
 	g.spawn_helpers[fn_name] = ''
 	g.protos.writeln('string ${fn_name}(${c_name} it);')
-	display := c_name.all_after_last('__')
+	display := fastc_default_struct_str_display_name(flat.source_type_name(key), c_name)
 	mut body := 'string ${fn_name}(${c_name} it) {\n'
 	body += '\tstring res = _S("${display}{\\n");\n'
 	for field in g.struct_field_info[c_name] {
 		c_field := fastc_c_identifier(field.name)
-		formatted := g.fastc_struct_field_str_expression('it.${c_field}', field.typ_text()) or {
-			'_S("<${field.typ_text()}>")'
+		mut formatted := ''
+		mut needs_indent := false
+		if field.option_value_type != 0 {
+			option_helper := g.fastc_option_str_name(field.option_value_type) or { '' }
+			if option_helper != '' {
+				formatted = '${option_helper}(it.${c_field})'
+				needs_indent = g.fastc_struct_field_str_needs_indent(flat.source_type_name(field.option_value_type))
+			}
+		}
+		if formatted == '' {
+			formatted = g.fastc_struct_field_str_expression('it.${c_field}', field.typ_text()) or {
+				'_S("<${field.typ_text()}>")'
+			}
+			needs_indent = g.fastc_struct_field_str_needs_indent(field.typ_text())
+		}
+		if needs_indent {
+			formatted = '${g.fastc_string_indent_helper()}(${formatted})'
 		}
 		body += '\tres = builtin__string_plus(res, _S("    ${field.name}: "));\n'
 		body += '\tres = builtin__string_plus(res, ${formatted});\n'
@@ -51,6 +66,78 @@ fn (mut g Parser) fastc_default_struct_str_name(c_type string) ?string {
 	body += '\treturn res;\n}'
 	g.spawn_helpers[fn_name] = body
 	return fn_name
+}
+
+// fastc_default_struct_str_display_name spells a struct the way V's default `str()` does:
+// with its module prefix (`mymod.Pt`), except for `main` and `builtin` types.
+fn fastc_default_struct_str_display_name(source_name string, c_name string) string {
+	if !source_name.contains('.') {
+		return c_name.all_after_last('__')
+	}
+	for prefix in ['main.', 'builtin.'] {
+		if source_name.starts_with(prefix) {
+			return source_name[prefix.len..]
+		}
+	}
+	return source_name
+}
+
+// fastc_string_indent_helper emits, once per program, a helper that indents every line after
+// the first by four spaces, as V's default `str()` does to a nested value's text. It is plain C,
+// because FastC drops `string.replace` from programs that never call it.
+fn (mut g Parser) fastc_string_indent_helper() string {
+	name := 'v_fastc_string_indent'
+	if name !in g.spawn_helpers {
+		g.protos.writeln('string ${name}(string s);')
+		g.spawn_helpers[name] = fastc_string_indent_c
+	}
+	return name
+}
+
+// The C for fastc_string_indent_helper. Character code 10 is `\n`, 32 is a space.
+const fastc_string_indent_c = r'string v_fastc_string_indent(string s) {
+	size_t lines = 0;
+	for (size_t i = 0; i < (size_t)s.len; i++) {
+		if (s.str[i] == 10) lines++;
+	}
+	if (lines == 0) return s;
+	size_t len = (size_t)s.len + 4 * lines;
+	byteptr result = malloc(len + 1);
+	if (result == NULL) return s;
+	size_t j = 0;
+	for (size_t i = 0; i < (size_t)s.len; i++) {
+		result[j++] = s.str[i];
+		if (s.str[i] == 10) {
+			memset(result + j, 32, 4);
+			j += 4;
+		}
+	}
+	result[len] = 0;
+	return (string){.str = result, .len = len, .is_lit = 0};
+}'
+
+// fastc_struct_field_str_needs_indent reports whether a default `str()` field value can span
+// several lines (a nested struct, array, map or sum type without its own `str()`), so its
+// text is indented one level deeper, as V does. Strings, primitives, enums, fixed arrays and
+// custom `str()` results keep their text.
+fn (mut g Parser) fastc_struct_field_str_needs_indent(field_c_type string) bool {
+	ft := fastc_normalize_inferred_type(flat.source_type_id(field_c_type))
+	if ft == flat.source_type_string {
+		return false
+	}
+	base := flat.source_type_name(ft).trim_right('*')
+	if _ := fastc_fixed_array_element_type(flat.source_type_id(base)) {
+		return false
+	}
+	if base.starts_with('Array_') || base.starts_with('Map_') || base in g.sum_types {
+		return true
+	}
+	key := g.semantic_type_key(ft)
+	if '${flat.source_type_name(key)}.str' in g.functions {
+		return false
+	}
+	return flat.source_type_name(key) in g.declared_kinds
+		&& g.declared_kinds[flat.source_type_name(key)] in [.struct_, .union_]
 }
 
 // fastc_fixed_array_str_name returns a helper that renders a fixed array in V's
@@ -230,6 +317,9 @@ fn (mut g Parser) fastc_map_str_name(c_type string) ?string {
 // enum uses its name table, and a nested struct recurses. Returns none if unrenderable.
 fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type string) ?string {
 	ft := fastc_normalize_inferred_type(flat.source_type_id(field_c_type))
+	if pointer_helper := g.fastc_pointer_str_name(flat.source_type_name(ft)) {
+		return '${pointer_helper}(${value_c})'
+	}
 	if ft == flat.source_type_string {
 		// A single-quote C literal, built without `\'`/`\"` escapes (a self-host str_intp
 		// hazard) by concatenating literal pieces.
@@ -296,6 +386,88 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 	return none
 }
 
+// fastc_pointer_str_name returns a helper that renders a `&T` value of C type
+// `pointer_c_type` the way V's default `str()` does: `&` before the text of the
+// pointee, or `&nil` for a null pointer. Returns none for raw pointers (`voidptr`,
+// `&u8`, `&char`), pointers to pointers, and pointees that cannot be rendered.
+fn (mut g Parser) fastc_pointer_str_name(pointer_c_type string) ?string {
+	if !pointer_c_type.ends_with('*') {
+		return none
+	}
+	pointee := pointer_c_type[..pointer_c_type.len - 1].trim_space()
+	if pointee == '' || pointee.ends_with('*') || pointee in ['void', 'voidptr', 'u8', 'char',
+		'byte'] {
+		return none
+	}
+	fn_name := 'v_fastc_ptr_str_${fastc_composite_type_part(pointer_c_type)}'
+	if fn_name in g.spawn_helpers {
+		return fn_name
+	}
+	// Reserve the name first so a self-referential pointee does not recurse forever.
+	g.spawn_helpers[fn_name] = ''
+	pointee_text := g.fastc_struct_field_str_expression('(*it)', pointee) or {
+		g.spawn_helpers.delete(fn_name)
+		return none
+	}
+	c_type := fastc_output_c_type(pointee) + '*'
+	g.protos.writeln('string ${fn_name}(${c_type} it);')
+	mut body := 'string ${fn_name}(${c_type} it) {\n'
+	body += '\tif (it == 0) {\n\t\treturn _S("&nil");\n\t}\n'
+	body += '\treturn builtin__string_plus(_S("&"), ${pointee_text});\n}'
+	g.spawn_helpers[fn_name] = body
+	return fn_name
+}
+
+// fastc_option_str_name returns a helper that renders an option whose value has
+// the type `value_type` the way V does: `Option(value)`, or `Option(none)`.
+fn (mut g Parser) fastc_option_str_name(value_type u32) ?string {
+	if value_type == 0 {
+		return none
+	}
+	value_c_type := flat.source_type_name(value_type)
+	fn_name := 'v_fastc_option_str_${fastc_composite_type_part(fastc_output_c_type(value_c_type))}'
+	if fn_name in g.spawn_helpers {
+		return fn_name
+	}
+	g.spawn_helpers[fn_name] = ''
+	value_text := g.fastc_struct_field_str_expression(g.option_value_expression(value_type,
+		'it'), value_c_type) or {
+		g.spawn_helpers.delete(fn_name)
+		return none
+	}
+	g.protos.writeln('string ${fn_name}(Option it);')
+	mut body := 'string ${fn_name}(Option it) {\n'
+	body += '\tif (it.state != 0) {\n\t\treturn _S("Option(none)");\n\t}\n'
+	body += '\treturn ${fastc_wrapped_str_expression('Option(', value_text, ')')};\n}'
+	g.spawn_helpers[fn_name] = body
+	return fn_name
+}
+
+// fastc_reference_str_expression renders a top-level `&T` value (an interpolated
+// or printed pointer) the way V does: `&` before the text of a struct, array, map,
+// sum type or custom `str()` pointee, and the plain name for an enum pointee.
+// Returns none for `mut` locals and smartcasts (C pointers that V sees as values),
+// and for pointers to primitives, which V prints as addresses.
+fn (mut g Parser) fastc_reference_str_expression(value string, value_type string, value_tokens []FastcExpressionToken) ?string {
+	if !value_type.ends_with('*') || value_type.ends_with('**') {
+		return none
+	}
+	if g.is_reference_local_base(value_tokens, flat.source_type_id(value_type))
+		|| g.expression_uses_member_smartcast(value_tokens) {
+		return none
+	}
+	pointee := value_type[..value_type.len - 1].trim_space()
+	primitive := fastc_primitive_c_type(pointee) or { '' }
+	if primitive != '' {
+		return none
+	}
+	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(flat.source_type_id(pointee)))] == .enum_ {
+		return g.fastc_struct_field_str_expression('(*(${value}))', pointee)
+	}
+	helper := g.fastc_pointer_str_name(value_type) or { return none }
+	return '${helper}(${value})'
+}
+
 fn (mut g Parser) read_interpolated_string() !string {
 	first_literal := g.lit
 	mut raw := first_literal
@@ -320,10 +492,14 @@ fn (mut g Parser) read_interpolated_string() !string {
 		value_type := fastc_normalize_inferred_type(g.last_expression_type)
 		value_key := g.semantic_type_key(value_type)
 		alias_has_str_method := g.declared_kinds[flat.source_type_name(value_key)] == .alias_ && '${flat.source_type_name(value_key)}.str' in g.functions
-		interpolation_type := if alias_has_str_method {
+		mut interpolation_type := if alias_has_str_method {
 			flat.source_type_name(value_type)
 		} else {
 			flat.source_type_name(g.underlying_alias_type(value_type))
+		}
+		// C pointer differences use the signed pointer-sized integer formatter.
+		if interpolation_type == 'ptrdiff_t' {
+			interpolation_type = 'isize'
 		}
 		mut format_specifier := ''
 		if g.tok == .colon {
@@ -354,7 +530,24 @@ fn (mut g Parser) read_interpolated_string() !string {
 				return g.unsupported('NUL code points in `:c` interpolation')
 			}
 		}
-		if interpolation_type == 'string' {
+		mut reference_part := ''
+		mut option_part := ''
+		if g.selfhost && format_specifier == '' {
+			if interpolation_type.ends_with('*') {
+				reference_part = g.fastc_reference_str_expression(value, interpolation_type,
+					value_tokens) or { '' }
+			} else if interpolation_type == 'Option' {
+				option_helper := g.fastc_option_str_name(g.option_value_type_for_expression(value_tokens)) or {
+					return g.unsupported('interpolation of option `${flat.source_type_name(value_type)}`')
+				}
+				option_part = '${option_helper}(${value})'
+			}
+		}
+		if reference_part != '' {
+			parts << reference_part
+		} else if option_part != '' {
+			parts << option_part
+		} else if interpolation_type == 'string' {
 			width := fastc_string_interpolation_width(format_specifier) or {
 				return g.unsupported('interpolation format `${format_specifier}` for `string`')
 			}
@@ -398,6 +591,11 @@ fn (mut g Parser) read_interpolated_string() !string {
 		} else if g.declared_kinds[flat.source_type_name(g.semantic_type_key(flat.source_type_id(interpolation_type)))] == .enum_ {
 			enum_key := g.semantic_type_key(flat.source_type_id(interpolation_type))
 			is_unsigned := g.enum_flags[flat.source_type_name(enum_key)]
+			enum_value := if interpolation_type.ends_with('*') {
+				'(*(${value}))'
+			} else {
+				value
+			}
 			format_character := if format_specifier.len > 0 {
 				format_specifier[format_specifier.len - 1]
 			} else {
@@ -408,9 +606,9 @@ fn (mut g Parser) read_interpolated_string() !string {
 					return g.unsupported('interpolation format `${format_specifier}` for enum `${flat.source_type_name(value_type)}`')
 				}
 				parts << if is_unsigned {
-					'v_fastc_unsigned_format((unsigned long long)(${value}), "${format_specifier}")'
+					'v_fastc_unsigned_format((unsigned long long)(${enum_value}), "${format_specifier}")'
 				} else {
-					'v_fastc_signed_format((long long)(${value}), "${format_specifier}")'
+					'v_fastc_signed_format((long long)(${enum_value}), "${format_specifier}")'
 				}
 			} else {
 				width := fastc_string_interpolation_width(format_specifier) or {
@@ -430,7 +628,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 					method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, enum_type, 'str'))
 					'${method_c_name}(${receiver})'
 				} else {
-					'v_fastc_enum_str_${enum_type}(${value})'
+					'v_fastc_enum_str_${enum_type}(${enum_value})'
 				}
 				parts << if width.width > 0 {
 					'v_fastc_string_pad(${enum_name}, ${width.width}, ${width.left_align})'

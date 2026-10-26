@@ -35,8 +35,8 @@ struct Values {
 mut:
 	items [2]u64
 }
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn C.memset(voidptr, int, usize) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn C.memset(voidptr, int, uint) voidptr
 fn main() {
 	enabled = true
 	count = int(1) << 40
@@ -51,9 +51,9 @@ fn main() {
 	slots = [u64(1) << 55, u64(9)]!
 	assert slots[0] == u64(1) << 55 && slots[1] == 9
 	mut state := Values{}
-	C.memcpy(state.items, slots, usize(16))
+	C.memcpy(state.items, slots, uint(16))
 	assert state.items[0] == u64(1) << 55 && state.items[1] == 9
-	C.memset(state.items, 0, usize(16))
+	C.memset(state.items, 0, uint(16))
 	assert state.items[0] == 0 && state.items[1] == 0
 	slots = [2]u64{}
 	assert slots[0] == 0 && slots[1] == 0

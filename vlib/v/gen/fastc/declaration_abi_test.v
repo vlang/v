@@ -218,11 +218,11 @@ fn test_fastc_target_exports_match_unqualified_target_header_prototypes() {
 	prefs.vroot = @VEXEROOT
 	prefs.target_libc_headers = true
 	source := declaration_abi_generate('target_constness', r'module main
-fn C.native_copy(destination voidptr, const_source voidptr, count usize) voidptr
+fn C.native_copy(destination voidptr, const_source voidptr, count uint) voidptr
 @[c_extern]
 fn C.verify_copy()
 @[export: "native_copy"]
-fn copy(destination voidptr, source voidptr, count usize) voidptr {
+fn copy(destination voidptr, source voidptr, count uint) voidptr {
 	if count != 0 {
 		unsafe {
 			mut dest := &u8(destination)
@@ -253,13 +253,13 @@ fn test_fastc_target_native_prototypes_match_exported_write_constness_and_abi() 
 	prefs.vroot = @VEXEROOT
 	prefs.target_libc_headers = true
 	source := declaration_abi_generate('target_write', r'module main
-fn C.write(fd i32, const_buf voidptr, count usize) isize
+fn C.write(fd i32, const_buf voidptr, count uint) C.ptrdiff_t
 @[export: "write"]
-fn kernel_write(fd int, buf voidptr, count usize) isize {
+fn kernel_write(fd int, buf voidptr, count uint) int {
 	if fd < 0 { return -7 }
 	if count == 0 { return 0 }
 	ptr := unsafe { &u8(buf) }
-	return isize(ptr[0]) + isize(count)
+	return int(ptr[0]) + int(count)
 }
 fn main() {
 	mut value := u8(40)
@@ -267,7 +267,34 @@ fn main() {
 	assert C.write(1, voidptr(&value), 2) == 42
 }
 ', prefs)
-	assert source.contains('extern isize write(i32, voidptr, usize);'), source
-	assert !source.contains('extern isize write(i32, const void*'), source
+	assert source.contains('extern ptrdiff_t write(i32, voidptr, usize);'), source
+	assert !source.contains('extern ptrdiff_t write(i32, const void*'), source
 	declaration_abi_run_c('target_write', source)
+}
+
+fn test_fastc_interpolates_native_pointer_differences() {
+	$if !macos && !linux {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	program := r"module main
+@[c_extern]
+fn C.native_difference() C.ptrdiff_t
+fn main() {
+	difference := C.native_difference()
+	assert '${difference}' == '-15'
+	assert '${difference:05d}' == '-0015'
+}
+"
+	for selfhost in [false, true] {
+		prefs.target_libc_headers = selfhost
+		source := if selfhost {
+			declaration_abi_generate('ptrdiff', program, prefs)
+		} else {
+			generate(program, 'ptrdiff.c.v', prefs) or { panic(err) }
+		}
+		assert source.contains('extern ptrdiff_t native_difference('), source
+		declaration_abi_run_c('ptrdiff_${selfhost}', '#include <stddef.h>\n' + source + '\nptrdiff_t native_difference(void) { return -15; }\n')
+	}
 }

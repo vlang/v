@@ -1870,7 +1870,7 @@ fn fastc_fixed_length_atom(tokens []FastcExpressionToken, start int, module_name
 		return error('fastc parser does not support fixed array dimension token `${item.tok.str()}`')
 	}
 	if start + 1 < tokens.len && tokens[start + 1].tok == .lpar {
-		if item.lit !in ['int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'usize',
+		if item.lit !in ['int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'uint', 'usize',
 			'isize'] {
 			return error('fastc parser does not support function call in fixed array dimension')
 		}
