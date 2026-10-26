@@ -14270,7 +14270,13 @@ fn is_c_backend_test_file(path string) bool {
 }
 
 fn is_regular_v_test_file(path string) bool {
-	return path.ends_with('_test.v') || path.ends_with('_test.vv')
+	if path.ends_with('_test.v') || path.ends_with('_test.vv') {
+		return true
+	}
+	// Backend-qualified test files such as `foo_test.c.v` are test files
+	// too: the test driver compiles them as tests, so the test-only
+	// diagnostic relaxations must apply to them as well.
+	return is_c_backend_test_file(path)
 }
 
 // is_exported_fn reports whether the function `name` declared in `module_name` has
