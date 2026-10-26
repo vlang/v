@@ -20776,7 +20776,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
 	// One report names the same few files many times over.
-	mut run := compiler_errors.DiagnosticRun{}
+	mut diag_run := compiler_errors.DiagnosticRun{}
 	mut printed_diagnostics := 0
 	for notice in ordered_notices {
 		if skip_notices && notice.severity in ['', 'notice:'] {
@@ -20790,7 +20790,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			continue
 		}
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
-		print_type_diagnostic(mut run, a, severity, notice)
+		print_type_diagnostic(mut diag_run, a, severity, notice)
 		printed_diagnostics++
 	}
 	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a, type_errors))
