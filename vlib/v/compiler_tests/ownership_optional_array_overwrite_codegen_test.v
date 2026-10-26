@@ -19,5 +19,5 @@ fn test_owned_optional_array_overwrite_wraps_cloned_payload() {
 		"struct Holder {\nmut:\n\tvalue ?[]u8\n\tseparator_value ?[]u8\n}\n\nfn (mut holder Holder) set(value ?[]u8) {\n\tif bytes := value {\n\t\tholder.value = bytes.clone()\n\t} else {\n\t\tholder.value = none\n\t}\n}\n\nfn (mut holder Holder) separator(separator ?[]u8) {\n\tif sep := separator {\n\t\tholder.separator_value = sep.clone()\n\t} else {\n\t\tholder.separator_value = none\n\t}\n}\n\nfn main() {\n\tmut holder := Holder{}\n\tholder.set([u8(4), 2])\n\tassert holder.value? == [u8(4), 2]\n\tholder.separator([u8(5), 3])\n\tassert holder.separator_value? == [u8(5), 3]\n\tprintln('ok')\n}\n")!
 	out := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-no-parallel', 'run', source])
 	assert out.exit_code == 0, out.output
-	assert out.output.contains('\nok\n'), out.output
+	assert out.output.trim_space() == 'ok', out.output
 }
