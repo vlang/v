@@ -2,6 +2,7 @@ module mbedtls
 
 import io
 import net
+import os
 import sync
 import time
 
@@ -665,6 +666,44 @@ pub fn (s &SSLConn) negotiated_alpn() string {
 }
 
 // connect to server using mbedtls
+// load_system_ca_certs tries to load the platform's trusted CA certificates into
+// `cacert`. Returns an error if no trusted authority could be loaded.
+fn load_system_ca_certs(mut cacert C.mbedtls_x509_crt) ! {
+	mut loaded := false
+	ca_files := [
+		'/etc/ssl/certs/ca-certificates.crt',
+		'/etc/pki/tls/certs/ca-bundle.crt',
+		'/etc/ssl/ca-bundle.pem',
+		'/etc/ssl/cert.pem',
+		'/usr/local/share/certs/ca-root-nss.crt',
+		'/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem',
+	]
+	for f in ca_files {
+		if os.is_file(f) {
+			ret := C.mbedtls_x509_crt_parse_file(&cacert, &char(f.str))
+			if ret >= 0 {
+				loaded = true
+			}
+		}
+	}
+	ca_dirs := [
+		'/etc/ssl/certs',
+		'/usr/share/ca-certificates',
+		'/etc/pki/tls/certs',
+	]
+	for d in ca_dirs {
+		if os.is_dir(d) {
+			ret := C.mbedtls_x509_crt_parse_path(&cacert, &char(d.str))
+			if ret >= 0 {
+				loaded = true
+			}
+		}
+	}
+	if !loaded {
+		return error('no system CA bundle found')
+	}
+}
+
 fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
@@ -713,7 +752,7 @@ fn (mut s SSLConn) init() ! {
 				ret)
 		}
 	}
-	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
+	if s.config.validate || s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
 		s.certs = &SSLCerts{}
 		C.mbedtls_x509_crt_init(&s.certs.cacert)
 		C.mbedtls_x509_crt_init(&s.certs.client_cert)
@@ -755,6 +794,12 @@ fn (mut s SSLConn) init() ! {
 	if ret < 0 {
 		return error_with_code('net.mbedtls SSLConn.init, failed to set certificates, ret: ${ret}',
 			ret)
+	}
+
+	if s.config.verify == '' && s.config.validate && unsafe { s.certs != nil } {
+		load_system_ca_certs(mut s.certs.cacert) or {
+			return error('net.mbedtls SSLConn.init, could not load system CA certificates: ${err}')
+		}
 	}
 
 	if unsafe { s.certs != nil } {
