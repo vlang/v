@@ -1162,6 +1162,19 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name_id u32, field_name st
 	if is_generic_app {
 		lookup_type = flat.source_type_id(base)
 	}
+	// `main.Foo` locks a program-module type (see lookup_struct_info): its bare
+	// table key must not be requalified into a current module with its own `Foo`.
+	lookup_name := flat.source_type_name(lookup_type)
+	if lookup_name.starts_with('main.') && !lookup_name['main.'.len..].contains('.') {
+		if info := t.structs[lookup_name['main.'.len..]] {
+			if info.module.len == 0 || info.module == 'main' {
+				return StructFieldLookup{
+					info:       info
+					owner_type: owner_type_id
+				}
+			}
+		}
+	}
 	if flat.source_type_name(lookup_type) !in t.structs && is_qualified_type_name_text(flat.source_type_name(lookup_type)) {
 		short_type := flat.source_type_name(lookup_type).all_after_last('.')
 		if short_type in t.structs {
