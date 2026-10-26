@@ -48,9 +48,9 @@ struct C.RawNode { value u64 }
 fn C.raw_nodes() voidptr
 @[typedef]
 struct C.raw_const_byte {}
-fn C.raw_receive(context voidptr, data &C.raw_const_byte, length usize)
+fn C.raw_receive(context voidptr, data &C.raw_const_byte, length uint)
 fn C.raw_received() u64
-struct Ops { receive fn (voidptr, &C.raw_const_byte, usize) }
+struct Ops { receive fn (voidptr, &C.raw_const_byte, uint) }
 struct Words { addr [2]u64 }
 struct Group { words Words }
 struct Member { group Group }
@@ -141,7 +141,7 @@ fn main() {
 	assert node.value == u64(0xf123456789abcdef)
 	ops := Ops{ receive: C.raw_receive }
 	bytes := [u8(1), 2, 3]
-	unsafe { ops.receive(voidptr(0), &C.raw_const_byte(bytes.data + 1), usize(2)) }
+	unsafe { ops.receive(voidptr(0), &C.raw_const_byte(bytes.data + 1), uint(2)) }
 	assert C.raw_received() == 4
 	group := Group{ words: Words{ addr: [u64(1), 2]! } }
 	member := &Member{ group: Group{ words: Words{ addr: [u64(1), 3]! } } }

@@ -186,22 +186,22 @@ fn inspect_native_window(mut app gg.App, window gg.WindowId) ! {
 		match backend {
 			.win32 {
 				lease.with_win32(fn (hwnd voidptr) ! {
-					println('borrowed HWND=${usize(hwnd):x}')
+					println('borrowed HWND=${uint(hwnd):x}')
 				})!
 			}
 			.appkit {
 				lease.with_appkit(fn (ns_window voidptr) ! {
-					println('borrowed NSWindow=${usize(ns_window):x}')
+					println('borrowed NSWindow=${uint(ns_window):x}')
 				})!
 			}
 			.x11 {
 				lease.with_x11(fn (display voidptr, xwindow u64) ! {
-					println('borrowed Display=${usize(display):x} Window=${xwindow:x}')
+					println('borrowed Display=${uint(display):x} Window=${xwindow:x}')
 				})!
 			}
 			.wayland {
 				lease.with_wayland(fn (display voidptr, surface voidptr) ! {
-					println('borrowed wl_display=${usize(display):x} wl_surface=${usize(surface):x}')
+					println('borrowed wl_display=${uint(display):x} wl_surface=${uint(surface):x}')
 				})!
 			}
 			.auto, .mock {}

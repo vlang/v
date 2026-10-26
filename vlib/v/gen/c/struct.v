@@ -184,15 +184,18 @@ fn struct_init_has_main_type_lock(type_name string) bool {
 }
 
 fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) u32 {
-	if node.typ_text() == node.value && (flat.source_type_shape(node.typ).has(.option_type) || flat.source_type_shape(node.typ).has(.result_type)) {
-		// Lowered option/result literals carry their authoritative wrapper type on
-		// the synthetic node; they have no checker-side expression entry to refine it.
-		return node.typ
-	}
-	if node.typ_text() == node.value && flat.source_type_shape(node.typ).has(.bracketed) && flat.source_type_shape(node.typ).has(.dotted) {
-		// A specialized clone's explicit type annotation is newer than the
-		// checker's expression cache and can retain nested main-module locks.
-		return node.typ
+	if node.typ_text() == node.value {
+		shape := flat.source_type_shape(node.typ)
+		if shape.has(.option_type) || shape.has(.result_type) {
+			// Lowered option/result literals carry their authoritative wrapper type on
+			// the synthetic node; they have no checker-side expression entry to refine it.
+			return node.typ
+		}
+		if shape.has(.bracketed) && shape.has(.dotted) {
+			// A specialized clone's explicit type annotation is newer than the
+			// checker's expression cache and can retain nested main-module locks.
+			return node.typ
+		}
 	}
 	if struct_init_has_main_type_lock(node.value) {
 		// Monomorphization pins a caller-owned program type with `main.` when the
@@ -3225,7 +3228,7 @@ fn (g &FlatGen) is_scalar_c_type(c_type string) bool {
 		return true
 	}
 	return c_type in ['bool', 'char', 'byte', 'u8', 'i8', 'u16', 'i16', 'u32', 'i32', 'u64', 'i64',
-		'int', 'isize', 'usize', 'size_t', 'ptrdiff_t', 'float', 'double', 'voidptr',
+		'int', 'isize', 'uint', 'size_t', 'ptrdiff_t', 'float', 'double', 'voidptr',
 		types.portable_int_c_type]
 }
 
@@ -3604,10 +3607,25 @@ fn shared_split_generic_args(s string) []string {
 	return parts
 }
 
-// substitute_shared_generic_type_text specializes a source spelling within its numeric boundary.
+// substitute_shared_generic_type_text retains the source ID of exact generic arguments.
 fn substitute_shared_generic_type_text(typ_id u32, params []string, args []u32) u32 {
+	if args.len == 0 {
+		return typ_id
+	}
 	source := flat.source_type_name(typ_id)
-	result := substitute_shared_generic_type_text_uncached(source, params, args)
+	clean := trimmed_space(source)
+	if clean.len == 0 {
+		return typ_id
+	}
+	for i, param in params {
+		if clean == param {
+			if i < args.len {
+				return args[i]
+			}
+			return if clean == source { typ_id } else { flat.source_type_id(clean) }
+		}
+	}
+	result := substitute_shared_generic_composite_type_text_uncached(clean, params, args)
 	return if result == source { typ_id } else { flat.source_type_id(result) }
 }
 
@@ -3624,6 +3642,11 @@ fn substitute_shared_generic_type_text_uncached(typ string, params []string, arg
 			return clean
 		}
 	}
+	return substitute_shared_generic_composite_type_text_uncached(clean, params, args)
+}
+
+// Composite spellings remain a byte grammar; recursive slices need no new source IDs.
+fn substitute_shared_generic_composite_type_text_uncached(clean string, params []string, args []u32) string {
 	if clean.starts_with('&') {
 		return '&' + substitute_shared_generic_type_text_uncached(clean[1..], params, args)
 	}
@@ -4243,7 +4266,7 @@ fn (mut g FlatGen) shared_inner_type(inner u32) types.Type {
 	if typ is types.Struct && typ.name() !in g.tc.structs {
 		old_file := g.tc.cur_file
 		g.tc.cur_file = ''
-		resolved := g.tc.parse_type(flat.source_type_id(typ.name()))
+		resolved := g.tc.parse_type(typ.source_type_id())
 		g.tc.cur_file = old_file
 		if resolved !is types.Unknown && resolved !is types.Void {
 			return *resolved
@@ -4595,7 +4618,7 @@ fn (g &FlatGen) atomic_helper_suffix(typ &types.Type) string {
 	return match ct {
 		'i8', 'u8', 'byte', 'bool', 'char' { 'byte' }
 		'i16', 'u16' { 'u16' }
-		'i64', 'u64', 'isize', 'usize' { 'u64' }
+		'i64', 'u64', 'isize', 'uint' { 'u64' }
 		// Portable C defines the `_w` helpers for the C compiler's `int` width.
 		types.portable_int_c_type { pointer_width_suffix }
 		else { 'u32' }
@@ -4904,7 +4927,7 @@ fn (g &FlatGen) generic_struct_init_instance_ct_for_node(node flat.Node) ?string
 		if base !is types.Array && base !is types.ArrayFixed {
 			name := base.name()
 			if name.contains('[') {
-				if ct := g.concrete_generic_struct_init_ct(flat.source_type_id(name)) {
+				if ct := g.concrete_generic_struct_init_ct(base.source_type_id()) {
 					if name.all_before('[').all_after_last('.') == node.value.all_after_last('.')
 						|| g.flattened_generic_struct_c_type_short_name(ct) == node.value {
 						return ct
@@ -5043,17 +5066,15 @@ fn (mut g FlatGen) struct_init_c_type_name(type_name_id u32) string {
 fn (g &FlatGen) concrete_generic_struct_init_ct(type_name_id u32) ?string {
 	base_source_id, args_source_ids, ok := g.shared_generic_app_parts(type_name_id)
 	base := flat.source_type_name(base_source_id)
-	args := flat.TypeTextList{ ids: args_source_ids }.names()
 	if !ok || args_source_ids.len == 0 {
 		return none
 	}
-	wanted_suffix := generic_receiver_type_suffixes(args)
+	wanted_suffix := generic_receiver_type_suffixes(args_source_ids)
 	mut matches := []string{}
 	mut base_matches := []string{}
 	for candidate in g.tc.structs.keys() {
 		candidate_base_source_id, candidate_args_source_ids, candidate_ok := g.shared_generic_app_parts(flat.source_type_id(candidate))
 		candidate_base := flat.source_type_name(candidate_base_source_id)
-		candidate_args := flat.TypeTextList{ ids: candidate_args_source_ids }.names()
 		if !candidate_ok || candidate_args_source_ids.len != args_source_ids.len
 			|| candidate_base.all_after_last('.') != base.all_after_last('.') {
 			continue
@@ -5062,7 +5083,7 @@ fn (g &FlatGen) concrete_generic_struct_init_ct(type_name_id u32) ?string {
 		if ct !in base_matches {
 			base_matches << ct
 		}
-		if generic_receiver_type_suffixes(candidate_args).replace('_', '') != wanted_suffix.replace('_', '') {
+		if generic_receiver_type_suffixes(candidate_args_source_ids).replace('_', '') != wanted_suffix.replace('_', '') {
 			continue
 		}
 		if ct !in matches {
@@ -5082,7 +5103,6 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
 	type_name := flat.source_type_name(type_name_id)
 	base_source_id, args_source_ids, is_generic := g.shared_generic_app_parts(type_name_id)
 	base := flat.source_type_name(base_source_id)
-	args := flat.TypeTextList{ ids: args_source_ids }.names()
 	if is_generic && args_source_ids.len > 0 && !base.contains('.') {
 		mut resolved := []string{}
 		if g.tc.cur_file.len > 0 {
@@ -5111,6 +5131,7 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
 			}
 		}
 		if resolved.len == 1 {
+			args := flat.TypeTextList{ ids: args_source_ids }.names()
 			return flat.source_type_id('${resolved[0]}[${args.join(',')}]')
 		}
 	}
@@ -5136,12 +5157,11 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name_id u32) ?strin
 	clean := trimmed_space(type_name)
 	base_source_id, args_source_ids, ok := g.shared_generic_app_parts(flat.source_type_id(clean))
 	base := flat.source_type_name(base_source_id)
-	args := flat.TypeTextList{ ids: args_source_ids }.names()
 	if !ok || args_source_ids.len == 0 {
 		return none
 	}
 	base_short := base.all_after_last('.')
-	arg_suffix := generic_receiver_type_suffixes(args)
+	arg_suffix := generic_receiver_type_suffixes(args_source_ids)
 	for candidate in [g.expected_expr_type, g.cur_fn_ret] {
 		candidate_type0 := types.unwrap_pointer(candidate)
 		candidate_type := if candidate_type0 is types.OptionType {
@@ -5154,17 +5174,15 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name_id u32) ?strin
 		if candidate_type is types.Void || candidate_type is types.Unknown {
 			continue
 		}
-		candidate_name := candidate_type.name()
-		candidate_base_source_id, candidate_args_source_ids, candidate_ok := g.shared_generic_app_parts(flat.source_type_id(candidate_name))
+		candidate_base_source_id, candidate_args_source_ids, candidate_ok := g.shared_generic_app_parts(candidate_type.source_type_id())
 		candidate_base := flat.source_type_name(candidate_base_source_id)
-		candidate_args := flat.TypeTextList{ ids: candidate_args_source_ids }.names()
 		if !candidate_ok || candidate_args_source_ids.len != args_source_ids.len {
 			continue
 		}
 		if candidate_base.all_after_last('.') != base_short {
 			continue
 		}
-		if generic_receiver_type_suffixes(candidate_args) == arg_suffix {
+		if generic_receiver_type_suffixes(candidate_args_source_ids) == arg_suffix {
 			context_ct := g.tc.c_type(candidate_type)
 			if !isnil(g.generic_struct_context_ct_cache) {
 				mut cache := g.generic_struct_context_ct_cache
@@ -5226,14 +5244,13 @@ fn (g &FlatGen) flattened_generic_struct_init_ct(type_name_id u32) ?string {
 	for struct_name, _ in g.tc.structs {
 		base_source_id, args_source_ids, ok := g.shared_generic_app_parts(flat.source_type_id(struct_name))
 		base := flat.source_type_name(base_source_id)
-		args := flat.TypeTextList{ ids: args_source_ids }.names()
 		if !ok || args_source_ids.len == 0 {
 			continue
 		}
 		short_base := base.all_after_last('.')
 		ct := g.tc.c_type(g.tc.parse_type(flat.source_type_id(struct_name)))
 		candidates := [
-			'${short_base}_${generic_receiver_type_suffixes(args)}',
+			'${short_base}_${generic_receiver_type_suffixes(args_source_ids)}',
 			g.flattened_generic_struct_c_type_short_name(ct),
 		]
 		if clean !in candidates {
@@ -5438,8 +5455,8 @@ fn (g &FlatGen) ident_may_name_type(name string) bool {
 // struct_field_list_key identifies a field list by its storage and length.
 @[inline]
 fn struct_field_list_key(fields []types.StructField) u64 {
-	// usize keeps a 32-bit address zero-extended, clear of the length bits.
-	return u64(usize(voidptr(fields.data))) | (u64(fields.len) << 48)
+	// uint keeps a 32-bit address zero-extended, clear of the length bits.
+	return u64(uint(voidptr(fields.data))) | (u64(fields.len) << 48)
 }
 
 // new_struct_field_index_base indexes the checked field lists that
@@ -6490,7 +6507,7 @@ fn (mut g FlatGen) gen_assoc_tmp_decl_by_fields(node flat.Node, tmp string, ct s
 	}
 	target_struct := target_type as types.Struct
 	source_struct := source_type as types.Struct
-	if target_struct.name() == source_struct.name() {
+	if target_struct.source_type_id() == source_struct.source_type_id() {
 		return false
 	}
 	target_fields := g.struct_fields_for_type(target_struct.source_type_id()) or { return false }
@@ -6768,7 +6785,7 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 const pointer_width_suffix = 'w'
 
 // map_key_has_pointer_width reports whether map keys of this type are as wide as a
-// pointer: V's `int`, `isize`, `usize` and pointers.
+// pointer: V's `int`, `isize`, `uint` and pointers.
 fn map_key_has_pointer_width(key_type &types.Type, c_key string) bool {
 	return c_key == types.portable_int_c_type || key_type is types.Pointer
 		|| key_type is types.ISize || key_type is types.USize
@@ -7653,9 +7670,11 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 	}
 	// These operators have integer result types, so their type operands do not
 	// appear in the checked expression-type tables below.
-	for node in g.a.nodes {
+	for idx in 0 .. g.a.nodes.len {
+		// The AST stays immutable while collecting references.
+		node := unsafe { &g.a.nodes[idx] }
 		if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
-			g.tc.cur_file = g.node_source_file(&node)
+			g.tc.cur_file = g.node_source_file(node)
 			g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
 			g.collect_c_struct_type_refs(g.tc.parse_type(flat.source_type_id(node.value)), mut seen)
 		}

@@ -5,7 +5,6 @@ module gg
 import os
 import stbi
 import sokol.gfx
-import sokol.sgl
 
 // Image holds the fields and data needed to
 // represent a bitmap/pixel based image in memory.
@@ -68,7 +67,7 @@ pub fn (mut ctx Context) create_image(file string, cfg ImageConfig) !Image {
 	}
 	$if macos {
 		if ctx.native_rendering {
-			mut img := C.darwin_create_image(file)
+			mut img := darwin_create_image(file)
 			img.texture_filter = cfg.texture_filter or { ctx.config.texture_filter }
 
 			img.id = ctx.image_cache.len
@@ -142,7 +141,7 @@ fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) {
 		src_width = target_width
 		src_height = target_height
 		simg_desc.data.subimage[0][level].ptr = target
-		simg_desc.data.subimage[0][level].size = usize(target_width * target_height * 4)
+		simg_desc.data.subimage[0][level].size = uint(target_width * target_height * 4)
 		unsafe {
 			target += target_width * target_height * 4
 		}
@@ -164,7 +163,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	}
 
 	// NOTE the following code, sometimes, result in hard-to-detect visual errors/bugs:
-	// img_size := usize(img.nr_channels * img.width * img.height)
+	// img_size := uint(img.nr_channels * img.width * img.height)
 	// As an example see https://github.com/vlang/vab/issues/239
 	// The image will come out blank for some reason and no SOKOL_ASSERT
 	// nor any CI check will/can currently catch this.
@@ -174,7 +173,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	// 3 (or less) channels which stbi will correctly detect and set as `img.nr_channels`
 	// but the current sokol_gl context setup expects 4. It *should* be the same with
 	// all other stbi supported formats.
-	img_size := usize(4 * img.width * img.height)
+	img_size := uint(4 * img.width * img.height)
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr:  img.data
 		size: img_size
@@ -232,7 +231,7 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 	// Sokol requires that streamed images have NO .ptr/.size initially:
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr:  0
-		size: usize(0)
+		size: uint(0)
 	}
 	img.simg = gfx.make_image(&img_desc)
 
@@ -255,6 +254,11 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 	mut image := ctx.get_cached_image_by_idx(cached_image_idx)
 	image.update_pixel_data(buf)
+	// refresh the CPU rasterizer's copy too; on the GPU path the registry is empty
+	if ctx.r != unsafe { nil } && buf != unsafe { nil } {
+		ctx.r.update_image_region(int(image.simg.id), voidptr(buf), 0, 0, image.width,
+			image.height, image.nr_channels)
+	}
 }
 
 // update_pixel_data updates the sokol specific pixel data associated
@@ -262,7 +266,7 @@ pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 pub fn (mut img Image) update_pixel_data(buf &u8) {
 	mut data := gfx.ImageData{}
 	data.subimage[0][0].ptr = buf
-	data.subimage[0][0].size = usize(img.width * img.height * img.nr_channels)
+	data.subimage[0][0].size = uint(img.width * img.height * img.nr_channels)
 	gfx.update_image(img.simg, &data)
 }
 
@@ -410,7 +414,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 				} else {
 					config.img_rect.height
 				}
-				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width, height,
+				darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width, height,
 					img)
 				return
 			}
@@ -461,34 +465,46 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 
 	// FIXME: is this okay?
 	match config.effect {
-		.alpha { sgl.load_pipeline(ctx.pipeline.alpha) }
-		.add { sgl.load_pipeline(ctx.pipeline.add) }
+		.alpha { ctx.r.load_pipeline(ctx.pipeline.alpha) }
+		.add { ctx.r.load_pipeline(ctx.pipeline.add) }
+		.multiply { ctx.r.load_pipeline(ctx.pipeline.multiply) }
+		.screen { ctx.r.load_pipeline(ctx.pipeline.screen) }
 	}
 
-	sgl.enable_texture()
-	sgl.texture(img.simg, img.ssmp)
+	ctx.r.enable_texture()
+	ctx.r.texture(img.simg, img.ssmp)
+	// keep the CPU rasterizer's texture registry in sync (no-op on GPU path).
+	// Images are immutable here (stb data is 4 channels), so registering once is
+	// enough; streaming images refresh their copy in `update_pixel_data`.
+	if ctx.r != unsafe { nil } && img.data != unsafe { nil } {
+		img_id := int(img.simg.id)
+		if !ctx.r.is_image_registered(img_id) {
+			filter_flag := if img.texture_filter == .linear { 1 } else { 0 }
+			ctx.r.register_image(img_id, img.data, img.width, img.height, 4, filter_flag)
+		}
+	}
 
 	if config.rotation != 0 {
 		width := img_rect.width * ctx.scale
 		height := (if img_rect.height > 0 { img_rect.height } else { img.height }) * ctx.scale
 
-		sgl.push_matrix()
-		sgl.translate(x0 + (width / 2), y0 + (height / 2), 0)
-		sgl.rotate(sgl.rad(-config.rotation), 0, 0, 1)
-		sgl.translate(-x0 - (width / 2), -y0 - (height / 2), 0)
+		ctx.r.push_matrix()
+		ctx.r.translate(x0 + (width / 2), y0 + (height / 2), 0)
+		ctx.r.rotate(ctx.r.rad(-config.rotation), 0, 0, 1)
+		ctx.r.translate(-x0 - (width / 2), -y0 - (height / 2), 0)
 	}
 
-	sgl.begin_quads()
-	sgl.c4b(config.color.r, config.color.g, config.color.b, config.color.a)
-	sgl.v3f_t2f(x0, y0, config.z, u0f, v0f)
-	sgl.v3f_t2f(x1, y0, config.z, u1f, v0f)
-	sgl.v3f_t2f(x1, y1, config.z, u1f, v1f)
-	sgl.v3f_t2f(x0, y1, config.z, u0f, v1f)
-	sgl.end()
+	ctx.r.begin_quads()
+	ctx.r.c4b(config.color.r, config.color.g, config.color.b, config.color.a)
+	ctx.r.v3f_t2f(x0, y0, config.z, u0f, v0f)
+	ctx.r.v3f_t2f(x1, y0, config.z, u1f, v0f)
+	ctx.r.v3f_t2f(x1, y1, config.z, u1f, v1f)
+	ctx.r.v3f_t2f(x0, y1, config.z, u0f, v1f)
+	ctx.r.end()
 
 	if config.rotation != 0 {
-		sgl.pop_matrix()
+		ctx.r.pop_matrix()
 	}
 
-	sgl.disable_texture()
+	ctx.r.disable_texture()
 }

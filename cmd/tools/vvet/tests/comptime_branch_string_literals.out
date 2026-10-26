@@ -1,0 +1,5 @@
+cmd/tools/vvet/tests/comptime_branch_string_literals.vv:18: error: Looks like you are using spaces for indentation.
+cmd/tools/vvet/tests/comptime_branch_string_literals.vv:23: error: Looks like you are using spaces for indentation.
+cmd/tools/vvet/tests/comptime_branch_string_literals.vv:28: error: Looks like you are using spaces for indentation.
+cmd/tools/vvet/tests/comptime_branch_string_literals.vv:33: error: Looks like you are using spaces for indentation.
+Note: You can run `v fmt -w cmd/tools/vvet/tests/comptime_branch_string_literals.vv` to fix these errors automatically

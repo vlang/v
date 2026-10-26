@@ -1,6 +1,7 @@
 module c
 
 import os
+import v.flat
 import v.markused
 import v.parser
 import v.pref
@@ -52,4 +53,18 @@ fn main() {
 ')
 	assert plain_c.contains('u64 slot'), plain_c
 	assert !plain_c.contains('volatile u64 slot'), plain_c
+}
+
+fn test_shared_global_presence_does_not_survive_into_the_next_generation() {
+	mut g := FlatGen.new()
+	g.declare_global_raw_type('old.slot', flat.source_type_id('shared int'))
+	assert g.global_shared_storage_present
+	generate_global_volatile_source(mut g, 'shared_reset', '__global slot = u64(1)
+
+fn main() {
+	slot = slot + 1
+}
+')
+	assert !g.global_shared_storage_present
+	assert g.global_raw_type_texts.type_id('old.slot') == none
 }

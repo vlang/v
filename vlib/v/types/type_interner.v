@@ -13,6 +13,9 @@ struct CanonicalTypeEntry {
 	typ &Type
 }
 
+// Keep disposable checker and transformer identity tables inexpensive to initialize.
+const canonical_identity_cache_slots = 4096
+
 @[heap]
 struct TypeInterner {
 mut:
@@ -22,15 +25,21 @@ mut:
 	buckets    map[u64]TypeId
 	entries    []&CanonicalTypeEntry
 	recent     [4096]voidptr
-	identities [4096]voidptr
+	identities [canonical_identity_cache_slots]voidptr
 	primitives [8192]voidptr
 }
 
 fn new_type_interner() &TypeInterner {
-	return &TypeInterner{
-		lock:    sync.new_rwmutex()
-		buckets: map[u64]TypeId{}
-	}
+	// Initialize the fixed pointer tables in place rather than copying a large
+	// temporary for each disposable checker and transformer fork.
+	mut interner := unsafe { &TypeInterner(malloc(int(sizeof(TypeInterner)))) }
+	unsafe { vmemset(interner, 0, int(sizeof(TypeInterner))) }
+	interner.lock = sync.new_rwmutex()
+	interner.types = []&Type{}
+	interner.names = []u32{}
+	interner.buckets = map[u64]TypeId{}
+	interner.entries = []&CanonicalTypeEntry{}
+	return interner
 }
 
 fn (mut i TypeInterner) intern_locked(t &Type, hash u64) (TypeId, &Type) {

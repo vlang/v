@@ -20,7 +20,7 @@ fn C.GC_set_all_interior_pointers(int)
 fn C.GC_set_pages_executable(int)
 
 @[c_extern]
-fn C.GC_set_free_space_divisor(usize)
+fn C.GC_set_free_space_divisor(uint)
 
 @[c_extern]
 fn C.GC_enable_incremental()

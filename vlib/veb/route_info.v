@@ -32,14 +32,14 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 				// Classify reflected parameter types directly; param.typ is not a generic value.
 				$if param.typ is u64 {
 					schemas << openapi_integer_schema(u64(0))
-				} $else $if param.typ is usize {
-					schemas << openapi_integer_schema(usize(0))
+				} $else $if param.typ is uint {
+					schemas << openapi_integer_schema(uint(0))
 				} $else $if param.typ is u32 {
 					schemas << openapi_integer_schema(u32(0))
 				} $else $if param.typ is i64 {
 					schemas << openapi_integer_schema(i64(0))
-				} $else $if param.typ is isize {
-					schemas << openapi_integer_schema(isize(0))
+				} $else $if param.typ is int {
+					schemas << openapi_integer_schema(int(0))
 				} $else $if param.typ is $int {
 					schemas << openapi_integer_schema(int(0))
 				} $else $if param.typ is bool {

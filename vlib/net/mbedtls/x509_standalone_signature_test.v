@@ -58,9 +58,9 @@ fn sign_rsa_pss_for_test(md_alg MbedtlsMdType, hash []u8) ![]u8 {
 	// (512-byte) modulus -- the largest signature mbedtls_pk_sign_ext could
 	// possibly produce for it.
 	mut sig := []u8{len: 600}
-	mut sig_len := usize(0)
-	ret := C.mbedtls_pk_sign_ext(pk_type_rsassa_pss, &pk, i32(md_alg), hash.data, usize(hash.len),
-		sig.data, usize(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+	mut sig_len := uint(0)
+	ret := C.mbedtls_pk_sign_ext(pk_type_rsassa_pss, &pk, i32(md_alg), hash.data, uint(hash.len),
+		sig.data, uint(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 	if ret != 0 {
 		return error_with_code('test: mbedtls_pk_sign_ext failed, mbedtls ret: ${ret}', ret)
 	}

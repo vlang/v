@@ -39,11 +39,11 @@ fn string_index_byte(data &u8, size int, needle u8) int {
 				}
 			}
 		}
-		found := unsafe { C.memchr(data, i32(needle), usize(size)) }
+		found := unsafe { C.memchr(data, i32(needle), uint(size)) }
 		if isnil(found) {
 			return -1
 		}
-		return int(usize(found) - usize(data))
+		return int(uint(found) - uint(data))
 	}
 }
 
@@ -122,7 +122,7 @@ fn string_bytes_equal(a &u8, b &u8, size int) bool {
 			return unsafe { ((a[0] ^ b[0]) | (a[size >> 1] ^ b[size >> 1]) | (a[size - 1] ^ b[size - 1])) == 0 }
 		}
 	}
-	return unsafe { C.memcmp(a, b, usize(size)) == 0 }
+	return unsafe { C.memcmp(a, b, uint(size)) == 0 }
 }
 
 // string_content_equal preserves vmemcmp's guarded and traced string comparison.
@@ -131,7 +131,7 @@ fn string_content_equal(a &u8, b &u8, size int) bool {
 	$if trace_vmemcmp ? {
 		return unsafe { vmemcmp(a, b, size) == 0 }
 	}
-	if size == 0 || usize(a) <= 0xFFFF || usize(b) <= 0xFFFF {
+	if size == 0 || uint(a) <= 0xFFFF || uint(b) <= 0xFFFF {
 		return true
 	}
 	return string_bytes_equal(a, b, size)
@@ -155,7 +155,7 @@ pub fn vstrlen_char(s &char) int {
 // The memory areas *MUST NOT OVERLAP*.  Use vmemmove, if the memory
 // areas do overlap. vmemcpy returns a pointer to `dest`.
 @[inline; unsafe]
-pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
+pub fn vmemcpy(dest voidptr, const_src voidptr, n int) voidptr {
 	$if trace_vmemcpy ? {
 		C.fprintf(C.stderr, c'vmemcpy dest: %p src: %p n: %6ld\n', dest, const_src, n)
 	}
@@ -166,7 +166,7 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 			print_backtrace()
 		}
 	}
-	if n == 0 || usize(dest) <= 0xFFFF || usize(const_src) <= 0xFFFF {
+	if n == 0 || uint(dest) <= 0xFFFF || uint(const_src) <= 0xFFFF {
 		return dest
 	}
 	$if prod && !tinyc && !msvc && !native {
@@ -208,11 +208,11 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 // `src` or `dest`, and the bytes are then copied from the temporary array
 // to `dest`. vmemmove returns a pointer to `dest`.
 @[inline; unsafe]
-pub fn vmemmove(dest voidptr, const_src voidptr, n isize) voidptr {
+pub fn vmemmove(dest voidptr, const_src voidptr, n int) voidptr {
 	$if trace_vmemmove ? {
 		C.fprintf(C.stderr, c'vmemmove dest: %p src: %p n: %6ld\n', dest, const_src, n)
 	}
-	if n == 0 || usize(dest) <= 0xFFFF || usize(const_src) <= 0xFFFF {
+	if n == 0 || uint(dest) <= 0xFFFF || uint(const_src) <= 0xFFFF {
 		return dest
 	}
 	$if prod && !tinyc && !msvc && !native {
@@ -279,11 +279,11 @@ pub fn vmemmove(dest voidptr, const_src voidptr, n isize) voidptr {
 // You should use a function that performs comparisons in constant time for
 // this.
 @[inline; unsafe]
-pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n isize) int {
+pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n int) int {
 	$if trace_vmemcmp ? {
 		C.fprintf(C.stderr, c'vmemcmp s1: %p s2: %p n: %6ld\n', const_s1, const_s2, n)
 	}
-	if n == 0 || usize(const_s1) <= 0xFFFF || usize(const_s2) <= 0xFFFF {
+	if n == 0 || uint(const_s1) <= 0xFFFF || uint(const_s2) <= 0xFFFF {
 		return 0
 	}
 	unsafe {
@@ -294,7 +294,7 @@ pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n isize) int {
 // vmemset fills the first `n` bytes of the memory area pointed to by `s`,
 // with the constant byte `c`. It returns a pointer to the memory area `s`.
 @[inline; unsafe]
-pub fn vmemset(s voidptr, c int, n isize) voidptr {
+pub fn vmemset(s voidptr, c int, n int) voidptr {
 	$if trace_vmemset ? {
 		C.fprintf(C.stderr, c'vmemset s: %p c: %d n: %6ld\n', s, c, n)
 	}
@@ -304,7 +304,7 @@ pub fn vmemset(s voidptr, c int, n isize) voidptr {
 			print_backtrace()
 		}
 	}
-	if n == 0 || usize(s) <= 0xFFFF {
+	if n == 0 || uint(s) <= 0xFFFF {
 		return s
 	}
 	unsafe {
@@ -315,12 +315,12 @@ pub fn vmemset(s voidptr, c int, n isize) voidptr {
 type FnSortCB = fn (const_a voidptr, const_b voidptr) int
 
 @[inline; unsafe]
-fn vsort_ptr_at(base voidptr, index usize, size usize) voidptr {
+fn vsort_ptr_at(base voidptr, index uint, size uint) voidptr {
 	return unsafe { voidptr(&u8(base) + index * size) }
 }
 
 @[unsafe]
-fn vstable_sort_merge(source voidptr, dest voidptr, left usize, mid usize, right usize, size usize, sort_cb FnSortCB) {
+fn vstable_sort_merge(source voidptr, dest voidptr, left uint, mid uint, right uint, size uint, sort_cb FnSortCB) {
 	mut left_index := left
 	mut right_index := mid
 	mut dest_index := left
@@ -328,26 +328,26 @@ fn vstable_sort_merge(source voidptr, dest voidptr, left usize, mid usize, right
 		left_ptr := vsort_ptr_at(source, left_index, size)
 		right_ptr := vsort_ptr_at(source, right_index, size)
 		if sort_cb(left_ptr, right_ptr) <= 0 {
-			vmemcpy(vsort_ptr_at(dest, dest_index, size), left_ptr, isize(size))
+			vmemcpy(vsort_ptr_at(dest, dest_index, size), left_ptr, int(size))
 			left_index++
 		} else {
-			vmemcpy(vsort_ptr_at(dest, dest_index, size), right_ptr, isize(size))
+			vmemcpy(vsort_ptr_at(dest, dest_index, size), right_ptr, int(size))
 			right_index++
 		}
 		dest_index++
 	}
 	if left_index < mid {
 		vmemcpy(vsort_ptr_at(dest, dest_index, size), vsort_ptr_at(source, left_index, size),
-			isize((mid - left_index) * size))
+			int((mid - left_index) * size))
 	}
 	if right_index < right {
 		vmemcpy(vsort_ptr_at(dest, dest_index, size), vsort_ptr_at(source, right_index, size),
-			isize((right - right_index) * size))
+			int((right - right_index) * size))
 	}
 }
 
 @[inline; unsafe]
-fn vqsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
+fn vqsort(base voidptr, nmemb uint, size uint, sort_cb FnSortCB) {
 	$if trace_vqsort ? {
 		C.fprintf(C.stderr, c'vqsort base: %p, nmemb: %6uld, size: %6uld, sort_cb: %p\n', base,
 			nmemb, size, sort_cb)
@@ -363,16 +363,16 @@ fn vqsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 			print_backtrace()
 		}
 	}
-	total_size := isize(nmemb * size)
+	total_size := int(nmemb * size)
 	buffer := malloc(total_size)
 	defer {
 		free(buffer)
 	}
 	mut source := base
 	mut dest := voidptr(buffer)
-	mut width := usize(1)
+	mut width := uint(1)
 	for width < nmemb {
-		mut left := usize(0)
+		mut left := uint(0)
 		for left < nmemb {
 			mid := if left + width < nmemb { left + width } else { nmemb }
 			right := if left + width + width < nmemb { left + width + width } else { nmemb }

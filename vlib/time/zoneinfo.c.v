@@ -94,8 +94,8 @@ pub fn (loc &Location) unix_to_local(unix_time i64) !Time {
 // A `nanosecond` outside `0 .. 999_999_999` is carried into `unix_time`, as in `unix_nanosecond`.
 pub fn (loc &Location) unix_nanosecond_to_local(unix_time i64, nanosecond int) !Time {
 	if nanosecond < 0 || nanosecond >= 1_000_000_000 {
-		utc := unix_nanosecond(unix_time, nanosecond)
-		return loc.unix_nanosecond_to_local(utc.unix, utc.nanosecond)
+		utc_time := unix_nanosecond(unix_time, nanosecond)
+		return loc.unix_nanosecond_to_local(utc_time.unix, utc_time.nanosecond)
 	}
 	zone := loc.zone_at(unix_time)!
 	local := unix_nanosecond(unix_time + i64(zone.offset), nanosecond)

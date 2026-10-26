@@ -8,8 +8,8 @@ mut:
 	id            int
 	symbol        rune
 	bytecode      char
-	signed_size   isize
-	unsigned_size usize
+	signed_size   int
+	unsigned_size uint
 	tone          WidgetTone
 }
 
@@ -22,8 +22,8 @@ mut:
 	id            int
 	symbol        rune
 	bytecode      char
-	signed_size   isize
-	unsigned_size usize
+	signed_size   int
+	unsigned_size uint
 	tone          WidgetTone
 }
 
@@ -33,9 +33,9 @@ fn (w &Widget) read_symbol() rune { return w.symbol }
 
 fn (w &Widget) read_bytecode() char { return w.bytecode }
 
-fn (w &Widget) read_signed_size() isize { return w.signed_size }
+fn (w &Widget) read_signed_size() int { return w.signed_size }
 
-fn (w &Widget) read_unsigned_size() usize { return w.unsigned_size }
+fn (w &Widget) read_unsigned_size() uint { return w.unsigned_size }
 
 fn (w &Widget) read_tone() WidgetTone { return w.tone }
 

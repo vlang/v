@@ -8,7 +8,7 @@ struct C.va_list {}
 
 fn C.va_start(voidptr, voidptr)
 fn C.va_end(voidptr)
-fn C.vsnprintf(buf &char, size usize, fmt &char, ap C.va_list) int
+fn C.vsnprintf(buf &char, size uint, fmt &char, ap C.va_list) int
 
 // cvariadic28883 shares its module's name, like the fn in the issue, and
 // forwards its C-style variadic args to vsnprintf.

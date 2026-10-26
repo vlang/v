@@ -363,7 +363,7 @@ fn test_arena_memory_is_reused_in_loops() {
 	defer {
 		a.free()
 	}
-	mut warm_capacity := isize(0)
+	mut warm_capacity := int(0)
 	for i in 0 .. 2000 {
 		a.push()
 		mut sb := strings.new_builder(64)

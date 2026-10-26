@@ -2121,6 +2121,43 @@ fn test_stdio_notification_handler_asks_for_roots_without_waiting_for_the_client
 	transport.wait()
 }
 
+fn test_stdio_tool_handler_asks_the_client_and_gets_its_answer() {
+	// the read loop ran the tool's handler, so it read no more while the handler
+	// waited, and the client's answer to roots/list came only after list_roots had
+	// timed out
+	mut server_value := new_server(name: 'roots-tool-server', version: '1')
+	mut server := &server_value
+	server.add_tool(Tool{ name: 'where' }, fn (ctx Context, _ string) !ToolResult {
+		result := ctx.list_roots(2 * time.second)!
+		return tool_text_result(result.roots.map(it.uri).join(','))
+	})!
+	lines := chan string{cap: 8}
+	mut capture := &StdioCapture{}
+	transport := spawn serve_stdio_lines(mut server, lines, mut capture)
+	lines <- '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"${protocol_version}","capabilities":{"roots":{}},"clientInfo":{"name":"c","version":"0"}}}\n'
+	capture.wait_for('"id":1') or { assert false, 'no answer to initialize' }
+	lines <- '{"jsonrpc":"2.0","method":"notifications/initialized"}\n'
+	lines <- '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"where","arguments":{}}}\n'
+	request_line := capture.wait_for('"method":"roots/list"') or {
+		assert false, 'roots/list was not written: ${capture.output}'
+		return
+	}
+	request := decode_envelope(request_line)!
+	sent := time.now()
+	lines <- '{"jsonrpc":"2.0","id":${request.id},"result":{"roots":[{"uri":"file:///work"}]}}\n'
+	answer := capture.wait_for('"id":2') or {
+		assert false, 'no answer to tools/call: ${capture.output}'
+		return
+	}
+	assert answer.contains('file:///work'), answer
+	assert time.since(sent) < time.second
+	// the requests after it are answered, in order
+	lines <- '{"jsonrpc":"2.0","id":3,"method":"ping"}\n'
+	capture.wait_for('"id":3') or { assert false, 'no answer to ping' }
+	lines.close()
+	transport.wait()
+}
+
 fn test_notification_handler_sees_every_client_notification() {
 	seen := chan string{cap: 4}
 	mut server := new_server(

@@ -102,7 +102,7 @@ fn (c &CallCollector) collect_bodies_scoped_batches(body_ids []int, body_modules
 
 // markused_batch_arena_keep_bytes bounds how much of a batch arena stays mapped
 // for the next batch (see prealloc_scope_reenter).
-const markused_batch_arena_keep_bytes = isize(8) * 1024 * 1024
+const markused_batch_arena_keep_bytes = int(8) * 1024 * 1024
 
 // markused_worker_scope_reenter makes a left batch arena current again, rewound.
 // False means the caller needs a new arena.

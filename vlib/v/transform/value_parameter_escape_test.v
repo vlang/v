@@ -65,6 +65,43 @@ fn test_interface_dispatch_keeps_object_aliases_without_retaining_the_header() {
 	}
 }
 
+// `owner.node.element()` with `node &Node` passes the stored pointer: the call
+// result can hold what `node` points to, but never the address of `owner`.
+fn test_pointer_field_receiver_does_not_retain_its_owner() {
+	for is_pointer in [false, true] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		owner := t.make_ident('owner')
+		tc.register_synth_type(owner, types.Type(types.Struct{ name_id: flat.source_type_id('Element') }))
+		node_type := types.Type(types.Struct{ name_id: flat.source_type_id('Node') })
+		receiver_type := if is_pointer {
+			types.Type(types.Pointer{ base_type: node_type })
+		} else {
+			node_type
+		}
+		tc.fn_param_types['Node.element'] = [types.Type(types.Pointer{ base_type: node_type })]
+		result_type := types.Type(types.Struct{ name_id: flat.source_type_id('Element') })
+		tc.fn_ret_types['Node.element'] = result_type
+		receiver := t.make_selector(owner, 'node', flat.source_type_id(if is_pointer { '&Node' } else { 'Node' }))
+		tc.register_synth_type(receiver, receiver_type)
+		method := t.make_selector(receiver, 'element', 0)
+		start := a.children.len
+		a.children << method
+		call := a.add_node(flat.Node{ kind: .call, children_start: start, children_count: 1 })
+		tc.register_synth_type(call, result_type)
+		t.set_resolved_call_entry(int(call), 'Node.element')
+		assert t.escape_aggregate_address_sources(call, map[string][]string{}, map[string]string{}) == if is_pointer {
+			[]string{}
+		} else {
+			['owner']
+		}
+		assert t.escape_aggregate_address_sources(call, {
+			'owner': ['local']
+		}, map[string]string{}) == ['local']
+	}
+}
+
 fn test_direct_dereference_and_pointer_cast_keep_the_inline_address_owner() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -176,7 +213,7 @@ fn test_scalar_success_keeps_addresses_that_can_escape_in_a_result_error() {
 }
 
 fn test_pointer_to_integer_casts_keep_addresses_through_aliases_and_nested_casts() {
-	for target in ['usize', 'isize', 'u64'] {
+	for target in ['uint', 'int', 'u64'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -233,8 +270,8 @@ fn test_sum_type_scalar_extraction_preserves_encoded_address_aliases() {
 	tagged := t.make_ident('tagged')
 	start := a.children.len
 	a.children << tagged
-	unwrapped := a.add_node(flat.Node{ kind: .as_expr, children_start: start, children_count: 1, value: 'usize' })
-	tc.register_synth_type(unwrapped, tc.parse_type(flat.source_type_id('usize')))
+	unwrapped := a.add_node(flat.Node{ kind: .as_expr, children_start: start, children_count: 1, value: 'uint' })
+	tc.register_synth_type(unwrapped, tc.parse_type(flat.source_type_id('uint')))
 	assert t.escape_aggregate_address_sources(unwrapped, {
 		'tagged': ['value']
 	}, map[string]string{}) == ['value']
@@ -248,12 +285,12 @@ fn test_scalar_optional_alias_preserves_its_encoded_address() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	alias := t.make_ident('alias')
-	tc.register_synth_type(alias, tc.parse_type(flat.source_type_id('?usize')))
+	tc.register_synth_type(alias, tc.parse_type(flat.source_type_id('?uint')))
 	fallback := t.make_block([t.make_expr_stmt(t.make_int_literal(0))])
 	start := a.children.len
 	a.children << [alias, fallback]
 	unwrapped := a.add_node(flat.Node{ kind: .or_expr, children_start: start, children_count: 2 })
-	tc.register_synth_type(unwrapped, tc.parse_type(flat.source_type_id('usize')))
+	tc.register_synth_type(unwrapped, tc.parse_type(flat.source_type_id('uint')))
 	assert t.escape_aggregate_address_sources(unwrapped, {
 		'alias': ['value']
 	}, map[string]string{}) == ['value']
@@ -263,7 +300,7 @@ fn test_scalar_optional_alias_preserves_its_encoded_address() {
 }
 
 fn test_address_sized_result_success_preserves_argument_addresses() {
-	for target in ['usize', 'isize', 'u64', 'i64', 'int', 'f64', 'f32'] {
+	for target in ['uint', 'int', 'u64', 'i64', 'f64', 'f32'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})

@@ -2046,7 +2046,7 @@ fn (mut g Parser) read_if_expression() !string {
 	g.last_option_value_type = (if g.last_expression_type_text() in [
 		'Option',
 		'__v_result',
-	] && (flat.source_type_name(then_option_value_type) == flat.source_type_name(else_option_value_type) || then_option_value_type == 0 || else_option_value_type == 0) {
+	] && (then_option_value_type == else_option_value_type || then_option_value_type == 0 || else_option_value_type == 0) {
 		if then_option_value_type != 0 {
 			then_option_value_type
 		} else {
