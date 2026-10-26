@@ -25,13 +25,13 @@ fn windows_env_lookup(name string) ?string {
 // there is none. It is the same path again when 8.3 names are turned off on the volume.
 fn windows_short_path_name(path string) string {
 	// GetShortPathNameW needs the `\\?\` form for a path past MAX_PATH.
-	input := if windows_utf16_len(path) >= windows_temp_env_max_len && is_abs_path(path)
+	in_path := if windows_utf16_len(path) >= windows_temp_env_max_len && is_abs_path(path)
 		&& !path.starts_with('\\\\') {
 		'\\\\?\\' + path.replace('/', '\\')
 	} else {
 		path
 	}
-	winput := input.to_wide()
+	winput := in_path.to_wide()
 	defer {
 		unsafe { free(winput) }
 	}

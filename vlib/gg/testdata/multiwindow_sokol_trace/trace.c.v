@@ -11,19 +11,19 @@ fn C.v_multiwindow_trace_uninstall_owned(generation u64) int
 fn C.v_multiwindow_trace_logical_release_owned(generation u64) int
 fn C.v_multiwindow_trace_reset()
 fn C.v_multiwindow_trace_snapshot() &char
-fn C.v_multiwindow_typed_trace_snapshot_count() usize
+fn C.v_multiwindow_typed_trace_snapshot_count() uint
 fn C.v_multiwindow_typed_trace_snapshot_overflow() int
 fn C.v_multiwindow_trace_active_install_generation() u64
-fn C.v_multiwindow_typed_trace_snapshot_operation(index usize) int
-fn C.v_multiwindow_typed_trace_snapshot_identity(index usize) u32
-fn C.v_multiwindow_typed_trace_snapshot_value(index usize) i64
-fn C.v_multiwindow_typed_trace_snapshot_sequence(index usize) u64
-fn C.v_multiwindow_typed_trace_snapshot_swapchain_identity(index usize) u64
-fn C.v_multiwindow_typed_trace_snapshot_width(index usize) int
-fn C.v_multiwindow_typed_trace_snapshot_height(index usize) int
-fn C.v_multiwindow_typed_trace_snapshot_sample_count(index usize) int
-fn C.v_multiwindow_typed_trace_snapshot_color_format(index usize) int
-fn C.v_multiwindow_typed_trace_snapshot_depth_format(index usize) int
+fn C.v_multiwindow_typed_trace_snapshot_operation(index uint) int
+fn C.v_multiwindow_typed_trace_snapshot_identity(index uint) u32
+fn C.v_multiwindow_typed_trace_snapshot_value(index uint) i64
+fn C.v_multiwindow_typed_trace_snapshot_sequence(index uint) u64
+fn C.v_multiwindow_typed_trace_snapshot_swapchain_identity(index uint) u64
+fn C.v_multiwindow_typed_trace_snapshot_width(index uint) int
+fn C.v_multiwindow_typed_trace_snapshot_height(index uint) int
+fn C.v_multiwindow_typed_trace_snapshot_sample_count(index uint) int
+fn C.v_multiwindow_typed_trace_snapshot_color_format(index uint) int
+fn C.v_multiwindow_typed_trace_snapshot_depth_format(index uint) int
 
 pub enum Operation {
 	invalid
@@ -65,7 +65,7 @@ pub:
 pub struct TypedSnapshot {
 pub:
 	records            []Record
-	count              usize
+	count              uint
 	overflow           bool
 	install_generation u64
 }

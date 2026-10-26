@@ -14,7 +14,7 @@ fn test_reference_match_patterns_keep_generic_types() {
 		id := p.match_branch_cond()
 		node := p.a.node(id)
 		actual := match node.kind {
-			.ident { node.value }
+			.ident { node.value_text() }
 			.selector { p.a.child_node(node, 0).value + '.' + node.value }
 			else { '' }
 		}

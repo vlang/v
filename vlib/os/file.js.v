@@ -138,7 +138,8 @@ pub fn (mut f File) close() {
 	#$fs.closeSync(f.valueOf().fd.valueOf())
 }
 
-pub fn (mut f File) write_full_buffer(s voidptr, buffer_len usize) ! {}
+// write_full_buffer writes buffer_len bytes from s to the file.
+pub fn (mut f File) write_full_buffer(s voidptr, buffer_len uint) ! {}
 
 pub fn (mut f File) write_array(buffer array) !int {
 	if !f.is_opened {

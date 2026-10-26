@@ -136,9 +136,9 @@ fn target2paths(target_path string, postfix string) (string, string, string, str
 // (`min / -1`), and shift counts, and the opt-in `-check-casts` checks. Each program
 // is compiled once with and once without its flag, then run once per case.
 
-const signed_int_types = ['i8', 'i16', 'i32', 'i64', 'int', 'isize']!
+const signed_int_types = ['i8', 'i16', 'i32', 'i64', 'int']!
 
-const all_int_types = ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'int', 'isize', 'usize']!
+const all_int_types = ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'int', 'uint']!
 
 struct OpCase {
 	args   []string
@@ -166,7 +166,7 @@ fn int_type_bits(typ string) int {
 		'i8', 'u8' { 8 }
 		'i16', 'u16' { 16 }
 		'i32', 'u32' { 32 }
-		'int', 'isize', 'usize' { int(sizeof(isize)) * 8 }
+		'int', 'uint' { int(sizeof(int)) * 8 }
 		else { 64 }
 	}
 }
@@ -189,10 +189,10 @@ fn signed_max(bits int) string {
 	return '${(u64(1) << (bits - 1)) - 1}'
 }
 
-// printable prints an `isize` result through `i64`: printing an `isize` goes
+// printable prints an `int` result through `i64`: printing an `int` goes
 // through `strconv.format_int`, which does not handle `min_i64` yet.
 fn printable(typ string, expr string) string {
-	return if typ == 'isize' { 'i64(${expr})' } else { expr }
+	return if typ == 'int' { 'i64(${expr})' } else { expr }
 }
 
 fn overflow_ops_source() string {
@@ -332,9 +332,9 @@ const cast_pairs = [
 	['i16', 'u16']!,
 	['i32', 'i16']!,
 	['u8', 'i8']!,
-	['int', 'usize']!,
-	['usize', 'u32']!,
-	['isize', 'i8']!,
+	['int', 'uint']!,
+	['uint', 'u32']!,
+	['int', 'i8']!,
 	['i8', 'i64']!,
 	['u32', 'i64']!,
 	['u8', 'u16']!,
@@ -349,7 +349,7 @@ fn casts_source() string {
 	}
 	sb << 'fn literal_cast() u8 {\n\treturn u8(-1)\n}\n'
 	sb << 'fn literal_not_cast() u64 {\n\treturn u64(~0)\n}\n'
-	sb << 'fn big_literal_casts() string {\n\treturn "\${u64(0x8000000000000000)} \${u64(18446744073709551615)} \${u64(0xcbf29ce484222325)} \${u64((0xffff_ffff_ffff_ffff))} \${u32(0xffffffff)} \${usize(0xffffffff)} \${i8(0x7f)} \${u16(0b1111111111111111)}"\n}\n'
+	sb << 'fn big_literal_casts() string {\n\treturn "\${u64(0x8000000000000000)} \${u64(18446744073709551615)} \${u64(0xcbf29ce484222325)} \${u64((0xffff_ffff_ffff_ffff))} \${u32(0xffffffff)} \${uint(0xffffffff)} \${i8(0x7f)} \${u16(0b1111111111111111)}"\n}\n'
 	sb << 'fn alias_cast(x i64) Byte {\n\treturn Byte(x)\n}\n'
 	sb << '@[ignore_overflow]\nfn ignored_cast(x i64) u8 {\n\treturn u8(x)\n}\n'
 	sb << 'fn main() {\n\tkind := os.args[1]\n\ta := os.args[2]\n\tmatch kind {'
@@ -386,7 +386,7 @@ fn casts_cases(checked bool) []OpCase {
 		['i16', 'u16', '-1', '65535'],
 		['i32', 'i16', '32768', '-32768'],
 		['u8', 'i8', '128', '-128'],
-		['isize', 'i8', '-200', '56'],
+		['int', 'i8', '-200', '56'],
 	]
 	fitting := [
 		['i64', 'i8', '127'],
@@ -402,7 +402,7 @@ fn casts_cases(checked bool) []OpCase {
 		['i16', 'u16', '32767'],
 		['i32', 'i16', '-32768'],
 		['u8', 'i8', '127'],
-		['int', 'usize', '0'],
+		['int', 'uint', '0'],
 		['i8', 'i64', '-128'],
 		['u32', 'i64', '4294967295'],
 		['u8', 'u16', '255'],
@@ -419,11 +419,11 @@ fn casts_cases(checked bool) []OpCase {
 			cases << ok_case(c[3], '${c[0]}_${c[1]}', c[2])
 		}
 	}
-	if int_type_bits('usize') == 64 {
+	if int_type_bits('uint') == 64 {
 		if checked {
-			cases << panic_case('attempt to cast with overflow(usize(int(-1)))', 'int_usize',
+			cases << panic_case('attempt to cast with overflow(uint(int(-1)))', 'int_usize',
 				'-1')
-			cases << panic_case('attempt to cast with overflow(u32(usize(4294967296)))',
+			cases << panic_case('attempt to cast with overflow(u32(uint(4294967296)))',
 				'usize_u32', '4294967296')
 		} else {
 			cases << ok_case('18446744073709551615', 'int_usize', '-1')

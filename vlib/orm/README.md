@@ -8,7 +8,8 @@ Driver authors using the shared SQL generators can target SQLite, PostgreSQL, My
 For `.vsql`, use `orm.orm_select_gen_with_dialect`, which spells a limit and an offset as
 `OFFSET n ROWS FETCH FIRST n ROWS ONLY`, and number the placeholders (`num: true`).
 `orm.orm_table_gen` then leaves out `IF NOT EXISTS` and indexes, which vsql does not have,
-and returns an error for `UNIQUE`, `DEFAULT` and `REFERENCES`, which it cannot declare.
+and the comment before a `@[unique: 'group']` constraint. A `@[default]` must be a value vsql
+accepts as a column default, such as a literal or `CURRENT_TIMESTAMP`.
 
 ## Deprecation notice: orm_fn
 

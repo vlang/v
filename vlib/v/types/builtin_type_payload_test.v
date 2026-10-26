@@ -2,6 +2,21 @@ module types
 
 import v.flat
 
+fn test_builtin_source_spelling_classifier_preserves_exact_names() {
+	names := ['i8', 'u8', 'int', 'i16', 'i32', 'i64', 'u16', 'u32', 'u64', 'f32', 'f64', 'map',
+		'nil', 'bool', 'char', 'i128', 'rune', 'u128', 'uint', 'void', 'none', 'isize', 'usize',
+		'array', 'string', 'voidptr', 'charptr', 'byteptr']
+	for name in names {
+		assert is_builtin_type_name(name)
+		assert is_builtin_type_name_id(flat.source_type_id(name))
+	}
+	for name in ['', 'unknown', 'generic', 'builtin.int', 'main.string', 'Int', ' int', 'int ',
+		'&int', '[]int', 'map[string]int', 'float_literal', 'int_literal', 'thread', 'IError'] {
+		assert !is_builtin_type_name(name)
+		assert !is_builtin_type_name_id(flat.source_type_id(name))
+	}
+}
+
 fn test_builtin_literal_resolution_preserves_builtin_values() {
 	mut a := flat.FlatAst.new()
 	integer_nodes := [a.add_val(.int_literal, '1'), a.add_val(.int_literal, '200')]
@@ -157,5 +172,20 @@ fn test_cached_builtin_int_keeps_platform_width_dependent_lowering() {
 		assert typ.name() == 'int'
 		assert tc.c_type(typ) == if bits == 32 { 'i32' } else { 'i64' }
 		assert semantic_types_equal(typ, builtin_int_type)
+	}
+}
+
+fn test_numeric_builtin_values_preserve_exact_spelling_and_unknown_fallback() {
+	for spelling in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'i128',
+		'u128', 'f32', 'f64', 'string', 'char', 'rune', 'isize', 'uint', 'usize', 'void', 'voidptr',
+		'charptr', 'byteptr', 'nil', 'none', 'array', 'map', '', 'unknown', 'builtin.int', 'Int',
+		' int ', '&int', '[]int'] {
+		expected := builtin_type_value(spelling)
+		actual := builtin_type_value_id(flat.source_type_id(spelling))
+		assert semantic_types_equal(actual, expected), spelling
+		if expected is Unknown {
+			assert actual is Unknown
+			assert actual.reason == expected.reason
+		}
 	}
 }

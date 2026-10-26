@@ -6454,14 +6454,14 @@ fn main() {
 	println(auto + v_auto)
 }
 ', 'reserved_identifiers.v', prefs) or { panic(err) }
-	assert c_source.contains('int __vf_keyword_auto;'), c_source
-	assert c_source.contains('int v_auto;'), c_source
-	assert c_source.contains('int calculate(Holder holder, int __vf_keyword_register, int v_register)'), c_source
-	assert c_source.contains('__typeof__((__vf_keyword_register)) __vf_keyword_restrict = (__vf_keyword_register);'), c_source
-	assert c_source.contains('__typeof__((v_register)) v_restrict = (v_register);'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} __vf_keyword_auto;'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} v_auto;'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} main__calculate(Holder holder, ${fastc_platform_int_c_type} __vf_keyword_register, ${fastc_platform_int_c_type} v_register)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} __vf_keyword_restrict = (__vf_keyword_register);'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} v_restrict = (v_register);'), c_source
 	assert c_source.contains('return holder.__vf_keyword_auto+holder.v_auto+__vf_keyword_restrict+v_restrict;'), c_source
-	assert c_source.contains('int __vf_function_auto(void)'), c_source
-	assert c_source.contains('int v_auto(void)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} main__auto(void)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} main__v_auto(void)'), c_source
 	assert c_source.contains(' __vf_keyword_auto = (result);'), c_source
 	assert c_source.contains(' v_auto = (v_result);'), c_source
 
@@ -7127,7 +7127,7 @@ fn test_map_pointer_sized_callbacks_follow_target_width() {
 	source := 'module main
 
 fn main() {
-	values := map[usize]int{}
+	values := map[uint]int{}
 	pointers := map[voidptr]int{}
 	println(values.len)
 	println(pointers.len)
@@ -7136,7 +7136,7 @@ fn main() {
 	c32 := generate(source, 'map_usize_32.v', prefs) or { panic(err) }
 	int32_type := fastc_output_c_type('int')
 	assert int32_type == 'i32'
-	for key_type in ['usize', 'voidptr'] {
+	for key_type in ['uint', 'voidptr'] {
 		assert c32.contains('sizeof(${key_type}), sizeof(${int32_type}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c32
 	}
 
@@ -7144,7 +7144,7 @@ fn main() {
 	c64 := generate(source, 'map_usize_64.v', prefs) or { panic(err) }
 	int64_type := fastc_output_c_type('int')
 	assert int64_type == 'i64'
-	for key_type in ['usize', 'voidptr'] {
+	for key_type in ['uint', 'voidptr'] {
 		assert c64.contains('sizeof(${key_type}), sizeof(${int64_type}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
 	}
 
@@ -7356,7 +7356,7 @@ fn test_c_directive_hoisting_preserves_source_order() {
 
 fn test_nested_fixed_array_struct_field_uses_native_c_dimensions() {
 	typ := fastc_fixed_array_type('4', fastc_fixed_array_type('256', 'u32'))
-	assert fastc_fixed_array_field_declaration(typ, 'values')? == 'u32 values[4][256]'
+	assert fastc_fixed_array_field_declaration(flat.source_type_id(typ), 'values')? == 'u32 values[4][256]'
 }
 
 fn test_selfhost_comptime_type_condition_accepts_disjunctions() {
@@ -11951,7 +11951,7 @@ fn main() {
 ', 'selfhost_static_multi_return.v', prefs) or { panic(err) }
 	assert c_source.contains('i64 number = (i64){0}'), c_source
 	assert c_source.contains('string text = (string){0}'), c_source
-	assert !c_source.contains('usize number'), c_source
+	assert !c_source.contains('uint number'), c_source
 }
 
 fn test_selfhost_explicit_embed_method_call() {

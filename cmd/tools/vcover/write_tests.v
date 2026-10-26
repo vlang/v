@@ -44,7 +44,7 @@ fn test_file_for(source string) string {
 fn zero_value_for(typ string) ?string {
 	t := typ.trim_space()
 	if t in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'byte', 'rune', 'isize',
-		'usize'] {
+		'uint', 'usize'] {
 		return '0'
 	}
 	if t in ['f32', 'f64'] {

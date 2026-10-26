@@ -223,9 +223,9 @@ fn fastc_c_function_name_for_key(key string) string {
 	return c_name
 }
 
-fn fastc_disabled_call_expression(return_type string) string {
-	if return_type in ['', 'void'] {
+fn fastc_disabled_call_expression(return_type u32) string {
+	if return_type in [u32(0), flat.source_type_void] {
 		return '((void)0)'
 	}
-	return '((${return_type}){0})'
+	return '((${flat.source_type_name(return_type)}){0})'
 }

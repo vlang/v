@@ -53,8 +53,8 @@ fn test_wayland_owner_relation_reaches_xdg_toplevel_parent() {
 			app.stop()!
 			panic(err_window_not_found)
 		}
-		assert C.v_multiwindow_wayland_get_last_parent_child() == usize(app.backend.wayland.windows[child_index].xdg_toplevel)
-		assert C.v_multiwindow_wayland_get_last_parent_owner() == usize(app.backend.wayland.windows[owner_index].xdg_toplevel)
+		assert C.v_multiwindow_wayland_get_last_parent_child() == uint(app.backend.wayland.windows[child_index].xdg_toplevel)
+		assert C.v_multiwindow_wayland_get_last_parent_owner() == uint(app.backend.wayland.windows[owner_index].xdg_toplevel)
 		service_index := app.services.window_index(child)!
 		registered_owner := app.services.windows[service_index].owner or {
 			app.stop()!
@@ -72,9 +72,9 @@ fn test_wayland_cursor_support_is_runtime_and_shape_specific() {
 		mut backend := &WaylandBackend{}
 		assert backend.cursor_support(.pointer) == .conditional
 		assert backend.cursor_support(.resize_all) == .unsupported
-		backend.pointer = voidptr(usize(0x11))
-		backend.cursor_shape_manager = voidptr(usize(0x12))
-		backend.cursor_shape_device = voidptr(usize(0x13))
+		backend.pointer = voidptr(uint(0x11))
+		backend.cursor_shape_manager = voidptr(uint(0x12))
+		backend.cursor_shape_device = voidptr(uint(0x13))
 		for shape in [CursorShape.default, .pointer, .move, .n_resize, .s_resize, .e_resize, .w_resize,
 			.ne_resize, .nw_resize, .se_resize, .sw_resize, .ew_resize, .ns_resize, .nesw_resize,
 			.nwse_resize, .grab, .grabbing, .text, .crosshair, .not_allowed] {
@@ -134,10 +134,10 @@ fn test_wayland_output_scale_commits_at_done_and_refreshes_only_member_windows()
 		native_operations.advance_renderer_attempt(1, 2)!
 		mut backend := &WaylandBackend{
 			started:           true
-			display:           voidptr(usize(0x20))
+			display:           voidptr(uint(0x20))
 			native_operations: native_operations
 		}
-		proxy := voidptr(usize(0x21))
+		proxy := voidptr(uint(0x21))
 		output := &WaylandOutputRecord{
 			slot:              0
 			owner:             backend
@@ -159,7 +159,7 @@ fn test_wayland_output_scale_commits_at_done_and_refreshes_only_member_windows()
 			global_name:       8
 			bound_version:     4
 			generation:        4
-			proxy:             voidptr(usize(0x22))
+			proxy:             voidptr(uint(0x22))
 			mode_width:        2560
 			mode_height:       1440
 			scale:             3
@@ -229,9 +229,9 @@ fn test_wayland_output_scale_commits_at_done_and_refreshes_only_member_windows()
 			height:                     48
 			buffer_scale:               1
 			render_scale:               1.5
-			fractional_scale:           voidptr(usize(0x23))
+			fractional_scale:           voidptr(uint(0x23))
 			fractional_scale_numerator: 180
-			viewport:                   voidptr(usize(0x24))
+			viewport:                   voidptr(uint(0x24))
 			render_target_generation:   11
 			output_slots:               [0]
 		}
@@ -291,8 +291,8 @@ fn test_wayland_output_scale_commits_at_done_and_refreshes_only_member_windows()
 fn test_wayland_fractional_scale_preference_updates_metrics_and_framebuffer() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
-		fractional_scale := voidptr(usize(0x31))
-		viewport := voidptr(usize(0x32))
+		fractional_scale := voidptr(uint(0x31))
+		viewport := voidptr(uint(0x32))
 		mut record := &WaylandWindowRecord{
 			id:                       WindowId{
 				app_instance: 1
@@ -417,7 +417,7 @@ fn test_wayland_remap_replays_persisted_toplevel_attributes_before_commit_and_pa
 		mut owner := &WaylandWindowRecord{
 			id:           owner_id
 			owner:        backend
-			xdg_toplevel: voidptr(usize(0xb1))
+			xdg_toplevel: voidptr(uint(0xb1))
 			mapped:       true
 		}
 		mut child := &WaylandWindowRecord{
@@ -433,9 +433,9 @@ fn test_wayland_remap_replays_persisted_toplevel_attributes_before_commit_and_pa
 			request_server_decoration: true
 			requested_maximized:       true
 			requested_fullscreen:      true
-			surface:                   voidptr(usize(0xb2))
-			xdg_toplevel:              voidptr(usize(0xb3))
-			toplevel_decoration:       voidptr(usize(0xb4))
+			surface:                   voidptr(uint(0xb2))
+			xdg_toplevel:              voidptr(uint(0xb3))
+			toplevel_decoration:       voidptr(uint(0xb4))
 			mapped:                    true
 		}
 		backend.windows << owner
@@ -463,7 +463,7 @@ fn test_wayland_remap_replays_persisted_toplevel_attributes_before_commit_and_pa
 fn test_wayland_hide_barrier_failure_preserves_visible_window_state() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
-			display:              voidptr(usize(0xc1))
+			display:              voidptr(uint(0xc1))
 			toplevel_replay_test: WaylandToplevelReplayTestSeam{
 				hide_barrier_override: true
 			}
@@ -476,7 +476,7 @@ fn test_wayland_hide_barrier_failure_preserves_visible_window_state() {
 		mut record := &WaylandWindowRecord{
 			id:                             window
 			owner:                          backend
-			surface:                        voidptr(usize(0xc2))
+			surface:                        voidptr(uint(0xc2))
 			requested_visible:              true
 			mapped:                         true
 			configured:                     true
@@ -512,7 +512,7 @@ fn test_wayland_hide_barrier_failure_preserves_visible_window_state() {
 
 fn new_wayland_show_handshake_test_backend(observations []WaylandShowHandshakeTestObservation, requested_maximized bool, requested_fullscreen bool, baseline_maximized bool, baseline_fullscreen bool) (&WaylandBackend, WindowId) {
 	mut backend := &WaylandBackend{
-		display:              voidptr(usize(0xd1))
+		display:              voidptr(uint(0xd1))
 		toplevel_replay_test: WaylandToplevelReplayTestSeam{
 			active:                  true
 			show_handshake_override: true
@@ -529,10 +529,10 @@ fn new_wayland_show_handshake_test_backend(observations []WaylandShowHandshakeTe
 		owner:                        backend
 		title:                        'handshake'
 		app_id:                       'org.vlang.handshake'
-		surface:                      voidptr(usize(0xd2))
-		xdg_surface:                  voidptr(usize(0xd3))
-		xdg_toplevel:                 voidptr(usize(0xd4))
-		wl_egl_window:                voidptr(usize(0xd5))
+		surface:                      voidptr(uint(0xd2))
+		xdg_surface:                  voidptr(uint(0xd3))
+		xdg_toplevel:                 voidptr(uint(0xd4))
+		wl_egl_window:                voidptr(uint(0xd5))
 		width:                        360
 		height:                       260
 		min_width:                    1
@@ -849,9 +849,9 @@ fn test_wayland_hide_releases_only_egl_surface_and_invalidates_old_generation_on
 			height:                   60
 			frame_ready:              true
 			pending_egl_resize:       true
-			egl_surface:              voidptr(usize(0xe1))
+			egl_surface:              voidptr(uint(0xe1))
 			egl_surface_ticket:       91
-			wl_egl_window:            voidptr(usize(0xe2))
+			wl_egl_window:            voidptr(uint(0xe2))
 			wl_egl_window_ticket:     92
 			render_target_generation: 9
 		}
@@ -860,7 +860,7 @@ fn test_wayland_hide_releases_only_egl_surface_and_invalidates_old_generation_on
 		assert backend.toplevel_replay_test.operations == ['anchor', 'release_egl_surface']
 		assert record.egl_surface == unsafe { nil }
 		assert record.egl_surface_ticket == 0
-		assert record.wl_egl_window == voidptr(usize(0xe2))
+		assert record.wl_egl_window == voidptr(uint(0xe2))
 		assert record.wl_egl_window_ticket == 92
 		assert record.render_target_generation == 10
 		assert record.pending_egl_resize
@@ -886,12 +886,12 @@ fn test_wayland_hide_releases_only_egl_surface_and_invalidates_old_generation_on
 			false)
 		anchor_failure.toplevel_replay_test.hide_render_target_override = true
 		anchor_failure.toplevel_replay_test.hide_anchor_failure = true
-		anchor_failure.windows[0].egl_surface = voidptr(usize(0xe3))
+		anchor_failure.windows[0].egl_surface = voidptr(uint(0xe3))
 		anchor_failure.windows[0].egl_surface_ticket = 93
 		mut anchor_error := ''
 		anchor_failure.release_window_render_target_for_hide(0) or { anchor_error = err.msg() }
 		assert anchor_error == err_render_native_renderer_unavailable
-		assert anchor_failure.windows[0].egl_surface == voidptr(usize(0xe3))
+		assert anchor_failure.windows[0].egl_surface == voidptr(uint(0xe3))
 		assert anchor_failure.windows[0].egl_surface_ticket == 93
 		assert anchor_failure.windows[0].render_target_generation == 7
 
@@ -899,12 +899,12 @@ fn test_wayland_hide_releases_only_egl_surface_and_invalidates_old_generation_on
 			false)
 		release_failure.toplevel_replay_test.hide_render_target_override = true
 		release_failure.toplevel_replay_test.hide_surface_release_failure = true
-		release_failure.windows[0].egl_surface = voidptr(usize(0xe4))
+		release_failure.windows[0].egl_surface = voidptr(uint(0xe4))
 		release_failure.windows[0].egl_surface_ticket = 94
 		mut release_error := ''
 		release_failure.release_window_render_target_for_hide(0) or { release_error = err.msg() }
 		assert release_error == err_wayland_egl_surface_failed
-		assert release_failure.windows[0].egl_surface == voidptr(usize(0xe4))
+		assert release_failure.windows[0].egl_surface == voidptr(uint(0xe4))
 		assert release_failure.windows[0].egl_surface_ticket == 94
 		assert release_failure.windows[0].render_target_generation == 7
 
@@ -912,14 +912,14 @@ fn test_wayland_hide_releases_only_egl_surface_and_invalidates_old_generation_on
 			false, false)
 		unclaimed_terminal.toplevel_replay_test.hide_render_target_override = true
 		unclaimed_terminal.toplevel_replay_test.hide_surface_unclaimed_terminal = true
-		unclaimed_terminal.windows[0].egl_surface = voidptr(usize(0xe6))
+		unclaimed_terminal.windows[0].egl_surface = voidptr(uint(0xe6))
 		unclaimed_terminal.windows[0].egl_surface_ticket = 96
 		mut unclaimed_error := ''
 		unclaimed_terminal.release_window_render_target_for_hide(0) or {
 			unclaimed_error = err.msg()
 		}
 		assert unclaimed_error == err_wayland_egl_surface_failed
-		assert unclaimed_terminal.windows[0].egl_surface == voidptr(usize(0xe6))
+		assert unclaimed_terminal.windows[0].egl_surface == voidptr(uint(0xe6))
 		assert unclaimed_terminal.windows[0].egl_surface_ticket == 96
 		assert unclaimed_terminal.windows[0].render_target_generation == 7
 
@@ -927,21 +927,21 @@ fn test_wayland_hide_releases_only_egl_surface_and_invalidates_old_generation_on
 			false)
 		terminal_failure.toplevel_replay_test.hide_render_target_override = true
 		terminal_failure.toplevel_replay_test.hide_surface_terminal_failure = true
-		terminal_failure.windows[0].egl_surface = voidptr(usize(0xe5))
+		terminal_failure.windows[0].egl_surface = voidptr(uint(0xe5))
 		terminal_failure.windows[0].egl_surface_ticket = 95
 		mut terminal_error := ''
 		terminal_failure.release_window_render_target_for_hide(0) or { terminal_error = err.msg() }
 		assert terminal_error == err_wayland_egl_surface_failed
 		assert terminal_failure.windows[0].egl_surface == unsafe { nil }
 		assert terminal_failure.windows[0].egl_surface_ticket == 0
-		assert terminal_failure.windows[0].wl_egl_window == voidptr(usize(0xd5))
+		assert terminal_failure.windows[0].wl_egl_window == voidptr(uint(0xd5))
 		assert terminal_failure.windows[0].render_target_generation == 8
 	}
 }
 
 fn test_wayland_fallback_buffer_is_reused_only_for_the_exact_remap_extent() {
 	$if linux && sokol_wayland ? {
-		buffer := voidptr(usize(0xf1))
+		buffer := voidptr(uint(0xf1))
 		record := &WaylandWindowRecord{
 			fallback_current_buffer: buffer
 			fallback_buffer_width:   360
@@ -956,7 +956,7 @@ fn test_wayland_fallback_buffer_is_reused_only_for_the_exact_remap_extent() {
 fn test_wayland_fractional_scale_requires_both_protocol_objects() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
-		fractional_scale := voidptr(usize(0x41))
+		fractional_scale := voidptr(uint(0x41))
 		mut record := &WaylandWindowRecord{
 			id:               WindowId{
 				app_instance: 1
@@ -995,8 +995,8 @@ fn test_wayland_xdg_configure_states_are_published_after_surface_configure() {
 		}
 		mut active_states := [u32(1), u32(4)]
 		mut active_array := C.wl_array{
-			size:  usize(active_states.len) * sizeof(u32)
-			alloc: usize(active_states.len) * sizeof(u32)
+			size:  uint(active_states.len) * sizeof(u32)
+			alloc: uint(active_states.len) * sizeof(u32)
 			data:  active_states.data
 		}
 		wayland_xdg_toplevel_configure(record.listener_data(), unsafe { nil }, 64, 48,
@@ -1030,11 +1030,11 @@ fn test_wayland_state_operations_are_deferred_by_capability_until_observation() 
 		native_operations.advance_renderer_attempt(1, 2)!
 		mut backend := &WaylandBackend{
 			started:                  true
-			display:                  voidptr(usize(1))
+			display:                  voidptr(uint(1))
 			native_operations:        native_operations
-			pointer:                  voidptr(usize(2))
-			relative_pointer_manager: voidptr(usize(3))
-			pointer_constraints:      voidptr(usize(4))
+			pointer:                  voidptr(uint(2))
+			relative_pointer_manager: voidptr(uint(3))
+			pointer_constraints:      voidptr(uint(4))
 		}
 		for operation in [ServiceOperation.show, .minimize, .maximize, .restore, .fullscreen,
 			.mouse_lock] {
@@ -1053,7 +1053,7 @@ fn test_wayland_state_operations_are_deferred_by_capability_until_observation() 
 		backend.started = true
 		backend.display = unsafe { nil }
 		assert state_operations.map(backend.service_operation_capability(it).support) == expected_dead_support
-		backend.display = voidptr(usize(1))
+		backend.display = voidptr(uint(1))
 		backend.wayland_display_unavailable = true
 		assert state_operations.map(backend.service_operation_capability(it).support) == expected_dead_support
 		backend.wayland_display_unavailable = false
@@ -1110,10 +1110,10 @@ fn test_wayland_existing_mouse_lock_can_be_released_after_capability_loss() {
 		app.backend.kind = .wayland
 		app.backend.wayland = WaylandBackend{
 			started:                     true
-			display:                     voidptr(usize(1))
+			display:                     voidptr(uint(1))
 			wayland_display_unavailable: true
-			relative_pointer_manager:    voidptr(usize(2))
-			pointer_constraints:         voidptr(usize(3))
+			relative_pointer_manager:    voidptr(uint(2))
+			pointer_constraints:         voidptr(uint(3))
 		}
 		mut record := &WaylandWindowRecord{
 			id:    window
@@ -1160,10 +1160,10 @@ fn test_wayland_synchronous_clipboard_write_reserves_terminal_before_native_muta
 		original_backend := app.backend.kind
 		app.backend.kind = .wayland
 		app.backend.wayland.started = true
-		app.backend.wayland.display = voidptr(usize(1))
-		app.backend.wayland.data_device_manager = voidptr(usize(2))
-		app.backend.wayland.data_device = voidptr(usize(3))
-		app.backend.wayland.seat = voidptr(usize(4))
+		app.backend.wayland.display = voidptr(uint(1))
+		app.backend.wayland.data_device_manager = voidptr(uint(2))
+		app.backend.wayland.data_device = voidptr(uint(3))
+		app.backend.wayland.seat = voidptr(uint(4))
 		request_before := app.services.next_request
 		pending_before := app.services.pending.len
 		source_before := app.backend.wayland.clipboard_source
@@ -1207,8 +1207,8 @@ fn test_wayland_relative_pointer_callbacks_publish_observed_state_and_motion() {
 			width:  64
 			height: 48
 		}
-		locked_pointer := voidptr(usize(0x21))
-		relative_pointer := voidptr(usize(0x22))
+		locked_pointer := voidptr(uint(0x21))
+		relative_pointer := voidptr(uint(0x22))
 		record.locked_pointer = locked_pointer
 		record.relative_pointer = relative_pointer
 		record.mouse_lock_requested = true
@@ -1452,7 +1452,7 @@ fn test_wayland_xdg_foreign_callback_retains_and_releases_exact_lease() {
 			app_instance: 7
 			serial:       11
 		}
-		exported := voidptr(usize(0x41))
+		exported := voidptr(uint(0x41))
 		mut portal := &WaylandPortalExport{
 			request:  request
 			window:   window
@@ -1789,7 +1789,7 @@ fn test_wayland_clipboard_read_timeout_is_terminal_exactly_once() {
 fn test_wayland_fatal_dispatch_terminalizes_active_clipboard_read_exactly_once() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
-			display: voidptr(usize(0x11))
+			display: voidptr(uint(0x11))
 		}
 		_, record, fds := wayland_test_begin_clipboard_read(mut backend, 86, []u8{})
 		request := backend.clipboard_read.request
@@ -1829,7 +1829,7 @@ fn test_wayland_fatal_dispatch_terminalizes_active_clipboard_read_exactly_once()
 		assert record.pending_events.len == 1
 
 		mut fallback_backend := &WaylandBackend{
-			display:                     voidptr(usize(0x12))
+			display:                     voidptr(uint(0x12))
 			wayland_display_unavailable: true
 		}
 		_, fallback_record, fallback_fds := wayland_test_begin_clipboard_read(mut fallback_backend,
@@ -1850,7 +1850,7 @@ fn test_wayland_fatal_dispatch_terminalizes_active_clipboard_read_exactly_once()
 		assert fallback_record.pending_events.len == 1
 
 		mut health_backend := &WaylandBackend{
-			display:       voidptr(usize(0x13))
+			display:       voidptr(uint(0x13))
 			render_health: .unavailable
 		}
 		assert health_backend.transport_can_marshal()
@@ -1876,7 +1876,7 @@ fn test_wayland_fatal_dispatch_terminalizes_active_clipboard_read_exactly_once()
 fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_ready_portals() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
-			display:       voidptr(usize(0x21))
+			display:       voidptr(uint(0x21))
 			render_health: .unavailable
 			io_test:       WaylandIoTestSeam{
 				pending_drop_native_bypass: true
@@ -1902,7 +1902,7 @@ fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_r
 			lease:   pending_lease
 			owner:   backend
 		}
-		ready_exported := voidptr(usize(0x25))
+		ready_exported := voidptr(uint(0x25))
 		mut ready_portal := &WaylandPortalExport{
 			request:  ServiceRequestId{
 				app_instance: 1
@@ -1933,7 +1933,7 @@ fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_r
 		backend.clipboard_send_cursor = 1
 		backend.clipboard_send_snapshot_bytes = 3
 		drop_fds := wayland_pipe()!
-		offer := voidptr(usize(0x22))
+		offer := voidptr(uint(0x22))
 		backend.data_offer = offer
 		backend.data_offer_has_uri_list = true
 		backend.data_offer_window = window
@@ -1981,8 +1981,8 @@ fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_r
 		assert backend.clipboard_sends.len == 0
 		assert backend.clipboard_send_cursor == 0
 		assert backend.clipboard_send_snapshot_bytes == 0
-		assert C.write(send_a[1], c'x', usize(1)) == -1
-		assert C.write(send_b[1], c'x', usize(1)) == -1
+		assert C.write(send_a[1], c'x', uint(1)) == -1
+		assert C.write(send_b[1], c'x', uint(1)) == -1
 		C.close(send_a[0])
 		C.close(send_b[0])
 		assert backend.data_offer == unsafe { nil }
@@ -2007,7 +2007,7 @@ fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_r
 		assert backend.portal_exports.len == 0
 
 		mut nonfatal_backend := &WaylandBackend{
-			display: voidptr(usize(0x23))
+			display: voidptr(uint(0x23))
 			io_test: WaylandIoTestSeam{
 				pending_drop_native_bypass: true
 			}
@@ -2032,7 +2032,7 @@ fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_r
 			fd:      nonfatal_send[1]
 			payload: 'retained'
 		}
-		nonfatal_offer := voidptr(usize(0x24))
+		nonfatal_offer := voidptr(uint(0x24))
 		nonfatal_backend.data_offer = nonfatal_offer
 		nonfatal_backend.pending_drop_offer = nonfatal_offer
 		nonfatal_backend.pending_drop_fd = nonfatal_drop[0]
@@ -2073,7 +2073,7 @@ fn test_wayland_clipboard_queued_eof_wins_over_expired_deadline_exactly_once() {
 		_, record, fds := wayland_test_begin_clipboard_read(mut backend, 79, []u8{})
 		payload := 'queued-after-deadline'
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 1
-		assert C.write(fds[1], payload.str, usize(payload.len)) == payload.len
+		assert C.write(fds[1], payload.str, uint(payload.len)) == payload.len
 		C.close(fds[1])
 		backend.clipboard_read.deadline_ns = 0
 		backend.io_test.clipboard_read_interruptions = 1
@@ -2147,7 +2147,7 @@ fn test_wayland_clipboard_read_progress_refreshes_inactivity_deadline_before_eag
 		_, record, fds := wayland_test_begin_clipboard_read(mut backend, 85, []u8{})
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 1
 		payload := 'progress-before-read-eagain'
-		assert C.write(fds[1], payload.str, usize(payload.len)) == payload.len
+		assert C.write(fds[1], payload.str, uint(payload.len)) == payload.len
 		backend.clipboard_read.deadline_ns = 0
 
 		backend.drain_clipboard_read()
@@ -2174,10 +2174,10 @@ fn wayland_assert_clipboard_replacement_preflight_failure(fail_listener bool) {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
 			started:             true
-			display:             voidptr(usize(0x11))
-			data_device_manager: voidptr(usize(0x12))
-			data_device:         voidptr(usize(0x13))
-			seat:                voidptr(usize(0x14))
+			display:             voidptr(uint(0x11))
+			data_device_manager: voidptr(uint(0x12))
+			data_device:         voidptr(uint(0x13))
+			seat:                voidptr(uint(0x14))
 			poll_generation:     1
 		}
 		window := WindowId{
@@ -2191,10 +2191,10 @@ fn wayland_assert_clipboard_replacement_preflight_failure(fail_listener bool) {
 		}
 		record.store_user_action_serial(19, backend.poll_generation)
 		backend.windows << record
-		old_source := voidptr(usize(0x21))
+		old_source := voidptr(uint(0x21))
 		mut new_source := voidptr(unsafe { nil })
 		if fail_listener {
-			new_source = voidptr(usize(0x22))
+			new_source = voidptr(uint(0x22))
 		}
 		fds := wayland_pipe() or { panic(err) }
 		backend.clipboard_source = old_source
@@ -2226,11 +2226,11 @@ fn wayland_assert_clipboard_replacement_preflight_failure(fail_listener bool) {
 		assert backend.clipboard_sends[0].payload == 'previous clipboard'
 		assert record.pending_events.len == 0
 		if fail_listener {
-			assert backend.clipboard_source_test.destroyed == [usize(new_source)]
+			assert backend.clipboard_source_test.destroyed == [uint(new_source)]
 		} else {
 			assert backend.clipboard_source_test.destroyed.len == 0
 		}
-		assert C.write(fds[1], c'x', usize(1)) == 1
+		assert C.write(fds[1], c'x', uint(1)) == 1
 		backend.clipboard_source = unsafe { nil }
 		backend.clipboard_source_test.active = false
 		backend.close_all_clipboard_sends()
@@ -2251,14 +2251,14 @@ fn test_wayland_clipboard_transport_plan_exhaustion_has_no_ghost_and_flush_failu
 		mut native_operations := &NativeOperationAuthority{}
 		native_operations.bind_app_lifetime(1, 1)!
 		native_operations.advance_renderer_attempt(1, 2)!
-		old_source := voidptr(usize(0x31))
-		new_source := voidptr(usize(0x32))
+		old_source := voidptr(uint(0x31))
+		new_source := voidptr(uint(0x32))
 		mut backend := &WaylandBackend{
 			started:               true
-			display:               voidptr(usize(0x33))
-			data_device_manager:   voidptr(usize(0x34))
-			data_device:           voidptr(usize(0x35))
-			seat:                  voidptr(usize(0x36))
+			display:               voidptr(uint(0x33))
+			data_device_manager:   voidptr(uint(0x34))
+			data_device:           voidptr(uint(0x35))
+			seat:                  voidptr(uint(0x36))
 			poll_generation:       1
 			native_operations:     native_operations
 			clipboard_source:      old_source
@@ -2316,7 +2316,7 @@ fn test_wayland_clipboard_transport_plan_exhaustion_has_no_ghost_and_flush_failu
 		assert result.error == err_wayland_flush_failed
 		assert !record.user_action_serial_valid
 		assert backend.clipboard_source_test.selection_requests == 1
-		assert backend.clipboard_source_test.destroyed == [usize(new_source)]
+		assert backend.clipboard_source_test.destroyed == [uint(new_source)]
 		assert backend.clipboard_source_test.destroyed_local == [true]
 		assert backend.clipboard_source == old_source
 		assert backend.clipboard_text == 'old clipboard'
@@ -2346,8 +2346,8 @@ fn test_wayland_interactive_move_resize_preflight_preserves_serial_and_ordinals(
 		native_operations.advance_renderer_attempt(1, 2)!
 		mut backend := &WaylandBackend{
 			started:              true
-			display:              voidptr(usize(0x41))
-			seat:                 voidptr(usize(0x42))
+			display:              voidptr(uint(0x41))
+			seat:                 voidptr(uint(0x42))
 			poll_generation:      1
 			native_operations:    native_operations
 			toplevel_replay_test: WaylandToplevelReplayTestSeam{
@@ -2363,7 +2363,7 @@ fn test_wayland_interactive_move_resize_preflight_preserves_serial_and_ordinals(
 			id:           window
 			owner:        backend
 			resizable:    true
-			xdg_toplevel: voidptr(usize(0x43))
+			xdg_toplevel: voidptr(uint(0x43))
 		}
 		backend.windows << record
 
@@ -2423,10 +2423,10 @@ fn test_wayland_visible_create_preplans_lifecycle_transport_before_native_creati
 		native_operations.next_ordinal = ~u64(0) - 5
 		mut backend := &WaylandBackend{
 			started:              true
-			display:              voidptr(usize(0x61))
-			compositor:           voidptr(usize(0x62))
+			display:              voidptr(uint(0x61))
+			compositor:           voidptr(uint(0x62))
 			compositor_name:      1
-			wm_base:              voidptr(usize(0x63))
+			wm_base:              voidptr(uint(0x63))
 			wm_base_name:         2
 			native_operations:    native_operations
 			toplevel_replay_test: WaylandToplevelReplayTestSeam{
@@ -2459,7 +2459,7 @@ fn test_wayland_live_cleanup_plan_exhaustion_preserves_mouse_and_portal_handles(
 		native_operations.next_ordinal = ~u64(0)
 		mut backend := &WaylandBackend{
 			started:           true
-			display:           voidptr(usize(0x51))
+			display:           voidptr(uint(0x51))
 			native_operations: native_operations
 		}
 		window := WindowId{
@@ -2467,8 +2467,8 @@ fn test_wayland_live_cleanup_plan_exhaustion_preserves_mouse_and_portal_handles(
 			slot:         0
 			generation:   1
 		}
-		locked := voidptr(usize(0x52))
-		relative := voidptr(usize(0x53))
+		locked := voidptr(uint(0x52))
+		relative := voidptr(uint(0x53))
 		mut record := &WaylandWindowRecord{
 			id:                   window
 			owner:                backend
@@ -2482,7 +2482,7 @@ fn test_wayland_live_cleanup_plan_exhaustion_preserves_mouse_and_portal_handles(
 			app_instance: 1
 			serial:       7
 		}
-		exported := voidptr(usize(0x54))
+		exported := voidptr(uint(0x54))
 		backend.portal_exports << &WaylandPortalExport{
 			window:   window
 			lease:    lease
@@ -2533,7 +2533,7 @@ fn test_wayland_clipboard_selection_replacement_cancels_read_exactly_once() {
 			deadline_ns: i64(0x7fffffffffffffff)
 		}
 		backend.clipboard_read_active = true
-		replacement := voidptr(usize(0x51))
+		replacement := voidptr(uint(0x51))
 
 		backend.set_selection_offer(replacement)
 		C.close(fds[1])
@@ -2655,7 +2655,7 @@ fn test_wayland_clipboard_capacity_plus_one_fails() {
 		mut backend := &WaylandBackend{}
 		payload := []u8{len: wayland_clipboard_max_bytes, init: `b`}
 		_, record, fds := wayland_test_begin_clipboard_read(mut backend, 83, payload)
-		assert C.write(fds[1], c'x', usize(1)) == 1
+		assert C.write(fds[1], c'x', uint(1)) == 1
 		C.close(fds[1])
 
 		backend.drain_clipboard_read()
@@ -2697,7 +2697,7 @@ fn test_wayland_clipboard_exact_capacity_waits_on_eagain_then_succeeds_at_eof() 
 fn test_wayland_file_drop_poll_and_read_eintr_preserve_transaction_until_exact_terminal() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
-			display: voidptr(usize(0x91))
+			display: voidptr(uint(0x91))
 			io_test: WaylandIoTestSeam{
 				pending_drop_poll_interruptions: 1
 				pending_drop_read_interruptions: 1
@@ -2719,9 +2719,9 @@ fn test_wayland_file_drop_poll_and_read_eintr_preserve_transaction_until_exact_t
 		fds := wayland_pipe()!
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 1
 		payload := 'file:///tmp/eintr-proof\n'
-		assert C.write(fds[1], payload.str, usize(payload.len)) == payload.len
+		assert C.write(fds[1], payload.str, uint(payload.len)) == payload.len
 		C.close(fds[1])
-		offer := voidptr(usize(0x92))
+		offer := voidptr(uint(0x92))
 		backend.data_offer = offer
 		backend.pending_drop_offer = offer
 		backend.pending_drop_fd = fds[0]
@@ -2754,7 +2754,7 @@ fn test_wayland_file_drop_poll_and_read_eintr_preserve_transaction_until_exact_t
 fn test_wayland_file_drop_empty_open_pipe_expires_without_terminal_event() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{
-			display: voidptr(usize(0x93))
+			display: voidptr(uint(0x93))
 			io_test: WaylandIoTestSeam{
 				pending_drop_native_bypass: true
 			}
@@ -2771,7 +2771,7 @@ fn test_wayland_file_drop_empty_open_pipe_expires_without_terminal_event() {
 		backend.windows << record
 		fds := wayland_pipe()!
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 1
-		offer := voidptr(usize(0x94))
+		offer := voidptr(uint(0x94))
 		backend.data_offer = offer
 		backend.pending_drop_offer = offer
 		backend.pending_drop_fd = fds[0]
@@ -2794,7 +2794,7 @@ fn test_wayland_file_drop_exact_capacity_requires_eof_and_rejects_one_extra_byte
 	$if linux && sokol_wayland ? {
 		for extra in 0 .. 2 {
 			mut backend := &WaylandBackend{
-				display: voidptr(usize(0x95 + extra))
+				display: voidptr(uint(0x95 + extra))
 				io_test: WaylandIoTestSeam{
 					pending_drop_native_bypass: true
 				}
@@ -2815,10 +2815,10 @@ fn test_wayland_file_drop_exact_capacity_requires_eof_and_rejects_one_extra_byte
 			payload := prefix + 'a'.repeat(wayland_uri_list_buffer_size - prefix.len - 1) + '\n'
 			assert payload.len == wayland_uri_list_buffer_size
 			if extra == 1 {
-				assert C.write(fds[1], c'x', usize(1)) == 1
+				assert C.write(fds[1], c'x', uint(1)) == 1
 			}
 			C.close(fds[1])
-			offer := voidptr(usize(0x97 + extra))
+			offer := voidptr(uint(0x97 + extra))
 			backend.data_offer = offer
 			backend.pending_drop_offer = offer
 			backend.pending_drop_fd = fds[0]
@@ -2851,19 +2851,19 @@ fn wayland_read_exact_pipe_payload(fd int, expected_len int) string {
 	mut payload := []u8{len: expected_len}
 	mut offset := 0
 	for offset < expected_len {
-		n := C.read(fd, unsafe { &payload[offset] }, usize(expected_len - offset))
+		n := C.read(fd, unsafe { &payload[offset] }, uint(expected_len - offset))
 		assert n > 0
 		offset += int(n)
 	}
 	mut eof := [1]u8{}
-	assert C.read(fd, unsafe { &eof[0] }, usize(1)) == 0
+	assert C.read(fd, unsafe { &eof[0] }, uint(1)) == 0
 	return payload.bytestr()
 }
 
 fn test_wayland_clipboard_send_is_fair_when_first_consumer_is_backpressured() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
-		source := voidptr(usize(0x61))
+		source := voidptr(uint(0x61))
 		backend.clipboard_source = source
 		backend.clipboard_text = 'bounded clipboard payload'
 		first := wayland_pipe()!
@@ -2872,7 +2872,7 @@ fn test_wayland_clipboard_send_is_fair_when_first_consumer_is_backpressured() {
 		mut fill := [4096]u8{}
 		mut saturated := false
 		for _ in 0 .. 4096 {
-			if C.write(first[1], unsafe { &fill[0] }, usize(fill.len)) < 0 {
+			if C.write(first[1], unsafe { &fill[0] }, uint(fill.len)) < 0 {
 				assert C.v_multiwindow_wayland_read_would_block() != 0
 				saturated = true
 				break
@@ -2902,7 +2902,7 @@ fn test_wayland_clipboard_send_progress_refreshes_inactivity_deadline_before_eag
 		mut fill := [4096]u8{}
 		mut saturated := false
 		for _ in 0 .. 4096 {
-			if C.write(fds[1], unsafe { &fill[0] }, usize(fill.len)) < 0 {
+			if C.write(fds[1], unsafe { &fill[0] }, uint(fill.len)) < 0 {
 				assert C.v_multiwindow_wayland_read_would_block() != 0
 				saturated = true
 				break
@@ -2910,7 +2910,7 @@ fn test_wayland_clipboard_send_progress_refreshes_inactivity_deadline_before_eag
 		}
 		assert saturated
 		mut drained := [4096]u8{}
-		assert C.read(fds[0], unsafe { &drained[0] }, usize(drained.len)) == drained.len
+		assert C.read(fds[0], unsafe { &drained[0] }, uint(drained.len)) == drained.len
 		payload := 'p'.repeat(wayland_clipboard_io_chunk_size * 2)
 		mut backend := &WaylandBackend{
 			clipboard_sends:               [
@@ -2939,14 +2939,14 @@ fn test_wayland_clipboard_send_progress_refreshes_inactivity_deadline_before_eag
 
 fn test_wayland_clipboard_send_snapshots_survive_replacement_and_cancel() {
 	$if linux && sokol_wayland ? {
-		old_source := voidptr(usize(0x71))
-		new_source := voidptr(usize(0x72))
+		old_source := voidptr(uint(0x71))
+		new_source := voidptr(uint(0x72))
 		mut backend := &WaylandBackend{
 			started:               true
-			display:               voidptr(usize(0x73))
-			data_device_manager:   voidptr(usize(0x74))
-			data_device:           voidptr(usize(0x75))
-			seat:                  voidptr(usize(0x76))
+			display:               voidptr(uint(0x73))
+			data_device_manager:   voidptr(uint(0x74))
+			data_device:           voidptr(uint(0x75))
+			seat:                  voidptr(uint(0x76))
 			poll_generation:       1
 			clipboard_source:      old_source
 			clipboard_text:        'old payload'
@@ -2984,7 +2984,7 @@ fn test_wayland_clipboard_send_snapshots_survive_replacement_and_cancel() {
 		wayland_data_source_cancelled(backend, new_source)
 		assert backend.clipboard_source == unsafe { nil }
 		assert backend.clipboard_sends.len == 2
-		assert backend.clipboard_source_test.destroyed == [usize(old_source), usize(new_source)]
+		assert backend.clipboard_source_test.destroyed == [uint(old_source), uint(new_source)]
 		assert backend.clipboard_source_test.destroyed_local == [false, false]
 
 		backend.io_test.clipboard_write_interruptions = 1
@@ -3001,7 +3001,7 @@ fn test_wayland_clipboard_send_snapshots_survive_replacement_and_cancel() {
 fn test_wayland_clipboard_send_expired_writable_progress_and_teardown_are_independent() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
-		source := voidptr(usize(0x81))
+		source := voidptr(uint(0x81))
 		backend.clipboard_source = source
 		backend.clipboard_text = 'still delivered'
 		expired := wayland_pipe()!
@@ -3024,7 +3024,7 @@ fn test_wayland_clipboard_send_expired_writable_progress_and_teardown_are_indepe
 		assert backend.clipboard_sends.len == 0
 		assert backend.clipboard_send_snapshot_bytes == 0
 		mut eof := [1]u8{}
-		assert C.read(teardown[0], unsafe { &eof[0] }, usize(1)) == 0
+		assert C.read(teardown[0], unsafe { &eof[0] }, uint(1)) == 0
 		C.close(teardown[0])
 		backend.clipboard_source = unsafe { nil }
 	}
@@ -3033,7 +3033,7 @@ fn test_wayland_clipboard_send_expired_writable_progress_and_teardown_are_indepe
 fn test_wayland_clipboard_send_expired_backpressure_closes_only_that_transfer() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
-		source := voidptr(usize(0x82))
+		source := voidptr(uint(0x82))
 		backend.clipboard_source = source
 		backend.clipboard_text = 'independent live payload'
 		expired := wayland_pipe()!
@@ -3042,7 +3042,7 @@ fn test_wayland_clipboard_send_expired_backpressure_closes_only_that_transfer() 
 		mut fill := [4096]u8{}
 		mut saturated := false
 		for _ in 0 .. 4096 {
-			if C.write(expired[1], unsafe { &fill[0] }, usize(fill.len)) < 0 {
+			if C.write(expired[1], unsafe { &fill[0] }, uint(fill.len)) < 0 {
 				assert C.v_multiwindow_wayland_read_would_block() != 0
 				saturated = true
 				break
@@ -3072,7 +3072,7 @@ fn test_wayland_clipboard_safe_write_contains_sigpipe_in_child_process() {
 fn test_wayland_clipboard_send_rejects_invalid_and_bounded_admissions_only() {
 	$if linux && sokol_wayland ? {
 		mut backend := &WaylandBackend{}
-		source := voidptr(usize(0xa1))
+		source := voidptr(uint(0xa1))
 		backend.clipboard_source = source
 		backend.clipboard_text = 'x'
 		invalid_source := wayland_pipe()!
@@ -3080,7 +3080,7 @@ fn test_wayland_clipboard_send_rejects_invalid_and_bounded_admissions_only() {
 		byte_limit := wayland_pipe()!
 		count_limit := wayland_pipe()!
 
-		wayland_data_source_send(backend, voidptr(usize(0xa2)), c'text/plain', invalid_source[1])
+		wayland_data_source_send(backend, voidptr(uint(0xa2)), c'text/plain', invalid_source[1])
 		wayland_data_source_send(backend, source, c'application/octet-stream', invalid_mime[1])
 		backend.clipboard_send_snapshot_bytes = wayland_clipboard_max_outgoing_snapshot_bytes
 		wayland_data_source_send(backend, source, c'text/plain', byte_limit[1])
@@ -3091,10 +3091,10 @@ fn test_wayland_clipboard_send_rejects_invalid_and_bounded_admissions_only() {
 		wayland_data_source_send(backend, source, c'text/plain', count_limit[1])
 
 		assert backend.clipboard_sends.len == wayland_clipboard_max_outgoing_transfers
-		assert C.write(invalid_source[1], c'x', usize(1)) == -1
-		assert C.write(invalid_mime[1], c'x', usize(1)) == -1
-		assert C.write(byte_limit[1], c'x', usize(1)) == -1
-		assert C.write(count_limit[1], c'x', usize(1)) == -1
+		assert C.write(invalid_source[1], c'x', uint(1)) == -1
+		assert C.write(invalid_mime[1], c'x', uint(1)) == -1
+		assert C.write(byte_limit[1], c'x', uint(1)) == -1
+		assert C.write(count_limit[1], c'x', uint(1)) == -1
 		backend.close_all_clipboard_sends()
 		C.close(invalid_source[0])
 		C.close(invalid_mime[0])

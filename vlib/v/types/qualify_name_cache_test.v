@@ -102,3 +102,31 @@ fn test_numeric_qualification_invalidates_for_module_mode_and_late_types() {
 	tc.cur_module = 'generic'
 	assert tc.qualify_type_name(array_id) == flat.source_type_id('[]generic.Cell')
 }
+
+fn test_numeric_resolution_qualification_preserves_global_fallback_and_local_priority() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.qualify_name_cache = &QualifyNameCache{}
+	tc.cur_module = 'generic'
+	tc.cur_file = 'generic.v'
+	global_id := flat.source_type_id('Cell')
+	local_id := flat.source_type_id('generic.Cell')
+	tc.structs['Cell'] = []StructField{}
+	// The resolution helper keeps an existing capitalized global even while
+	// ordinary registration qualification still adds the current module.
+	assert tc.qualify_type_name(global_id) == local_id
+	assert tc.qualify_resolution_type_name(global_id) == global_id
+	assert tc.qualify_resolution_type_name(global_id) == global_id
+	tc.structs['generic.Cell'] = []StructField{}
+	assert tc.qualify_resolution_type_name(global_id) == local_id
+	tc.structs['lower'] = []StructField{}
+	assert tc.qualify_resolution_type_name(flat.source_type_id('lower')) == flat.source_type_id('generic.lower')
+	assert tc.qualify_resolution_type_name(flat.source_type_id('Missing')) == flat.source_type_id('generic.Missing')
+	assert tc.qualify_resolution_type_name(u32(0)) == flat.source_type_id('generic.')
+	assert tc.qualify_resolution_type_name(flat.source_type_int) == flat.source_type_int
+	tc.resolution_type_mode = true
+	missing_id := flat.source_type_id('Missing')
+	assert tc.qualify_resolution_type_name(missing_id) == missing_id
+	tc.cur_module = 'main'
+	assert tc.qualify_resolution_type_name(global_id) == global_id
+}

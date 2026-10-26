@@ -1,8 +1,8 @@
-fn f(u usize) usize
-fn g(i isize) isize
+fn f(u uint) uint
+fn g(i int) int
 
 fn test_usize() {
-	mut u := usize(3)
+	mut u := uint(3)
 	u += u32(1)
 	assert u == 4
 	u = 4
@@ -10,12 +10,12 @@ fn test_usize() {
 	assert u == 5
 	assert u.str() == '5'
 	$if x64 {
-		assert '${usize(0x140000000):X}' == '140000000'
+		assert '${uint(0x140000000):X}' == '140000000'
 	}
 }
 
 fn test_isize() {
-	mut i := isize(-3)
+	mut i := int(-3)
 	i -= int(1)
 	assert i == -4
 	i = -5
@@ -23,6 +23,6 @@ fn test_isize() {
 	assert i == -3
 	assert i.str() == '-3'
 	$if x64 {
-		assert '${isize(0x140000000):X}' == '140000000'
+		assert '${int(0x140000000):X}' == '140000000'
 	}
 }

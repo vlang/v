@@ -42,9 +42,9 @@ fn test_signed_integer_key_widths() {
 		i64(-9223372036854775807) - 1: 'min'
 		i64(9223372036854775807):      'max'
 	})
-	check_keys[isize]('nums = { "-1" = "negative", 42 = "positive" }', {
-		isize(-1): 'negative'
-		isize(42): 'positive'
+	check_keys[int]('nums = { "-1" = "negative", 42 = "positive" }', {
+		int(-1): 'negative'
+		int(42): 'positive'
 	})
 }
 
@@ -62,8 +62,8 @@ fn test_unsigned_integer_key_widths() {
 	check_keys[u64]('nums = { 18446744073709551615 = "max", 18446744073709551616 = "skip" }', {
 		u64(18446744073709551615): 'max'
 	})
-	check_keys[usize]('nums = { 42 = "value", "-1" = "skip" }', {
-		usize(42): 'value'
+	check_keys[uint]('nums = { 42 = "value", "-1" = "skip" }', {
+		uint(42): 'value'
 	})
 }
 

@@ -68,7 +68,7 @@ fn main() {
 
 // The locals of `a, b := mod.f[T](x)`, an explicit generic call into another module, are
 // declared as the specialized function's return types. FastC used to find no types for the
-// call, which keeps its type arguments, and declared every local as `usize`.
+// call, which keeps its type arguments, and declared every local as `uint`.
 fn test_fastc_explicit_generic_multi_return_call_declares_component_types() {
 	$if !macos && !linux {
 		return

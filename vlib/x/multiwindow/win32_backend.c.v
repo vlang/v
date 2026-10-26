@@ -133,7 +133,7 @@ mut:
 	service_monitor_poll_dirty       bool
 	clipboard_pending                []Win32ClipboardPending
 	clipboard_retained               []Win32ClipboardRetainedCharge
-	clipboard_pending_bytes          usize
+	clipboard_pending_bytes          uint
 }
 
 struct Win32D3DDeviceLaneAttempt {

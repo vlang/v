@@ -127,14 +127,8 @@ fn encode_primitive[T](mut s EncodeState, value T) ! {
 		s.put_u8(u8(value))
 	} $else $if T is rune {
 		s.put_u32(u32(value))
-	} $else $if T is isize {
-		if sizeof(isize) == 4 {
-			s.put_u32(u32(value))
-		} else {
-			s.put_u64(u64(value))
-		}
-	} $else $if T is usize {
-		if sizeof(usize) == 4 {
+	} $else $if T is isize || T is uint {
+		if sizeof(T) == 4 {
 			s.put_u32(u32(value))
 		} else {
 			s.put_u64(u64(value))
@@ -313,14 +307,8 @@ fn decode_primitive[T](mut s DecodeState, value T) !T {
 		return s.get_u8()! != 0
 	} $else $if T is rune {
 		return T(s.get_u32()!)
-	} $else $if T is isize {
-		if sizeof(isize) == 4 {
-			return T(s.get_u32()!)
-		} else {
-			return T(s.get_u64()!)
-		}
-	} $else $if T is usize {
-		if sizeof(usize) == 4 {
+	} $else $if T is isize || T is uint {
+		if sizeof(T) == 4 {
 			return T(s.get_u32()!)
 		} else {
 			return T(s.get_u64()!)
@@ -375,27 +363,6 @@ fn decode_string(mut s DecodeState) !string {
 	return str
 }
 
-// `Any` is a sum type that lists the possible types to be decoded and used.
-type Any = int
-	| bool
-	| f64
-	| f32
-	| i64
-	| i32
-	| i16
-	| i8
-	| map[string]Any
-	| map[int]Any
-	| string
-	| u64
-	| u32
-	| u16
-	| u8
-	| rune
-	| isize
-	| usize
-	| []Any
-
 fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {
 	len := int(s.get_u64()!)
 	if len <= 0 || s.offset + len > s.b.len {
@@ -407,7 +374,7 @@ fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {
 	for _ in 0 .. len {
 		// decode key first
 		// Maps can have keys of type string, rune, integer, float or voidptr.
-		mut k := Any(0)
+		mut k := K{}
 		$if K is $string {
 			k = decode_string(mut s)!
 		} $else {
@@ -417,16 +384,16 @@ fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {
 		// decode value
 		$if V is $struct {
 			v := decode_struct(mut s, V{})!
-			m[k as K] = v
+			m[k] = v
 		} $else $if V is $map {
 			v := decode_map(mut s, V{})!
-			m[k as K] = v
+			m[k] = v
 		} $else $if V is $string {
 			v := decode_string(mut s)!
-			m[k as K] = v
+			m[k] = v
 		} $else {
 			v := decode_primitive(mut s, unsafe { V(0) })!
-			m[k as K] = v
+			m[k] = v
 		}
 	}
 	return m

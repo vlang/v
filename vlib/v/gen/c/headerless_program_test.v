@@ -83,7 +83,7 @@ fn test_bodyless_libc_bindings_compile_without_headers() {
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'main.c.v')
-	os.write_file(source, 'fn C.strlen(const_s &char) usize
+	os.write_file(source, 'fn C.strlen(const_s &char) uint
 fn C.puts(const_s &char) i32
 
 fn main() {

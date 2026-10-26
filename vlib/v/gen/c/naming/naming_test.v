@@ -94,6 +94,15 @@ fn test_gnu_predefined_macro_names_are_escaped() {
 	assert c_name('unix') == 'v_unix'
 }
 
+fn test_alloca_intrinsic_name_cannot_be_shadowed() {
+	assert c_name('alloca') == '${internal_symbol_c_prefix}libc_alloca'
+	assert c_name('@alloca') == '_v_alloca'
+	assert c_name('alloca') != c_name('v_alloca')
+	assert c_name('alloca') != c_name(c_name('alloca'))
+	assert c_name('alloca_value') == 'alloca_value'
+	assert c_name('C.alloca') == 'alloca'
+}
+
 fn test_complex_header_macro_name_is_escaped() {
 	assert c_name('complex') == '${internal_symbol_c_prefix}macro_complex'
 	assert c_name('@complex') == c_name('complex')
@@ -101,6 +110,16 @@ fn test_complex_header_macro_name_is_escaped() {
 	assert c_name('complex') != c_name('${internal_symbol_c_prefix}macro_complex')
 	assert c_name('complex_value') == 'complex_value'
 	assert c_name('C.complex') == 'complex'
+}
+
+fn test_windows_header_macro_names_are_escaped() {
+	for name in ['near', 'far', 'pascal', 'cdecl', 'min', 'max'] {
+		assert c_name(name) == '${internal_symbol_c_prefix}macro_${name}'
+		assert c_name(name) != c_name('v_${name}')
+		assert c_name(name) != c_name(c_name(name))
+		assert c_name('${name}_value') == '${name}_value'
+		assert c_name('C.${name}') == name
+	}
 }
 
 fn test_operator_method_c_names_are_disjoint_from_source_names() {
