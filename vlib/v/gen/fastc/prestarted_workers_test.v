@@ -3,7 +3,8 @@ module fastc
 import os
 
 fn test_discard_prestarted_workers_without_feeding_source() {
-	$if !macos && !linux {
+	// `fastc_start_capture_input` only prestarts compiler processes on macOS.
+	$if !macos {
 		return
 	}
 	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')

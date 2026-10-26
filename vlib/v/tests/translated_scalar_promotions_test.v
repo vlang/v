@@ -188,7 +188,7 @@ fn test_translated_boolean_indices_and_pointer_offsets() {
 	assert *ptr == 11
 	mut raw := voidptr(ptr)
 	raw += 1
-	assert usize(raw) == usize(ptr) + 1
+	assert uint(raw) == uint(ptr) + 1
 	raw -= 1
 	assert raw == voidptr(ptr)
 }
@@ -213,8 +213,12 @@ fn test_translated_pointer_subtraction_retains_pointer_width() {
 	start := unsafe { &values[0] }
 	end := unsafe { &values[3] }
 	delta := unsafe { end - start }
-	assert typeof(delta).name == 'isize'
+	assert typeof(delta).name == 'int'
 	assert delta == 3
+	assert sizeof(delta) == sizeof(voidptr)
+	reverse := unsafe { start - end }
+	assert typeof(reverse).name == 'int'
+	assert reverse == -3
 }
 
 fn translated_mixed_branch(flag bool) int {

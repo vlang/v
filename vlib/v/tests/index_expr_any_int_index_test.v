@@ -4,7 +4,7 @@ fn test_array_indices_accept_any_integer_type() {
 	idx_u32 := u32(1)
 	idx_u64 := u64(1)
 	idx_i64 := i64(1)
-	idx_usize := usize(1)
+	idx_usize := uint(1)
 
 	assert a[idx_u32] == 2
 	assert a[idx_u64] == 2

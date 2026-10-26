@@ -9,7 +9,7 @@
 // - total_bytes: the bytes allocated since the program started;
 // - gc_memory_use(): the heap memory in use, heap_size - free_bytes.
 // The test passes with `-gc boehm` as well.
-const mb = usize(1024 * 1024)
+const mb = uint(1024 * 1024)
 
 // has_collector reports whether a collector manages the heap: with `-gc none`, all the values
 // are 0.
@@ -37,19 +37,19 @@ fn allocate_garbage(n int) int {
 // clear_dead_stack overwrites the stack below the caller, where dead frames can still hold
 // pointers that a conservative collector would take for live ones.
 @[noinline]
-fn clear_dead_stack() usize {
-	buf := [4096]usize{}
+fn clear_dead_stack() uint {
+	buf := [4096]uint{}
 	return buf[0] + buf[4095]
 }
 
 // memory_use_with_a_large_object allocates a large object, and returns the memory in use while
 // the object is live. The object is garbage after the return.
 @[noinline]
-fn memory_use_with_a_large_object(size int) usize {
+fn memory_use_with_a_large_object(size int) uint {
 	mut big := []u8{len: size}
 	big[0] = 1
 	big[size - 1] = 2
-	return gc_memory_use() + usize(big[0] + big[size - 1] - 3)
+	return gc_memory_use() + uint(big[0] + big[size - 1] - 3)
 }
 
 fn test_bytes_since_gc_and_total_bytes_count_the_allocations() {

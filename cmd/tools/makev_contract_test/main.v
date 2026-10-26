@@ -55,6 +55,16 @@ fn main() {
 	}
 	assert msvc_found == 1, 'expected 1 MSVC bootstrap command, got ${msvc_found}'
 
+	// The bootstrap snapshot must be patched before compiling, and always cleaned up.
+	build := routine(source, 'build')
+	assert build.contains('vc_compat_uint.ps1" -Source "%V_C_FILE%"')
+	assert build.contains('if !ERRORLEVEL! NEQ 0 goto :error')
+	assert build.index('vc_compat_uint.ps1')! < build.index('echo Building V...')!
+	assert build.contains('set "V_C_FILE=%vc_dir%\\v_win_compat.c"')
+	for label in ['success', 'error'] {
+		assert routine(source, label).contains('call :try_delete "%vc_dir%\\v_win_compat.c"')
+	}
+
 	// native helpers
 	mut native_line := ''
 	for line in source.split_into_lines() {

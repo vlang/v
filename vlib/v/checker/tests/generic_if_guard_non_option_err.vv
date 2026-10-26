@@ -1,0 +1,15 @@
+struct User {
+	name string
+}
+
+fn show[T](a T) {
+	if v := a {
+		println(v)
+	}
+}
+
+fn main() {
+	show(User{
+		name: 'a'
+	})
+}

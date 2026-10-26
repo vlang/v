@@ -760,7 +760,7 @@ fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_
 	mut a := flat.FlatAst.new()
 	_, canonical := a.intern_text('persistent value')
 	a.add_node(flat.Node{ kind: .ident, value: canonical })
-	persistent_ptr := usize(voidptr(a.nodes[0].value.str))
+	persistent_ptr := uint(voidptr(a.nodes[0].value.str))
 	constraints := ['persistent constraint'.clone()]
 	scope := prealloc_scope_begin_for_v3()
 	value := 'retiring value'.clone()
@@ -771,7 +771,7 @@ fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_
 	a.nodes << generated
 	prealloc_scope_leave_for_v3(scope)
 	cloned := clone_flat_ast_after_transform_from_scope(&a, scope)
-	assert usize(voidptr(cloned.nodes[0].value.str)) == persistent_ptr
+	assert uint(voidptr(cloned.nodes[0].value.str)) == persistent_ptr
 	assert !scoped_value_owned(scope, cloned.nodes.data)
 	assert !scoped_value_owned(scope, cloned.nodes[1].value.str)
 	assert !scoped_value_owned(scope, cloned.nodes[1].typ_text().str)

@@ -3,7 +3,6 @@
 module gg
 
 import math
-import sokol.sgl
 
 @[params]
 pub struct DrawPixelConfig {
@@ -18,13 +17,13 @@ pub mut:
 // functions like `draw_rect_empty` or `draw_triangle_empty` etc.
 pub fn (ctx &Context) draw_pixel(x f32, y f32, c Color, params DrawPixelConfig) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.begin_points()
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.point_size(params.size)
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.end()
+	ctx.r.begin_points()
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.point_size(params.size)
+	ctx.r.v2f(x * ctx.scale, y * ctx.scale)
+	ctx.r.end()
 }
 
 // draw_pixels draws pixels from an array of points [x, y, x2, y2, etc...]
@@ -40,16 +39,16 @@ pub fn (ctx &Context) draw_pixels(points []f32, c Color, params DrawPixelConfig)
 	len := points.len / 2
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.begin_points()
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.point_size(params.size)
+	ctx.r.begin_points()
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.point_size(params.size)
 	for i in 0 .. len {
 		x, y := points[i * 2], points[i * 2 + 1]
-		sgl.v2f(x * ctx.scale, y * ctx.scale)
+		ctx.r.v2f(x * ctx.scale, y * ctx.scale)
 	}
-	sgl.end()
+	ctx.r.end()
 }
 
 // draw_line draws a line between the points `x,y` and `x2,y2` in color `c`.
@@ -71,20 +70,20 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c Color) {
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_lines()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
-	sgl.end()
+	ctx.r.begin_lines()
+	ctx.r.v2f(x * ctx.scale, y * ctx.scale)
+	ctx.r.v2f(x2 * ctx.scale, y2 * ctx.scale)
+	ctx.r.end()
 }
 
 // draw_line_with_config draws a line between the points `x,y` and `x2,y2` using `PenConfig`.
 pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config PenConfig) {
 	if config.color.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
 
 	if config.thickness <= 0 {
@@ -101,11 +100,11 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	length := math.sqrtf(math.powf(x2 - x, 2) + math.powf(y2 - y, 2))
 	theta := f32(math.atan2(dy, dx))
 
-	sgl.push_matrix()
+	ctx.r.push_matrix()
 
-	sgl.translate(nx, ny, 0)
-	sgl.rotate(theta, 0, 0, 1)
-	sgl.translate(-nx, -ny, 0)
+	ctx.r.translate(nx, ny, 0)
+	ctx.r.rotate(theta, 0, 0, 1)
+	ctx.r.translate(-nx, -ny, 0)
 
 	if config.line_type == .solid {
 		ctx.draw_rect_filled(x, y, length, config.thickness, config.color)
@@ -129,7 +128,7 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 		}
 	}
 
-	sgl.pop_matrix()
+	ctx.r.pop_matrix()
 }
 
 // draw_poly_empty draws the outline of a polygon, given an array of points, and a color.
@@ -141,16 +140,16 @@ pub fn (ctx &Context) draw_poly_empty(points []f32, c Color) {
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_line_strip()
+	ctx.r.begin_line_strip()
 	for i in 0 .. len {
-		sgl.v2f(points[2 * i] * ctx.scale, points[2 * i + 1] * ctx.scale)
+		ctx.r.v2f(points[2 * i] * ctx.scale, points[2 * i + 1] * ctx.scale)
 	}
-	sgl.v2f(points[0] * ctx.scale, points[1] * ctx.scale)
-	sgl.end()
+	ctx.r.v2f(points[0] * ctx.scale, points[1] * ctx.scale)
+	ctx.r.end()
 }
 
 // draw_convex_poly draws a convex polygon, given an array of points, and a color.
@@ -163,22 +162,22 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c Color) {
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_triangle_strip()
+	ctx.r.begin_triangle_strip()
 	x0 := points[0] * ctx.scale
 	y0 := points[1] * ctx.scale
 	for i in 1 .. len {
 		x := points[i * 2] * ctx.scale
 		y := points[i * 2 + 1] * ctx.scale
-		sgl.v2f(x, y)
+		ctx.r.v2f(x, y)
 		if i & 0 == 0 {
-			sgl.v2f(x0, y0)
+			ctx.r.v2f(x0, y0)
 		}
 	}
-	sgl.end()
+	ctx.r.end()
 }
 
 @[inline]
@@ -198,29 +197,29 @@ fn rect_empty_screen_bounds(scale f32, x f32, y f32, w f32, h f32) (f32, f32, f3
 // without filled rectangles between them, than to draw a mix.
 pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(ctx.scale, x, y, w, h)
-	sgl.begin_lines() // more predictable, compared to sgl.begin_line_strip, at the price of more vertexes send
+	ctx.r.begin_lines() // more predictable, compared to ctx.r.begin_line_strip, at the price of more vertexes send
 	// top:
-	sgl.v2f(tleft_x, tleft_y)
-	sgl.v2f(bright_x, tleft_y)
+	ctx.r.v2f(tleft_x, tleft_y)
+	ctx.r.v2f(bright_x, tleft_y)
 	// left:
-	sgl.v2f(tleft_x, tleft_y)
-	sgl.v2f(tleft_x, bright_y)
+	ctx.r.v2f(tleft_x, tleft_y)
+	ctx.r.v2f(tleft_x, bright_y)
 	// right:
-	sgl.v2f(bright_x, tleft_y)
-	sgl.v2f(bright_x, bright_y)
+	ctx.r.v2f(bright_x, tleft_y)
+	ctx.r.v2f(bright_x, bright_y)
 	// bottom:
-	sgl.v2f(tleft_x, bright_y)
-	sgl.v2f(bright_x, bright_y)
-	sgl.end()
+	ctx.r.v2f(tleft_x, bright_y)
+	ctx.r.v2f(bright_x, bright_y)
+	ctx.r.end()
 }
 
 // draw_rect_empty_no_context draws the outline of a rectangle, but without saving/restoring the context.
-// It is intended to be used in loops, where you do manually: `sgl.begin_lines()` *before* the loop,
-// then draw many rectangles, then call manually `sgl.end()` *after* the loop.
+// It is intended to be used in loops, where you do manually: `ctx.r.begin_lines()` *before* the loop,
+// then draw many rectangles, then call manually `ctx.r.end()` *after* the loop.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height and `c` is the color of the outline.
 // Note: it is much more efficient to draw lots of empty rectangles one after the other,
@@ -228,22 +227,22 @@ pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c Color) {
 pub fn (ctx &Context) draw_rect_empty_no_context(x f32, y f32, w f32, h f32, c Color) {
 	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(ctx.scale, x, y, w, h)
 	// Note: the following line is deliberately commented, compare to draw_rect_empty/5;
-	// sgl.begin_lines() // more predictable, compared to sgl.begin_line_strip, at the price of more vertexes send
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	// ctx.r.begin_lines() // more predictable, compared to ctx.r.begin_line_strip, at the price of more vertexes send
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 	// top:
-	sgl.v2f(tleft_x, tleft_y)
-	sgl.v2f(bright_x, tleft_y)
+	ctx.r.v2f(tleft_x, tleft_y)
+	ctx.r.v2f(bright_x, tleft_y)
 	// left:
-	sgl.v2f(tleft_x, tleft_y)
-	sgl.v2f(tleft_x, bright_y)
+	ctx.r.v2f(tleft_x, tleft_y)
+	ctx.r.v2f(tleft_x, bright_y)
 	// right:
-	sgl.v2f(bright_x, tleft_y)
-	sgl.v2f(bright_x, bright_y)
+	ctx.r.v2f(bright_x, tleft_y)
+	ctx.r.v2f(bright_x, bright_y)
 	// bottom:
-	sgl.v2f(tleft_x, bright_y)
-	sgl.v2f(bright_x, bright_y)
+	ctx.r.v2f(tleft_x, bright_y)
+	ctx.r.v2f(bright_x, bright_y)
 	// Note: the following line is deliberately commented, compare to draw_rect_empty/5;
-	// sgl.end()
+	// ctx.r.end()
 }
 
 // draw_rect_filled draws a filled rectangle.
@@ -254,41 +253,41 @@ pub fn (ctx &Context) draw_rect_empty_no_context(x f32, y f32, w f32, h f32, c C
 pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_rect(x, ctx.height - (y + h), w, h, c)
+			darwin_draw_rect(x, ctx.height - (y + h), w, h, c)
 			return
 		}
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_quads()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
-	sgl.end()
+	ctx.r.begin_quads()
+	ctx.r.v2f(x * ctx.scale, y * ctx.scale)
+	ctx.r.v2f((x + w) * ctx.scale, y * ctx.scale)
+	ctx.r.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
+	ctx.r.v2f(x * ctx.scale, (y + h) * ctx.scale)
+	ctx.r.end()
 }
 
 // draw_rect_filled_no_context draws a filled rectangle, but without saving/restoring the context.
-// It is intended to be used in loops, where you do manually: `sgl.begin_quads()` *before* the loop,
-// then draw many rectangles, then call manually `sgl.end()` *after* the loop.
+// It is intended to be used in loops, where you do manually: `ctx.r.begin_quads()` *before* the loop,
+// then draw many rectangles, then call manually `ctx.r.end()` *after* the loop.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height and `c` is the color of the fill.
 // Note: it is much more efficient to draw lots of filled rectangles one after the other,
 // without empty rectangles between them, than to draw a mix.
 pub fn (ctx &Context) draw_rect_filled_no_context(x f32, y f32, w f32, h f32, c Color) {
 	// Note: the following line is deliberately commented, compare to draw_rect_empty/5;
-	// sgl.begin_quads()
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
+	// ctx.r.begin_quads()
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.v2f(x * ctx.scale, y * ctx.scale)
+	ctx.r.v2f((x + w) * ctx.scale, y * ctx.scale)
+	ctx.r.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
+	ctx.r.v2f(x * ctx.scale, (y + h) * ctx.scale)
 	// Note: the following line is deliberately commented, compare to draw_rect_filled/5;
-	// sgl.end()
+	// ctx.r.end()
 }
 
 pub enum PaintStyle {
@@ -336,9 +335,9 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	mut new_radius := radius
 	if radius < 1 {
@@ -374,52 +373,52 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	mut dy := f32(0)
 
 	if r == 0 {
-		sgl.begin_line_strip()
+		ctx.r.begin_line_strip()
 		// top
-		sgl.v2f(ltx, lty)
-		sgl.v2f(rtx, rty)
+		ctx.r.v2f(ltx, lty)
+		ctx.r.v2f(rtx, rty)
 		// right
-		sgl.v2f(rbx, rby)
+		ctx.r.v2f(rbx, rby)
 		// bottom
-		sgl.v2f(lbx, lby)
+		ctx.r.v2f(lbx, lby)
 		// left
-		sgl.v2f(ltx, lty)
-		sgl.end()
+		ctx.r.v2f(ltx, lty)
+		ctx.r.end()
 		return
 	}
 
-	sgl.begin_line_strip()
+	ctx.r.begin_line_strip()
 	// left top quarter
 	for i in 0 .. 31 {
 		rad = f32(math.radians(i * 3))
 		dx = r * math.cosf(rad)
 		dy = r * math.sinf(rad)
-		sgl.v2f(ltx - dx, lty - dy)
+		ctx.r.v2f(ltx - dx, lty - dy)
 	}
 	// right top quarter
 	for i in 0 .. 31 {
 		rad = f32(math.radians(i * 3))
 		dx = r * math.sinf(rad)
 		dy = r * math.cosf(rad)
-		sgl.v2f(rtx + dx, rty - dy)
+		ctx.r.v2f(rtx + dx, rty - dy)
 	}
 	// right bottom quarter
 	for i in 0 .. 31 {
 		rad = f32(math.radians(i * 3))
 		dx = r * math.cosf(rad)
 		dy = r * math.sinf(rad)
-		sgl.v2f(rbx + dx, rby + dy)
+		ctx.r.v2f(rbx + dx, rby + dy)
 	}
 	// left bottom quarter
 	for i in 0 .. 31 {
 		rad = f32(math.radians(i * 3))
 		dx = r * math.sinf(rad)
 		dy = r * math.cosf(rad)
-		sgl.v2f(lbx - dx, lby + dy)
+		ctx.r.v2f(lbx - dx, lby + dy)
 	}
 	// close
-	sgl.v2f(ltx - r, lty)
-	sgl.end()
+	ctx.r.v2f(ltx - r, lty)
+	ctx.r.end()
 }
 
 // draw_rounded_rect_filled draws a filled rounded rectangle.
@@ -434,9 +433,9 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	mut new_radius := radius
 	if w >= h && radius > h / 2 {
@@ -461,12 +460,12 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 
 	if r == 0 {
 		// No radius means juste a rectangle
-		sgl.begin_quads()
-		sgl.v2f(sx, ty)
-		sgl.v2f(rx + r, ty)
-		sgl.v2f(rx + r, by)
-		sgl.v2f(sx, by)
-		sgl.end()
+		ctx.r.begin_quads()
+		ctx.r.v2f(sx, ty)
+		ctx.r.v2f(rx + r, ty)
+		ctx.r.v2f(rx + r, by)
+		ctx.r.v2f(sx, by)
+		ctx.r.end()
 	} else {
 		// draw the top then the bottom and link them with 2 triangle
 		mut rad := f32(0)
@@ -475,13 +474,13 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 
 		// top part
 		// starting at -30 then multiplying it by -1 makes you ends with the angle closer to the side which is needed to link both parts
-		sgl.begin_triangle_strip()
+		ctx.r.begin_triangle_strip()
 		for i in -30 .. 1 {
 			rad = f32(math.radians(-i * 3))
 			dx = r * math.cosf(rad)
 			dy = r * math.sinf(rad)
-			sgl.v2f(rx + dx, ty - dy)
-			sgl.v2f(lx - dx, ty - dy)
+			ctx.r.v2f(rx + dx, ty - dy)
+			ctx.r.v2f(lx - dx, ty - dy)
 		}
 
 		// bottom part
@@ -489,11 +488,200 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 			rad = f32(math.radians(i * 3))
 			dx = r * math.cosf(rad)
 			dy = r * math.sinf(rad)
-			sgl.v2f(rx + dx, by + dy)
-			sgl.v2f(lx - dx, by + dy)
+			ctx.r.v2f(rx + dx, by + dy)
+			ctx.r.v2f(lx - dx, by + dy)
 		}
-		sgl.end()
+		ctx.r.end()
 	}
+}
+
+// clamp_radius clamps a corner radius into [0, max_radius].
+@[inline]
+fn clamp_radius(r f32, max_radius f32) f32 {
+	if r < 0 {
+		return 0
+	}
+	if r > max_radius {
+		return max_radius
+	}
+	return r
+}
+
+// clamp_slice clamps a 9-slice border size into [0, available].
+@[inline]
+fn clamp_slice(size int, available f32) f32 {
+	if size < 0 || available <= 0 {
+		return 0
+	}
+	v := f32(size)
+	if v > available {
+		return available
+	}
+	return v
+}
+
+// draw_rounded_rect_filled_4 draws a filled rounded rectangle with per-corner radii.
+// `tl`, `tr`, `br`, `bl` are the radii for top-left, top-right, bottom-right, bottom-left.
+pub fn (ctx &Context) draw_rounded_rect_filled_4(x f32, y f32, w f32, h f32, tl f32, tr f32, br f32, bl f32, c Color) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	if c.a != 255 {
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
+	}
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
+
+	// radii are clamped to half of the smaller side, in logical pixels
+	max_radius := if w < h { w / 2 } else { h / 2 }
+	r_tl := clamp_radius(tl, max_radius)
+	r_tr := clamp_radius(tr, max_radius)
+	r_br := clamp_radius(br, max_radius)
+	r_bl := clamp_radius(bl, max_radius)
+
+	s := ctx.scale
+	sx := x * s
+	sy := y * s
+	width := w * s
+	height := h * s
+	rtl := r_tl * s
+	rtr := r_tr * s
+	rbr := r_br * s
+	rbl := r_bl * s
+
+	// A rounded rectangle is convex, so one triangle strip sweeping the left and
+	// right outlines covers it exactly once. Overlapping quads would double-blend
+	// translucent fills, so do not split this into a center rect plus edge rects.
+	segments := 30
+	ctx.r.begin_triangle_strip()
+	for i in 0 .. segments + 1 {
+		t := f32(i) / f32(segments)
+		// left outline, top to bottom: top-left arc
+		a := 3.0 * math.pi / 2.0 - t * (math.pi / 2.0)
+		ctx.r.v2f(sx + rtl + rtl * math.cosf(a), sy + rtl + rtl * math.sinf(a))
+		// right outline, top to bottom: top-right arc
+		b := -math.pi / 2.0 + t * (math.pi / 2.0)
+		ctx.r.v2f(sx + width - rtr + rtr * math.cosf(b), sy + rtr + rtr * math.sinf(b))
+	}
+	for i in 0 .. segments + 1 {
+		t := f32(i) / f32(segments)
+		// left outline, top to bottom: bottom-left arc
+		a := math.pi - t * (math.pi / 2.0)
+		ctx.r.v2f(sx + rbl + rbl * math.cosf(a), sy + height - rbl + rbl * math.sinf(a))
+		// right outline, top to bottom: bottom-right arc
+		b := t * (math.pi / 2.0)
+		ctx.r.v2f(sx + width - rbr + rbr * math.cosf(b), sy + height - rbr + rbr * math.sinf(b))
+	}
+	ctx.r.end()
+}
+
+// draw_9slice draws an image scaled to fit the target rect using 9-slice scaling.
+pub fn (ctx &Context) draw_9slice(img &Image, x f32, y f32, w f32, h f32, slice_left int, slice_top int, slice_right int, slice_bottom int) {
+	if img == nil || !img.simg_ok {
+		return
+	}
+	s := ctx.scale
+	ix := x * s
+	iy := y * s
+	iw := if w == 0 { f32(img.width) * s } else { w * s }
+	ih := if h == 0 { f32(img.height) * s } else { h * s }
+	sw := f32(img.width)
+	sh := f32(img.height)
+	if sw <= 0 || sh <= 0 || iw <= 0 || ih <= 0 {
+		return
+	}
+	// source slices, clamped to the image and to each other
+	src_l := clamp_slice(slice_left, sw)
+	src_r := clamp_slice(slice_right, sw - src_l)
+	src_t := clamp_slice(slice_top, sh)
+	src_b := clamp_slice(slice_bottom, sh - src_t)
+	// destination slices shrink proportionally when the target is smaller than
+	// their combined size, so no slice ever gets negative width/height.
+	mut sl := src_l * s
+	mut sr := src_r * s
+	mut st := src_t * s
+	mut sb := src_b * s
+	if sl + sr > iw && sl + sr > 0 {
+		k := iw / (sl + sr)
+		sl *= k
+		sr *= k
+	}
+	if st + sb > ih && st + sb > 0 {
+		k := ih / (st + sb)
+		st *= k
+		sb *= k
+	}
+	mid_w := iw - sl - sr
+	mid_h := ih - st - sb
+
+	ctx.r.enable_texture()
+	ctx.r.texture(img.simg, img.ssmp)
+	ctx.r.load_pipeline(ctx.pipeline.alpha)
+
+	u_l := src_l / sw
+	u_r := (sw - src_r) / sw
+	v_t := src_t / sh
+	v_b := (sh - src_b) / sh
+
+	// 9 slices: top-left, top-center, top-right, mid-left, center, mid-right, bot-left, bot-center, bot-right
+	// Top row
+	ctx.r.begin_quads()
+	ctx.r.c4b(255, 255, 255, 255)
+	// top-left
+	ctx.r.v3f_t2f(ix, iy, 0, 0, 0)
+	ctx.r.v3f_t2f(ix + sl, iy, 0, u_l, 0)
+	ctx.r.v3f_t2f(ix + sl, iy + st, 0, u_l, v_t)
+	ctx.r.v3f_t2f(ix, iy + st, 0, 0, v_t)
+	// top-center
+	ctx.r.v3f_t2f(ix + sl, iy, 0, u_l, 0)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy, 0, u_r, 0)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, u_r, v_t)
+	ctx.r.v3f_t2f(ix + sl, iy + st, 0, u_l, v_t)
+	// top-right
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy, 0, u_r, 0)
+	ctx.r.v3f_t2f(ix + iw, iy, 0, 1, 0)
+	ctx.r.v3f_t2f(ix + iw, iy + st, 0, 1, v_t)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, u_r, v_t)
+	ctx.r.end()
+
+	// middle row
+	ctx.r.begin_quads()
+	// mid-left
+	ctx.r.v3f_t2f(ix, iy + st, 0, 0, v_t)
+	ctx.r.v3f_t2f(ix + sl, iy + st, 0, u_l, v_t)
+	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, u_l, v_b)
+	ctx.r.v3f_t2f(ix, iy + st + mid_h, 0, 0, v_b)
+	// center
+	ctx.r.v3f_t2f(ix + sl, iy + st, 0, u_l, v_t)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, u_r, v_t)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, u_r, v_b)
+	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, u_l, v_b)
+	// mid-right
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, u_r, v_t)
+	ctx.r.v3f_t2f(ix + iw, iy + st, 0, 1, v_t)
+	ctx.r.v3f_t2f(ix + iw, iy + st + mid_h, 0, 1, v_b)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, u_r, v_b)
+	ctx.r.end()
+
+	// bottom row
+	ctx.r.begin_quads()
+	// bot-left
+	ctx.r.v3f_t2f(ix, iy + st + mid_h, 0, 0, v_b)
+	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, u_l, v_b)
+	ctx.r.v3f_t2f(ix + sl, iy + ih, 0, u_l, 1)
+	ctx.r.v3f_t2f(ix, iy + ih, 0, 0, 1)
+	// bot-center
+	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, u_l, v_b)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, u_r, v_b)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + ih, 0, u_r, 1)
+	ctx.r.v3f_t2f(ix + sl, iy + ih, 0, u_l, 1)
+	// bot-right
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, u_r, v_b)
+	ctx.r.v3f_t2f(ix + iw, iy + st + mid_h, 0, 1, v_b)
+	ctx.r.v3f_t2f(ix + iw, iy + ih, 0, 1, 1)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + ih, 0, u_r, 1)
+	ctx.r.end()
+
+	ctx.r.disable_texture()
 }
 
 // draw_rounded_rect_border  draws a rounded rectangle with a border using the given parameters.
@@ -545,9 +733,9 @@ pub fn (ctx &Context) draw_rounded_rect_border(x f32, y f32, w f32, h f32, r f32
 		return
 	}
 	if border_c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(border_c.r, border_c.g, border_c.b, border_c.a)
+	ctx.r.c4b(border_c.r, border_c.g, border_c.b, border_c.a)
 
 	// circle center coordinates
 	ltx := sx + new_r
@@ -564,24 +752,24 @@ pub fn (ctx &Context) draw_rounded_rect_border(x f32, y f32, w f32, h f32, r f32
 	mut dx := f32(0)
 	mut dy := f32(0)
 
-	sgl.begin_triangle_strip()
+	ctx.r.begin_triangle_strip()
 
 	if new_r == 0 {
 		// top
-		sgl.v2f(ltx, lty)
-		sgl.v2f(ltx + offset, lty + offset)
-		sgl.v2f(rtx, rty)
-		sgl.v2f(rtx - offset, rty + offset)
+		ctx.r.v2f(ltx, lty)
+		ctx.r.v2f(ltx + offset, lty + offset)
+		ctx.r.v2f(rtx, rty)
+		ctx.r.v2f(rtx - offset, rty + offset)
 		// right
-		sgl.v2f(rbx, rby)
-		sgl.v2f(rbx - offset, rby - offset)
+		ctx.r.v2f(rbx, rby)
+		ctx.r.v2f(rbx - offset, rby - offset)
 		// bottom
-		sgl.v2f(lbx, lby)
-		sgl.v2f(lbx + offset, lby - offset)
+		ctx.r.v2f(lbx, lby)
+		ctx.r.v2f(lbx + offset, lby - offset)
 		// left
-		sgl.v2f(ltx, lty)
-		sgl.v2f(ltx + offset, lty + offset)
-		sgl.end()
+		ctx.r.v2f(ltx, lty)
+		ctx.r.v2f(ltx + offset, lty + offset)
+		ctx.r.end()
 		return
 	}
 
@@ -591,10 +779,10 @@ pub fn (ctx &Context) draw_rounded_rect_border(x f32, y f32, w f32, h f32, r f32
 			rad = f32(math.radians(i * 3))
 			dx = new_r * math.cosf(rad)
 			dy = new_r * math.sinf(rad)
-			sgl.v2f(ltx - dx, lty - dy)
+			ctx.r.v2f(ltx - dx, lty - dy)
 			dx = offset * math.cosf(rad)
 			dy = offset * math.sinf(rad)
-			sgl.v2f(ltx - dx, lty - dy)
+			ctx.r.v2f(ltx - dx, lty - dy)
 		}
 
 		// right top
@@ -602,44 +790,44 @@ pub fn (ctx &Context) draw_rounded_rect_border(x f32, y f32, w f32, h f32, r f32
 			rad = f32(math.radians(i * 3))
 			dx = new_r * math.sinf(rad)
 			dy = new_r * math.cosf(rad)
-			sgl.v2f(rtx + dx, rty - dy)
+			ctx.r.v2f(rtx + dx, rty - dy)
 			dx = offset * math.sinf(rad)
 			dy = offset * math.cosf(rad)
-			sgl.v2f(rtx + dx, rty - dy)
+			ctx.r.v2f(rtx + dx, rty - dy)
 		}
 		// right bottom
 		for i in 0 .. 31 {
 			rad = f32(math.radians(i * 3))
 			dx = new_r * math.cosf(rad)
 			dy = new_r * math.sinf(rad)
-			sgl.v2f(rbx + dx, rby + dy)
+			ctx.r.v2f(rbx + dx, rby + dy)
 			dx = offset * math.cosf(rad)
 			dy = offset * math.sinf(rad)
-			sgl.v2f(rbx + dx, rby + dy)
+			ctx.r.v2f(rbx + dx, rby + dy)
 		}
 		// left bottom
 		for i in 0 .. 31 {
 			rad = f32(math.radians(i * 3))
 			dx = new_r * math.sinf(rad)
 			dy = new_r * math.cosf(rad)
-			sgl.v2f(lbx - dx, lby + dy)
+			ctx.r.v2f(lbx - dx, lby + dy)
 			dx = offset * math.sinf(rad)
 			dy = offset * math.cosf(rad)
-			sgl.v2f(lbx - dx, lby + dy)
+			ctx.r.v2f(lbx - dx, lby + dy)
 		}
 		// close
-		sgl.v2f(ltx - new_r, lty)
-		sgl.v2f(ltx - offset, lty)
+		ctx.r.v2f(ltx - new_r, lty)
+		ctx.r.v2f(ltx - offset, lty)
 	} else {
 		// left top
 		for i in 0 .. 31 {
 			rad = f32(math.radians(i * 3))
 			dx = new_r * math.cosf(rad)
 			dy = new_r * math.sinf(rad)
-			sgl.v2f(ltx - dx, lty - dy)
+			ctx.r.v2f(ltx - dx, lty - dy)
 			dx = offset * math.cosf(rad)
 			dy = offset * math.sinf(rad)
-			sgl.v2f(ltx + offset, lty + offset)
+			ctx.r.v2f(ltx + offset, lty + offset)
 		}
 
 		// right top
@@ -647,37 +835,37 @@ pub fn (ctx &Context) draw_rounded_rect_border(x f32, y f32, w f32, h f32, r f32
 			rad = f32(math.radians(i * 3))
 			dx = new_r * math.sinf(rad)
 			dy = new_r * math.cosf(rad)
-			sgl.v2f(rtx + dx, rty - dy)
+			ctx.r.v2f(rtx + dx, rty - dy)
 			dx = offset * math.sinf(rad)
 			dy = offset * math.cosf(rad)
-			sgl.v2f(rtx - offset, rty + offset)
+			ctx.r.v2f(rtx - offset, rty + offset)
 		}
 		// right bottom
 		for i in 0 .. 31 {
 			rad = f32(math.radians(i * 3))
 			dx = new_r * math.cosf(rad)
 			dy = new_r * math.sinf(rad)
-			sgl.v2f(rbx + dx, rby + dy)
+			ctx.r.v2f(rbx + dx, rby + dy)
 			dx = offset * math.cosf(rad)
 			dy = offset * math.sinf(rad)
-			sgl.v2f(rbx - offset, rby - offset)
+			ctx.r.v2f(rbx - offset, rby - offset)
 		}
 		// left bottom
 		for i in 0 .. 31 {
 			rad = f32(math.radians(i * 3))
 			dx = new_r * math.sinf(rad)
 			dy = new_r * math.cosf(rad)
-			sgl.v2f(lbx - dx, lby + dy)
+			ctx.r.v2f(lbx - dx, lby + dy)
 			dx = offset * math.sinf(rad)
 			dy = offset * math.cosf(rad)
-			sgl.v2f(lbx + offset, lby - offset)
+			ctx.r.v2f(lbx + offset, lby - offset)
 		}
 		// close
-		sgl.v2f(ltx - new_r, lty)
-		sgl.v2f(ltx + offset, lty + offset)
+		ctx.r.v2f(ltx - new_r, lty)
+		ctx.r.v2f(ltx + offset, lty + offset)
 	}
 
-	sgl.end()
+	ctx.r.end()
 }
 
 // draw_triangle_empty draws the outline of a triangle.
@@ -687,16 +875,16 @@ pub fn (ctx &Context) draw_rounded_rect_border(x f32, y f32, w f32, h f32, r f32
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_triangle_empty(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_line_strip()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
-	sgl.v2f(x3 * ctx.scale, y3 * ctx.scale)
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.end()
+	ctx.r.begin_line_strip()
+	ctx.r.v2f(x * ctx.scale, y * ctx.scale)
+	ctx.r.v2f(x2 * ctx.scale, y2 * ctx.scale)
+	ctx.r.v2f(x3 * ctx.scale, y3 * ctx.scale)
+	ctx.r.v2f(x * ctx.scale, y * ctx.scale)
+	ctx.r.end()
 }
 
 // draw_triangle_filled draws a filled triangle.
@@ -706,15 +894,15 @@ pub fn (ctx &Context) draw_triangle_empty(x f32, y f32, x2 f32, y2 f32, x3 f32, 
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_triangle_filled(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_triangles()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
-	sgl.v2f(x3 * ctx.scale, y3 * ctx.scale)
-	sgl.end()
+	ctx.r.begin_triangles()
+	ctx.r.v2f(x * ctx.scale, y * ctx.scale)
+	ctx.r.v2f(x2 * ctx.scale, y2 * ctx.scale)
+	ctx.r.v2f(x3 * ctx.scale, y3 * ctx.scale)
+	ctx.r.end()
 }
 
 // draw_square_empty draws the outline of a square.
@@ -758,14 +946,14 @@ fn radius_to_segments(r f32) int {
 pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
+			darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	nx := x * ctx.scale
 	ny := y * ctx.scale
@@ -775,14 +963,14 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 	mut yy := f32(0)
 	segments := radius_to_segments(radius * ctx.scale)
 
-	sgl.begin_line_strip()
+	ctx.r.begin_line_strip()
 	for i := 0; i < segments + 1; i++ {
 		theta = f32(math.tau) * f32(i) / f32(segments)
 		xx = nr * math.cosf(theta)
 		yy = nr * math.sinf(theta)
-		sgl.v2f(xx + nx, yy + ny)
+		ctx.r.v2f(xx + nx, yy + ny)
 	}
-	sgl.end()
+	ctx.r.end()
 }
 
 // draw_circle_filled draws a filled circle.
@@ -792,7 +980,7 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
+			darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
@@ -811,9 +999,9 @@ pub fn (ctx &Context) draw_polygon_filled(x f32, y f32, size f32, edges int, rot
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	nx := x * ctx.scale
 	ny := y * ctx.scale
@@ -822,15 +1010,15 @@ pub fn (ctx &Context) draw_polygon_filled(x f32, y f32, size f32, edges int, rot
 	mut xx := f32(0)
 	mut yy := f32(0)
 
-	sgl.begin_triangle_strip()
+	ctx.r.begin_triangle_strip()
 	for i := 0; i < edges + 1; i++ {
 		theta = f32(math.tau) * f32(i) / f32(edges)
 		xx = nr * math.cosf(theta + f32(math.radians(rotation)))
 		yy = nr * math.sinf(theta + f32(math.radians(rotation)))
-		sgl.v2f(xx + nx, yy + ny)
-		sgl.v2f(nx, ny)
+		ctx.r.v2f(xx + nx, yy + ny)
+		ctx.r.v2f(nx, ny)
 	}
-	sgl.end()
+	ctx.r.end()
 }
 
 // draw_circle_with_segments draws a filled circle with a specific number of segments.
@@ -854,15 +1042,15 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
+			darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	nx := x * ctx.scale
 	ny := y * ctx.scale
@@ -871,14 +1059,14 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 	mut xx := f32(0)
 	mut yy := f32(0)
 
-	sgl.begin_line_strip()
+	ctx.r.begin_line_strip()
 	for i := 0; i < segments + 1; i++ {
 		theta = f32(math.tau) * f32(i) / f32(segments)
 		xx = nr * math.cosf(theta)
 		yy = nr * math.sinf(theta)
-		sgl.v2f(xx + nx, yy + ny)
+		ctx.r.v2f(xx + nx, yy + ny)
 	}
-	sgl.end()
+	ctx.r.end()
 }
 
 // draw_slice_empty draws the outline of a circle slice/pie
@@ -888,9 +1076,9 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32
 		return
 	}
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	nx := x * ctx.scale
 	ny := y * ctx.scale
@@ -900,16 +1088,16 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32
 	mut xx := radius * ctx.scale * math.sinf(start_angle)
 	mut yy := radius * ctx.scale * math.cosf(start_angle)
 
-	sgl.begin_line_strip()
-	sgl.v2f(nx, ny)
+	ctx.r.begin_line_strip()
+	ctx.r.v2f(nx, ny)
 	for i := 0; i < segments + 1; i++ {
-		sgl.v2f(xx + nx, yy + ny)
+		ctx.r.v2f(xx + nx, yy + ny)
 		xx, yy = xx + yy * tan_factor, yy - xx * tan_factor
 		xx *= rad_factor
 		yy *= rad_factor
 	}
-	sgl.v2f(nx, ny)
-	sgl.end()
+	ctx.r.v2f(nx, ny)
+	ctx.r.end()
 }
 
 // draw_slice_filled draws a filled circle slice/pie
@@ -930,9 +1118,9 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	nx := x * ctx.scale
 	ny := y * ctx.scale
@@ -942,16 +1130,16 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 	mut xx := radius * ctx.scale * math.sinf(start_angle)
 	mut yy := radius * ctx.scale * math.cosf(start_angle)
 
-	sgl.begin_triangle_strip()
-	sgl.v2f(xx + nx, yy + ny)
+	ctx.r.begin_triangle_strip()
+	ctx.r.v2f(xx + nx, yy + ny)
 	for i := 0; i < segments; i++ {
 		xx, yy = xx + yy * tan_factor, yy - xx * tan_factor
 		xx *= rad_factor
 		yy *= rad_factor
-		sgl.v2f(xx + nx, yy + ny)
-		sgl.v2f(nx, ny)
+		ctx.r.v2f(xx + nx, yy + ny)
+		ctx.r.v2f(nx, ny)
 	}
-	sgl.end()
+	ctx.r.end()
 }
 
 // draw_arc_line draws a line arc.
@@ -978,9 +1166,9 @@ pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, en
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	nx := x * ctx.scale
 	ny := y * ctx.scale
@@ -990,15 +1178,15 @@ pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, en
 	mut xx := radius * ctx.scale * math.sinf(start_angle)
 	mut yy := radius * ctx.scale * math.cosf(start_angle)
 
-	sgl.begin_line_strip()
-	sgl.v2f(nx + xx, ny + yy)
+	ctx.r.begin_line_strip()
+	ctx.r.v2f(nx + xx, ny + yy)
 	for i := 0; i < segments; i++ {
 		xx, yy = xx + yy * tan_factor, yy - xx * tan_factor
 		xx *= rad_factor
 		yy *= rad_factor
-		sgl.v2f(nx + xx, ny + yy)
+		ctx.r.v2f(nx + xx, ny + yy)
 	}
-	sgl.end()
+	ctx.r.end()
 }
 
 // draw_arc_empty draws the outline of an arc.
@@ -1026,9 +1214,9 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	nx := x * ctx.scale
 	ny := y * ctx.scale
@@ -1036,33 +1224,33 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
 
-	sgl.begin_line_strip()
+	ctx.r.begin_line_strip()
 
 	// outer
 	mut xx := outer_radius * ctx.scale * math.sinf(start_angle)
 	mut yy := outer_radius * ctx.scale * math.cosf(start_angle)
 	sxx, syy := xx, yy
-	sgl.v2f(nx + xx, ny + yy)
+	ctx.r.v2f(nx + xx, ny + yy)
 	for i := 0; i < segments; i++ {
 		xx, yy = xx + yy * tan_factor, yy - xx * tan_factor
 		xx *= rad_factor
 		yy *= rad_factor
-		sgl.v2f(nx + xx, ny + yy)
+		ctx.r.v2f(nx + xx, ny + yy)
 	}
 
 	// inner
 	xx = inner_radius * ctx.scale * math.sinf(end_angle)
 	yy = inner_radius * ctx.scale * math.cosf(end_angle)
-	sgl.v2f(nx + xx, ny + yy)
+	ctx.r.v2f(nx + xx, ny + yy)
 	for i := 0; i < segments; i++ {
 		xx, yy = xx - yy * tan_factor, yy + xx * tan_factor
 		xx *= rad_factor
 		yy *= rad_factor
-		sgl.v2f(nx + xx, ny + yy)
+		ctx.r.v2f(nx + xx, ny + yy)
 	}
 
-	sgl.v2f(nx + sxx, ny + syy)
-	sgl.end()
+	ctx.r.v2f(nx + sxx, ny + syy)
+	ctx.r.end()
 }
 
 // draw_arc_filled draws a filled arc.
@@ -1094,9 +1282,9 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness 
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	nx := x * ctx.scale
 	ny := y * ctx.scale
@@ -1110,20 +1298,20 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness 
 	ix *= inner_radius
 	iy *= inner_radius
 
-	sgl.begin_triangle_strip()
-	sgl.v2f(nx + ix, ny + iy)
-	sgl.v2f(nx + ox, ny + oy)
+	ctx.r.begin_triangle_strip()
+	ctx.r.v2f(nx + ix, ny + iy)
+	ctx.r.v2f(nx + ox, ny + oy)
 	for i := 0; i < segments; i++ {
 		ix, iy = ix + iy * tan_factor, iy - ix * tan_factor
 		ix *= rad_factor
 		iy *= rad_factor
-		sgl.v2f(nx + ix, ny + iy)
+		ctx.r.v2f(nx + ix, ny + iy)
 		ox, oy = ox + oy * tan_factor, oy - ox * tan_factor
 		ox *= rad_factor
 		oy *= rad_factor
-		sgl.v2f(nx + ox, ny + oy)
+		ctx.r.v2f(nx + ox, ny + oy)
 	}
-	sgl.end()
+	ctx.r.end()
 }
 
 // draw_ellipse_empty draws the outline of an ellipse.
@@ -1133,16 +1321,16 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness 
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_line_strip()
+	ctx.r.begin_line_strip()
 	for i := 0; i < 360; i += 10 {
-		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
+		ctx.r.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
 	}
-	sgl.v2f(x, y + rh)
-	sgl.end()
+	ctx.r.v2f(x, y + rh)
+	ctx.r.end()
 }
 
 // draw_ellipse_empty draws the outline of an ellipse.
@@ -1153,21 +1341,21 @@ pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c Color) 
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_ellipse_thick(x f32, y f32, rw f32, rh f32, th f32, c Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_triangle_strip()
+	ctx.r.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
 		xfactor := math.sinf(f32(math.radians(i)))
 		yfactor := math.cosf(f32(math.radians(i)))
 
-		sgl.v2f(x + xfactor * (rw - th / 2), y + yfactor * (rh - th / 2))
-		sgl.v2f(x + xfactor * (rw + th / 2), y + yfactor * (rh + th / 2))
+		ctx.r.v2f(x + xfactor * (rw - th / 2), y + yfactor * (rh - th / 2))
+		ctx.r.v2f(x + xfactor * (rw + th / 2), y + yfactor * (rh + th / 2))
 	}
-	sgl.v2f(x, y + (rh - th / 2))
-	sgl.v2f(x, y + (rh + th / 2))
-	sgl.end()
+	ctx.r.v2f(x, y + (rh - th / 2))
+	ctx.r.v2f(x, y + (rh + th / 2))
+	ctx.r.end()
 }
 
 // draw_ellipse_filled draws an opaque ellipse.
@@ -1177,17 +1365,17 @@ pub fn (ctx &Context) draw_ellipse_thick(x f32, y f32, rw f32, rh f32, th f32, c
 // `c` is the fill color.
 pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_triangle_strip()
+	ctx.r.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
-		sgl.v2f(x, y)
-		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
+		ctx.r.v2f(x, y)
+		ctx.r.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
 	}
-	sgl.v2f(x, y + rh)
-	sgl.end()
+	ctx.r.v2f(x, y + rh)
+	ctx.r.end()
 }
 
 // draw_ellipse_empty_rotate draws the outline of an ellipse.
@@ -1198,22 +1386,22 @@ pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c Color)
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, rota f32, c Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	cos_rot := math.cosf(rota)
 	sin_rot := math.sinf(rota)
-	sgl.begin_line_strip()
+	ctx.r.begin_line_strip()
 	for i := 0; i < 360; i += 10 {
 		x_current := math.sinf(f32(math.radians(i))) * rw
 		y_current := math.cosf(f32(math.radians(i))) * rh
 
-		sgl.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
+		ctx.r.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
 			y_current * cos_rot)
 	}
-	sgl.v2f(x - rh * sin_rot, y + rh * cos_rot)
-	sgl.end()
+	ctx.r.v2f(x - rh * sin_rot, y + rh * cos_rot)
+	ctx.r.end()
 }
 
 // draw_ellipse_empty draws the outline of an ellipse.
@@ -1225,25 +1413,25 @@ pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, ro
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th f32, rota f32, c Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	cos_rot := math.cosf(rota)
 	sin_rot := math.sinf(rota)
-	sgl.begin_triangle_strip()
+	ctx.r.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
 		xfactor := math.sinf(f32(math.radians(i)))
 		yfactor := math.cosf(f32(math.radians(i)))
 
-		sgl.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot, y +
+		ctx.r.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot, y +
 			yfactor * (rh - th / 2) * cos_rot + xfactor * (rw - th / 2) * sin_rot)
-		sgl.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot, y +
+		ctx.r.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot, y +
 			yfactor * (rh + th / 2) * cos_rot + xfactor * (rw + th / 2) * sin_rot)
 	}
-	sgl.v2f(x - (rh - th / 2) * sin_rot, y + (rh - th / 2) * cos_rot)
-	sgl.v2f(x - (rh + th / 2) * sin_rot, y + (rh + th / 2) * cos_rot)
-	sgl.end()
+	ctx.r.v2f(x - (rh - th / 2) * sin_rot, y + (rh - th / 2) * cos_rot)
+	ctx.r.v2f(x - (rh + th / 2) * sin_rot, y + (rh + th / 2) * cos_rot)
+	ctx.r.end()
 }
 
 // draw_ellipse_filled draws an opaque ellipse.
@@ -1254,22 +1442,22 @@ pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th
 // `c` is the fill color.
 pub fn (ctx &Context) draw_ellipse_filled_rotate(x f32, y f32, rw f32, rh f32, rota f32, c Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
 	cos_rot := math.cosf(rota)
 	sin_rot := math.sinf(rota)
-	sgl.begin_triangle_strip()
+	ctx.r.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
-		sgl.v2f(x, y)
+		ctx.r.v2f(x, y)
 		x_current := math.sinf(f32(math.radians(i))) * rw
 		y_current := math.cosf(f32(math.radians(i))) * rh
-		sgl.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
+		ctx.r.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
 			y_current * cos_rot)
 	}
-	sgl.v2f(x - rh * sin_rot, y + rh * cos_rot)
-	sgl.end()
+	ctx.r.v2f(x - rh * sin_rot, y + rh * cos_rot)
+	ctx.r.end()
 }
 
 // draw_cubic_bezier draws a cubic Bézier curve, also known as a spline, from four points.
@@ -1290,11 +1478,11 @@ pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c Colo
 		return
 	}
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_line_strip()
+	ctx.r.begin_line_strip()
 
 	p1_x, p1_y := points[0], points[1]
 	p2_x, p2_y := points[6], points[7]
@@ -1305,7 +1493,7 @@ pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c Colo
 	// The constant 3 is actually points.len() - 1;
 
 	step := f32(1) / steps
-	sgl.v2f(p1_x * ctx.scale, p1_y * ctx.scale)
+	ctx.r.v2f(p1_x * ctx.scale, p1_y * ctx.scale)
 	for u := f32(0); u <= f32(1); u += step {
 		pow_2_u := u * u
 		pow_3_u := pow_2_u * u
@@ -1316,9 +1504,9 @@ pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c Colo
 		y := pow_3_u * (p2_y + 3 * (ctrl_p1_y - ctrl_p2_y) - p1_y) +
 			3 * pow_2_u * (p1_y - 2 * ctrl_p1_y + ctrl_p2_y) + 3 * u * (ctrl_p1_y - p1_y) + p1_y
 
-		sgl.v2f(x * ctx.scale, y * ctx.scale)
+		ctx.r.v2f(x * ctx.scale, y * ctx.scale)
 	}
-	sgl.v2f(p2_x * ctx.scale, p2_y * ctx.scale)
+	ctx.r.v2f(p2_x * ctx.scale, p2_y * ctx.scale)
 
-	sgl.end()
+	ctx.r.end()
 }

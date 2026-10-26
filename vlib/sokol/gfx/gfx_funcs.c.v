@@ -28,7 +28,7 @@ fn C.sg_update_buffer(buf C.sg_buffer, data &C.sg_range)
 fn C.sg_update_image(img C.sg_image, data &C.sg_image_data)
 fn C.sg_append_buffer(buf C.sg_buffer, data &C.sg_range) i32
 fn C.sg_query_buffer_overflow(buf C.sg_buffer) bool
-fn C.sg_query_buffer_will_overflow(buf C.sg_buffer, size usize) bool
+fn C.sg_query_buffer_will_overflow(buf C.sg_buffer, size uint) bool
 
 // rendering functions
 fn C.sg_begin_pass(const_pass &C.sg_pass)

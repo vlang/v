@@ -408,7 +408,7 @@ fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
 }
 
 fn new_map_aligned(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
-	clone_fn MapCloneFn, free_fn MapFreeFn, key_alignment usize, value_alignment usize) map {
+	clone_fn MapCloneFn, free_fn MapFreeFn, key_alignment uint, value_alignment uint) map {
 	mut result := new_map(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
 	result.data.key_values.key_alignment = data_alignment_exponent(key_alignment)
 	result.data.key_values.value_alignment = data_alignment_exponent(value_alignment)
@@ -493,9 +493,9 @@ fn (mut m VMapData) clear() {
 fn (m &VMapData) panic_nil_map_hash_fn() {
 	unsafe {
 		p := &u64(m)
-		prev2 := (&u64(usize(m) - usize(16)))[0]
-		prev1 := (&u64(usize(m) - usize(8)))[0]
-		panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
+		prev2 := (&u64(uint(m) - uint(16)))[0]
+		prev1 := (&u64(uint(m) - uint(8)))[0]
+		panic('map.hash_fn is nil map_ptr=${uint(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${uint(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${uint(voidptr(m.hash_fn))}')
 	}
 }
 
@@ -760,7 +760,7 @@ fn (mut m VMapData) cached_rehash(old_cap u32) {
 		m.meta_greater(index, meta, kv_index)
 	}
 	$if prealloc {
-		unsafe { prealloc_discard_pages(old_metas, usize(sizeof(u32)) * usize(old_cap + 2 + old_extra_metas)) }
+		unsafe { prealloc_discard_pages(old_metas, uint(sizeof(u32)) * uint(old_cap + 2 + old_extra_metas)) }
 	}
 	unsafe { free(old_metas) }
 }
@@ -1083,7 +1083,7 @@ fn dense_array_allocate(size u64, alignment u8) &u8 {
 	if alignment == 0 {
 		return unsafe { malloc(__at_least_one(size)) }
 	}
-	return alloc_array_data_aligned(size, usize(1) << alignment, false)
+	return alloc_array_data_aligned(size, uint(1) << alignment, false)
 }
 
 @[inline; unsafe]
@@ -1125,7 +1125,7 @@ fn (m &VMapData) keys() array {
 	mut keys := if alignment == 0 {
 		__new_array(m.count, 0, m.key_bytes)
 	} else {
-		__new_array_aligned(m.count, 0, m.key_bytes, usize(1) << alignment)
+		__new_array_aligned(m.count, 0, m.key_bytes, uint(1) << alignment)
 	}
 	mut item := unsafe { &u8(keys.data) }
 	if m.key_values.deletes == 0 {
@@ -1161,7 +1161,7 @@ fn (m &VMapData) values() array {
 	mut values := if alignment == 0 {
 		__new_array(m.count, 0, m.value_bytes)
 	} else {
-		__new_array_aligned(m.count, 0, m.value_bytes, usize(1) << alignment)
+		__new_array_aligned(m.count, 0, m.value_bytes, uint(1) << alignment)
 	}
 	if m.count == 0 {
 		return values
@@ -1303,7 +1303,7 @@ pub fn (m &map) free() {
 @[unsafe]
 fn (m &VMapData) free() {
 	$if prealloc {
-		unsafe { prealloc_discard_pages(m.metas, usize(sizeof(u32)) * usize(m.even_index + 2 + m.extra_metas)) }
+		unsafe { prealloc_discard_pages(m.metas, uint(sizeof(u32)) * uint(m.even_index + 2 + m.extra_metas)) }
 	}
 	unsafe { free(m.metas) }
 	unsafe {
@@ -1336,14 +1336,14 @@ fn (m &VMapData) free() {
 		}
 		if m.key_values.keys != nil {
 			$if prealloc {
-				prealloc_discard_pages(m.key_values.keys, usize(m.key_values.cap) * usize(m.key_bytes))
+				prealloc_discard_pages(m.key_values.keys, uint(m.key_values.cap) * uint(m.key_bytes))
 			}
 			dense_array_free(m.key_values.keys, m.key_values.key_alignment)
 			m.key_values.keys = nil
 		}
 		if m.key_values.values != nil {
 			$if prealloc {
-				prealloc_discard_pages(m.key_values.values, usize(m.key_values.cap) * usize(m.value_bytes))
+				prealloc_discard_pages(m.key_values.values, uint(m.key_values.cap) * uint(m.value_bytes))
 			}
 			dense_array_free(m.key_values.values, m.key_values.value_alignment)
 			m.key_values.values = nil

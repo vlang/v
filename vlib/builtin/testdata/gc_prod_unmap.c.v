@@ -1,6 +1,6 @@
 module main
 
-fn C.GC_expand_hp(usize) int
+fn C.GC_expand_hp(uint) int
 fn C.GC_set_force_unmap_on_gcollect(int)
 
 fn main() {
