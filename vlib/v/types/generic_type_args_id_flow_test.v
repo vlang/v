@@ -67,3 +67,22 @@ fn test_generic_alias_argument_ids_keep_substitution_order_and_arity_fallback() 
 		assert fallback.base_type.source_type_id() == flat.source_type_u64
 	}
 }
+
+fn test_main_generic_base_keeps_canonical_specialization_spelling() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'foreign'
+	tc.struct_generic_params['Box'] = ['T']
+	tc.structs['Box'] = []StructField{}
+	tc.struct_generic_params['foreign.Box'] = ['T']
+	tc.structs['foreign.Box'] = []StructField{}
+	assert tc.qualified_generic_suffix([flat.source_type_id('main.Box[string]')]) == '[Box[string]]'
+}
+
+fn test_main_callback_type_keeps_unqualified_diagnostic_spelling() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	tc.structs['Context'] = []StructField{}
+	assert flat.source_type_name(tc.qualify_resolution_type_text(flat.source_type_id('fn (mut main.Context) bool'))) == 'fn(mut Context) bool'
+}

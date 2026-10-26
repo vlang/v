@@ -7090,12 +7090,15 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic
 		}
 	}
 	if resolution && clean.contains('.') {
-		// Keep caller-owned main types locked inside generic applications too.
-		// Dropping the prefix here lets field substitution rebind the bare name
-		// to a homonym in the generic declaration's module.
-		if clean.starts_with('main.') && !clean['main.'.len..].contains('.') {
+		// Keep concrete caller types locked while resolving a foreign generic body.
+		// Generic bases retain their canonical specialization spelling below.
+		if tc.cur_module != 'main' && tc.cur_module.len > 0
+			&& clean.starts_with('main.') && !clean['main.'.len..].contains('.') {
+			base := clean['main.'.len..]
 			if _ := tc.resolve_import_alias('main') {
-			} else if tc.qualify_candidate_type_exists(clean['main.'.len..]) {
+			} else if base !in tc.struct_generic_params && base !in tc.sum_generic_params
+				&& base !in tc.interface_generic_params && base !in tc.type_alias_generic_params
+				&& tc.qualify_candidate_type_exists(base) {
 				return clean
 			}
 		}

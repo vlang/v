@@ -21,6 +21,8 @@ fn test_generated_capture_struct_uses_source_module_for_fixed_array_size() {
 			})
 		})
 	}]
+	// Simulate the spelling first requested while generating cached support code.
+	assert tc.c_type(tc.structs[context_name][0].typ) == 'Array_fixed_i64_fixed_array_size*'
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
