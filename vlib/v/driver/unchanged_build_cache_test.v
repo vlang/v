@@ -160,6 +160,7 @@ fn test_default_build_rechecks_compile_time_environment() {
 		compiler.set_environment(environment)
 		compiler.set_args(['-cc', 'clang', '-o', executable, source])
 		compiler.set_redirect_stdio_merged()
+		compiler.run()
 		output := compiler.stdout_slurp()
 		compiler.wait()
 		code := compiler.code
@@ -167,6 +168,7 @@ fn test_default_build_rechecks_compile_time_environment() {
 		assert code == 0, output
 		mut program := os.new_process(executable)
 		program.set_redirect_stdio()
+		program.run()
 		result := program.stdout_slurp()
 		program.wait()
 		program_code := program.code
