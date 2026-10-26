@@ -6387,7 +6387,7 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 		return none
 	}
 	resolved := tc.resolve_import_alias(base_node.value) or {
-		if base_node.value == tc.cur_module.all_after_last('.') {
+		if base_node.value == short_name_view(tc.cur_module) {
 			tc.cur_module
 		} else {
 			base_node.value
@@ -14185,14 +14185,34 @@ fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, met
 	if type_name == 0 {
 		return none
 	}
-	for method_name in receiver_method_name_candidates(clean, method, tc.cur_module) {
-		if !tc.fn_signature_known(method_name) {
-			continue
+	mut recv := clean
+	if recv is Alias {
+		recv = recv.base_type
+	}
+	if recv !is Array && recv !is Map {
+		// Same two candidates, in the same order, as receiver_method_name_candidates;
+		// the escaped name is built only when the plain one does not resolve.
+		type_text := flat.source_type_name(type_name)
+		plain := '${type_text}.${method}'
+		if tc.fn_signature_known(plain)
+			&& tc.method_can_be_called_on_receiver(base_type, method, plain) {
+			return plain
 		}
-		if !tc.method_can_be_called_on_receiver(base_type, method, method_name) {
-			continue
+		escaped := '${type_text}.@${method}'
+		if tc.fn_signature_known(escaped)
+			&& tc.method_can_be_called_on_receiver(base_type, method, escaped) {
+			return escaped
 		}
-		return method_name
+	} else {
+		for method_name in receiver_method_name_candidates(clean, method, tc.cur_module) {
+			if !tc.fn_signature_known(method_name) {
+				continue
+			}
+			if !tc.method_can_be_called_on_receiver(base_type, method, method_name) {
+				continue
+			}
+			return method_name
+		}
 	}
 	if info := tc.embedded_method_call_info(type_name, method) {
 		if info.name.len > 0 {

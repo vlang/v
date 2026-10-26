@@ -7739,7 +7739,7 @@ fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool 
 		return true
 	}
 	if base.value == 'main' || base.value == tc.cur_module
-		|| base.value == tc.cur_module.all_after_last('.') {
+		|| base.value == short_name_view(tc.cur_module) {
 		if (node.value in tc.const_types && tc.bare_const_key_is_visible(node.value))
 			|| '${base.value}.${node.value}' in tc.const_types {
 			return true
@@ -9950,7 +9950,7 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 			}
 			return none
 		}
-		if base.value == tc.cur_module || base.value == tc.cur_module.all_after_last('.') {
+		if base.value == tc.cur_module || base.value == short_name_view(tc.cur_module) {
 			return tc.local_bare_fn_signature_key(node.value)
 		}
 		if key := tc.static_assoc_fn_key_for_base(base.source_value_id(), node.value) {
