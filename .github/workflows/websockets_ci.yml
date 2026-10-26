@@ -74,9 +74,11 @@ jobs:
       - name: Copy reports wss
         run: docker cp autobahn_server_wss:/reports ${{github.workspace}}/reports_wss
       - name: Test success
-        run: v run cmd/tools/check_autobahn_results/main.v ${{github.workspace}}/reports
+        run: |
+          ./v -silent test cmd/tools/check_autobahn_results/
+          ./v run cmd/tools/check_autobahn_results/main.v ${{github.workspace}}/reports
       - name: Test success WSS
-        run: v run cmd/tools/check_autobahn_results/main.v ${{github.workspace}}/reports_wss --clients-only
+        run: ./v run cmd/tools/check_autobahn_results/main.v ${{github.workspace}}/reports_wss --clients-only
 
       - name: Publish all reports
         uses: actions/upload-artifact@v7

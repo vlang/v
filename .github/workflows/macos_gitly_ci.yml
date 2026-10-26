@@ -5,7 +5,7 @@ name: macOS CI (gitly_ci)
 #
 # Requirements on the self-hosted runner (a Mac):
 #   * a gitly_ci service reachable at $GITLY_CI_URL (default http://localhost:8081)
-#   * V (v) and curl (V ships with the runner; curl ships with macOS)
+#   * make, a C compiler, and curl (the job builds its V helper compiler)
 #   * a committed .gitly-ci.yml at the repo root describing the steps to run
 #
 # Triggers on every commit to master and every internal pull request, so the
@@ -52,6 +52,11 @@ jobs:
             exit 1
           fi
 
+      - name: Build and test the V trigger helper
+        run: |
+          make -j2
+          ./v -silent test cmd/tools/gitly_trigger/
+
       - name: Run gitly_ci and stream logs live
         run: |
           set -uo pipefail
@@ -61,11 +66,11 @@ jobs:
           fi
 
           # Build the trigger payload (V JSON-escapes the YAML safely).
-          payload="$(v run cmd/tools/gitly_trigger/main.v encode "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_WORKSPACE" "$CONFIG_FILE")"
+          payload="$(./v run cmd/tools/gitly_trigger/main.v encode "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_WORKSPACE" "$CONFIG_FILE")"
 
           resp="$(curl -sS -m 20 -X POST "$GITLY_CI_URL/api/v1/trigger" \
             -H 'Content-Type: application/json' -d "$payload")"
-          run_id="$(printf '%s' "$resp" | v run cmd/tools/gitly_trigger/main.v extract-id 2>/dev/null)"
+          run_id="$(printf '%s' "$resp" | ./v run cmd/tools/gitly_trigger/main.v extract-id 2>/dev/null)"
           if [ -z "${run_id:-}" ]; then
             echo "::error::Failed to trigger gitly_ci: $resp"; exit 1
           fi
