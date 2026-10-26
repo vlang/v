@@ -146,7 +146,7 @@ fn (mut g Parser) parse_for() !bool {
 				index_name := g.temporary_name('map_index')
 				collection_c_type := g.declaration_c_type(start_expression_type, start)
 				g.write_line('${collection_c_type} ${collection_name} = (${start});')
-				map_pointer := if flat.source_type_name(collection_layout_type).ends_with('*') {
+				map_pointer := if flat.source_type_query(collection_layout_type).has(.c_pointer_suffix) {
 					collection_name
 				} else {
 					'&${collection_name}'
@@ -179,7 +179,7 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('}')
 				return false
 			}
-			if !item_is_mut && flat.source_type_name(collection_layout_type).trim_right('*') != 'string'
+			if !item_is_mut && fastc_trim_pointer_type(collection_layout_type) != flat.source_type_string
 				&& g.array_element_type(collection_layout_type) == none {
 				if iterator := g.iterator_next_method(collection_layout_type) {
 					g.next()
@@ -188,7 +188,7 @@ fn (mut g Parser) parse_for() !bool {
 					return false
 				}
 			}
-			element_type := if flat.source_type_name(collection_layout_type).trim_right('*') == 'string' {
+			element_type := if fastc_trim_pointer_type(collection_layout_type) == flat.source_type_string {
 				flat.source_type_u8
 			} else {
 				g.array_element_type(collection_layout_type) or {
@@ -211,12 +211,12 @@ fn (mut g Parser) parse_for() !bool {
 			} else {
 				fastc_c_identifier(name)
 			}
-			access := if flat.source_type_name(collection_layout_type).ends_with('*') {
+			access := if flat.source_type_query(collection_layout_type).has(.c_pointer_suffix) {
 				'->'
 			} else {
 				'.'
 			}
-			data_field := if flat.source_type_name(collection_layout_type).trim_right('*') == 'string' {
+			data_field := if fastc_trim_pointer_type(collection_layout_type) == flat.source_type_string {
 				'str'
 			} else {
 				'data'
@@ -225,7 +225,7 @@ fn (mut g Parser) parse_for() !bool {
 				fixed_data := if is_raw_fixed_array {
 					'((${start})[0])'
 				} else {
-					fixed_access := if flat.source_type_name(collection_layout_type).ends_with('*') {
+					fixed_access := if flat.source_type_query(collection_layout_type).has(.c_pointer_suffix) {
 						'->'
 					} else {
 						'.'
@@ -260,7 +260,7 @@ fn (mut g Parser) parse_for() !bool {
 				// element exactly like `for mut x in arr`; the `mut` is just carried on the
 				// second binding (`value_is_mut`) instead of the first.
 				if item_is_mut || value_is_mut {
-					if flat.source_type_name(element_type).ends_with('*') {
+					if flat.source_type_query(element_type).has(.c_pointer_suffix) {
 						// Pointer elements are already references to mutable values. Taking the
 						// array slot's address here would incorrectly bind `x` as `&&T`.
 						g.write_line('${element_c_type} ${c_value_name} = ((${element_c_type} *)${collection_data})[${index_name}];')
@@ -281,7 +281,7 @@ fn (mut g Parser) parse_for() !bool {
 					g.locals[actual_value_name] = FastcLocal{
 						typ: flat.source_type_u8
 					}
-				} else if !is_fixed_array && flat.source_type_name(collection_layout_type).ends_with('*') && flat.source_type_name(collection_layout_type).trim_right('*') != 'string' {
+				} else if !is_fixed_array && flat.source_type_query(collection_layout_type).has(.c_pointer_suffix) && fastc_trim_pointer_type(collection_layout_type) != flat.source_type_string {
 					g.write_line('${element_c_type} *${c_value_name} = &(((${element_c_type} *)${collection_data})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
 						typ: flat.source_type_id(flat.source_type_name(element_type) + '*')
@@ -395,7 +395,7 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 	g.write_line('while (1) {')
 	g.indent++
 	for plan in plans {
-		boxed_zero := if plan.boxed_type_text().ends_with('*') {
+		boxed_zero := if flat.source_type_query(plan.boxed_type).has(.c_pointer_suffix) {
 			'NULL'
 		} else {
 			'(${plan.boxed_type_text()}){0}'
@@ -406,7 +406,11 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 	mut previous_member_smartcasts := map[string]FastcMemberSmartcast{}
 	mut had_member_smartcasts := map[string]bool{}
 	for plan in plans {
-		plan_access := if plan.boxed_type_text().ends_with('*') { '->' } else { '.' }
+		plan_access := if flat.source_type_query(plan.boxed_type).has(.c_pointer_suffix) {
+			'->'
+		} else {
+			'.'
+		}
 		g.write_line('${plan.type_c_text()} *${plan.member_tmp} = (${plan.type_c_text()} *)${plan.boxed_tmp}${plan_access}_object;')
 		if plan.path !in previous_member_smartcasts {
 			had_member_smartcasts[plan.path] = plan.path in g.member_smartcasts
@@ -476,8 +480,8 @@ fn (g &Parser) iterator_next_method(collection_type_source_id u32) ?FastcIterato
 	collection_type := flat.source_type_name(collection_type_source_id)
 	key, path := g.resolve_method(flat.source_type_id(fastc_trim_pointer_suffix(collection_type)), 'next')
 	signature := g.functions[key] or { return none }
-	if path.len > 0 || signature.parameter_types.ids.len != 1 || signature.return_type_text() != 'Option'
-		|| signature.option_type_text() in ['', 'void', 'MultiReturn'] {
+	if path.len > 0 || signature.parameter_types.ids.len != 1 || signature.return_type != fastc_type_option
+		|| signature.option_type in [u32(0), flat.source_type_void, fastc_type_multi_return] {
 		return none
 	}
 	receiver := signature.parameter_types.at(0)
@@ -485,14 +489,13 @@ fn (g &Parser) iterator_next_method(collection_type_source_id u32) ?FastcIterato
 		c_name:       g.c_function_name_or(key, fastc_method_c_name(signature.module_name, receiver,
 			'next'))
 		element_type: signature.option_type
-		by_pointer:   receiver.ends_with('*')
+		by_pointer:   flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix)
 	}
 }
 
 // parse_for_in_iterator lowers `for x in it {` and `for i, x in it {` over an iterator:
 // `next()` is called on a copy of `it` until it returns none.
 fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string, start_type_source_id u32, layout_type_source_id u32, name string, value_name string) ! {
-	layout_type := flat.source_type_name(layout_type_source_id)
 	iterator_name := g.temporary_name('iterator')
 	option_name := g.temporary_name('iterator_next')
 	index_name := if value_name != '' && name != '_' {
@@ -500,7 +503,7 @@ fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string
 	} else {
 		g.temporary_name('index')
 	}
-	is_pointer := layout_type.ends_with('*')
+	is_pointer := flat.source_type_query(layout_type_source_id).has(.c_pointer_suffix)
 	receiver := if iterator.by_pointer && !is_pointer {
 		'&${iterator_name}'
 	} else if !iterator.by_pointer && is_pointer {

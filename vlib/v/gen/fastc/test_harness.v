@@ -184,14 +184,14 @@ fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, func
 			out.writeln('\t\t\t${before_each}();')
 		}
 		out.writeln('\t\t\tif (v_fastc_test_failures == before) {')
-		return_type := flat.source_type_name(test.return_type)
-		if return_type in ['__v_result', 'Option'] {
+		if test.return_type in [fastc_type_result, fastc_type_option] {
 			// A test returning an error reports it as the C harness does.
-			message := if return_type == '__v_result' {
+			message := if test.return_type == fastc_type_result {
 				'builtin__IError_msg(v_fastc_test_result.err)'
 			} else {
 				'_S("none")'
 			}
+			return_type := flat.source_type_name(test.return_type)
 			path_literal := test.path.replace('\\', '\\\\').replace('"', '\\"')
 			out.writeln('\t\t\t\t${return_type} v_fastc_test_result = ${test.c_name}();')
 			out.writeln('\t\t\t\tif (v_fastc_test_result.state != 0) {')

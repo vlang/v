@@ -73,11 +73,11 @@ fn main() {
 	assert sizes.len == 6
 	for i, size in sizes {
 		if i in [0, 3] {
-			assert size.value == 'buf'
+			assert size.value_text() == 'buf'
 			assert size.children_count == 0
 			continue
 		}
-		assert size.value == ''
+		assert size.value_text() == ''
 		assert size.children_count == 1
 		operand := p.a.node(p.a.child(&size, 0))
 		assert operand.kind == [flat.NodeKind.ident, .index, .infix, .ident, .index, .selector][i]
@@ -135,7 +135,7 @@ fn test_sizeof_local_type_alias_keeps_type_resolution_precedence() {
 	size := p.a.node(id)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	assert size.kind == .sizeof_expr
-	assert size.value == p.resolve_local_type_name('buf')
+	assert size.value_text() == p.resolve_local_type_name('buf')
 	assert size.children_count == 0
 	assert p.translated_sizeof_scanned_modules.len == 0
 }
