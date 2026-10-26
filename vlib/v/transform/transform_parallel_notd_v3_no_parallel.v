@@ -3212,6 +3212,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	previous_used_fns_root := t.used_fns_root
 	shared_used_fns := t.used_fns.clone()
 	t.used_fns_root = unsafe { &shared_used_fns }
+	t.reset_used_fn_name_cache()
 	t.timing_profile('  [ttime]     ss split+part  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	mut args := []SharedChunkArgs{len: chunk_count}
 	args[0] = SharedChunkArgs{
@@ -3412,6 +3413,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	t.shared_base_nodes = -1
 	t.shared_base_children = -1
 	t.used_fns_root = previous_used_fns_root
+	t.reset_used_fn_name_cache()
 	t.flush_deferred_base_writes()
 	if t.ignored_comptime_for_log.len > 0 {
 		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {

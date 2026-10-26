@@ -348,6 +348,7 @@ mut:
 	alias_receiver_method_cache            &LookupCache               = unsafe { nil }
 	receiver_method_cache                  &ReceiverMethodCache       = unsafe { nil }
 	promote_text_cache                     &PromoteTextCache          = unsafe { nil }
+	used_fn_name_cache                     &UsedFnNameCache           = unsafe { nil }
 	call_variadic_cache                    &BoolLookupCache           = unsafe { nil }
 	str_alias_cache                        &StrAliasCache             = unsafe { nil }
 	file_import_cache                      &util.KeyRecentCache       = unsafe { nil }
@@ -1234,6 +1235,109 @@ fn (mut t Transformer) end_promote_text_window() {
 	}
 }
 
+// UsedFnNameCache remembers (module, name) pairs whose mark_fn_used_name pass
+// found or inserted every spelling it records. The used sets only grow, so a
+// repeated call for such a pair would insert and log nothing. Keys are copied
+// inline because the names may live in scratch arenas freed before the next
+// lookup. Any change of the parent or root used set starts a new generation.
+struct UsedFnNameCache {
+mut:
+	generation u32 = 1
+	parent     voidptr
+	root       voidptr
+	slots      [used_fn_name_cache_slots]UsedFnNameCacheSlot
+}
+
+struct UsedFnNameCacheSlot {
+mut:
+	generation u32
+	module_len u8
+	name_len   u8
+	bytes      [used_fn_name_cache_key_bytes]u8
+}
+
+const used_fn_name_cache_slots = 1024
+const used_fn_name_cache_key_bytes = 58
+
+// used_fn_name_cache_slot hashes a non-empty name and its module into a
+// UsedFnNameCache slot.
+@[direct_array_access; inline]
+fn used_fn_name_cache_slot(module_name string, name string) int {
+	mut key := u64(name.len) ^ (u64(module_name.len) << 8)
+	if name.len >= 8 {
+		mut first := u64(0)
+		mut last := u64(0)
+		// Word copies stay within the borrowed slice, including unaligned views.
+		unsafe {
+			vmemcpy(&first, name.str, 8)
+			vmemcpy(&last, name.str + name.len - 8, 8)
+		}
+		key ^= first ^ (last * u64(0x9e3779b97f4a7c15))
+	} else {
+		key ^= (u64(name[0]) << 16) ^ (u64(name[name.len >> 1]) << 24) ^ (u64(name[name.len - 1]) << 32)
+	}
+	if module_name.len > 0 {
+		key ^= ((u64(module_name[0]) << 8) ^ u64(module_name[module_name.len - 1]) ^ (u64(module_name[module_name.len >> 1]) << 16)) * u64(0xc2b2ae3d27d4eb4f)
+	}
+	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
+	return int((key >> 32) & u64(used_fn_name_cache_slots - 1))
+}
+
+// used_fn_name_cache_probe returns -2 when mark_fn_used_name already handled
+// `name` in the current module, the slot to fill after a full pass, or -1 when
+// the pair cannot be cached.
+@[direct_array_access]
+fn (mut t Transformer) used_fn_name_cache_probe(name string) int {
+	mut cache := t.used_fn_name_cache
+	if isnil(cache) {
+		return -1
+	}
+	module_name := t.cur_module
+	if module_name.len + name.len > used_fn_name_cache_key_bytes {
+		return -1
+	}
+	if cache.parent != voidptr(t.used_fns_parent) || cache.root != voidptr(t.used_fns_root) {
+		cache.generation++
+		cache.parent = voidptr(t.used_fns_parent)
+		cache.root = voidptr(t.used_fns_root)
+	}
+	slot := used_fn_name_cache_slot(module_name, name)
+	entry := &cache.slots[slot]
+	if entry.generation == cache.generation && int(entry.module_len) == module_name.len
+		&& int(entry.name_len) == name.len && unsafe {
+		vmemcmp(&entry.bytes[0], module_name.str, module_name.len) == 0
+			&& vmemcmp(&entry.bytes[module_name.len], name.str, name.len) == 0
+	} {
+		return -2
+	}
+	return slot
+}
+
+// fill_used_fn_name_cache records a completed mark_fn_used_name pass for
+// `name` in the current module.
+@[direct_array_access]
+fn (mut t Transformer) fill_used_fn_name_cache(slot int, name string) {
+	mut cache := t.used_fn_name_cache
+	module_name := t.cur_module
+	mut entry := &cache.slots[slot]
+	entry.generation = cache.generation
+	entry.module_len = u8(module_name.len)
+	entry.name_len = u8(name.len)
+	unsafe {
+		vmemcpy(&entry.bytes[0], module_name.str, module_name.len)
+		vmemcpy(&entry.bytes[module_name.len], name.str, name.len)
+	}
+}
+
+// reset_used_fn_name_cache forgets every completed pass after the used sets
+// were replaced.
+@[inline]
+fn (mut t Transformer) reset_used_fn_name_cache() {
+	if !isnil(t.used_fn_name_cache) {
+		t.used_fn_name_cache.generation++
+	}
+}
+
 // StructInfo stores struct info metadata used by transform.
 pub struct StructInfo {
 pub:
@@ -1575,6 +1679,7 @@ pub fn transform_prepared_selfhost_owned(mut prepared PreparedSelfhostTransform,
 	t.a = unsafe { &a }
 	t.replace_prepared_type_checker(tc)
 	t.used_fns = used_fns.clone()
+	t.reset_used_fn_name_cache()
 	configure_transformer(mut t, true, true, true, true, true, stage_scope)
 	if t.materialize_inferred_anonymous_structs() {
 		// Preparation overlapped markused against the checked AST. Materialization
@@ -2594,6 +2699,10 @@ fn (mut t Transformer) mark_fn_used_name(name string) {
 	if name == '' {
 		return
 	}
+	cache_slot := t.used_fn_name_cache_probe(name)
+	if cache_slot == -2 {
+		return
+	}
 	lowered := if isnil(t.tc) { c_name(name) } else { t.tc.cached_c_name(name) }
 	name_used := t.used_fn_contains_name(name)
 	lowered_used := if lowered == name { name_used } else { t.used_fn_contains_name(lowered) }
@@ -2614,6 +2723,9 @@ fn (mut t Transformer) mark_fn_used_name(name string) {
 			t.mark_used_fn_key(qname)
 			t.mark_used_fn_key(if isnil(t.tc) { c_name(qname) } else { t.tc.cached_c_name(qname) })
 		}
+	}
+	if cache_slot >= 0 {
+		t.fill_used_fn_name_cache(cache_slot, name)
 	}
 }
 
@@ -2770,6 +2882,7 @@ fn (mut t Transformer) prepare() {
 	}
 	t.receiver_method_cache = &ReceiverMethodCache{}
 	t.promote_text_cache = &PromoteTextCache{}
+	t.used_fn_name_cache = &UsedFnNameCache{}
 	t.struct_field_type_cache = &FieldTypeCache{}
 	t.variant_short_name_cache = &AliasCache{}
 	t.selector_type_cache = &SelectorTypeCache{}
@@ -5300,6 +5413,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	}
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
+	w.used_fn_name_cache = &UsedFnNameCache{}
 	w.struct_field_type_cache = &FieldTypeCache{}
 	w.variant_short_name_cache = &AliasCache{}
 	w.selector_type_cache = &SelectorTypeCache{}
@@ -5443,6 +5557,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	}
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
+	w.used_fn_name_cache = &UsedFnNameCache{}
 	w.struct_field_type_cache = &FieldTypeCache{}
 	w.variant_short_name_cache = &AliasCache{}
 	w.selector_type_cache = &SelectorTypeCache{}
