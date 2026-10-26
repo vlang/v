@@ -343,6 +343,15 @@ fn test_res_is_rejected_outside_the_active_defer_body() {
 	assert pipe_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${pipe_lambda}'
 }
 
+fn test_removed_vml_comptime_call_is_an_error_not_an_empty_string() {
+	diagnostics := parse_parser_regression_diagnostics('removed_vml',
+		"fn main() {\n\tview := \$vml('definitely_missing.vml')\n\tprintln(typeof(view).name)\n}\n")
+	assert diagnostics.any(it.message.contains('`\$vml` has been removed')), '${diagnostics}'
+	bare := parse_parser_regression_diagnostics('removed_vml_without_arguments',
+		'fn main() {\n\tview := \$vml\n\t_ = view\n}\n')
+	assert bare.any(it.message.contains('`\$vml` has been removed')), '${bare}'
+}
+
 fn test_res_is_restricted_to_function_exit_defers() {
 	nested_block := parse_parser_regression_diagnostics('res_in_nested_scoped_defer',
 		'fn value() int {\n\t{\n\t\tdefer {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')

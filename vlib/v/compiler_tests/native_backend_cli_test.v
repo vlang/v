@@ -25,12 +25,18 @@ fn test_native_backend_migration_precedes_input_and_dispatch_errors() {
 			[]string{},
 			[missing],
 			['help', 'build-c'],
-			['fmt', missing],
 		] {
 			mut args := backend_args.clone()
 			args << suffix
 			assert_native_backend_migration(args)
 		}
+		mut fmt_args := backend_args.clone()
+		fmt_args << ['fmt', missing]
+		fmt_result := cmdexec.run(@VEXE, fmt_args)
+		assert fmt_result.exit_code == 1, fmt_result.output
+		assert fmt_result.output.contains('vfmt error:'), fmt_result.output
+		assert fmt_result.output.contains('does not exist'), fmt_result.output
+		assert !fmt_result.output.contains('has been replaced'), fmt_result.output
 	}
 	assert_native_backend_migration(['-old-compiler', '-backend', 'native', 'help'])
 	assert_native_backend_migration(['-b', 'c', '-backend=native', 'help'])

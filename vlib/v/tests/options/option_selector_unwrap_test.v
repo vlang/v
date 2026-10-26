@@ -1,6 +1,6 @@
 import datatypes { DoublyLinkedList }
 
-pub type LayoutBoxId = usize
+pub type LayoutBoxId = uint
 
 pub struct LayoutBox {
 }

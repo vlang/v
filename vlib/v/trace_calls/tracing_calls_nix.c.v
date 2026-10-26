@@ -12,5 +12,5 @@ fn C.clock_gettime(i32, &C.timespec) i32
 $if macos {
 	fn C.pthread_self() voidptr
 } $else {
-	fn C.pthread_self() usize
+	fn C.pthread_self() uint
 }

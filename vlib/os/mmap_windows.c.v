@@ -2,9 +2,9 @@ module os
 
 fn C.CreateFileMappingW(h voidptr, attrs voidptr, protect u32, maxhi u32, maxlo u32, name &u16) voidptr
 fn C.FlushFileBuffers(h voidptr) bool
-fn C.MapViewOfFile(h voidptr, access u32, offhi u32, offlo u32, nbytes usize) voidptr
+fn C.MapViewOfFile(h voidptr, access u32, offhi u32, offlo u32, nbytes uint) voidptr
 fn C.UnmapViewOfFile(addr voidptr) i32
-fn C.FlushViewOfFile(addr voidptr, nbytes usize) i32
+fn C.FlushViewOfFile(addr voidptr, nbytes uint) i32
 
 const mmap_generic_read = u32(0x80000000)
 const mmap_generic_write = u32(0x40000000)
@@ -35,7 +35,7 @@ fn mmap_map_windows(path string, len u64, write bool, create bool) !(voidptr, vo
 		return error('os: cannot create file mapping for `${path}`')
 	}
 	view_access := if write { mmap_map_read | mmap_map_write } else { mmap_map_read }
-	addr := C.MapViewOfFile(h_map, view_access, 0, 0, usize(len))
+	addr := C.MapViewOfFile(h_map, view_access, 0, 0, uint(len))
 	if addr == unsafe { nil } {
 		C.CloseHandle(h_map)
 		C.CloseHandle(h_file)
@@ -57,7 +57,7 @@ fn mmap_unmap_windows(addr voidptr, mapping voidptr, file_handle voidptr) {
 
 // mmap_sync_windows flushes the view to the file.
 fn mmap_sync_windows(addr voidptr, len u64, file_handle voidptr) ! {
-	if C.FlushViewOfFile(addr, usize(len)) == 0 {
+	if C.FlushViewOfFile(addr, uint(len)) == 0 {
 		return error('os: FlushViewOfFile failed')
 	}
 	if !C.FlushFileBuffers(file_handle) { return error('os: FlushFileBuffers failed') }

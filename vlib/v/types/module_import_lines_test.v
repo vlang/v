@@ -45,3 +45,27 @@ fn test_only_a_line_that_starts_with_import_holds_several() {
 	source := 'module main\nimport os, strings\nconst x = "import a, b"\n  import c d\n'
 	assert module_import_lines(source) == [2, 4]
 }
+
+fn test_import_search_handles_tail_matches_at_source_boundaries() {
+	for source in ['', 'i', 'im', 'p', 'port ', 'mport ', 'import ', 'import a,b', 'port import a,b',
+		'mport import a,b', 'port \nimport a,b', 'mport \n\timport a,b', 'import a,b\nport ',
+		'import a,b\nmport ', 'import a,b\nimport c,d', 'import a,b\nimport c,d\n', '\x00import a,b',
+		'\nimport a,b\x00', 'éport \nimport a,b'] {
+		assert module_import_lines(source) == every_line(source), source
+	}
+}
+
+fn test_import_search_matches_every_line_for_adjacent_substrings() {
+	chunks := ['import ', 'port ', 'mport ', 'im', 'i', 'm', 'p', '\n', '\t', ' ', 'a,b', 'support ',
+		'ximport ', '\r', '']
+	for first in chunks {
+		for second in chunks {
+			for third in chunks {
+				for fourth in chunks {
+					source := first + second + third + fourth
+					assert module_import_lines(source) == every_line(source), source
+				}
+			}
+		}
+	}
+}

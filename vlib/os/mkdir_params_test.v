@@ -82,5 +82,7 @@ fn test_disk_usage_is_self_consistent() {
 	assert du.available > 0
 	assert du.available <= du.total
 	assert du.used <= du.total
-	assert du.total == du.available + du.used
+	// On Unix, `available` excludes the blocks reserved for root (`f_bfree - f_bavail`),
+	// which are neither available nor used, so the sum can be smaller than the total.
+	assert du.available + du.used <= du.total
 }

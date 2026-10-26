@@ -25,7 +25,7 @@ pub struct C.utsname {
 	machine &char
 }
 fn C.uname(&C.utsname) int
-fn C.strlen(&char) usize
+fn C.strlen(&char) uint
 fn C.strcmp(&char, &char) int
 fn C.exit(int)
 struct UnameView { value &C.utsname }

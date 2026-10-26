@@ -12,15 +12,15 @@ fn trace_allocation(message string) {
 }
 
 @[export: 'stbi__callback_malloc']
-fn cb_malloc(s usize) voidptr {
-	res := unsafe { malloc(isize(s)) }
+fn cb_malloc(s uint) voidptr {
+	res := unsafe { malloc(int(s)) }
 	trace_allocation('> stbi__callback_malloc: ${s} => ${ptr_str(res)}')
 	return res
 }
 
 @[export: 'stbi__callback_realloc']
-fn cb_realloc(p voidptr, s usize) voidptr {
-	res := unsafe { v_realloc(p, isize(s)) }
+fn cb_realloc(p voidptr, s uint) voidptr {
+	res := unsafe { v_realloc(p, int(s)) }
 	trace_allocation('> stbi__callback_realloc: ${ptr_str(p)} , ${s} => ${ptr_str(res)}')
 	return res
 }
@@ -202,7 +202,7 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 		original_nr_channels: img.original_nr_channels // preserve the metadata of the original, during resizes
 	}
 
-	res.data = cb_malloc(usize(output_w * output_h * img.nr_channels))
+	res.data = cb_malloc(uint(output_w * output_h * img.nr_channels))
 	if res.data == 0 {
 		return error('stbi_image failed to resize file')
 	}

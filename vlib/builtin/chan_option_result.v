@@ -130,7 +130,7 @@ pub fn error_with_code(message string, code int) IError {
 // so `return error_sentinel` from a `!T` function avoids the per-call allocation.
 // Use it when the caller discards the error (e.g. `x() or { ... }`) and the specific
 // message is not needed; its `.msg()` is just `'error'`.
-// Example: fn find(x int) !int { if x < 0 { return error_sentinel } return x }
+// Example: find := fn (x int) !int { if x < 0 { return error_sentinel } return x }; assert find(-1) or { -1 } == -1
 pub const error_sentinel = IError(&MessageError{
 	msg: 'error'
 })
@@ -155,7 +155,7 @@ fn (_ None__) str() string {
 	return 'none'
 }
 
-// str for none, returns 'none'
+// str for none, returns 'none'.
 pub fn (_ none) str() string {
 	return 'none'
 }

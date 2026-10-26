@@ -718,14 +718,14 @@ bool
 
 string
 
-i8    i16  int  i64  i128
+i8    i16  i32  i64  i128
 u8    u16  u32  u64  u128
+
+int, uint // platform-width signed and unsigned integers
 
 rune // represents a Unicode code point
 
 f32 f64
-
-isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
 
 voidptr // this one is mostly used for [C interoperability](#v-and-c)
 ```
@@ -734,6 +734,12 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 > `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
 > targets. Use `i32` or `i64` when you need a fixed width.
 > Integer literal casts to `int` are checked against the target platform's width.
+> `uint` has the same width and is unsigned.
+
+`isize` and `usize` are deprecated. Replace `isize` with `int` and `usize` with `uint`.
+Use `uint` for pointer addresses and C `size_t` values to preserve
+the full unsigned range. Existing spellings still compile with deprecation warnings.
+Pointer subtraction returns `int`, including in translated C code.
 
 ### 128-bit integers
 
@@ -1273,6 +1279,10 @@ accessed using an *index* expression. Indexing starts from `0`.
 
 A string literal keeps its string type even when its text names a type alias.
 For example, `['Speed']` contains strings, while `[Speed(7)]` contains `Speed` values.
+
+In `==` and `!=` comparisons, array and map literals use the element or value type of the
+other operand. This also applies when that operand propagates an option or result with `?`
+or `!`. Operands are evaluated from left to right.
 
 After an array literal, separate `&&` from either adjacent token with whitespace or a comment
 to use logical AND, as in `a == [] && flag`. An attached `[]&&Type{}` declares an array of
@@ -3470,6 +3480,8 @@ Instance methods can also be used as unbound function values, such as `f := User
 The receiver becomes the first parameter, so a mutable receiver is passed as `f(mut user)`.
 Inside a method reflection loop, `T.$method` likewise creates an unbound function value.
 Unbound and reflected method values follow the same method privacy and `mut` argument rules.
+A reflected method bound to an instance, such as `f := app.$method`, can be stored in an array
+like other function values.
 
 > [!NOTE]
 > Note, that these are not constructors, but simple functions. V doesn't have constructors or
@@ -5033,7 +5045,7 @@ They are just a convenient way to write `i.some_function()` instead of
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
 An immediate read-only interface method call on a smart-casted value can return
-a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
+a scalar, including `char`, `rune`, `int`, `uint`, or an enum.
 
 Receiver methods are also available through embedded interfaces. A mutable receiver method
 updates the underlying concrete object's mutable fields, including when called through an
@@ -5165,6 +5177,8 @@ fixed-array elements.
 A mutable sum argument requires a variable of the sum type: it can replace the complete sum
 with another variant. Wrap a concrete value in a sum variable before passing it with `mut`.
 Inside a mutable smartcast, modifying a field modifies the selected payload in that sum.
+Assigning `0` to a sum with integer and reference variants selects the integer variant,
+including when its current variant is a reference.
 
 Sum payloads must have finite layout. References, dynamic arrays, and maps break recursive
 storage cycles; ordinary fields, options, and fixed arrays do not. A function variant stores
@@ -9173,71 +9187,6 @@ numbers: [1, 2, 3]
 
 See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 
-#### `$vml` for compiling UI2 interfaces
-
-The compiler can compile a VML file directly into an `ui2.Element` expression with
-`$vml(path)`. The VML is parsed while the application is compiled; the resulting program
-constructs UI2 elements directly and does not parse the VML file at runtime.
-Diagnostics from compiled VML include the `$vml` call site in the V source file.
-
-```v ignore
-import ui2
-
-struct App {
-pub mut:
-	name string
-}
-
-pub fn (mut app App) save() {}
-
-fn view(app &App) ui2.Element {
-	return $vml('views/profile.vml')
-}
-```
-
-`views/profile.vml`:
-
-```vml
-Screen {
-    id: root
-    background: "#f8fafc"
-    Column {
-        Label { text: "Hello ${app.name}" }
-        Button { text: "Save" on_tap: app.save() }
-    }
-}
-```
-
-The path must be a compile-time string. String literals, constants, compile-time local
-bindings, and `+` concatenations of those forms are supported. Absolute paths are used as
-given. A relative path is searched for in this order:
-
-1. relative to the V source file;
-2. in a `templates` directory next to the V source file;
-3. relative to the nearest parent directory containing `v.mod`;
-4. in that module root's `templates` directory.
-
-The compiled VML subset supports these UI2 elements:
-
-- `Screen`, `View`, `Rectangle`, `Column`, `Row`, and `Scroll` containers;
-- `Label`, `Image`, `Button`, `Checkbox`, `Dropdown`, `TextField`, and `TextArea`;
-- `ProgressBar`, `Slider`, `Switch`, `Spinner`, and `MessageBox`;
-- `Repeater` delegates, `MenuItem` entries, and `Option` entries.
-
-Properties can use literals, arithmetic and boolean expressions, conditional expressions,
-string interpolation, an enclosing `app` value, and geometry or custom properties exposed
-by an `id`. An ID on an earlier node is available to following nodes in the same component.
-Both quoted and unquoted `#RRGGBB` color values are accepted. A `Repeater` requires `model`
-and stable `key` properties and exposes `item` and `index` inside its delegate.
-
-String literals may use either double (`"`) or single (`'`) quote delimiters. Escape a matching
-quote or a backslash with `\`; `\n` and `\t` are also supported.
-
-The `bind.text`, `bind.checked`, `bind.active`, and `bind.value` properties create two-way
-bindings to mutable top-level fields on `app`. Event properties `on_tap`, `on_change`,
-`on_active`, `on_text`, and `on_submit` call an `app` method with zero or one argument. These
-methods and their argument types are checked while the generated V code is compiled.
-
 #### `$env`
 
 ```v
@@ -9363,7 +9312,7 @@ V supports the following compile time types:
 - `$enum` => matches [Enums](#enums).
 - `$float` => matches `f32`, `f64` and float literals.
 - `$function` => matches [Function Types](#function-types).
-- `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`
+- `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `uint`
   and integer literals.
 - `$interface` => matches [Interfaces](#interfaces).
 - `$map` => matches [Maps](#maps).
@@ -9864,6 +9813,7 @@ To improve safety and maintainability, operator overloading is limited.
 #### Type restrictions
 
 - When overriding `<` and `==`, the return type must be strictly `bool`.
+- Enums and interfaces cannot overload operators, but an alias of an enum can.
 - Both arguments must have the same type (just like with all operators in V).
 - Overloaded operators have to return the same type as the argument
   (the exceptions are `<` and `==`).
@@ -10411,6 +10361,10 @@ or
 v -os freebsd .
 ```
 
+On macOS, `-os linux` with the default C compiler or Clang uses the bundled amd64 Linux
+sysroot. V automatically enables `$if cross_compile ?` for this toolchain so modules such as
+`db.pg` select the bundled Linux headers and compatibility sources.
+
 > [!NOTE]
 > Cross-compiling a Windows binary on a Linux or macOS machine requires the GNU C compiler for
 > MinGW-w64 (targeting Win64) to first be installed. Without `-arch` and `-cc`, `-os windows`
@@ -10804,6 +10758,13 @@ pass `&values[0]`; V's platform-width `int` storage is incompatible on 64-bit ta
 Pointer constants such as `C.NULL` and `C.INVALID_HANDLE_VALUE` retain their pointer type
 in assignments and comparisons.
 
+Ordinary V identifiers such as `near`, `far`, `pascal`, `cdecl`, `min`, and `max` can also be
+used when compiling for Windows. The C backend escapes these names to avoid Windows header
+macros, including in functions, local variables, and struct fields. Explicit `C.` references
+retain their original C names.
+TinyCC also supports explicitly aligned local structs on Windows through its `alloca` intrinsic.
+V identifiers named `alloca` are escaped so they cannot shadow this intrinsic.
+
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
@@ -10954,7 +10915,8 @@ More details in [call_v_from_c example](../examples/call_v_from_c).
 
 ### Passing C compilation flags
 
-Use `-dump-c-flags file.txt` to inspect the selected C compiler's flags, one argument per line.
+Use `-dump-c-flags file.txt` to inspect the selected C compiler's flags, one argument per line;
+value-taking flags stay on the line of their value, like `-I "/path"`.
 Use `-dump-c-flags -` for standard output. Monolithic bundled TCC builds share this flag plan
 with their actual command, including `-cstrict` warning options.
 On macOS, both the dump and TCC command resolve framework flags to their framework link files.
@@ -11137,6 +11099,12 @@ You can see a complete minimal example for using C code in a V wrapper module he
 Another example, demonstrating passing structs from C to V and back again:
 [interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
 
+V functions in the `main` module named `near`, `far`, `pascal`, or `cdecl` use reserved C names
+to avoid macros defined by Windows headers. Direct calls and function values use the same names.
+These remain distinct from V functions named `main__near`, `main__far`, `main__pascal`,
+or `main__cdecl`.
+Declarations in the `C` namespace retain their C names.
+
 ### C types
 
 V methods declared on a C struct can be called through imported fields and local copies of that
@@ -11222,7 +11190,7 @@ pub struct C.SomeCStruct {
 	// union {
 	// struct {
 	data voidptr
-	size usize
+	size uint
 	// }
 	view C.DataView
 	// }
@@ -11956,6 +11924,12 @@ Assignment Operators
 
 Note: in V, `assert -10 % 7 == -3` passes. In programming, the sign of the remainder
 depends upon the signs of divisor and dividend.
+For calendar-style modular arithmetic, use floored division instead:
+`math.divide_floored(-10, 7)` gives a quotient of `-2` with remainder `4`,
+and `math.modulo_floored(-10, 7) == 4`. For floats, use `math.floor_div`
+with `math.floor_mod`. New `//` and `%%` operators were considered, but `//`
+would conflict with line comments, so these library functions are the
+supported approach.
 
 ## Other online resources
 

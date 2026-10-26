@@ -1,0 +1,36 @@
+struct Version {
+	major int
+}
+
+fn (a Version) == (b Version) bool {
+	return a.major == b.major
+}
+
+fn (a Version) < (b Version) bool {
+	return a.major < b.major
+}
+
+fn (a Version) != (b Version) bool {
+	return false
+}
+
+fn (a Version) > (b Version) bool {
+	return false
+}
+
+fn (a Version) <= (b Version) bool {
+	return false
+}
+
+fn (a Version) >= (b Version) bool {
+	return false
+}
+
+fn main() {
+	a := Version{1}
+	b := Version{2}
+	println(a != b)
+	println(a > b)
+	println(a <= b)
+	println(a >= b)
+}

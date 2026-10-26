@@ -2,7 +2,7 @@
 module gg
 
 $if test {
-	import sokol.sgl
+	import gg.render
 
 	// The observer remains deliberately independent from the materialization cache.
 	const multiwindow_sgl_load_proof_capacity = 16
@@ -10,9 +10,9 @@ $if test {
 	struct MultiWindowSglLoadProofRecord {
 		generation  u64
 		sequence    u64
-		pipeline_id u32
+		pipeline_id int
 		window      WindowId
-		context_id  u32
+		context_id  u64
 		target_key  string
 	}
 
@@ -80,7 +80,8 @@ $if test {
 		multiwindow_sgl_load_proof.armed = false
 	}
 
-	fn multiwindow_sgl_load_proof_record_for_test(pipeline sgl.Pipeline, window WindowId, context sgl.Context, target_key string) {
+	fn multiwindow_sgl_load_proof_record_for_test(pipeline render.Pipeline, window WindowId,
+		context &render.Context, target_key string) {
 		if !multiwindow_sgl_load_proof.armed || multiwindow_sgl_load_proof.overflow {
 			return
 		}
@@ -94,14 +95,17 @@ $if test {
 			sequence:    u64(index + 1)
 			pipeline_id: pipeline.id
 			window:      window
-			context_id:  context.id
+			// render.Context has no int id; its own address is a stable identity
+			// for the lifetime of the context, and is never nil here.
+			context_id:  unsafe { u64(usize(voidptr(context))) }
 			target_key:  target_key
 		}
 		multiwindow_sgl_load_proof.count++
 	}
 
-	fn multiwindow_sgl_load_pipeline_for_test(pipeline sgl.Pipeline, window WindowId, context sgl.Context, target_key string) {
-		sgl.load_pipeline(pipeline)
+	fn multiwindow_sgl_load_pipeline_for_test(pipeline render.Pipeline, window WindowId,
+		context &render.Context, target_key string) {
+		context.load_pipeline(pipeline)
 		multiwindow_sgl_load_proof_record_for_test(pipeline, window, context, target_key)
 	}
 }

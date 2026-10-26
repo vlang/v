@@ -41757,11 +41757,17 @@ fork_child_proc(void)
     /*
      * Reinitialize the mark lock.  The reason is the same as for
      * `GC_allocate_ml` below.
+     * Note: instead of calling `pthread_mutex_init` (which is slower
+     * and might fail), we just copy a statically initialized local
+     * mutex of the same type.  This is equivalent to initializing with
+     * `NULL` attributes, which is what the code did before.
      */
     (void)pthread_mutex_destroy(&mark_mutex);
     /* TODO: `GLIBC_2_19_TSX_BUG` has no effect. */
-    if (pthread_mutex_init(&mark_mutex, NULL) != 0)
-      ABORT("mark_mutex re-init failed in child");
+    {
+      pthread_mutex_t mark_mutex_local = PTHREAD_MUTEX_INITIALIZER;
+      BCOPY(&mark_mutex_local, &mark_mutex, sizeof(mark_mutex));
+    }
 #      endif
     /*
      * Turn off parallel marking in the child process, since we are probably
@@ -41811,17 +41817,29 @@ fork_child_proc(void)
     BCOPY(&rwlock_local, &GC_allocate_ml, sizeof(GC_allocate_ml));
   }
 #        else
-  if (pthread_rwlock_init(&GC_allocate_ml, NULL) != 0)
-    ABORT("pthread_rwlock_init failed (in child)");
+  /*
+   * Reinitialize the allocator lock.  Instead of calling
+   * `pthread_rwlock_init` (which is slower and might fail), we just
+   * copy a statically initialized local rwlock of the same type.
+   */
+  {
+    pthread_rwlock_t rwlock_local = PTHREAD_RWLOCK_INITIALIZER;
+    BCOPY(&rwlock_local, &GC_allocate_ml, sizeof(GC_allocate_ml));
+  }
 #        endif
 #      else
   (void)pthread_mutex_destroy(&GC_allocate_ml);
   /*
+   * Reinitialize the allocator lock.  Instead of calling
+   * `pthread_mutex_init` (which is slower and might fail), we just
+   * copy a statically initialized local mutex of the same type.
    * TODO: Probably some targets (e.g. with `GLIBC_2_19_TSX_BUG`) might
    * need the default mutex attribute to be passed instead of `NULL`.
    */
-  if (pthread_mutex_init(&GC_allocate_ml, NULL) != 0)
-    ABORT("pthread_mutex_init failed (in child)");
+  {
+    pthread_mutex_t mutex_local = PTHREAD_MUTEX_INITIALIZER;
+    BCOPY(&mutex_local, &GC_allocate_ml, sizeof(GC_allocate_ml));
+  }
 #      endif
 #    endif
 }

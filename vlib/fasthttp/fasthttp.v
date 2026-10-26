@@ -41,7 +41,7 @@ pub mut:
 	header_fields      Slice
 	body               Slice
 	client_conn_fd     int
-	client_conn_handle usize
+	client_conn_handle uint
 	user_data          voidptr // User-defined context data (shared, set from ServerConfig.user_data)
 	// worker_state is the value ServerConfig.make_state returned on THIS worker
 	// thread (nil when no make_state is configured). It is thread-local by

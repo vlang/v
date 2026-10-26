@@ -103,7 +103,7 @@ part := db.getrange[string]('first', 0, 4)!
 missing key. The deprecated `getset` and `substr` commands are also available; `getset` stores
 the new value even when it returns `NilError` for a missing previous value.
 `mget[T]` and `hmget[T]` return nullable entries for strings, integers, or `[]u8`.
-Scalar and multi-get unsigned reads preserve the full range of `u64` and `usize`.
+Scalar and multi-get unsigned reads preserve the full range of `u64` and `uint`.
 `GetExOptions` selects one `mode`: `.none`, `.ex`, `.px`, `.exat`, `.pxat`, or `.persist`.
 The four expiration modes require a positive `value`; `.none` and `.persist` use zero.
 

@@ -1272,7 +1272,7 @@ fn (mut p FastArm64Program) type_id(name_source_id u32) ssa.TypeID {
 		'u32', 'unsigned int' {
 			return p.u32_type
 		}
-		'u64', 'usize' {
+		'u64', 'uint', 'usize' {
 			return p.u64_type
 		}
 		'f32' {
@@ -6370,7 +6370,8 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 			}
 		}
 		if p.tok == .name && (p.lit in ['bool', 'i8', 'char', 'i16', 'int', 'i32', 'rune', 'i64',
-			'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'voidptr', 'byteptr', 'charptr'] || flat.source_type_id(p.lit) in p.program.type_ids || p.program.type_aliases.contains(p.lit)) {
+			'u8', 'u16', 'u32', 'u64', 'isize', 'uint', 'usize', 'f32', 'f64', 'voidptr', 'byteptr',
+			'charptr'] || flat.source_type_id(p.lit) in p.program.type_ids || p.program.type_aliases.contains(p.lit)) {
 			mut look := p.s
 			if look.scan() == .lpar {
 				type_name := p.lit
@@ -6891,7 +6892,7 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 	mut test_block := p.cur_block
 	mut result_slot := ssa.ValueID(0)
 	mut result_type := ssa.TypeID(0)
-	mut result_name := ''
+	mut result_name_id := u32(0)
 	mut result_tuple_types := []u32{}
 	mut has_option_metadata := false
 	mut has_else := false
@@ -6946,14 +6947,14 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 			arm_terminated = true
 		} else {
 			expected_arm_type := if result_tuple_types.len > 0 {
-				flat.source_type_name(result_tuple_types[0])
+				result_tuple_types[0]
 			} else {
-				result_name
+				result_name_id
 			}
 			arm_value = if result_slot == ssa.ValueID(0) {
 				p.parse_expression(0)!
 			} else {
-				p.parse_contextual_value(flat.source_type_id(expected_arm_type))!
+				p.parse_contextual_value(expected_arm_type)!
 			}
 			if p.tok == .comma {
 				mut values := [arm_value]
@@ -6968,10 +6969,10 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 					}
 				}
 				mut types := []ssa.TypeID{cap: values.len}
-				mut type_names := []string{cap: values.len}
+				mut type_names := []u32{cap: values.len}
 				for item in values {
 					types << item.typ
-					type_names << item.typ_name_text()
+					type_names << item.typ_name
 				}
 				tuple_type := p.program.m.type_store.get_tuple(types)
 				tuple_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(tuple_type))
@@ -6983,7 +6984,7 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 					id:          p.program.instr1(.load, p.cur_block, tuple_type, tuple_slot)
 					typ:         tuple_type
 					typ_name:    flat.source_type_id('MultiReturn')
-					tuple_types: flat.TypeTextList.from_names(type_names)
+					tuple_types: flat.TypeTextList{ ids: type_names }
 				}
 			}
 		}
@@ -6996,11 +6997,11 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 			p.store_if_expression_option_metadata(arm_value, option_failed_slot, result_error_type_slot, result_error_code_slot, result_error_message_slot)
 			if result_slot == ssa.ValueID(0) {
 				result_type = arm_value.typ
-				result_name = arm_value.typ_name_text()
-				result_tuple_types = flat.TypeTextList.from_names(arm_value.tuple_types_text().clone()).ids
+				result_name_id = arm_value.typ_name
+				result_tuple_types = arm_value.tuple_types.ids.clone()
 				result_slot = p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(result_type))
 			} else if arm_value.typ != result_type {
-				arm_value = p.convert_value(arm_value, result_type, flat.source_type_id(result_name))
+				arm_value = p.convert_value(arm_value, result_type, result_name_id)
 			}
 			p.program.instr2(.store, p.cur_block, p.program.void_type, arm_value.id, result_slot)
 			p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(merge_block))
@@ -7025,7 +7026,7 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 	return FastArm64Value{
 		id:                   p.program.instr1(.load, merge_block, result_type, result_slot)
 		typ:                  result_type
-		typ_name:             flat.source_type_id(result_name)
+		typ_name:             result_name_id
 		tuple_types:          flat.TypeTextList{ ids: result_tuple_types.clone() }
 		option_failed:        if has_option_metadata {
 			p.program.instr1(.load, merge_block, p.program.i1_type, option_failed_slot)
@@ -7056,8 +7057,8 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 	if p.tok == .name {
 		mut look := p.s
 		if look.scan() == .rpar && (p.lit in ['bool', 'i8', 'char', 'i16', 'int', 'i32', 'rune',
-			'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'voidptr', 'byteptr',
-			'charptr', 'string'] || flat.source_type_id(p.lit) in p.program.type_ids || p.program.type_aliases.contains(p.lit)) {
+			'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint', 'usize', 'f32', 'f64', 'voidptr',
+			'byteptr', 'charptr', 'string'] || flat.source_type_id(p.lit) in p.program.type_ids || p.program.type_aliases.contains(p.lit)) {
 			type_name := p.lit
 			p.next()
 			p.expect(.rpar)!
@@ -7960,7 +7961,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 			return p.parse_cast(flat.source_type_id(qualified_type_key))
 		}
 		if (first_name in ['int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'u16', 'u32',
-			'u64', 'isize', 'usize', 'f32', 'f64', 'bool', 'voidptr', 'byteptr', 'charptr'] || flat.source_type_id(first_name) in p.program.type_ids || p.program.type_aliases.contains(first_name)) && display_name == first_name {
+			'u64', 'isize', 'uint', 'usize', 'f32', 'f64', 'bool', 'voidptr', 'byteptr', 'charptr'] || flat.source_type_id(first_name) in p.program.type_ids || p.program.type_aliases.contains(first_name)) && display_name == first_name {
 			return p.parse_cast(flat.source_type_id(first_name))
 		}
 		return p.parse_call(key, display_name)

@@ -351,9 +351,12 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			// storage, but transform_expr reads it as &Iface. Do not restore the
 			// storage type on that dereference and make cgen box it again.
 			source_type = t.trim_pointer_type(storage_type)
-		} else if node.value in t.heaped_amp_locals && storage_shape.has(.pointer) {
+		} else if node.value in t.heaped_amp_locals && storage_shape.has(.pointer)
+			&& !t.expr_has_smartcast(id) {
 			// A local moved to the heap is stored as `&Iface` but read as its `Iface`
 			// value; keeping the storage type would dereference that value again.
+			// A smartcast read already has the variant's type, such as the
+			// interface variant of a sum type, which must not be boxed again.
 			source_type = t.trim_pointer_type(storage_type)
 		}
 	}

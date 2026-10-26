@@ -128,9 +128,9 @@ fn test_native_array_growth_handles_managed_storage_and_preserves_views() {
 	$if macos && arm64 {
 		run_native_array_fixture('managed', 'module main
 fn C.exit(int)
-fn C.malloc(usize) voidptr
+fn C.malloc(uint) voidptr
 fn C.free(voidptr)
-fn C.memcpy(voidptr, voidptr, usize) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
 struct NativeArray {
     data voidptr
     offset i32
@@ -169,7 +169,7 @@ fn main() {
     if old[0] != 11 { C.exit(5) }
     mut grown := NativeArray{}
     C.memcpy(&grown, &values, sizeof(NativeArray))
-    if grown.offset != 0 || grown.flags != 16 || usize(grown.data) % 16 != 0 { C.exit(6) }
+    if grown.offset != 0 || grown.flags != 16 || uint(grown.data) % 16 != 0 { C.exit(6) }
     if grown.data == header.data { C.exit(7) }
     new_allocation := unsafe { *(&voidptr(&u8(grown.data) - 16)) }
     C.free(new_allocation)
@@ -209,8 +209,8 @@ fn test_native_string_builder_growth_handles_managed_array_backing() {
 	$if macos && arm64 {
 		run_native_array_fixture('builder', 'module main
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
 type Builder = []u8
 fn (mut b Builder) write_string(value string) {}
 fn (mut b Builder) write_byte(value u8) {}

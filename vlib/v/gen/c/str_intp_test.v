@@ -61,7 +61,7 @@ fn test_cached_string_literal_table_preserves_explicit_initializers() {
 
 // regular_string_literal_table returns a noncached literal table holding `entries`.
 fn regular_string_literal_table(entries string) string {
-	return '#pragma push_macro("_SL")\n#undef _SL\n#define _SL(id, s, n) static const string id = {s, n, 1}\n${entries}#undef _SL\n#pragma pop_macro("_SL")\n\n'
+	return '#pragma push_macro("_SL")\n#undef _SL\n#define _SL(id, s, n) static const string id = {(u8*)s, n, 1}\n${entries}#undef _SL\n#pragma pop_macro("_SL")\n\n'
 }
 
 fn test_string_literal_table_uses_declaration_macros_in_regular_and_split_c_output() {

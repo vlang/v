@@ -28,8 +28,8 @@ fn (mut holder Holder) retain(value &i16) !bool {
  holder.pointer = value
  return true
 }
-fn narrow_encoded(value &usize) !bool { return unsafe { *value != 0 } }
-fn encoded(value &i16) !usize { return usize(value) }
+fn narrow_encoded(value &uint) !bool { return unsafe { *value != 0 } }
+fn encoded(value &i16) !uint { return uint(value) }
 fn alias_math(value &Narrow) !i16 { return unsafe { i16(*value + *value) } }
 fn main() {}
 ')!

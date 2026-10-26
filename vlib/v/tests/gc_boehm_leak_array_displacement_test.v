@@ -7,7 +7,7 @@
 // by default, so a collection freed array blocks that a heap object still used,
 // and the next free() of one aborted with "Invalid pointer passed to free()".
 fn C.GC_base(voidptr) voidptr
-fn C.GC_size(voidptr) usize
+fn C.GC_size(voidptr) uint
 fn C.GC_gcollect()
 fn C.GC_noop1(u64)
 fn C.GC_get_all_interior_pointers() int
@@ -65,7 +65,7 @@ fn array_block_intact(holder &ArrayHolder) bool {
 	if base == unsafe { nil } {
 		return false
 	}
-	return C.GC_size(base) >= usize(block_ints * sizeof(int)) && u64(block) - u64(base) < 256
+	return C.GC_size(base) >= uint(block_ints * sizeof(int)) && u64(block) - u64(base) < 256
 }
 
 fn test_boehm_leak_recognises_interior_pointers() {

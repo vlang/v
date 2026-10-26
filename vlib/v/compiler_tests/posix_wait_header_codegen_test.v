@@ -518,7 +518,7 @@ fn test_unsuffixed_winapi_decls_use_wide_exports() {
 fn C.GetModuleFileName(voidptr, &u16, u32) u32
 fn C.CreateFile(&u16, u32, u32, voidptr, u32, u32, voidptr) voidptr
 fn C.LoadLibrary(&u16) voidptr
-fn C.DefWindowProc(voidptr, u32, usize, isize) isize
+fn C.DefWindowProc(voidptr, u32, uint, C.ptrdiff_t) C.ptrdiff_t
 
 fn main() {
 	path := &u16(unsafe { nil })
@@ -560,7 +560,7 @@ fn test_c_fn_value_keeps_its_prototype_in_serial_and_parallel_cgen() {
 	v3_bin := wait_header_build_v3()
 	source := 'module main
 
-fn C.V3WaitHeaderCallback(voidptr, u32) isize
+fn C.V3WaitHeaderCallback(voidptr, u32) C.ptrdiff_t
 
 fn main() {
 	_ = voidptr(&C.V3WaitHeaderCallback)

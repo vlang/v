@@ -113,6 +113,15 @@ source changes. Compiler and library edits deliberately preserve progress. Use
 artifacts needed by later tasks. Do not run multiple `ci` jobs in the same checkout
 concurrently; they share the checkpoint and build outputs.
 
+The macOS self-tests use default module caching. Generated cleanup for detached
+thread results must also compile with older Apple Clang versions that reject
+declarations immediately after `case` labels. The focused regression checks
+uncached, cold-cache and warm-cache builds, including nested error payloads:
+
+```sh
+./v test vlib/v/gen/c/detached_spawn_cleanup_test.v
+```
+
 ### Testing the resume behavior
 
 On macOS or Linux with a working V compiler, run:

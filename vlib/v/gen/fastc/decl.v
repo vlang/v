@@ -1209,7 +1209,11 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 		name := source[start..i]
 		mut next := i
 		for next < source.len && source[next].is_space() { next++ }
-		if next < source.len && source[next] == `(` && name !in ['sizeof', '_S'] {
+		// The dynamic form of a struct literal copies fixed-array fields with memcpy;
+		// the static re-render does not, and is checked again without temporaries.
+		is_temporary_copy := allow_temporaries && name == 'memcpy'
+		if next < source.len && source[next] == `(` && name !in ['sizeof', '_S']
+			&& !is_temporary_copy {
 			return false
 		}
 		if previous == `.` || name in ['NULL', 'true', 'false', 'sizeof', '_S', 'struct', 'union',
@@ -1220,7 +1224,8 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 			previous = `a`
 			continue
 		}
-		if allow_temporaries && (name.starts_with('__vf_') || (name.starts_with('__v') && name.len > 3 && name[3].is_digit())) {
+		if is_temporary_copy || (allow_temporaries && (name.starts_with('__vf_')
+			|| (name.starts_with('__v') && name.len > 3 && name[3].is_digit()))) {
 			previous = `a`
 			continue
 		}
@@ -2250,7 +2255,12 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 	// and `match` both reference `__v_typeid_<primitive>`, so the exact value only
 	// has to be unique and consistent.
 	for offset, primitive in fastc_boxed_primitive_types {
-		out.writeln('#define __v_typeid_${primitive} ${u32(0x40000000) + u32(offset)}')
+		if primitive == 'usize' {
+			// Both spellings box as uint and must also match the same runtime tag.
+			out.writeln('#define __v_typeid_usize __v_typeid_uint')
+		} else {
+			out.writeln('#define __v_typeid_${primitive} ${u32(0x40000000) + u32(offset)}')
+		}
 	}
 	out.writeln('')
 	mut timer := fastc_new_phase_timer()
@@ -3288,7 +3298,7 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 		// still `int` (or `u64` for flag enums); values are emitted with an explicit
 		// cast, so a narrower/wider spelling does not change the generated C.
 		is_backing_int := tok == .name && scan.lit in ['i8', 'i16', 'i32', 'i64', 'int', 'u8',
-			'u16', 'u32', 'u64', 'isize', 'usize']
+			'u16', 'u32', 'u64', 'isize', 'uint', 'usize']
 		if !is_backing_int || (is_flag && scan.lit != 'u64') {
 			return error('fastc parser does not support enum `${name}` backing type in ${source_file.path}')
 		}
@@ -3325,8 +3335,10 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 			if is_flag {
 				return error('fastc parser does not support custom value for flag enum field `${name}.${field_name}` in ${source_file.path}')
 			}
-			value_tokens, next_token := fastc_scan_enum_value_tokens(mut scan, scan.scan())!
+			scanned_tokens, next_token := fastc_scan_enum_value_tokens(mut scan, scan.scan())!
 			tok = next_token
+			// `2 ** 3` has no C operator; the C backend folds it to a constant.
+			value_tokens := fastc_fold_integer_powers(scanned_tokens) or { scanned_tokens }
 			if literal_value := fastc_enum_integer_literal(value_tokens) {
 				value = literal_value
 				symbolic_value = ''

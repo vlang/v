@@ -7,7 +7,7 @@
 module builtin
 
 // A page more than an arena: every such object takes an arena of its own.
-const vgc_test_big_size = usize(vgc_arena_size + vgc_page_size)
+const vgc_test_big_size = uint(vgc_arena_size + vgc_page_size)
 
 // vgc_test_big_heap_enabled reports whether the test that needs more than 4 GB of address space
 // runs. Its objects are never written, so on Linux, macOS and the BSDs they take address space,
@@ -38,14 +38,14 @@ fn vgc_test_allocate_big(n int) []voidptr {
 		objs << p
 	}
 	for p in objs {
-		last := voidptr(usize(p) + vgc_test_big_size - 1)
+		last := voidptr(uint(p) + vgc_test_big_size - 1)
 		unsafe {
 			*(&u8(p)) = 1
 			*(&u8(last)) = 2
 		}
 		span := vgc_find_span(p)
 		assert span != unsafe { nil }
-		assert span.base == usize(p)
+		assert span.base == uint(p)
 		assert vgc_find_span(last) == span
 	}
 	return objs
@@ -54,8 +54,8 @@ fn vgc_test_allocate_big(n int) []voidptr {
 // vgc_test_clear_dead_stack overwrites the stack below the caller, where dead frames can still
 // hold pointers that the conservative stack scan would take for live ones.
 @[noinline]
-fn vgc_test_clear_dead_stack() usize {
-	buf := [4096]usize{}
+fn vgc_test_clear_dead_stack() uint {
+	buf := [4096]uint{}
 	return buf[0] + buf[4095]
 }
 
@@ -79,13 +79,13 @@ fn vgc_test_drop(mut objs []voidptr) {
 
 fn test_a_pointer_past_the_first_64_mb_of_an_object_is_found() {
 	$if vgc ? {
-		size := usize(96 * 1024 * 1024)
+		size := uint(96 * 1024 * 1024)
 		p := vgc_malloc_noscan_opts(size, false)
 		assert p != unsafe { nil }
 		span := vgc_find_span(p)
 		assert span != unsafe { nil }
-		assert vgc_find_span(voidptr(usize(p) + 80 * 1024 * 1024)) == span
-		assert vgc_find_span(voidptr(usize(p) + size - 1)) == span
+		assert vgc_find_span(voidptr(uint(p) + 80 * 1024 * 1024)) == span
+		assert vgc_find_span(voidptr(uint(p) + size - 1)) == span
 	}
 }
 
