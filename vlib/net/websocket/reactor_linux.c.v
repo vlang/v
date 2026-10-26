@@ -30,7 +30,7 @@ fn C.epoll_create1(int) int
 fn C.epoll_ctl(int, int, int, &C.epoll_event) int
 fn C.epoll_wait(int, &C.epoll_event, int, int) int
 fn C.eventfd(u32, int) int
-fn C.pthread_self() usize
+fn C.pthread_self() uint
 
 // ReactorOptions configures an optional Linux plaintext server transport.
 // Callbacks run serially on the owning worker, must not block, and borrow each

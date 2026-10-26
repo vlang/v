@@ -235,7 +235,7 @@ const default_groupname_size = 25 // short name commonly only take 10-15 length
 // key_group_name returns underlying group name of the key as a string.
 fn key_group_name(key &C.EVP_PKEY) !string {
 	gname := []u8{len: default_groupname_size}
-	gname_len := usize(0)
+	gname_len := uint(0)
 	mut s := C.EVP_PKEY_get_group_name(key, gname.data, u32(gname.len), &gname_len)
 	if s == 0 {
 		unsafe { gname.free() }

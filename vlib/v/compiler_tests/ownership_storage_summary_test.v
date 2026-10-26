@@ -261,8 +261,8 @@ struct Scalars {
 	flag bool
 	fraction f64
 	letter rune
-	signed isize
-	unsigned usize
+	signed int
+	unsigned uint
 	number Number
 	state State
 	values [2]int
@@ -282,12 +282,12 @@ fn letter() rune {
 	ptr := &local
 	return ptr.letter
 }
-fn signed() isize {
+fn signed() int {
 	local := Scalars{signed: -2}
 	ptr := &local
 	return ptr.signed
 }
-fn unsigned() usize {
+fn unsigned() uint {
 	local := Scalars{unsigned: 3}
 	ptr := &local
 	return ptr.unsigned

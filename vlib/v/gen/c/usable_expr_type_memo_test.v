@@ -41,6 +41,39 @@ fn test_usable_expr_type_memo_node_zero_starts_empty_and_reuses_its_result() {
 	assert *g.usable_expr_type(id) == types.Type(types.int_)
 }
 
+fn test_usable_expr_type_keeps_checked_container_alive_across_dense_slot_updates() {
+	mut a := flat.FlatAst.new()
+	value := a.add_val(.ident, 'rows')
+	a.children << value
+	parent := a.add_node(flat.Node{
+		kind:           .paren
+		children_start: 0
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Payload'] = []types.StructField{}
+	container := tc.parse_type(flat.source_type_id('[]Payload'))
+	tc.register_synth_type(value, container)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.memo_usable_expr_types = true
+	g.begin_usable_expr_type_memo()
+	before := g.usable_expr_type(parent)
+	assert *before == *container
+	tc.register_synth_type(value, types.Type(types.String{}))
+	// Growing the dense checker table must not invalidate a retained result.
+	for i in 0 .. 1024 {
+		id := a.add_val(.int_literal, i.str())
+		tc.register_synth_type(id, types.Type(types.int_))
+	}
+	assert *before == *container
+	assert *g.usable_expr_type(parent) == *container
+	g.end_usable_expr_type_memo()
+	g.begin_usable_expr_type_memo()
+	assert *g.usable_expr_type(parent) == types.Type(types.String{})
+}
+
 fn test_usable_expr_type_memo_requires_the_exact_node_id_after_slot_collisions() {
 	mut a := flat.FlatAst.new()
 	a.nodes = []flat.Node{len: usable_expr_type_memo_slots + 1}
@@ -202,5 +235,67 @@ fn test_body_import_type_queries_preserve_colliding_spelling_ids() {
 	for _ in 0 .. 2 {
 		assert g.canonical_import_alias_type_in_file(first, 'caller.v') is types.Struct
 		assert g.canonical_import_alias_type_in_file(second, 'caller.v') is types.Enum
+	}
+}
+
+fn test_body_resolve_reference_retains_memo_identity_and_resets_context() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'rows')
+	mut tc := types.TypeChecker.new(&a)
+	first := tc.parse_type(flat.source_type_id('[]int'))
+	second := tc.parse_type(flat.source_type_id('[]string'))
+	tc.cur_scope.insert('rows', *first)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.memo_usable_expr_types = true
+	g.begin_usable_expr_type_memo()
+	// Both value and reference entry points populate the same memo.
+	assert g.body_resolve_type(id) == *first
+	before := g.body_resolve_type_reference(id)
+	assert voidptr(before) == voidptr(g.usable_expr_type_memo.resolve_values[int(id)])
+	tc.cur_scope.insert('rows', *second)
+	assert voidptr(g.body_resolve_type_reference(id)) == voidptr(before)
+	g.const_init_depth = 1
+	assert *g.body_resolve_type_reference(id) == *second
+	g.const_init_depth = 0
+	assert voidptr(g.body_resolve_type_reference(id)) == voidptr(before)
+	g.end_usable_expr_type_memo()
+	g.begin_usable_expr_type_memo()
+	assert *g.body_resolve_type_reference(id) == *second
+	assert *before == *first
+	assert g.body_resolve_type(id) == *second
+}
+
+fn test_body_resolve_reference_does_not_freeze_unknown_results() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'later')
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.memo_usable_expr_types = true
+	g.begin_usable_expr_type_memo()
+	assert g.body_resolve_type_reference(id) is types.Unknown
+	assert g.usable_expr_type_memo.resolve_gens[int(id)] == 0
+	tc.cur_scope.insert('later', types.Type(types.int_))
+	assert *g.body_resolve_type_reference(id) == types.Type(types.int_)
+	assert g.usable_expr_type_memo.resolve_gens[int(id)] == g.usable_expr_type_memo.generation
+}
+
+fn test_body_resolve_reference_checks_the_full_id_on_collisions() {
+	mut a := flat.FlatAst.new()
+	a.nodes = []flat.Node{len: usable_expr_type_memo_slots + 1}
+	a.nodes[0] = flat.Node{ kind: .int_literal, value: '1' }
+	a.nodes[usable_expr_type_memo_slots] = flat.Node{ kind: .string_literal, value: 'second' }
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.memo_usable_expr_types = true
+	g.begin_usable_expr_type_memo()
+	for _ in 0 .. 2 {
+		assert *g.body_resolve_type_reference(flat.NodeId(0)) == types.Type(types.int_)
+		assert g.body_resolve_type_reference(flat.NodeId(usable_expr_type_memo_slots)) is types.String
 	}
 }

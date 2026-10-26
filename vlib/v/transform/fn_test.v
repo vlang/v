@@ -2097,3 +2097,22 @@ fn test_pointer_storage_addresses_keep_literal_and_index_element_types() {
 		assert node.kind != .ident || node.value != 'memdup'
 	}
 }
+
+fn test_receiver_method_guard_preserves_direct_and_alias_candidates() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set_id('AliasThing', flat.source_type_id('Thing'))
+	tc.type_aliases.set_id('AliasAgain', flat.source_type_id('AliasThing'))
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'pkg'
+	for spelling in ['Thing', '&Thing', '  &&Thing  ', 'pkg.Thing', 'other.Thing'] {
+		assert t.receiver_method_matches_type_name('Thing.run', flat.source_type_id(spelling))
+	}
+	assert t.receiver_method_matches_type_name('pkg.Thing.run', flat.source_type_id('Thing'))
+	assert t.receiver_method_matches_type_name('pkg.Thing.run', flat.source_type_id('pkg.Thing'))
+	assert t.receiver_method_matches_type_name('AliasAgain.run', flat.source_type_id('AliasAgain'))
+	assert t.receiver_method_matches_type_name('AliasThing.run', flat.source_type_id('AliasAgain'))
+	assert t.receiver_method_matches_type_name('Thing.run', flat.source_type_id('main.AliasAgain'))
+	assert !t.receiver_method_matches_type_name('other.Thing.run', flat.source_type_id('Thing'))
+	assert !t.receiver_method_matches_type_name('Different.run', flat.source_type_id('AliasAgain'))
+}

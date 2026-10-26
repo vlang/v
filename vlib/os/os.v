@@ -669,7 +669,7 @@ pub fn write_file(path string, text string) ! {
 	defer {
 		f.close()
 	}
-	unsafe { f.write_full_buffer(text.str, usize(text.len))! }
+	unsafe { f.write_full_buffer(text.str, uint(text.len))! }
 }
 
 pub struct ExecutableNotFoundError {

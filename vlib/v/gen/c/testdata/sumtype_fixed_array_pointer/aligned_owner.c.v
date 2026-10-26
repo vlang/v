@@ -33,7 +33,7 @@ fn next_choice() AlignChoice {
 fn owned_array_scope() {
 	owner := AlignArrayOwner(&[2]AlignChoice{init: next_choice()})
 	values := owner as &[2]AlignChoice
-	assert usize(voidptr(values)) % 64 == 0
+	assert uint(voidptr(values)) % 64 == 0
 	assert C.aligned_owner_visits() == 2
 	assert ((*values)[0] as &AlignDropItem).code == 1
 	assert ((*values)[1] as &AlignDropItem).code == 2

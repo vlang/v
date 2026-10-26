@@ -106,7 +106,7 @@ fn test_zero_value() {
 	assert zero_value('int') == 'int(0)'
 	assert zero_value('i32') == 'i32(0)'
 	assert zero_value('u64') == 'u64(0)'
-	assert zero_value('usize') == 'usize(0)'
+	assert zero_value('uint') == 'uint(0)'
 	assert zero_value('rune') == 'rune(0)'
 	assert zero_value('f32') == 'f32(0)'
 	assert zero_value('f64') == 'f64(0)'

@@ -718,14 +718,14 @@ bool
 
 string
 
-i8    i16  int  i64  i128
+i8    i16  i32  i64  i128
 u8    u16  u32  u64  u128
+
+int, uint // platform-width signed and unsigned integers
 
 rune // represents a Unicode code point
 
 f32 f64
-
-isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
 
 voidptr // this one is mostly used for [C interoperability](#v-and-c)
 ```
@@ -734,6 +734,12 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 > `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
 > targets. Use `i32` or `i64` when you need a fixed width.
 > Integer literal casts to `int` are checked against the target platform's width.
+> `uint` has the same width and is unsigned.
+
+`isize` and `usize` are deprecated. Replace `isize` with `int` and `usize` with `uint`.
+Use `uint` for pointer addresses and C `size_t` values to preserve
+the full unsigned range. Existing spellings still compile with deprecation warnings.
+Pointer subtraction returns `int`, including in translated C code.
 
 ### 128-bit integers
 
@@ -5037,7 +5043,7 @@ They are just a convenient way to write `i.some_function()` instead of
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
 An immediate read-only interface method call on a smart-casted value can return
-a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
+a scalar, including `char`, `rune`, `int`, `uint`, or an enum.
 
 Receiver methods are also available through embedded interfaces. A mutable receiver method
 updates the underlying concrete object's mutable fields, including when called through an
@@ -5169,6 +5175,8 @@ fixed-array elements.
 A mutable sum argument requires a variable of the sum type: it can replace the complete sum
 with another variant. Wrap a concrete value in a sum variable before passing it with `mut`.
 Inside a mutable smartcast, modifying a field modifies the selected payload in that sum.
+Assigning `0` to a sum with integer and reference variants selects the integer variant,
+including when its current variant is a reference.
 
 Sum payloads must have finite layout. References, dynamic arrays, and maps break recursive
 storage cycles; ordinary fields, options, and fixed arrays do not. A function variant stores
@@ -9367,7 +9375,7 @@ V supports the following compile time types:
 - `$enum` => matches [Enums](#enums).
 - `$float` => matches `f32`, `f64` and float literals.
 - `$function` => matches [Function Types](#function-types).
-- `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`
+- `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `uint`
   and integer literals.
 - `$interface` => matches [Interfaces](#interfaces).
 - `$map` => matches [Maps](#maps).
@@ -9868,6 +9876,7 @@ To improve safety and maintainability, operator overloading is limited.
 #### Type restrictions
 
 - When overriding `<` and `==`, the return type must be strictly `bool`.
+- Enums and interfaces cannot overload operators, but an alias of an enum can.
 - Both arguments must have the same type (just like with all operators in V).
 - Overloaded operators have to return the same type as the argument
   (the exceptions are `<` and `==`).
@@ -10808,6 +10817,13 @@ pass `&values[0]`; V's platform-width `int` storage is incompatible on 64-bit ta
 Pointer constants such as `C.NULL` and `C.INVALID_HANDLE_VALUE` retain their pointer type
 in assignments and comparisons.
 
+Ordinary V identifiers such as `near`, `far`, `pascal`, `cdecl`, `min`, and `max` can also be
+used when compiling for Windows. The C backend escapes these names to avoid Windows header
+macros, including in functions, local variables, and struct fields. Explicit `C.` references
+retain their original C names.
+TinyCC also supports explicitly aligned local structs on Windows through its `alloca` intrinsic.
+V identifiers named `alloca` are escaped so they cannot shadow this intrinsic.
+
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
@@ -10958,7 +10974,8 @@ More details in [call_v_from_c example](../examples/call_v_from_c).
 
 ### Passing C compilation flags
 
-Use `-dump-c-flags file.txt` to inspect the selected C compiler's flags, one argument per line.
+Use `-dump-c-flags file.txt` to inspect the selected C compiler's flags, one argument per line;
+value-taking flags stay on the line of their value, like `-I "/path"`.
 Use `-dump-c-flags -` for standard output. Monolithic bundled TCC builds share this flag plan
 with their actual command, including `-cstrict` warning options.
 On macOS, both the dump and TCC command resolve framework flags to their framework link files.
@@ -11226,7 +11243,7 @@ pub struct C.SomeCStruct {
 	// union {
 	// struct {
 	data voidptr
-	size usize
+	size uint
 	// }
 	view C.DataView
 	// }

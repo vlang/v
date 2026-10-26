@@ -176,7 +176,7 @@ pub fn (mut ch Channel) close(errs ...IError) {
 	}
 	C.atomic_store_u16(&ch.closed, 1)
 	mut nulladr := unsafe { nil }
-	for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written), voidptr(&nulladr), isize(-1)) {
+	for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written), voidptr(&nulladr), int(-1)) {
 		nulladr = unsafe { nil }
 	}
 	ch.readsem_im.post()
@@ -348,14 +348,14 @@ fn (mut ch Channel) try_push_impl(src voidptr, no_block bool) ChanState {
 		mut wradr := C.atomic_load_ptr(unsafe { &voidptr(&ch.write_adr) })
 		for wradr != unsafe { nil } {
 			if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.write_adr), voidptr(&wradr),
-				isize(0))
+				int(0))
 			{
 				// there is a reader waiting for us
 				race_sync_on(wradr)
 				unsafe { C.memcpy(wradr, src, ch.objsize) }
 				mut nulladr := unsafe { nil }
 				for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written),
-					voidptr(&nulladr), isize(wradr)) {
+					voidptr(&nulladr), int(wradr)) {
 					nulladr = unsafe { nil }
 				}
 				ch.readsem_im.post()
@@ -394,7 +394,7 @@ fn (mut ch Channel) try_push_impl(src voidptr, no_block bool) ChanState {
 			if wradr != unsafe { nil } {
 				mut src2 := src
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.read_adr), voidptr(&src2),
-					isize(0))
+					int(0))
 				{
 					ch.writesem.post()
 					continue
@@ -412,7 +412,7 @@ fn (mut ch Channel) try_push_impl(src voidptr, no_block bool) ChanState {
 			mut src2 := src
 			for sp := u32(0); sp < spinloops_ || read_in_progress; sp++ {
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2),
-					isize(0))
+					int(0))
 				{
 					have_swapped = true
 					read_in_progress = true
@@ -435,7 +435,7 @@ fn (mut ch Channel) try_push_impl(src voidptr, no_block bool) ChanState {
 				}
 				if C.atomic_load_u16(&ch.closed) != 0 {
 					if have_swapped
-						|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2), isize(0)) {
+						|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2), int(0)) {
 						ch.writesem.post()
 						race_acquire_on(src)
 						return .success
@@ -444,7 +444,7 @@ fn (mut ch Channel) try_push_impl(src voidptr, no_block bool) ChanState {
 					}
 				}
 				if have_swapped
-					|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2), isize(0)) {
+					|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2), int(0)) {
 					ch.writesem.post()
 					break
 				} else {
@@ -592,14 +592,14 @@ fn (mut ch Channel) try_pop_impl(dest voidptr, no_block bool) ChanState {
 			mut rdadr := C.atomic_load_ptr(unsafe { &voidptr(&ch.read_adr) })
 			for rdadr != unsafe { nil } {
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.read_adr), voidptr(&rdadr),
-					isize(0))
+					int(0))
 				{
 					// there is a writer waiting for us
 					race_sync_on(rdadr)
 					unsafe { C.memcpy(dest, rdadr, ch.objsize) }
 					mut nulladr := unsafe { nil }
 					for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_read),
-						voidptr(&nulladr), isize(rdadr)) {
+						voidptr(&nulladr), int(rdadr)) {
 						nulladr = unsafe { nil }
 					}
 					ch.writesem_im.post()
@@ -692,7 +692,7 @@ fn (mut ch Channel) try_pop_impl(dest voidptr, no_block bool) ChanState {
 			if rdadr != unsafe { nil } {
 				mut dest2 := dest
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.write_adr), voidptr(&dest2),
-					isize(0))
+					int(0))
 				{
 					ch.readsem.post()
 					continue
@@ -711,7 +711,7 @@ fn (mut ch Channel) try_pop_impl(dest voidptr, no_block bool) ChanState {
 		mut dest2 := dest
 		for sp := u32(0); sp < spinloops_ || write_in_progress; sp++ {
 			if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_written), voidptr(&dest2),
-				isize(0))
+				int(0))
 			{
 				have_swapped = true
 				break
@@ -735,7 +735,7 @@ fn (mut ch Channel) try_pop_impl(dest voidptr, no_block bool) ChanState {
 				ch.readsem_im.wait()
 			}
 			if have_swapped
-				|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_written), voidptr(&dest2), isize(0)) {
+				|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_written), voidptr(&dest2), int(0)) {
 				ch.readsem.post()
 				race_acquire_on(dest)
 				break
@@ -777,7 +777,7 @@ fn select_recheck_after_waiting(mut channels []&Channel, dir []Direction, state 
 		}
 		for sub != unsafe { nil } {
 			if sub.state != state && C.atomic_load_u32(sub.state) == select_state_waiting {
-				if usize(sub.state) < usize(state) {
+				if uint(sub.state) < uint(state) {
 					sub.sem.post()
 					sub_mtx.unlock()
 					return false

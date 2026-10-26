@@ -121,7 +121,7 @@ fn test_x86_64_sdk_symbols_are_only_written_for_macos_and_portable_c() {
 }
 
 // The table is checked against the installed SDK: its headers have to link every
-// listed function to the listed symbol on x86_64.
+// available function to the listed symbol on x86_64.
 fn test_x86_64_sdk_symbol_table_matches_the_installed_sdk() {
 	$if !macos {
 		return
@@ -129,13 +129,30 @@ fn test_x86_64_sdk_symbol_table_matches_the_installed_sdk() {
 	dir := os.join_path(os.vtmp_dir(), 'darwin_x64_sdk_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
+	// Query the compiler's SDK, which may differ from the running macOS version.
+	version_source := os.join_path(dir, 'sdk_version.c')
+	os.write_file(version_source, '#include <AvailabilityMacros.h>\nV_DARWIN_SDK_MAX __MAC_OS_X_VERSION_MAX_ALLOWED\n')!
+	version := cmdexec.run('cc', ['-arch', 'x86_64', '-E', '-P', version_source])
+	assert version.exit_code == 0, version.output
+	assert version.output.contains('V_DARWIN_SDK_MAX '), version.output
+	sdk_version := version.output.all_after('V_DARWIN_SDK_MAX ').trim_space().int()
+	assert sdk_version > 0, version.output
+	mut sdk_symbols := map[string]string{}
+	for name, symbol in c_darwin_x64_sdk_symbols {
+		// These dirent APIs were added in the macOS 26.4 SDK. Older SDKs still
+		// validate every other entry instead of failing on undeclared names.
+		if sdk_version < 260400 && name in ['fdscandir', 'fdscandir_b', 'scandirat', 'scandirat_b'] {
+			continue
+		}
+		sdk_symbols[name] = symbol
+	}
 	mut code := ''
 	for header in ['dirent.h', 'fts.h', 'ftw.h', 'glob.h', 'stdlib.h', 'syslog.h', 'unistd.h',
 		'sys/mount.h', 'sys/select.h', 'sys/stat.h'] {
 		code += '#include <${header}>\n'
 	}
 	code += 'void* v_sdk_symbols[] = {\n'
-	for name, _ in c_darwin_x64_sdk_symbols {
+	for name, _ in sdk_symbols {
 		code += '\t(void*)&${name},\n'
 	}
 	code += '};\n'
@@ -145,7 +162,7 @@ fn test_x86_64_sdk_symbol_table_matches_the_installed_sdk() {
 	build := cmdexec.run('cc', ['-arch', 'x86_64', '-w', '-c', '-o', object, source])
 	assert build.exit_code == 0, build.output
 	symbols := undefined_symbols(object)
-	for name, symbol in c_darwin_x64_sdk_symbols {
+	for name, symbol in sdk_symbols {
 		assert symbol in symbols, '${name}: ${symbols}'
 	}
 }

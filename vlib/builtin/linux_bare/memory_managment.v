@@ -30,7 +30,7 @@ fn mm_free(addr &u8) Errno {
 	}
 }
 
-fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
+fn system_alloc(_ voidptr, size uint) (voidptr, uint, u32) {
 	// BEGIN CONSTS
 	// the constants need to be here, since the initialization of other constants,
 	// which happen before these ones would, require malloc
@@ -46,21 +46,21 @@ fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
 	return unsafe { nil }, 0, 0
 }
 
-fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
+fn system_remap(_ voidptr, ptr voidptr, oldsize uint, newsize uint, can_move bool) voidptr {
 	return unsafe { nil }
 }
 
-fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
+fn system_free_part(_ voidptr, ptr voidptr, oldsize uint, newsize uint) bool {
 	_, e := sys_mremap(ptr, u64(oldsize), u64(newsize), 0)
 	if e == .enoerror {
 		return true
 	}
-	e2 := sys_munmap(voidptr(usize(ptr) + newsize), u64(oldsize - newsize))
+	e2 := sys_munmap(voidptr(uint(ptr) + newsize), u64(oldsize - newsize))
 
 	return e2 == .enoerror
 }
 
-fn system_free(_ voidptr, ptr voidptr, size usize) bool {
+fn system_free(_ voidptr, ptr voidptr, size uint) bool {
 	unsafe {
 		return sys_munmap(ptr, u64(size)) == .enoerror
 	}
@@ -74,7 +74,7 @@ fn system_allocates_zeros(_ voidptr) bool {
 	return true
 }
 
-fn system_page_size(_ voidptr) usize {
+fn system_page_size(_ voidptr) uint {
 	return 4096
 }
 

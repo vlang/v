@@ -490,7 +490,7 @@ fn (mut g Parser) try_read_simple_call_expression(stops []token.Token, allow_mut
 	if !g.selfhost || g.translated || g.tok != .name || g.tok in stops
 		|| g.s.line_directives || g.s.in_str_incomplete || g.s.in_str_inter
 		|| g.s.str_parent_quotes.len != 0 || g.lit.starts_with('@')
-		|| g.lit in ['C', 'print', 'println', 'typeof', 'dump', 'sql'] {
+		|| g.lit in ['C', 'print', 'println', 'eprint', 'eprintln', 'typeof', 'dump', 'sql'] {
 		return FastcAtomicExpression{}
 	}
 	mut offset := g.s.offset
@@ -606,7 +606,7 @@ fn fastc_simple_call_scalar_type(typ u32) bool {
 		flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
 		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
 		flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-		flat.source_type_u64, flat.source_type_usize]
+		flat.source_type_u64, flat.source_type_uint, flat.source_type_usize]
 }
 
 fn (g &Parser) simple_call_argument_is_scalar(tok token.Token, lit string, expected u32) bool {
@@ -1402,7 +1402,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	// A concrete variant fallback must be boxed to match the option payload.
 	if g.selfhost && option_value_type != 0 && fallback_type != u32(0)
 		&& flat.source_type_name(fallback_type) !in ['Option', '__v_result']
-		&& flat.source_type_name(fallback_type) != flat.source_type_name(option_value_type)
+		&& fallback_type != option_value_type
 		&& g.should_box_variant(option_value_type, fallback_type) {
 		fallback = g.interface_value_expression(option_value_type, fallback_type, fallback)
 		fallback_type = option_value_type
@@ -1560,7 +1560,7 @@ fn (mut g Parser) rewrite_expression_cast(mut result strings.Builder, expression
 		result.go_back(rendered_previous.len + 2)
 		piece = '((${array_type})('
 		cast_depths << paren_depth + 1
-	} else if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 4].tok == .name && expression_tokens[expression_tokens.len - 4].lit == 'C' && expression_tokens[expression_tokens.len - 3].tok == .dot && previous_lit.len > 0 && 'C.${previous_lit}' !in g.functions && g.current_call_has_one_argument() && (previous_lit[0].is_capital() || '#Cstruct#${previous_lit}' in g.declared_types) {
+	} else if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 4].tok == .name && expression_tokens[expression_tokens.len - 4].lit == 'C' && expression_tokens[expression_tokens.len - 3].tok == .dot && previous_lit.len > 0 && 'C.${previous_lit}' !in g.functions && g.current_call_has_one_argument() && (previous_lit[0].is_capital() || '#Cstruct#${previous_lit}' in g.declared_types || '#Ctypedef#${previous_lit}' in g.declared_types) {
 		c_pointer_token := if expression_tokens.len >= 5 && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 5) {
 			expression_tokens[expression_tokens.len - 5].tok
 		} else {
@@ -2202,8 +2202,8 @@ fn (g &Parser) translated_divisor_is_positive_constant() bool {
 		if tok == .name {
 			// Arbitrary names/calls and constant C expressions are not a proof.
 			// Integer casts are evaluated with their actual narrowing below.
-			if look.lit !in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'int', 'usize',
-				'isize'] || look.lit in g.locals {
+			if look.lit !in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'int', 'uint',
+				'usize', 'isize'] || look.lit in g.locals {
 				return false
 			}
 		}
@@ -5884,7 +5884,8 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			return disabled_call
 		}
 	}
-	is_print := tokens.len >= 4 && tokens[0].tok == .name && tokens[0].lit in ['print', 'println']
+	is_print := tokens.len >= 4 && tokens[0].tok == .name
+		&& tokens[0].lit in ['print', 'println', 'eprint', 'eprintln']
 	if is_print {
 		if !g.selfhost && (has_lsbr || has_membership) {
 			if collection_print := g.render_ordinary_collection_print_expression(tokens) {

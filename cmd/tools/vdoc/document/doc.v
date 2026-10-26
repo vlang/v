@@ -507,26 +507,6 @@ fn declaration_shape(content string) string {
 	return shape
 }
 
-// without_line_comment returns `line` without its `//` comment, if it has one outside of a string.
-fn without_line_comment(line string) string {
-	mut quote := u8(0)
-	for i := 0; i < line.len; i++ {
-		c := line[i]
-		if quote != 0 {
-			if c == `\\` {
-				i++
-			} else if c == quote {
-				quote = 0
-			}
-		} else if c in [`'`, `"`, `\``] {
-			quote = c
-		} else if c == `/` && i + 1 < line.len && line[i + 1] == `/` {
-			return line[..i]
-		}
-	}
-	return line
-}
-
 // without_parameter_names removes the names of the receiver and the parameters of the function
 // signature `sig`, like `fn (mut s Server) run(a int)` -> `fn (mut Server) run(int)`.
 fn without_parameter_names(sig string) string {

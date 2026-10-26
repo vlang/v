@@ -98,10 +98,12 @@ That should be it, and you should find your V executable at `[path to V repo]/v`
 
 On Unix-like systems, `make` and the `v self` bootstrap fallback stream compatibility fixes
 for older `vc/v.c` snapshots to the C compiler. These match the peak RSS helper's return type
-to `i64` and guard Linux-only `prctl` code. The snapshot stays unchanged on disk.
+to `i64`, guard Linux-only `prctl` code, and teach pre-`uint` compilers the new integer
+spelling and allocator signatures. The snapshot stays unchanged on disk.
 The compatibility filter uses the system `sh`; Bash is not required.
 
-On Windows, `makev.bat` generates the first compiler stage as C and links it directly.
+On Windows, builds use PowerShell to prepare a temporary snapshot with the same integer
+compatibility fixes. `makev.bat` generates the first compiler stage as C and links it directly.
 This also works with older bootstrap snapshots whose process-spawn code is broken.
 Direct TCC links add the installed bundle's `thirdparty\tcc\lib\openlibm.o`, when present,
 for C99 math functions such as `remainder`. Each bundle ships this object for its own compiler,

@@ -91,7 +91,7 @@ fn test_windows_builtin_and_compiler_promoted_pointers_keep_the_v_allocator_fami
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'main.c.v')
 	c_source := os.join_path(dir, 'main.c')
-	os.write_file(source, 'fn C.malloc(size usize) voidptr
+	os.write_file(source, 'fn C.malloc(size uint) voidptr
 fn C.free(value voidptr)
 @[aligned: 64]
 struct AlignedCell { value int }
@@ -112,10 +112,10 @@ fn (value &Holder) free() { unsafe { free(value) } }
 fn release_method(value &Holder) { unsafe { value.free() } }
 fn release_c(value &NaturalHolder) { unsafe { C.free(value) } }
 fn main() {
-	ordinary := unsafe { &NaturalHolder(malloc(sizeof(NaturalHolder))) }
+	ordinary := unsafe { &NaturalHolder(malloc(int(sizeof(NaturalHolder)))) }
 	release_natural_v(ordinary)
 	seed := NaturalHolder{}
-	copied := unsafe { &NaturalHolder(memdup(&seed, sizeof(NaturalHolder))) }
+	copied := unsafe { &NaturalHolder(memdup(&seed, int(sizeof(NaturalHolder)))) }
 	release_natural_method(copied)
 	compiler_owned := promoted()
 	release_method(compiler_owned)
@@ -127,8 +127,8 @@ fn main() {
 		'-manualfree', '-o', c_source, source])
 	assert generated_result.exit_code == 0, generated_result.output
 	generated := os.read_file(c_source)!
-	allocate := allocator_test_c_function(generated, 'u8* v_malloc(ptrdiff_t n) {')
-	copy := allocator_test_c_function(generated, 'void* memdup(void* src, ptrdiff_t sz) {')
+	allocate := allocator_test_c_function(generated, 'u8* v_malloc(i64 n) {')
+	copy := allocator_test_c_function(generated, 'void* memdup(void* src, i64 sz) {')
 	deallocate := allocator_test_c_function(generated, 'void v_free(void* ptr) {')
 	assert allocate.contains('_aligned_malloc(n, 1)'), allocate
 	assert copy.contains('v_malloc(sz)'), copy
@@ -283,8 +283,8 @@ fn main() { implicit_aligned()
 	mock_source := os.join_path(dir, 'implicit_sum_mock.c')
 	mock_binary := os.join_path(dir, 'implicit_sum_mock.exe')
 	os.write_file(mock_source, '${allocator_test_mock_runtime(declarations)}
-${allocator_test_c_function(generated, 'u8* v_malloc(ptrdiff_t n) {')}
-${allocator_test_c_function(generated, 'void* memdup(void* src, ptrdiff_t sz) {')}
+${allocator_test_c_function(generated, 'u8* v_malloc(i64 n) {')}
+${allocator_test_c_function(generated, 'void* memdup(void* src, i64 sz) {')}
 ${allocator_test_c_function(generated, 'void v_free(void* ptr) {')}
 ${allocator_test_c_function(generated, 'static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')}
 ${allocator_test_c_function(generated, 'static inline void v3_aligned_free(void* p) {')}

@@ -21,6 +21,14 @@ fn maybe(n int) ?int {
 }
 
 fn main() {
+	assert sizeof(uint) == sizeof(int)
+	assert sizeof(uint) == sizeof(voidptr)
+	maximum := ~uint(0)
+	assert maximum >> (sizeof(uint) * 8 - 1) == 1
+	assert maximum + uint(1) == 0
+	mut unsigned_keys := map[uint]int{}
+	unsigned_keys[maximum] = 17
+	assert unsigned_keys[maximum] == 17
 	mut m := map[int]string{}
 	for i in 0 .. 100 {
 		m[i * 7] = i.str()

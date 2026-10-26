@@ -75,7 +75,7 @@ fn test_threads_that_exited_are_not_scanned() {
 @[noinline]
 fn vgc_test_garbage(n int, size int) {
 	for _ in 0 .. n {
-		_ = vgc_malloc_noscan(usize(size))
+		_ = vgc_malloc_noscan(uint(size))
 	}
 }
 
@@ -227,7 +227,7 @@ fn test_the_heap_stays_bounded_with_a_bounded_live_set() {
 		gc_collect()
 		base := vgc_memory_use()
 		mut ring := []string{len: 4096}
-		mut peak := usize(0)
+		mut peak := uint(0)
 		// About 100 MB of strings in total, of which about 1 MB stays live.
 		for i in 0 .. 400_000 {
 			ring[i % ring.len] = 'bounded live set '.repeat(1 + i % 30)

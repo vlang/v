@@ -2,7 +2,7 @@ struct Column {
 	from i32
 }
 
-fn column_at[T](base &T, index isize) &T {
+fn column_at[T](base &T, index int) &T {
 	return unsafe { base + index }
 }
 

@@ -280,7 +280,7 @@ fn test_pointer_to_voidptr_return_keeps_pointer_value() {
 fn main() {
 	unsafe {
 		values := &voidptr(make_values())
-		println(usize(values[1]))
+		println(uint(values[1]))
 		free(values)
 	}
 }
