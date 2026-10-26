@@ -6,8 +6,21 @@ const global_decl_v3_dir = os.dir(global_decl_tests_dir)
 const global_decl_vlib_dir = os.dir(global_decl_v3_dir)
 const global_decl_v3_src = os.join_path(global_decl_v3_dir, 'v.v')
 
+fn global_decl_temp_dir() string {
+	return os.join_path(os.temp_dir(), 'v3_global_decl_codegen_${os.getpid()}')
+}
+
+fn testsuite_begin() {
+	os.rmdir_all(global_decl_temp_dir()) or {}
+	os.mkdir_all(global_decl_temp_dir()) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(global_decl_temp_dir()) or {}
+}
+
 fn global_decl_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_global_decl_codegen_test')
+	v3_bin := os.join_path(global_decl_temp_dir(), 'v3_global_decl_codegen_test')
 	os.rm(v3_bin) or {}
 	build :=
 		os.exec([global_decl_vexe, '-gc', 'none', '-path',
@@ -17,9 +30,9 @@ fn global_decl_build_v3() string {
 }
 
 fn global_decl_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	src := os.join_path(global_decl_temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	bin := os.join_path(global_decl_temp_dir(), 'v3_${name}')
 	compile := os.exec([v3_bin, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -29,8 +42,8 @@ fn global_decl_run_good(v3_bin string, name string, source string) string {
 }
 
 fn global_decl_generate_c(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	src := os.join_path(global_decl_temp_dir(), 'v3_${name}.v')
+	c_path := os.join_path(global_decl_temp_dir(), 'v3_${name}.c')
 	os.write_file(src, source) or { panic(err) }
 	generate := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', c_path, '${src}'])
 	assert generate.exit_code == 0, generate.output

@@ -28,6 +28,9 @@ pub mut:
 	max_vertices int
 	max_commands int
 	face_winding gfx.FaceWinding = .ccw
+	// sample_count must match the render pass the context draws into: the window's
+	// framebuffer sample count for the default pass (0 falls back to 1).
+	sample_count int
 }
 
 pub struct MatrixMode {
@@ -104,6 +107,7 @@ pub fn new_context(desc Desc) &Context {
 	st.max_vertices = max_v
 	st.max_commands = max_c
 	st.face_winding = desc.face_winding
+	st.sample_count = if desc.sample_count > 0 { desc.sample_count } else { 1 }
 	st.verts = []Vertex{len: max_v}
 	st.commands = []Command{len: max_c}
 	st.uniforms = []Uniform{len: max_c}

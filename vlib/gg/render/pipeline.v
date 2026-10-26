@@ -12,6 +12,14 @@ pub mut:
 }
 
 pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
+	return ctx.make_pipeline_with_shader(desc, ctx.st.shader)
+}
+
+// make_pipeline_with_shader builds a pipeline around `shader` instead of the
+// shared sgl shader. The text atlas needs this: its fragment stage treats the
+// single-channel atlas's red channel as alpha, which the generic shader's
+// plain `texture * color` multiply renders as red glyphs and black quads.
+pub fn (ctx &Context) make_pipeline_with_shader(desc gfx.PipelineDesc, shader gfx.Shader) Pipeline {
 	mut st := ctx.st
 	mut p := Pipeline{}
 	if !gfx.is_valid() {
@@ -38,7 +46,7 @@ pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
 
 	for i in 0 .. num_primitive_types {
 		mut d := desc
-		d.shader = st.shader
+		d.shader = shader
 		d.layout.buffers[0].stride = int(sizeof(Vertex))
 		d.layout.attrs[0].offset = 0
 		d.layout.attrs[0].format = .float3
