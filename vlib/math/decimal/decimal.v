@@ -86,9 +86,40 @@ pub fn from_string(input string) !Decimal {
 	mut digit_count := 0
 	mut scale := 0
 	mut digits := strings.new_builder(value.len)
+	mut exponent := 0
+	mut exponent_negative := false
+	mut exponent_digits := 0
+	mut in_exponent := false
 	for index, ch in value {
 		if index == 0 && (ch == `+` || ch == `-`) {
 			negative = ch == `-`
+			continue
+		}
+		if in_exponent {
+			if ch == `+` || ch == `-` {
+				if exponent_digits > 0 {
+					return error('math.decimal: invalid decimal value `${input}`')
+				}
+				exponent_negative = ch == `-`
+				continue
+			}
+			if ch >= `0` && ch <= `9` {
+				exponent_digits++
+				if exponent_digits > 10 {
+					// Cap to avoid huge allocations; treat as saturated.
+					exponent = if exponent_negative { -1_000_000_000 } else { 1_000_000_000 }
+				} else {
+					exponent = exponent * 10 + int(ch - `0`)
+				}
+				continue
+			}
+			return error('math.decimal: invalid decimal value `${input}`')
+		}
+		if ch == `e` || ch == `E` {
+			if digit_count == 0 {
+				return error('math.decimal: invalid decimal value `${input}`')
+			}
+			in_exponent = true
 			continue
 		}
 		if ch >= `0` && ch <= `9` {
@@ -108,12 +139,32 @@ pub fn from_string(input string) !Decimal {
 	if digit_count == 0 {
 		return error('math.decimal: invalid decimal value `${input}`')
 	}
+	if in_exponent && exponent_digits == 0 {
+		return error('math.decimal: invalid decimal value `${input}`')
+	}
+	if exponent_negative {
+		exponent = -exponent
+	}
+	// Cap extreme exponents to avoid huge allocations.
+	if exponent > 100 {
+		exponent = 100
+	}
+	if exponent < -100 {
+		exponent = -100
+	}
 	mut coefficient_string := digits.str()
 	if negative {
 		coefficient_string = '-' + coefficient_string
 	}
-	coefficient := big.integer_from_string(coefficient_string)!
-	return new(coefficient, scale)
+	mut coefficient := big.integer_from_string(coefficient_string)!
+	// Apply exponent to scale: value = coefficient * 10^(exponent - scale)
+	mut final_scale := scale - exponent
+	if final_scale < 0 {
+		// multiply coefficient by 10^(-final_scale)
+		coefficient = coefficient * pow10(-final_scale)
+		final_scale = 0
+	}
+	return new(coefficient, final_scale)
 }
 
 // coefficient returns the integer coefficient stored by `d`.
