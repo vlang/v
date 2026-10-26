@@ -44,13 +44,14 @@ fn test_darwin_ellipse_bridges_use_sdk_geometry() {
 	C.CGContextSetRGBStrokeColor(context, 0, 0, 1, 1)
 	C.gg_darwin_stroke_ellipse(context, 20, 2, 8, 12)
 	assert pixels[..4] == [u8(0), 0, 0, 0]
-	fill_center := (6 * 32 + 8) * 4
+	// Bitmap rows run opposite to CoreGraphics drawing coordinates.
+	fill_center := ((17 - 6) * 32 + 8) * 4
 	assert pixels[fill_center..fill_center + 4] != [u8(0), 0, 0, 0]
-	fill_corner := (2 * 32 + 2) * 4
+	fill_corner := ((17 - 2) * 32 + 2) * 4
 	assert pixels[fill_corner..fill_corner + 4] == [u8(0), 0, 0, 0]
-	stroke_center := (8 * 32 + 24) * 4
+	stroke_center := ((17 - 8) * 32 + 24) * 4
 	assert pixels[stroke_center..stroke_center + 4] == [u8(0), 0, 0, 0]
-	stroke_edge := (8 * 32 + 20) * 4
+	stroke_edge := ((17 - 8) * 32 + 20) * 4
 	assert pixels[stroke_edge..stroke_edge + 4] != [u8(0), 0, 0, 0]
 }
 

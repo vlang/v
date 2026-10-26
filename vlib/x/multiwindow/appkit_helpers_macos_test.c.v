@@ -18,3 +18,14 @@ fn test_appkit_string_helpers_preserve_payload_and_copy_storage() {
 		C.free(copy)
 	}
 }
+
+fn test_appkit_content_size_helper_clamps_only_to_positive_minimum() {
+	assert v_multiwindow_appkit_max_int(40, 80) == 80
+	assert v_multiwindow_appkit_max_int(80, 80) == 80
+	assert v_multiwindow_appkit_max_int(120, 80) == 120
+	assert v_multiwindow_appkit_max_int(0, 80) == 80
+	assert v_multiwindow_appkit_max_int(-10, 80) == 80
+	assert v_multiwindow_appkit_max_int(40, 0) == 40
+	assert v_multiwindow_appkit_max_int(-10, 0) == -10
+	assert v_multiwindow_appkit_max_int(-10, -5) == -10
+}
