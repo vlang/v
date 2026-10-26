@@ -1,6 +1,6 @@
 module main
 
-import markdown
+import x.markdown
 import os
 import time
 import strings
@@ -387,7 +387,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			text:        readme.content
 		}
 		if out.typ == .ansi {
-			println(markdown.to_plain(readme.content))
+			println(markdown.to_plaintext(readme.content, markdown.Options{}))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
 				head:           doc.DocNode{
