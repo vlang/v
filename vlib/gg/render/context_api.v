@@ -553,9 +553,9 @@ pub fn (ctx &Context) draw() {
 	}
 }
 
-// rewind discards the vertices and commands recorded since the last commit
-// without submitting them, like sgl_rewind. A frame that is abandoned before
-// its pass starts uses it, so the next frame starts from an empty queue.
+// rewind discards this context's recording before draw(), without committing
+// a graphics frame. It preserves drawing state, resets the layer to zero,
+// and leaves other contexts and the frame index unchanged.
 pub fn (ctx &Context) rewind() {
 	mut st := ctx.st
 	st.vertex_count = 0
