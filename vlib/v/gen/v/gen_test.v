@@ -1434,8 +1434,8 @@ fn test_formatter_ignores_vfmt_directives_inside_strings() {
 }
 
 fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {
-	bodyless := vfmt('bodyless_functions', 'fn plain(value usize) usize\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n')
-	assert bodyless.contains('fn plain(value usize) usize'), bodyless
+	bodyless := vfmt('bodyless_functions', 'fn plain(value uint) uint\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n')
+	assert bodyless.contains('fn plain(value uint) uint'), bodyless
 	assert bodyless.contains('fn C.c_call(value int) int'), bodyless
 	assert bodyless.contains('fn JS.js_call(value int) int'), bodyless
 	assert !bodyless.contains('fn C.plain'), bodyless
@@ -1789,6 +1789,17 @@ fn test_formatter_writes_embed_defaults_without_an_empty_type_column() {
 	formatted := vfmt('embed_default_input', input)
 	assert formatted == expected
 	assert vfmt('embed_default_twice', formatted) == formatted
+}
+
+// `typeof(expr)` in a type position is linked to its expression by the
+// compiler's parser; vfmt must write back the source spelling, not the link.
+fn test_formatter_round_trips_typeof_types() {
+	fixture := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests/typeof_as_type_keep.vv')
+	source := os.read_file(fixture) or { panic(err) }
+	out := vfmt('typeof_as_type', source)
+	assert out == source
+	assert !out.contains('__expr_')
+	assert reparse_diagnostics('typeof_as_type_reparse', out) == 0
 }
 
 fn test_channel_ops() {

@@ -137,10 +137,11 @@ fn test_fastc_native_input_automatic_prototypes_respect_source_headers() {
 		files_with_headers: {
 			'bindings.c.v': true
 		}
-	})
+	}, '')
 	assert !prototypes.contains('automatic_hook('), prototypes
 	assert prototypes.contains('extern int explicit_hook(voidptr);'), prototypes
-	without_header := fastc_c_extern_prototypes_for_source_inputs(functions, ['bindings.c'], FastcNativeSourceContext{})
+	without_header := fastc_c_extern_prototypes_for_source_inputs(functions, ['bindings.c'], FastcNativeSourceContext{},
+		'')
 	assert without_header.contains('extern int automatic_hook(voidptr);'), without_header
 	// The collapsed signature can come from a later file with an unrelated
 	// include; the earlier headerless native-input declaration still owns a
@@ -153,8 +154,73 @@ fn test_fastc_native_input_automatic_prototypes_respect_source_headers() {
 			'automatic_hook': ['headerless.c.v', 'bindings.c.v']
 		}
 	}
-	duplicate := fastc_c_extern_prototypes_for_source_inputs(functions, ['headerless.c'], duplicate_context)
+	duplicate := fastc_c_extern_prototypes_for_source_inputs(functions, ['headerless.c'], duplicate_context,
+		'')
 	assert duplicate.contains('extern int automatic_hook(voidptr);'), duplicate
+}
+
+fn test_fastc_vlib_native_helper_prototypes_follow_cgen_prefix_rule() {
+	// builtin_d_gcboehm.c.v includes gc.h and links gc_boehm_helpers.o, so
+	// neither the header-free nor the shared-stem rule covers its private
+	// `v__gc_` facades; cgen embeds the helper source, FastC links the object.
+	mut functions := map[string]FastcFunctionSignature{}
+	for name, path in {
+		'v__gc_debugger_present_linux': '/root/vlib/builtin/builtin_d_gcboehm.c.v'
+		'v3_linux_name_worker':         '/root/vlib/v/workers/thread_nix.c.v'
+		'unrelated_hook':               '/root/vlib/builtin/builtin_d_gcboehm.c.v'
+		'v_runtime_project_hook':       '/project/bindings.c.v'
+		'v_time_ticks_ms':              '/root/vlib/time/ticks_windows.c.v'
+	} {
+		functions['C.${name}'] = FastcFunctionSignature{
+			path:            path
+			return_type:     flat.source_type_id('int')
+			parameter_types: flat.TypeTextList.from_names(['voidptr'])
+		}
+	}
+	context := FastcNativeSourceContext{
+		files_with_headers:           {
+			'/root/vlib/builtin/builtin_d_gcboehm.c.v': true
+			'/project/bindings.c.v':                    true
+			'/root/vlib/time/ticks_windows.c.v':        true
+		}
+		files_linking_native_sources: {
+			'/root/vlib/builtin/builtin_d_gcboehm.c.v': true
+			'/root/vlib/v/workers/thread_nix.c.v':      true
+			'/project/bindings.c.v':                    true
+		}
+	}
+	inputs := ['/root/vlib/builtin/gc_boehm_helpers.o', '/root/vlib/v/diagserver/syscalls_linux.o']
+	prototypes := fastc_c_extern_prototypes_for_source_inputs(functions, inputs, context,
+		'/root')
+	assert prototypes.contains('extern int v__gc_debugger_present_linux(voidptr);'), prototypes
+	assert prototypes.contains('extern int v3_linux_name_worker(voidptr);'), prototypes
+	assert !prototypes.contains('unrelated_hook('), prototypes
+	assert !prototypes.contains('v_runtime_project_hook('), prototypes
+	// ticks_windows.c.v only includes its header; the header owns the facade.
+	assert !prototypes.contains('v_time_ticks_ms('), prototypes
+	without_root := fastc_c_extern_prototypes_for_source_inputs(functions, inputs, context,
+		'')
+	assert !without_root.contains('v__gc_debugger_present_linux('), without_root
+	assert !without_root.contains('v3_linux_name_worker('), without_root
+}
+
+fn test_fastc_target_native_facts_detect_linked_objects() {
+	prefs := &pref.Preferences{}
+	mut references := map[string]bool{}
+	mut declarations := map[string]bool{}
+	linked := fastc_target_collect_native_facts('module m
+#flag -DV_HELPER
+#flag @VEXEROOT/vlib/m/helper.o
+fn C.v3_helper() int
+', 'linked.c.v', prefs, mut references, mut declarations)
+	assert linked.links_native
+	assert !linked.has_header
+	defines := fastc_target_collect_native_facts('module m
+#flag -DV_HELPER -lm
+#include "helper.h"
+', 'defines.c.v', prefs, mut references, mut declarations)
+	assert !defines.links_native
+	assert defines.has_header
 }
 
 fn test_fastc_target_native_header_macro_signature_is_left_to_c_compiler() {

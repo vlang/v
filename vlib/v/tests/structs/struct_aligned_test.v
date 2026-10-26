@@ -24,5 +24,5 @@ fn aligned_struct_pointer() &MyStruct {
 fn test_promoted_struct_preserves_alignment() {
 	value := aligned_struct_pointer()
 	assert value.a == 42
-	assert usize(voidptr(value)) % 512 == 0
+	assert uint(voidptr(value)) % 512 == 0
 }

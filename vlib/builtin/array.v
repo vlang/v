@@ -12,7 +12,7 @@ import strings
 pub struct array {
 pub mut:
 	data   voidptr
-	offset int // in bytes (should be `usize`), to avoid copying data while making slices, unless it starts changing
+	offset int // in bytes (should be `uint`), to avoid copying data while making slices, unless it starts changing
 	len    int // length of the array in elements.
 	cap    int // capacity of the array in elements.
 	flags  ArrayFlags
@@ -59,7 +59,7 @@ fn array_data_allocation_size(total_size u64) u64 {
 @[inline]
 fn init_array_data(raw voidptr) voidptr {
 	// At most 15 bytes of padding keep both the header and element storage aligned.
-	padding := (16 - (usize(raw) + usize(array_data_header_size())) % 16) % 16
+	padding := (16 - (uint(raw) + uint(array_data_header_size())) % 16) % 16
 	unsafe {
 		data := &u8(raw) + array_data_header_size() + padding
 		header := &ArrayDataHeader(data - array_data_header_size())
@@ -462,7 +462,7 @@ pub fn (mut a array) ensure_cap(required int) {
 		if a.flags.has(.noslices) && !a.flags.has(.is_slice) && !a.buffer_has_slices() {
 			unsafe {
 				$if prealloc {
-					prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size))
+					prealloc_discard_pages(a.data, uint(a.cap) * uint(a.element_size))
 				}
 				if a.flags.has(.managed) {
 					free_unaliased(a.data_header().allocation)
@@ -1199,9 +1199,9 @@ fn (mut a array) set(i int, val voidptr) {
 // with indexes it has already bounded, so it skips the per-element range checks
 // of `array.set`.
 @[inline; markused; unsafe]
-fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_size usize) {
-	vmemcpy(&u8(dst) + usize(di) * element_size, &u8(src) + usize(si) * element_size,
-		isize(usize(count) * element_size))
+fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_size uint) {
+	vmemcpy(&u8(dst) + uint(di) * element_size, &u8(src) + uint(si) * element_size,
+		int(uint(count) * element_size))
 }
 
 $if !v3_backend ? {
@@ -1391,7 +1391,7 @@ pub fn (a array) reverse() array {
 pub fn (a &array) free() {
 	$if prealloc {
 		if !a.flags.has(.is_slice) && !a.flags.has(.nofree) && !a.buffer_has_retained_fixed_views() {
-			unsafe { prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size)) }
+			unsafe { prealloc_discard_pages(a.data, uint(a.cap) * uint(a.element_size)) }
 		}
 		return
 	}
@@ -1406,7 +1406,7 @@ pub fn (a &array) free() {
 	if a.flags.has(.nofree) || a.buffer_has_retained_fixed_views() {
 		return
 	}
-	mblock_ptr := &u8(usize(a.data) - usize(a.offset))
+	mblock_ptr := &u8(uint(a.data) - uint(a.offset))
 	if mblock_ptr != unsafe { nil } {
 		unsafe {
 			allocation := if a.flags.has(.managed) {
@@ -1547,7 +1547,7 @@ pub fn (mut a array) sort_with_compare(callback FnSortCB) {
 	$if freestanding {
 		panic('sort_with_compare does not work with -freestanding')
 	} $else {
-		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
+		unsafe { vqsort(a.data, uint(a.len), uint(a.element_size), callback) }
 	}
 }
 
@@ -1557,7 +1557,7 @@ pub fn (mut a array) sort_with_compare(callback FnSortCB) {
 // Equal elements keep their original relative order.
 pub fn (a &array) sorted_with_compare(callback FnSortCB) array {
 	mut r := a.clone()
-	unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }
+	unsafe { vqsort(r.data, uint(r.len), uint(r.element_size), callback) }
 	return r
 }
 
@@ -1640,7 +1640,7 @@ pub fn (b []u8) hex() string {
 pub fn copy(mut dst []u8, src []u8) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
-		unsafe { vmemmove(dst.data, src.data, isize(min) * isize(dst.element_size)) }
+		unsafe { vmemmove(dst.data, src.data, int(min) * int(dst.element_size)) }
 	}
 	return min
 }

@@ -6,11 +6,11 @@ fn test_entropy_callback_preserves_integer_result() {
 	defer { C.mbedtls_entropy_free(&entropy) }
 	mut output := [32]u8{}
 	callback := C.mbedtls_entropy_func
-	status := callback(voidptr(&entropy), &output[0], usize(output.len))
+	status := callback(voidptr(&entropy), &output[0], uint(output.len))
 	assert status == 0
 }
 
-fn reject_entropy(_ voidptr, _ &u8, _ usize) int {
+fn reject_entropy(_ voidptr, _ &u8, _ uint) int {
 	return -1
 }
 

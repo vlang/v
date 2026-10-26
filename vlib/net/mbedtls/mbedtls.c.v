@@ -195,51 +195,51 @@ pub struct C.mbedtls_x509_crl {}
 fn C.mbedtls_net_init(&C.mbedtls_net_context)
 fn C.mbedtls_net_connect(&C.mbedtls_net_context, &char, &char, i32) i32
 fn C.mbedtls_net_bind(&C.mbedtls_net_context, &char, &char, i32) i32
-fn C.mbedtls_net_accept(&C.mbedtls_net_context, &C.mbedtls_net_context, voidptr, usize, &usize) i32
-fn C.mbedtls_net_recv(voidptr, &u8, usize) i32
-fn C.mbedtls_net_send(voidptr, &u8, usize) i32
-fn C.mbedtls_net_recv_timeout(voidptr, &u8, usize, u32) i32
+fn C.mbedtls_net_accept(&C.mbedtls_net_context, &C.mbedtls_net_context, voidptr, uint, &uint) i32
+fn C.mbedtls_net_recv(voidptr, &u8, uint) i32
+fn C.mbedtls_net_send(voidptr, &u8, uint) i32
+fn C.mbedtls_net_recv_timeout(voidptr, &u8, uint, u32) i32
 fn C.mbedtls_net_free(&C.mbedtls_net_context)
 
 fn C.mbedtls_ssl_init(&C.mbedtls_ssl_context)
 fn C.mbedtls_ssl_setup(&C.mbedtls_ssl_context, &C.mbedtls_ssl_config) i32
 fn C.mbedtls_ssl_session_reset(&C.mbedtls_ssl_context)
 fn C.mbedtls_ssl_conf_authmode(&C.mbedtls_ssl_config, i32)
-fn C.mbedtls_ssl_conf_rng(&C.mbedtls_ssl_config, fn (voidptr, &u8, usize) int, voidptr)
-fn C.mbedtls_ssl_set_bio(&C.mbedtls_ssl_context, &C.mbedtls_net_context, fn (voidptr, &u8, usize) i32, fn (voidptr, &u8, usize) i32, fn (voidptr, &u8, usize, u32) i32)
+fn C.mbedtls_ssl_conf_rng(&C.mbedtls_ssl_config, fn (voidptr, &u8, uint) int, voidptr)
+fn C.mbedtls_ssl_set_bio(&C.mbedtls_ssl_context, &C.mbedtls_net_context, fn (voidptr, &u8, uint) i32, fn (voidptr, &u8, uint) i32, fn (voidptr, &u8, uint, u32) i32)
 fn C.mbedtls_ssl_conf_own_cert(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_pk_context) i32
 fn C.mbedtls_ssl_conf_ca_chain(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_x509_crl)
 fn C.mbedtls_ssl_set_hostname(&C.mbedtls_ssl_context, &char) i32
 fn C.mbedtls_ssl_handshake(&C.mbedtls_ssl_context) i32
-fn C.mbedtls_ssl_read(&C.mbedtls_ssl_context, &u8, usize) i32
-fn C.mbedtls_ssl_write(&C.mbedtls_ssl_context, &u8, usize) i32
+fn C.mbedtls_ssl_read(&C.mbedtls_ssl_context, &u8, uint) i32
+fn C.mbedtls_ssl_write(&C.mbedtls_ssl_context, &u8, uint) i32
 fn C.mbedtls_ssl_free(&C.mbedtls_ssl_context)
 fn C.mbedtls_ssl_config_init(&C.mbedtls_ssl_config)
 fn C.mbedtls_ssl_config_defaults(&C.mbedtls_ssl_config, i32, i32, i32) i32
 fn C.mbedtls_ssl_config_free(&C.mbedtls_ssl_config)
-fn C.mbedtls_ssl_conf_sni(&C.mbedtls_ssl_config, fn (voidptr, &C.mbedtls_ssl_context, &u8, usize) int, voidptr)
+fn C.mbedtls_ssl_conf_sni(&C.mbedtls_ssl_config, fn (voidptr, &C.mbedtls_ssl_context, &u8, uint) int, voidptr)
 fn C.mbedtls_ssl_set_hs_ca_chain(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_x509_crl)
 fn C.mbedtls_ssl_set_hs_own_cert(&C.mbedtls_ssl_context, &C.mbedtls_x509_crt, &C.mbedtls_pk_context) i32
 fn C.mbedtls_ssl_set_hs_authmode(&C.mbedtls_ssl_context, i32)
 
 fn C.mbedtls_pk_init(&C.mbedtls_pk_context)
 fn C.mbedtls_pk_free(&C.mbedtls_pk_context)
-fn C.mbedtls_pk_parse_key(&C.mbedtls_pk_context, &u8, usize, &u8, usize, fn (voidptr, &u8, usize) int,
+fn C.mbedtls_pk_parse_key(&C.mbedtls_pk_context, &u8, uint, &u8, uint, fn (voidptr, &u8, uint) int,
 	voidptr) i32
-fn C.mbedtls_pk_parse_keyfile(&C.mbedtls_pk_context, &char, &char, fn (voidptr, &u8, usize) int, voidptr) i32
+fn C.mbedtls_pk_parse_keyfile(&C.mbedtls_pk_context, &char, &char, fn (voidptr, &u8, uint) int, voidptr) i32
 
 fn C.mbedtls_ctr_drbg_init(&C.mbedtls_ctr_drbg_context)
-fn C.mbedtls_ctr_drbg_seed(&C.mbedtls_ctr_drbg_context, fn (voidptr, &u8, usize) int, voidptr, &u8, usize) i32
+fn C.mbedtls_ctr_drbg_seed(&C.mbedtls_ctr_drbg_context, fn (voidptr, &u8, uint) int, voidptr, &u8, uint) i32
 fn C.mbedtls_ctr_drbg_free(&C.mbedtls_ctr_drbg_context)
-fn C.mbedtls_ctr_drbg_random(voidptr, &u8, usize) i32
+fn C.mbedtls_ctr_drbg_random(voidptr, &u8, uint) i32
 
 fn C.mbedtls_entropy_init(&C.mbedtls_entropy_context)
 fn C.mbedtls_entropy_free(&C.mbedtls_entropy_context)
-fn C.mbedtls_entropy_func(voidptr, &u8, usize) int
+fn C.mbedtls_entropy_func(voidptr, &u8, uint) int
 
 fn C.mbedtls_x509_crt_init(&C.mbedtls_x509_crt)
 fn C.mbedtls_x509_crt_free(&C.mbedtls_x509_crt)
-fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &u8, usize) i32
+fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &u8, uint) i32
 fn C.mbedtls_x509_crt_parse_file(&C.mbedtls_x509_crt, &char) i32
 
 // mbedtls_x509_crt_verify validates a certificate chain against a trust anchor,
@@ -248,7 +248,7 @@ fn C.mbedtls_x509_crt_parse_file(&C.mbedtls_x509_crt, &char) i32
 // default checks only.
 fn C.mbedtls_x509_crt_verify(&C.mbedtls_x509_crt, &C.mbedtls_x509_crt, &C.mbedtls_x509_crl, &char, &u32, fn (voidptr, &C.mbedtls_x509_crt, i32, &u32) i32, voidptr) i32
 
-fn C.mbedtls_pk_verify(&C.mbedtls_pk_context, i32, &u8, usize, &u8, usize) i32
+fn C.mbedtls_pk_verify(&C.mbedtls_pk_context, i32, &u8, uint, &u8, uint) i32
 
 // mbedtls_pk_rsassa_pss_options mirrors mbedTLS's own struct (pk.h)
 // field-for-field rather than being kept opaque like mbedtls_x509_crt/
@@ -266,7 +266,7 @@ mut:
 // type (inc. RSASSA-PSS) and optional type-specific options -- see
 // x509_standalone.c.v's verify_ecdsa_signature/verify_rsa_pss_signature for
 // the two call shapes this codebase actually uses.
-fn C.mbedtls_pk_verify_ext(i32, voidptr, &C.mbedtls_pk_context, i32, &u8, usize, &u8, usize) i32
+fn C.mbedtls_pk_verify_ext(i32, voidptr, &C.mbedtls_pk_context, i32, &u8, uint, &u8, uint) i32
 
 // mbedtls_pk_sign_ext is not called by any production code yet -- v1 is
 // client-only and never sends a client CertificateVerify (CertificateRequest
@@ -276,7 +276,7 @@ fn C.mbedtls_pk_verify_ext(i32, voidptr, &C.mbedtls_pk_context, i32, &u8, usize,
 // x509_standalone_signature_test.v's round-trip test needs genuine RSA-PSS
 // signatures to validate verify_rsa_pss_signature against real cryptography,
 // not just reasoning about C-binding parameter marshaling.
-fn C.mbedtls_pk_sign_ext(i32, &C.mbedtls_pk_context, i32, &u8, usize, &u8, usize, &usize, fn (voidptr, &u8, usize) int, voidptr) i32
+fn C.mbedtls_pk_sign_ext(i32, &C.mbedtls_pk_context, i32, &u8, uint, &u8, uint, &uint, fn (voidptr, &u8, uint) int, voidptr) i32
 
 // v_mbedtls_x509_crt_get_pk extracts the public-key context embedded in a
 // parsed certificate -- see mbedtls_helpers.h for why this needs a C shim

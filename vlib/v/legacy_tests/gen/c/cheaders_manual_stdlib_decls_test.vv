@@ -67,7 +67,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 		'V_CRT_LINKAGE int V_CRT_CALL setenv(const char *name, const char *value, int overwrite);',
 		'V_CRT_LINKAGE int V_CRT_CALL unsetenv(const char *name);',
 		'V_CRT_LINKAGE char * V_CRT_CALL realpath(const char *path, char *resolved_path);',
-		'V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);',
+		'V_CRT_LINKAGE int V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);',
 		'V_CRT_LINKAGE int V_CRT_CALL fgetpos(FILE *stream, i64 *pos);',
 		'V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);',
 		'V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);',

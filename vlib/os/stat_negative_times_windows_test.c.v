@@ -62,8 +62,8 @@ fn test_windows_stat_negative_times_follow_live_symlinks() {
 	write_file(file, 'target metadata')!
 	mkdir(folder)!
 	for path in [file, folder] {
-		link := path + '_link'
-		symlink(path, link) or {
+		link_path := path + '_link'
+		symlink(path, link_path) or {
 			if err.code() == 1314 {
 				eprintln('skipping symlink timestamp regression: ${err}')
 				return
@@ -72,7 +72,7 @@ fn test_windows_stat_negative_times_follow_live_symlinks() {
 		}
 		set_negative_stat_times_for_test(path, -86_400)!
 		target_stat := stat(path)!
-		link_stat := stat(link)!
+		link_stat := stat(link_path)!
 		assert link_stat.atime == target_stat.atime
 		assert link_stat.mtime == target_stat.mtime
 		assert link_stat.ctime == target_stat.ctime

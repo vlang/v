@@ -312,13 +312,20 @@ fn prune_unreferenced_cached_functions(mut a flat.FlatAst, keep []string, keep_i
 		}
 	}
 	for idx, node in a.nodes {
-		if in_candidate[idx] || node.value.len == 0 || node.kind in [.string_literal, .int_literal,
-			.float_literal, .char_literal, .file, .directive, .empty] {
+		if in_candidate[idx] || node.value_text().len == 0 || node.kind in [
+			.string_literal,
+			.int_literal,
+			.float_literal,
+			.char_literal,
+			.file,
+			.directive,
+			.empty,
+		] {
 			continue
 		}
-		named[node.value] = true
-		if node.value.contains('.') {
-			named[node.value.all_after_last('.')] = true
+		named[node.value_text()] = true
+		if node.value_text().contains('.') {
+			named[node.value_text().all_after_last('.')] = true
 		}
 	}
 	mut kept_in_module := map[string]bool{}

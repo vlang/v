@@ -42,7 +42,7 @@ module main
 
 // fill zeroes `len` bytes of raw memory. The caller guarantees the buffer is at
 // least `len` bytes, which the type cannot express.
-fn fill_raw(data voidptr, len usize) {
+fn fill_raw(data voidptr, len uint) {
 	unsafe {
 		C.memset(data, 0, len)
 	}

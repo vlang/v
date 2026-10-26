@@ -22,18 +22,42 @@
 V `char`, `&char`, or `charptr` when you need to match C `char`, `char*`,
 or `char**`.
 
-* A V `isize` is equivalent to C `ssize_t`.
-It is a signed integer, and `isize` is guaranteed to be at least 16 bits.
-It is 32 bit on 32 bit platforms, and 64 bits on 64 bit ones.
+* A V `int` is a platform-width signed integer: 32 bits on 32-bit targets and
+64 bits on 64-bit targets.
 
-* A V `usize` is equivalent to C `size_t`.
-It is an unsigned integer, and `usize` is guaranteed to be at least 16 bits.
-It is 32 bit on 32 bit platforms, and 64 bits on 64 bit ones.
+* A V `uint` is a platform-width unsigned integer, equivalent to C `size_t` or `uintptr_t`.
+It is 32 bits on 32-bit targets and 64 bits on 64-bit targets.
 
-* A V `int` is currently equivalent to C `int`,  or `int64_t`.
-There are plans to make it equivalent to `isize`, so if you want to write C
-library wrappers, it is better to describe your `fn C.` parameters using `i32`
-instead of using `int`.
+`isize` and `usize` are deprecated. Use `int` and `uint`, respectively.
+For C library wrappers, use `i32` for C `int` parameters, fields, and return values.
+Plain `int` in a `fn C.` signature retains the C `int` ABI for compatibility.
+Use `C.ptrdiff_t` for signed pointer-width parameters and return values, including C
+`intptr_t`, `ptrdiff_t`, and `ssize_t`. It is an alias of V `int` that preserves the C ABI.
+
+### C names for V's platform types
+
+Generated C spells `int` as `i64` on 64-bit targets and `i32` on 32-bit ones, and
+`uint` as `size_t`. C code that shares the generated translation unit (`#include` or
+`#insert`) can use the target-independent names instead, because generated C defines
+them before any user header is included:
+
+| V type | C name | Defined in generated C as |
+| --- | --- | --- |
+| `int` | `__v_int` | `typedef i64 __v_int;` (64-bit), `typedef i32 __v_int;` (32-bit) |
+| `uint` | `__v_uint` | `typedef size_t __v_uint;` |
+| `isize` (deprecated) | `isize` | `typedef ptrdiff_t isize;` |
+| `usize` (deprecated) | `usize` | `typedef size_t usize;` |
+
+`__v_int` is a typedef of the type V already emits, so a C prototype spelled with it
+has the same function type as the generated one on every target:
+
+```c
+__v_int get_count(__v_int id); // matches the generated `i64 get_count(i64 id)`
+```
+
+Use `__v_uint` (or `size_t`) for V `uint`, which a `fn C.` signature also lowers to
+`size_t`. The `isize` and `usize` typedefs remain for C code that already uses them,
+independently of the deprecated V types of the same name.
 
 
 ## Representing pointers in C and V:
@@ -49,7 +73,7 @@ unsigned char func_name(int * p, index int);
 ... then you can represent its function signature in V like this:
 
 ```v ignore
-fn C.func_name(p &int, index i32) u8
+fn C.func_name(p &i32, index i32) u8
 ```
 
 For a C output parameter, pass the address of the variable or struct field that C should update.
@@ -71,7 +95,7 @@ in a `.c.v` file, and mark a C typedef with `@[typedef]`. For example,
 ```v ignore
 @[typedef]
 struct C.Foo {
-	x int
+	x i32
 }
 ```
 

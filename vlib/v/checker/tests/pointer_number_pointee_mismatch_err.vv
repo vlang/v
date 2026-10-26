@@ -1,0 +1,97 @@
+struct Holder {
+mut:
+	p &u64 = unsafe { nil }
+}
+
+struct Reader {}
+
+fn C.v_fixture_read_u64(p &u64) u64
+
+fn (r Reader) read(p &u64) u64 {
+	return *p
+}
+
+fn take_u64(p &u64) u64 {
+	return *p
+}
+
+fn take_f64(p &f64) f64 {
+	return *p
+}
+
+fn take_u8(p &u8) u8 {
+	return *p
+}
+
+fn take_int(p &int) int {
+	return *p
+}
+
+fn take_i64(p &i64) i64 {
+	return *p
+}
+
+fn take_u64_ref(p &&u64) u64 {
+	return **p
+}
+
+fn as_u64(p &u8) &u64 {
+	return p
+}
+
+fn as_optional_u64(p &u8) ?&u64 {
+	return p
+}
+
+fn main() {
+	mut small := u8(7)
+	mut wide := u64(1)
+	number := 5
+	long := i64(5)
+	println(take_u64(&small))
+	println(take_u64(small))
+	println(take_f64(&wide))
+	println(take_u8(&wide))
+	println(take_int(&long))
+	println(take_i64(&number))
+	small_ref := &small
+	println(take_u64_ref(&small_ref))
+	println(Reader{}.read(&small))
+	mut q := &wide
+	q = &small
+	h := Holder{
+		p: &small
+	}
+	mut h2 := Holder{}
+	h2.p = &small
+	mut ptrs := []&u64{}
+	ptrs << &small
+	by_name := {
+		'a': &wide
+	}
+	mut m := by_name.clone()
+	m['b'] = &small
+	println(*as_u64(&small))
+	if p := as_optional_u64(&small) {
+		println(*p)
+	}
+	println(*q + *h.p + *h2.p + u64(ptrs.len))
+	// Accepted: C calls, `unsafe` blocks, explicit casts, `voidptr` and numbers of the
+	// same size.
+	println(C.v_fixture_read_u64(&small))
+	unsafe {
+		println(take_u64(&small))
+	}
+	println(take_u64(unsafe { &u64(&small) }))
+	println(read_any(&small))
+	signed := i32(-1)
+	println(read_u32(&signed))
+}
+
+fn read_u32(p &u32) u32 {
+	return *p
+}
+
+fn read_any(p voidptr) bool {
+	return p != unsafe { nil }
+}

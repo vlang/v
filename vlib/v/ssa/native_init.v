@@ -96,7 +96,7 @@ fn (b &Builder) native_global_selector_addr(node flat.Node) ?ValueID {
 	for root.kind == .selector && root.children_count > 0 {
 		root = b.a.nodes[int(b.a.child(&root, 0))]
 	}
-	if root.kind == .ident && root.value in b.vars {
+	if root.kind == .ident && root.value_text() in b.vars {
 		return none
 	}
 	name := b.selector_qualified_name(node)
@@ -165,7 +165,7 @@ fn (mut b Builder) build_native_global_initializer(field flat.Node) {
 	typ := b.deref_type(addr)
 	if b.m.type_store.types[typ].kind == .array_t {
 		mut fixed_expr := *expr
-		fixed_expr.value = flat.source_type_name(b.global_type_names.value_id(name))
+		fixed_expr.set_source_value_id(b.global_type_names.value_id(name))
 		value := if expr.kind in [.array_init, .array_literal] {
 			b.build_fixed_array_init(fixed_expr)
 		} else {

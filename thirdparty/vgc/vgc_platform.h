@@ -238,8 +238,34 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
       void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
       return (p == MAP_FAILED) ? NULL : p;
   }
+#if (defined(__APPLE__) || defined(__linux__)) && UINTPTR_MAX > 0xffffffffu
+  // The memory of an arena, for objects. Like MEM_TOP_DOWN on Windows, this keeps the heap away
+  // from small numbers: macOS hands out low addresses first, and in a large heap the arenas
+  // reached 0x300000000, where data constants like 0x300000001 point, and the conservative scan
+  // kept objects alive through them. The arenas start at the hint Go uses for the same reason,
+  // 0xc000000000, which is not a likely integer or text pattern. The hint is only advisory: when
+  // the range is taken, macOS searches upward from it, and Linux picks its default, which is
+  // already high (top down from the stack). Hints at or above 2^48 are not used, because macOS
+  // then silently returns low addresses. The caller holds vgc_heap.lock.
+  #define VGC_HEAP_HINT_BASE ((uintptr_t)0xc0 << 32)
+  #define VGC_HEAP_HINT_LIMIT ((uintptr_t)1 << 47)
+  #define VGC_HEAP_HINT_ALIGN ((uintptr_t)64 << 20)
+  static uintptr_t vgc_heap_hint = VGC_HEAP_HINT_BASE;
+  static inline void* vgc_os_alloc_heap(size_t size) {
+      uintptr_t hint = vgc_heap_hint;
+      void* p = mmap((void*)hint, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+      if (p == MAP_FAILED) {
+          return vgc_os_alloc(size);
+      }
+      uintptr_t next = (uintptr_t)p > hint ? (uintptr_t)p : hint;
+      next = (next + size + VGC_HEAP_HINT_ALIGN - 1) & ~(VGC_HEAP_HINT_ALIGN - 1);
+      vgc_heap_hint = next < VGC_HEAP_HINT_LIMIT ? next : VGC_HEAP_HINT_BASE;
+      return p;
+  }
+#else
   // The memory of an arena, for objects (see the Windows version).
   static inline void* vgc_os_alloc_heap(size_t size) { return vgc_os_alloc(size); }
+#endif
   static inline void vgc_os_free(void* ptr, size_t size) {
       munmap(ptr, size);
   }
@@ -587,8 +613,48 @@ static inline uint8_t vgc_size_class(uint32_t size) {
   #define vgc_thread_yield() SwitchToThread()
 #else
   #include <sched.h>
+  #include <time.h>
   #define vgc_thread_yield() sched_yield()
 #endif
+
+// vgc_now_ns returns a monotonic time in nanoseconds.
+static inline uint64_t vgc_now_ns(void) {
+#ifdef _WIN32
+    LARGE_INTEGER count, freq;
+    QueryPerformanceCounter(&count);
+    QueryPerformanceFrequency(&freq);
+    uint64_t c = (uint64_t)count.QuadPart;
+    uint64_t f = (uint64_t)freq.QuadPart;
+    return (c / f) * 1000000000ull + (c % f) * 1000000000ull / f;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+#endif
+}
+
+// vgc_backoff waits a little before the next attempt of a wait loop; `round` counts the
+// attempts, from 1. It spins at first, then gives the CPU to other threads, and from round 64
+// on, sleeps for about 50 microseconds per round on POSIX, so that a thread waiting for a
+// long stop-the-world collection or a held lock stops burning a core. Windows has no
+// sub-millisecond sleep (Sleep(1) takes a scheduler tick, about 15.6 ms), so it keeps
+// yielding there.
+static inline void vgc_backoff(int round) {
+    if (round < 16) {
+        vgc_cpu_pause();
+    } else if (round < 64) {
+        vgc_thread_yield();
+    } else {
+#ifdef _WIN32
+        SwitchToThread();
+#else
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 50000;
+        nanosleep(&ts, NULL);
+#endif
+    }
+}
 
 // ============================================================
 // Simple mutex (adaptive spinlock with backoff)
@@ -604,7 +670,9 @@ static inline void vgc_mutex_lock(volatile uint32_t* lock) {
         } else if (spin < 32) {
             for (int i = 0; i < spin; i++) vgc_cpu_pause();
         } else {
-            vgc_thread_yield();
+            // spin - 16 starts vgc_backoff in its yielding range, so the 50 us sleeps begin
+            // after 48 yields.
+            vgc_backoff(spin - 16);
         }
     }
 }

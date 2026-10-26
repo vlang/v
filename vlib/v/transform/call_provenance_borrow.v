@@ -327,8 +327,9 @@ fn (mut t Transformer) mark_call_provenance_argument_escapes(id flat.NodeId, cal
 			for source in t.escape_aggregate_address_sources(receiver, amp_sources, ptr_aliases) {
 				t.escaping_amp_sources[source] = true
 			}
-			// Interface dispatch passes the object, never the header's address.
-			if types.unalias_type(t.tc.resolve_type(receiver)) !is types.Interface
+			// Interface dispatch passes the object, never the header's address, and a
+			// receiver that already is a pointer passes its value, never its own address.
+			if types.unalias_type(t.tc.resolve_type(receiver)) !in [types.Interface, types.Pointer]
 				&& t.method_receiver_is_reference(id, receiver, callee.value) {
 				for source in t.escape_address_sources(receiver, amp_sources, ptr_aliases) {
 					t.escaping_amp_sources[source] = true

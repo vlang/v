@@ -22,17 +22,17 @@ const off_int = 40
 const off_isize = 48
 const off_usize = 56
 
-const ptr_value = voidptr(usize(0x1000))
+const ptr_value = voidptr(uint(0x1000))
 
 fn at(base voidptr, offset int) voidptr {
 	return unsafe { voidptr(&u8(base) + offset) }
 }
 
 // page_size returns the system page size, the unit that mmap and mprotect work in.
-fn page_size() usize {
+fn page_size() uint {
 	size := unsafe { C.sysconf(C._SC_PAGESIZE) }
 	assert size > 0
-	return usize(size)
+	return uint(size)
 }
 
 // read_only_page returns a page that holds a known value of every width at the
@@ -56,8 +56,8 @@ fn read_only_page() voidptr {
 		*(&bool(at(base, off_bool))) = true
 		*(&voidptr(at(base, off_ptr))) = ptr_value
 		*(&int(at(base, off_int))) = -1234
-		*(&isize(at(base, off_isize))) = -5678
-		*(&usize(at(base, off_usize))) = 9876
+		*(&int(at(base, off_isize))) = -5678
+		*(&uint(at(base, off_usize))) = 9876
 	}
 	assert unsafe { C.mprotect(base, size, C.PROT_READ) } == 0
 	return base
@@ -105,9 +105,9 @@ fn test_atomic_val_load_of_every_width_from_read_only_memory() {
 	assert a_ptr.load() == ptr_value
 	mut a_int := unsafe { &stdatomic.AtomicVal[int](at(base, off_int)) }
 	assert a_int.load() == -1234
-	mut a_isize := unsafe { &stdatomic.AtomicVal[isize](at(base, off_isize)) }
+	mut a_isize := unsafe { &stdatomic.AtomicVal[int](at(base, off_isize)) }
 	assert a_isize.load() == -5678
-	mut a_usize := unsafe { &stdatomic.AtomicVal[usize](at(base, off_usize)) }
+	mut a_usize := unsafe { &stdatomic.AtomicVal[uint](at(base, off_usize)) }
 	assert a_usize.load() == 9876
 }
 

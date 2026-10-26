@@ -108,7 +108,7 @@ fn struct_init_values(a &flat.FlatAst) []string {
 	mut values := []string{}
 	for node in a.nodes {
 		if node.kind == .struct_init {
-			values << node.value
+			values << node.value_text()
 		}
 	}
 	return values
@@ -118,7 +118,7 @@ fn cast_expr_values(a &flat.FlatAst) []string {
 	mut values := []string{}
 	for node in a.nodes {
 		if node.kind == .cast_expr {
-			values << node.value
+			values << node.value_text()
 		}
 	}
 	return values
@@ -254,7 +254,7 @@ fn test_isreftype_qualified_type_names_parse_as_types() {
 	mut type_args := []string{}
 	for node in a.nodes {
 		if node.kind == .sizeof_expr {
-			type_args << node.value
+			type_args << node.value_text()
 		}
 	}
 	assert type_args == ['foo.Bar', '&foo.Bar']
@@ -341,6 +341,15 @@ fn test_res_is_rejected_outside_the_active_defer_body() {
 	pipe_lambda := parse_parser_regression_diagnostics('res_in_pipe_lambda_inside_defer',
 		'fn consume(callback fn (int) int) {\n\t_ = callback\n}\n\nfn value() int {\n\tdefer {\n\t\tconsume(|x| $res())\n\t}\n\treturn 1\n}\n')
 	assert pipe_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${pipe_lambda}'
+}
+
+fn test_removed_vml_comptime_call_is_an_error_not_an_empty_string() {
+	diagnostics := parse_parser_regression_diagnostics('removed_vml',
+		"fn main() {\n\tview := \$vml('definitely_missing.vml')\n\tprintln(typeof(view).name)\n}\n")
+	assert diagnostics.any(it.message.contains('`\$vml` has been removed')), '${diagnostics}'
+	bare := parse_parser_regression_diagnostics('removed_vml_without_arguments',
+		'fn main() {\n\tview := \$vml\n\t_ = view\n}\n')
+	assert bare.any(it.message.contains('`\$vml` has been removed')), '${bare}'
 }
 
 fn test_res_is_restricted_to_function_exit_defers() {
@@ -559,13 +568,13 @@ fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification
 				}
 			}
 			.array_init {
-				if node.value.contains('Box') {
-					array_types << node.value
+				if node.value_text().contains('Box') {
+					array_types << node.value_text()
 				}
 			}
 			.struct_init {
-				if node.value.contains('Box') {
-					init_types << node.value
+				if node.value_text().contains('Box') {
+					init_types << node.value_text()
 				}
 			}
 			else {}
@@ -594,13 +603,13 @@ fn test_local_type_generic_call_type_arg_is_resolved() {
 					base := a.child_node(&node, 0)
 					arg := a.child_node(&node, 1)
 					if base.kind == .ident && base.value == 'id' {
-						call_type_args << arg.value
+						call_type_args << arg.value_text()
 					}
 				}
 			}
 			.struct_init {
-				if node.value.contains('Row') {
-					init_types << node.value
+				if node.value_text().contains('Row') {
+					init_types << node.value_text()
 				}
 			}
 			else {}
@@ -619,8 +628,8 @@ fn test_uppercase_index_condition_before_block_is_not_struct_init() {
 	for node in a.nodes {
 		match node.kind {
 			.struct_init {
-				if node.value == 'Foo' {
-					foo_struct_inits << node.value
+				if node.value_text() == 'Foo' {
+					foo_struct_inits << node.value_text()
 				}
 			}
 			.index {
@@ -646,8 +655,8 @@ fn test_uppercase_identifier_index_condition_before_block_is_not_struct_init() {
 	for node in a.nodes {
 		match node.kind {
 			.struct_init {
-				if node.value == 'Foo' {
-					foo_struct_inits << node.value
+				if node.value_text() == 'Foo' {
+					foo_struct_inits << node.value_text()
 				}
 			}
 			.index {
@@ -670,7 +679,7 @@ fn test_empty_struct_literals_parse_in_control_header_conditions() {
 		'struct Foo {}\n\nfn main() {\n\tif Foo{} == Foo{} {\n\t\tprintln("if")\n\t}\n\tfor Foo{} == Foo{} {\n\t\tbreak\n\t}\n}\n')
 	mut foo_struct_inits := 0
 	for node in a.nodes {
-		if node.kind == .struct_init && node.value == 'Foo' {
+		if node.kind == .struct_init && node.value_text() == 'Foo' {
 			foo_struct_inits++
 		}
 	}
@@ -683,7 +692,7 @@ fn test_positional_struct_literal_in_control_header_call_keeps_later_declaration
 	mut range_struct_inits := 0
 	mut has_later_declaration := false
 	for node in a.nodes {
-		if node.kind == .struct_init && node.value == 'Range' {
+		if node.kind == .struct_init && node.value_text() == 'Range' {
 			range_struct_inits++
 		}
 		if node.kind == .fn_decl && node.value == 'declared_after' {
@@ -843,7 +852,7 @@ fn main() {
 		callee := a.child_node(&node, 0)
 		arg := a.child_node(&node, 1)
 		if callee.kind == .ident && callee.value == 'accept' && arg.kind == .ident {
-			type_args << arg.value
+			type_args << arg.value_text()
 		}
 	}
 	assert type_args == [

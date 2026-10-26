@@ -37,20 +37,20 @@ fn test_pool_preserves_recursive_phase_stack_size() {
 
 fn test_worker_stack_size_env_override_and_clamp() {
 	os.unsetenv('V3_WORKER_STACK_MB')
-	assert worker_stack_size() == usize(compiler_worker_stack_size)
+	assert worker_stack_size() == uint(compiler_worker_stack_size)
 
 	os.setenv('V3_WORKER_STACK_MB', '16', true)
-	assert worker_stack_size() == usize(16 * 1024 * 1024)
+	assert worker_stack_size() == uint(16 * 1024 * 1024)
 
 	// Below the floor is clamped up to min_worker_stack_size.
 	os.setenv('V3_WORKER_STACK_MB', '1', true)
-	assert worker_stack_size() == usize(min_worker_stack_size)
+	assert worker_stack_size() == uint(min_worker_stack_size)
 
 	// Non-numeric / non-positive values fall back to the default.
 	os.setenv('V3_WORKER_STACK_MB', 'not-a-number', true)
-	assert worker_stack_size() == usize(compiler_worker_stack_size)
+	assert worker_stack_size() == uint(compiler_worker_stack_size)
 	os.setenv('V3_WORKER_STACK_MB', '0', true)
-	assert worker_stack_size() == usize(compiler_worker_stack_size)
+	assert worker_stack_size() == uint(compiler_worker_stack_size)
 
 	os.unsetenv('V3_WORKER_STACK_MB')
 }

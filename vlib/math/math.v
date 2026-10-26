@@ -67,7 +67,7 @@ pub:
 }
 
 // digits returns an array of the digits of `num` in the given optional `base`.
-// The `num` argument accepts any integer type (i8|i16|int|isize|i64), and will be cast to i64
+// The `num` argument accepts any integer type (i8|i16|int|int|i64), and will be cast to i64
 // The `base:` argument is optional, it will default to base: 10.
 // This function returns an array of the digits in reverse order i.e.:
 // Example: assert math.digits(12345, base: 10) == [5,4,3,2,1]
@@ -111,7 +111,7 @@ pub fn digits(num i64, params DigitParams) []int {
 }
 
 // count_digits return the number of digits in the number passed.
-// Number argument accepts any integer type (i8|i16|int|isize|i64) and will be cast to i64
+// Number argument accepts any integer type (i8|i16|int|int|i64) and will be cast to i64
 pub fn count_digits(number i64) int {
 	mut n := number
 	if n == 0 {

@@ -74,17 +74,17 @@ $if !windows {
 // fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
 fn C.connect(sockfd i32, addr voidptr, addrlen u32) i32
 
-// fn C.send(sockfd int, buf voidptr, len usize, flags int) usize
-fn C.send(sockfd i32, buf voidptr, len usize, flags i32) i32
+// fn C.send(sockfd int, buf voidptr, len uint, flags int) uint
+fn C.send(sockfd i32, buf voidptr, len uint, flags i32) i32
 
-// fn C.sendto(sockfd int, buf voidptr, len usize, flags int, dest_add &C.sockaddr, addrlen C.socklen_t) usize
-fn C.sendto(sockfd i32, buf voidptr, len usize, flags i32, dest_add voidptr, addrlen u32) i32
+// fn C.sendto(sockfd int, buf voidptr, len uint, flags int, dest_add &C.sockaddr, addrlen C.socklen_t) uint
+fn C.sendto(sockfd i32, buf voidptr, len uint, flags i32, dest_add voidptr, addrlen u32) i32
 
-// fn C.recv(sockfd int, buf voidptr, len usize, flags int) usize
-fn C.recv(sockfd i32, buf voidptr, len usize, flags i32) i32
+// fn C.recv(sockfd int, buf voidptr, len uint, flags int) uint
+fn C.recv(sockfd i32, buf voidptr, len uint, flags i32) i32
 
-// fn C.recvfrom(sockfd int, buf voidptr, len usize, flags int, src_addr &C.sockaddr, addrlen &C.socklen_t) usize
-fn C.recvfrom(sockfd i32, buf voidptr, len usize, flags i32, src_addr voidptr, addrlen &u32) i32
+// fn C.recvfrom(sockfd int, buf voidptr, len uint, flags int, src_addr &C.sockaddr, addrlen &C.socklen_t) uint
+fn C.recvfrom(sockfd i32, buf voidptr, len uint, flags i32, src_addr voidptr, addrlen &u32) i32
 
 fn C.shutdown(socket i32, how i32) i32
 

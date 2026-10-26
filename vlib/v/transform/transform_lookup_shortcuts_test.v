@@ -3,6 +3,37 @@ module transform
 import v.flat
 import v.types
 
+fn test_var_type_lookup_cache_tracks_binding_changes() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	missing := 'later'.clone()
+	assert t.var_type_index(missing) == -1
+	t.set_var_type(missing.clone(), flat.source_type_string)
+	assert t.var_type(missing) == flat.source_type_string
+	mut names := []string{}
+	for i in 0 .. 256 {
+		name := 'local_${i}'
+		names << name
+		t.set_var_type(name, flat.source_type_int)
+	}
+	for name in names {
+		assert t.var_type(name) == flat.source_type_int
+	}
+	saved := t.var_types.clone()
+	t.unset_var_type(names[0])
+	assert t.var_type_index(names[0]) == -1
+	for name in names[1..] {
+		assert t.var_type(name) == flat.source_type_int
+	}
+	t.set_var_type(names[255].clone(), flat.source_type_bool)
+	assert t.var_type(names[255]) == flat.source_type_bool
+	t.restore_var_types(saved)
+	for name in names {
+		assert t.var_type(name) == flat.source_type_int
+	}
+}
+
 fn test_var_type_scope_restores_like_a_copy() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -235,6 +266,38 @@ fn test_trimmed_transform_text_is_trim_space() {
 	for text in ['', ' ', '\t\n', 'int', ' int', 'int ', '\tmap[string]int\n', 'a b', ' a b ',
 		'\vx\f', 'é', ' é\r'] {
 		assert trimmed_transform_text(text) == text.trim_space(), text.bytes().str()
+	}
+}
+
+fn test_equality_pointer_types_preserve_aliases_and_storage_wrappers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set('Text', 'string')
+	tc.type_aliases.set('TextRef', '&string')
+	tc.type_aliases.set('ChainedTextRef', '&Text')
+	tc.type_aliases.set('Names', '[]string')
+	tc.type_aliases.set('Counts', 'map[string]int')
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	value := a.add_val(.ident, 'value')
+	for typ in ['&string', ' &string\t', 'shared &string', 'shared shared  &Text', 'TextRef'] {
+		assert t.equality_expr_is_string_pointer(value, flat.source_type_id(typ)), typ
+	}
+	for typ in ['', 'string', '&int', '&&string', 'mut &string', 'shared mut &string', 'ChainedTextRef'] {
+		assert !t.equality_expr_is_string_pointer(value, flat.source_type_id(typ)), typ
+	}
+	text := a.add_val(.string_literal, 'value')
+	assert !t.equality_expr_is_string_pointer(text, flat.source_type_id('&string'))
+	for typ in ['&[]string', '\tshared &Names ', '&&Names', '&array'] {
+		assert t.equality_type_is_array_pointer(flat.source_type_id(typ)), typ
+	}
+	for typ in ['[]string', 'mut &Names', 'shared mut &[]string', '&string', ''] {
+		assert !t.equality_type_is_array_pointer(flat.source_type_id(typ)), typ
+	}
+	for typ in ['&map[string]int', '\tshared &Counts ', '&&Counts'] {
+		assert t.equality_type_is_map_pointer(flat.source_type_id(typ)), typ
+	}
+	for typ in ['map[string]int', 'mut &Counts', 'shared mut &Counts', '&string', ''] {
+		assert !t.equality_type_is_map_pointer(flat.source_type_id(typ)), typ
 	}
 }
 

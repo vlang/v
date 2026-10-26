@@ -18,10 +18,10 @@ fn test_left_bits_sets_every_bit_above_the_given_one() {
 }
 
 fn test_chunk_prev_steps_back_by_prev_foot() {
-	mut buf := [8]usize{}
+	mut buf := [8]uint{}
 	unsafe {
 		mut c := &Chunk(&buf[4])
-		c.prev_foot = 2 * sizeof(usize)
+		c.prev_foot = 2 * sizeof(uint)
 		assert voidptr(c.prev()) == voidptr(&buf[2])
 	}
 }
@@ -29,7 +29,7 @@ fn test_chunk_prev_steps_back_by_prev_foot() {
 fn test_tree_bins_keep_chunks_reachable_by_their_size_bits() {
 	mut dl := new(get_system_allocator())
 	// All of these sizes share one tree bin (768..1023 bytes).
-	sizes := [usize(0x300), 0x3f0, 0x380, 0x340, 0x3c0, 0x310, 0x3a0, 0x3e0]
+	sizes := [uint(0x300), 0x3f0, 0x380, 0x340, 0x3c0, 0x310, 0x3a0, 0x3e0]
 	mut chunks := []TreeChunk{len: sizes.len}
 	idx := dl.compute_tree_index(sizes[0])
 	unsafe {
@@ -43,7 +43,7 @@ fn test_tree_bins_keep_chunks_reachable_by_their_size_bits() {
 			mut t := *dl.treebin_at(idx)
 			mut size_bits := size << leftshift_for_tree_index(idx)
 			for !isnil(t) && t.chunk().size() != size {
-				t = t.child[int((size_bits >> (sizeof(usize) * 8 - 1)) & 1)]
+				t = t.child[int((size_bits >> (sizeof(uint) * 8 - 1)) & 1)]
 				size_bits <<= 1
 			}
 			assert voidptr(t) == voidptr(&chunks[i])
@@ -66,7 +66,7 @@ fn test_global_allocator_round_trip() {
 	unsafe {
 		p := &u8(malloc(100))
 		assert !isnil(p)
-		assert usize(p) % malloc_alignment() == 0
+		assert uint(p) % malloc_alignment() == 0
 		for i in 0 .. 100 {
 			p[i] = u8(i)
 		}
@@ -82,7 +82,7 @@ fn test_global_allocator_round_trip() {
 		}
 		a := memalign(1000, 256)
 		assert !isnil(a)
-		assert usize(a) % 256 == 0
+		assert uint(a) % 256 == 0
 		free(a)
 		free(z)
 		free(q)
@@ -115,7 +115,7 @@ fn test_realloc_releases_the_old_block_when_it_moves() {
 		p := dl.malloc(20_000)
 		blocker := dl.malloc(16)
 		// On a fresh heap `blocker` directly follows `p`, so `p` cannot grow in place.
-		assert usize(blocker) == usize(p) + chunk_from_mem(p).size()
+		assert uint(blocker) == uint(p) + chunk_from_mem(p).size()
 		q := dl.realloc(p, 40_000)
 		assert !isnil(q)
 		assert q != p
@@ -130,7 +130,7 @@ fn test_realloc_releases_the_old_block_when_it_moves() {
 struct Block {
 mut:
 	ptr  &u8 = unsafe { nil }
-	size usize
+	size uint
 	seed u8
 }
 
@@ -146,28 +146,28 @@ fn (mut r Rng) next() u32 {
 	return r.state
 }
 
-fn (mut r Rng) size(max_huge usize) usize {
+fn (mut r Rng) size(max_huge uint) uint {
 	kind := r.next() % 16
 	return if kind < 9 {
 		// small bins, up to just above `max_small_request`
-		usize(1 + r.next() % 248)
+		uint(1 + r.next() % 248)
 	} else if kind < 14 {
 		// tree bins
-		usize(233 + r.next() % 16_000)
+		uint(233 + r.next() % 16_000)
 	} else if kind < 15 {
-		usize(16_000 + r.next() % 200_000)
+		uint(16_000 + r.next() % 200_000)
 	} else {
-		usize(1 + r.next() % u32(max_huge))
+		uint(1 + r.next() % u32(max_huge))
 	}
 }
 
-fn pattern(seed u8, i usize) u8 {
-	return u8(usize(seed) * 7 + i * 13 + (i >> 9))
+fn pattern(seed u8, i uint) u8 {
+	return u8(uint(seed) * 7 + i * 13 + (i >> 9))
 }
 
 // next_sample visits every byte near the ends of a block, and one byte per KiB
 // in between, so that big blocks stay cheap to fill and check.
-fn next_sample(i usize, n usize) usize {
+fn next_sample(i uint, n uint) uint {
 	if i < 64 || i + 64 >= n {
 		return i + 1
 	}
@@ -176,7 +176,7 @@ fn next_sample(i usize, n usize) usize {
 }
 
 fn fill(b Block) {
-	mut i := usize(0)
+	mut i := uint(0)
 	for i < b.size {
 		unsafe {
 			b.ptr[i] = pattern(b.seed, i)
@@ -186,8 +186,8 @@ fn fill(b Block) {
 }
 
 // check verifies the first `n` bytes of `b`, sampled as `fill` wrote them.
-fn check(b Block, n usize) {
-	mut i := usize(0)
+fn check(b Block, n uint) {
+	mut i := uint(0)
 	for i < n {
 		got := unsafe { b.ptr[i] }
 		if got != pattern(b.seed, i) {
@@ -197,25 +197,25 @@ fn check(b Block, n usize) {
 	}
 }
 
-fn check_new_block(blocks []Block, idx int, b Block, align usize) {
+fn check_new_block(blocks []Block, idx int, b Block, align uint) {
 	assert !isnil(b.ptr), 'allocation of ${b.size} bytes failed'
-	assert usize(b.ptr) % align == 0
+	assert uint(b.ptr) % align == 0
 	c := chunk_from_mem(b.ptr)
 	assert c.cinuse()
 	assert c.size() >= b.size + chunk_overhead()
 	assert c.next().pinuse()
-	lo := usize(b.ptr)
+	lo := uint(b.ptr)
 	hi := lo + b.size
 	for j, other in blocks {
 		if j == idx || isnil(other.ptr) {
 			continue
 		}
-		olo := usize(other.ptr)
+		olo := uint(other.ptr)
 		assert hi <= olo || olo + other.size <= lo, 'blocks overlap'
 	}
 }
 
-fn stress(mut dl Dlmalloc, rounds int, seed u32, max_huge usize) {
+fn stress(mut dl Dlmalloc, rounds int, seed u32, max_huge uint) {
 	mut rng := Rng{seed}
 	mut blocks := []Block{len: 256}
 	for round in 0 .. rounds {
@@ -233,7 +233,7 @@ fn stress(mut dl Dlmalloc, rounds int, seed u32, max_huge usize) {
 						assert b.ptr[i] == 0
 					}
 				} else if op == 1 {
-					align = usize(32) << (rng.next() % 8)
+					align = uint(32) << (rng.next() % 8)
 					b.ptr = dl.memalign(align, b.size)
 				} else {
 					b.ptr = dl.malloc(b.size)
@@ -274,17 +274,17 @@ fn stress(mut dl Dlmalloc, rounds int, seed u32, max_huge usize) {
 struct TestArena {
 mut:
 	buf   []u8
-	start usize
-	end   usize
-	lo    usize
-	hi    usize
+	start uint
+	end   uint
+	lo    uint
+	hi    uint
 	calls int
 }
 
-fn new_test_arena(size usize) &TestArena {
+fn new_test_arena(size uint) &TestArena {
 	buf := []u8{len: int(size)}
-	start := align_up(usize(buf.data), default_granularity())
-	end := usize(buf.data) + size
+	start := align_up(uint(buf.data), default_granularity())
+	end := uint(buf.data) + size
 	middle := align_up(start + (end - start) / 2, default_granularity())
 	return &TestArena{
 		buf:   buf
@@ -316,10 +316,10 @@ fn (mut a TestArena) release() {
 	unsafe { a.buf.free() }
 }
 
-fn arena_alloc(data voidptr, size usize) (voidptr, usize, u32) {
+fn arena_alloc(data voidptr, size uint) (voidptr, uint, u32) {
 	mut a := unsafe { &TestArena(data) }
 	a.calls++
-	mut addr := usize(0)
+	mut addr := uint(0)
 	match a.calls % 3 {
 		1 {
 			// directly above the highest region
@@ -347,12 +347,12 @@ fn arena_alloc(data voidptr, size usize) (voidptr, usize, u32) {
 
 // Released memory stays readable, so it is overwritten to make any later use
 // of it by the allocator visible.
-fn arena_free(_ voidptr, ptr voidptr, size usize) bool {
+fn arena_free(_ voidptr, ptr voidptr, size uint) bool {
 	unsafe { vmemset(ptr, 0xa5, int(size)) }
 	return true
 }
 
-fn arena_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
-	unsafe { vmemset(voidptr(usize(ptr) + newsize), 0xa5, int(oldsize - newsize)) }
+fn arena_free_part(_ voidptr, ptr voidptr, oldsize uint, newsize uint) bool {
+	unsafe { vmemset(voidptr(uint(ptr) + newsize), 0xa5, int(oldsize - newsize)) }
 	return true
 }

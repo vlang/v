@@ -707,9 +707,24 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 		os.rm(bootstrap_v1) or {}
 		os.rm(bootstrap_v2) or {}
 	}
-	vc_source := os.join_path(vroot, 'vc', if os.user_os() == 'windows' { 'v_win.c' } else { 'v.c' })
+	mut vc_source := os.join_path(vroot, 'vc', if os.user_os() == 'windows' {
+		'v_win.c'
+	} else {
+		'v.c'
+	})
 	if !os.exists(vc_source) {
 		return error('bootstrap fallback failed: `${vc_source}` is missing')
+	}
+	compat_source := os.join_path(vroot, 'vc', 'v_self_compat.c')
+	defer {
+		if os.user_os() == 'windows' {
+			os.rm(compat_source) or {}
+		}
+	}
+	if os.user_os() == 'windows' {
+		filter := os.join_path(vroot, 'cmd', 'tools', 'vc_compat_uint.ps1')
+		run_cmd('powershell -NoProfile -ExecutionPolicy Bypass -File ${os.quoted_path(filter)} -Source ${os.quoted_path(vc_source)} -Destination ${os.quoted_path(compat_source)}')!
+		vc_source = compat_source
 	}
 	cc := os.getenv_opt('CC') or {
 		if os.user_os() == 'windows' { 'gcc' } else { 'cc' }

@@ -31,7 +31,7 @@ pub type Logger = C.sapp_logger
 pub struct C.sapp_range {
 pub:
 	ptr  voidptr
-	size usize
+	size uint
 }
 
 pub type Range = C.sapp_range

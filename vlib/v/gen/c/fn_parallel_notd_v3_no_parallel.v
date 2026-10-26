@@ -1687,7 +1687,7 @@ fn (mut g FlatGen) write_scoped_cgen_batch_output(batch &FlatGen) bool {
 		}
 	} else {
 		unsafe {
-			file.write_full_buffer(batch.sb.data, usize(batch.sb.len)) or {
+			file.write_full_buffer(batch.sb.data, uint(batch.sb.len)) or {
 				g.output_error = err.msg()
 				file.close()
 				return false
@@ -2055,8 +2055,7 @@ fn clone_embedded_fields_by_type(values map[u32][]types.StructField) map[u32][]t
 
 fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	for opt_name, val_type_id in fs_worker.needed_optional_types.ids {
-		val_type := flat.source_type_name(val_type_id)
-		g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
+		g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
 	}
 	for opt_name, val_type in fs_worker.optional_pointer_struct_tags {
 		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
@@ -2146,10 +2145,9 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 
 fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
 	for name, payload_id in worker.needed_optional_types.ids {
-		payload := flat.source_type_name(payload_id)
 		// This scan follows declarations in the serial pipeline, including when
 		// two payload spellings map to the same optional typedef name.
-		g.needed_optional_types.set_id(name.clone(), flat.source_type_id(payload.clone()))
+		g.needed_optional_types.set_id(name.clone(), payload_id)
 	}
 	for name, payload in worker.optional_pointer_struct_tags {
 		g.optional_pointer_struct_tags[name.clone()] = payload.clone()
@@ -2183,10 +2181,10 @@ fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
 	g.ierror_method_emit_names = worker.ierror_method_emit_names.move()
 }
 
-fn clone_cgen_source_type_list_map(values map[string][]u32) map[string][]u32 {
-	mut cloned := map[string][]u32{}
+fn clone_cgen_source_type_list_map(values map[u32][]u32) map[u32][]u32 {
+	mut cloned := map[u32][]u32{}
 	for key, list in values {
-		cloned[key.clone()] = list.clone()
+		cloned[key] = list.clone()
 	}
 	return cloned
 }
@@ -3091,7 +3089,7 @@ fn (g &FlatGen) parallel_base_type_text(typ_id u32) u32 {
 			break
 		}
 	}
-	return flat.source_type_id(clean)
+	return if clean == typ { typ_id } else { flat.source_type_id(clean) }
 }
 
 // preseed_parallel_fn_ptr_type supports preseed parallel fn ptr type handling for FlatGen.
@@ -3203,10 +3201,15 @@ fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
 }
 
 fn (mut g FlatGen) publish_c_extern_type_discoveries(worker &FlatGen) {
+	if !g.c_extern_refs_ready && worker.c_extern_refs_ready {
+		// Publication runs after leaving the scan's disposable arena. Keep its
+		// complete immutable result, including owned keys, for later consumers.
+		g.c_extern_refs = clone_cgen_string_bool_map(worker.c_extern_refs)
+		g.c_extern_refs_ready = true
+	}
 	for opt_name, val_type_id in worker.needed_optional_types.ids {
-		val_type := flat.source_type_name(val_type_id)
 		if !g.needed_optional_types.contains(opt_name) {
-			g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
+			g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
 		}
 	}
 	for opt_name, val_type in worker.optional_pointer_struct_tags {
@@ -3311,6 +3314,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		str_lits_base_len:                  g.str_lits.len
 		global_types:                       g.global_types
 		global_raw_type_texts:              g.global_raw_type_texts
+		global_shared_storage_present:      g.global_shared_storage_present
 		enum_vals:                          g.enum_vals
 		enum_value_exprs:                   g.enum_value_exprs
 		enum_values_from_c:                 g.enum_values_from_c
@@ -3569,6 +3573,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		local_global_shadow_facts:          &ContextNameFactCache{}
 		local_global_suffix_names:          g.local_global_suffix_names
 		local_global_suffix_names_ready:    g.local_global_suffix_names_ready
+		local_name_exceptions:              g.local_name_exceptions
 		c_typedef_shadow_names:             g.c_typedef_shadow_names
 		c_typedef_shadow_names_ready:       g.c_typedef_shadow_names_ready
 		generic_app_cache:                  &GenericAppCache{
@@ -3913,8 +3918,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		}
 	}
 	for opt_name, val_type_id in w.needed_optional_types.ids {
-		val_type := flat.source_type_name(val_type_id)
-		g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
+		g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
 	}
 	for opt_name, val_type in w.optional_pointer_struct_tags {
 		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()

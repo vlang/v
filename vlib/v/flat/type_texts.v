@@ -17,7 +17,7 @@ pub fn (mut table TypeTextTable) intern(text string) u32 {
 	}
 	// Pointer reuse is safe: every hit compares the current bytes with the
 	// immutable process-owned spelling, never with a borrowed input header.
-	slot := int((usize(text.str) >> 4 ^ usize(text.len)) & 127)
+	slot := int((uint(text.str) >> 4 ^ uint(text.len)) & 127)
 	recent := table.recent[slot]
 	if recent != 0 && table.recent_texts[slot] == text {
 		return recent

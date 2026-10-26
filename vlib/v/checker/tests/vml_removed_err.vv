@@ -1,0 +1,5 @@
+fn main() {
+	view := $vml('definitely_missing.vml')
+	println(typeof(view).name)
+	println('survived')
+}

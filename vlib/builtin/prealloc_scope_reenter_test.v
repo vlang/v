@@ -3,7 +3,7 @@
 // Scope blocks are 256 KB, so every 200 KB allocation below starts a new block.
 const reenter_alloc_size = 200 * 1024
 
-const reenter_keep_all = isize(64 * 1024 * 1024)
+const reenter_keep_all = int(64 * 1024 * 1024)
 
 fn test_prealloc_scope_reenter_reuses_rewound_blocks() {
 	$if prealloc {

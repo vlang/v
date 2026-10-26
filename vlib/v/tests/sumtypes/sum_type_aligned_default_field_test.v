@@ -15,7 +15,7 @@ mut:
 }
 
 fn default_aligned_value(value &DefaultAlignedSum) int {
-	assert usize(voidptr(value)) % 64 == 0
+	assert uint(voidptr(value)) % 64 == 0
 	return value.value
 }
 

@@ -82,7 +82,7 @@ pub fn (pv PrivateKey) dump_key() !string {
 		C.BIO_free_all(bo)
 		return error('print private failed')
 	}
-	size := usize(0)
+	size := uint(0)
 	buf := []u8{len: default_bioread_bufsize}
 	m := C.BIO_read_ex(bo, buf.data, buf.len, &size)
 
@@ -142,7 +142,7 @@ pub fn (pb PublicKey) dump_key() !string {
 		C.BIO_free_all(bo)
 		return error('EVP_PKEY_print_public failed')
 	}
-	size := usize(0)
+	size := uint(0)
 	mut m := C.BIO_read_ex(bo, 0, default_bioread_bufsize, &size)
 	mut buf := []u8{len: int(size)}
 	m = C.BIO_read_ex(bo, buf.data, buf.len, &size)
@@ -168,7 +168,7 @@ pub fn (mut pb PublicKey) free() {
 const default_privkey_buffer = 128
 
 fn (pv PrivateKey) bytes() ![]u8 {
-	priv_len := usize(0)
+	priv_len := uint(0)
 	priv := []u8{len: default_privkey_buffer}
 
 	n := C.EVP_PKEY_get_octet_string_param(pv.key, c'priv', priv.data, priv.len, &priv_len)
@@ -185,7 +185,7 @@ fn (pv PrivateKey) bytes() ![]u8 {
 const default_pubkey_buffer = 144
 
 fn (pv PrivateKey) public_bytes() ![]u8 {
-	pblen := usize(0)
+	pblen := uint(0)
 	buf := []u8{len: default_pubkey_buffer}
 	n := C.EVP_PKEY_get_octet_string_param(pv.key, c'pub', buf.data, buf.len, &pblen)
 	if n <= 0 {
@@ -280,7 +280,7 @@ fn slhdsa_do_sign(key &C.EVP_PKEY, msg []u8, opt SignerOpts) ![]u8 {
 		return error('EVP_PKEY_sign_message_init failed')
 	}
 
-	sig_len := usize(C.EVP_PKEY_size(key))
+	sig_len := uint(C.EVP_PKEY_size(key))
 	buf := []u8{len: int(sig_len)}
 	// Do signing the msg and updates the sig_len.
 	m := C.EVP_PKEY_sign(sctx, buf.data, &sig_len, msg.data, msg.len)

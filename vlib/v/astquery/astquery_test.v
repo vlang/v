@@ -42,6 +42,18 @@ fn count_decls(decls []astquery.Declaration, name string) int {
 	return n
 }
 
+fn test_references_include_indexed_type_operands() {
+	a := astquery.parse(write_sample('type_operand.v', 'module main\nstruct Item {}\nfn main() { _ = Item{} }\n')!)
+	initializers := a.nodes.filter(it.kind == .struct_init)
+	assert initializers.len == 1
+	assert initializers[0].value == ''
+	assert initializers[0].source_value != 0
+	refs := astquery.references(a, 'Item')
+	assert refs.len == 2
+	assert refs[0].line == 2
+	assert refs[1].line == 3
+}
+
 fn test_declarations_covers_every_kind() {
 	decls := astquery.declarations(astquery.parse(write_sample('probe.v', sample)!))
 	mut kinds := map[string]int{}

@@ -313,13 +313,13 @@ fn openapi_integer_schema[T](_value T) OpenApiSchema {
 	mut schema := OpenApiSchema({
 		'type': json2.Any('integer')
 	})
-	$if T.unaliased_typ is u64 || T.unaliased_typ is usize {
+	$if T.unaliased_typ is u64 || T.unaliased_typ is uint {
 		schema['minimum'] = 0
 		// OpenAPI's int64 is signed and cannot describe the full unsigned range.
 		if sizeof(T) > 4 { return schema }
 	}
 	mut format := if sizeof(T) > 4 { 'int64' } else { 'int32' }
-	$if T.unaliased_typ is u32 || T.unaliased_typ is usize {
+	$if T.unaliased_typ is u32 || T.unaliased_typ is uint {
 		format = 'int64'
 	}
 	schema['format'] = format
