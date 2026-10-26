@@ -337,11 +337,41 @@ pub fn (req &Request) do() !Response {
 		if req.on_redirect != unsafe { nil } {
 			req.on_redirect(req, nredirects, redirect_url)!
 		}
+		if !same_origin(rurl, qrurl) {
+			header.delete(.authorization)
+		}
 		method, data, header = redirected_request_parts(method, status, data, header)
 		rurl = qrurl
 		nredirects++
 	}
 	return resp
+}
+
+fn same_origin(first urllib.URL, second urllib.URL) bool {
+	return first.scheme.to_lower() == second.scheme.to_lower()
+		&& same_origin_hostname(first.hostname(), second.hostname())
+		&& effective_port(first) == effective_port(second)
+}
+
+fn same_origin_hostname(first string, second string) bool {
+	first_zone := first.index('%') or { return first.to_lower() == second.to_lower() }
+	second_zone := second.index('%') or { return false }
+	return first[..first_zone].to_lower() == second[..second_zone].to_lower()
+		&& first[first_zone..] == second[second_zone..]
+}
+
+fn effective_port(url urllib.URL) int {
+	port := url.port()
+	if port != '' {
+		return port.int()
+	}
+	if url.scheme == 'http' {
+		return 80
+	}
+	if url.scheme == 'https' {
+		return 443
+	}
+	return 0
 }
 
 fn redirected_request_parts(method Method, status Status, data string, header Header) (Method, string, Header) {
