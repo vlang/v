@@ -123,8 +123,11 @@ jobs:
             case " $NOTICE_GATE_MODULES " in
               *" $module "*) continue ;;
             esac
-            timeout 240 ./v -N -silent test "$dir" > "sweep-$module.log" 2>&1
-            status=$?
+            if timeout 240 ./v -N -silent test "$dir" > "sweep-$module.log" 2>&1; then
+              status=0
+            else
+              status=$?
+            fi
             if [ "$status" -eq 0 ]; then
               green+=("$module")
             elif [ "$status" -eq 124 ]; then
