@@ -1179,23 +1179,46 @@ mut:
 }
 
 // PromoteTextCache short-circuits repeated promote_scoped_result_text calls on
-// the SAME string instance (shallow string copies share `.str`, so one batch
-// promotes the same pointer thousands of times). Pointer keys are only valid
-// while the source scope is alive, so the cache only serves lookups inside an
-// explicit window (absorb_scoped_batch) that ends before the scope is freed;
-// outside a window promote falls back to the content-hash tables.
+// equal text (one batch promotes the same identifiers and type names thousands
+// of times, mostly through distinct string instances). Slots are keyed by a
+// cheap content hash and a hit compares the full text, so a hit returns the
+// canonical string the map lookups below would have produced earlier in the same
+// window. The cache only serves lookups inside an explicit window
+// (absorb_scoped_batch); each window starts empty, so text interned into the
+// compilation table between windows is preferred again.
 struct PromoteTextCache {
 mut:
 	active      bool
 	generation  u32 = 1
-	ptrs        [2048]voidptr
-	generations [2048]u32
-	results     [2048]string
+	generations [promote_text_cache_slots]u32
+	results     [promote_text_cache_slots]string
 }
 
-// begin_promote_text_window arms the pointer cache for one promotion pass over
-// a still-live scope. end_promote_text_window MUST run before that scope is
-// freed; unpaired promote calls simply bypass the cache.
+const promote_text_cache_slots = 8192
+
+// promote_text_cache_slot hashes the length and the first and last eight bytes
+// of a non-empty text into a PromoteTextCache slot.
+@[direct_array_access; inline]
+fn promote_text_cache_slot(text string) int {
+	mut key := u64(text.len)
+	if text.len >= 8 {
+		mut first := u64(0)
+		mut last := u64(0)
+		// Word copies stay within the borrowed slice, including unaligned views.
+		unsafe {
+			vmemcpy(&first, text.str, 8)
+			vmemcpy(&last, text.str + text.len - 8, 8)
+		}
+		key ^= first ^ (last * u64(0x9e3779b97f4a7c15))
+	} else {
+		key ^= (u64(text[0]) << 8) ^ (u64(text[text.len >> 1]) << 16) ^ (u64(text[text.len - 1]) << 24)
+	}
+	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
+	return int((key >> 32) & u64(promote_text_cache_slots - 1))
+}
+
+// begin_promote_text_window arms the text cache for one promotion pass over a
+// still-live scope. Unpaired promote calls simply bypass the cache.
 @[inline]
 fn (mut t Transformer) begin_promote_text_window() {
 	if !isnil(t.promote_text_cache) {

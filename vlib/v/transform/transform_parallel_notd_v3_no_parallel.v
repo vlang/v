@@ -2339,20 +2339,14 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 	if value == '' {
 		return ''
 	}
-	// Shallow string copies share `.str`, so one batch promotes the same
-	// instance thousands of times: a pointer probe is much cheaper than the
-	// content-hash table lookups below. Only valid within one absorb pass
-	// (absorb_scoped_batch bumps the generation before scope addresses can be
-	// reused).
+	// One batch promotes the same texts thousands of times; a content-keyed
+	// probe is much cheaper than the hash-table lookups below.
 	mut cache := t.promote_text_cache
 	use_cache := !isnil(cache) && cache.active
 	mut slot := 0
 	if use_cache {
-		slot = int((u64(voidptr(value.str)) >> 4) & 2047)
-		// The length check guards against distinct strings sharing one base
-		// pointer (unsafe zero-copy slices).
-		if cache.generations[slot] == cache.generation && cache.ptrs[slot] == voidptr(value.str)
-			&& cache.results[slot].len == value.len {
+		slot = promote_text_cache_slot(value)
+		if cache.generations[slot] == cache.generation && cache.results[slot] == value {
 			return cache.results[slot]
 		}
 	}
@@ -2371,7 +2365,6 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 		t.scoped_promoted_texts[canonical] = canonical
 	}
 	if use_cache {
-		cache.ptrs[slot] = voidptr(value.str)
 		cache.generations[slot] = cache.generation
 		cache.results[slot] = canonical
 	}
