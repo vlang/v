@@ -1255,19 +1255,19 @@ const multi_rune_entities = {
 // between `&#` and `;`, with optional `x` prefix) denotes a value above
 // U+10FFFF. Malformed bodies return false (the decoder rejects them).
 fn numeric_entity_too_large(body string) bool {
-	mut digits := body
+	mut entity_digits := body
 	mut base := 10
-	if digits.len > 0 && (digits[0] == `x` || digits[0] == `X`) {
+	if entity_digits.len > 0 && (entity_digits[0] == `x` || entity_digits[0] == `X`) {
 		base = 16
-		digits = digits[1..]
+		entity_digits = entity_digits[1..]
 	}
-	if digits.len == 0 {
+	if entity_digits.len == 0 {
 		return false
 	}
 	limit := u64(0x10ffff)
 	mut v := u64(0)
-	for i := 0; i < digits.len; i++ {
-		c := digits[i]
+	for i := 0; i < entity_digits.len; i++ {
+		c := entity_digits[i]
 		mut d := u64(0)
 		if c >= `0` && c <= `9` {
 			d = u64(c - `0`)

@@ -3083,3 +3083,53 @@ fn test_duplicate_migration_names_are_rejected() {
 	}
 	assert false
 }
+
+fn test_add_index_with_where_pg() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	ctx.add_index(Index{
+		table:   'users'
+		columns: ['email']
+		unique:  true
+		name:    'users_email_idx'
+		where:   'active = true'
+	})!
+	assert recorder.queries == [
+		'CREATE UNIQUE INDEX "users_email_idx" ON "users" ("email") WHERE active = true;',
+	]
+}
+
+fn test_add_index_with_where_sqlite() {
+	index := Index{
+		table:   'orders'
+		columns: ['user_id']
+		name:    'orders_user_id_idx'
+		where:   '"deleted_at" IS NULL'
+	}
+
+	mut recorder := &RecordingConnection{ sqlite_version: '3.8.0' }
+	mut ctx := new_context(recorder, .sqlite)
+	ctx.add_index(index)!
+	assert recorder.queries.len == 5
+	assert recorder.queries[4] == 'CREATE INDEX "main"."orders_user_id_idx" ON "orders" ("user_id") WHERE "deleted_at" IS NULL;'
+
+	// check unsupported version
+	mut error_message := ''
+	mut old_recorder := &RecordingConnection{ sqlite_version: '3.7.17' }
+	mut old_ctx := new_context(old_recorder, .sqlite)
+	old_ctx.add_index(index) or { error_message = err.msg() }
+	assert error_message == 'SQLite add_index with WHERE requires SQLite 3.8.0 or newer'
+}
+
+fn test_add_index_with_where_mysql() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	mut error_message := ''
+	ctx.add_index(Index{
+		table:   'users'
+		columns: ['email']
+		name:    'users_email_idx'
+		where:   'active = true'
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL does not support partial indexes with WHERE'
+}

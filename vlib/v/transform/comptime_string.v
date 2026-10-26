@@ -198,6 +198,14 @@ fn (mut t Transformer) make_comptime_scalar_literal(value ComptimeStringScalar) 
 	}
 }
 
+// A statement scope borrows its incoming scalar bindings until the first write.
+fn (mut t Transformer) detach_comptime_scalar_locals() {
+	if t.comptime_scalar_locals_shared {
+		t.comptime_scalar_locals = t.comptime_scalar_locals.clone()
+		t.comptime_scalar_locals_shared = false
+	}
+}
+
 fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count != 2 {
 		return t.transform_decl_assign_stmt(id, node)
@@ -206,13 +214,17 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 	value := t.comptime_scalar_expr(t.a.child(&node, 1), 0)
 	result := t.transform_decl_assign_stmt(id, node)
 	if lhs.kind == .ident {
-		t.comptime_scalar_locals.delete(lhs.value)
+		if lhs.value in t.comptime_scalar_locals {
+			t.detach_comptime_scalar_locals()
+			t.comptime_scalar_locals.delete(lhs.value)
+		}
 		// Generated staging locals can be assigned later despite lacking `mut` flags.
 		if node.pos.is_valid() && !lhs.is_mut && !node.is_mut {
 			if scalar := value {
 				// So can a source local of a generic function, whose body is not checked
 				// for assignments to immutable names.
 				if !t.later_stmts_assign_local(id, lhs.value) {
+					t.detach_comptime_scalar_locals()
 					t.comptime_scalar_locals[lhs.value] = scalar
 				}
 			}

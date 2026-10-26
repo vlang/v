@@ -1209,7 +1209,11 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 		name := source[start..i]
 		mut next := i
 		for next < source.len && source[next].is_space() { next++ }
-		if next < source.len && source[next] == `(` && name !in ['sizeof', '_S'] {
+		// The dynamic form of a struct literal copies fixed-array fields with memcpy;
+		// the static re-render does not, and is checked again without temporaries.
+		is_temporary_copy := allow_temporaries && name == 'memcpy'
+		if next < source.len && source[next] == `(` && name !in ['sizeof', '_S']
+			&& !is_temporary_copy {
 			return false
 		}
 		if previous == `.` || name in ['NULL', 'true', 'false', 'sizeof', '_S', 'struct', 'union',
@@ -1220,7 +1224,8 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 			previous = `a`
 			continue
 		}
-		if allow_temporaries && (name.starts_with('__vf_') || (name.starts_with('__v') && name.len > 3 && name[3].is_digit())) {
+		if is_temporary_copy || (allow_temporaries && (name.starts_with('__vf_')
+			|| (name.starts_with('__v') && name.len > 3 && name[3].is_digit()))) {
 			previous = `a`
 			continue
 		}
@@ -3330,8 +3335,10 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 			if is_flag {
 				return error('fastc parser does not support custom value for flag enum field `${name}.${field_name}` in ${source_file.path}')
 			}
-			value_tokens, next_token := fastc_scan_enum_value_tokens(mut scan, scan.scan())!
+			scanned_tokens, next_token := fastc_scan_enum_value_tokens(mut scan, scan.scan())!
 			tok = next_token
+			// `2 ** 3` has no C operator; the C backend folds it to a constant.
+			value_tokens := fastc_fold_integer_powers(scanned_tokens) or { scanned_tokens }
 			if literal_value := fastc_enum_integer_literal(value_tokens) {
 				value = literal_value
 				symbolic_value = ''

@@ -721,7 +721,9 @@ pub mut:
 	// semantic/compiler caches can use compact TextId identities.
 	text_values []string
 	text_ids    map[string]TextId
-	worker_pool &workers.Pool = unsafe { nil }
+	// recent_text_ids borrows identities only; canonical storage stays in text_values.
+	recent_text_ids []TextId
+	worker_pool     &workers.Pool = unsafe { nil }
 	// contextual_anon_struct_types names the anonymous aggregates the parser
 	// synthesized to type a `struct { ... }` literal rather than to declare a field.
 	// Such a name only ever stands in for a literal whose type the context supplies, so
@@ -841,18 +843,33 @@ pub fn FlatAst.new() FlatAst {
 }
 
 // intern_text returns the canonical AST-owned copy and stable identity of text.
+@[direct_array_access]
 pub fn (mut a FlatAst) intern_text(value string) (TextId, string) {
 	if value.len == 0 {
 		return TextId(0), ''
 	}
+	if a.recent_text_ids.len == 0 {
+		a.recent_text_ids = []TextId{len: 4096}
+	}
+	slot := source_type_recent_slot(value) & 4095
+	cached := a.recent_text_ids[slot]
+	if cached != 0 && int(cached) <= a.text_values.len {
+		canonical := a.text_values[int(cached) - 1]
+		if canonical == value {
+			return cached, canonical
+		}
+	}
 	if id := a.text_ids[value] {
+		a.recent_text_ids[slot] = id
 		return id, a.text_values[int(id) - 1]
 	}
-	canonical := value.clone()
 	id := TextId(a.text_values.len + 1)
-	a.text_values << canonical
+	// Appending the owned expression avoids another implicit string clone.
+	a.text_values << value.clone()
+	canonical := a.text_values.last()
 	a.text_ids[canonical] = id
-	return id, a.text_values.last()
+	a.recent_text_ids[slot] = id
+	return id, canonical
 }
 
 // intern_texts_from replays the source AST's compact text table into a.
@@ -878,6 +895,8 @@ pub fn (mut a FlatAst) reserve_transform_texts(headroom int) {
 // transform into the current arena and rebuilds table backing only if it grew
 // into the disposable scope.
 pub fn (mut a FlatAst) promote_transform_texts_from(start int, scope voidptr) {
+	// Scratch storage may have been allocated in the disposable scope.
+	a.recent_text_ids = []TextId{}
 	first := if start < 0 { 0 } else { start }
 	mut rebuild := scoped_text_storage_owned(scope, a.text_values.data)
 	$if prealloc {

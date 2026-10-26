@@ -45,6 +45,8 @@ fn C.vgc_mutex_lock(lk &u32)
 fn C.vgc_mutex_unlock(lk &u32)
 fn C.vgc_mutex_trylock(lk &u32) int
 fn C.vgc_thread_yield()
+fn C.vgc_backoff(round int)
+fn C.vgc_now_ns() u64
 fn C.vgc_set_thread_exit_hook(f fn (voidptr))
 fn C.vgc_watch_thread_exit(idx int)
 fn C.vgc_call_with_registers_spilled(f fn (voidptr, voidptr), arg voidptr)
@@ -157,7 +159,7 @@ mut:
 	stack_lo   uint // lowest stack address (for root scanning)
 	stack_hi   uint // highest stack address
 	thread_id  u64
-	stopped    u32 // 1 if stopped for GC
+	stop_epoch u32 // atomic: the gc_stop_epoch of the last collection that this thread stopped for
 }
 
 // VGC_Central is a central free list for one span class.
@@ -253,11 +255,10 @@ mut:
 	work_empty &VGC_WorkBuf = unsafe { nil }
 	work_lock  u32
 	// GC worker coordination
-	gc_workers_done  u32 // atomic
-	gc_nworkers      int
-	gc_stop_flag     u32 // atomic: tells threads to stop for GC
-	gc_stopped_count u32 // atomic: threads stopped
-	gc_target_stops  u32 // number of threads to stop
+	gc_workers_done u32 // atomic
+	gc_nworkers     int
+	gc_stop_flag    u32 // atomic: tells threads to stop for GC
+	gc_stop_epoch   u32 // atomic: numbers the stop-the-world requests, skipping 0
 	// Sweep state
 	sweep_done u32 // atomic
 	// Default GC trigger: collect when heap doubles (GOGC=100 equivalent)
@@ -360,11 +361,14 @@ fn vgc_unregister_thread(idx int) {
 	}
 	// A running collection holds cache_lock while it scans the stacks, and waits for this
 	// thread to stop.
+	mut round := 0
 	for C.vgc_mutex_trylock(&vgc_heap.cache_lock) == 0 {
 		if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
 			vgc_safepoint_at(idx)
+			round = 0
 		} else {
-			C.vgc_thread_yield()
+			round++
+			C.vgc_backoff(round)
 		}
 	}
 	for span_class in 0 .. vgc_num_span_classes {
@@ -393,7 +397,7 @@ fn vgc_reset_cache(idx int) {
 	cache.stack_lo = 0
 	cache.stack_hi = 0
 	cache.thread_id = 0
-	cache.stopped = 0
+	cache.stop_epoch = 0
 }
 
 // vgc_live_sum returns the sum of the live_bytes counters of all cache slots.
@@ -1426,20 +1430,23 @@ fn vgc_safepoint_wait(arg voidptr, regs voidptr) {
 	cache_idx := int(int(arg))
 	// Update the live stack range for root scanning.
 	vgc_refresh_stack_range_for_sp(cache_idx, uint(regs))
-	// Mark ourselves as stopped
-	C.vgc_atomic_store_u32(&vgc_heap.caches[cache_idx].stopped, 1)
-	C.vgc_atomic_add_u32(&vgc_heap.gc_stopped_count, 1)
-
-	// Wait until GC is done with stop-the-world phase
-	mut spins := 0
-	for C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
-		if spins < 64 {
-			spins++
-			C.vgc_atomic_fence()
-		} else {
-			C.vgc_thread_yield()
+	// Acknowledge the stop request with its epoch, then wait until the collection ends. The
+	// collector stores the epoch before it sets the flag, so a waiter that read the epoch of
+	// the previous request sees the new one below and acknowledges it too: a collection that
+	// starts right after the last one ended still waits for this thread.
+	for {
+		epoch := C.vgc_atomic_load_u32(&vgc_heap.gc_stop_epoch)
+		if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) == 0 {
+			break
+		}
+		C.vgc_atomic_store_u32(&vgc_heap.caches[cache_idx].stop_epoch, epoch)
+		// A collection takes milliseconds: back off to yields and short sleeps instead of
+		// spinning on the flag.
+		mut round := 0
+		for C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0
+			&& C.vgc_atomic_load_u32(&vgc_heap.gc_stop_epoch) == epoch {
+			round++
+			C.vgc_backoff(round)
 		}
 	}
-
-	C.vgc_atomic_store_u32(&vgc_heap.caches[cache_idx].stopped, 0)
 }

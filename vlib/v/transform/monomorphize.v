@@ -2349,7 +2349,9 @@ fn (t &Transformer) interface_box_fn_literal_return_type(id flat.NodeId, node fl
 			return return_type
 		}
 	}
-	if node.kind == .fn_literal && node.typ != 0 {
+	// The interface prescan has no lexical locals. Generated typeof witnesses
+	// are resolved when lowering their enclosing function, before specialization.
+	if node.kind == .fn_literal && node.typ != 0 && !inferred_type_id(node.typ) {
 		return *t.tc.parse_type(node.typ)
 	}
 	return none
@@ -5893,7 +5895,7 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 			// that is released before the driver promotes the checker metadata,
 			// so own them here.
 			owned_name := name.clone()
-			t.tc.fn_ret_types[owned_name] = ret
+			t.tc.register_generated_fn_return_type(owned_name, ret)
 			t.tc.register_generated_fn_param_types(owned_name, params.clone())
 			t.tc.fn_variadic[owned_name] = variadic
 			t.tc.fn_type_modules[owned_name] = decl.module.clone()
@@ -7706,7 +7708,7 @@ fn (mut t Transformer) unregister_generic_fn_signature(decl GenericFnDecl) {
 		names << c_name(qname)
 	}
 	for name in names {
-		t.tc.fn_ret_types.delete(name)
+		t.tc.unregister_generated_fn_return_type(name)
 		t.tc.fn_param_types.delete(name)
 		t.tc.fn_variadic.delete(name)
 	}
@@ -11776,7 +11778,17 @@ fn (mut t Transformer) generic_const_string_value(id flat.NodeId, args_ids []u32
 }
 
 fn (mut t Transformer) clone_generic_fn_node(node flat.Node, args_ids []u32) flat.NodeId {
-	return t.clone_generic_node_from(node, args_ids, true, u32(0))
+	return t.clone_generic_root(node, args_ids)
+}
+
+// clone_generic_root clones a generic function root with no narrowing from the
+// body that requested the instance.
+fn (mut t Transformer) clone_generic_root(node flat.Node, args_ids []u32) flat.NodeId {
+	outer_smartcasts := t.generic_typeof_smartcasts
+	t.generic_typeof_smartcasts = []SmartcastContext{}
+	cloned := t.clone_generic_node_from(node, args_ids, true, u32(0))
+	t.generic_typeof_smartcasts = outer_smartcasts
+	return cloned
 }
 
 // clone_generic_fn_header clones the generic function `node` without its body:
@@ -11794,7 +11806,7 @@ fn (mut t Transformer) clone_generic_fn_header(node flat.Node, args_ids []u32) f
 		children_start: start
 		children_count: flat.child_count(t.a.children.len - start)
 	}
-	return t.clone_generic_node_from(header, args_ids, true, u32(0))
+	return t.clone_generic_root(header, args_ids)
 }
 
 @[direct_array_access]
@@ -12216,6 +12228,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 	}
 	for i in 0 .. node.children_count {
 		mut match_smartcasts := 0
+		typeof_smartcasts_len := t.generic_typeof_smartcasts.len
 		// Receiver calls are retargeted while the generic tree is cloned. Preserve
 		// the branch narrowing here so they are not bound to the enclosing sum type.
 		if node.kind == .match_stmt && i > 0 {
@@ -12225,8 +12238,16 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 				variant := t.resolve_substituted_type_text(t.subst_type(sc.variant_name, args_ids))
 				sum_type := t.resolve_substituted_type_text(t.subst_type(sc.sum_type_name, args_ids))
 				t.push_smartcast(sc.expr_name, variant, sum_type)
+				t.generic_typeof_smartcasts << SmartcastContext{
+					type_texts:    t.var_type_texts
+					expr_name:     sc.expr_name
+					variant_name:  variant
+					sum_type_name: sum_type
+				}
 				match_smartcasts++
 			}
+		} else if node.kind == .if_expr && (i == 1 || i == 2) {
+			t.collect_generic_typeof_smartcasts(t.a.child(&node, 0), args_ids, i == 2)
 		}
 		child_context_source_id := t.generic_clone_child_return_context(node, i, return_context_id, argument_types_source_ids.clone())
 
@@ -12235,6 +12256,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		for _ in 0 .. match_smartcasts {
 			t.pop_smartcast()
 		}
+		t.generic_typeof_smartcasts.trim(typeof_smartcasts_len)
 		t.generic_clone_children[scratch_start + i] = child
 		if node.kind == .if_expr && i == 0 {
 			t.unwrap_cloned_if_guard_binding(child)
@@ -12898,7 +12920,157 @@ fn (mut t Transformer) generic_comptime_type_expr(id flat.NodeId, args_ids []u32
 	}
 }
 
+// collect_generic_typeof_smartcasts records, for the clone-time `typeof` fold, the
+// narrowings an if condition gives its then branch (or, with `else_branch`, its else
+// branch): `x is T`, `x != none` and their negations. The types are the instance's.
+fn (mut t Transformer) collect_generic_typeof_smartcasts(cond_id flat.NodeId, args_ids []u32, else_branch bool) {
+	if int(cond_id) < 0 || int(cond_id) >= t.a.nodes.len {
+		return
+	}
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .paren && cond.children_count > 0 {
+		t.collect_generic_typeof_smartcasts(t.a.child(&cond, 0), args_ids, else_branch)
+		return
+	}
+	if else_branch {
+		if cond.kind == .prefix && cond.op == .not && cond.children_count > 0 {
+			inner_id := t.a.child(&cond, 0)
+			if t.a.nodes[int(inner_id)].kind == .is_expr {
+				t.record_generic_typeof_is_smartcast(inner_id, args_ids, false)
+			}
+		} else if cond.kind == .infix && cond.op == .eq && cond.children_count >= 2 {
+			t.record_generic_typeof_none_smartcast(cond, args_ids)
+		}
+		return
+	}
+	if cond.kind == .is_expr {
+		t.record_generic_typeof_is_smartcast(cond_id, args_ids, true)
+	} else if cond.kind == .infix && cond.op == .ne && cond.children_count >= 2 {
+		t.record_generic_typeof_none_smartcast(cond, args_ids)
+	} else if cond.kind == .infix && cond.op == .logical_and && cond.children_count >= 2 {
+		t.collect_generic_typeof_smartcasts(t.a.child(&cond, 0), args_ids, false)
+		t.collect_generic_typeof_smartcasts(t.a.child(&cond, 1), args_ids, false)
+	}
+}
+
+// generic_typeof_operand_type returns the instance type of a narrowed operand.
+fn (t &Transformer) generic_typeof_operand_type(id flat.NodeId, args_ids []u32) u32 {
+	if typ := t.generic_comptime_base_type(id, args_ids) {
+		return typ
+	}
+	original := t.original_expr_type(id)
+	if original == 0 {
+		return 0
+	}
+	return t.resolve_substituted_type_text(t.subst_type(original, args_ids))
+}
+
+// record_generic_typeof_is_smartcast records the narrowing of `x is T`; an interface
+// subject narrows only where `allow_interface` is set, as for non-generic code.
+fn (mut t Transformer) record_generic_typeof_is_smartcast(is_id flat.NodeId, args_ids []u32, allow_interface bool) {
+	is_node := t.a.nodes[int(is_id)]
+	if is_node.children_count == 0 || is_node.value.len == 0 {
+		return
+	}
+	expr_id := t.a.child(&is_node, 0)
+	ek := t.expr_key(expr_id)
+	if ek.len == 0 {
+		return
+	}
+	expr_type := t.generic_typeof_operand_type(expr_id, args_ids)
+	if expr_type == 0 {
+		return
+	}
+	variant := t.resolve_substituted_type_text(t.subst_type(flat.source_type_id(is_node.value), args_ids))
+	mut sum_type := t.sum_type_for_is_expr(expr_type, variant)
+	if sum_type == 0 && allow_interface && t.is_interface_type_name(expr_type) {
+		sum_type = expr_type
+	}
+	if sum_type == 0 {
+		return
+	}
+	t.generic_typeof_smartcasts << SmartcastContext{
+		type_texts:    t.var_type_texts
+		expr_name:     ek
+		variant_name:  variant
+		sum_type_name: sum_type
+	}
+}
+
+// record_generic_typeof_none_smartcast records the option unwrap of `x != none`
+// (or `x == none` for an else branch).
+fn (mut t Transformer) record_generic_typeof_none_smartcast(cond flat.Node, args_ids []u32) {
+	lhs_id := t.a.child(&cond, 0)
+	rhs_id := t.a.child(&cond, 1)
+	mut opt_id := flat.empty_node
+	if t.a.nodes[int(rhs_id)].kind in [.none_expr, .nil_literal] {
+		opt_id = lhs_id
+	} else if t.a.nodes[int(lhs_id)].kind in [.none_expr, .nil_literal] {
+		opt_id = rhs_id
+	}
+	if int(opt_id) < 0 {
+		return
+	}
+	ek := t.expr_key(opt_id)
+	if ek.len == 0 {
+		return
+	}
+	mut expr_type := t.generic_typeof_operand_type(opt_id, args_ids)
+	if !t.is_optional_type_name(expr_type) && flat.source_type_name(expr_type).starts_with('&') {
+		// a `mut x ?T` parameter is stored indirectly
+		expr_type = flat.source_type_id(flat.source_type_name(expr_type)[1..])
+	}
+	if !t.is_optional_type_name(expr_type) {
+		return
+	}
+	base := t.optional_base_type(expr_type)
+	if base == 0 || base == flat.source_type_void {
+		return
+	}
+	t.generic_typeof_smartcasts << SmartcastContext{
+		type_texts:    t.var_type_texts
+		expr_name:     ek
+		variant_name:  base
+		sum_type_name: flat.source_type_id(option_unwrap_marker)
+	}
+}
+
+// generic_typeof_smartcast returns the narrowed type `typeof(x)` observes inside a
+// generic body cloned for an instance, mapped like the non-generic `typeof` fold.
+fn (t &Transformer) generic_typeof_smartcast(node flat.Node) ?u32 {
+	if t.generic_typeof_smartcasts.len == 0 || node.value.len > 0 || node.children_count == 0 {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	key := t.expr_key(child_id)
+	if key.len == 0 {
+		return none
+	}
+	for i := t.generic_typeof_smartcasts.len - 1; i >= 0; i-- {
+		sc := t.generic_typeof_smartcasts[i]
+		if sc.expr_name != key {
+			continue
+		}
+		if sc.sum_type_name_text() == option_unwrap_marker {
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .ident && t.mut_param_values[child.value]
+				&& !flat.source_type_shape(sc.variant_name).has(.pointer) {
+				return flat.source_type_id('&${flat.source_type_name(sc.variant_name)}')
+			}
+			return sc.variant_name
+		}
+		if t.is_interface_type_name(sc.sum_type_name) {
+			return flat.source_type_id('&${flat.source_type_name(t.interface_variant_type(sc.variant_name))}')
+		}
+		return t.resolve_variant(sc.sum_type_name, sc.variant_name)
+	}
+	return none
+}
+
 fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args_ids []u32) ?u32 {
+	if narrowed := t.generic_typeof_smartcast(node) {
+		return narrowed
+	}
 	if typ := generic_type_name_from_marker(node.value) {
 		idx := t.active_generic_param_index(typ)
 		if idx < args_ids.len {
@@ -12938,6 +13110,9 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args_ids [
 // generic_comptime_typeof_display_name retains the writing file's spelling for
 // a composite type expression, while a direct parameter keeps its caller's name.
 fn (t &Transformer) generic_comptime_typeof_display_name(node flat.Node, args_ids []u32, reflected string) string {
+	if _ := t.generic_typeof_smartcast(node) {
+		return generic_type_name_display(reflected)
+	}
 	if node.value.len > 0 && !node.value.starts_with(generic_type_name_marker_prefix)
 		&& node.value !in t.active_generic_params {
 		return generic_type_name_display(flat.source_type_name(t.subst_type(flat.source_type_id(node.value), args_ids)))
@@ -16422,6 +16597,11 @@ fn (t &Transformer) canonical_generic_specialization_args(args_ids []u32) []u32 
 }
 
 fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
+	if inferred_type_id(arg_id) {
+		resolved := t.resolve_inferred_type_id(arg_id)
+		if resolved != arg_id { return t.canonical_generic_specialization_arg(resolved) }
+		return arg_id
+	}
 	clean_id := t.trimmed_type_id(arg_id)
 	clean_comparison_type_id_4 := clean_id
 	clean := flat.source_type_name(clean_comparison_type_id_4)
@@ -16906,7 +17086,7 @@ fn is_generic_fn_placeholder_name(typ string) bool {
 fn (t &Transformer) generic_args_have_placeholders(args_ids []u32) bool {
 	if t.skip_generics { return false }
 	for arg_id in args_ids {
-		if t.generic_arg_is_unresolved(arg_id) { return true }
+		if inferred_type_id(arg_id) || t.generic_arg_is_unresolved(arg_id) { return true }
 	}
 	return false
 }
@@ -17324,11 +17504,62 @@ fn qualified_name_equals(name string, owner string, member string) bool {
 		&& name.starts_with(owner) && name.ends_with(member)
 }
 
+// FileImportNameFilter conservatively records aliases in the frozen import table.
+// Workers share it without retaining any source or scratch-owned string storage.
+struct FileImportNameFilter {
+mut:
+	count int
+	bits  [64]u64
+}
+
+@[direct_array_access; inline]
+fn file_import_alias_bit(name string) u32 {
+	if name.len == 0 {
+		return 0
+	}
+	mut h := u32(name.len) * 0x9e3779b1 ^ u32(name[0]) * 0x85ebca6b
+	h ^= u32(name[name.len - 1]) * 0xc2b2ae35 ^ u32(name[name.len / 2]) * 0x27d4eb2f
+	return (h ^ (h >> 15)) & 4095
+}
+
+fn (mut t Transformer) prepare_file_import_name_filter() {
+	if isnil(t.tc) {
+		return
+	}
+	mut filter := &FileImportNameFilter{
+		count: t.tc.file_imports.len
+	}
+	for key, _ in t.tc.file_imports {
+		// Every possible separator is included, preserving keys with newlines
+		// in the file or alias as well as the ordinary source identifier case.
+		for i, ch in key {
+			if ch == `\n` {
+				bit := file_import_alias_bit(key[i + 1..])
+				filter.bits[bit >> 6] |= u64(1) << (bit & 63)
+			}
+		}
+	}
+	t.file_import_name_filter = filter
+}
+
+@[direct_array_access; inline]
+fn (filter &FileImportNameFilter) excludes(alias string, count int) bool {
+	if filter.count != count {
+		return false
+	}
+	bit := file_import_alias_bit(alias)
+	return filter.bits[bit >> 6] & (u64(1) << (bit & 63)) == 0
+}
+
 // file_import_module returns the module that `alias` names through the imports
 // of `file`. The checker's import table is complete before transform starts, so
 // answers, including misses, are memoized by the parts of the table's key.
 fn (t &Transformer) file_import_module(file string, alias string) ?string {
 	if isnil(t.tc) {
+		return none
+	}
+	if !isnil(t.file_import_name_filter)
+		&& t.file_import_name_filter.excludes(alias, t.tc.file_imports.len) {
 		return none
 	}
 	if isnil(t.file_import_cache) {

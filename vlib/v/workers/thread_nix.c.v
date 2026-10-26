@@ -14,9 +14,11 @@ $if linux {
 struct C.pthread_t {}
 
 fn C.pthread_join(worker C.pthread_t, retval voidptr) int
-fn C.v3_linux_name_worker() int
 
 // Keep linked-object prototypes explicit alongside unrelated system headers.
+@[c_extern]
+fn C.v3_linux_name_worker() int
+
 @[c_extern]
 fn C.v3_pthread_zero() C.pthread_t
 

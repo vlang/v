@@ -22,11 +22,11 @@ fn test_stringified_usize_field_should_be_always_positive() {
 	assert sa.contains('f_isize: -1')
 	assert sa.contains('f_i64: -1')
 	assert sa.contains('f_i32: -1')
-	i := sa.split_into_lines().filter(it.contains('int'))[0]
+	i := sa.split_into_lines().filter(it.contains('f_isize:'))[0]
 	assert i.contains('-'), 'all `i` fields should be negative, but ${i} != ${a.f_isize}'
 
 	assert sa.contains('f_u64: 18446744073709551615')
 	assert sa.contains('f_u32: 4294967295')
-	u := sa.split_into_lines().filter(it.contains('uint'))[0]
+	u := sa.split_into_lines().filter(it.contains('f_usize:'))[0]
 	assert !u.contains('-'), 'all `u` fields should be positive, but ${u} != ${a.f_usize}'
 }

@@ -7670,9 +7670,11 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 	}
 	// These operators have integer result types, so their type operands do not
 	// appear in the checked expression-type tables below.
-	for node in g.a.nodes {
+	for idx in 0 .. g.a.nodes.len {
+		// The AST stays immutable while collecting references.
+		node := unsafe { &g.a.nodes[idx] }
 		if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
-			g.tc.cur_file = g.node_source_file(&node)
+			g.tc.cur_file = g.node_source_file(node)
 			g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
 			g.collect_c_struct_type_refs(g.tc.parse_type(flat.source_type_id(node.value)), mut seen)
 		}

@@ -406,6 +406,38 @@ fn test_macos_linux_cross_compile_uses_bundled_amd64_sysroot() {
 	}
 }
 
+fn test_macos_linux_cross_compile_selects_postgres_sysroot_headers() {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_linux_cross_pg_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, 'import db.pg\nfn main() { println(pg.Config{}) }\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	// C output exercises conditional headers without requiring a cross toolchain or libpq.
+	for target_os in ['macos', 'linux'] {
+		build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-cc',
+			'clang', '-os', target_os, '-o', output, source])
+		assert build.exit_code == 0, build.output
+		c_source := os.read_file(output)!
+		assert c_source.contains('#include <libpq/libpq-fe.h>') == (target_os == 'linux')
+		assert c_source.contains('#include <libpq/pg_config.h>') == (target_os == 'linux')
+		assert c_source.contains('#include <libpq-fe.h>') == (target_os == 'macos')
+		assert c_source.contains('#include <pg_config.h>') == (target_os == 'macos')
+	}
+}
+
 fn test_linux_cross_link_flags_unwrap_clang_driver_flags() {
 	assert v3_linux_cross_link_flags(['-I/include', '-pthread', '-Wl,-z,relro', '-Xlinker',
 		'--as-needed', '-L/lib', '-lssl']) == [
@@ -2189,7 +2221,18 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 			dump_args << ['-dump-c-flags', '-', '-o', output, source]
 			flags_dump := cmdexec.run(v3_driver_test_executable(), dump_args)
 			assert flags_dump.exit_code == 0, flags_dump.output
-			expected := flags_dump.output.split_into_lines().filter(it.len > 0)
+			dump_lines := flags_dump.output.split_into_lines().filter(it.len > 0)
+			// value-taking flags share a line with their quoted value (`-I "/path"`)
+			mut expected := []string{}
+			for line in dump_lines {
+				for token in cgen.tokenize_c_flag(line) {
+					expected << if token.len > 1 && token.starts_with('"') && token.ends_with('"') {
+						token[1..token.len - 1]
+					} else {
+						token
+					}
+				}
+			}
 			for with_dump in [false, true] {
 				mut build_args := args.clone()
 				build_args << ['-showcc', '-o', output, source]
@@ -2212,7 +2255,7 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 					assert !actual.any(it.starts_with('-F'))
 				}
 				if with_dump {
-					assert os.read_lines(dump_file)! == expected
+					assert os.read_lines(dump_file)! == dump_lines
 				}
 			}
 		}

@@ -831,7 +831,7 @@ fn is_para_text_line(s string) bool {
 	if setext_underline_level(t) > 0 {
 		return false
 	}
-	marker, mok := parse_list_marker(t)
+	_, mok := parse_list_marker(t)
 	if mok {
 		// A list marker keeps a paragraph open only if content follows it
 		// on the same line (otherwise no paragraph is open yet).

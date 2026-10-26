@@ -215,6 +215,10 @@ fn test_translated_pointer_subtraction_retains_pointer_width() {
 	delta := unsafe { end - start }
 	assert typeof(delta).name == 'int'
 	assert delta == 3
+	assert sizeof(delta) == sizeof(voidptr)
+	reverse := unsafe { start - end }
+	assert typeof(reverse).name == 'int'
+	assert reverse == -3
 }
 
 fn translated_mixed_branch(flag bool) int {

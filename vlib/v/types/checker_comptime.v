@@ -37,6 +37,7 @@ fn (mut tc TypeChecker) initialize_pointer_parameter_binding(owner ScopeBindingO
 	key := owner.storage_key()
 	if unalias_type(typ) is Pointer && key.len > 0 {
 		// Distinct parameter bindings may receive the same pointer at a call site.
+		tc.prepare_pointer_binding_write()
 		tc.fn_context.pointer_binding_value_keys[key] = [
 			pointer_binding_parameter_value(key),
 		]
@@ -46,6 +47,7 @@ fn (mut tc TypeChecker) initialize_pointer_parameter_binding(owner ScopeBindingO
 fn (mut tc TypeChecker) initialize_unknown_pointer_binding(owner ScopeBindingOwner, typ Type) {
 	key := owner.storage_key()
 	if unalias_type(typ) is Pointer && key.len > 0 {
+		tc.prepare_pointer_binding_write()
 		tc.fn_context.pointer_binding_value_keys[key] = [
 			pointer_binding_unknown_value(key),
 		]
@@ -2293,6 +2295,11 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 	}
 	node := tc.a.nodes[idx]
 	kind_id := node_kind_id(node)
+	// A function literal's return type names its own parameters; it is checked
+	// after they are bound, in check_fn_literal.
+	if node.kind != .fn_literal {
+		tc.check_node_inferred_type_witnesses(node)
+	}
 	if node.kind in [.break_stmt, .continue_stmt] {
 		tc.check_loop_control_statement(id, node)
 		return
@@ -8941,8 +8948,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	// of the aliased storage type. This is especially important for aliases of
 	// maps, arrays, pointers, and primitives: validating their unaliased type
 	// first would reject the expression before its operator method can be used.
-	if lhs_type is Alias && tc.type_has_infix_operator_method(lhs_type, node.op)
-		&& tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none {
+	// `>`, `<=` and `>=` are generated from the alias's own `<`.
+	operator_method_op := if node.op in [.gt, .le, .ge] { flat.Op.lt } else { node.op }
+	if lhs_type is Alias && tc.type_has_infix_operator_method(lhs_type, operator_method_op)
+		&& tc.infix_operator_return_type(operator_method_op, lhs_type, rhs_type) != none {
 		return
 	}
 	if node.op == .plus && is_string_concat_pair(lhs_type, rhs_type) {
@@ -14331,7 +14340,6 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	tc.fn_context = new_function_check_context()
 	tc.fn_context.node_id = saved_fn_context.node_id
 	tc.fn_context.generic_params = saved_fn_context.generic_params.clone()
-	tc.fn_context.return_type = tc.parse_type(node.typ)
 	tc.fn_context.method_value_locals = saved_fn_context.method_value_locals.clone()
 	tc.fn_context.method_value_local_owners =
 		clone_scope_binding_owner_map(saved_fn_context.method_value_local_owners)
@@ -14345,6 +14353,13 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		snapshot_pointer_binding_value_keys(captured_pointer_values)
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(id, node)
+	}
+	// Parameter types are written in the enclosing scope.
+	for i in 0 .. node.children_count {
+		param := tc.a.child_node(&node, i)
+		if param.kind == .param {
+			tc.check_inferred_type_witnesses(param.typ)
+		}
 	}
 	tc.push_scope()
 	tc.fn_context.closure_scope = tc.cur_scope
@@ -14362,6 +14377,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		}
 		if child.kind == .ident && (child.is_mut || child.typ_text() == 'atomic') && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
+				tc.prepare_mut_local_owner_write()
 				tc.fn_context.mut_local_owners[child.value] = owner
 				if base := captured_mut_params[child.value] {
 					// A captured mutable parameter retains its caller-owned reference.
@@ -14376,6 +14392,10 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
+	// A `typeof(expr)` return type is resolved and checked with the parameters
+	// bound, so `fn (x string) typeof(x)` names the parameter, not an outer `x`.
+	tc.check_inferred_type_witnesses(node.typ)
+	tc.fn_context.return_type = tc.parse_type(node.typ)
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.nodes[int(child_id)]
@@ -16060,8 +16080,10 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			tc.fn_context.mut_param_base_types.delete(mut_binding_name)
 		}
 		if had_mut_owner {
+			tc.prepare_mut_local_owner_write()
 			tc.fn_context.mut_local_owners[mut_binding_name] = saved_mut_owner
 		} else {
+			tc.prepare_mut_local_owner_write()
 			tc.fn_context.mut_local_owners.delete(mut_binding_name)
 		}
 	}
@@ -16898,6 +16920,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		// Record the binding so reads through it are treated as mutable dependencies.
 		if owner.storage_key().len > 0 && tc.expr_is_unsafe_reference_alias(rhs_id)
 			&& (clean_decl_type is Map || clean_decl_type is Array || clean_decl_type is ArrayFixed) {
+			tc.prepare_unsafe_alias_owner_write()
 			tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()] = true
 		}
 		if lhs_node.value != '_' && lhs_is_mut {
@@ -20071,6 +20094,7 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 					tc.fn_context.mut_param_base_types.delete(lhs.value)
 				}
 			}
+			tc.prepare_mut_local_owner_write()
 			tc.fn_context.mut_local_owners[lhs.value] = owner
 		}
 		tc.register_synth_type(lhs_id, typ)
@@ -20234,6 +20258,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	mut ownership_lhs_types := []Type{}
 	mut ownership_rhs_types := []Type{}
 	mut smartcast_write_keys := []string{}
+	mut smartcast_descendant_write_keys := []string{}
 	mut option_assignment_smartcasts := []LocalBinding{}
 	assignment_is_translated := tc.node_is_from_translated_file(node)
 	is_cross_assignment := node.op == .assign && node.children_count > 2
@@ -20336,9 +20361,10 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		lhs_type := if unknown_assign_ident {
 			builtin_void_type
 		} else if node.kind == .index_assign {
-			tc.resolve_index_lvalue_type(lhs_id, node.op)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_index_lvalue_type(lhs_id,
+				node.op))
 		} else {
-			tc.resolve_lvalue_type(lhs_id)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_lvalue_type(lhs_id))
 		}
 		if lhs_node.kind == .selector && lhs_type is Void && lhs_node.children_count > 0 {
 			base_id := tc.a.child(&lhs_node, 0)
@@ -20347,8 +20373,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
-		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
+		expected_type := tc.narrowed_sum_assignment_expected_type(node.op, lhs_id, rhs_id,
+			source_rhs_type, tc.assignment_expected_type(lhs_id, lhs_type))
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		saved_mut_binding_value_id := tc.mut_binding_value_id
 		if node.op == .assign && lhs_node.kind == .ident && lhs_node.value != '_'
@@ -20680,7 +20707,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 					name: lhs_key
 					typ:  smartcast
 				}
-			} else if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
+			} else if tc.assignment_preserves_smartcast(node.op, lhs_id, rhs_id, source_rhs_type) {
+				smartcast_descendant_write_keys << lhs_key
+			} else {
 				smartcast_write_keys << lhs_key
 			}
 		}
@@ -20688,6 +20717,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	}
 	for key in smartcast_write_keys {
 		tc.invalidate_smartcasts_for_write_key(key)
+	}
+	for key in smartcast_descendant_write_keys {
+		tc.invalidate_smartcast_descendants_for_write_key(key)
 	}
 	for smartcast in option_assignment_smartcasts {
 		tc.smartcasts[smartcast.name] = smartcast.typ
@@ -20712,19 +20744,22 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 		return
 	}
 	mut smartcast_write_keys := []string{}
+	mut smartcast_descendant_write_keys := []string{}
 	mut option_assignment_smartcasts := []LocalBinding{}
 	mut i := 0
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_type := if node.kind == .index_assign {
-			tc.resolve_index_lvalue_type(lhs_id, node.op)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_index_lvalue_type(lhs_id,
+				node.op))
 		} else {
-			tc.resolve_lvalue_type(lhs_id)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_lvalue_type(lhs_id))
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
-		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
+		expected_type := tc.narrowed_sum_assignment_expected_type(node.op, lhs_id, rhs_id,
+			source_rhs_type, tc.assignment_expected_type(lhs_id, lhs_type))
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		tc.check_node_with_expected_context(rhs_id, expected_type)
 		_ = tc.resolve_expr(rhs_id, expected_type)
@@ -20749,7 +20784,9 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 					name: lhs_key
 					typ:  smartcast
 				}
-			} else if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
+			} else if tc.assignment_preserves_smartcast(node.op, lhs_id, rhs_id, source_rhs_type) {
+				smartcast_descendant_write_keys << lhs_key
+			} else {
 				smartcast_write_keys << lhs_key
 			}
 		}
@@ -20757,6 +20794,9 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 	}
 	for key in smartcast_write_keys {
 		tc.invalidate_smartcasts_for_write_key(key)
+	}
+	for key in smartcast_descendant_write_keys {
+		tc.invalidate_smartcast_descendants_for_write_key(key)
 	}
 	for smartcast in option_assignment_smartcasts {
 		tc.smartcasts[smartcast.name] = smartcast.typ
@@ -20776,6 +20816,7 @@ fn (mut tc TypeChecker) update_unsafe_reference_alias_assignment(lhs_id flat.Nod
 	if key.len == 0 {
 		return
 	}
+	tc.prepare_unsafe_alias_owner_write()
 	if tc.expr_is_unsafe_reference_alias(rhs_id) {
 		tc.fn_context.unsafe_reference_alias_owners[key] = true
 	} else {
@@ -20798,6 +20839,7 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 				tc.invalidate_all_pointer_binding_aliases()
 				return
 			}
+			tc.prepare_pointer_binding_write()
 			tc.fn_context.pointer_binding_value_keys[target_key] = values
 		}
 		return
@@ -20810,6 +20852,7 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 	values := tc.pointer_binding_alias_values(left_key, rhs_id, lhs_type, rhs_alias_state) or {
 		return
 	}
+	tc.prepare_pointer_binding_write()
 	tc.fn_context.pointer_binding_value_keys[left_key] = values
 }
 
@@ -20832,6 +20875,7 @@ fn (tc &TypeChecker) indirect_pointer_lvalue_storage_keys(id flat.NodeId) ?[]str
 }
 
 fn (mut tc TypeChecker) invalidate_all_pointer_binding_aliases() {
+	tc.prepare_pointer_binding_write()
 	for key, _ in tc.fn_context.pointer_binding_value_keys {
 		tc.fn_context.pointer_binding_value_keys[key] = [
 			pointer_binding_unknown_value(key),
@@ -20853,6 +20897,7 @@ fn (mut tc TypeChecker) invalidate_pointer_binding_alias_after_mut_call(id flat.
 	if key.len == 0 {
 		return
 	}
+	tc.prepare_pointer_binding_write()
 	tc.fn_context.pointer_binding_value_keys[key] = [
 		pointer_binding_unknown_value(key),
 	]
@@ -20867,6 +20912,7 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 		return
 	}
 	values := tc.pointer_binding_alias_values(left_key, rhs_id, typ, tc.fn_context.pointer_binding_value_keys) or { return }
+	tc.prepare_pointer_binding_write()
 	tc.fn_context.pointer_binding_value_keys[left_key] = values
 }
 
@@ -20925,6 +20971,23 @@ fn (tc &TypeChecker) pointer_binding_ident_values(owner ScopeBindingOwner, state
 		return []string{}
 	}
 	return (state[key] or { [tc.pointer_binding_storage_value(owner)] }).clone()
+}
+
+// share_pointer_binding_value_keys keeps a read-only branch snapshot of the current map.
+@[inline]
+fn (mut tc TypeChecker) share_pointer_binding_value_keys() map[string][]string {
+	tc.fn_context.pointer_binding_values_shared = true
+	return tc.fn_context.pointer_binding_value_keys
+}
+
+// prepare_pointer_binding_write detaches branch snapshots before replacing a value list.
+@[inline]
+fn (mut tc TypeChecker) prepare_pointer_binding_write() {
+	if tc.fn_context.pointer_binding_values_shared {
+		tc.fn_context.pointer_binding_value_keys =
+			snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		tc.fn_context.pointer_binding_values_shared = false
+	}
 }
 
 // snapshot_pointer_binding_value_keys copies a branch's map while sharing its immutable value lists.
@@ -21083,6 +21146,22 @@ fn apply_pointer_binding_value_state_delta(before map[string][]string, after map
 		}
 	}
 	return result
+}
+
+// share_unsafe_alias_owners keeps a read-only branch snapshot until the next update.
+@[inline]
+fn (mut tc TypeChecker) share_unsafe_alias_owners() map[string]bool {
+	tc.fn_context.unsafe_alias_owners_shared = true
+	return tc.fn_context.unsafe_reference_alias_owners
+}
+
+// prepare_unsafe_alias_owner_write detaches active branch snapshots before a map update.
+@[inline]
+fn (mut tc TypeChecker) prepare_unsafe_alias_owner_write() {
+	if tc.fn_context.unsafe_alias_owners_shared {
+		tc.fn_context.unsafe_reference_alias_owners = clone_unsafe_alias_owners(tc.fn_context.unsafe_reference_alias_owners)
+		tc.fn_context.unsafe_alias_owners_shared = false
+	}
 }
 
 fn intersect_unsafe_reference_alias_states(states []map[string]bool, fallback map[string]bool) map[string]bool {

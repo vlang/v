@@ -206,7 +206,7 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 		w.fn_context.return_type = tc.fn_context.return_type
 		w.cur_fn_ret_type = tc.cur_fn_ret_type
 	}
-	w.index_local_decl_rhs(flat.NodeId(fn_idx))
+	w.prepare_local_decl_rhs_index(flat.NodeId(fn_idx))
 	$if ownership ? {
 		w.ownership_begin_fn(node)
 	}

@@ -291,8 +291,8 @@ fn left_shift_digits_in_place(mut a []u64, amount int) {
 		a.grow_len(amount)
 		sptr := &u8(a.data)
 		dptr := &u8(a.data) + u64(amount) * u64(elem_size)
-		vmemmove(dptr, sptr, u64(old_len) * u64(elem_size))
-		vmemset(sptr, 0, u64(amount) * u64(elem_size))
+		vmemmove(dptr, sptr, old_len * elem_size)
+		vmemset(sptr, 0, amount * elem_size)
 	}
 }
 

@@ -38,49 +38,81 @@ fn (g &Parser) lower_power_expressions(tokens []FastcExpressionToken) ?[]FastcEx
 		result << item
 	}
 	for {
-		mut lowered := false
-		for i := result.len - 1; i > 0; i-- {
-			if result[i].tok != .power {
-				continue
-			}
-			start := fastc_power_left_operand_start(result, i)
-			end := fastc_power_right_operand_end(result, i)
-			if start < 0 || start >= i || end <= i + 1 {
-				return none
-			}
-			if fastc_expression_tokens_contain_power(result[start..i])
-				|| fastc_expression_tokens_contain_power(result[i + 1..end]) {
-				// An operand still holds a `**`; lower that one first.
-				continue
-			}
-			mut next := result[..start].clone()
-			if value := fastc_folded_integer_power(result[start..i], result[i + 1..end]) {
-				// An integer literal stays a constant, so it can size a fixed array.
-				next << FastcExpressionToken{
-					tok: .number
-					lit: value.str()
-				}
-			} else {
-				rendered := g.render_power_expression(result[start..i], result[i + 1..end])?
-				next << FastcExpressionToken{
-					tok:    .name
-					source: rendered.source
-					typ:    rendered.typ
-				}
-			}
-			next << result[end..]
-			result = next.clone()
-			lowered = true
+		i := fastc_innermost_power(result)
+		if i < 0 {
 			break
 		}
-		if !lowered {
-			break
+		start := fastc_power_left_operand_start(result, i)
+		end := fastc_power_right_operand_end(result, i)
+		mut next := result[..start].clone()
+		if value := fastc_folded_integer_power(result[start..i], result[i + 1..end]) {
+			// An integer literal stays a constant, so it can size a fixed array.
+			next << FastcExpressionToken{
+				tok: .number
+				lit: value.str()
+			}
+		} else {
+			rendered := g.render_power_expression(result[start..i], result[i + 1..end])?
+			next << FastcExpressionToken{
+				tok:    .name
+				source: rendered.source
+				typ:    rendered.typ
+			}
 		}
+		next << result[end..]
+		result = next.clone()
 	}
 	if fastc_expression_tokens_contain_power(result) {
 		return none
 	}
 	return result
+}
+
+// fastc_fold_integer_powers returns `tokens` with each `a ** b` replaced by its
+// value, innermost first, or none when an operand of a `**` is not an integer
+// literal. Enum discriminants use it, since they must be C constants.
+fn fastc_fold_integer_powers(tokens []FastcExpressionToken) ?[]FastcExpressionToken {
+	mut result := tokens.clone()
+	for fastc_expression_tokens_contain_power(result) {
+		i := fastc_innermost_power(result)
+		if i < 0 {
+			return none
+		}
+		start := fastc_power_left_operand_start(result, i)
+		end := fastc_power_right_operand_end(result, i)
+		value := fastc_folded_integer_power(result[start..i], result[i + 1..end])?
+		mut next := result[..start].clone()
+		next << FastcExpressionToken{
+			tok: .number
+			lit: value.str()
+		}
+		next << result[end..]
+		result = next.clone()
+	}
+	return result
+}
+
+// fastc_innermost_power returns the index of the last `**` of `tokens` whose
+// operands hold no other `**`, or -1 when there is none or the operands of a
+// `**` cannot be delimited.
+fn fastc_innermost_power(tokens []FastcExpressionToken) int {
+	for i := tokens.len - 1; i > 0; i-- {
+		if tokens[i].tok != .power {
+			continue
+		}
+		start := fastc_power_left_operand_start(tokens, i)
+		end := fastc_power_right_operand_end(tokens, i)
+		if start < 0 || start >= i || end <= i + 1 {
+			return -1
+		}
+		if fastc_expression_tokens_contain_power(tokens[start..i])
+			|| fastc_expression_tokens_contain_power(tokens[i + 1..end]) {
+			// An operand still holds a `**`; lower that one first.
+			continue
+		}
+		return i
+	}
+	return -1
 }
 
 // fastc_power_left_operand_start returns the first token of the left operand of
@@ -216,8 +248,11 @@ fn fastc_power_matching_close(tokens []FastcExpressionToken, open int) int {
 
 // fastc_folded_integer_power returns the value of `left ** right` when both are
 // integer literals (the exponent possibly negative) and the result is a
-// non-negative i64, computed as v_fastc_pow_i64 computes it.
-fn fastc_folded_integer_power(left []FastcExpressionToken, right []FastcExpressionToken) ?i64 {
+// non-negative i64, computed as v_fastc_pow_i64 computes it. Parenthesized
+// literals count, so `(2 ** 2) ** 3` folds once the inner power has folded.
+fn fastc_folded_integer_power(left_operand []FastcExpressionToken, right_operand []FastcExpressionToken) ?i64 {
+	left := fastc_strip_paren_tokens(left_operand)
+	right := fastc_strip_paren_tokens(right_operand)
 	if left.len != 1 || !fastc_is_integer_literal_token(left[0]) {
 		return none
 	}
@@ -281,8 +316,9 @@ fn (g &Parser) render_power_expression(left []FastcExpressionToken, right []Fast
 	right_type := g.infer_expression_type(right) or { return none }
 	left_value_type := g.narrowed_numeric_operand_type(left, left_type)
 	right_value_type := g.narrowed_numeric_operand_type(right, right_type)
-	result_type := fastc_power_result_type(g.underlying_alias_type(left_value_type),
-		g.underlying_alias_type(right_value_type))
+	result_type := fastc_normalize_inferred_type(fastc_numeric_infix_result_type(g.underlying_alias_type(left_value_type),
+		g.underlying_alias_type(right_value_type), fastc_integer_literal_operand(left),
+		fastc_integer_literal_operand(right)))
 	if result_type == 0 {
 		return none
 	}
@@ -317,76 +353,6 @@ fn (g &Parser) render_power_call(left string, right string, result_type u32) str
 		return '((${c_type})${g.power_helper('u64')}((u64)(${left}), (i64)(${right})))'
 	}
 	return '((${c_type})${g.power_helper('i64')}((i64)(${left}), (i64)(${right})))'
-}
-
-// fastc_power_result_type returns the type of `left ** right`, which V types like
-// the other arithmetic operators (the checker's resolve_type for an infix): a
-// float operand makes a float, an integer literal takes the other operand's type,
-// and two integer types meet as in infix_integer_promotion_type.
-fn fastc_power_result_type(left u32, right u32) u32 {
-	if !fastc_is_numeric_expression_type(left) || !fastc_is_numeric_expression_type(right) {
-		return 0
-	}
-	left_float := left in [flat.source_type_f32, flat.source_type_f64, fastc_type_float_literal]
-	right_float := right in [flat.source_type_f32, flat.source_type_f64, fastc_type_float_literal]
-	if left_float || right_float {
-		if (left == flat.source_type_f32 && right != flat.source_type_f64)
-			|| (right == flat.source_type_f32 && left != flat.source_type_f64) {
-			return flat.source_type_f32
-		}
-		return flat.source_type_f64
-	}
-	if fastc_is_integer_literal_expression_type(left) {
-		return fastc_normalize_inferred_type(right)
-	}
-	if fastc_is_integer_literal_expression_type(right) || left == right {
-		return left
-	}
-	if fastc_integer_widens_to(left, right) {
-		return right
-	}
-	return left
-}
-
-// fastc_integer_widens_to mirrors the checker's call_arg_implicit_numeric_widening
-// for two integer types.
-fn fastc_integer_widens_to(actual u32, expected u32) bool {
-	actual_index := fastc_integer_promotion_index(actual)
-	expected_index := fastc_integer_promotion_index(expected)
-	if actual_index < 0 || expected_index < 0 {
-		return false
-	}
-	high := if actual_index > expected_index { actual_index } else { expected_index }
-	low := if actual_index > expected_index { expected_index } else { actual_index }
-	promoted := if low >= 11 {
-		high
-	} else if low >= 5 && (high <= 10 || high == 22) {
-		if low == 9 { low } else { high }
-	} else if (high == 11 && low > 5) || (high == 12 && low > 6) || (high == 13 && low > 8)
-		|| (high == 14 && low >= 9) || (high == 15 && low >= 10) {
-		low
-	} else {
-		-1
-	}
-	return promoted == expected_index
-}
-
-fn fastc_integer_promotion_index(typ u32) int {
-	return match flat.source_type_name(typ) {
-		'i8' { 5 }
-		'i16' { 6 }
-		'i32' { 7 }
-		'int' { 8 }
-		'i64' { 9 }
-		'isize' { 10 }
-		'u8' { 11 }
-		'u16' { 12 }
-		'u32' { 13 }
-		'u64' { 14 }
-		'uint', 'usize' { 15 }
-		'rune' { 22 }
-		else { -1 }
-	}
 }
 
 // power_helper registers the C helper of a power with a `kind` result (`i64`,
