@@ -868,6 +868,52 @@ fn test_dynamic_parallel_chunk_capture_keeps_deduplicated_wrapper_attempts() {
 	assert g.parallel_chunk_wrapper_defs[0].callback == ['callback-shared;', 'callback-shared;']
 }
 
+fn test_parallel_capture_drop_wrappers_replay_by_symbol() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{
+		chunk_idx: 0
+	}
+	g.parallel_chunk_wrapper_capture = 0
+	first := 'static void _flctxdrop_7(void* data) { for (int i0 = 0; i0 < 2; i0++) {} }'
+	repeated := 'static void _flctxdrop_7(void* data) { for (int i1 = 0; i1 < 2; i1++) {} }'
+	g.add_spawn_wrapper_def(first)
+	g.add_spawn_wrapper_def(repeated)
+	g.parallel_chunk_wrapper_capture = -1
+	assert g.spawn_wrapper_defs == [first]
+	assert g.parallel_chunk_wrapper_defs[0].spawn == [first, repeated]
+	mut merged := FlatGen.new()
+	merged.replay_ordered_parallel_wrapper_defs(g.parallel_chunk_wrapper_defs)
+	assert merged.spawn_wrapper_defs == [first]
+}
+
+fn test_parallel_workers_merge_capture_drop_wrappers_by_symbol() {
+	for ordered_merge in [false, true] {
+		mut g, _ := parallel_worker_test_gen(true)
+		mut first := g.new_parallel_dispatch_worker(1)
+		mut second := g.new_parallel_dispatch_worker(2)
+		first.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{ chunk_idx: 0 }
+		second.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{ chunk_idx: 1 }
+		first.parallel_chunk_wrapper_capture = 0
+		second.parallel_chunk_wrapper_capture = 0
+		shared := 'static void _flctxdrop_7(void* data) { for (int i0 = 0; i0 < 2; i0++) {} }'
+		first.add_spawn_wrapper_def(shared)
+		second.add_spawn_wrapper_def('static void _flctxdrop_7(void* data) { for (int i1 = 0; i1 < 2; i1++) {} }')
+		distinct := 'static void _flctxdrop_8(void* data) {}'
+		second.add_spawn_wrapper_def(distinct)
+		if ordered_merge {
+			mut ordered := []string{len: 2}
+			mut wrappers := []ParallelChunkWrapperDefs{len: 2}
+			g.merge_parallel_worker_ordered(second, mut ordered, mut wrappers)
+			g.merge_parallel_worker_ordered(first, mut ordered, mut wrappers)
+			g.replay_ordered_parallel_wrapper_defs(wrappers)
+		} else {
+			g.merge_parallel_worker(first)
+			g.merge_parallel_worker(second)
+		}
+		assert g.spawn_wrapper_defs == [shared, distinct]
+	}
+}
+
 // c_extern_forward_decls() runs inside a disposable worker in scoped mode, so the
 // worker must inherit the header/linkage state the emission rule reads. Without it
 // every `fn C.` declaration looks header backed and silently loses its prototype.
