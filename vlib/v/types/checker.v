@@ -18067,6 +18067,7 @@ const builtin_attribute_names = [
 	'cinit',
 	'comptime',
 	'comment',
+	'console',
 	'context_specific',
 	'c_extern',
 	'default',
@@ -18475,6 +18476,7 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 		return
 	}
 	tc.collect_attribute_schemas()
+	mut warning_heads := map[string][]AttributeWarningHead{}
 	// The warn-first pass below needs the registry even when it is empty:
 	// with no schemas registered every non-builtin attribute name warns.
 	mut cur_module := ''
@@ -18495,7 +18497,7 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 					continue
 				}
 				lo, hi := attribute_use_window(node)
-				tc.check_attribute_use_pieces(node_id, node, cur_module, tc.declaration_attributes[int(node_id)], lo, hi)
+				tc.check_attribute_use_pieces(node_id, node, cur_module, tc.declaration_attributes[int(node_id)], lo, hi, mut warning_heads)
 			}
 			else {}
 		}
@@ -18524,7 +18526,7 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 					},
 					int(field.pos.end),
 				)
-				tc.check_attribute_use_pieces(field_id, field, cur_module, meta[1..].clone(), lo, hi)
+				tc.check_attribute_use_pieces(field_id, field, cur_module, meta[1..].clone(), lo, hi, mut warning_heads)
 			}
 		}
 		if node.kind == .enum_decl {
@@ -18552,7 +18554,7 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 					},
 					int(value.pos.end),
 				)
-				tc.check_attribute_use_pieces(value_id, value, cur_module, meta.clone(), lo, hi)
+				tc.check_attribute_use_pieces(value_id, value, cur_module, meta.clone(), lo, hi, mut warning_heads)
 			}
 		}
 	}
@@ -18561,7 +18563,7 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 // check_attribute_use_pieces validates the attribute `pieces` on one
 // declaration, field, or enum value against the registered schemas. `lo` and
 // `hi` bound the source range the attributes of this node occupy.
-fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int) {
+fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int, mut warning_heads map[string][]AttributeWarningHead) {
 	uses := tc.attribute_use_schemas(pieces, module)
 	for use in uses {
 		pos := tc.attribute_use_pos(node, use.base, lo, hi)
@@ -18572,41 +18574,141 @@ fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node fla
 		}
 		tc.check_attribute_use_args(node_id, use.schema, use.base, pieces, pos, module)
 	}
-	tc.warn_unknown_attribute_names(node_id, node, pieces, module, uses, lo, hi)
+	tc.warn_unknown_attribute_names(node_id, node, pieces, module, uses, lo, hi, mut warning_heads)
 }
 
-// warn_unknown_attribute_names is the warn-first half of the custom attribute
-// pass (vlang/rfcs#35, "What the compiler checks"): an attribute that is
-// neither a builtin nor a registered schema warns. It may be a typo, or a
-// legacy ad-hoc name that should become a schema. The parser flattens
-// `@[Name(p0, key: v1, p1)]` into `Name`, `Name_key: v1`, `Name_1: p1`
-// pieces, so pieces of the form `Name_*` following their head never warn:
-// the warning lands once, on the head name, pointing at the attribute in
-// the source. Whole-string attributes and fragments keep their silence.
-fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node flat.Node, pieces []string, module string, uses []AttributeUse, lo int, hi int) {
+// AttributeWarningHead retains a real, unquoted source name, rather than a
+// synthetic Name_key piece produced by flattening an attribute call.
+struct AttributeWarningHead {
+	name   string
+	offset int
+mut:
+	declaration_offset int = -1
+	declaration_end    int = -1
+}
+
+// attribute_warning_heads scans each source only when an unknown name needs a
+// warning. Tokens keep strings, comments, and call arguments out of the index.
+fn attribute_warning_heads(source string) []AttributeWarningHead {
+	mut files := token.FileSet.new()
+	mut file := files.add_file('<attribute warning names>', source.len)
+	mut lexer := scanner.new_scanner(pref.new_preferences(), .skip_interpolation)
+	lexer.init(file, source)
+	mut heads := []AttributeWarningHead{}
+	mut pending_start := 0
+	mut attached_start := 0
+	mut attached_end := 0
+	mut in_group := false
+	mut depth := 0
+	mut expects_head := false
+	mut name := ''
+	mut name_offset := 0
+	mut after_dot := false
+	for {
+		kind := lexer.scan()
+		if kind == .eof {
+			break
+		}
+		if !in_group {
+			if kind == .attribute {
+				in_group = true
+				expects_head = true
+				continue
+			}
+			if pending_start < heads.len && kind !in [.semicolon, .key_pub, .comment] {
+				attached_start = pending_start
+				attached_end = heads.len
+				for i in attached_start .. attached_end {
+					heads[i].declaration_offset = lexer.pos
+					heads[i].declaration_end = source.len
+				}
+				pending_start = heads.len
+			}
+			if kind in [.lcbr, .rcbr, .assign, .semicolon] {
+				for i in attached_start .. attached_end {
+					heads[i].declaration_end = lexer.pos
+				}
+				attached_start = attached_end
+			}
+			continue
+		}
+		if depth > 0 {
+			if kind == .lpar {
+				depth++
+			} else if kind == .rpar {
+				depth--
+			}
+			continue
+		}
+		if name.len > 0 {
+			if kind == .dot && !after_dot {
+				after_dot = true
+				continue
+			}
+			if after_dot && kind in [.name, .key_pub] {
+				name += '.' + lexer.lit
+				after_dot = false
+				continue
+			}
+			heads << AttributeWarningHead{
+				name:   name
+				offset: name_offset
+			}
+			name = ''
+			after_dot = false
+		}
+		match kind {
+			.rsbr { in_group = false }
+			.lpar { depth++ }
+			.comma, .semicolon { expects_head = true }
+			else {
+				if expects_head {
+					expects_head = false
+					if kind in [.name, .key_pub] {
+						name = lexer.lit
+						name_offset = lexer.pos
+					}
+				}
+			}
+		}
+	}
+	return heads
+}
+
+// warn_unknown_attribute_names warns once per real attribute name. Whole-string
+// metadata and flattened call arguments are not names, while independently
+// written Name and Name_key attributes both remain eligible for warnings.
+fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node flat.Node, pieces []string, module string, uses []AttributeUse, lo int, hi int, mut warning_heads map[string][]AttributeWarningHead) {
 	mut matched := map[string]bool{}
 	for use in uses {
 		matched[use.base] = true
 	}
-	mut open_head := ''
 	mut warned := map[string]bool{}
 	for raw in pieces {
 		name := raw.all_before(':').trim_space()
-		if name.len == 0 {
+		if matched[name] || warned[name] || !is_attribute_warnable_name(name)
+			|| is_builtin_attribute_name(name) {
 			continue
 		}
-		if open_head.len > 0 && name.starts_with(open_head + '_') {
-			continue
+		file := tc.a.source_files[node.pos.id] or { continue }
+		if file.name !in warning_heads {
+			source := tc.source_texts_by_file[file.name] or { continue }
+			warning_heads[file.name] = attribute_warning_heads(source)
 		}
-		open_head = name
-		if matched[name] || warned[name] {
-			continue
+		mut offset := -1
+		heads := warning_heads[file.name] or { []AttributeWarningHead{} }
+		for head in heads {
+			if head.name != name || head.offset < lo || head.offset >= hi {
+				continue
+			}
+			if node.kind !in [.field_decl, .enum_field]
+				&& (hi < head.declaration_offset || hi >= head.declaration_end) {
+				continue
+			}
+			offset = head.offset
+			break
 		}
-		if !is_attribute_warnable_name(name) {
-			open_head = ''
-			continue
-		}
-		if is_builtin_attribute_name(name) {
+		if offset < 0 {
 			continue
 		}
 		hint := tc.attribute_unknown_hint(name, module)
@@ -18615,7 +18717,8 @@ fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node f
 			message = 'unknown attribute `${name}`.${hint}'
 		}
 		message += ' Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.'
-		tc.record_warning_at(.assignment_mismatch, message, node_id, tc.attribute_use_pos(node, name, lo, hi))
+		tc.record_warning_at(.assignment_mismatch, message, node_id,
+			token.new_span(node.pos.id, offset, offset + name.len))
 		warned[name] = true
 	}
 }

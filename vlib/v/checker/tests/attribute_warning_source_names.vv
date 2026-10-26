@@ -1,0 +1,24 @@
+@['legacy']
+struct QuotedMetadata {}
+
+@[legacy]
+struct BareMetadata {}
+
+// @[legacy] inside a comment is not an attribute.
+@['legacy']
+struct MoreQuotedMetadata {}
+
+@[foo; foo_bar]
+fn independent_names() {}
+
+@[NoSchema('first', named: 'value', 'second')]
+fn flattened_arguments() {}
+
+struct FieldMetadata {
+	value int @[foo; foo_bar]
+	quoted string @['legacy']
+	call int @[NoSchema('first', named: 'value')]
+}
+
+@[console]
+fn main() {}

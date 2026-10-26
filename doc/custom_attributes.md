@@ -17,3 +17,6 @@ declare a schema with `@[attribute]` or drop the attribute.
 The suggestion appears when a same-named schema exists in another module (qualify it,
 `mod.Name`), or when a schema or builtin name is close (first letter shared, small edit
 distance). An attribute call `@[Name(args)]` warns once, on its name, never per argument.
+
+Whole-string metadata such as `@['legacy']` does not warn. Independently written names,
+such as `@[foo; foo_bar]`, are checked separately, even when one name prefixes another.

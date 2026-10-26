@@ -1,0 +1,63 @@
+vlib/v/checker/tests/attribute_warning_source_names.vv:12:4: notice: unused function: `independent_names`
+   10 |
+   11 | @[foo; foo_bar]
+   12 | fn independent_names() {}
+      |    ~~~~~~~~~~~~~~~~~
+   13 |
+   14 | @[NoSchema('first', named: 'value', 'second')]
+vlib/v/checker/tests/attribute_warning_source_names.vv:15:4: notice: unused function: `flattened_arguments`
+   13 |
+   14 | @[NoSchema('first', named: 'value', 'second')]
+   15 | fn flattened_arguments() {}
+      |    ~~~~~~~~~~~~~~~~~~~
+   16 |
+   17 | struct FieldMetadata {
+vlib/v/checker/tests/attribute_warning_source_names.vv:4:3: warning: unknown attribute `legacy` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    2 | struct QuotedMetadata {}
+    3 |
+    4 | @[legacy]
+      |   ~~~~~~
+    5 | struct BareMetadata {}
+    6 |
+vlib/v/checker/tests/attribute_warning_source_names.vv:11:8: warning: unknown attribute `foo_bar` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    9 | struct MoreQuotedMetadata {}
+   10 |
+   11 | @[foo; foo_bar]
+      |        ~~~~~~~
+   12 | fn independent_names() {}
+   13 |
+vlib/v/checker/tests/attribute_warning_source_names.vv:11:3: warning: unknown attribute `foo` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    9 | struct MoreQuotedMetadata {}
+   10 |
+   11 | @[foo; foo_bar]
+      |   ~~~
+   12 | fn independent_names() {}
+   13 |
+vlib/v/checker/tests/attribute_warning_source_names.vv:14:3: warning: unknown attribute `NoSchema` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   12 | fn independent_names() {}
+   13 |
+   14 | @[NoSchema('first', named: 'value', 'second')]
+      |   ~~~~~~~~
+   15 | fn flattened_arguments() {}
+   16 |
+vlib/v/checker/tests/attribute_warning_source_names.vv:18:19: warning: unknown attribute `foo_bar` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   16 |
+   17 | struct FieldMetadata {
+   18 |     value int @[foo; foo_bar]
+      |                      ~~~~~~~
+   19 |     quoted string @['legacy']
+   20 |     call int @[NoSchema('first', named: 'value')]
+vlib/v/checker/tests/attribute_warning_source_names.vv:18:14: warning: unknown attribute `foo` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   16 |
+   17 | struct FieldMetadata {
+   18 |     value int @[foo; foo_bar]
+      |                 ~~~
+   19 |     quoted string @['legacy']
+   20 |     call int @[NoSchema('first', named: 'value')]
+vlib/v/checker/tests/attribute_warning_source_names.vv:20:13: warning: unknown attribute `NoSchema` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   18 |     value int @[foo; foo_bar]
+   19 |     quoted string @['legacy']
+   20 |     call int @[NoSchema('first', named: 'value')]
+      |                ~~~~~~~~
+   21 | }
+   22 |
