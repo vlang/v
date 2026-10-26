@@ -18187,6 +18187,121 @@ fn is_attribute_target_name(name string) bool {
 	return name in ['fn', 'struct', 'enum', 'field', 'value', 'interface', 'module']
 }
 
+// builtin_attribute_names enumerates the attribute names the compiler itself
+// consumes, plus the ad-hoc names the standard library still parses by hand
+// at comptime (orm, json, cbor, toml, vweb, ...). The warn-first pass for
+// unregistered names (vlang/rfcs#35) never warns about these. The set is
+// exact and case-sensitive: a name differing only in casing is unknown.
+const builtin_attribute_names = [
+	'_allow_multiple_values',
+	'_linker_section',
+	'_naked',
+	'_pack',
+	'_packed',
+	'aligned',
+	'alias',
+	'assert_continues',
+	'application',
+	'attribute',
+	'c',
+	'callconv',
+	'c_anon',
+	'cbor',
+	'cbor_rename_all',
+	'cinit',
+	'comptime',
+	'comment',
+	'console',
+	'context_specific',
+	'c_extern',
+	'default',
+	'deprecated',
+	'deprecated_after',
+	'delete',
+	'direct_array_access',
+	'email',
+	'env',
+	'explicit',
+	'export',
+	'flag',
+	'freed',
+	'fkey',
+	'generated',
+	'generic',
+	'get',
+	'has_default',
+	'has_globals',
+	'head',
+	'heap',
+	'host',
+	'implicit',
+	'ignore_overflow',
+	'index',
+	'inline',
+	'inner',
+	'json',
+	'json_as_number',
+	'json_null',
+	'keep_args_alive',
+	'live',
+	'long',
+	'manualfree',
+	'markused',
+	'max',
+	'min',
+	'must_use',
+	'noalloc',
+	'nocopy',
+	'noinit',
+	'noinline',
+	'noreturn',
+	'omitempty',
+	'only',
+	'optional',
+	'options',
+	'packed',
+	'params',
+	'patch',
+	'post',
+	'primary',
+	'private',
+	'put',
+	'raw',
+	'references',
+	'repeats',
+	'required',
+	'serial',
+	'serialize',
+	'short',
+	'skip',
+	'soa',
+	'spawn_stack',
+	'sql',
+	'sql_select',
+	'sql_type',
+	'str',
+	'strict_map_index',
+	'sumtype_to',
+	'table',
+	'tail',
+	'toml',
+	'translated',
+	'trusted',
+	'typedef',
+	'unique',
+	'unique_key',
+	'union',
+	'unsafe',
+	'unscoped',
+	'wasm_import_namespace',
+]
+
+// is_builtin_attribute_name reports whether `name` names a compiler-known
+// attribute, case-sensitively.
+fn is_builtin_attribute_name(name string) bool {
+	return name in builtin_attribute_names
+}
+
 // attribute_modules_compatible reports whether a schema declared in
 // `schema_module` is visible to a bare use in `use_module`. Bare names
 // resolve V-strict: the current module only.
@@ -18496,15 +18611,18 @@ fn attribute_whole_word_index(s string, word string) ?int {
 // check_custom_attribute_uses validates every attribute use whose name
 // matches a registered `@[attribute]` schema (vlang/rfcs#35, slice 2):
 // target restrictions, argument counts and names, and argument types.
-// Unregistered names stay silent here; they are slice-3 warn-first material.
+// Names that match no schema are reported by warn_unknown_attribute_names
+// (vlang/rfcs#35, warn-first): they may be typos or legacy ad-hoc attributes,
+// so they warn instead of erroring and nothing that compiles today stops
+// compiling.
 fn (mut tc TypeChecker) check_custom_attribute_uses() {
 	if tc.valid_diagnostic_fast {
 		return
 	}
 	tc.collect_attribute_schemas()
-	if tc.attribute_schemas.len == 0 {
-		return
-	}
+	mut warning_heads := map[string][]AttributeWarningHead{}
+	// The warn-first pass below needs the registry even when it is empty:
+	// with no schemas registered every non-builtin attribute name warns.
 	mut cur_module := ''
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
@@ -18523,7 +18641,7 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 					continue
 				}
 				lo, hi := attribute_use_window(node)
-				tc.check_attribute_use_pieces(node_id, node, cur_module, tc.declaration_attributes[int(node_id)], lo, hi)
+				tc.check_attribute_use_pieces(node_id, node, cur_module, tc.declaration_attributes[int(node_id)], lo, hi, mut warning_heads)
 			}
 			else {}
 		}
@@ -18552,7 +18670,7 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 					},
 					int(field.pos.end),
 				)
-				tc.check_attribute_use_pieces(field_id, field, cur_module, meta[1..].clone(), lo, hi)
+				tc.check_attribute_use_pieces(field_id, field, cur_module, meta[1..].clone(), lo, hi, mut warning_heads)
 			}
 		}
 		if node.kind == .enum_decl {
@@ -18580,7 +18698,7 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 					},
 					int(value.pos.end),
 				)
-				tc.check_attribute_use_pieces(value_id, value, cur_module, meta.clone(), lo, hi)
+				tc.check_attribute_use_pieces(value_id, value, cur_module, meta.clone(), lo, hi, mut warning_heads)
 			}
 		}
 	}
@@ -18589,8 +18707,9 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 // check_attribute_use_pieces validates the attribute `pieces` on one
 // declaration, field, or enum value against the registered schemas. `lo` and
 // `hi` bound the source range the attributes of this node occupy.
-fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int) {
-	for use in tc.attribute_use_schemas(pieces, module) {
+fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int, mut warning_heads map[string][]AttributeWarningHead) {
+	uses := tc.attribute_use_schemas(pieces, module)
+	for use in uses {
 		pos := tc.attribute_use_pos(node, use.base, lo, hi)
 		if use.schema.targets.len > 0
 			&& attribute_target_kind_word(node.kind) !in use.schema.targets {
@@ -18599,6 +18718,289 @@ fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node fla
 		}
 		tc.check_attribute_use_args(node_id, use.schema, use.base, pieces, pos, module)
 	}
+	tc.warn_unknown_attribute_names(node_id, node, pieces, module, uses, mut warning_heads)
+}
+
+// AttributeWarningHead retains a real, unquoted source name, rather than a
+// synthetic Name_key piece produced by flattening an attribute call.
+struct AttributeWarningHead {
+	name            string
+	offset          int
+	leading         bool
+	legacy          bool
+	previous_offset int
+	previous_kind   token.Token
+	first_kind      token.Token
+mut:
+	group_end          int
+	declaration_offset int = -1
+	declaration_end    int = -1
+}
+
+// attribute_warning_heads scans each source only when an unknown name needs a
+// warning. Tokens keep strings, comments, and call arguments out of the index.
+fn attribute_warning_heads(source string) []AttributeWarningHead {
+	mut files := token.FileSet.new()
+	mut file := files.add_file('<attribute warning names>', source.len)
+	mut lexer := scanner.new_scanner(pref.new_preferences(), .skip_interpolation)
+	lexer.init(file, source)
+	mut heads := []AttributeWarningHead{}
+	mut pending_start := 0
+	mut attached_start := 0
+	mut attached_end := 0
+	mut in_group := false
+	mut depth := 0
+	mut expects_head := false
+	mut name := ''
+	mut name_offset := 0
+	mut after_dot := false
+	mut previous_kind := token.Token.eof
+	mut previous_offset := -1
+	mut previous_access := false
+	mut group_start := 0
+	mut group_leading := false
+	mut group_legacy := false
+	mut group_previous_kind := token.Token.eof
+	mut group_previous_offset := -1
+	mut group_first_kind := token.Token.eof
+	for {
+		kind := lexer.scan()
+		if kind == .eof {
+			break
+		}
+		if kind == .comment {
+			continue
+		}
+		if !in_group {
+			access := kind in [.key_pub, .key_mut]
+				|| (kind == .name && lexer.lit == 'module_mut' && previous_kind == .key_pub)
+			if kind in [.attribute, .lsbr] {
+				in_group = true
+				expects_head = true
+				group_start = heads.len
+				group_leading = previous_access
+					|| previous_kind in [.eof, .semicolon, .lcbr, .rcbr, .colon]
+				group_legacy = kind == .lsbr
+				group_previous_kind = previous_kind
+				group_previous_offset = previous_offset
+				group_first_kind = .eof
+				continue
+			}
+			if pending_start < heads.len && kind != .semicolon && !access {
+				attached_start = pending_start
+				attached_end = heads.len
+				for i in attached_start .. attached_end {
+					if heads[i].leading {
+						heads[i].declaration_offset = lexer.pos
+						heads[i].declaration_end = source.len
+					}
+				}
+				pending_start = heads.len
+			}
+			if kind in [.lcbr, .rcbr, .assign, .semicolon] {
+				for i in attached_start .. attached_end {
+					heads[i].declaration_end = lexer.pos
+				}
+				attached_start = attached_end
+			}
+			previous_kind = kind
+			previous_offset = lexer.pos
+			previous_access = access
+			continue
+		}
+		if group_first_kind == .eof {
+			group_first_kind = kind
+		}
+		if depth > 0 {
+			if kind == .lpar {
+				depth++
+			} else if kind == .rpar {
+				depth--
+			}
+			continue
+		}
+		if name.len > 0 {
+			if kind == .dot && !after_dot {
+				after_dot = true
+				continue
+			}
+			if after_dot && kind in [.name, .key_pub] {
+				name += '.' + lexer.lit
+				after_dot = false
+				continue
+			}
+			heads << AttributeWarningHead{
+				name:            name
+				offset:          name_offset
+				leading:         group_leading
+				legacy:          group_legacy
+				previous_offset: group_previous_offset
+				previous_kind:   group_previous_kind
+				first_kind:      group_first_kind
+			}
+			name = ''
+			after_dot = false
+		}
+		match kind {
+			.rsbr {
+				in_group = false
+				for i in group_start .. heads.len {
+					heads[i].group_end = lexer.pos + 1
+				}
+				previous_kind = .rsbr
+				previous_offset = lexer.pos
+				previous_access = false
+			}
+			.lpar { depth++ }
+			.comma, .semicolon { expects_head = true }
+			else {
+				if expects_head {
+					expects_head = false
+					if kind in [.name, .key_pub] {
+						name = lexer.lit
+						name_offset = lexer.pos
+					}
+				}
+			}
+		}
+	}
+	return heads
+}
+
+// attribute_warning_head_owns_node distinguishes leading groups from trailing
+// child groups without a byte limit or borrowing a neighbouring child's name.
+fn (tc &TypeChecker) attribute_warning_head_owns_node(head AttributeWarningHead, node flat.Node) bool {
+	start := int(node.pos.offset)
+	if node.kind !in [.field_decl, .enum_field] {
+		return head.leading && start >= head.declaration_offset && start < head.declaration_end
+	}
+	if head.leading {
+		return head.declaration_offset == start
+	}
+	if node.kind == .enum_field {
+		mut end := int(node.pos.end)
+		for i in 0 .. node.children_count {
+			end = int_max(end, int(tc.a.child_node(&node, i).pos.end))
+		}
+		return head.previous_offset >= start && head.previous_offset < end
+	}
+	if head.offset < start || head.offset >= int(node.pos.end) {
+		return false
+	}
+	if !head.legacy {
+		return true
+	}
+	// Legacy field attributes finish the field. Brackets in its type or default
+	// expression must not turn quoted metadata into a named attribute.
+	if head.group_end != int(node.pos.end) {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if head.offset < int(tc.a.child_node(&node, i).pos.end) {
+			return false
+		}
+	}
+	if head.previous_kind == .name
+		&& head.first_kind in [.name, .amp, .and, .question, .not, .lsbr, .lpar, .key_fn, .key_struct,
+			.ellipsis, .key_mut, .key_shared, .key_atomic, .key_typeof] {
+		return false
+	}
+	return true
+}
+
+// warn_unknown_attribute_names warns once per real attribute name. Whole-string
+// metadata and flattened call arguments are not names, while independently
+// written Name and Name_key attributes both remain eligible for warnings.
+fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node flat.Node, pieces []string, module string, uses []AttributeUse, mut warning_heads map[string][]AttributeWarningHead) {
+	mut matched := map[string]bool{}
+	for use in uses {
+		matched[use.base] = true
+	}
+	mut warned := map[string]bool{}
+	for raw in pieces {
+		name := raw.all_before(':').trim_space()
+		if matched[name] || warned[name] || !is_attribute_warnable_name(name)
+			|| is_builtin_attribute_name(name) {
+			continue
+		}
+		file := tc.a.source_files[node.pos.id] or { continue }
+		if file.name !in warning_heads {
+			source := tc.source_texts_by_file[file.name] or { continue }
+			warning_heads[file.name] = attribute_warning_heads(source)
+		}
+		mut offset := -1
+		heads := warning_heads[file.name] or { []AttributeWarningHead{} }
+		for head in heads {
+			if head.name != name || !tc.attribute_warning_head_owns_node(head, node) {
+				continue
+			}
+			offset = head.offset
+			break
+		}
+		if offset < 0 {
+			continue
+		}
+		hint := tc.attribute_unknown_hint(name, module)
+		mut message := 'unknown attribute `${name}`'
+		if hint.len > 0 {
+			message = 'unknown attribute `${name}`.${hint}'
+		}
+		message += ' Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.'
+		tc.record_warning_at(.assignment_mismatch, message, node_id,
+			token.new_span(node.pos.id, offset, offset + name.len))
+		warned[name] = true
+	}
+}
+
+// attribute_unknown_hint returns the matching ` Did you mean \`X\`?` fragment
+// for an unknown attribute name, or an empty string, per the RFC sample
+// wording. An exact same-named schema in another module beats fuzzy
+// matching: the qualified form is the fix per "Name resolution across
+// modules". Otherwise a name sharing the first letter within the edit
+// budget suggests the closest schema short name or builtin.
+fn (tc &TypeChecker) attribute_unknown_hint(name string, module string) string {
+	mut qualified := []string{}
+	if name.contains('.') {
+		qualifier := name.all_before_last('.')
+		short := name.all_after_last('.')
+		for schema in tc.attribute_schemas[short] or { []AttributeSchema{} } {
+			if schema.module != qualifier {
+				qualified << '${schema.module}.${short}'
+			}
+		}
+	} else {
+		for schema in tc.attribute_schemas[name] or { []AttributeSchema{} } {
+			if !attribute_modules_compatible(schema.module, module) {
+				qualified << '${schema.module}.${name}'
+			}
+		}
+	}
+	if qualified.len > 0 {
+		return ' Did you mean `${qualified[0]}`?'
+	}
+	mut candidates := builtin_attribute_names.clone()
+	for short, _ in tc.attribute_schemas {
+		candidates << short
+	}
+	mut closest := ''
+	mut closest_distance := name.len + 1
+	lower_name := name.to_lower()
+	for candidate in candidates {
+		lower_candidate := candidate.to_lower()
+		if lower_name.len == 0 || lower_candidate.len == 0 || lower_name[0] != lower_candidate[0] {
+			continue
+		}
+		distance := strings.levenshtein_distance(lower_name, lower_candidate)
+		max_distance := if name.len <= 3 { 1 } else { int_max(1, name.len / 3) }
+		if distance <= max_distance && distance < closest_distance {
+			closest = candidate
+			closest_distance = distance
+		}
+	}
+	if closest.len > 0 {
+		return ' Did you mean `${closest}`?'
+	}
+	return ''
 }
 
 // attribute_use_schemas finds the schemas `pieces` uses, V-strict (RFC
@@ -18766,6 +19168,13 @@ fn is_bare_ident(s string) bool {
 		}
 	}
 	return true
+}
+
+// is_attribute_warnable_name reports whether `name` looks like an attribute
+// name: a bare identifier or a `mod.Name` piece. Whole-string attributes and
+// arbitrary fragments are not attribute names and never warn.
+fn is_attribute_warnable_name(name string) bool {
+	return is_bare_ident(name.all_after_last('.'))
 }
 
 // attribute_dot_enum_value reassembles a dot-prefixed enum value that the

@@ -31,6 +31,13 @@ mut:
 	atlas_smp gfx.Sampler
 	atlas_w   int
 	atlas_h   int
+	// fontstash calls renderUpdate once per text draw that rasterizes new
+	// glyphs, and sokol rejects a second sg_update_image of the same image in
+	// one frame. The upload is therefore deferred: renderUpdate only marks the
+	// atlas dirty, and FT.flush performs the single per-frame upload before the
+	// pass begins.
+	pending_upload bool
+	pending_data   &u8 = unsafe { nil }
 }
 
 pub enum HorizontalAlign {
@@ -81,6 +88,7 @@ fn (mut rt FonsRenderTarget) create_atlas(width int, height int) {
 	}
 	rt.atlas_w = width
 	rt.atlas_h = height
+	rt.pending_upload = false
 	if rt.ctx != unsafe { nil } && rt.ctx.r != unsafe { nil } {
 		rt.ctx.r.register_image(int(rt.atlas_img.id), unsafe { nil }, width, height, 1, 0)
 	}
@@ -97,12 +105,10 @@ fn fons_render_update(uptr voidptr, rect &i32, data &u8) {
 	if rt.atlas_img.id == 0 || rt.atlas_w <= 0 || rt.atlas_h <= 0 {
 		return
 	}
-	mut img_data := gfx.ImageData{}
-	img_data.subimage[0][0] = gfx.Range{
-		ptr:  voidptr(data)
-		size: uint(rt.atlas_w * rt.atlas_h)
-	}
-	gfx.update_image(rt.atlas_img, &img_data)
+	// The GPU upload is deferred to FT.flush, so several text draws that
+	// rasterize new glyphs within one frame share a single sg_update_image.
+	rt.pending_upload = true
+	rt.pending_data = data
 	if rt.ctx != unsafe { nil } && rt.ctx.r != unsafe { nil } {
 		// rect is {x, y, width, height} of the dirty atlas region; only that
 		// region is copied into the CPU texture registry.
@@ -131,8 +137,14 @@ fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts 
 	ctx := rt.ctx
 	ctx.r.enable_texture()
 	ctx.r.texture(rt.atlas_img, rt.atlas_smp)
-	ctx.r.load_pipeline(ctx.pipeline.alpha)
-	ctx.r.begin_quads()
+	// The atlas is r8: the font pipeline's shader reads its red channel as
+	// coverage. The generic alpha pipeline would multiply the sampled
+	// vec4(r, 0, 0, 1) into the vertex color, turning glyphs red.
+	ctx.r.load_pipeline(ctx.pipeline.font)
+	// fontstash emits two triangles (six vertices) per glyph. A quad batch would
+	// make the render context insert a duplicate vertex every fourth input, which
+	// shifts the triangle stream out of alignment after the first glyph.
+	ctx.r.begin_triangles()
 	for i in 0 .. int(nverts) {
 		x := unsafe { verts[i * 2] }
 		y := unsafe { verts[i * 2 + 1] }
@@ -313,6 +325,16 @@ fn new_ft(ctx &Context, c FTConfig) ?&FT {
 	}
 }
 
+// text_atlas_pending_upload reports whether fontstash rasterized glyphs that
+// are not on the GPU yet. Context.end uploads them before drawing the current
+// frame, so callers do not need to request an extra frame for new glyphs.
+pub fn (ctx &Context) text_atlas_pending_upload() bool {
+	if !ctx.font_inited || ctx.ft == unsafe { nil } {
+		return false
+	}
+	return ctx.ft.rt.pending_upload
+}
+
 // set_text_cfg sets the current text configuration
 pub fn (ctx &Context) set_text_cfg(cfg TextCfg) {
 	if !ctx.font_inited {
@@ -424,8 +446,21 @@ pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
 	ctx.draw_text(x, y, text)
 }
 
-// flush prepares the font for use.
+// flush uploads pending glyphs before drawing the font atlas.
 pub fn (ft &FT) flush() {
+	// Upload the atlas once for everything fontstash rasterized since the last
+	// flush. Context.end calls this after text has been queued and before the
+	// pass opens, so all new glyphs share one image update per commit.
+	mut rt := ft.rt
+	if rt.pending_upload && rt.atlas_img.id > 0 && rt.pending_data != unsafe { nil } {
+		mut img_data := gfx.ImageData{}
+		img_data.subimage[0][0] = gfx.Range{
+			ptr:  voidptr(rt.pending_data)
+			size: uint(rt.atlas_w * rt.atlas_h)
+		}
+		gfx.update_image(rt.atlas_img, &img_data)
+		rt.pending_upload = false
+	}
 	mut dirty := [4]int{}
 	_ = ft.fons.validate_texture(&dirty[0])
 }
