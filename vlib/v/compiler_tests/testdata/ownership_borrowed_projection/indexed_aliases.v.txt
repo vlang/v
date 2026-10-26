@@ -112,12 +112,11 @@ fn test_shadowed_index_alias_is_restored() {
 	}
 	key := "item"
 	alias := &(entries[key] as Payload)
-	{
-		alias := &Payload{
-			values: ["shadow"]
-		}
+	// Function parameters may shadow an outer binding; ordinary nested locals may not.
+	callback := fn (alias &Payload) {
 		assert alias.values[0] == "shadow"
 	}
+	callback(&Payload{values: ["shadow"]})
 	entries[key] = alias
 	assert (entries[key] as Payload).values[0] == "retained"
 }
