@@ -9,13 +9,13 @@ const deflate_min_match = 3
 const deflate_max_match = 258
 const deflate_window = 32768
 
-const fixed_litlen_codes = build_fixed_litlen_codes()
-const fixed_dist_codes = build_fixed_dist_codes()
+const fixed_litlen_codes = build_fixed_litlen_codes(fixed_litlen_lens)
+const fixed_dist_codes = build_fixed_dist_codes(fixed_dist_lens)
 
 // build_fixed_litlen_codes returns reversed codes for fixed Huffman lit/len.
 // The LSB-first codes come straight from the shared canonical builder, since
 // the encoder writes bits LSB-first.
-fn build_fixed_litlen_codes() []u32 {
+fn build_fixed_litlen_codes(fixed_litlen_lens []int) []u32 {
 	mut t := huffman.build(lengths: fixed_litlen_lens, max_bits: 9, bit_order: .lsb_first) or {
 		panic('deflate: failed to build fixed lit/len Huffman codes: ${err}')
 	}
@@ -26,7 +26,7 @@ fn build_fixed_litlen_codes() []u32 {
 }
 
 // build_fixed_dist_codes returns reversed codes for fixed Huffman distance.
-fn build_fixed_dist_codes() []u32 {
+fn build_fixed_dist_codes(fixed_dist_lens []int) []u32 {
 	mut codes := []u32{len: fixed_dist_lens.len}
 	for i in 0 .. fixed_dist_lens.len {
 		codes[i] = bit_reverse(u32(i), 5)
