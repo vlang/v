@@ -1,4 +1,4 @@
-﻿name: Update tccbin
+name: Update tccbin
 
 run-name: ${{ inputs.resume_handoff_id && format('tccbin-recovery-{0}', inputs.resume_handoff_id) || inputs.native_gate_consumer_id && format('tccbin-gate-{0}', inputs.native_gate_consumer_id) || 'Update tccbin' }}
 
