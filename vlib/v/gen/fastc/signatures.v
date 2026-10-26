@@ -120,8 +120,8 @@ fn fastc_skip_type_declaration(mut scan scanner.Scanner, first token.Token) !tok
 	return if tok == .semicolon { scan.scan() } else { tok }
 }
 
-fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[string]bool) bool {
-	return params_structs[parameter_type.trim_right('*')]
+fn fastc_parameter_is_params_struct(parameter_type u32, params_structs map[string]bool) bool {
+	return params_structs[flat.source_type_name(parameter_type).trim_right('*')]
 }
 
 fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
@@ -227,7 +227,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				if receiver_key == '' {
 					receiver_key = fastc_semantic_declared_type_key(flat.source_type_name(receiver_type), declared_type_c_names)
 				}
-				if receiver_is_mut && !flat.source_type_name(receiver_type).ends_with('*') {
+				if receiver_is_mut && !flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					receiver_type = flat.source_type_id(flat.source_type_name(receiver_type) + '*')
 				}
 				parameter_types << receiver_type
@@ -244,7 +244,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			mut name := if tok == .name || tok.is_keyword() { scan.lit } else { tok.str() }
 			tok = scan.scan()
 			mut is_c_function := false
-			if flat.source_type_name(receiver_type) == '' && name == 'C' && tok == .dot {
+			if receiver_type == u32(0) && name == 'C' && tok == .dot {
 				is_c_function = true
 				tok = scan.scan()
 				if tok != .name && !tok.is_keyword() {
@@ -252,7 +252,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				}
 				name = scan.lit
 				tok = scan.scan()
-			} else if flat.source_type_name(receiver_type) == '' && tok == .dot {
+			} else if receiver_type == u32(0) && tok == .dot {
 				type_key := fastc_type_key(header.module_name, name)
 				if type_key !in declared_types {
 					return error('fastc parser does not support static method owner `${name}` in ${path}')
@@ -404,7 +404,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				}
 				parameter_type := parameter_type_source_id_2
 
-				stored_parameter_type := if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
+				stored_parameter_type := if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
 					flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 				} else {
 					parameter_type
@@ -488,7 +488,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				returned_fn_return_type:       returned_function.return_type
 				returned_fn_option_value_type: returned_function.option_value_type
 				is_variadic:                   is_variadic
-				last_parameter_is_params:      fixed_parameter_count > 0 && fastc_parameter_is_params_struct(flat.source_type_name(parameter_types.last()), params_structs)
+				last_parameter_is_params:      fixed_parameter_count > 0 && fastc_parameter_is_params_struct(parameter_types.last(), params_structs)
 				is_public:                     is_public || is_c_function
 				is_disabled:                   !next_declaration_is_enabled
 				is_c_extern:                   is_c_function && next_declaration_is_c_extern
@@ -501,7 +501,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			if previous := functions[function_key] {
 				if !is_c_function {
 					is_c_override := previous.path.ends_with('.c.v') || path.ends_with('.c.v')
-					if previous.path == path || !is_c_override || !fastc_type_ids_equal(previous.parameter_types.ids.clone(), signature.parameter_types.ids.clone()) || !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability) || previous.last_parameter_is_params != signature.last_parameter_is_params || previous.return_type_text() != signature.return_type_text() {
+					if previous.path == path || !is_c_override || !fastc_type_ids_equal(previous.parameter_types.ids.clone(), signature.parameter_types.ids.clone()) || !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability) || previous.last_parameter_is_params != signature.last_parameter_is_params || previous.return_type != signature.return_type {
 						return error('fastc parser does not support duplicate function `${name}` in ${path}')
 					}
 					if previous.path.ends_with('.c.v') {
@@ -740,11 +740,11 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 		parameter_type_source_id_2_2, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 		parameter_type := parameter_type_source_id_2_2
 
-		parameter_types << flat.source_type_id(if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
-			flat.source_type_name(parameter_type) + '*'
+		parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
+			flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 		} else {
-			flat.source_type_name(parameter_type)
-		})
+			parameter_type
+		}
 		parameter_mutability << parameter_is_mut
 		tok = fastc_scan_skip_semicolons(mut scan, next_token)
 	}
@@ -1209,11 +1209,11 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				parameter_type_source_id_2_2_2, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 				parameter_type := parameter_type_source_id_2_2_2
 
-				parameter_types << flat.source_type_id(if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
-					flat.source_type_name(parameter_type) + '*'
+				parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
+					flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 				} else {
-					flat.source_type_name(parameter_type)
-				})
+					parameter_type
+				}
 				parameter_mutability << parameter_is_mut
 				tok = fastc_scan_skip_semicolons(mut scan, next_token)
 				if tok == .comma {
@@ -1331,7 +1331,7 @@ fn fastc_merge_signature_partial(partial FastcSignaturePartial, mut functions ma
 			previous := functions[key]
 			if !key.starts_with('C.') {
 				is_c_override := previous.path.ends_with('.c.v') || signature.path.ends_with('.c.v')
-				if previous.path == signature.path || !is_c_override || !fastc_type_ids_equal(previous.parameter_types.ids.clone(), signature.parameter_types.ids.clone()) || !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability) || previous.last_parameter_is_params != signature.last_parameter_is_params || previous.return_type_text() != signature.return_type_text() {
+				if previous.path == signature.path || !is_c_override || !fastc_type_ids_equal(previous.parameter_types.ids.clone(), signature.parameter_types.ids.clone()) || !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability) || previous.last_parameter_is_params != signature.last_parameter_is_params || previous.return_type != signature.return_type {
 					return error('fastc parser does not support duplicate function `${key.all_after_last('.')}` in ${signature.path}')
 				}
 				if previous.path.ends_with('.c.v') {
@@ -1479,11 +1479,11 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		parameter_type_source_id_2_2_2_2, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		parameter_type := parameter_type_source_id_2_2_2_2
 
-		parameter_types << flat.source_type_id(if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
-			flat.source_type_name(parameter_type) + '*'
+		parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
+			flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 		} else {
-			flat.source_type_name(parameter_type)
-		})
+			parameter_type
+		}
 		tok = fastc_scan_skip_semicolons(mut look, next_token)
 	}
 	tok = look.scan()
@@ -1870,7 +1870,7 @@ fn fastc_fixed_length_atom(tokens []FastcExpressionToken, start int, module_name
 		return error('fastc parser does not support fixed array dimension token `${item.tok.str()}`')
 	}
 	if start + 1 < tokens.len && tokens[start + 1].tok == .lpar {
-		if item.lit !in ['int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'usize',
+		if item.lit !in ['int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'uint', 'usize',
 			'isize'] {
 			return error('fastc parser does not support function call in fixed array dimension')
 		}
@@ -2140,12 +2140,12 @@ fn (g &Parser) map_type_through_alias(typ u32) u32 {
 }
 
 fn (g &Parser) is_map_type(typ u32) bool {
-	base := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(fastc_normalize_inferred_type(typ))))
-	return base == 'map' || g.map_key_value_types(flat.source_type_id(base)) != none
+	base := fastc_trim_pointer_type(g.underlying_alias_type(fastc_normalize_inferred_type(typ)))
+	return base == fastc_type_map || g.map_key_value_types(base) != none
 }
 
-fn fastc_register_composite_type(typ string, mut composite_types map[string]bool) {
-	base := typ.trim_right('*')
+fn fastc_register_composite_type(typ u32, mut composite_types map[string]bool) {
+	base := flat.source_type_name(typ).trim_right('*')
 	if base.starts_with('Array_') || base.starts_with('Map_') {
 		composite_types[base] = true
 	}

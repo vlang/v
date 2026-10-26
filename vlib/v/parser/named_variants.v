@@ -105,7 +105,7 @@ fn is_plain_capitalized_ident(name string) bool {
 // hidden struct, `Expr@variant@Count { payload int }`, and the sum type holds
 // those structs, so storage, tags, casts and matching reuse the regular sum type
 // machinery. The formatter keeps the source spelling of each variant instead.
-fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix string, generic_params []string, generic_constraints []string, variants []ParsedSumVariant, type_start int) flat.NodeId {
+fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix string, generic_params []string, generic_constraints []u32, variants []ParsedSumVariant, type_start int) flat.NodeId {
 	if !p.prefs.is_fmt {
 		p.validate_named_sum_variants(name, language_prefix, variants)
 	}
@@ -115,13 +115,13 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 		variant_pos := token.new_span(p.cur_file_id, variant.start, variant.end)
 		if p.prefs.is_fmt {
 			variant_ids << p.add_node(flat.Node{
-				kind:  .ident
-				value: if variant.has_payload {
-					'${variant.text_text()}(${variant.payload_text()})'
+				kind:         .ident
+				source_value: if variant.has_payload {
+					flat.source_type_id('${variant.text_text()}(${variant.payload_text()})')
 				} else {
-					variant.text_text()
+					variant.text
 				}
-				pos:   variant_pos
+				pos:          variant_pos
 			})
 			continue
 		}
@@ -157,13 +157,13 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 			pos:            variant_pos
 		})
 		variant_ids << p.add_node(flat.Node{
-			kind:  .ident
-			value: if used_params.len > 0 {
+			kind:         .ident
+			source_value: flat.source_type_id(if used_params.len > 0 {
 				'${hidden}[${used_params.join(', ')}]'
 			} else {
 				hidden
-			}
-			pos:   variant_pos
+			})
+			pos:          variant_pos
 		})
 	}
 	variants_start := p.add_children(variant_ids)
@@ -171,7 +171,7 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 		kind:           .type_decl
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
-		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
+		payload:        flat.node_payload_with_constraint_ids(generic_params, named_constraints(generic_constraints))
 		children_start: variants_start
 		children_count: flat.child_count(variant_ids.len)
 		pos:            p.span_to(type_start)
@@ -336,7 +336,7 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 // followed by a capitalized variant, including an owner's generic arguments.
 fn (mut p Parser) imported_named_variant_pattern_starts_here(module_name string) bool {
 	if module_name !in p.imported_module_names || p.is_local_binding(module_name)
-		|| p.tok != .name || !p.is_imported_named_variant_owner_name(module_name, p.lit) {
+		|| p.tok != .name {
 		return false
 	}
 	mut next := p.peek()
@@ -350,7 +350,11 @@ fn (mut p Parser) imported_named_variant_pattern_starts_here(module_name string)
 	if next != .dot {
 		return false
 	}
+	// Ordinary imported constants are also valid match patterns. Resolve a
+	// generated type only after the following tokens can name its variant;
+	// otherwise that lookup needlessly indexes every file of the module.
 	return lookahead.scan() == .name && is_plain_capitalized_ident(lookahead.lit)
+		&& p.is_imported_named_variant_owner_name(module_name, p.lit)
 }
 
 // named_variant_value lowers a payload-less variant reference `Expr.Void` to
@@ -413,13 +417,13 @@ fn (mut p Parser) named_variant_init(sum_id u32, variant string, payload flat.No
 	}
 	init := p.add_node_from(flat.Node{
 		kind:           .struct_init
-		value:          hidden
+		source_value:   flat.source_type_id(hidden)
 		children_start: fields_start
 		children_count: flat.child_count(fields.len)
 	}, lhs)
 	return p.add_node_from(flat.Node{
 		kind:           .cast_expr
-		value:          sum
+		source_value:   sum_id
 		children_start: p.add_child(init)
 		children_count: 1
 	}, lhs)
@@ -573,7 +577,7 @@ fn (mut p Parser) named_variant_match_pattern(type_name_id u32, start int) ?flat
 	}
 	return p.add_node(flat.Node{
 		kind:           .ident
-		value:          hidden
+		source_value:   hidden_id
 		children_start: p.add_children(children)
 		children_count: flat.child_count(children.len)
 		pos:            p.span_to(start)

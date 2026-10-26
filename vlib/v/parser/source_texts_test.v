@@ -109,13 +109,35 @@ fn test_empty_preloaded_source_and_imported_generated_types_use_the_snapshot() {
 	}
 }
 
+fn test_imported_constant_match_patterns_do_not_index_variant_declarations() {
+	root := source_texts_test_root('imported_constant_pattern')
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir_all(os.join_path(root, 'generated_types'))!
+	module_path := os.join_path(root, 'generated_types', 'types.v')
+	os.write_file(module_path, '@[generated]\nmodule generated_types\npub const lower_const = 1\npub type lower_result = Good(int) | Bad(string)\npub type lower_generic[T] = Good(T) | Bad(string)\n')!
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, 'module main\nimport generated_types\nfn selected(code int) {\nmatch code {\ngenerated_types.lower_const {}\nelse {}\n}\n}\n')!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(main_path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert p.named_variant_import_scans.len == 0
+	assert p.is_imported_named_variant_owner_name('generated_types', 'lower_result')
+	for owner in ['lower_result', 'lower_generic[int]'] {
+		os.write_file(main_path, 'module main\nimport generated_types\nfn selected(code int) {\nmatch code {\ngenerated_types.${owner}.Good {}\nelse {}\n}\n}\n')!
+		mut variants := Parser.new(pref.new_preferences())
+		variants.parse_file(main_path)
+		assert variants.diagnostics.len == 0, variants.diagnostics.str()
+		assert variants.named_variant_import_scans.len == 1
+	}
+}
+
 // declared_texts lists the declarations and string literals of a parsed
 // program, the part of it that the selected compile-time branches decide.
 fn declared_texts(p &Parser) []string {
 	mut texts := []string{}
 	for node in p.a.nodes {
 		if node.kind in [.fn_decl, .const_field, .string_literal] {
-			texts << '${node.kind}:${node.value}'
+			texts << '${node.kind}:${node.value_text()}'
 		}
 	}
 	return texts

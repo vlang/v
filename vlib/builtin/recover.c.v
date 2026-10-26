@@ -200,7 +200,7 @@ fn panic_unwind(msg string, debug PanicDebugInfo) {
 	if g_panic_state.len == g_panic_state.cap {
 		new_cap := if g_panic_state.cap == 0 { 4 } else { g_panic_state.cap * 2 }
 		records := unsafe {
-			&PanicRecord(C.realloc(g_panic_state.records, usize(new_cap) * usize(sizeof(PanicRecord))))
+			&PanicRecord(C.realloc(g_panic_state.records, uint(new_cap) * uint(sizeof(PanicRecord))))
 		}
 		if records == unsafe { nil } {
 			panic_frames_reset()
@@ -209,13 +209,13 @@ fn panic_unwind(msg string, debug PanicDebugInfo) {
 		g_panic_state.records = records
 		g_panic_state.cap = new_cap
 	}
-	msg_copy := unsafe { &u8(C.malloc(usize(msg.len + 1))) }
+	msg_copy := unsafe { &u8(C.malloc(uint(msg.len + 1))) }
 	if msg_copy == unsafe { nil } {
 		panic_frames_reset()
 		panic(msg)
 	}
 	unsafe {
-		C.memcpy(msg_copy, msg.str, usize(msg.len))
+		C.memcpy(msg_copy, msg.str, uint(msg.len))
 		msg_copy[msg.len] = 0
 	}
 	mut rec := panic_record(g_panic_state.len)

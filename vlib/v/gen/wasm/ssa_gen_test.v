@@ -1272,10 +1272,10 @@ pub fn seeded(n int) int {
 fn test_ssa_wasm_refuses_an_unmappable_import_signature() {
 	source := '
 @[wasm_import_namespace: "wasi_snapshot_preview1"]
-fn WASM.fd_write(fd int, iovs [4]u8, iovs_len usize, ret &usize) int
+fn WASM.fd_write(fd int, iovs [4]u8, iovs_len uint, ret &uint) int
 
 pub fn report() int {
-	mut n := usize(0)
+	mut n := uint(0)
 	chunk := [u8(1), 2, 3, 4]!
 	return WASM.fd_write(1, chunk, 4, &n) + int(n)
 }

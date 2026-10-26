@@ -74,3 +74,30 @@ fn test_source_error_embed_worker_cleanup_keeps_frozen_owner_tables() {
 	assert (type_query_scope_entry(frozen.source_error_embed_entries, key) or { 0 }) == 1
 	assert !worker.source_error_embed_indexed
 }
+
+fn test_struct_error_shadow_flags_use_exact_source_identity() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'pkg'
+	shadow_id := flat.source_type_id('pkg.Shadowed')
+	other_id := flat.source_type_id('other.Shadowed')
+	tc.set_struct_fields(shadow_id, []StructField{}, []string{}, []string{}, map[string]string{}, true)
+	tc.set_struct_fields(other_id, []StructField{}, []string{}, []string{}, map[string]string{}, false)
+	assert tc.struct_error_embeds_shadow_builtin[shadow_id]
+	assert !tc.struct_error_embeds_shadow_builtin[other_id]
+	assert !tc.struct_error_embeds_shadow_builtin[flat.source_type_id('&pkg.Shadowed')]
+	assert tc.named_type_has_non_builtin_error_embed(shadow_id)
+	// Qualification must probe the resolved spelling ID, retaining the same
+	// module lookup that the previous string-keyed metadata used.
+	assert tc.named_type_has_non_builtin_error_embed(flat.source_type_id('Shadowed'))
+	assert !tc.named_type_has_non_builtin_error_embed(other_id)
+	worker := tc.fork_for_parallel_codegen()
+	assert worker.struct_error_embeds_shadow_builtin[shadow_id]
+	assert worker.named_type_has_non_builtin_error_embed(shadow_id)
+	// Numeric keys and scalar values need only a map clone when promoting the
+	// side metadata out of an arena; its payload contains no borrowed strings.
+	cloned := tc.struct_error_embeds_shadow_builtin.clone()
+	tc.struct_error_embeds_shadow_builtin.clear()
+	assert cloned[shadow_id]
+	assert !cloned[other_id]
+}

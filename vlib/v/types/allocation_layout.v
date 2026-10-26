@@ -30,7 +30,7 @@ pub fn (tc &TypeChecker) allocation_layout(typ &Type) AllocationLayout {
 			return cached
 		}
 	}
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	layout := tc.value_allocation_layout(canonical, mut seen)
 	if !isnil(cache) {
 		cache.allocation_layouts[id] = layout
@@ -39,10 +39,10 @@ pub fn (tc &TypeChecker) allocation_layout(typ &Type) AllocationLayout {
 }
 
 fn (tc &TypeChecker) value_allocation_layout(typ &Type,
-	mut seen map[string]bool) AllocationLayout {
+	mut seen map[u32]bool) AllocationLayout {
 	// Zero is the valid empty layout flag set.
 	mut layout := unsafe { AllocationLayout(0) }
-	name := match typ {
+	name_id := match typ {
 		Primitive, Char, Rune, ISize, USize, Enum { return layout }
 		Alias, OptionType { return tc.value_allocation_layout(typ.base_type, mut seen) }
 		ResultType {
@@ -55,29 +55,30 @@ fn (tc &TypeChecker) value_allocation_layout(typ &Type,
 			}
 			return layout
 		}
-		Struct, SumType { typ.name() }
+		Struct, SumType { typ.source_type_id() }
 		else { return .scanned }
 	}
-	if seen[name] {
+	if seen[name_id] {
 		return .scanned
 	}
-	seen[name] = true
-	defer { seen.delete(name) }
+	seen[name_id] = true
+	defer { seen.delete(name_id) }
 	if typ is Struct {
-		return tc.struct_allocation_layout(name, mut seen)
+		return tc.struct_allocation_layout(name_id, mut seen)
 	}
-	base := tc.sum_base_name(flat.source_type_id(name))
+	base := tc.sum_base_name(name_id)
 	variants := tc.sum_types.type_ids(flat.source_type_name(base)) or { return .scanned }
 	for raw in variants {
-		variant := tc.concrete_sum_variant_name(flat.source_type_id(name), raw)
+		variant := tc.concrete_sum_variant_name(name_id, raw)
 		parsed := tc.parse_canonical_type_cached(variant)
 		layout |= tc.value_allocation_layout(parsed, mut seen)
 	}
 	return layout
 }
 
-fn (tc &TypeChecker) struct_allocation_layout(name string,
-	mut seen map[string]bool) AllocationLayout {
+fn (tc &TypeChecker) struct_allocation_layout(name_id u32,
+	mut seen map[u32]bool) AllocationLayout {
+	name := flat.source_type_name(name_id)
 	if name.starts_with('C.') {
 		return .aligned | .scanned
 	}
@@ -93,8 +94,8 @@ fn (tc &TypeChecker) struct_allocation_layout(name string,
 	if key !in tc.structs {
 		return layout | .scanned
 	}
-	for field in tc.struct_fields_for_type(flat.source_type_id(name)) {
-		if tc.struct_field_is_shared(flat.source_type_id(name), field.name) {
+	for field in tc.struct_fields_for_type(name_id) {
+		if tc.struct_field_is_shared(name_id, field.name) {
 			layout |= .scanned
 			continue
 		}

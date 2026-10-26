@@ -97,6 +97,18 @@ fn fastc_thread_wait_name(thread_type string) string {
 	return '__vf_thread_wait_${thread_type.all_after(fastc_thread_type_prefix)}'
 }
 
+// fastc_thread_wait_helper returns the waiter of one thread handle type,
+// registering its typedef and waiter when no `spawn` has done so yet.
+fn (g &Parser) fastc_thread_wait_helper(thread_type string, value_type_source_id u32) string {
+	wait_name := g.fastc_unclaimed_generated_name(fastc_thread_wait_name(thread_type))
+	if thread_type in g.spawn_typedefs && wait_name in g.spawn_helpers {
+		return wait_name
+	}
+	// Rendering keeps an immutable parser; the helper maps are per-file output.
+	mut w := unsafe { &Parser(g) }
+	return w.register_thread_type_helpers(thread_type, value_type_source_id)
+}
+
 // read_spawn_expression parses `spawn callee(arguments)` eagerly at an
 // expression start. The callee must be a collected plain or imported
 // function; its signature supplies the packed-argument field types.
@@ -161,10 +173,10 @@ fn (mut g Parser) read_spawn_expression() !string {
 				return g.unsupported('spawn of method `${method_name}` without a receiver parameter')
 			}
 			expected_receiver := method_signature.parameter_types.ids[0]
-			receiver_is_pointer := flat.source_type_name(receiver_type).ends_with('*')
-			receiver_arg = if flat.source_type_name(expected_receiver).ends_with('*') && !receiver_is_pointer {
+			receiver_is_pointer := flat.source_type_query(receiver_type).has(.c_pointer_suffix)
+			receiver_arg = if flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && !receiver_is_pointer {
 				'&(${receiver.source})'
-			} else if !flat.source_type_name(expected_receiver).ends_with('*') && receiver_is_pointer {
+			} else if !flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && receiver_is_pointer {
 				'*(${receiver.source})'
 			} else {
 				receiver.source
@@ -287,13 +299,13 @@ fn (mut g Parser) read_spawn_expression() !string {
 		argument_tokens := g.last_expression.clone()
 		if is_mut_argument {
 			argument_type := g.infer_expression_type(argument_tokens) or { u32(0) }
-			if flat.source_type_name(expected_type).ends_with('*') && flat.source_type_name(argument_type).ends_with('*') {
+			if flat.source_type_query(expected_type).has(.c_pointer_suffix) && flat.source_type_query(argument_type).has(.c_pointer_suffix) {
 				// `mut c` where `c` is already a reference local must stay a pointer;
 				// read_expression's value form auto-dereferences it.
 				if contextual := g.render_call_argument_expression(argument_tokens, expected_type) {
 					argument = contextual
 				}
-			} else if flat.source_type_name(expected_type).ends_with('*') && !flat.source_type_name(argument_type).ends_with('*') {
+			} else if flat.source_type_query(expected_type).has(.c_pointer_suffix) && !flat.source_type_query(argument_type).has(.c_pointer_suffix) {
 				argument = '&(${argument})'
 			}
 		} else if expected_type != 0 && argument_tokens.len > 0 {
@@ -327,6 +339,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 		signature.return_type
 	}
 	thread_type := g.fastc_unclaimed_generated_name(fastc_thread_type_name(flat.source_type_name(value_type)))
+	thread_type_id := flat.source_type_id(thread_type)
 	start_name := g.fastc_unclaimed_generated_name('__vf_spawn_start_${g.fastc_spawn_target_stem(function_key)}')
 	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types.ids, start_name, method_target)
 	call := '${start_name}(${arguments.join(', ')})'
@@ -338,10 +351,10 @@ fn (mut g Parser) read_spawn_expression() !string {
 			tok:    .name
 			lit:    call
 			source: call
-			typ:    flat.source_type_id(thread_type)
+			typ:    thread_type_id
 		},
 	]
-	g.last_expression_type = flat.source_type_id(thread_type)
+	g.last_expression_type = thread_type_id
 	g.last_multi_return_types = flat.TypeTextList{ ids: ([]u32{}).clone() }
 	return call
 }
@@ -390,11 +403,10 @@ fn (g &Parser) generated_name_is_claimed(candidate string) bool {
 	return false
 }
 
-// register_spawn_helpers records the thread typedef, waiter, packed-argument
-// struct, run wrapper, and creator for one spawn target. The result is the
-// first packed field, so the per-type waiter reads it without knowing which
-// call site produced the thread.
-fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type_source_id u32, parameter_types []u32, start_name string, target_c_name string) {
+// register_thread_type_helpers records the typedef and waiter of one thread
+// handle type, and returns the waiter name. `.wait()` calls register them too:
+// a handle can be waited on in code whose only `spawn` is compiled out by `$if`.
+fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_source_id u32) string {
 	value_type := flat.source_type_name(value_type_source_id)
 	g.type_memo.clear()
 	g.thread_value_types.set_id(thread_type, value_type_source_id)
@@ -430,6 +442,16 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 		}
 		g.spawn_helpers[wait_name] = waiter
 	}
+	return wait_name
+}
+
+// register_spawn_helpers records the thread typedef, waiter, packed-argument
+// struct, run wrapper, and creator for one spawn target. The result is the
+// first packed field, so the per-type waiter reads it without knowing which
+// call site produced the thread.
+fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type_source_id u32, parameter_types []u32, start_name string, target_c_name string) {
+	value_type := flat.source_type_name(value_type_source_id)
+	g.register_thread_type_helpers(thread_type, value_type_source_id)
 	if start_name in g.spawn_helpers {
 		return
 	}

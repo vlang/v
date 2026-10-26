@@ -28,7 +28,7 @@ fn C.v_runtime_free_memory_darwin(bytes &u64, code &i32) i32
 
 #flag @VEXEROOT/vlib/runtime/free_memory_darwin.o
 
-fn free_memory_impl() !usize {
+fn free_memory_impl() !uint {
 	$if macos || ios {
 		mut bytes := u64(0)
 		mut code := i32(0)
@@ -39,7 +39,7 @@ fn free_memory_impl() !usize {
 		if stage == 2 {
 			return error('free_memory: `C.host_page_size()` return = ${code}')
 		}
-		return usize(bytes)
+		return uint(bytes)
 	}
 	return error('free_memory: not implemented')
 }

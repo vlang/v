@@ -4,7 +4,7 @@ fn getsize[P]() u32 {
 	return sizeof(P)
 }
 
-fn accept_usize(value usize) usize {
+fn accept_usize(value uint) uint {
 	return value
 }
 

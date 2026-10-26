@@ -12,7 +12,7 @@ vlib/v/checker/tests/index_expr_implicit_int_downcast_err.vv:11:12: error: canno
       |               ~~~~~~~
    12 |     println(a[idx_usize..])
    13 | }
-vlib/v/checker/tests/index_expr_implicit_int_downcast_err.vv:12:12: error: cannot use `usize` as index type `int`, use an explicit cast like `int(expr)`
+vlib/v/checker/tests/index_expr_implicit_int_downcast_err.vv:12:12: error: cannot use `uint` as index type `int`, use an explicit cast like `int(expr)`
    10 |     println(s[idx_u64])
    11 |     println(a[idx_i64])
    12 |     println(a[idx_usize..])

@@ -1182,8 +1182,10 @@ pub struct GenerationResult {
 pub:
 	c_pieces     []string
 	source_paths []string
-	uses_threads bool
-	c_flags      []string
+	// Only these files need the frontend pass that locates deprecated type spellings.
+	deprecated_integer_paths []string
+	uses_threads             bool
+	c_flags                  []string
 	// units describes how c_pieces split into translation units that the
 	// drivers can compile in parallel (see fastc_write_c_units).
 	units FastcUnitLayout
@@ -1727,8 +1729,13 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
+	mut deprecated_integer_paths := []string{}
 	for source_file in sources {
 		source_paths << source_file.path
+		if source_file.header.module_name != 'builtin'
+			&& (source_file.source.contains('isize') || source_file.source.contains('usize')) {
+			deprecated_integer_paths << source_file.path
+		}
 	}
 	// The layout comes back through a parameter: a struct of arrays as a
 	// multi-return component is not carried correctly by the self-hosted
@@ -1739,11 +1746,12 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
-		c_pieces:     c_pieces
-		source_paths: source_paths
-		uses_threads: uses_threads
-		c_flags:      c_flags
-		units:        units
+		c_pieces:                 c_pieces
+		source_paths:             source_paths
+		deprecated_integer_paths: deprecated_integer_paths
+		uses_threads:             uses_threads
+		c_flags:                  c_flags
+		units:                    units
 	}
 }
 
@@ -2152,8 +2160,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		composite_types['Array_char_ptr'] = true
 	}
 	for signature in functions.values() {
-		fastc_register_composite_type(signature.return_type_text(), mut composite_types)
-		for parameter_type in signature.parameter_types_text() {
+		fastc_register_composite_type(signature.return_type, mut composite_types)
+		for parameter_type in signature.parameter_types.ids {
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
@@ -2222,10 +2230,10 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for name, _ in global_output.composite_types {
 		composite_types[name] = true
 	}
-	for constant_type in constant_types.values() {
+	for constant_type in constant_types.ids.values() {
 		fastc_register_composite_type(constant_type, mut composite_types)
 	}
-	for global_type in global_types.values() {
+	for global_type in global_types.ids.values() {
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
 	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls, function_c_names)!
@@ -2438,7 +2446,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		if flat.source_type_name(element_type).contains('__vf_fn_type_') {
 			callback_fixed_array_types.set_id(name, typ_id)
 		} else if fastc_primitive_c_type(flat.source_type_name(element_type)) != none
-			&& flat.source_type_name(element_type) !in ['string', 'array', 'map', 'Option', '__v_result'] {
+			&& element_type !in [flat.source_type_string, fastc_type_array, fastc_type_map,
+				fastc_type_option, fastc_type_result] {
 			scalar_fixed_array_types.set_id(name, typ_id)
 		} else {
 			aggregate_fixed_array_types.set_id(name, typ_id)
@@ -2688,7 +2697,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	} else {
 		FastcNativeSourceContext{}
 	}
-	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context)
+	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context,
+		prefs.vroot)
 	if prefs.target_libc_headers {
 		pieces << fastc_target_c_extern_prototypes_for_context(functions, used_function_names, prefs, native_context)
 	}
@@ -3008,11 +3018,34 @@ fn fastc_c_declaration_has_native_input(path string, inputs []string) bool {
 	return false
 }
 
-fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
-	return fastc_c_extern_prototypes_for_source_inputs(functions, inputs, FastcNativeSourceContext{})
+// fastc_vlib_native_helper_has_input mirrors cgen: vlib's shipped native objects
+// export private facades (`v3_`, `v_runtime_`, ...) whose declaring file may include
+// an unrelated header and need not share the object's stem
+// (builtin_d_gcboehm.c.v links gc_boehm_helpers.o). The declaring vlib file must
+// itself link a native source or object.
+fn fastc_vlib_native_helper_has_input(name string, paths []string, inputs []string, context FastcNativeSourceContext, vroot string) bool {
+	if !(name.starts_with('v3_') || name.starts_with('v_runtime_') || name.starts_with('v_time_')
+		|| name.starts_with('v_builtin_') || name.starts_with('v_set_')
+		|| name.starts_with('v__gc_')) {
+		return false
+	}
+	root := vroot.replace('\\', '/').trim_right('/')
+	if root.len == 0 {
+		return false
+	}
+	vlib := '${root}/vlib/'
+	return paths.any(context.files_linking_native_sources[it]
+		&& it.replace('\\', '/').starts_with(vlib))
+		&& inputs.any((it.ends_with('.c') || it.ends_with('.o'))
+			&& it.replace('\\', '/').starts_with(vlib))
 }
 
-fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext) string {
+fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
+	return fastc_c_extern_prototypes_for_source_inputs(functions, inputs, FastcNativeSourceContext{},
+		'')
+}
+
+fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext, vroot string) string {
 	mut keys := functions.keys().filter(it.starts_with('C.'))
 	keys.sort()
 	mut out := strings.new_builder(128)
@@ -3024,7 +3057,8 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 		name := key.all_after_first('C.')
 		paths := context.declaration_paths[name] or { [signature.path] }
 		if !signature.is_c_extern && !paths.any(!context.files_with_headers[it]
-			&& fastc_c_declaration_has_native_input(it, inputs)) {
+			&& fastc_c_declaration_has_native_input(it, inputs))
+			&& !fastc_vlib_native_helper_has_input(name, paths, inputs, context, vroot) {
 			continue
 		}
 		mut parameters := []string{cap: signature.parameter_types.ids.len + 1}
@@ -3949,8 +3983,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				}
 				implemented[receiver_key] = true
 				receiver_type := fastc_c_declared_type_name(receiver_key)
-				expected_receiver := candidate_signature.parameter_types.at(0)
-				receiver_argument := if expected_receiver.ends_with('*') {
+				receiver_argument := if flat.source_type_query(candidate_signature.parameter_types.ids[0]).has(.c_pointer_suffix) {
 					'(${receiver_type} *)value._object'
 				} else {
 					'*(${receiver_type} *)value._object'
@@ -3966,7 +3999,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 					fastc_method_c_name(candidate_signature.module_name, receiver_type, method_name)
 				}
 				call := '${candidate_c_name}(${receiver_argument}${call_arguments})'
-				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type_text() == 'void' {
+				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type == flat.source_type_void {
 					call + '; return;'
 				} else {
 					'return ' + call + ';'
@@ -3983,7 +4016,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 					}
 					embedded_signature := functions[embedded.key]
 					field := '((${struct_type} *)value._object)->${embedded.path}'
-					receiver_argument := if embedded_signature.parameter_types.at(0).ends_with('*') {
+					receiver_argument := if flat.source_type_query(embedded_signature.parameter_types.ids[0]).has(.c_pointer_suffix) {
 						'&(${field})'
 					} else {
 						field
@@ -3999,7 +4032,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 						fastc_method_c_name(embedded_signature.module_name, fastc_c_declared_type_name(embedded.key.all_before_last('.')), method_name)
 					}
 					call := '${embedded_c_name}(${receiver_argument}${call_arguments})'
-					out.writeln('\tcase __v_typeid_${struct_type}: ${if interface_signature.return_type_text() == 'void' {
+					out.writeln('\tcase __v_typeid_${struct_type}: ${if interface_signature.return_type == flat.source_type_void {
 						call + '; return;'
 					} else {
 						'return ' + call + ';'
@@ -4253,7 +4286,7 @@ fn fastc_function_id_table(functions map[string]FastcFunctionSignature, function
 	// Native adapters share their implementation's emitted span. References to
 	// either spelling must retain that span without adding another graph node.
 	for key, signature in functions {
-		if key.starts_with('C.') || signature.return_type_text() != 'MultiReturn'
+		if key.starts_with('C.') || signature.return_type != fastc_type_multi_return
 			|| signature.return_types.ids.len != 2 {
 			continue
 		}
@@ -4570,12 +4603,6 @@ fn (value &FastcExpressionToken) typ_text() string {
 	return flat.source_type_name(value.typ)
 }
 
-// chan_element_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcExpressionToken) chan_element_type_text() string {
-	return flat.source_type_name(value.chan_element_type)
-}
-
 // option_value_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &FastcExpressionToken) option_value_type_text() string {
@@ -4630,24 +4657,6 @@ fn (value &FastcFunctionSignature) option_type_text() string {
 	return flat.source_type_name(value.option_type)
 }
 
-// chan_element_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcLocal) chan_element_type_text() string {
-	return flat.source_type_name(value.chan_element_type)
-}
-
-// fn_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcLocal) fn_option_value_type_text() string {
-	return flat.source_type_name(value.fn_option_value_type)
-}
-
-// fn_return_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcLocal) fn_return_type_text() string {
-	return flat.source_type_name(value.fn_return_type)
-}
-
 // option_value_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &FastcLocal) option_value_type_text() string {
@@ -4658,30 +4667,6 @@ fn (value &FastcLocal) option_value_type_text() string {
 @[inline]
 fn (value &FastcLocal) smartcast_origin_type_text() string {
 	return flat.source_type_name(value.smartcast_origin_type)
-}
-
-// chan_element_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) chan_element_type_text() string {
-	return flat.source_type_name(value.chan_element_type)
-}
-
-// fn_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) fn_option_value_type_text() string {
-	return flat.source_type_name(value.fn_option_value_type)
-}
-
-// fn_return_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) fn_return_type_text() string {
-	return flat.source_type_name(value.fn_return_type)
-}
-
-// generic_argument_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) generic_argument_type_text() string {
-	return flat.source_type_name(value.generic_argument_type)
 }
 
 // option_value_type_text resolves the indexed source type spelling.
@@ -4702,40 +4687,10 @@ fn (value &Parser) last_expression_type_text() string {
 	return flat.source_type_name(value.last_expression_type)
 }
 
-// last_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) last_option_value_type_text() string {
-	return flat.source_type_name(value.last_option_value_type)
-}
-
 // option_return_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &Parser) option_return_type_text() string {
 	return flat.source_type_name(value.option_return_type)
-}
-
-// or_value_expected_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) or_value_expected_type_text() string {
-	return flat.source_type_name(value.or_value_expected_type)
-}
-
-// pending_fn_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) pending_fn_option_value_type_text() string {
-	return flat.source_type_name(value.pending_fn_option_value_type)
-}
-
-// pending_fn_return_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) pending_fn_return_type_text() string {
-	return flat.source_type_name(value.pending_fn_return_type)
-}
-
-// pending_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) pending_option_value_type_text() string {
-	return flat.source_type_name(value.pending_option_value_type)
 }
 
 // parameter_types_text resolves indexed types at a text integration boundary.
@@ -4743,40 +4698,10 @@ fn (value &FastcFunctionSignature) parameter_types_text() []string {
 	return value.parameter_types.names()
 }
 
-// return_types_text resolves indexed types at a text integration boundary.
-fn (value &FastcFunctionSignature) return_types_text() []string {
-	return value.return_types.names()
-}
-
-// fn_parameter_types_text resolves indexed types at a text integration boundary.
-fn (value &FastcStructField) fn_parameter_types_text() []string {
-	return value.fn_parameter_types.names()
-}
-
-// last_multi_return_types_text resolves indexed types at a text integration boundary.
-fn (value &Parser) last_multi_return_types_text() []string {
-	return value.last_multi_return_types.names()
-}
-
-// return_types_text resolves indexed types at a text integration boundary.
-fn (value &Parser) return_types_text() []string {
-	return value.return_types.names()
-}
-
 // current_receiver_text resolves the indexed source type spelling.
 @[inline]
 fn (value &Parser) current_receiver_text() string {
 	return flat.source_type_name(value.current_receiver)
-}
-
-// last_field_receiver_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) last_field_receiver_text() string {
-	return flat.source_type_name(value.last_field_receiver)
-}
-
-fn (smartcast &FastcMemberSmartcast) variants_text() []string {
-	return smartcast.variants.names()
 }
 
 // value_type_text resolves the tested value's indexed type spelling.

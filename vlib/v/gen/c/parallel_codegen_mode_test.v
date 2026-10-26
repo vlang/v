@@ -153,7 +153,7 @@ fn test_empty_codegen_pool_preserves_serial_literals_and_scoped_bodies() {
 		assert default_mode.literals.contains('constant literal')
 	}
 	// Constants use inline storage even when complete-AST interning is compiled out.
-	assert default_mode.code.contains('source_label = (string){"constant literal", 16, 1};')
+	assert default_mode.code.contains('source_label = (string){(u8*)"constant literal", 16, 1};')
 	field_literal_id := default_mode.literals.index('field default literal')
 	assert field_literal_id >= 0
 	assert default_mode.code.contains('.label = _str_${field_literal_id}')

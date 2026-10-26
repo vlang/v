@@ -41,7 +41,7 @@ fn fifo_read_nix(f File, mut buf []u8) !int {
 	if !f.is_opened { return error_file_not_opened() }
 	if buf.len == 0 { return Eof{} }
 	for {
-		n := C.read(f.fd, buf.data, usize(buf.len))
+		n := C.read(f.fd, buf.data, uint(buf.len))
 		if n < 0 {
 			if C.errno == C.EINTR { continue }
 			return error_posix()
@@ -56,7 +56,7 @@ fn fifo_read_nix(f File, mut buf []u8) !int {
 fn fifo_write_nix(f File, buf []u8) !int {
 	if !f.is_opened { return error_file_not_opened() }
 	for {
-		n := C.write(f.fd, buf.data, usize(buf.len))
+		n := C.write(f.fd, buf.data, uint(buf.len))
 		if n < 0 {
 			if C.errno == C.EINTR { continue }
 			return error_posix()

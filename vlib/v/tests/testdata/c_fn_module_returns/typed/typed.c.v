@@ -1,11 +1,11 @@
 module typed
 
-fn C.memchr(buf &u8, c int, n usize) &u8
+fn C.memchr(buf &u8, c int, n uint) &u8
 
 // index_of_lf computes a byte offset using this module's typed C return.
 pub fn index_of_lf(buf []u8) int {
 	base := unsafe { &u8(buf.data) }
-	p := unsafe { C.memchr(base, int(`\n`), usize(buf.len)) }
+	p := unsafe { C.memchr(base, int(`\n`), uint(buf.len)) }
 	if p == unsafe { nil } { return -1 }
 	return int(unsafe { p - base })
 }

@@ -47,12 +47,12 @@ fn main() {
 	mut value := Value(pointer)
 	if value !is voidptr { return }
 	println(isnil(value))
-	println(usize(value))
+	println(uint(value))
 	mut alternate := Value(pointer)
 	if alternate !is voidptr {
 		assert false
 	} else {
-		println(usize(alternate))
+		println(uint(alternate))
 		alternate = Value(13)
 	}
 	println(read(alternate))
@@ -62,7 +62,7 @@ fn main() {
 	address := voidptr(&number)
 	mut nonnil := Value(address)
 	if nonnil !is voidptr { return }
-	assert usize(nonnil) == usize(address)
+	assert uint(nonnil) == uint(address)
 	println("identity")
 	mut scalar := Value(9)
 	if scalar !is int { return }

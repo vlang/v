@@ -44,7 +44,7 @@ fn test_dense_array_zero_value_size_with_every_c_compiler() {
 		key_bytes:   int(sizeof(int))
 		value_bytes: 0
 		cap:         8
-		keys:        unsafe { malloc(8 * isize(sizeof(int))) }
+		keys:        unsafe { malloc(8 * int(sizeof(int))) }
 		values:      unsafe { malloc(1) }
 	}
 	// DenseArray stores raw key bytes; fill and inspect its integer slots directly.

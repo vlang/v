@@ -43,7 +43,7 @@ mut:
 
 fn new_waitgroup_thread_args(wg &WaitGroup, f fn ()) &WaitGroupThreadArgs {
 	// Keep the wait group and captured callback context visible to tracing collectors.
-	mut args := unsafe { &WaitGroupThreadArgs(vcalloc(sizeof(WaitGroupThreadArgs))) }
+	mut args := unsafe { &WaitGroupThreadArgs(vcalloc(int(sizeof(WaitGroupThreadArgs)))) }
 	if args == unsafe { nil } {
 		panic('could not allocate waitgroup thread arguments')
 	}

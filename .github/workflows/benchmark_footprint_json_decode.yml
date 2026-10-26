@@ -6,6 +6,11 @@ on:
       - master
     paths:
       - 'vlib/json2/**' # Trigger on changes in this folder
+      - '.github/workflows/benchmark_footprint_json_decode.yml'
+
+concurrency:
+  group: json-decoder-benchmark-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

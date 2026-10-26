@@ -11,7 +11,7 @@ fn test_translated_expressions_and_file_scope() {
 	source := 'const translated_regs = [3, 12, 13]!
 fn main() {
  value := true
- if if value { true } else { false } { println(13 - -5) }
+ if if value { true } else { false } { println(13 - - -5) }
  regs := [3, 12, 13]!
  _ = sizeof(translated_regs) / sizeof(translated_regs[0])
  i := 0
@@ -34,7 +34,7 @@ fn main() {
 	p.parse_file(translated)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	ordinary := os.join_path(root, 'ordinary.v')
-	os.write_file(ordinary, 'module main\nfn main() {\nif if true {}\nprintln(13 - -5)\n}\n')!
+	os.write_file(ordinary, 'module main\nfn main() {\nif if true {}\nprintln(13 - - -5)\n}\n')!
 	p.parse_file(ordinary)
 	assert p.diagnostics.any(it.message.contains('did you write `if` twice'))
 	assert p.diagnostics.any(it.message == 'invalid expression: unexpected token `-`')
@@ -123,7 +123,7 @@ $if linux {
 				assert a.nodes[int(a.child(&sizes[i], 0))].value == name
 				assert !a.nodes.any(it.kind == .type_decl && it.value == name)
 			} else {
-				assert sizes[i].value == name
+				assert sizes[i].value_text() == name
 				assert a.nodes.any(it.kind == .type_decl && it.value == name)
 			}
 		}
@@ -468,7 +468,7 @@ fn test_translated_sizeof_ignores_constants_from_other_modules() {
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
 	assert sizes.len == 2
-	assert sizes[0].value == 'item'
+	assert sizes[0].value_text() == 'item'
 	assert sizes[0].children_count == 0
 }
 
@@ -506,9 +506,9 @@ fn main() {
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
 	assert sizes.len == 4
-	assert sizes[0].value == 'Item'
+	assert sizes[0].value_text() == 'Item'
 	assert sizes[0].children_count == 0
-	assert sizes[2].value == 'foo.Count'
+	assert sizes[2].value_text() == 'foo.Count'
 	for flags in ['', '-no-parallel'] {
 		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-enable-globals',
 			'run', root])
@@ -601,9 +601,9 @@ fn other() {
 	p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
-	assert sizes[0].value.contains('c_record@local@')
-	assert sizes[1].value == sizes[0].value
-	assert sizes[2].value.contains('c_union@local@')
+	assert sizes[0].value_text().contains('c_record@local@')
+	assert sizes[1].value_text() == sizes[0].value_text()
+	assert sizes[2].value_text().contains('c_union@local@')
 	assert sizes[3].children_count == 1
 	assert sizes[5].children_count == 1
 	result := os.exec([@VEXE, 'run', path])

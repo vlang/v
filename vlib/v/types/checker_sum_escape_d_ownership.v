@@ -92,7 +92,7 @@ fn (mut tc TypeChecker) sum_escape_prescan_expr_type(id flat.NodeId, locals map[
 			if local := locals[node.value] { return *tc.parse_type(local.type_name) }
 		}
 		.cast_expr, .struct_init, .assoc {
-			if node.value.len > 0 { return *tc.parse_type(flat.source_type_id(node.value)) }
+			if node.source_value_id() != 0 { return *tc.parse_type(node.source_value_id()) }
 		}
 		.paren, .expr_stmt {
 			if node.children_count > 0 {

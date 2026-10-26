@@ -9,14 +9,14 @@ fn test_sizeof_reserved_types_do_not_index_sibling_declarations() {
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
 	for name in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'string', 'rune', 'usize', 'isize', 'voidptr'] {
+		'f64', 'string', 'rune', 'uint', 'voidptr'] {
 		os.write_file(path, 'module main\nfn main() { _ = sizeof(${name}) }\n')!
 		mut p := Parser.new(pref.new_preferences())
 		p.parse_file(path)
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 		sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
 		assert sizes.len == 1
-		assert sizes[0].value == name
+		assert sizes[0].value_text() == name
 		assert sizes[0].children_count == 0
 		// These calls must not trigger a second scan of every file in their module.
 		assert p.translated_sizeof_scanned_modules.len == 0
@@ -38,7 +38,7 @@ fn test_sizeof_types_of_the_module_do_not_index_sibling_declarations() {
 	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
 	assert sizes.len == 2
 	for size in sizes {
-		assert size.value == 'lower_type'
+		assert size.value_text() == 'lower_type'
 		assert size.children_count == 0
 	}
 	// The declaration that the parser already read settles both without a second
@@ -63,7 +63,7 @@ fn test_sizeof_types_of_another_module_do_not_hide_a_constant() {
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
 	assert sizes.len == 1
-	assert sizes[0].value == ''
+	assert sizes[0].value_text() == ''
 	assert sizes[0].children_count == 1
 	operand := p.a.node(p.a.child(&sizes[0], 0))
 	assert operand.kind == .ident
@@ -84,7 +84,7 @@ fn test_sizeof_of_a_builtin_type_does_not_index_builtin() {
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 		sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
 		assert sizes.len == 1
-		assert sizes[0].value == name
+		assert sizes[0].value_text() == name
 		assert sizes[0].children_count == 0
 		assert p.translated_sizeof_scanned_modules.len == 0
 	}
@@ -108,7 +108,7 @@ fn test_sizeof_ordinary_constants_keep_expression_operands() {
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 		sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
 		assert sizes.len == 1
-		assert sizes[0].value == ''
+		assert sizes[0].value_text() == ''
 		assert sizes[0].children_count == 1
 		operand := p.a.node(p.a.child(&sizes[0], 0))
 		assert operand.kind == .ident
