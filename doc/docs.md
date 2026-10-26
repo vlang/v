@@ -3260,7 +3260,7 @@ A keyword-named field can follow a default value on the next line:
 ```v
 struct Settings {
 	enabled bool = true
-	in string
+	in      string
 }
 ```
 
