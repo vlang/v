@@ -282,7 +282,7 @@ fn test_atomic_vals() {
 }
 
 fn test_legacy_signed_atomic_operations() {
-	mut value := stdatomic.new_atomic(int(-42))
+	mut value := stdatomic.new_atomic(isize(-42))
 	value.store(-50)
 	assert value.load() == -50
 	assert value.add(8) == -50
