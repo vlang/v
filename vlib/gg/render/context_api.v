@@ -553,6 +553,33 @@ pub fn (ctx &Context) draw() {
 	}
 }
 
+// rewind discards the vertices and commands recorded since the last commit
+// without submitting them, like sgl_rewind. A frame that is abandoned before
+// its pass starts uses it, so the next frame starts from an empty queue.
+pub fn (ctx &Context) rewind() {
+	mut st := ctx.st
+	st.vertex_count = 0
+	st.commands_count = 0
+	st.uniforms_count = 0
+	st.base_vertex = 0
+	st.layer_id = 0
+	st.in_begin = false
+	st.matrix_dirty = true
+	st.error = .no_error
+}
+
+// num_vertices returns the number of vertices recorded since the last commit
+// or rewind, like sgl_num_vertices.
+pub fn (ctx &Context) num_vertices() int {
+	return ctx.st.vertex_count
+}
+
+// num_commands returns the number of commands recorded since the last commit
+// or rewind, like sgl_num_commands.
+pub fn (ctx &Context) num_commands() int {
+	return ctx.st.commands_count
+}
+
 pub fn (ctx &Context) error() Error {
 	return ctx.st.error
 }
