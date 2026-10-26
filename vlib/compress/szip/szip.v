@@ -51,6 +51,7 @@ pub struct ZipEntry {
 pub mut:
 	name   string
 	method u16 // 0 = stored, 8 = deflate
+	flags  u16
 	crc32  u32
 	size   u64 // uncompressed
 	csize  u64 // compressed
@@ -73,6 +74,9 @@ pub mut:
 	current int = -1
 	// cached file bytes for read
 	filedata []u8
+mut:
+	directory_offset int
+	validated        bool
 }
 
 // helper: deflate level int
@@ -126,6 +130,7 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
 	return z
 }
 
+// close flushes pending entries; use zip_files or zip_folder when write errors must be returned.
 pub fn (mut z Zip) close() {
 	// flush write mode
 	if z.mode == .write || z.mode == .append {
@@ -139,32 +144,48 @@ pub fn (mut z Zip) close() {
 
 fn (mut z Zip) parse() ! {
 	data := z.filedata
-	// find EOCD
 	mut eocd_pos := -1
-	for i := data.len - 22; i >= 0; i-- {
-		if data[i] == 0x50 && data[i + 1] == 0x4b && data[i + 2] == 0x05 && data[i + 3] == 0x06 {
-			eocd_pos = i
-			break
+	// The end record may be followed only by its declared archive comment.
+	for i := data.len - 22; i >= 0 && i >= data.len - 65557; i-- {
+		if data[i..i + 4] == [u8(0x50), 0x4b, 0x05, 0x06] {
+			comment_len := int(u16(data[i + 20]) | (u16(data[i + 21]) << 8))
+			if i + 22 + comment_len == data.len {
+				eocd_pos = i
+				break
+			}
 		}
 	}
 	if eocd_pos < 0 {
-		return error('no eocd')
+		return error('missing end record')
 	}
-	// read number of entries
+	if data[eocd_pos + 4..eocd_pos + 8] != [u8(0), 0, 0, 0] {
+		return error('multi-disk archives are unsupported')
+	}
 	n_entries := int(u16(data[eocd_pos + 10]) | (u16(data[eocd_pos + 11]) << 8))
+	n_disk_entries := int(u16(data[eocd_pos + 8]) | (u16(data[eocd_pos + 9]) << 8))
 	cd_size := u32(data[eocd_pos + 12]) | (u32(data[eocd_pos + 13]) << 8) | (u32(data[eocd_pos + 14]) << 16) | (u32(data[eocd_pos + 15]) << 24)
 	cd_offset := u32(data[eocd_pos + 16]) | (u32(data[eocd_pos + 17]) << 8) | (u32(data[eocd_pos + 18]) << 16) | (u32(data[eocd_pos + 19]) << 24)
-
-	// parse central directory
+	if n_entries == 0xffff || cd_size == 0xffffffff || cd_offset == 0xffffffff {
+		return error('ZIP64 archives are unsupported')
+	}
+	if n_disk_entries != n_entries || u64(cd_offset) + u64(cd_size) > u64(eocd_pos) {
+		return error('invalid central directory bounds')
+	}
+	z.directory_offset = int(cd_offset)
+	cd_end := int(cd_offset) + int(cd_size)
 	mut pos := int(cd_offset)
 	for _ in 0 .. n_entries {
-		if pos + 46 > data.len {
-			break
+		if pos > cd_end - 46 || data[pos..pos + 4] != [u8(0x50), 0x4b, 0x01, 0x02] {
+			return error('invalid central directory entry')
 		}
-		if !(data[pos] == 0x50 && data[pos + 1] == 0x4b && data[pos + 2] == 0x01 && data[pos + 3] == 0x02) {
-			break
+		flags := u16(data[pos + 8]) | (u16(data[pos + 9]) << 8)
+		if flags & 1 != 0 {
+			return error('encrypted entries are unsupported')
 		}
 		method := u16(data[pos + 10]) | (u16(data[pos + 11]) << 8)
+		if method !in [u16(0), 8] {
+			return error('unsupported compression method')
+		}
 		crc := u32(data[pos + 16]) | (u32(data[pos + 17]) << 8) | (u32(data[pos + 18]) << 16) | (u32(data[pos + 19]) << 24)
 		csize := u32(data[pos + 20]) | (u32(data[pos + 21]) << 8) | (u32(data[pos + 22]) << 16) | (u32(data[pos + 23]) << 24)
 		size := u32(data[pos + 24]) | (u32(data[pos + 25]) << 8) | (u32(data[pos + 26]) << 16) | (u32(data[pos + 27]) << 24)
@@ -172,32 +193,33 @@ fn (mut z Zip) parse() ! {
 		extra_len := int(u16(data[pos + 30]) | (u16(data[pos + 31]) << 8))
 		comment_len := int(u16(data[pos + 32]) | (u16(data[pos + 33]) << 8))
 		local_offset := u32(data[pos + 42]) | (u32(data[pos + 43]) << 8) | (u32(data[pos + 44]) << 16) | (u32(data[pos + 45]) << 24)
-
+		entry_end := pos + 46 + name_len + extra_len + comment_len
+		if name_len == 0 || entry_end > cd_end || csize == 0xffffffff || size == 0xffffffff || local_offset == 0xffffffff {
+			return error('invalid central directory metadata')
+		}
 		name := data[pos + 46..pos + 46 + name_len].bytestr()
-		is_dir := name.ends_with('/')
-
 		z.entries << ZipEntry{
 			name:   name
 			method: method
+			flags:  flags
 			crc32:  crc
 			size:   u64(size)
 			csize:  u64(csize)
 			offset: u64(local_offset)
-			is_dir: is_dir
+			is_dir: name.ends_with('/')
 		}
-		pos += 46 + name_len + extra_len + comment_len
+		pos = entry_end
 	}
-	_ = cd_size
-	// cache entry payloads so that append mode can re-emit entries
-	// that were parsed from an existing archive
+	if pos != cd_end {
+		return error('central directory size mismatch')
+	}
+	// Cache validated payloads so reads and append mode do not decompress entries twice.
 	for i in 0 .. z.entries.len {
-		if z.entries[i].is_dir {
-			continue
-		}
 		z.current = i
 		z.entries[i].data = z.read_current_data()!
 	}
 	z.current = -1
+	z.validated = true
 }
 
 // ---------------------------------------------------------------------------
@@ -215,23 +237,27 @@ pub fn (mut z Zip) open_entry_by_index(index int) ! {
 	z.current = index
 }
 
+// open_entry finds a name case-insensitively when reading, or appends a new writable entry.
 pub fn (mut z Zip) open_entry(name string) ! {
 	z.current = -1
-	for i, e in z.entries {
-		if e.name == name {
-			z.current = i
-			return
-		}
+	normalized := name.replace('\\', '/')
+	if normalized.len == 0 {
+		return error('szip: entry name is empty')
 	}
-	// write mode: append new entry
 	if z.mode == .write || z.mode == .append {
 		z.entries << ZipEntry{
-			name: name
+			name:   normalized
 			method: 0
-			is_dir: name.ends_with('/')
+			is_dir: normalized.ends_with('/')
 		}
 		z.current = z.entries.len - 1
 		return
+	}
+	for i, e in z.entries {
+		if e.name.to_lower() == normalized.to_lower() {
+			z.current = i
+			return
+		}
 	}
 	return error('szip: cannot open archive entry')
 }
@@ -281,33 +307,70 @@ fn (mut z Zip) read_current_data() ![]u8 {
 		return error('szip: no current entry')
 	}
 	e := z.entries[z.current]
-	if e.is_dir {
-		return []u8{}
+	if z.validated {
+		return e.data.clone()
 	}
-	// local header
-	mut pos := int(e.offset)
-	if pos + 30 > z.filedata.len {
-		return error('szip: bad offset')
+	if e.offset > u64(z.directory_offset) || e.offset + 30 > u64(z.directory_offset) {
+		return error('szip: bad local header offset')
 	}
-	name_len := int(u16(z.filedata[pos + 26]) | (u16(z.filedata[pos + 27]) << 8))
-	extra_len := int(u16(z.filedata[pos + 28]) | (u16(z.filedata[pos + 29]) << 8))
+	pos := int(e.offset)
+	data := z.filedata
+	if data[pos..pos + 4] != [u8(0x50), 0x4b, 0x03, 0x04] {
+		return error('szip: invalid local header')
+	}
+	flags := read_u16(data, pos + 6)
+	if flags != e.flags || flags & 1 != 0 || read_u16(data, pos + 8) != e.method {
+		return error('szip: inconsistent local header')
+	}
+	name_len := int(read_u16(data, pos + 26))
+	extra_len := int(read_u16(data, pos + 28))
 	data_start := pos + 30 + name_len + extra_len
+	if data_start > z.directory_offset || e.csize > u64(z.directory_offset - data_start) {
+		return error('szip: truncated entry data')
+	}
+	if data[pos + 30..pos + 30 + name_len].bytestr() != e.name {
+		return error('szip: inconsistent entry name')
+	}
+	// With a data descriptor, the central directory carries the final sizes and checksum.
+	if flags & 8 == 0 && (read_u32(data, pos + 14) != e.crc32
+		|| u64(read_u32(data, pos + 18)) != e.csize
+		|| u64(read_u32(data, pos + 22)) != e.size) {
+		return error('szip: inconsistent entry metadata')
+	}
 	data_end := data_start + int(e.csize)
-	if data_end > z.filedata.len {
-		return error('szip: truncated data')
+	if flags & 8 != 0 {
+		mut descriptor := data_end
+		if descriptor <= z.directory_offset - 4 && read_u32(data, descriptor) == 0x08074b50 {
+			descriptor += 4
+		}
+		if descriptor > z.directory_offset - 12 || read_u32(data, descriptor) != e.crc32
+			|| u64(read_u32(data, descriptor + 4)) != e.csize
+			|| u64(read_u32(data, descriptor + 8)) != e.size {
+			return error('szip: invalid data descriptor')
+		}
 	}
-	compressed := z.filedata[data_start..data_end]
+	compressed := data[data_start..data_end]
+	mut decoded := []u8{}
 	if e.method == 0 {
-		// stored
-		return compressed.clone()
-	}
-	if e.method == 8 {
+		decoded = compressed.clone()
+	} else if e.method == 8 {
 		res := deflate.decompress_raw_with_consumed(compressed) or {
 			return error('szip: deflate failed: ${err.msg()}')
 		}
-		return res.decoded
+		if res.consumed != compressed.len {
+			return error('szip: compressed size mismatch')
+		}
+		decoded = res.decoded
+	} else {
+		return error('szip: unsupported method ${e.method}')
 	}
-	return error('szip: unsupported method ${e.method}')
+	if u64(decoded.len) != e.size || crc32.sum(decoded) != e.crc32 {
+		return error('szip: entry size or checksum mismatch')
+	}
+	if e.is_dir && decoded.len != 0 {
+		return error('szip: directory entry contains data')
+	}
+	return decoded
 }
 
 pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
@@ -331,7 +394,8 @@ pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 pub fn (mut z Zip) read_entry() !voidptr {
 	data := z.read_current_data()!
 	// Allocate one byte for empty entries too, preserving the owning-buffer API.
-	buf := malloc(if data.len == 0 { 1 } else { data.len })
+	// The entry API transfers ownership of this allocation to its caller.
+	buf := unsafe { malloc(if data.len == 0 { 1 } else { data.len }) }
 	if data.len > 0 {
 		unsafe { vmemcpy(buf, data.data, data.len) }
 	}
@@ -350,28 +414,33 @@ pub fn (mut z Zip) extract_entry(path string) ! {
 	os.write_file_array(path, data) or { return error('szip: cannot extract entry: ${err.msg()}') }
 }
 
+// write_entry appends bytes to the currently open writable entry.
 pub fn (mut z Zip) write_entry(data []u8) ! {
+	if z.mode == .read_only {
+		return error('szip: archive is read-only')
+	}
 	if z.current < 0 || z.current >= z.entries.len {
 		return error('szip: no current entry')
 	}
-	z.entries[z.current].data = data.clone()
-	z.entries[z.current].size = u64(data.len)
-	z.entries[z.current].crc32 = crc32.sum(data)
+	z.entries[z.current].data << data
+	contents := z.entries[z.current].data
+	z.entries[z.current].size = u64(contents.len)
+	z.entries[z.current].crc32 = crc32.sum(contents)
 	// compression
 	if z.deflate_level() == 0 {
 		z.entries[z.current].method = 0
-		z.entries[z.current].csize = u64(data.len)
+		z.entries[z.current].csize = u64(contents.len)
 	} else {
-		compressed := deflate.compress_raw(data) or {
+		compressed := deflate.compress_raw(contents) or {
 			return error('szip: compress failed: ${err.msg()}')
 		}
 		// only use deflate if smaller
-		if compressed.len < data.len {
+		if compressed.len < contents.len {
 			z.entries[z.current].method = 8
 			z.entries[z.current].csize = u64(compressed.len)
 		} else {
 			z.entries[z.current].method = 0
-			z.entries[z.current].csize = u64(data.len)
+			z.entries[z.current].csize = u64(contents.len)
 		}
 	}
 }
@@ -381,6 +450,20 @@ pub fn (mut z Zip) write_entry(data []u8) ! {
 // ---------------------------------------------------------------------------
 
 fn (mut z Zip) flush() ! {
+	if z.entries.len >= 0xffff {
+		return error('szip: ZIP64 archives are unsupported')
+	}
+	mut payloads := [][]u8{cap: z.entries.len}
+	for i, e in z.entries {
+		payload := if e.method == 8 { deflate.compress_raw(e.data)! } else { e.data.clone() }
+		if e.name.len == 0 || e.name.len > 0xffff || payload.len >= i64(0xffffffff) || e.data.len >= i64(0xffffffff) {
+			return error('szip: entry exceeds ZIP32 limits')
+		}
+		z.entries[i].size = u64(e.data.len)
+		z.entries[i].csize = u64(payload.len)
+		z.entries[i].crc32 = crc32.sum(e.data)
+		payloads << payload
+	}
 	// Build zip file in memory
 	mut out := []u8{}
 	mut local_offsets := []u64{}
@@ -409,21 +492,8 @@ fn (mut z Zip) flush() ! {
 		out << [u8(0), 0x00]
 		// filename
 		out << name_bytes
-		// data
-		if e.is_dir {
-			// no data
-		} else {
-			if e.method == 0 {
-				out << e.data
-			} else {
-				if e.data.len == 0 {
-					out << []u8{}
-				} else {
-					compressed := deflate.compress_raw(e.data)!
-					out << compressed
-				}
-			}
-		}
+		// Re-encoded payload lengths above also cover entries retained by append mode.
+		out << payloads[i]
 		z.entries[i].offset = local_offsets[i]
 	}
 	// central directory
@@ -489,6 +559,14 @@ fn (mut z Zip) flush() ! {
 // Helpers
 // ---------------------------------------------------------------------------
 
+fn read_u16(data []u8, pos int) u16 {
+	return u16(data[pos]) | (u16(data[pos + 1]) << 8)
+}
+
+fn read_u32(data []u8, pos int) u32 {
+	return u32(data[pos]) | (u32(data[pos + 1]) << 8) | (u32(data[pos + 2]) << 16) | (u32(data[pos + 3]) << 24)
+}
+
 fn u16_to_bytes(v u16) []u8 {
 	return [u8(v & 0xFF), u8((v >> 8) & 0xFF)]
 }
@@ -501,6 +579,7 @@ fn u32_to_bytes(v u32) []u8 {
 // High-level helpers
 // ---------------------------------------------------------------------------
 
+// zip_files writes the supplied files to a ZIP archive and reports write failures.
 pub fn zip_files(path_to_file []string, path_to_export_zip string) ! {
 	mut zip := open(path_to_export_zip, .no_compression, .write) or { return error('szip: ${err.msg()}') }
 	for file in path_to_file {
@@ -509,18 +588,28 @@ pub fn zip_files(path_to_file []string, path_to_export_zip string) ! {
 		zip.write_entry(file_as_byte) or { return error('szip: ${err.msg()}') }
 		zip.close_entry()
 	}
-	zip.close()
+	zip.flush()!
 }
 
+// zip_folder archives a directory, optionally omitting empty folders.
 pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ! {
 	path := folder.trim_right(os.path_separator)
+	if !os.is_dir(path) {
+		return error('szip: source is not a directory')
+	}
 	mut files := []string{}
-	os.walk_with_context(path, &files, fn (ctx voidptr, file string) {
-		mut files := unsafe { &[]string(ctx) }
-		files << file
-	})
+	mut pending := [path]
+	for pending.len > 0 {
+		current := pending.pop()
+		for name in os.ls(current)! {
+			entry := os.join_path(current, name)
+			files << entry
+			if os.is_dir(entry) && !os.is_link(entry) {
+				pending << entry
+			}
+		}
+	}
 	mut zip := open(zip_file, .no_compression, .write)!
-	defer { zip.close() }
 	for file in files {
 		is_dir := os.is_dir(file)
 		if opt.omit_empty_folders && is_dir {
@@ -540,37 +629,46 @@ pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ! {
 		}
 		zip.close_entry()
 	}
+	zip.flush()!
 }
 
+// extract_zip_to_dir extracts entries beneath dir and reports invalid paths or I/O failures.
 pub fn extract_zip_to_dir(file string, dir string) !bool {
-	if !os.exists(dir) {
+	if !os.is_dir(dir) {
 		return error('szip: cannot open directory for extracting, directory not exists')
 	}
-	mut z := open(file, .no_compression, .read_only) or { return error('szip: ${err.msg()}') }
-	n := z.total() or { return error('szip: ${err.msg()}') }
-	for i in 0 .. n {
-		z.open_entry_by_index(i) or { continue }
-		entry_name := z.name()
-		target := os.join_path(dir, entry_name)
-		if entry_name.ends_with('/') {
-			os.mkdir_all(target) or {}
-			z.close_entry()
-			continue
+	root := os.real_path(dir)
+	mut z := open(file, .no_compression, .read_only)!
+	defer { z.close() }
+	for i in 0 .. z.entries.len {
+		z.open_entry_by_index(i)!
+		target := extraction_path(root, z.name())!
+		if z.is_dir()! {
+			os.mkdir_all(target)!
+		} else {
+			os.mkdir_all(os.dir(target))!
+			z.extract_entry(target)!
 		}
-		// ensure parent dir
-		parent := os.dir(target)
-		if !os.exists(parent) {
-			os.mkdir_all(parent) or {}
-		}
-		data := z.read_current_data() or {
-			z.close_entry()
-			continue
-		}
-		os.write_file_array(target, data) or {}
 		z.close_entry()
 	}
-	z.close()
 	return true
 }
 
-// end of module
+fn extraction_path(root string, name string) !string {
+	// ZIP names use '/', but also reject Windows separators and drive-qualified names.
+	normalized := name.replace('\\', '/')
+	if normalized.starts_with('/') || normalized.contains(':') || normalized.contains_u8(0) {
+		return error('szip: invalid extraction path')
+	}
+	mut target := root
+	for part in normalized.trim_right('/').split('/') {
+		if part in ['', '.', '..'] {
+			return error('szip: invalid extraction path')
+		}
+		target = os.join_path(target, part)
+		if os.is_link(target) {
+			return error('szip: extraction path contains a symbolic link')
+		}
+	}
+	return target
+}
