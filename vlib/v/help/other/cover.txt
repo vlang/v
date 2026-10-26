@@ -1,0 +1,34 @@
+Analyze & make reports, based on cover files, produced by running
+programs and tests, compiled with `-coverage folder/`.
+
+Usage:
+  v cover [options] [folder1/ file2 ...]
+
+v cover reads the .csv counters and .json metadata that instrumented
+files write while they are being run, aggregates them, and prints a
+report. Directories are searched for coverage files automatically;
+individual coverage files can be given too.
+
+Options:
+  -h, --help              Show this help text.
+  -P, --percentages       Show coverage percentage per file.
+  -H, --hotspots          Show most frequently executed covered lines.
+  -F, --functions         Show every function of every file, and whether
+                          a run entered it.
+  -U, --uncovered         List the functions no run entered, one
+                          `path:line name` per line.
+  -S, --show_test_files   Show `_test.v` files as well (normally
+                          filtered).
+  -A, --absolute          Use absolute paths for all files, no matter the
+                          current folder. By default, files inside the
+                          current folder are shown with a relative path.
+  -f, --filter <pattern>  Filter only the matching source path patterns.
+      --lcov <path>       Write an LCOV line coverage report to the
+                          specified file path.
+      --json <path>       Write the whole report as JSON to the
+                          specified file path.
+  -W, --write-tests       Write a test_ function for every uncovered
+                          function, beside its source.
+  -n, --dry-run           With --write-tests, print what would be written
+                          instead of writing it.
+  -v, --verbose           Be more verbose while processing the coverages.

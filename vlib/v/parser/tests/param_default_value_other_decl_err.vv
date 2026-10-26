@@ -1,0 +1,8 @@
+interface Defaults {
+	f(a int = 2) int
+}
+
+type WithDefault = fn (a int = 2, b string) int
+
+fn main() {
+}

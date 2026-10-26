@@ -34,7 +34,7 @@ fn test_match_variant_clones_remain_independent_across_storage_growth() {
 	for i, id in roots {
 		for child in a.children_of(a.node(id)) {
 			copied := a.child(a.node(child), 0)
-			assert a.node(copied).value == expected[i]
+			assert a.node(copied).value_text() == expected[i]
 			assert a.node(copied).flags == 3
 			if i == 0 {
 				continue
@@ -50,10 +50,10 @@ fn test_match_variant_clones_remain_independent_across_storage_growth() {
 	assert last == root
 	assert a.nodes.len == node_count
 	assert a.children.len == child_count
-	assert a.node(leaf).value == 'Last'
+	assert a.node(leaf).value_text() == 'Last'
 	assert a.node(leaf).typ == flat.source_type_uint
 	first_branch := a.child_node(a.node(first), 0)
 	second_branch := a.child_node(a.node(second), 0)
-	assert a.child_node(first_branch, 0).value == 'First'
-	assert a.child_node(second_branch, 0).value == 'Second'
+	assert a.child_node(first_branch, 0).value_text() == 'First'
+	assert a.child_node(second_branch, 0).value_text() == 'Second'
 }

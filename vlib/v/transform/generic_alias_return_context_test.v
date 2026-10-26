@@ -14,13 +14,18 @@ fn test_imported_generic_alias_return_keeps_the_caller_type_argument() {
 	t.structs['aliases.Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'aliases' }
 	for ret in ['aliases.Values[T]', 'Values[T]'] {
 		for arg in ['Item', '[]Item'] {
-			node := flat.Node{ kind: .call, value: arg }
+			mut node := flat.Node{ kind: .call }
+			node.set_call_type_args([flat.source_type_id(arg)])
 			expected := if arg == 'Item' { '[]main.Item' } else { '[][]main.Item' }
 			assert flat.source_type_name(t.call_return_type_name_in_module(flat.source_type_id(ret), node, 'aliases')) == expected
 		}
 	}
-	assert flat.source_type_name(t.call_return_type_name_in_module(flat.source_type_id('aliases.Values[T]'), flat.Node{ kind: .call, value: 'int' }, 'aliases')) == '[]int'
-	assert flat.source_type_name(t.call_return_type_name_in_module(flat.source_type_id('aliases.Values[T]'), flat.Node{ kind: .call, value: 'aliases.Item' }, 'aliases')) == '[]aliases.Item'
+	mut int_call := flat.Node{ kind: .call }
+	int_call.set_call_type_args([flat.source_type_int])
+	assert flat.source_type_name(t.call_return_type_name_in_module(flat.source_type_id('aliases.Values[T]'), int_call, 'aliases')) == '[]int'
+	mut item_call := flat.Node{ kind: .call }
+	item_call.set_call_type_args([flat.source_type_id('aliases.Item')])
+	assert flat.source_type_name(t.call_return_type_name_in_module(flat.source_type_id('aliases.Values[T]'), item_call, 'aliases')) == '[]aliases.Item'
 	callee := t.a.add_val(.ident, 'aliases.values')
 	type_arg := t.a.add_val(.ident, 'Item')
 	index_start := t.a.children.len

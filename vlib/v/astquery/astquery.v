@@ -251,8 +251,8 @@ fn named_children(a &flat.FlatAst, node &flat.Node, kind flat.NodeKind) []string
 	mut names := []string{}
 	for child in a.children_of(node) {
 		child_node := a.node(child)
-		if child_node.kind == kind && child_node.value != '' {
-			names << child_node.value
+		if child_node.kind == kind && child_node.value_text() != '' {
+			names << child_node.value_text()
 		}
 	}
 	return names
@@ -376,10 +376,11 @@ fn mentions(node &flat.Node, name string) bool {
 	if node.kind in literal_kinds || node.kind == .directive {
 		return false
 	}
-	if node.value == name {
+	value := node.value_text()
+	if value == name {
 		return true
 	}
-	return node.value.all_after_last('.') == name
+	return value.all_after_last('.') == name
 }
 
 // literal_kinds are the node kinds whose `value` is text rather than a name.
