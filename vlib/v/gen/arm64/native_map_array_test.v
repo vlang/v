@@ -11,11 +11,11 @@ fn test_native_map_array_fields_keep_map_indexing_through_pointer_receivers() {
 	$if macos && arm64 {
 		source := r'module main
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(source voidptr, size isize) voidptr {
-    result := C.malloc(usize(size))
-    return C.memcpy(result, source, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(source voidptr, size int) voidptr {
+    result := C.malloc(uint(size))
+    return C.memcpy(result, source, uint(size))
 }
 fn array_new(element_size int, len int, cap int) []int { return []int{} }
 fn __new_array_noscan(len int, cap int, element_size int) []int {

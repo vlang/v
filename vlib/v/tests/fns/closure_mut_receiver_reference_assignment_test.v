@@ -136,8 +136,8 @@ fn (mut receiver CapturedHeapReceiver) setup_with_value_blocks() {
 		mut explicit := unsafe { &CapturedHeapReceiver(receiver) }
 		assert typeof(explicit).name == '&CapturedHeapReceiver'
 		explicit.bump(10000)
-		address := unsafe { usize(receiver) }
-		assert address == unsafe { usize(explicit) }
+		address := unsafe { uint(receiver) }
+		assert address == unsafe { uint(explicit) }
 	}()
 }
 

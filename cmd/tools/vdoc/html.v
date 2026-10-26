@@ -4,7 +4,7 @@ import os
 import net.urllib
 import encoding.html
 import strings
-import markdown
+import x.markdown
 import document as doc
 
 const css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
@@ -525,15 +525,21 @@ fn escape_code(text string) string {
 fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			relative_link_base: md_link_base
+	mut renderer := markdown.HTMLRenderer{
+		opts:             markdown.Options{}
+		code_highlighter: fn (lang string, code string) string {
+			if lang == '' {
+				return html.escape(code)
+			}
+			return html_highlight(code)
+		}
+		link_base:        md_link_base
+		link_resolver:    fn (base string, url string) string {
+			return resolve_relative_markdown_link(base, url)
 		}
 	}
 	only_comments_text := dn.merge_comments_without_examples()
-	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer) or {
-		''
-	}
+	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
 	mut deprecated_tags := dn.tags.filter(is_deprecated_attribute(it))
@@ -584,13 +590,21 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		for variant in dn.variants {
 			dnw.write_string(declaration_html(variant, true))
 			if has_own_comments(variant, dn) {
-				mut variant_renderer := markdown.HtmlRenderer{
-					transformer: &MdHtmlCodeHighlighter{
-						relative_link_base: md_link_base
+				mut variant_renderer := markdown.HTMLRenderer{
+					opts:             markdown.Options{}
+					code_highlighter: fn (lang string, code string) string {
+						if lang == '' {
+							return html.escape(code)
+						}
+						return html_highlight(code)
+					}
+					link_base:        md_link_base
+					link_resolver:    fn (base string, url string) string {
+						return resolve_relative_markdown_link(base, url)
 					}
 				}
 				variant_comments := prepare_markdown_for_html(variant.merge_comments_without_examples())
-				dnw.writeln(markdown.render(variant_comments, mut variant_renderer) or { '' })
+				dnw.writeln(markdown.render(variant_comments, mut variant_renderer))
 			}
 		}
 	}
@@ -810,42 +824,6 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	toc.writeln('</li>')
 }
 
-// highlight_code_languages are the languages of the fenced code blocks that vdoc highlights as
-// V code, like ```v. Code blocks in other languages, like ```sh, are shown as they are.
-const highlight_code_languages = ['v', 'vlang', 'vsh']!
-
-struct MdHtmlCodeHighlighter {
-mut:
-	language           string
-	relative_link_base string
-}
-
-fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name string, value string) string {
-	mut transformed := value
-	if p is markdown.MD_SPANTYPE && p in [.md_span_a, .md_span_img] && name in ['href', 'src'] {
-		transformed = resolve_relative_markdown_link(f.relative_link_base, value)
-	}
-	return markdown.default_html_transformer.transform_attribute(p, name, transformed)
-}
-
-fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
-	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
-		is_v_code := f.language.to_lower() in highlight_code_languages
-		// Reset the language, so that it will not persist between blocks,
-		// and will not be accidentally re-used for the next block, that may be lacking ```language :
-		unsafe {
-			f.language = ''
-		}
-		if !is_v_code {
-			return html.escape(text)
-		}
-		return html_highlight(text)
-	}
-	return text
-}
-
-fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {
-	if key == 'code_language' {
-		f.language = val
-	}
-}
+// MdHtmlCodeHighlighter is no longer used; code highlighting and relative-link
+// resolution are now handled through the code_highlighter / link_resolver
+// callbacks of x.markdown's HTMLRenderer.

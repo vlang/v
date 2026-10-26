@@ -176,7 +176,7 @@ fn test_scalar_success_keeps_addresses_that_can_escape_in_a_result_error() {
 }
 
 fn test_pointer_to_integer_casts_keep_addresses_through_aliases_and_nested_casts() {
-	for target in ['usize', 'isize', 'u64'] {
+	for target in ['uint', 'int', 'u64'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -233,8 +233,8 @@ fn test_sum_type_scalar_extraction_preserves_encoded_address_aliases() {
 	tagged := t.make_ident('tagged')
 	start := a.children.len
 	a.children << tagged
-	unwrapped := a.add_node(flat.Node{ kind: .as_expr, children_start: start, children_count: 1, value: 'usize' })
-	tc.register_synth_type(unwrapped, tc.parse_type(flat.source_type_id('usize')))
+	unwrapped := a.add_node(flat.Node{ kind: .as_expr, children_start: start, children_count: 1, value: 'uint' })
+	tc.register_synth_type(unwrapped, tc.parse_type(flat.source_type_id('uint')))
 	assert t.escape_aggregate_address_sources(unwrapped, {
 		'tagged': ['value']
 	}, map[string]string{}) == ['value']
@@ -248,12 +248,12 @@ fn test_scalar_optional_alias_preserves_its_encoded_address() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	alias := t.make_ident('alias')
-	tc.register_synth_type(alias, tc.parse_type(flat.source_type_id('?usize')))
+	tc.register_synth_type(alias, tc.parse_type(flat.source_type_id('?uint')))
 	fallback := t.make_block([t.make_expr_stmt(t.make_int_literal(0))])
 	start := a.children.len
 	a.children << [alias, fallback]
 	unwrapped := a.add_node(flat.Node{ kind: .or_expr, children_start: start, children_count: 2 })
-	tc.register_synth_type(unwrapped, tc.parse_type(flat.source_type_id('usize')))
+	tc.register_synth_type(unwrapped, tc.parse_type(flat.source_type_id('uint')))
 	assert t.escape_aggregate_address_sources(unwrapped, {
 		'alias': ['value']
 	}, map[string]string{}) == ['value']
@@ -263,7 +263,7 @@ fn test_scalar_optional_alias_preserves_its_encoded_address() {
 }
 
 fn test_address_sized_result_success_preserves_argument_addresses() {
-	for target in ['usize', 'isize', 'u64', 'i64', 'int', 'f64', 'f32'] {
+	for target in ['uint', 'int', 'u64', 'i64', 'f64', 'f32'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})

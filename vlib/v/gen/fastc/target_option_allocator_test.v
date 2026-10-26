@@ -19,7 +19,7 @@ mut:
 	value u64
 }
 type BlockRef = &Block
-type Choose = fn (usize) ?BlockRef
+type Choose = fn (uint) ?BlockRef
 struct Large {
 	a u64
 	b u64
@@ -45,13 +45,13 @@ fn (mut counter Counter) next() ?u64 {
 enum Mode { ready }
 fn C.enter_allocator()
 fn C.leave_allocator()
-fn C.next_block(size usize) voidptr
+fn C.next_block(size uint) voidptr
 fn C.allocation_count() i64
 fn C.next_wide() u64
 fn C.wide_calls() i64
 fn C.native_option_copy() int
 fn C._vinit(argc int, argv voidptr)
-fn choose(size usize) ?BlockRef {
+fn choose(size uint) ?BlockRef {
 	if size > 4096 { return none }
 	return unsafe { BlockRef(C.next_block(size)) }
 }
@@ -59,7 +59,7 @@ fn optional_copy(value ?BlockRef) ?BlockRef { return value }
 fn result_copy(value BlockRef) !BlockRef { return value }
 fn result_forward(value BlockRef) !BlockRef { return result_copy(value)! }
 @[export: "test_allocator"]
-fn allocator(size usize) voidptr {
+fn allocator(size uint) voidptr {
 	C.enter_allocator()
 	callback := Choose(choose)
 	selected := callback(size)

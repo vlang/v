@@ -70,7 +70,7 @@ fn bit_flips(data []u8, start int) [][]u8 {
 	return res
 }
 
-// assert_checksum_errors checks that, with the payload intact, a wrong adler32, crc32 or isize
+// assert_checksum_errors checks that, with the payload intact, a wrong adler32, crc32 or int
 // is reported as exactly that, by the one-shot and by the callback decoder.
 fn assert_checksum_errors(payload []u8, plain []u8) ! {
 	z := zlib_stream(payload, plain)

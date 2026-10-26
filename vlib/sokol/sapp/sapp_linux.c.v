@@ -60,8 +60,8 @@ $if sokol_wayland ? {
 	pub struct C.wl_interface {}
 
 	pub struct C.wl_array {
-		size  usize
-		alloc usize
+		size  uint
+		alloc uint
 		data  voidptr
 	}
 
@@ -284,7 +284,7 @@ $if sokol_wayland ? {
 	fn C.xkb_state_new(keymap &C.xkb_keymap) &C.xkb_state
 	fn C.xkb_state_unref(state &C.xkb_state)
 	fn C.xkb_state_key_get_one_sym(state &C.xkb_state, key u32) Xkb_keysym_t
-	fn C.xkb_state_key_get_utf8(state &C.xkb_state, key u32, buf &char, size usize) int
+	fn C.xkb_state_key_get_utf8(state &C.xkb_state, key u32, buf &char, size uint) int
 	fn C.xkb_state_update_mask(state &C.xkb_state, depressed u32, latched u32, locked u32, dep_group u32, lat_group u32, lock_group u32) int
 	fn C.xkb_state_mod_name_is_active(state &C.xkb_state, name &char, @type int) int
 
@@ -346,7 +346,7 @@ $if sokol_wayland ? {
 	const wp_cursor_shape_device_v1_shape_not_allowed = u32(25)
 
 	// MAP_FAILED
-	const map_failed = voidptr(usize(~u64(0)))
+	const map_failed = voidptr(uint(~u64(0)))
 
 	// Linux input event codes (from linux/input-event-codes.h)
 	const btn_left = 0x110
@@ -433,17 +433,17 @@ const gl_framebuffer_binding = u32(0x8CA6)
 
 // === Linux syscalls (shared) ===
 
-fn C.mmap(addr voidptr, length usize, prot int, flags int, fd int, offset i64) voidptr
-fn C.munmap(addr voidptr, length usize) int
+fn C.mmap(addr voidptr, length uint, prot int, flags int, fd int, offset i64) voidptr
+fn C.munmap(addr voidptr, length uint) int
 fn C.close(fd int) int
-fn C.read(fd int, buf voidptr, count usize) isize
+fn C.read(fd int, buf voidptr, count uint) C.ptrdiff_t
 fn C.pipe(fds &i32) i32
 fn C.strcmp(s1 &char, s2 &char) int
-fn C.strncmp(s1 &char, s2 &char, n usize) int
-fn C.strlen(s &char) usize
+fn C.strncmp(s1 &char, s2 &char, n uint) int
+fn C.strlen(s &char) uint
 fn C.strtok(str &char, delim &char) &char
 fn C.strtol(str &char, endptr &&char, base int) i64
-fn C.memset(s voidptr, c int, n usize) voidptr
+fn C.memset(s voidptr, c int, n uint) voidptr
 fn C.atof(s &char) f64
 
 // mmap constants
@@ -941,7 +941,7 @@ fn C.poll(fds &C.pollfd, nfds u64, timeout int) int
 fn C.ConnectionNumber(display &C.Display) int
 
 fn C.atof(str &char) f64
-fn C.strncmp(s1 &char, s2 &char, n usize) int
+fn C.strncmp(s1 &char, s2 &char, n uint) int
 
 // X11 constants
 const x_false = 0

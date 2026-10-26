@@ -8,8 +8,8 @@ $if linux {
 	$if x_multiwindow_x11 ?|| sokol_wayland ? {
 		#insert "@VMODROOT/vlib/gg/multiwindow_gl_readback_helpers.h"
 
-		fn C.v_gg_multiwindow_gl_readback_image_rgba8(image_id u32, image_height int, x int, y int, width int, height int, pixels &u8, pixels_len usize) int
-		fn C.v_gg_multiwindow_gl_readback_window_rgba8(framebuffer_height int, x int, y int, width int, height int, pixels &u8, pixels_len usize) int
+		fn C.v_gg_multiwindow_gl_readback_image_rgba8(image_id u32, image_height int, x int, y int, width int, height int, pixels &u8, pixels_len uint) int
+		fn C.v_gg_multiwindow_gl_readback_window_rgba8(framebuffer_height int, x int, y int, width int, height int, pixels &u8, pixels_len uint) int
 	}
 }
 
@@ -364,7 +364,7 @@ fn (mut app App) stage_managed_window_captures(id WindowId, target_submitted_fra
 				mut pixels := []u8{len: capture.rect.width * capture.rect.height * 4}
 				status := C.v_gg_multiwindow_gl_readback_window_rgba8(framebuffer_height,
 					capture.rect.x, capture.rect.y, capture.rect.width, capture.rect.height,
-					pixels.data, usize(pixels.len))
+					pixels.data, uint(pixels.len))
 				if status != 0 {
 					app.core.service_fail_window_readback(capture.id,
 						err_multiwindow_render_readback_unsupported)!
@@ -841,7 +841,7 @@ fn (mut context WindowContext) request_image_readback_managed(id WindowImageId, 
 				width, height)!
 			mut pixels := []u8{len: width * height * 4}
 			status := C.v_gg_multiwindow_gl_readback_image_rgba8(snapshot.image.id,
-				snapshot.desc.height, x, y, width, height, pixels.data, usize(pixels.len))
+				snapshot.desc.height, x, y, width, height, pixels.data, uint(pixels.len))
 			if status != 0 {
 				app.core.service_rollback_window_readback_for_gg(readback)
 				return error(err_multiwindow_render_readback_unsupported)
@@ -987,7 +987,7 @@ fn (mut pass WindowPassContext) apply_bindings_managed(bindings WindowBindings) 
 		}
 		buffer_slot := runtime.resources.slots[index]
 		if buffer_slot.buffer_desc.type != .vertexbuffer
-			|| usize(binding.offset) >= buffer_slot.buffer_capacity {
+			|| uint(binding.offset) >= buffer_slot.buffer_capacity {
 			runtime.mutex.unlock()
 			return error(err_multiwindow_render_invalid_bindings)
 		}
@@ -1007,7 +1007,7 @@ fn (mut pass WindowPassContext) apply_bindings_managed(bindings WindowBindings) 
 		}
 		buffer_slot := runtime.resources.slots[index]
 		if buffer_slot.buffer_desc.type != .indexbuffer
-			|| usize(index_binding.offset) >= buffer_slot.buffer_capacity {
+			|| uint(index_binding.offset) >= buffer_slot.buffer_capacity {
 			runtime.mutex.unlock()
 			return error(err_multiwindow_render_invalid_bindings)
 		}

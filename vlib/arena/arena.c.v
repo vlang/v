@@ -39,7 +39,7 @@ pub fn new(config Config) Arena {
 		$compile_error('module `arena` supports `-gc none` and the default Boehm GC, not `-gc vgc`')
 	}
 	return Arena{
-		handle: unsafe { v_arena_new(isize(config.chunk_size)) }
+		handle: unsafe { v_arena_new(int(config.chunk_size)) }
 	}
 }
 
@@ -79,13 +79,13 @@ pub fn (mut a Arena) free() {
 
 // used returns the number of bytes allocated in `a` since it was created or
 // last reset.
-pub fn (a &Arena) used() isize {
+pub fn (a &Arena) used() int {
 	used, _ := v_arena_stats(a.handle)
 	return used
 }
 
 // capacity returns the number of bytes in the chunks that `a` holds.
-pub fn (a &Arena) capacity() isize {
+pub fn (a &Arena) capacity() int {
 	_, capacity := v_arena_stats(a.handle)
 	return capacity
 }

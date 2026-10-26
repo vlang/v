@@ -165,7 +165,7 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	// read_key loads the group and the private scalar (range-checked), but
 	// leaves the public point unset -- calc_public derives Q = d * G, which
 	// sign()/public_key()/derive_shared_secret() all need present in the ctx.
-	rret := C.mbedtls_ecp_read_key(opt.nid.mbedtls_group_id(), ctx, seed.data, usize(seed.len))
+	rret := C.mbedtls_ecp_read_key(opt.nid.mbedtls_group_id(), ctx, seed.data, uint(seed.len))
 	if rret != 0 {
 		C.mbedtls_ecdsa_free(ctx)
 		return error_with_code('crypto.ecdsa: mbedtls_ecp_read_key failed (seed is not a valid private scalar for the curve?)', rret)
@@ -280,7 +280,7 @@ pub fn (pv PrivateKey) bytes() ![]u8 {
 	}
 	size := if pv.ks_flag == .flexible { pv.ks_size } else { pv.nid.byte_size() }
 	mut buf := []u8{len: size}
-	wret := C.mbedtls_mpi_write_binary(&d, buf.data, usize(size))
+	wret := C.mbedtls_mpi_write_binary(&d, buf.data, uint(size))
 	if wret != 0 {
 		return error_with_code('crypto.ecdsa: mbedtls_mpi_write_binary failed', wret)
 	}
@@ -365,7 +365,7 @@ pub fn (pv PrivateKey) derive_shared_secret(peer PublicKey) ![]u8 {
 	}
 	size := pv.nid.byte_size()
 	mut secret := []u8{len: size}
-	wret := C.mbedtls_mpi_write_binary(&z, secret.data, usize(size))
+	wret := C.mbedtls_mpi_write_binary(&z, secret.data, uint(size))
 	if wret != 0 {
 		return error_with_code('crypto.ecdsa: mbedtls_mpi_write_binary failed', wret)
 	}
@@ -417,7 +417,7 @@ pub fn (pb PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
 	// write_signature/sign) -- it verifies against whatever digest bytes are
 	// given, algorithm-agnostic.
 	_, digest := calc_digest(pb.nid, message, opt)!
-	ret := C.mbedtls_ecdsa_read_signature(pb.ctx, digest.data, usize(digest.len), sig.data, usize(sig.len))
+	ret := C.mbedtls_ecdsa_read_signature(pb.ctx, digest.data, uint(digest.len), sig.data, uint(sig.len))
 	return ret == 0
 }
 
@@ -465,8 +465,8 @@ pub fn (pb PublicKey) uncompressed_bytes() ![]u8 {
 		return error_with_code('crypto.ecdsa: mbedtls_ecp_export failed', eret)
 	}
 	mut buf := []u8{len: int(C.MBEDTLS_ECP_MAX_PT_LEN)}
-	mut olen := usize(0)
-	wret := C.mbedtls_ecp_point_write_binary(&grp, &q, C.MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, buf.data, usize(buf.len))
+	mut olen := uint(0)
+	wret := C.mbedtls_ecp_point_write_binary(&grp, &q, C.MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, buf.data, uint(buf.len))
 	if wret != 0 {
 		return error_with_code('crypto.ecdsa: mbedtls_ecp_point_write_binary failed', wret)
 	}
@@ -499,7 +499,7 @@ pub fn PublicKey.from_uncompressed_bytes(bytes []u8, opt CurveOptions) !PublicKe
 	defer {
 		C.mbedtls_ecp_point_free(&q)
 	}
-	rret := C.mbedtls_ecp_point_read_binary(&grp, &q, bytes.data, usize(bytes.len))
+	rret := C.mbedtls_ecp_point_read_binary(&grp, &q, bytes.data, uint(bytes.len))
 	if rret != 0 {
 		return error_with_code('crypto.ecdsa: mbedtls_ecp_point_read_binary failed', rret)
 	}
@@ -616,8 +616,8 @@ fn sign_digest(ctx &C.mbedtls_ecdsa_context, md_alg int, digest []u8) ![]u8 {
 		free_rng(mut ctr_drbg, mut entropy)
 	}
 	mut sig := []u8{len: int(C.MBEDTLS_ECDSA_MAX_LEN)}
-	mut slen := usize(0)
-	ret := C.mbedtls_ecdsa_write_signature(ctx, md_alg, digest.data, usize(digest.len), sig.data, usize(sig.len), &slen, C.mbedtls_ctr_drbg_random, voidptr(&ctr_drbg))
+	mut slen := uint(0)
+	ret := C.mbedtls_ecdsa_write_signature(ctx, md_alg, digest.data, uint(digest.len), sig.data, uint(sig.len), &slen, C.mbedtls_ctr_drbg_random, voidptr(&ctr_drbg))
 	if ret != 0 {
 		return error_with_code('crypto.ecdsa: mbedtls_ecdsa_write_signature failed', ret)
 	}

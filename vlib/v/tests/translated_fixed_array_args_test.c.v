@@ -4,7 +4,7 @@ module main
 #include <string.h>
 #include "@VMODROOT/vlib/v/tests/testdata/translated_fixed_array_args.h"
 
-fn C.memset(dest voidptr, value int, count usize) voidptr
+fn C.memset(dest voidptr, value int, count uint) voidptr
 
 fn sum(values &int) int { return unsafe { values[0] + values[1] } }
 

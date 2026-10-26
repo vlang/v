@@ -55,7 +55,7 @@ pub enum VKind {
 	u16
 	u32
 	u64
-	usize
+	uint
 	f32
 	f64
 	char
