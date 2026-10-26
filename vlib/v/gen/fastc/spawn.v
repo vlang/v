@@ -173,10 +173,10 @@ fn (mut g Parser) read_spawn_expression() !string {
 				return g.unsupported('spawn of method `${method_name}` without a receiver parameter')
 			}
 			expected_receiver := method_signature.parameter_types.ids[0]
-			receiver_is_pointer := flat.source_type_name(receiver_type).ends_with('*')
-			receiver_arg = if flat.source_type_name(expected_receiver).ends_with('*') && !receiver_is_pointer {
+			receiver_is_pointer := flat.source_type_query(receiver_type).has(.c_pointer_suffix)
+			receiver_arg = if flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && !receiver_is_pointer {
 				'&(${receiver.source})'
-			} else if !flat.source_type_name(expected_receiver).ends_with('*') && receiver_is_pointer {
+			} else if !flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && receiver_is_pointer {
 				'*(${receiver.source})'
 			} else {
 				receiver.source
@@ -299,13 +299,13 @@ fn (mut g Parser) read_spawn_expression() !string {
 		argument_tokens := g.last_expression.clone()
 		if is_mut_argument {
 			argument_type := g.infer_expression_type(argument_tokens) or { u32(0) }
-			if flat.source_type_name(expected_type).ends_with('*') && flat.source_type_name(argument_type).ends_with('*') {
+			if flat.source_type_query(expected_type).has(.c_pointer_suffix) && flat.source_type_query(argument_type).has(.c_pointer_suffix) {
 				// `mut c` where `c` is already a reference local must stay a pointer;
 				// read_expression's value form auto-dereferences it.
 				if contextual := g.render_call_argument_expression(argument_tokens, expected_type) {
 					argument = contextual
 				}
-			} else if flat.source_type_name(expected_type).ends_with('*') && !flat.source_type_name(argument_type).ends_with('*') {
+			} else if flat.source_type_query(expected_type).has(.c_pointer_suffix) && !flat.source_type_query(argument_type).has(.c_pointer_suffix) {
 				argument = '&(${argument})'
 			}
 		} else if expected_type != 0 && argument_tokens.len > 0 {
@@ -339,6 +339,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 		signature.return_type
 	}
 	thread_type := g.fastc_unclaimed_generated_name(fastc_thread_type_name(flat.source_type_name(value_type)))
+	thread_type_id := flat.source_type_id(thread_type)
 	start_name := g.fastc_unclaimed_generated_name('__vf_spawn_start_${g.fastc_spawn_target_stem(function_key)}')
 	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types.ids, start_name, method_target)
 	call := '${start_name}(${arguments.join(', ')})'
@@ -350,10 +351,10 @@ fn (mut g Parser) read_spawn_expression() !string {
 			tok:    .name
 			lit:    call
 			source: call
-			typ:    flat.source_type_id(thread_type)
+			typ:    thread_type_id
 		},
 	]
-	g.last_expression_type = flat.source_type_id(thread_type)
+	g.last_expression_type = thread_type_id
 	g.last_multi_return_types = flat.TypeTextList{ ids: ([]u32{}).clone() }
 	return call
 }

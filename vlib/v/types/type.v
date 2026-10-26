@@ -1,6 +1,5 @@
 module types
 
-import strings
 import v.flat
 
 // Type aliases type values used by types.
@@ -484,6 +483,21 @@ pub fn generic_base_name(name string) string {
 	return name
 }
 
+// generic_base_type_id returns the declaration spelling of a concrete generic type.
+// Array spellings and names without generic arguments retain their original ID.
+pub fn generic_base_type_id(name_id u32) u32 {
+	shape := flat.source_type_shape(name_id)
+	if !shape.has(.bracketed) || shape.has(.leading_bracket) {
+		return name_id
+	}
+	name := flat.source_type_name(name_id)
+	idx := name.index_u8(`[`)
+	if idx > 0 {
+		return flat.source_type_id(name[..idx])
+	}
+	return name_id
+}
+
 // is_pointer reports whether is pointer applies in types.
 @[inline]
 pub fn (t &Type) is_pointer() bool {
@@ -558,85 +572,83 @@ pub fn (t &Type) name() string {
 		Rune { 'rune' }
 		ISize { 'isize' }
 		USize { 'uint' }
-		else { t.composite_name() }
+		else { flat.source_type_name(t.composite_source_type_id()) }
 	}
 }
 
 @[direct_array_access]
-fn (t &Type) composite_name() string {
+fn (t &Type) composite_source_type_id() u32 {
 	if t is Pointer {
 		if t.base_type is Void {
-			return 'voidptr'
+			return flat.source_type_voidptr
 		}
-		return '&${nested_type_name(t.base_type)}'
+		return flat.source_type_composition_one(.pointer, t.base_type.source_type_id())
 	}
 	if t is Array {
-		return '[]${nested_type_name(t.elem_type)}'
+		return flat.source_type_composition_one(.array, t.elem_type.source_type_id())
 	}
 	if t is OptionType {
-		return '?${nested_type_name(t.base_type)}'
+		return flat.source_type_composition_one(.option, t.base_type.source_type_id())
 	}
 	if t is ResultType {
-		return '!${nested_type_name(t.base_type)}'
+		return flat.source_type_composition_one(.result, t.base_type.source_type_id())
 	}
 	if t is FnType {
-		mut s := strings.new_builder(32 + t.params.len * 8)
-		s.write_string('fn(')
-		for i in 0 .. t.params.len {
-			if i > 0 {
-				s.write_string(', ')
-			}
-			param := t.params[i].typ
-			if t.params[i].is_mut {
-				s.write_string('mut ')
-				if param is Pointer {
-					s.write_string(nested_type_name(param.base_type))
-					continue
-				}
-			}
-			if t.is_variadic && i == t.params.len - 1 && param is Array {
-				s.write_string('...')
-				s.write_string(nested_type_name(param.elem_type))
+		count := t.params.len + if t.return_type is Void { 0 } else { 1 }
+		mut small := [16]u32{}
+		// This borrowed stack view cannot escape: the composition cache owns its keys.
+		mut parts := if count <= small.len {
+			unsafe { []u32(array{ data: &small[0], len: count, cap: small.len, element_size: sizeof(u32), flags: .nogrow | .nofree }) }
+		} else {
+			[]u32{len: count}
+		}
+		for index, param in t.params {
+			mut part := u32(0)
+			if param.is_mut && param.typ is Pointer {
+				part = param.typ.base_type.source_type_id()
+			} else if t.is_variadic && index == t.params.len - 1 && param.typ is Array {
+				part = flat.source_type_composition_one(.variadic_parameter, param.typ.elem_type.source_type_id())
 			} else {
-				s.write_string(nested_type_name(param))
+				part = param.typ.source_type_id()
 			}
+			if param.is_mut {
+				part = flat.source_type_composition_one(.mutable_parameter, part)
+			}
+			parts[index] = part
 		}
-		s.write_u8(`)`)
-		if t.return_type !is Void {
-			s.write_u8(` `)
-			s.write_string(nested_type_name(t.return_type))
+		if t.return_type is Void {
+			return flat.source_type_composition(.void_function_type, parts)
 		}
-		return s.str()
+		parts[t.params.len] = t.return_type.source_type_id()
+		return flat.source_type_composition(.function_type, parts)
 	}
 	if t is Map {
-		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
+		return flat.source_type_composition_two(.map, t.key_type.source_type_id(), t.value_type.source_type_id())
 	}
 	if t is ArrayFixed {
-		len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
-		elem_type := nested_type_name(t.elem_type)
-		// Keep fixed arrays in canonical prefix form. Suffix form loses nesting:
-		// both `?[3]u8` and `[3]?u8` otherwise collapse to the ambiguous `?u8[3]`.
-		return '[${len_text}]${elem_type}'
+		// Keep the canonical prefix form: ?[3]u8 and [3]?u8 have different nesting.
+		return flat.source_type_fixed_array(t.len, t.len_expr, t.elem_type.source_type_id(), false)
 	}
 	if t is Channel {
 		if t.is_mut && t.elem_type is Pointer {
-			return 'chan mut ${nested_type_name(t.elem_type.base_type)}'
+			return flat.source_type_composition_one(.mutable_channel, t.elem_type.base_type.source_type_id())
 		}
-		return 'chan ${nested_type_name(t.elem_type)}'
+		return flat.source_type_composition_one(.channel, t.elem_type.source_type_id())
 	}
 	if t is MultiReturn {
-		mut parts := []string{cap: t.types.len}
-		for i in 0 .. t.types.len {
-			parts << t.types[i].name()
+		mut small := [16]u32{}
+		mut parts := if t.types.len <= small.len {
+			// The cache consumes this view before the stack buffer expires.
+			unsafe { []u32(array{ data: &small[0], len: t.types.len, cap: small.len, element_size: sizeof(u32), flags: .nogrow | .nofree }) }
+		} else {
+			[]u32{len: t.types.len}
 		}
-		return '(${parts.join(', ')})'
+		for index, typ in t.types {
+			parts[index] = typ.source_type_id()
+		}
+		return flat.source_type_composition(.multi_return, parts)
 	}
-	return ''
-}
-
-// nested_type_name supports nested type name handling for types.
-fn nested_type_name(t &Type) string {
-	return t.name()
+	return 0
 }
 
 // prim_name_from supports prim name from handling for types.
@@ -791,7 +803,7 @@ pub fn (t &Type) source_type_id() u32 {
 		ISize { flat.source_type_isize }
 		USize { flat.source_type_uint }
 		Primitive { primitive_source_type_id(t.props, t.size) }
-		else { flat.source_type_id(t.name()) }
+		else { t.composite_source_type_id() }
 	}
 }
 

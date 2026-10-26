@@ -214,7 +214,7 @@ fn check_owned_array_result_branch(a &flat.FlatAst, branch_id flat.NodeId) {
 	assignment := a.child_node(&failure_block, 0)
 	assert assignment.kind == .assign && assignment.skip_ownership_drops()
 	failed := a.child_node(assignment, 1)
-	assert failed.kind == .struct_init && failed.value == '![]Res'
+	assert failed.kind == .struct_init && failed.source_value_id() == flat.source_type_id('![]Res')
 	assert failed.children_count == 2
 	ok_field := a.child_node(failed, 0)
 	assert ok_field.value == 'ok' && a.child_node(ok_field, 0).value == 'false'
