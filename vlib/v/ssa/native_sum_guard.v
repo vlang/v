@@ -30,7 +30,7 @@ fn (mut b Builder) preserve_sum_guard(id flat.NodeId, truth bool) {
 		return
 	}
 	if node.kind == .is_expr && truth && node.children_count > 0 {
-		b.preserve_sum_variant(b.a.child(&node, 0), flat.source_type_id(node.value), 0)
+		b.preserve_sum_variant(b.a.child(&node, 0), node.source_value_id(), 0)
 		return
 	}
 	if node.kind != .infix || node.children_count < 2 {
@@ -66,7 +66,7 @@ fn (b &Builder) sum_guard_binding_addr(expr_id flat.NodeId) ?ValueID {
 	for b.valid_node_id(current) {
 		expr := b.a.nodes[int(current)]
 		if expr.kind == .ident {
-			return b.vars[expr.value] or { return none }
+			return b.vars[expr.value_text()] or { return none }
 		}
 		if (expr.kind == .paren || (expr.kind == .prefix && expr.op == .mul))
 			&& expr.children_count > 0 {

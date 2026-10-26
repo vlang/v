@@ -20,8 +20,74 @@ fn test_collect_interface_impls_includes_boxed_maps() {
 
 	g.collect_interface_impls()
 
-	assert flat.source_type_id('map[string]int') in g.iface_impls['Any']
+	assert flat.source_type_id('map[string]int') in g.iface_impls[flat.source_type_id('Any')]
 	assert g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id('Any'), flat.source_type_id('map[string]int'))] > 0
+}
+
+fn test_interface_impls_preserves_qualified_identity_and_worker_lists() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	alpha_id := flat.source_type_id('alpha.Any')
+	beta_id := flat.source_type_id('beta.Any')
+	alpha_map_id := flat.source_type_id('map[string]int')
+	beta_map_id := flat.source_type_id('map[string]bool')
+	g.interfaces['alpha.Any'] = []string{}
+	g.interfaces['beta.Any'] = []string{}
+	g.interface_boxed_types[interface_dispatch_boxed_type_key(alpha_id, alpha_map_id)] = true
+	g.interface_boxed_types[interface_dispatch_boxed_type_key(beta_id, beta_map_id)] = true
+	g.interface_boxed_types_done = true
+
+	g.collect_interface_impls()
+
+	assert g.iface_impls[alpha_id] == [alpha_map_id]
+	assert g.iface_impls[beta_id] == [beta_map_id]
+	$if !v3_no_parallel ? {
+		mut published := clone_cgen_source_type_list_map(g.iface_impls)
+		mut changed := published[alpha_id] or { panic('missing alpha implementation') }
+		changed[0] = beta_map_id
+		published[alpha_id] = changed
+		assert g.iface_impls[alpha_id] == [alpha_map_id]
+		assert published[alpha_id] == [beta_map_id]
+		assert published[beta_id] == [beta_map_id]
+	}
+}
+
+fn test_interface_init_typ_id_uses_canonical_source_value() {
+	mut a := flat.FlatAst.new()
+	iface_id := flat.source_type_id('Speaker')
+	concrete_id := flat.source_type_id('Cat')
+	obj := a.add_val(.ident, 'cat')
+	object_start := a.children.len
+	a.children << obj
+	field := a.add_node(flat.Node{
+		kind:           .field_init
+		value:          '_object'
+		children_start: i32(object_start)
+		children_count: 1
+	})
+	init_start := a.children.len
+	a.children << field
+	init := a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          'Speaker'
+		children_start: i32(init_start)
+		children_count: 1
+	})
+	// Canonical type operands retain their spelling only as a source ID.
+	assert a.node(init).value == ''
+	assert a.node(init).source_value_id() == iface_id
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_scope.insert('cat', types.Type(types.Struct{ name_id: concrete_id }))
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.interfaces['Speaker'] = []string{}
+	g.iface_type_ids[interface_dispatch_boxed_type_key(iface_id, concrete_id)] = 7
+
+	assert (g.interface_init_typ_id(*a.node(init)) or { 0 }) == 7
 }
 
 fn test_incremental_cgen_collects_interface_type_ids() {

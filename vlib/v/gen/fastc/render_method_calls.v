@@ -36,7 +36,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	} else if name_index == 0 && tokens[0].lit in g.locals {
 		local := g.locals[tokens[0].lit]
 		local_name := g.local_c_name(tokens[0].lit)
-		if local.typ_text() == 'voidptr' && local.fn_return_type != 0 {
+		if local.typ == flat.source_type_voidptr && local.fn_return_type != 0 {
 			parameters := fastc_c_prototype_parameters(signature.parameter_types.ids)
 			'((${fastc_output_c_type(signature.return_type_text())} (*)(${parameters}))(${local_name}))'
 		} else {
@@ -47,7 +47,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	}
 	if signature.is_disabled {
 		return FastcRenderedExpression{
-			source: fastc_disabled_call_expression(signature.return_type_text())
+			source: fastc_disabled_call_expression(signature.return_type)
 			typ:    signature.return_type
 		}
 	}
@@ -93,7 +93,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 				c_arguments << g.render_call_argument_expression(argument, signature.parameter_types.ids[argument_index]) or { return none }
 			}
 			named_initializer := g.render_named_struct_initializer(element_type, call_args[named_start..]) or { return none }
-			c_arguments << g.dynamic_array_literal_source(flat.source_type_name(variadic_type), flat.source_type_name(element_type),
+			c_arguments << g.dynamic_array_literal_source(variadic_type, element_type,
 				[named_initializer])
 			return FastcRenderedExpression{
 				source: '${call_name}(${c_arguments.join(',')})'
@@ -135,7 +135,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		packed := if variadic_count == 0 {
 			'(${flat.source_type_name(variadic_type)}){0}'
 		} else {
-			g.dynamic_array_literal_source(flat.source_type_name(variadic_type), flat.source_type_name(element_type), variadic_values)
+			g.dynamic_array_literal_source(variadic_type, element_type, variadic_values)
 		}
 		rendered_arguments.trim(fixed_arguments)
 		rendered_arguments << packed
@@ -280,8 +280,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			})
 		}
-		if flat.source_type_name(receiver_type) == 'chan' && tokens[i].lit in ['close', 'try_push',
-			'try_pop'] {
+		if receiver_type == fastc_type_chan && tokens[i].lit in ['close', 'try_push', 'try_pop'] {
 			call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
 			receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
@@ -296,7 +295,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			packed := if tokens[i].lit == 'close' && arguments.len == 0 {
 				'(Array_IError){0}'
 			} else if tokens[i].lit == 'close' {
-				g.dynamic_array_literal_source('Array_IError', 'IError', arguments)
+				g.dynamic_array_literal_source(flat.source_type_id('Array_IError'), fastc_type_ierror, arguments)
 			} else {
 				arguments.join(',')
 			}
@@ -340,7 +339,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		// method) is not on the variant, so dispatch it on the boxed original C variable.
 		if unnarrowed_receiver == '' && receiver_tokens.len == 1 && receiver_tokens[0].tok == .name {
 			if local := g.locals[receiver_tokens[0].lit] {
-				if local.smartcast_origin_type != u32(0) && local.smartcast_origin_type_text() != flat.source_type_name(receiver_type) {
+				if local.smartcast_origin_type != u32(0) && local.smartcast_origin_type != receiver_type {
 					narrowed_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 					if narrowed_key !in g.functions && narrowed_key !in g.mono_functions {
 						origin_key, _ := g.resolve_method(local.smartcast_origin_type, tokens[i].lit)
@@ -380,8 +379,12 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 			element_storage_type := g.collection_storage_type(element_type)
-			access := if flat.source_type_name(receiver_type).ends_with('*') { '->' } else { '.' }
-			comparison := if fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(element_type))) == 'string' {
+			access := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
+				'->'
+			} else {
+				'.'
+			}
+			comparison := if fastc_trim_pointer_type(g.underlying_alias_type(element_type)) == flat.source_type_string {
 				'builtin__string_eq(__vf_contains_item, ((${flat.source_type_name(element_type)} *)__vf_contains_collection${access}data)[__vf_contains_index])'
 			} else {
 				'(__vf_contains_item == ((${element_storage_type} *)__vf_contains_collection${access}data)[__vf_contains_index])'
@@ -417,7 +420,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				argument := g.render_call_argument_expression(call_args[0], element_type) or {
 					continue
 				}
-				access := if flat.source_type_name(receiver_type).ends_with('*') {
+				access := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'->'
 				} else {
 					'.'
@@ -470,20 +473,21 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				value_type := g.fastc_thread_value_type(element) or { continue }
 				value_storage_type := g.collection_storage_type(value_type)
-				result_type := if value_type == 0 {
-					'void'
+				result_type_id := if value_type == 0 {
+					flat.source_type_void
 				} else {
-					fastc_array_c_type(flat.source_type_name(value_type))
+					flat.source_type_id(fastc_array_c_type(flat.source_type_name(value_type)))
 				}
+				result_type := flat.source_type_name(result_type_id)
 				mut w := unsafe { &Parser(g) }
-				fastc_register_composite_type(result_type, mut w.composite_types)
+				fastc_register_composite_type(result_type_id, mut w.composite_types)
 				wait_helper := g.fastc_thread_wait_helper(flat.source_type_name(element), value_type)
-				recv_src := if flat.source_type_name(receiver_type).ends_with('*') {
+				recv_src := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
 				}
-				receiver_decl_type := g.declaration_c_type(flat.source_type_id(flat.source_type_name(receiver_type).trim_right('*')), recv_src)
+				receiver_decl_type := g.declaration_c_type(fastc_trim_pointer_type(receiver_type), recv_src)
 				wait_all := if value_type == u32(0) {
 					'({ ${receiver_decl_type} __vf_threads = (${recv_src}); for (int __vf_ti = 0; __vf_ti < __vf_threads.len; __vf_ti++) { ${wait_helper}(((${flat.source_type_name(element)} *)__vf_threads.data)[__vf_ti]); } })'
 				} else {
@@ -492,7 +496,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && wait_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: wait_all
-						typ:    flat.source_type_id(result_type)
+						typ:    result_type_id
 					}
 				}
 				mut wait_needle := '${receiver.source}.wait()'
@@ -547,20 +551,20 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		}
 		method_key, embedded_path := g.resolve_method(receiver_type, tokens[i].lit)
 		if method_key !in g.functions && method_key !in g.mono_functions {
-			if tokens[i].lit == 'str' && g.can_generate_default_struct_str(flat.source_type_name(receiver_type)) {
+			if tokens[i].lit == 'str' && g.can_generate_default_struct_str(receiver_type) {
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				if call_end != i + 2 {
 					continue
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				mut w := unsafe { &Parser(g) }
-				helper := w.fastc_default_struct_str_name(flat.source_type_name(receiver_type).trim_right('*')) or {
+				helper := w.fastc_default_struct_str_name(fastc_trim_pointer_type(receiver_type)) or {
 					continue
 				}
 				// A member smart-cast reads the narrowed struct through a variant pointer, so its
 				// rendered source is a `T*` even though the inferred receiver type is the value
 				// `T`; the by-value default `str(T)` helper then needs an explicit deref.
-				receiver_is_pointer := flat.source_type_name(receiver_type).ends_with('*') || (g.selfhost && g.expression_uses_member_smartcast(receiver_tokens))
+				receiver_is_pointer := flat.source_type_query(receiver_type).has(.c_pointer_suffix) || (g.selfhost && g.expression_uses_member_smartcast(receiver_tokens))
 				receiver_argument := if receiver_is_pointer {
 					'*(${receiver.source})'
 				} else {
@@ -591,7 +595,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				enum_c := flat.source_type_name(fastc_normalize_inferred_type(receiver_type)).trim_right('*')
-				receiver_argument := if flat.source_type_name(receiver_type).ends_with('*') {
+				receiver_argument := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
@@ -623,11 +627,11 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				mut w := unsafe { &Parser(g) }
 				helper := if flat.source_type_name(receiver_type).trim_right('*') in g.sum_types {
-					w.fastc_sumtype_str_helper(flat.source_type_name(receiver_type)) or { continue }
+					w.fastc_sumtype_str_helper(receiver_type) or { continue }
 				} else {
-					w.fastc_array_str_name(flat.source_type_name(receiver_type)) or { continue }
+					w.fastc_array_str_name(receiver_type) or { continue }
 				}
-				receiver_argument := if flat.source_type_name(receiver_type).ends_with('*') {
+				receiver_argument := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
@@ -683,8 +687,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				mut w := unsafe { &Parser(g) }
-				helper := w.fastc_map_str_name(flat.source_type_name(receiver_type)) or { continue }
-				map_value := if flat.source_type_name(receiver_type).ends_with('*') {
+				helper := w.fastc_map_str_name(receiver_type) or { continue }
+				map_value := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
@@ -714,8 +718,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				mut w := unsafe { &Parser(g) }
-				helper := w.fastc_sumtype_type_name_helper(flat.source_type_name(receiver_type)) or { continue }
-				receiver_argument := if flat.source_type_name(receiver_type).ends_with('*') {
+				helper := w.fastc_sumtype_type_name_helper(receiver_type) or { continue }
+				receiver_argument := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
@@ -801,7 +805,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		}
 		call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 		if signature.is_disabled {
-			disabled_call := fastc_disabled_call_expression(signature.return_type_text())
+			disabled_call := fastc_disabled_call_expression(signature.return_type)
 			if receiver_start == 0 && call_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: disabled_call
@@ -827,7 +831,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			g.render_method_receiver_expression(receiver_tokens) or { continue }
 		}
 		mut receiver_source := receiver.source
-		mut separator := if receiver_tokens.len == 1 && flat.source_type_name(receiver_type).ends_with('*') {
+		mut separator := if receiver_tokens.len == 1 && flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 			'->'
 		} else {
 			'.'
@@ -876,7 +880,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		}
 		expected_receiver := signature.parameter_types.at(0)
 		mut effective_receiver_source := receiver_source
-		mut effective_is_pointer := receiver.typ_text().ends_with('*')
+		mut effective_is_pointer := flat.source_type_query(receiver.typ).has(.c_pointer_suffix)
 		if embedded_path.len > 0 {
 			// Promote through embedded fields: `d.method()`, where `method` lives on
 			// an embedded type, becomes `Type_method(&(d.__embedded_N), ...)`. The
@@ -889,10 +893,10 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			effective_is_pointer = false
 		}
-		receiver_argument := if expected_receiver.ends_with('*') && !effective_is_pointer {
+		receiver_argument := if flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && !effective_is_pointer {
 			g.value_address_expression(flat.source_type_id(expected_receiver.trim_right('*')), effective_receiver_source,
 				receiver_tokens)
-		} else if !expected_receiver.ends_with('*') && effective_is_pointer {
+		} else if !flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && effective_is_pointer {
 			'*(${effective_receiver_source})'
 		} else {
 			effective_receiver_source
@@ -927,7 +931,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				for argument_index, argument in call_args {
 					if argument_index == 0 && tokens[i].lit == 'delete'
 						&& g.map_type_of(receiver_type) != none {
-						key_type_source_id, _ := g.map_key_value_types(flat.source_type_id(flat.source_type_name(receiver_type).trim_right('*'))) or {
+						key_type_source_id, _ := g.map_key_value_types(fastc_trim_pointer_type(receiver_type)) or {
 							continue
 						}
 						key_type := key_type_source_id
@@ -967,7 +971,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			packed := if variadic_count == 0 {
 				'(${flat.source_type_name(variadic_type)}){0}'
 			} else {
-				g.dynamic_array_literal_source(flat.source_type_name(variadic_type), flat.source_type_name(element_type), variadic_values)
+				g.dynamic_array_literal_source(variadic_type, element_type, variadic_values)
 			}
 			direct_arguments.trim(fixed_arguments)
 			direct_arguments << packed

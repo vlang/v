@@ -137,8 +137,9 @@ pub fn (tc &TypeChecker) parse_type_id(text u32) ?TypeId {
 }
 
 @[inline]
-fn scalar_builtin_type_name(text string) bool {
-	return is_builtin_type_name(text) && text != 'array' && text != 'map'
+fn scalar_builtin_type_name_id(source_id u32) bool {
+	return is_builtin_type_name_id(source_id) && source_id != qualify_source_type_array
+		&& source_id != qualify_source_type_map
 }
 
 @[direct_array_access; inline]
