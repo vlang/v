@@ -637,7 +637,7 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		// The source-level initializer is evaluated once for every generated element.
 		// Keep a borrowed projection owned by its source by cloning it inside this loop,
 		// so each element also receives independent owned storage.
-		init_expr = t.transform_owned_array_literal_element(indexed_init, elem_type)
+		init_expr = t.transform_owned_array_literal_element_from_source(indexed_init, init_expr_id, elem_type)
 		init_pending := t.pending_stmts.clone()
 		t.pending_stmts = saved_pending
 		for stmt in init_pending {
@@ -878,6 +878,10 @@ fn (mut t Transformer) fixed_array_needs_runtime_default(field_type_id u32) bool
 }
 
 fn (mut t Transformer) transform_owned_array_literal_element(elem_id flat.NodeId, elem_type_id u32) flat.NodeId {
+	return t.transform_owned_array_literal_element_from_source(elem_id, elem_id, elem_type_id)
+}
+
+fn (mut t Transformer) transform_owned_array_literal_element_from_source(elem_id flat.NodeId, source_id flat.NodeId, elem_type_id u32) flat.NodeId {
 	if value := t.owned_reference_for_type(elem_id, elem_type_id) {
 		return value
 	}
@@ -887,7 +891,9 @@ fn (mut t Transformer) transform_owned_array_literal_element(elem_id flat.NodeId
 	} else {
 		t.transform_expr_for_type(elem_id, elem_type_id)
 	}
-	return t.clone_borrowed_storage_projection(elem_id, value, elem_type_id)
+	// Index substitution creates nodes without the checker's ownership decisions.
+	// Consult the original initializer while cloning the substituted runtime value.
+	return t.clone_borrowed_storage_projection(source_id, value, elem_type_id)
 }
 
 fn (mut t Transformer) owned_reference_for_type(id flat.NodeId, typ u32) ?flat.NodeId {
@@ -1410,7 +1416,7 @@ fn (mut t Transformer) transform_fixed_array_init_expr(node flat.Node) ?flat.Nod
 	mut values := []flat.NodeId{cap: len}
 	for i in 0 .. len {
 		indexed_init := t.substitute_ident_expr(init_id, 'index', t.make_int_literal(i))
-		value := t.transform_owned_array_literal_element(indexed_init, elem_type)
+		value := t.transform_owned_array_literal_element_from_source(indexed_init, init_id, elem_type)
 		values << value
 	}
 	return t.make_array_literal_typed(values, fixed_type_source_id)
