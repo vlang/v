@@ -32,7 +32,7 @@ fn directive_order_write_file(root string, rel string, src string) {
 	os.write_file(path, src) or { panic(err) }
 }
 
-fn directive_order_gen_c(v3_bin string) string {
+fn directive_order_gen_c(v3_bin string, portable bool) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -68,7 +68,12 @@ import sokol.c as _
 	directive_order_write_file(root, 'sokol/f/sokol_gfx.h', '')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	mut args := [v3_bin, '-b', 'c', '-o', c_out]
+	if portable {
+		args << '-cross'
+	}
+	args << os.join_path(root, 'main.v')
+	result := os.exec(args)
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -102,7 +107,7 @@ import foo.bar as _
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_dotted_collision.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -143,7 +148,7 @@ static inline int foo_value(void) {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_importer_macro')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -181,7 +186,7 @@ pub fn value() int {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_dir_header')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -219,7 +224,7 @@ static inline int flag_value(void) {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_flag_include_dir')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -257,7 +262,7 @@ static inline int late_flag_value(void) {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_late_flag_include_dir')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -289,7 +294,7 @@ int multiline_value(void) {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_multiline_static_inline')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -306,30 +311,40 @@ fn directive_order_gen_c_extern_after_header(v3_bin string) string {
 	directive_order_write_file(root, 'main.v', 'module main
 
 #insert "native_thing.h"
+#flag @VMODROOT/native_use.c
 
 @[typedef]
 struct C.NativeThing {
 	value int
 }
 
+@[c_extern]
 fn C.native_use(item &C.NativeThing) int
 
 fn main() {
 	mut item := C.NativeThing{
 		value: 7
 	}
-	_ := C.native_use(&item)
+	println(C.native_use(&item).str())
 }
 ')
 	directive_order_write_file(root, 'native_thing.h', 'typedef struct NativeThing {
 	int value;
 } NativeThing;
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_extern_after_header.c')
-	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	directive_order_write_file(root, 'native_use.c', '#include "native_thing.h"
+
+int native_use(NativeThing* item) { return item->value; }
+')
+	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_extern_after_header')
+	os.rm(bin_out) or {}
+	os.rm(bin_out + '.c') or {}
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
-	return os.read_file(c_out) or { panic(err) }
+	run := os.exec([bin_out])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '7', run.output
+	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
 fn directive_order_gen_c_header_declared_prototype(v3_bin string) string {
@@ -352,7 +367,7 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_header_declared_proto.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -386,7 +401,7 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_struct_field_after_header.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -426,7 +441,7 @@ static inline int anonymous_value(AnonymousThing* item) {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_anonymous_typedef')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -469,7 +484,7 @@ static inline int tagged_value(TaggedAlias* item) {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_tagged_typedef_alias')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -516,7 +531,7 @@ typedef union TaggedUnionImpl {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_union_typedef_aliases.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -561,7 +576,7 @@ typedef struct {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_include')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -594,7 +609,7 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_unresolved_system_include.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -614,7 +629,7 @@ fn main() {}
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_unresolved_quoted_include.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -642,12 +657,12 @@ typedef uint64_t NestedWord;
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_system_include.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_headerless_x11_aggregates(v3_bin string) string {
+fn directive_order_gen_c_sdk_x11_aggregates(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_x11_aggregates_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -679,12 +694,12 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_x11_aggregates.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_headerless_bcrypt_fn(v3_bin string) string {
+fn directive_order_gen_c_sdk_bcrypt_fn(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_bcrypt_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -701,12 +716,12 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_bcrypt.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_headerless_mach_headers(v3_bin string) string {
+fn directive_order_gen_c_sdk_mach_headers(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_mach_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -731,7 +746,7 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_mach.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -751,12 +766,12 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_task_info.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_headerless_timerfd_header(v3_bin string) string {
+fn directive_order_gen_c_sdk_timerfd_header(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_timerfd_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -793,7 +808,7 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_timerfd.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -836,7 +851,7 @@ static inline int stdarg_sum(int count, ...) {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_stdarg')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -871,7 +886,7 @@ static inline int inttypes_macro_widths(void) {
 	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_inttypes')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_out])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
@@ -906,7 +921,7 @@ static inline int poll_user_fd(struct pollfd* item) {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_poll.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -924,13 +939,18 @@ fn main() {
 	mut m := sync.new_rwmutex()
 	m.lock()
 	m.unlock()
+	println("OK")
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_rwmutex.c')
-	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_rwmutex')
+	os.rm(bin_out) or {}
+	os.rm(bin_out + '.c') or {}
+	result := os.exec([v3_bin, '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
-	return os.read_file(c_out) or { panic(err) }
+	run := os.exec([bin_out])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'OK', run.output
+	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
 fn directive_order_gen_c_shared_runtime(v3_bin string) string {
@@ -950,7 +970,7 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_shared_runtime.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -973,7 +993,7 @@ fn main() {
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_request_extern.c')
 	os.rm(c_out) or {}
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
@@ -1020,8 +1040,7 @@ fn directive_order_count(c_code string, needle string) int {
 fn directive_order_has_include_directive(c_code string) bool {
 	for line in c_code.split_into_lines() {
 		clean := line.trim_space()
-		// System headers can be emitted by the compiler preamble. These checks are
-		// interested in local headers that should have been inlined.
+		// Portable output embeds local headers while preserving system includes.
 		if clean.starts_with('#include "') {
 			return true
 		}
@@ -1030,7 +1049,7 @@ fn directive_order_has_include_directive(c_code string) bool {
 }
 
 fn test_c_directives_follow_import_dependency_order() {
-	c_code := directive_order_gen_c(directive_order_build_v3())
+	c_code := directive_order_gen_c(directive_order_build_v3(), true)
 	gfx_define := directive_order_index(c_code, '#define SOKOL_GFX_IMPL')
 	fontstash_define := directive_order_index(c_code, '#define SOKOL_FONTSTASH_IMPL')
 	block_start := directive_order_index(c_code, '#ifdef KEEP_DUPLICATE_INCLUDE')
@@ -1042,6 +1061,21 @@ fn test_c_directives_follow_import_dependency_order() {
 	block_tail := c_code[block_start..]
 	block_end := directive_order_index(block_tail, '#endif')
 	assert block_end >= 0, c_code
+}
+
+fn test_native_c_directives_preserve_resolved_includes_in_dependency_order() {
+	c_code := directive_order_gen_c(directive_order_build_v3(), false)
+	root := os.real_path(os.join_path(os.temp_dir(), 'v3_c_directive_order_project'))
+	gfx_header := os.join_path(root, 'sokol/c/sokol_gfx.h').replace('\\', '/')
+	fontstash_header := os.join_path(root, 'sokol/f/util/sokol_fontstash.h').replace('\\', '/')
+	gfx_define := directive_order_index(c_code, '#define SOKOL_GFX_IMPL')
+	gfx_include := directive_order_index(c_code, '#include "${gfx_header}"')
+	fontstash_define := directive_order_index(c_code, '#define SOKOL_FONTSTASH_IMPL')
+	fontstash_include := directive_order_index(c_code, '#include "${fontstash_header}"')
+	assert gfx_define >= 0, c_code
+	assert gfx_define < gfx_include, c_code
+	assert gfx_include < fontstash_define, c_code
+	assert fontstash_define < fontstash_include, c_code
 }
 
 fn test_c_directives_preserve_dotted_import_module_identity() {
@@ -1078,7 +1112,8 @@ fn test_quoted_include_uses_flag_include_dirs() {
 	c_code := directive_order_gen_and_run_flag_include_dir_header(directive_order_build_v3())
 	flag_header := directive_order_index(c_code, 'static inline int flag_value')
 	assert flag_header >= 0, c_code
-	assert directive_order_index(c_code, 'static inline int flag_value_inner') >= 0, c_code
+	// Angle-bracket dependencies remain supplied through the recorded -I flag.
+	assert c_code.contains('#include <flag_value.h>'), c_code
 	assert !c_code.contains('int flag_value(void);'), c_code
 	assert !directive_order_has_include_directive(c_code), c_code
 }
@@ -1087,7 +1122,7 @@ fn test_quoted_include_uses_later_flag_include_dirs() {
 	c_code := directive_order_gen_and_run_late_flag_include_dir_header(directive_order_build_v3())
 	flag_header := directive_order_index(c_code, 'static inline int late_flag_value')
 	assert flag_header >= 0, c_code
-	assert directive_order_index(c_code, 'static inline int late_flag_value_inner') >= 0, c_code
+	assert c_code.contains('#include <late_flag_value.h>'), c_code
 
 	assert !c_code.contains('int late_flag_value(void);'), c_code
 	assert !directive_order_has_include_directive(c_code), c_code
@@ -1160,7 +1195,7 @@ fn test_inlined_typedef_union_headers_are_not_duplicated() {
 fn test_nested_local_header_includes_are_inlined_recursively() {
 	c_code := directive_order_gen_and_run_nested_include(directive_order_build_v3())
 	bias_idx := directive_order_index(c_code, '#define NESTED_BIAS 5')
-	stdint_idx := directive_order_index(c_code, 'typedef unsigned int uint32_t;')
+	stdint_idx := directive_order_index(c_code, '#include <stdint.h>')
 	typedef_idx := directive_order_index(c_code, '} NestedThing;')
 	outer_fn_idx := directive_order_index(c_code, 'static inline int nested_value')
 	assert bias_idx >= 0, c_code
@@ -1177,13 +1212,13 @@ fn test_nested_local_header_includes_are_inlined_recursively() {
 fn test_supported_system_include_is_preserved_and_enables_system_preamble() {
 	c_code := directive_order_gen_c_unresolved_system_include(directive_order_build_v3())
 	assert !directive_order_has_include_directive(c_code), c_code
-	assert !c_code.contains('#include <platform_user_header.h>'), c_code
+	assert c_code.contains('#include <platform_user_header.h>'), c_code
 	assert c_code.contains('#include <dlfcn.h>'), c_code
 	assert c_code.contains('#include <stdint.h>'), c_code
 	api_compat_idx := directive_order_index(c_code, '#define PLATFORM_API_COMPAT 7')
 	guard_idx := directive_order_index(c_code, '#ifdef USE_DLFCN')
 	dlfcn_idx := directive_order_index(c_code, '#include <dlfcn.h>')
-	preamble_idx := directive_order_index(c_code, 'typedef signed char i8;')
+	preamble_idx := directive_order_index(c_code, 'typedef int8_t i8;')
 	assert api_compat_idx >= 0, c_code
 	assert guard_idx >= 0, c_code
 	assert dlfcn_idx > guard_idx, c_code
@@ -1201,76 +1236,65 @@ fn test_unresolved_quoted_include_is_preserved() {
 
 fn test_nested_system_include_is_preserved_in_its_platform_guard() {
 	c_code := directive_order_gen_c_nested_system_include(directive_order_build_v3())
-	include_idx := directive_order_index(c_code, '#include <nested_platform_header.h>')
-	preamble_idx := directive_order_index(c_code, 'typedef signed char i8;')
-	stdint_guard_idx := directive_order_index(c_code,
-		'#if !defined(__V_HEADERLESS_STDINT_H) && !defined(_STDINT_H)')
+	// Keep the original guard intact: unavailable platform headers must stay inactive.
+	assert c_code.contains('#if defined(__linux__)\n#define NESTED_PLATFORM_HEADER 1\n#include <nested_platform_header.h>\n#endif'), c_code
 	nested_define_idx := directive_order_index(c_code, '#define NESTED_PLATFORM_HEADER 1')
 	nested_word_idx := directive_order_index(c_code, 'typedef uint64_t NestedWord;')
-	assert include_idx > nested_define_idx, c_code
-	assert include_idx < stdint_guard_idx, c_code
-	assert !directive_order_has_include_directive(c_code), c_code
-	assert preamble_idx >= 0, c_code
-	assert stdint_guard_idx >= 0, c_code
 	assert nested_define_idx >= 0, c_code
-	assert nested_word_idx >= 0, c_code
-	assert preamble_idx < stdint_guard_idx, c_code
-	assert stdint_guard_idx < nested_word_idx, c_code
-	assert nested_define_idx < stdint_guard_idx, c_code
-}
-
-fn test_system_header_aggregates_are_emitted_headerlessly() {
-	c_code := directive_order_gen_c_headerless_x11_aggregates(directive_order_build_v3())
+	assert nested_word_idx > nested_define_idx, c_code
+	assert c_code[nested_define_idx..nested_word_idx].contains('#include <stdint.h>'), c_code
 	assert !directive_order_has_include_directive(c_code), c_code
-	assert !c_code.contains('#include <X11/Xlib.h>'), c_code
-	assert c_code.contains('typedef union XEvent XEvent;'), c_code
-	assert c_code.contains('union XEvent {\n'), c_code
-	assert c_code.contains('typedef union XClientMessageData XClientMessageData;'), c_code
-	assert c_code.contains('union XClientMessageData {\n'), c_code
 }
 
-fn test_system_header_functions_are_emitted_headerlessly() {
-	c_code := directive_order_gen_c_headerless_bcrypt_fn(directive_order_build_v3())
+fn test_system_header_aggregates_keep_sdk_declarations() {
+	c_code := directive_order_gen_c_sdk_x11_aggregates(directive_order_build_v3())
 	assert !directive_order_has_include_directive(c_code), c_code
-	assert !c_code.contains('#include <bcrypt.h>'), c_code
-	assert directive_order_count(c_code, 'BCryptGenRandom(') == 2, c_code
+	assert c_code.contains('#include <X11/Xlib.h>'), c_code
+	assert !c_code.contains('typedef union XEvent XEvent;'), c_code
+	assert !c_code.contains('union XEvent {\n'), c_code
+	assert !c_code.contains('typedef union XClientMessageData XClientMessageData;'), c_code
+	assert !c_code.contains('union XClientMessageData {\n'), c_code
+	assert c_code.contains('XEvent event;'), c_code
 }
 
-fn test_mach_headers_are_emitted_headerlessly() {
-	c_code := directive_order_gen_c_headerless_mach_headers(directive_order_build_v3())
-	preamble_idx := directive_order_index(c_code, 'typedef signed char i8;')
-	assert preamble_idx >= 0, c_code
+fn test_system_header_functions_keep_sdk_declarations() {
+	c_code := directive_order_gen_c_sdk_bcrypt_fn(directive_order_build_v3())
 	assert !directive_order_has_include_directive(c_code), c_code
-	assert !c_code.contains('#include <mach/mach.h>'), c_code
-	assert !c_code.contains('#include <mach/mach_time.h>'), c_code
-	assert !c_code.contains('#define panic mach_panic'), c_code
-	assert c_code.contains('#if defined(__APPLE__) && !defined(_MACH_TASK_INFO_H_)'), c_code
-	assert c_code.contains('typedef unsigned int task_t;'), c_code
-	assert c_code.contains('struct task_basic_info {'), c_code
-	assert c_code.contains('#define KERN_SUCCESS 0'), c_code
-	assert c_code.contains('#define MACH_TASK_BASIC_INFO_COUNT 12'), c_code
-	assert c_code.contains('#define TASK_BASIC_INFO 18'), c_code
-	assert c_code.contains('typedef struct mach_timebase_info_data_t { u32 numer; u32 denom; } mach_timebase_info_data_t;'), c_code
-	assert c_code.contains('int mach_timebase_info('), c_code
+	assert c_code.contains('#include <bcrypt.h>'), c_code
+	// The sole occurrence is the call, rather than an extra ABI declaration.
+	assert directive_order_count(c_code, 'BCryptGenRandom(') == 1, c_code
 }
 
-fn test_inferred_mach_bindings_are_emitted_headerlessly() {
+fn test_mach_headers_keep_sdk_declarations_and_scope_panic_macro() {
+	c_code := directive_order_gen_c_sdk_mach_headers(directive_order_build_v3())
+	assert !directive_order_has_include_directive(c_code), c_code
+	assert c_code.contains('#define panic mach_panic\n#include <mach/mach.h>\n#undef panic'), c_code
+	assert c_code.contains('#define panic mach_panic\n#include <mach/mach_time.h>\n#undef panic'), c_code
+	assert !c_code.contains('typedef unsigned int task_t;'), c_code
+	assert !c_code.contains('struct task_basic_info {'), c_code
+	assert !c_code.contains('typedef struct mach_timebase_info_data_t {'), c_code
+	assert directive_order_count(c_code, 'mach_timebase_info(') == 1, c_code
+}
+
+fn test_inferred_mach_bindings_keep_guarded_sdk_declarations() {
 	c_code := directive_order_gen_c_task_info_reference(directive_order_build_v3())
 	assert !directive_order_has_include_directive(c_code), c_code
-	assert c_code.contains('#if defined(__APPLE__) && !defined(_MACH_TASK_INFO_H_)\ntypedef unsigned int task_t;'), c_code
-	assert c_code.contains('int task_info(void);'), c_code
+	assert c_code.contains('#ifdef __APPLE__\n#define panic mach_panic\n#include <mach/mach.h>\n#undef panic\n#include <mach/task.h>\n#endif'), c_code
+	assert !c_code.contains('int task_info(void);'), c_code
+	assert directive_order_count(c_code, 'task_info(') == 1, c_code
 }
 
-fn test_timerfd_header_uses_headerless_decls() {
-	c_code := directive_order_gen_c_headerless_timerfd_header(directive_order_build_v3())
-	assert !c_code.contains('#include'), c_code
-	assert c_code.contains('struct itimerspec {'), c_code
-	assert c_code.contains('struct tm {'), c_code
-	assert c_code.contains('i32 clock_gettime('), c_code
-	assert c_code.contains('i32 nanosleep('), c_code
-	assert c_code.contains('int timerfd_create('), c_code
-	assert c_code.contains('#define TFD_CLOEXEC O_CLOEXEC'), c_code
-	assert c_code.contains('#define TFD_NONBLOCK O_NONBLOCK'), c_code
+fn test_timerfd_header_keeps_sdk_declarations() {
+	c_code := directive_order_gen_c_sdk_timerfd_header(directive_order_build_v3())
+	assert c_code.contains('#include <sys/timerfd.h>'), c_code
+	assert !c_code.contains('struct itimerspec {'), c_code
+	assert !c_code.contains('struct timespec {'), c_code
+	assert !c_code.contains('int timerfd_create('), c_code
+	assert !c_code.contains('#define TFD_CLOEXEC '), c_code
+	assert !c_code.contains('#define TFD_NONBLOCK '), c_code
+	assert c_code.contains('timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK)'), c_code
+	assert directive_order_count(c_code, 'timerfd_settime(') == 1, c_code
+	assert directive_order_count(c_code, 'timerfd_gettime(') == 1, c_code
 }
 
 fn test_stdarg_in_inlined_header_provides_va_defs() {
@@ -1299,15 +1323,16 @@ fn test_poll_in_inlined_header_uses_preserved_system_struct() {
 	assert !c_code.contains('struct pollfd {\n'), c_code
 }
 
-fn test_rwmutex_keeps_linux_rwlockattr_prototype() {
+fn test_rwmutex_keeps_32bit_rwlock_prototypes() {
 	c_code := directive_order_gen_c_rwmutex(directive_order_build_v3())
-	assert c_code.contains('int pthread_rwlockattr_setkind_np('), c_code
-	assert c_code.contains('int pthread_rwlockattr_init('), c_code
-	assert c_code.contains('int pthread_rwlockattr_destroy('), c_code
-	assert c_code.contains('int pthread_rwlock_init('), c_code
-	assert c_code.contains('int pthread_rwlock_wrlock('), c_code
-	assert c_code.contains('int pthread_rwlock_unlock('), c_code
-	assert !c_code.contains('i32 pthread_rwlock'), c_code
+	// sync declares these returns as i32, preserving C's ABI when V int is pointer-sized.
+	assert c_code.contains('i32 pthread_rwlockattr_setkind_np(void*, i32);'), c_code
+	assert c_code.contains('i32 pthread_rwlockattr_init(void*);'), c_code
+	assert c_code.contains('i32 pthread_rwlockattr_destroy(void*);'), c_code
+	assert c_code.contains('i32 pthread_rwlock_init(void*, void*);'), c_code
+	assert c_code.contains('i32 pthread_rwlock_wrlock(void*);'), c_code
+	assert c_code.contains('i32 pthread_rwlock_unlock(void*);'), c_code
+	assert !c_code.contains('__v_int pthread_rwlock'), c_code
 }
 
 fn test_shared_runtime_keeps_rwmutex_init_prototypes() {
