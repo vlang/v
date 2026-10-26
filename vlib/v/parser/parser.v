@@ -8611,7 +8611,15 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 // copies into every program, and its source tree changes under it: after a `git pull`,
 // the executable that has to rebuild V would otherwise generate C from the new headers.
 fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
-	if !p.prefs.is_prod && !p.prefs.output_cross_c && !p.prefs.building_v {
+	mut embed := p.prefs.is_prod || p.prefs.output_cross_c || p.prefs.building_v
+	if p.prefs.target.os == 'android' {
+		// An Android app cannot read the compile-time file system: `path` and
+		// `apath` name locations on the machine that compiled the program, and
+		// the panic in `reload_from_file_at_runtime` would abort the app at
+		// startup. Embed the bytes, like a portable `-os cross` snapshot does.
+		embed = true
+	}
+	if !embed {
 		return none
 	}
 	if apath.len == 0 || !os.is_file(apath) {
