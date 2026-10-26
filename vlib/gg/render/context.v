@@ -217,13 +217,9 @@ fn commit_listener_fn(user_data voidptr) {
 	if ctx == unsafe { nil } {
 		return
 	}
+	ctx.rewind()
 	mut st := ctx.st
-	st.vertex_count = 0
-	st.commands_count = 0
-	st.uniforms_count = 0
-	st.base_vertex = 0
 	st.frame_id++
-	st.error = .no_error
 }
 
 fn pack_rgba_f(r f32, g f32, b f32, a f32) u32 {
