@@ -109,6 +109,9 @@ It checkpoints the successful instrumented compiler build. A retry runs the fail
 self-compilation without rebuilding `v2`, unless that binary is missing or changed.
 Other non-test commands retain their existing task-level retry behavior.
 
+On macOS, `build-examples` builds `examples/macos_tray` as a project folder so its
+platform-specific source is included alongside the main program.
+
 A resumed pass is not a fresh validation of earlier tasks or tests against shared
 source changes. Compiler and library edits deliberately preserve progress. Use
 `ci --reset` for a complete check, after switching branches, or after removing build
