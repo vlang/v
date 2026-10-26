@@ -159,16 +159,16 @@ fn test_default_build_rechecks_compile_time_environment() {
 		mut compiler := os.new_process(@VEXE)
 		compiler.set_environment(environment)
 		compiler.set_args(['-cc', 'clang', '-o', executable, source])
-		compiler.set_redirect_stdio()
+		compiler.set_redirect_stdio_merged()
+		output := compiler.stdout_slurp()
 		compiler.wait()
-		output := compiler.stdout_slurp() + compiler.stderr_slurp()
 		code := compiler.code
 		compiler.close()
 		assert code == 0, output
 		mut program := os.new_process(executable)
 		program.set_redirect_stdio()
-		program.wait()
 		result := program.stdout_slurp()
+		program.wait()
 		program_code := program.code
 		program.close()
 		assert program_code == 0
