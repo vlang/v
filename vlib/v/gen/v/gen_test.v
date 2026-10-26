@@ -1791,6 +1791,17 @@ fn test_formatter_writes_embed_defaults_without_an_empty_type_column() {
 	assert vfmt('embed_default_twice', formatted) == formatted
 }
 
+// `typeof(expr)` in a type position is linked to its expression by the
+// compiler's parser; vfmt must write back the source spelling, not the link.
+fn test_formatter_round_trips_typeof_types() {
+	fixture := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests/typeof_as_type_keep.vv')
+	source := os.read_file(fixture) or { panic(err) }
+	out := vfmt('typeof_as_type', source)
+	assert out == source
+	assert !out.contains('__expr_')
+	assert reparse_diagnostics('typeof_as_type_reparse', out) == 0
+}
+
 fn test_channel_ops() {
 	out := vfmt('chan', 'fn f() {\n\tx := <-ch\n\tch <- 5\n}\n')
 	assert out.contains('x := <-ch')

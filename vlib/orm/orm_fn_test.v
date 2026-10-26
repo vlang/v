@@ -790,11 +790,11 @@ fn test_orm_table_gen_vsql() {
 	assert query == 'CREATE TABLE "test_table" ("id" SERIAL NOT NULL, "name" TEXT NOT NULL, PRIMARY KEY("id"));'
 }
 
-fn test_orm_table_gen_vsql_rejects_unsupported_constraints() {
+fn test_orm_table_gen_vsql_constraints() {
 	table := orm.Table{
 		name: 'test_table'
 	}
-	for attr in [
+	attrs := [
 		VAttribute{
 			name: 'unique'
 		},
@@ -816,13 +816,17 @@ fn test_orm_table_gen_vsql_rejects_unsupported_constraints() {
 			arg:     'other'
 			kind:    .string
 		},
-	] {
-		orm.orm_table_gen(.vsql, table, '"', true, 0, vsql_test_fields([attr]), sql_type_from_v,
-			false) or {
-			assert err.msg().starts_with('orm: vsql does not support ')
-			continue
-		}
-		assert false, 'vsql accepted `${attr.name}`'
+	]
+	expected := [
+		'"name" TEXT NOT NULL, PRIMARY KEY("id"), UNIQUE("name")'
+		'"name" TEXT NOT NULL, UNIQUE("name"), PRIMARY KEY("id")'
+		'"name" TEXT DEFAULT \'x\' NOT NULL, PRIMARY KEY("id")'
+		'"name" TEXT REFERENCES "other"("id"), PRIMARY KEY("id")'
+	]
+	for i, attr in attrs {
+		query := orm.orm_table_gen(.vsql, table, '"', true, 0, vsql_test_fields([attr]),
+			sql_type_from_v, false) or { panic(err) }
+		assert query == 'CREATE TABLE "test_table" ("id" SERIAL NOT NULL, ${expected[i]});'
 	}
 	unique_key_table := orm.Table{
 		name:  'test_table'
@@ -835,12 +839,9 @@ fn test_orm_table_gen_vsql_rejects_unsupported_constraints() {
 			},
 		]
 	}
-	orm.orm_table_gen(.vsql, unique_key_table, '"', true, 0, vsql_test_fields([]),
-		sql_type_from_v, false) or {
-		assert err.msg() == 'orm: vsql does not support UNIQUE constraints in table `test_table`'
-		return
-	}
-	assert false, 'vsql accepted `unique_key`'
+	query := orm.orm_table_gen(.vsql, unique_key_table, '"', true, 0, vsql_test_fields([]),
+		sql_type_from_v, false) or { panic(err) }
+	assert query == 'CREATE TABLE "test_table" ("id" SERIAL NOT NULL, "name" TEXT NOT NULL, UNIQUE("name"), PRIMARY KEY("id"));'
 }
 
 fn reset_tenant_filter() {

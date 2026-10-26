@@ -1,0 +1,16 @@
+A SQLite command line tool written in V.
+
+Usage:
+  v sqlite <database>               Open database in interactive mode
+  v sqlite <database> <stmt>        Execute a single SQL statement
+  v sqlite <database> -f <file>     Execute SQL from a file
+  v sqlite --help                   Show the full help text
+  v sqlite --version                Show version
+
+Interactive mode supports the usual dot commands: .tables, .schema,
+.import, .export, .dump, .backup and many others. Query results can be
+formatted as tables, csv, json, html, markdown and more, with .mode
+and .headers.
+
+The complete list of commands and settings is printed by
+`v sqlite --help`.

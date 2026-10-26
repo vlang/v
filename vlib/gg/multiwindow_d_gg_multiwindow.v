@@ -4,7 +4,7 @@ module gg
 import x.multiwindow
 import sokol.gfx
 import sokol.sapp
-import sokol.sgl
+import gg.render
 import sync
 import time
 
@@ -239,10 +239,10 @@ mut:
 	gfx_started               bool
 	sgl_initialized           bool
 	render_owner_claimed      bool
-	sgl_contexts              map[string]sgl.Context
-	sgl_context_targets       map[string]WindowRenderTargetInfo
+	render_contexts           map[string]&render.Context
+	render_context_targets    map[string]WindowRenderTargetInfo
 	window_sgl_targets        map[string]string
-	deferred_sgl_targets      map[string]u64
+	deferred_render_targets   map[string]u64
 	render_runtime            &MultiWindowRenderRuntime = unsafe { nil }
 	legacy_render_mode        bool
 	app_frame_active          bool
@@ -261,15 +261,15 @@ mut:
 pub fn new_app(config AppConfig) !&App {
 	mut core := multiwindow.new_app(config.to_core())!
 	return &App{
-		config:               config
-		core:                 core
-		app_instance:         core.instance_id()
-		owner_thread_id:      sync.thread_id()
-		render_runtime:       new_multiwindow_render_runtime(core.instance_id())
-		sgl_contexts:         map[string]sgl.Context{}
-		sgl_context_targets:  map[string]WindowRenderTargetInfo{}
-		window_sgl_targets:   map[string]string{}
-		deferred_sgl_targets: map[string]u64{}
+		config:                  config
+		core:                    core
+		app_instance:            core.instance_id()
+		owner_thread_id:         sync.thread_id()
+		render_runtime:          new_multiwindow_render_runtime(core.instance_id())
+		render_contexts:         map[string]&render.Context{}
+		render_context_targets:  map[string]WindowRenderTargetInfo{}
+		window_sgl_targets:      map[string]string{}
+		deferred_render_targets: map[string]u64{}
 	}
 }
 
@@ -798,13 +798,13 @@ pub fn (context &WindowContext) draw_rect_filled(x f32, y f32, w f32, h f32, col
 	mut managed := context.app.render_runtime.active_sgl_context(context.app, context.info.window,
 		context.lease_epoch) or { panic(err.msg()) }
 	managed.activate_sgl_managed_or_panic()
-	sgl.c4b(color.r, color.g, color.b, color.a)
-	sgl.begin_quads()
-	sgl.v2f(x, y)
-	sgl.v2f(x + w, y)
-	sgl.v2f(x + w, y + h)
-	sgl.v2f(x, y + h)
-	sgl.end()
+	managed.r.c4b(color.r, color.g, color.b, color.a)
+	managed.r.begin_quads()
+	managed.r.v2f(x, y)
+	managed.r.v2f(x + w, y)
+	managed.r.v2f(x + w, y + h)
+	managed.r.v2f(x, y + h)
+	managed.r.end()
 }
 
 // draw_rect_empty draws a one-pixel outline rectangle into this window's current draw frame.
@@ -816,17 +816,17 @@ pub fn (context &WindowContext) draw_rect_empty(x f32, y f32, w f32, h f32, colo
 	mut managed := context.app.render_runtime.active_sgl_context(context.app, context.info.window,
 		context.lease_epoch) or { panic(err.msg()) }
 	managed.activate_sgl_managed_or_panic()
-	sgl.c4b(color.r, color.g, color.b, color.a)
-	sgl.begin_lines()
-	sgl.v2f(x, y)
-	sgl.v2f(x + w, y)
-	sgl.v2f(x, y)
-	sgl.v2f(x, y + h)
-	sgl.v2f(x + w, y)
-	sgl.v2f(x + w, y + h)
-	sgl.v2f(x, y + h)
-	sgl.v2f(x + w, y + h)
-	sgl.end()
+	managed.r.c4b(color.r, color.g, color.b, color.a)
+	managed.r.begin_lines()
+	managed.r.v2f(x, y)
+	managed.r.v2f(x + w, y)
+	managed.r.v2f(x, y)
+	managed.r.v2f(x, y + h)
+	managed.r.v2f(x + w, y)
+	managed.r.v2f(x + w, y + h)
+	managed.r.v2f(x, y + h)
+	managed.r.v2f(x + w, y + h)
+	managed.r.end()
 }
 
 fn (mut app App) wrap_job(f AppJobFn) multiwindow.AppJobFn {
@@ -898,90 +898,37 @@ fn (mut app App) ensure_render_initialized() ! {
 		app.release_render_owner()
 		return error(err_multiwindow_render_backend_unavailable)
 	}
-	sgl_desc := sgl.Desc{
-		context_pool_size: 64
-		color_format:      unsafe { gfx.PixelFormat(renderer_info.color_format) }
-		depth_format:      unsafe { gfx.PixelFormat(renderer_info.depth_format) }
-		sample_count:      renderer_info.sample_count
-	}
-	mut setup_errors := []string{}
-	if !app.core.renderer_device_available_for_gg() {
-		setup_errors << err_multiwindow_render_backend_unavailable
-	} else if message := app.render_runtime.take_internal_fault(.renderer_sgl_setup) {
-		setup_errors << message
-	} else {
-		sgl.setup(&sgl_desc)
-		app.sgl_initialized = true
-		if !app.core.renderer_device_available_for_gg() {
-			setup_errors << err_multiwindow_render_backend_unavailable
-		} else if sgl.error() != .no_error {
-			setup_errors << err_multiwindow_render_resource_failed
-		}
-	}
-	if setup_errors.len > 0 {
-		app.latch_renderer_terminal_failure()
-		mut device_available := app.core.renderer_device_available_for_gg()
-		if device_available {
-			app.core.prepare_renderer_shutdown_for_gg() or {
-				setup_errors << err.msg()
-				device_available = false
-			}
-			if device_available {
-				device_available = app.core.renderer_device_available_for_gg()
-			}
-		}
-		if device_available {
-			if app.sgl_initialized {
-				sgl.shutdown()
-				app.sgl_initialized = false
-			}
-			app.core.shutdown_renderer() or { setup_errors << err.msg() }
-		} else {
-			app.sgl_initialized = false
-			gg_poison_gfx_render_owner(.multiwindow_app, app.owner_token())
-			app.core.abandon_renderer_for_gg() or { setup_errors << err.msg() }
-		}
-		app.release_render_owner()
-		return error('${err_multiwindow_render_cleanup_failed}: ${setup_errors.join('; ')}')
-	}
+	app.sgl_initialized = true
 	app.gfx_started = true
 }
 
-fn (mut app App) ensure_sgl_context(key string, target WindowRenderTargetInfo) !sgl.Context {
+fn (mut app App) ensure_render_context(key string, target WindowRenderTargetInfo) !&render.Context {
 	if !app.gfx_started || !app.core.renderer_is_usable() {
 		return error(err_multiwindow_render_backend_unavailable)
 	}
-	if key in app.sgl_contexts {
-		if key !in app.sgl_context_targets || app.sgl_context_targets[key] != target {
+	if key in app.render_contexts {
+		if key !in app.render_context_targets || app.render_context_targets[key] != target {
 			return error(err_multiwindow_render_backend_unavailable)
 		}
-		return app.sgl_contexts[key]
+		return app.render_contexts[key]
 	}
-	if key !in app.sgl_contexts {
-		previous := sgl.get_context()
+	if key !in app.render_contexts {
 		app.note_managed_gpu_work(app.active_batch_epoch)!
-		created := sgl.make_context(&sgl.ContextDesc{
-			color_format: target.color_format
-			depth_format: target.depth_format
-			sample_count: target.sample_count
+		created := render.new_context(render.Desc{
+			max_vertices: 1 << 17
+			max_commands: 1 << 15
 		})
 		if !app.core.renderer_device_available_for_gg() {
 			return error(err_multiwindow_render_backend_unavailable)
 		}
-		if sgl.context_error(created) != .no_error {
-			sgl.destroy_context(created)
-			sgl.set_context(previous)
-			return error(err_multiwindow_render_resource_failed)
-		}
-		sgl.set_context(previous)
-		app.sgl_contexts[key] = created
-		app.sgl_context_targets[key] = target
+		app.render_contexts[key] = created
+		app.render_context_targets[key] = target
 	}
-	return app.sgl_contexts[key]
+	return app.render_contexts[key]
 }
 
-fn (mut app App) ensure_window_sgl_context(id WindowId, key string, target WindowRenderTargetInfo, batch u64) !sgl.Context {
-	context := app.ensure_sgl_context(key, target)!
+fn (mut app App) ensure_window_render_context(id WindowId, key string, target WindowRenderTargetInfo, batch u64) !&render.Context {
+	context := app.ensure_render_context(key, target)!
 	window_key := id.str()
 	if window_key in app.window_sgl_targets {
 		previous := app.window_sgl_targets[window_key]
@@ -997,61 +944,61 @@ fn (mut app App) defer_sgl_target_retirement(key string, batch u64) {
 	if key == '' || batch == 0 {
 		return
 	}
-	if key !in app.deferred_sgl_targets || batch < app.deferred_sgl_targets[key] {
-		app.deferred_sgl_targets[key] = batch
+	if key !in app.deferred_render_targets || batch < app.deferred_render_targets[key] {
+		app.deferred_render_targets[key] = batch
 	}
 }
 
 fn (mut app App) defer_attachment_sgl_target_retirement(key MultiWindowResourceKey, target_identity u64, batch u64) {
 	marker := ':offscreen:${key.app_instance}:${key.slot}:${key.generation}:${target_identity}:'
-	for target_key, _ in app.sgl_contexts {
+	for target_key, _ in app.render_contexts {
 		if target_key.contains(marker) {
 			app.defer_sgl_target_retirement(target_key, batch)
 		}
 	}
 }
 
-fn (mut app App) flush_deferred_sgl_targets(completed_batch u64, force bool) {
+fn (mut app App) flush_deferred_render_targets(completed_batch u64, force bool) {
 	mut keys := []string{}
-	for key, batch in app.deferred_sgl_targets {
+	for key, batch in app.deferred_render_targets {
 		if force || batch <= completed_batch {
 			keys << key
 		}
 	}
 	for key in keys {
-		app.discard_sgl_context_key(key)
-		app.deferred_sgl_targets.delete(key)
+		app.discard_render_context_key(key)
+		app.deferred_render_targets.delete(key)
 	}
 }
 
-fn (app &App) managed_sgl_context(key string) !sgl.Context {
+fn (app &App) managed_render_context(key string) !&render.Context {
 	if !app.gfx_started || !app.core.renderer_is_usable() {
 		return error(err_multiwindow_render_backend_unavailable)
 	}
-	if key !in app.sgl_contexts {
+	if key !in app.render_contexts {
 		return error(err_multiwindow_render_backend_unavailable)
 	}
-	return app.sgl_contexts[key]
+	return app.render_contexts[key]
 }
 
-fn (mut app App) discard_window_sgl_context(id WindowId) {
+fn (mut app App) discard_window_render_context(id WindowId) {
 	prefix := '${app.app_instance}:${id.str()}:'
 	mut keys := []string{}
-	for key, _ in app.sgl_contexts {
+	for key, _ in app.render_contexts {
 		if key.starts_with(prefix) {
 			keys << key
 		}
 	}
 	for key in keys {
-		app.discard_sgl_context_key(key)
-		app.deferred_sgl_targets.delete(key)
+		app.discard_render_context_key(key)
+		app.deferred_render_targets.delete(key)
 	}
 	app.window_sgl_targets.delete(id.str())
 }
 
-fn (app &App) has_window_sgl_context(id WindowId) bool {
+fn (app &App) has_window_render_context(id WindowId) bool {
 	prefix := '${app.app_instance}:${id.str()}:'
-	for key, _ in app.sgl_contexts {
+	for key, _ in app.render_contexts {
 		if key.starts_with(prefix) {
 			return true
 		}
@@ -1059,40 +1006,12 @@ fn (app &App) has_window_sgl_context(id WindowId) bool {
 	return false
 }
 
-fn (mut app App) discard_sgl_context_key(key string) {
-	if key !in app.sgl_contexts {
+fn (mut app App) discard_render_context_key(key string) {
+	if key !in app.render_contexts {
 		return
 	}
-	context := app.sgl_contexts[key]
-	mut sokol_available := app.gfx_started && app.core.renderer_device_available_for_gg()
-	if sokol_available {
-		for {
-			materialization := app.render_runtime.take_sgl_materialization_for_target(key) or {
-				break
-			}
-			if !app.core.renderer_device_available_for_gg() {
-				sokol_available = false
-				break
-			}
-			sgl.destroy_pipeline(materialization.pipeline)
-		}
-	}
-	if sokol_available {
-		sokol_available = app.core.renderer_device_available_for_gg()
-	}
-	if sokol_available {
-		previous := sgl.get_context()
-		sgl.set_context(sgl.default_context())
-		sgl.destroy_context(context)
-		if previous != context {
-			sgl.set_context(previous)
-		}
-	}
-	if !sokol_available {
-		app.render_runtime.abandon_sgl_materializations_for_target(key)
-	}
-	app.sgl_contexts.delete(key)
-	app.sgl_context_targets.delete(key)
+	app.render_contexts.delete(key)
+	app.render_context_targets.delete(key)
 }
 
 fn (mut app App) shutdown_renderer() ! {
@@ -1124,7 +1043,7 @@ fn (mut app App) shutdown_renderer() ! {
 			// sgl_shutdown owns all managed SGL contexts and precedes gfx shutdown.
 			if app.sgl_initialized {
 				app.record_multiwindow_lifecycle_milestone(.sgl_shutdown_enter)
-				sgl.shutdown()
+
 				app.sgl_initialized = false
 				app.record_multiwindow_lifecycle_milestone(.sgl_shutdown_complete)
 			}
@@ -1154,18 +1073,18 @@ fn (mut app App) shutdown_renderer() ! {
 				.abandon_complete
 			})
 		}
-		app.sgl_contexts.clear()
-		app.sgl_context_targets.clear()
+		app.render_contexts.clear()
+		app.render_context_targets.clear()
 		app.window_sgl_targets.clear()
-		app.deferred_sgl_targets.clear()
+		app.deferred_render_targets.clear()
 		app.gfx_started = false
 	} else {
 		app.record_multiwindow_lifecycle_milestone(.renderer_not_started)
 		app.sgl_initialized = false
-		app.sgl_contexts.clear()
-		app.sgl_context_targets.clear()
+		app.render_contexts.clear()
+		app.render_context_targets.clear()
 		app.window_sgl_targets.clear()
-		app.deferred_sgl_targets.clear()
+		app.deferred_render_targets.clear()
 	}
 	app.release_render_owner()
 	if errors.len > 0 {
