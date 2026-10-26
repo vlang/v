@@ -4,16 +4,6 @@
 
 module main
 
-#include <Cocoa/Cocoa.h>
-#flag -framework Cocoa
-
-#include "@VMODROOT/tray.m"
-
-fn C.tray_app_init(TrayParams) &TrayInfo
-fn C.tray_app_loop(&TrayInfo)
-fn C.tray_app_run(&TrayInfo)
-fn C.tray_app_exit(&TrayInfo)
-
 struct TrayMenuItem {
 	id   string @[required] // Unique ID.
 	text string @[required] // Text to display.
@@ -40,7 +30,7 @@ mut:
 fn (app &MyApp) on_menu_item_click(item TrayMenuItem) {
 	println('click ${item.id}')
 	if item.id == 'quit' {
-		C.tray_app_exit(app.tray_info)
+		tray_app_exit(app.tray_info)
 	}
 }
 
@@ -49,7 +39,7 @@ fn main() {
 		tray_info: unsafe { nil }
 	}
 
-	my_app.tray_info = C.tray_app_init(TrayParams{
+	my_app.tray_info = tray_app_init(TrayParams{
 		items:    [TrayMenuItem{
 			id:   'hello'
 			text: 'Hello'
@@ -62,10 +52,10 @@ fn main() {
 
 	//// Use this:
 	// for {
-	// 	C.tray_app_loop(my_app.tray_info)
+	// 	tray_app_loop(my_app.tray_info)
 	//  	// println("loop")
 	// }
 
 	//// Or this:
-	C.tray_app_run(my_app.tray_info)
+	tray_app_run(my_app.tray_info)
 }

@@ -2718,11 +2718,16 @@ fn (mut tc TypeChecker) record_constant_match_condition(subject_id flat.NodeId, 
 		tc.constant_comparison_value(subject_id, cond_id, .eq) or { return }
 	}
 	cond := tc.a.node(cond_id)
-	tc.record_notice_at(.condition_mismatch, if value {
-		'match is always true'
-	} else {
-		'match is always false'
-	}, cond_id, cond.pos)
+	// Same test-file rationale as in record_constant_condition_diagnostics:
+	// constant match branches in tests are usually deliberate. The
+	// self-comparison warning below is kept.
+	if !is_regular_v_test_file(tc.cur_file) {
+		tc.record_notice_at(.condition_mismatch, if value {
+			'match is always true'
+		} else {
+			'match is always false'
+		}, cond_id, cond.pos)
+	}
 	if value && has_following_branch && tc.same_simple_comparison_expr(subject_id, cond_id) {
 		tc.record_warning_at(.condition_mismatch, 'self-comparison match branch is always true; following branches may be unreachable', cond_id, cond.pos)
 	}
@@ -11372,7 +11377,10 @@ fn call_arg_numeric_type(typ &Type) bool {
 	return call_arg_integer_type(clean) || clean.is_float()
 }
 
-fn implicit_integer_to_float_compatible(actual &Type, expected &Type) bool {
+// implicit_integer_to_float_compatible reports whether an `actual` integer
+// converts to an `expected` float without a cast: every integer but `i64` and
+// `u64` does.
+pub fn implicit_integer_to_float_compatible(actual &Type, expected &Type) bool {
 	clean_actual := unalias_type(actual)
 	clean_expected := unalias_type(expected)
 	return clean_actual.is_integer() && clean_actual.name() !in ['i64', 'u64']
@@ -16998,6 +17006,9 @@ pub fn type_text_contains_typeof(s string) bool {
 @[inline]
 pub fn (tc &TypeChecker) parse_type(source_id u32) &Type {
 	if tc.type_param_texts.ids.len > 0 {
+		if resolved := tc.resolved_inferred_type(source_id) {
+			return tc.parse_type(resolved)
+		}
 		return tc.intern_type_reference(tc.parse_type_as_instance(source_id))
 	}
 	// Recursive aliases must observe the active expansion chain before memoization.
@@ -17021,6 +17032,9 @@ pub fn (tc &TypeChecker) parse_type(source_id u32) &Type {
 }
 
 fn (tc &TypeChecker) parse_type_miss(source_id u32) &Type {
+	if resolved := tc.resolved_inferred_type(source_id) {
+		return tc.parse_type(resolved)
+	}
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
 		mut cache := unsafe { tc.type_cache }
 		// Only a miss needs source spelling bytes. typeof depends on expression scope.
@@ -17078,6 +17092,12 @@ pub fn (tc &TypeChecker) parse_type_ref(text_id u32) &Type {
 }
 
 fn (tc &TypeChecker) parse_type_ref_miss(text_id u32) &Type {
+	// `typeof(expr)` types depend on lexical bindings, unlike ordinary
+	// canonical type texts. Collection may see them before those locals exist,
+	// so they never enter the text-ID cache.
+	if inferred_type_source(text_id) {
+		return tc.parse_type(text_id)
+	}
 	mut cache := unsafe { tc.type_cache }
 	if cache.parse_text_ids.len == 0 {
 		cache.parse_text_id_context = []u64{len: 4096}
@@ -18320,12 +18340,158 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	})
 }
 
+// inferred_type_source reports whether an interned spelling holds a
+// `typeof(expr)` type annotation. The shape check keeps other spellings byte-free.
+@[inline]
+fn inferred_type_source(source_id u32) bool {
+	return flat.source_type_shape(source_id).has(.typeof_expr)
+		&& flat.source_type_name(source_id).contains('typeof(__expr_')
+}
+
+// resolved_inferred_type returns a `typeof(expr)` annotation with its
+// expressions resolved, or none when the spelling has none or none resolve.
+fn (tc &TypeChecker) resolved_inferred_type(source_id u32) ?u32 {
+	if !inferred_type_source(source_id) {
+		return none
+	}
+	typ := flat.source_type_name(source_id)
+	resolved := tc.resolve_inferred_type_text(typ)
+	if resolved == typ {
+		return none
+	}
+	return flat.source_type_id(resolved)
+}
+
+// check_node_inferred_type_witnesses checks the `typeof(expr)` expressions of
+// the type a node is annotated with, or of the type spelling in its value.
+fn (mut tc TypeChecker) check_node_inferred_type_witnesses(node flat.Node) {
+	tc.check_inferred_type_witnesses(node.typ)
+	if node.value.len > 15 && node.kind !in [.string_literal, .char_literal, .string_interp]
+		&& node.value.contains('typeof(__expr_') {
+		tc.check_inferred_type_witnesses(flat.source_type_id(node.value))
+	}
+}
+
+// check_inferred_type_witnesses checks each expression of a `typeof(expr)`
+// type in the current lexical scope like any other expression, so an invalid
+// call or operand in type position is reported. The expression is never
+// evaluated. Checking a call first also infers its generic arguments, so the
+// witness names the instantiated return type. An expression whose type still
+// names an unresolved generic placeholder is rejected.
+fn (mut tc TypeChecker) check_inferred_type_witnesses(source_id u32) {
+	if !inferred_type_source(source_id) {
+		return
+	}
+	typ := flat.source_type_name(source_id)
+	marker := 'typeof(__expr_'
+	mut offset := 0
+	for offset < typ.len {
+		start := typ[offset..].index(marker) or { break } + offset
+		end := typ[start..].index(')') or { break } + start
+		expression_id := flat.NodeId(typ[start + marker.len..end].int())
+		offset = end + 1
+		if !tc.valid_node_id(expression_id) {
+			continue
+		}
+		errors_before := tc.errors.len
+		// A type names its expression without capturing it into a closure.
+		saved_closure_scope := tc.fn_context.closure_scope
+		tc.fn_context.closure_scope = unsafe { nil }
+		tc.check_node(expression_id)
+		tc.fn_context.closure_scope = saved_closure_scope
+		if tc.errors.len != errors_before {
+			continue
+		}
+		value := tc.expr_type(expression_id) or { tc.resolve_type(expression_id) }
+		if placeholder := tc.unresolved_generic_placeholder_in(value) {
+			tc.record_error(.unsupported_generic, 'cannot infer the type of `typeof(...)`: `${placeholder}` is not resolved here', expression_id)
+		}
+	}
+}
+
+// unresolved_generic_placeholder_in returns the first generic placeholder in
+// `typ` that the current function does not declare.
+fn (tc &TypeChecker) unresolved_generic_placeholder_in(typ Type) ?string {
+	if typ is Unknown {
+		if placeholder := generic_placeholder_from_unknown(typ) {
+			if placeholder !in tc.fn_context.generic_params {
+				return placeholder
+			}
+		}
+		return none
+	}
+	name := typ.name()
+	if !generic_placeholder_token_prescreen(name) {
+		return none
+	}
+	for i in 0 .. name.len {
+		if i > 0 && placeholder_token_ident_char(name[i - 1]) {
+			continue
+		}
+		if i + 1 < name.len && placeholder_token_ident_char(name[i + 1]) {
+			continue
+		}
+		placeholder := name[i..i + 1]
+		if is_bare_generic_param(placeholder) && placeholder !in tc.fn_context.generic_params
+			&& !tc.is_known_type_text(flat.source_type_id(placeholder)) {
+			return placeholder
+		}
+	}
+	return none
+}
+
+// `typeof(expr)` annotations can infer array items and nested generic payloads.
+// Resolve the expression before generic specialization records concrete names.
+pub fn (tc &TypeChecker) resolve_inferred_type_text(typ string) string {
+	mut result := typ
+	mut offset := 0
+	for offset < result.len {
+		start := result[offset..].index('typeof(__expr_') or { break } + offset
+		end := result[start..].index(')') or { break } + start + 1
+		annotation := result[start..end]
+		value := tc.type_from_typeof_type_text(annotation) or { break }
+		if value is Unknown { break }
+		name := value.name()
+		if name == annotation { break }
+		result = result[..start] + name + result[end..]
+		offset = start + name.len
+	}
+	return result
+}
+
 fn (tc &TypeChecker) type_from_typeof_type_text(typ string) ?Type {
 	clean := trimmed_space(typ)
 	if !clean.starts_with('typeof(') || !clean.ends_with(')') {
 		return none
 	}
 	inner := trimmed_space(clean[7..clean.len - 1])
+	if inner.starts_with('__expr_') {
+		expression_id := flat.NodeId(inner.all_after('__expr_').int())
+		if int(expression_id) >= 0 && int(expression_id) < tc.a.nodes.len {
+			// `typeof(expr)` closure annotations have ordinary inferred V expression
+			// types. Resolve in the lexical closure scope without evaluating it.
+			// Transformer records the concrete source witness as owned AST text.
+			// Parse in the current phase; never publish a scratch-arena Type into
+			// the original source-node cache from transform.
+			witness_id := tc.a.nodes[int(expression_id)].typ
+			witness := flat.source_type_name(witness_id)
+			if witness.len > 0 && !witness.contains('typeof(__expr_') && witness !in [
+				'array',
+				'unknown',
+				'void',
+			] {
+				return tc.parse_resolution_type(witness_id)
+			}
+			// Type witnesses are detached from the generated executable body.
+			// Resolve them in the current lexical scope before a checked cache exists.
+			value := tc.expr_type(expression_id) or { tc.resolve_type(expression_id) }
+			if value is Void || value is Unknown || type_contains_unknown(value) || value.name().contains('typeof(__expr_') {
+				return none
+			}
+			return value
+		}
+		return none
+	}
 	if inner.len == 0 {
 		return none
 	}
@@ -19817,68 +19983,108 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					}
 				}
 				if clean_array := array_like_type_for_method(clean_type, fn_node.value) {
-					if fn_node.value in ['clone', 'move', 'reverse'] {
-						return clean_type
-					}
-					if fn_node.value == 'filter' || fn_node.value == 'sorted' {
-						if receiver_is_fixed_array(clean_type) {
-							// filtering a fixed array yields a dynamic array
-							return Type(Array{
-								elem_type: clean_array.elem_type
-							})
+					// Dispatch by length before comparing method names on this hot path.
+					match fn_node.value.len {
+						3 {
+							if fn_node.value == 'any' || fn_node.value == 'all' {
+								return builtin_bool_type
+							}
+							if fn_node.value == 'pop' {
+								return array_elem_type(clean_array)
+							}
+							if fn_node.value == 'str' {
+								return builtin_string_type
+							}
+							if fn_node.value == 'map' {
+								return tc.array_map_result_type_from_receiver(clean_type, Type(Unknown{
+									reason: 'array.map'
+								}))
+							}
 						}
-						return clean_type
-					}
-					if fn_node.value in ['any', 'all'] {
-						return builtin_bool_type
-					}
-					if fn_node.value == 'count' {
-						return builtin_int_type
-					}
-					if fn_node.value == 'sort' {
-						return builtin_void_type
-					}
-					if fn_node.value == 'last' || fn_node.value == 'first' || fn_node.value == 'pop' {
-						return array_elem_type(clean_array)
-					}
-					if fn_node.value == 'contains' {
-						return builtin_bool_type
-					}
-					if fn_node.value == 'repeat' || fn_node.value == 'repeat_to_depth' {
-						return base_type
-					}
-					if fn_node.value == 'index' {
-						return builtin_int_type
-					}
-					if fn_node.value == 'join' || fn_node.value == 'str' {
-						return builtin_string_type
-					}
-					if fn_node.value == 'map' {
-						return tc.array_map_result_type_from_receiver(clean_type, Type(Unknown{
-							reason: 'array.map'
-						}))
-					}
-					if fn_node.value == 'wait' {
-						// `[]thread T`.wait() joins all threads and returns `[]T`. A bare
-						// `[]thread` (threads with no return value) joins to `void`. Any
-						// optional/result payloads remain per-thread, so
-						// `[]thread !T`.wait()` is `[]!T`.
-						// other array element type is not a thread and `.wait()` is
-						// unsupported, so reject it rather than mis-typing the call as the
-						// receiver array (which would emit invalid C joining non-handles).
-						elem := unalias_type(array_elem_type(clean_array))
-						if elem is Struct {
-							if elem.name() == 'thread' {
+						4 {
+							if fn_node.value == 'move' {
+								return clean_type
+							}
+							if fn_node.value == 'last' {
+								return array_elem_type(clean_array)
+							}
+							if fn_node.value == 'sort' {
 								return builtin_void_type
 							}
-							if elem.name().starts_with('thread ') {
-								return tc.thread_array_wait_return_type(elem.name()[7..])
+							if fn_node.value == 'join' {
+								return builtin_string_type
+							}
+							if fn_node.value == 'wait' {
+								// `[]thread T`.wait() joins all threads and returns `[]T`. A bare
+								// `[]thread` (threads with no return value) joins to `void`. Any
+								// optional/result payloads remain per-thread, so
+								// `[]thread !T`.wait()` is `[]!T`.
+								// other array element type is not a thread and `.wait()` is
+								// unsupported, so reject it rather than mis-typing the call as the
+								// receiver array (which would emit invalid C joining non-handles).
+								elem := unalias_type(array_elem_type(clean_array))
+								if elem is Struct {
+									if elem.name() == 'thread' {
+										return builtin_void_type
+									}
+									if elem.name().starts_with('thread ') {
+										return tc.thread_array_wait_return_type(elem.name()[7..])
+									}
+								}
+								return unknown_type('`.wait()` requires an array of threads')
 							}
 						}
-						return unknown_type('`.wait()` requires an array of threads')
-					}
-					if fn_node.value == 'clone' {
-						return clean_type
+						5 {
+							if fn_node.value == 'clone' {
+								return clean_type
+							}
+							if fn_node.value == 'first' {
+								return array_elem_type(clean_array)
+							}
+							if fn_node.value == 'count' || fn_node.value == 'index' {
+								return builtin_int_type
+							}
+						}
+						6 {
+							if fn_node.value == 'filter' || fn_node.value == 'sorted' {
+								if receiver_is_fixed_array(clean_type) {
+									// Filtering a fixed array yields a dynamic array.
+									return Type(Array{
+										elem_type: clean_array.elem_type
+									})
+								}
+								return clean_type
+							}
+							if fn_node.value == 'repeat' {
+								return base_type
+							}
+						}
+						7 {
+							if fn_node.value == 'reverse' {
+								return clean_type
+							}
+						}
+						8 {
+							if fn_node.value == 'contains' {
+								return builtin_bool_type
+							}
+						}
+						15 {
+							if fn_node.value == 'repeat_to_depth' {
+								return base_type
+							}
+						}
+						19 {
+							if fn_node.value == 'sorted_with_compare' {
+								if receiver_is_fixed_array(clean_type) {
+									return Type(Array{
+										elem_type: clean_array.elem_type
+									})
+								}
+								return clean_type
+							}
+						}
+						else {}
 					}
 					elem_type := array_elem_type(clean_array)
 					elem_name := elem_type.name()
@@ -20605,7 +20811,35 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 		}
 		params << FnParam{ typ: tc.intern_type_reference(slot), is_mut: child.is_mut }
 	}
-	return Type(FnType{ params: params, is_variadic: is_variadic, return_type: tc.parse_type(node.typ) })
+	return Type(FnType{
+		params:      params
+		is_variadic: is_variadic
+		return_type: tc.fn_literal_return_type(node)
+	})
+}
+
+// fn_literal_return_type parses a function literal's return type. A
+// `typeof(expr)` return type is resolved in a scope with the literal's
+// parameters bound, since they shadow outer bindings of the same name.
+fn (tc &TypeChecker) fn_literal_return_type(node flat.Node) &Type {
+	if !inferred_type_source(node.typ) {
+		return tc.parse_type(node.typ)
+	}
+	// Plain bindings: this only names the parameters' types, so it records no
+	// diagnostics and leaves the function context untouched.
+	mut writer := unsafe { &TypeChecker(voidptr(tc)) }
+	writer.push_scope()
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .param && child.value.len > 0 {
+			parsed := tc.parse_scope_param_type(child.typ)
+			writer.cur_scope.insert(child.value, mut_param_binding_type(parsed, child.is_mut,
+				child.op == .amp))
+		}
+	}
+	typ := tc.parse_type(node.typ)
+	writer.pop_scope()
+	return typ
 }
 
 // lambda_expr_type supports lambda expr type handling for TypeChecker.
@@ -22548,6 +22782,12 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 	}
 	value := tc.implicit_integer_constant_value(lit_id, lit_type)?
 	clean_type := unalias_type(other_type)
+	// An untyped integer literal adopts a float operand's type too, including an
+	// alias of a float: 1 + f where  is 	ype Fraction = f64 is Fraction,
+	// not int.
+	if clean_type.is_float() {
+		return other_type
+	}
 	if clean_type is Primitive && clean_type.props.has(.integer)
 		&& clean_type.size in [u8(8), 16] {
 		if small_integer_type_accepts_int_literal(clean_type, value) {

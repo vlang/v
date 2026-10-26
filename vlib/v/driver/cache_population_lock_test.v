@@ -40,6 +40,30 @@ fn run_population_lock_helper() {
 				.unusable { 4 }
 			})
 		}
+		'handoff-parent' {
+			if acquire_v3_cache_population_lock(dir) != .acquired {
+				exit(31)
+			}
+			marker := os.join_path(dir, 'fallback-marker')
+			os.setenv(macos_v3_fallback_file_env, marker, true)
+			if !stage_macos_v3_compiler_error_fallback(marker, 'child handoff test')
+				|| !os.is_file(marker) {
+				exit(32)
+			}
+			os.setenv(population_helper_mode_env, 'handoff-child', true)
+			exit_with_child_build(os.executable(), []string{})
+		}
+		'handoff-child' {
+			if os.exists(os.join_path(dir, 'fallback-marker')) {
+				exit(33)
+			}
+			if acquire_v3_cache_population_lock(dir) != .acquired {
+				exit(34)
+			}
+			os.write_file(os.join_path(dir, 'child-executed'), '23') or { exit(35) }
+			release_v3_cache_population_lock()
+			exit(23)
+		}
 		else {
 			exit(3)
 		}
@@ -206,4 +230,19 @@ fn test_one_build_at_a_time_holds_the_population_lock() {
 	holder.wait()
 	holder.close()
 	assert acquire_v3_cache_population_lock(dir) == .acquired
+}
+
+fn test_child_build_releases_the_population_lock_and_fallback_marker() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_population_child_handoff_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut parent := new_population_lock_helper(root, 'handoff-parent')
+	parent.run()
+	parent.wait()
+	code := parent.code
+	output := parent.stdout_read() + parent.stderr_read()
+	parent.close()
+	assert code == 23, 'the child build status was not forwarded: ${code}: ${output}'
+	assert os.read_file(os.join_path(root, 'child-executed'))! == '23'
 }

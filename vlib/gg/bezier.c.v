@@ -1,7 +1,6 @@
 module gg
 
 import math
-import sokol.sgl
 
 // draw_cubic_bezier_recursive draws a cubic Bézier curve, also known as a spline, from four points,
 // where the first and the last points, *will* be part of the curve, and the middle 2 points are control ones.
@@ -24,14 +23,14 @@ pub fn (ctx &Context) draw_cubic_bezier_recursive_scalar(x1 f32, y1 f32, x2 f32,
 		return
 	}
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_line_strip()
-	sgl.v2f(x1 * ctx.scale, y1 * ctx.scale)
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.begin_line_strip()
+	ctx.r.v2f(x1 * ctx.scale, y1 * ctx.scale)
 	ctx.cubic_bezier_rec(x1, y1, x2, y2, x3, y3, x4, y4, 0)
-	sgl.v2f(x4 * ctx.scale, y4 * ctx.scale)
-	sgl.end()
+	ctx.r.v2f(x4 * ctx.scale, y4 * ctx.scale)
+	ctx.r.end()
 }
 
 // based on nsvg__flattenCubicBez, from https://github.com/memononen/nanosvg/ :
@@ -43,7 +42,7 @@ fn (ctx &Context) cubic_bezier_rec(x1 f32, y1 f32, x2 f32, y2 f32, x3 f32, y3 f3
 	d2 := math.abs((x2 - x4) * dy - (y2 - y4) * dx)
 	d3 := math.abs((x3 - x4) * dy - (y3 - y4) * dx)
 	if (d2 + d3) * (d2 + d3) < 0.25 * (dx * dx + dy * dy) {
-		sgl.v2f(x4 * ctx.scale, y4 * ctx.scale)
+		ctx.r.v2f(x4 * ctx.scale, y4 * ctx.scale)
 		return
 	}
 	x12, y12 := 0.5 * (x1 + x2), 0.5 * (y1 + y2)
