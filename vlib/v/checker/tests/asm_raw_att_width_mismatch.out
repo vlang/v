@@ -1,0 +1,35 @@
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:12:9: error: `incq` operates on 64-bit operands here, but `%[small]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
+   10 |         "movl %%rax, %%ecx\n\t"
+   11 |         "movzwl %%al, %%eax\n\t"
+   12 |         "incq %[small]"
+      |               ~~~~~~~~
+   13 |         ; [len] "+r" (out)
+   14 |         ; [small] "+r" (small)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:10:9: error: `movl` operates on 32-bit operands here, but `%%rax` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+    8 |         "movl %[len], %%eax\n\t"
+    9 |         "movq %k[len], %%rcx\n\t"
+   10 |         "movl %%rax, %%ecx\n\t"
+      |               ~~~~~
+   11 |         "movzwl %%al, %%eax\n\t"
+   12 |         "incq %[small]"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:8:9: error: `movl` operates on 32-bit operands here, but `%[len]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+    6 |     mut out := len
+    7 |     asm amd64 raw {
+    8 |         "movl %[len], %%eax\n\t"
+      |               ~~~~~~
+    9 |         "movq %k[len], %%rcx\n\t"
+   10 |         "movl %%rax, %%ecx\n\t"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:9:9: error: `movq` operates on 64-bit operands here, but `%k[len]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
+    7 |     asm amd64 raw {
+    8 |         "movl %[len], %%eax\n\t"
+    9 |         "movq %k[len], %%rcx\n\t"
+      |               ~~~~~~~
+   10 |         "movl %%rax, %%ecx\n\t"
+   11 |         "movzwl %%al, %%eax\n\t"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:11:11: error: `movzwl` operates on 16-bit operands here, but `%%al` is 8-bit; use a size suffix that matches the operand, or an operand modifier that selects a 16-bit register
+    9 |         "movq %k[len], %%rcx\n\t"
+   10 |         "movl %%rax, %%ecx\n\t"
+   11 |         "movzwl %%al, %%eax\n\t"
+      |                 ~~~~
+   12 |         "incq %[small]"
+   13 |         ; [len] "+r" (out)

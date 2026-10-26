@@ -441,3 +441,35 @@ fn test_raw_template_masks_assembler_comments_per_arch() {
 	assert arm_instructions[0].operands.map(it.kind) == [.register, .register, .immediate]
 	assert arm_instructions[1].labels.map(it.name) == ['1']
 }
+
+fn test_att_mnemonic_widths_read_the_size_suffix() {
+	src, dst, is_shift := inline_asm_att_mnemonic_widths('movl')
+	assert src == 32 && dst == 32 && !is_shift
+	src2, dst2, shift2 := inline_asm_att_mnemonic_widths('shlq')
+	assert src2 == 64 && dst2 == 64 && shift2
+	zbl_src, zbl_dst, _ := inline_asm_att_mnemonic_widths('movzbl')
+	assert zbl_src == 8 && zbl_dst == 32
+	slq_src, slq_dst, _ := inline_asm_att_mnemonic_widths('movslq')
+	assert slq_src == 32 && slq_dst == 64
+	sbw_src, sbw_dst, _ := inline_asm_att_mnemonic_widths('movsbw')
+	assert sbw_src == 8 && sbw_dst == 16
+}
+
+fn test_att_mnemonic_widths_ignore_unsuffixed_and_unrelated_names() {
+	for name in ['mov', 'movq_extra', 'movsb', 'movsl', 'movsd', 'movzx', 'movbe', 'sarx', 'shrd',
+		'andn', 'movzlq', 'movswb', 'lea_x'] {
+		src, dst, _ := inline_asm_att_mnemonic_widths(name)
+		assert src == 0 && dst == 0, 'expected no suffix width for `${name}`'
+	}
+}
+
+fn test_att_gpr_constraints_exclude_memory_and_immediate() {
+	assert inline_asm_raw_gpr_constraint('+r')
+	assert inline_asm_raw_gpr_constraint('=&q')
+	assert inline_asm_raw_gpr_constraint('a')
+	assert !inline_asm_raw_gpr_constraint('rm')
+	assert !inline_asm_raw_gpr_constraint('i')
+	assert !inline_asm_raw_gpr_constraint('g')
+	assert !inline_asm_raw_gpr_constraint('x')
+	assert !inline_asm_raw_gpr_constraint('+')
+}

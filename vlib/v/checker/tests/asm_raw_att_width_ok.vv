@@ -1,0 +1,29 @@
+// These AT&T forms agree with the widths of their operands, so the width check reports nothing.
+// The undefined name afterwards stops the build before code generation, which would otherwise
+// reject the amd64 template on other hosts.
+@[noinline]
+fn widths(len u64, small u32, byte u8) u64 {
+	mut out := len
+	asm amd64 raw {
+		"movl %k[small], %%ecx\n\t"
+		"movq %%rax, %%rdx\n\t"
+		"movl %%eax, %%ecx\n\t"
+		"movzbl %%al, %%eax\n\t"
+		"movslq %%ecx, %%rdx\n\t"
+		"shll %%cl, %%eax\n\t"
+		"shlq %%cl, %%rax\n\t"
+		"movq %%xmm0, %%rax\n\t"
+		"addl $1, %k[small]\n\t"
+		"incq %[len]\n\t"
+		"testb $1, %b[byte]"
+		; [len] "+r" (out)
+		; [small] "+r" (small)
+		  [byte] "+q" (byte)
+		; cc
+	}
+	return out + undefined_total
+}
+
+fn main() {
+	println(widths(1, 2, 3))
+}

@@ -11505,6 +11505,11 @@ it is deliberately exported: two instantiations of a function can otherwise defi
 assembler symbol. In x86 and arm64 raw blocks, the compiler warns about such a label inside a
 function unless it is numeric, uses `%=`, or is exported with `.globl`, `.global`, or `.weak`.
 
+In x86 raw blocks, the compiler also checks that a size suffix such as `movl` or `incq` matches the
+width of the register or named operand it acts on, and reports an error for a mismatch, as the
+GNU assembler does. Use an operand modifier such as `%k[name]` to select a narrower view of a
+named operand, or change the suffix.
+
 For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
 the pointer inside the template, and decrement the count until it reaches zero:
 

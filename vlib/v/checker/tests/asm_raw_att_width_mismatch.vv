@@ -1,0 +1,22 @@
+// A GNU x86 size suffix must match the width of the operands it acts on. Each error below is
+// one the GNU assembler rejects too: `movl` on a 64-bit register, a modifier that contradicts
+// the suffix, and the `movzwl` source that is 8-bit.
+@[noinline]
+fn widths(len u64, small u32) u64 {
+	mut out := len
+	asm amd64 raw {
+		"movl %[len], %%eax\n\t"
+		"movq %k[len], %%rcx\n\t"
+		"movl %%rax, %%ecx\n\t"
+		"movzwl %%al, %%eax\n\t"
+		"incq %[small]"
+		; [len] "+r" (out)
+		; [small] "+r" (small)
+		; cc
+	}
+	return out
+}
+
+fn main() {
+	println(widths(1, 2))
+}

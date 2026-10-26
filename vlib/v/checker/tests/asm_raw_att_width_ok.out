@@ -1,0 +1,7 @@
+vlib/v/checker/tests/asm_raw_att_width_ok.vv:24:15: error: undefined ident: `undefined_total`
+   22 |         ; cc
+   23 |     }
+   24 |     return out + undefined_total
+      |                  ~~~~~~~~~~~~~~~
+   25 | }
+   26 |
