@@ -74,6 +74,8 @@ it reports the limit and exits with status 1, without running cleanup against ac
 
 Local owned values declared after a `match` keep their lexical cleanup scope, including
 inside loops with `continue` statements.
+Map insertion and replacement cleanup preserves the lexical scopes of neighboring locals,
+including assignments through map-indexed fields and owned keys.
 
 Map `clear()` and `free()` release owned entries through their stored values, including
 when the map is accessed through a pointer or a generic pointer parameter.
