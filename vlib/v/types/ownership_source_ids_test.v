@@ -2,33 +2,26 @@ module types
 
 import v.flat
 
-fn test_generated_borrowed_projection_copies_are_private_and_reset() {
-	$if ownership ? {
-		mut a := flat.FlatAst.new()
-		source := a.add_node(flat.Node{ kind: .ident, value: 'source' })
-		first := a.add_node(flat.Node{ kind: .ident, value: 'first' })
-		second := a.add_node(flat.Node{ kind: .ident, value: 'second' })
-		mut tc := TypeChecker.new(&a)
-		tc.ownership = new_ownership_state()
-		tc.ownership.borrowed_projection_actions[int(source)] = .clone_value
-		tc.note_generated_borrowed_projection_copy(source, first)
-		tc.note_generated_borrowed_projection_copy(first, second)
-		assert tc.ownership_expr_is_borrowed_projection(first)
-		assert tc.ownership_expr_is_borrowed_projection(second)
-		worker := tc.fork_for_parallel_transform(&a)
-		assert worker.ownership_expr_is_borrowed_projection(source)
-		assert !worker.ownership_expr_is_borrowed_projection(first)
-		assert !worker.ownership_expr_is_borrowed_projection(second)
-		worker.note_generated_borrowed_projection_copy(source, first)
-		assert worker.ownership_expr_is_borrowed_projection(first)
-		assert !worker.ownership_expr_is_borrowed_projection(second)
-		// Exercise the recycled-cache path, which must discard generated ids too.
-		tc.pre_transform_type_cache = tc.type_cache
-		tc.set_fresh_type_cache(false)
-		assert tc.ownership_expr_is_borrowed_projection(source)
-		assert !tc.ownership_expr_is_borrowed_projection(first)
-		assert !tc.ownership_expr_is_borrowed_projection(second)
-	}
+fn test_generated_borrowed_projection_cache_is_private_and_reset() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	assert isnil(tc.type_cache.borrowed_projection_clone_copies)
+	tc.type_cache.borrowed_projection_clone_copies = &BorrowedProjectionCloneCopies{}
+	tc.type_cache.borrowed_projection_clone_copies.reads[1] = true
+	frozen := tc.type_cache
+	tc.freeze_type_cache_for_forks()
+	mut worker := tc.fork_for_parallel_transform(&a)
+	assert worker.type_cache.base == frozen
+	assert isnil(worker.type_cache.borrowed_projection_clone_copies)
+	worker.type_cache.borrowed_projection_clone_copies = &BorrowedProjectionCloneCopies{}
+	worker.type_cache.borrowed_projection_clone_copies.reads[2] = true
+	assert !frozen.borrowed_projection_clone_copies.reads[2]
+	assert !worker.type_cache.borrowed_projection_clone_copies.reads[1]
+	// Exercise the recycled-cache path, which must discard generated ids too.
+	tc.pre_transform_type_cache = frozen
+	tc.set_fresh_type_cache(false)
+	assert isnil(tc.type_cache.borrowed_projection_clone_copies)
+	assert worker.type_cache.borrowed_projection_clone_copies.reads[2]
 }
 
 fn test_ownership_source_ids_keep_wrapper_drop_targets() {
