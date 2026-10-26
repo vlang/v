@@ -185,7 +185,6 @@ mut:
 	pending_decl_attr_kinds           []int
 	pending_decl_attr_sources         []string
 	in_for_container                  bool
-	in_struct_field_default           bool
 	in_select_branch_condition        int
 	in_match_branch_condition         int
 	in_array_literal                  int
@@ -3029,10 +3028,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					p.record_diagnostic_span('expecting type declaration', p.tok_pos, p.tok_end)
 				}
 				p.next()
-				was_in_struct_field_default := p.in_struct_field_default
-				p.in_struct_field_default = true
-				default_id = p.expr(.lowest)
-				p.in_struct_field_default = was_in_struct_field_default
+				default_id = p.expr_with_context(.lowest, true)
 			}
 			mut children_start := 0
 			mut children_count := 0
@@ -8545,7 +8541,7 @@ fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 			value: p.parse_type_name_bytes()
 		})
 	} else {
-		elem = p.prefix_expr()
+		elem = p.prefix_expr(false)
 		for p.tok == .dot {
 			elem = p.selector_or_method(elem)
 		}
@@ -11683,26 +11679,32 @@ fn (p &Parser) supports_c_inline_asm_lowering() bool {
 // ==================== expressions (Pratt parser) ====================
 
 fn (mut p Parser) expr(min_bp token.BindingPower) flat.NodeId {
-	lhs := p.prefix_expr()
-	return p.expr_with_lhs_context(lhs, min_bp, false, false, false)
+	return p.expr_with_context(min_bp, false)
+}
+
+// A field boundary follows only this expression's unary and infix operands.
+// Delimited expressions and nested function bodies start with a fresh context.
+fn (mut p Parser) expr_with_context(min_bp token.BindingPower, stop_at_struct_field bool) flat.NodeId {
+	lhs := p.prefix_expr(stop_at_struct_field)
+	return p.expr_with_lhs_context(lhs, min_bp, false, false, false, stop_at_struct_field)
 }
 
 fn (mut p Parser) array_element_expr() flat.NodeId {
-	lhs := p.prefix_expr()
-	return p.expr_with_lhs_context(lhs, .lowest, false, false, true)
+	lhs := p.prefix_expr(false)
+	return p.expr_with_lhs_context(lhs, .lowest, false, false, true, false)
 }
 
 fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) flat.NodeId {
-	return p.expr_with_lhs_context(first, min_bp, false, false, false)
+	return p.expr_with_lhs_context(first, min_bp, false, false, false, false)
 }
 
 fn (mut p Parser) stmt_expr() flat.NodeId {
 	is_stmt_ident := p.tok_can_be_decl_name()
-	lhs := p.prefix_expr()
-	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident, false, false)
+	lhs := p.prefix_expr(false)
+	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident, false, false, false)
 }
 
-fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool, stop_before_or bool, stop_at_array_element bool) flat.NodeId {
+fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool, stop_before_or bool, stop_at_array_element bool, stop_at_struct_field bool) flat.NodeId {
 	mut lhs := first
 	for {
 		// C translations can start a dereference assignment immediately after a
@@ -11743,7 +11745,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// semicolons here; an explicit `;` still terminates the expression.
 		// Const/global initializers and struct field defaults end at a newline: `or`
 		// on the next line starts a new declaration, not an `or` handler.
-		if !p.in_const_value && !p.in_struct_field_default && p.current_token_is_newline_semicolon() && p.peek() == .key_or {
+		if !p.in_const_value && !stop_at_struct_field && p.current_token_is_newline_semicolon() && p.peek() == .key_or {
 			p.next()
 			continue
 		}
@@ -11999,7 +12001,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				break
 			}
 			p.next()
-			rhs := p.expr(.lowest)
+			rhs := p.expr_with_context(.lowest, stop_at_struct_field)
 			rstart := p.add_children2(lhs, rhs)
 			lhs = p.add_node(flat.Node{
 				kind:           .range
@@ -12072,10 +12074,10 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				break
 			}
 			p.next()
-			mut rhs := p.expr(token.BindingPower.sum)
+			mut rhs := p.expr_with_context(token.BindingPower.sum, stop_at_struct_field)
 			if p.tok == .dotdot {
 				p.next()
-				range_rhs := p.expr(.sum)
+				range_rhs := p.expr_with_context(.sum, stop_at_struct_field)
 				range_lhs := rhs
 				rstart := p.add_children2(range_lhs, range_rhs)
 				rhs = p.add_node_from(flat.Node{
@@ -12110,10 +12112,10 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			}
 			p.next() // skip !
 			p.next() // skip in
-			mut rhs := p.expr(token.BindingPower.sum)
+			mut rhs := p.expr_with_context(token.BindingPower.sum, stop_at_struct_field)
 			if p.tok == .dotdot {
 				p.next()
-				range_rhs := p.expr(.sum)
+				range_rhs := p.expr_with_context(.sum, stop_at_struct_field)
 				range_lhs := rhs
 				rstart := p.add_children2(range_lhs, range_rhs)
 				rhs = p.add_node_from(flat.Node{
@@ -12142,7 +12144,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			// Const/global initializers and struct field defaults end at a newline
 			// when a keyword (`in`, `is`, `as`) follows a value. Other operators
 			// still continue multiline initializers (`&&`, trailing `+`, ...).
-			if (p.in_const_value || p.in_struct_field_default) && p.peek().is_keyword() {
+			if (p.in_const_value || stop_at_struct_field) && p.peek().is_keyword() {
 				break
 			}
 			peek_tok := p.peek()
@@ -12190,7 +12192,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		if p.tok == .left_shift && is_stmt_ident && p.a.node(lhs).kind !in [.call, .cast_expr] {
 			op_id := int(p.tok)
 			p.next()
-			rhs := p.expr(.lowest)
+			rhs := p.expr_with_context(.lowest, stop_at_struct_field)
 			istart := p.add_children2(lhs, rhs)
 			lhs = p.add_node_from(flat.Node{
 				kind:           .infix
@@ -12213,7 +12215,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		p.next()
 		rhs_op_pos := p.tok_pos
 		rhs_op_end := p.tok_end
-		rhs := p.expr(token_id_right_binding_power(op_id))
+		rhs := p.expr_with_context(token_id_right_binding_power(op_id), stop_at_struct_field)
 		// Like V 0.5.2, reject a doubled minus only when it negates a literal again:
 		// `5 - - -5` and `5 - -(3)`, but not `5 - -3` or `a - -b`.
 		if is_minus && !p.is_translated && p.is_negated_signed_literal(rhs) {
@@ -12966,7 +12968,7 @@ fn (mut p Parser) pseudo_variable_expr(name string, name_pos int) ?flat.NodeId {
 	return none
 }
 
-fn (mut p Parser) prefix_expr() flat.NodeId {
+fn (mut p Parser) prefix_expr(stop_at_struct_field bool) flat.NodeId {
 	// Capture the leading token's span before consuming it so leaf literals keep
 	// their own location and prefix operators can span from here to the operand.
 	start_pos := p.current_pos()
@@ -12978,7 +12980,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		p.record_diagnostic_span('the `${modifier}` keyword is invalid here', p.tok_pos,
 			p.tok_end)
 		p.next()
-		return p.prefix_expr()
+		return p.prefix_expr(stop_at_struct_field)
 	}
 	tok_id := int(p.tok)
 	if p.tok == .dec {
@@ -12989,7 +12991,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				op_start, operator_end)
 			return p.add(flat.NodeKind.empty)
 		}
-		operand := p.expr(.power)
+		operand := p.expr_with_context(.power, stop_at_struct_field)
 		expr_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 		operand_text := p.s.src[operator_end..expr_end].trim_space().replace('"', "'")
 		p.record_diagnostic_span('prefix `--${operand_text}` is unsupported, use suffix form `${operand_text}--`',
@@ -12998,7 +13000,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	}
 	if p.tok == .plus {
 		p.next()
-		operand := p.expr(.power)
+		operand := p.expr_with_context(.power, stop_at_struct_field)
 		return p.a.add_node(flat.Node{
 			kind:           .prefix
 			op:             .plus
@@ -13043,13 +13045,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	}
 	if tok_id == 3 {
 		p.next()
-		operand := p.prefix_expr()
-		inner := p.expr_with_lhs_context(operand, .highest, false, true, false)
+		operand := p.prefix_expr(stop_at_struct_field)
+		inner := p.expr_with_lhs_context(operand, .highest, false, true, false, stop_at_struct_field)
 		return p.channel_receive_expr(inner, op_start)
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
 		p.next()
-		mut operand := p.expr(.power)
+		mut operand := p.expr_with_context(.power, stop_at_struct_field)
 		// A trailing `or {}` binds to the operand, not to the prefix operator:
 		// `!f() or {}` means `!(f() or {})`. The main expression loop only
 		// attaches `or` at lowest binding power (below the prefix), so it would
@@ -13111,8 +13113,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.arrow {
 			p.next()
-			operand := p.prefix_expr()
-			inner := p.expr_with_lhs_context(operand, .highest, false, true, false)
+			operand := p.prefix_expr(stop_at_struct_field)
+			inner := p.expr_with_lhs_context(operand, .highest, false, true, false, stop_at_struct_field)
 			return p.channel_receive_expr(inner, op_start)
 		}
 		.logical_or {
@@ -13123,7 +13125,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_mut {
 			p.next()
-			id := p.prefix_expr()
+			id := p.prefix_expr(stop_at_struct_field)
 			p.mark_node_mut(id)
 			return id
 		}
@@ -13139,7 +13141,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				})
 			}
 			p.next()
-			return p.prefix_expr()
+			return p.prefix_expr(stop_at_struct_field)
 		}
 		.name, .key_module {
 			name_pos := p.tok_pos
@@ -13510,7 +13512,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					pos:            p.span_to(amp_start)
 				})
 			}
-			operand := p.expr(.highest)
+			operand := p.expr_with_context(.highest, stop_at_struct_field)
 			operand_node := p.a.node(operand)
 			if operand_node.kind == .or_expr && operand_node.value !in ['?', '!'] && operand_node.children_count == 2 {
 				source := p.a.child(operand_node, 0)
@@ -13569,7 +13571,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					pos:            p.span_to(op_start)
 				})
 			}
-			mut operand := p.expr(.power)
+			mut operand := p.expr_with_context(.power, stop_at_struct_field)
 			end := p.span_to(op_start).end
 			for i in 0 .. depth {
 				amp_offset := op_start + depth - i - 1
@@ -13586,7 +13588,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.minus {
 			op_id := int(p.tok)
 			p.next()
-			operand := p.expr(.power)
+			operand := p.expr_with_context(.power, stop_at_struct_field)
 			pstart := p.add_child(operand)
 			return p.a.add_node(flat.Node{
 				kind:           .prefix
@@ -13598,7 +13600,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.not, .bit_not, .mul {
 			op_id := int(p.tok)
 			p.next()
-			operand := p.expr(.power)
+			operand := p.expr_with_context(.power, stop_at_struct_field)
 			pstart := p.add_child(operand)
 			return p.add_node(flat.Node{
 				kind:           .prefix
@@ -13613,7 +13615,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			// back into nested prefix nodes here; after a left operand the normal
 			// expression loop still treats the same token as exponentiation.
 			p.next()
-			operand := p.expr(.power)
+			operand := p.expr_with_context(.power, stop_at_struct_field)
 			inner := p.add_node(flat.Node{
 				kind:           .prefix
 				op:             .mul
@@ -13699,7 +13701,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
 			spawn_pos := p.span_start()
 			p.next()
-			inner := p.expr(.lowest)
+			inner := p.expr_with_context(.lowest, stop_at_struct_field)
 			sstart := p.add_child(inner)
 			return p.add_node(flat.Node{
 				kind:           .spawn_expr
@@ -13783,7 +13785,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			// spread: ...expr
 			spread_start := p.span_start()
 			p.next()
-			inner := p.expr(.lowest)
+			inner := p.expr_with_context(.lowest, stop_at_struct_field)
 			pstart := p.add_child(inner)
 			return p.add_node(flat.Node{
 				kind:           .prefix
@@ -18443,10 +18445,7 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) u32 {
 		mut default_id := flat.empty_node
 		if p.tok == .assign {
 			p.next()
-			was_in_struct_field_default := p.in_struct_field_default
-			p.in_struct_field_default = true
-			default_id = p.expr(.lowest)
-			p.in_struct_field_default = was_in_struct_field_default
+			default_id = p.expr_with_context(.lowest, true)
 		}
 		mut children_start := 0
 		mut children_count := 0
