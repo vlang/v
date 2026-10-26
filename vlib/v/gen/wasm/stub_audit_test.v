@@ -701,43 +701,39 @@ fn main() {
 			refuses: 'ssa: unknown function `f64__strg`'
 		},
 		StubCase{
-			tag:     'string_split'
-			stub:    'strings.split - no synthetic body, source body panics'
-			source:  '
+			tag:    'string_split'
+			stub:   'strings.split - source body'
+			source: '
 fn main() {
 	sp := "a,b,c".split(",")
 	println(sp)
 	println(sp.len)
 }
 '
-			native:  "['a', 'b', 'c']\n3\n"
-			refuses: 'ssa: unknown function `split`'
+			native: "['a', 'b', 'c']\n3\n"
 		},
 		StubCase{
-			tag:     'string_repeat'
-			stub:    'strings.repeat - no synthetic body, source body panics'
-			source:  '
+			tag:    'string_repeat'
+			stub:   'strings.repeat - source body'
+			source: '
 fn main() {
 	s := "ab".repeat(3)
 	println(s)
 }
 '
-			native:  'ababab\n'
-			refuses: 'ssa: unknown function `string__repeat`'
+			native: 'ababab\n'
 		},
 		StubCase{
-			tag:     'string_index'
-			stub:    'strings.index - no synthetic body, source body panics'
-			source:  stub_source_string_index
-			native:  'Option(2)\nOption(none)\n'
-			refuses: 'ssa: unknown function `index`'
+			tag:    'string_index'
+			stub:   'strings.index - source body'
+			source: stub_source_string_index
+			native: 'Option(2)\nOption(none)\n'
 		},
 		StubCase{
-			tag:     'string_reverse'
-			stub:    'strings.reverse - no synthetic body, source body panics'
-			source:  stub_source_string_reverse
-			native:  'cba\n399\n'
-			refuses: 'ssa: unknown function `reverse`'
+			tag:    'string_reverse'
+			stub:   'strings.reverse - source body'
+			source: stub_source_string_reverse
+			native: 'cba\n399\n'
 		},
 		StubCase{
 			tag:     'pointer_strings'
