@@ -104,11 +104,12 @@ typedef struct VMultiwindowAppKitQueuedEvent {
 
 int v_multiwindow_appkit_is_main_thread(void);
 int v_multiwindow_appkit_prepare_application(void);
-void *v_multiwindow_appkit_string(const char *value);
+/* Match the V exports' char * ABI; both helpers only read their input. */
+void *v_multiwindow_appkit_string(char *value);
 int v_multiwindow_appkit_max_int(int value, int minimum);
 float v_multiwindow_appkit_clamp_unit(double value);
 int v_multiwindow_appkit_clamped_int(double value);
-char *v_multiwindow_appkit_copy_cstring(const char *value);
+char *v_multiwindow_appkit_copy_cstring(char *value);
 VMultiwindowNativePrimitive v_multiwindow_appkit_create_metal_device(void);
 VMultiwindowNativePrimitive v_multiwindow_appkit_release_metal_device(void *device);
 VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr, const char *title, int width, int height, int min_width, int min_height, int resizable, int visible, int high_dpi, int borderless, int fullscreen, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);

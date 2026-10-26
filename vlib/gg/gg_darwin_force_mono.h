@@ -23,6 +23,14 @@ static inline void gg_darwin_fill_rect(void* ctx, double x, double y, double wid
 	CGContextFillRect((CGContextRef)ctx, CGRectMake(x, y, width, height));
 }
 
+static inline void gg_darwin_fill_ellipse(void* ctx, double x, double y, double width, double height) {
+	CGContextFillEllipseInRect((CGContextRef)ctx, CGRectMake(x, y, width, height));
+}
+
+static inline void gg_darwin_stroke_ellipse(void* ctx, double x, double y, double width, double height) {
+	CGContextStrokeEllipseInRect((CGContextRef)ctx, CGRectMake(x, y, width, height));
+}
+
 static inline bool gg_darwin_mouse_in_rect(double x, double y, double rx, double ry, double width, double height, bool flipped) {
 	return NSMouseInRect(NSMakePoint(x, y), NSMakeRect(rx, ry, width, height), flipped);
 }

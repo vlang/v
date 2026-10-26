@@ -14,6 +14,8 @@ fn C.gg_darwin_color_attribute() macos.Id
 fn C.gg_darwin_font_attribute() macos.Id
 fn C.gg_darwin_device_size() macos.Id
 fn C.gg_darwin_fill_rect(ctx voidptr, x f64, y f64, width f64, height f64)
+fn C.gg_darwin_fill_ellipse(ctx voidptr, x f64, y f64, width f64, height f64)
+fn C.gg_darwin_stroke_ellipse(ctx voidptr, x f64, y f64, width f64, height f64)
 fn C.gg_darwin_mouse_in_rect(x f64, y f64, rx f64, ry f64, width f64, height f64, flipped bool) bool
 
 fn C.CGColorCreateGenericRGB(r f64, g f64, b f64, a f64) voidptr
@@ -22,8 +24,6 @@ fn C.CGContextSetStrokeColorWithColor(ctx voidptr, color voidptr)
 fn C.CGContextSetLineWidth(ctx voidptr, width f64)
 fn C.CGContextSaveGState(ctx voidptr)
 fn C.CGContextRestoreGState(ctx voidptr)
-fn C.CGContextStrokeEllipseInRect(ctx voidptr, rect macos.Rect)
-fn C.CGContextFillEllipseInRect(ctx voidptr, rect macos.Rect)
 
 fn C.dispatch_get_main_queue() voidptr
 fn C.dispatch_async_f(queue voidptr, context voidptr, work voidptr)
@@ -242,6 +242,7 @@ pub fn darwin_draw_image(x f32, y f32, w f32, h f32, img &Image) {
 	macos.msg_void_rect(i, 'drawInRect:', macos.rect(f64(x), f64(y), f64(w), f64(h)))
 }
 
+// darwin_draw_circle fills a circle in the current macOS graphics context.
 pub fn darwin_draw_circle(x f32, y f32, d f32, color Color) {
 	if d <= 0 {
 		return
@@ -251,9 +252,10 @@ pub fn darwin_draw_circle(x f32, y f32, d f32, color Color) {
 		return
 	}
 	C.CGContextSetFillColorWithColor(context, cgcolor(color))
-	C.CGContextFillEllipseInRect(context, macos.rect(f64(x), f64(y), f64(d * 2), f64(d * 2)))
+	C.gg_darwin_fill_ellipse(context, f64(x), f64(y), f64(d * 2), f64(d * 2))
 }
 
+// darwin_draw_circle_empty draws a circle outline in the current macOS graphics context.
 pub fn darwin_draw_circle_empty(x f32, y f32, d f32, color Color) {
 	if d <= 0 {
 		return
@@ -265,6 +267,6 @@ pub fn darwin_draw_circle_empty(x f32, y f32, d f32, color Color) {
 	C.CGContextSaveGState(context)
 	C.CGContextSetStrokeColorWithColor(context, cgcolor(color))
 	C.CGContextSetLineWidth(context, 1.0)
-	C.CGContextStrokeEllipseInRect(context, macos.rect(f64(x), f64(y), f64(d * 2), f64(d * 2)))
+	C.gg_darwin_stroke_ellipse(context, f64(x), f64(y), f64(d * 2), f64(d * 2))
 	C.CGContextRestoreGState(context)
 }

@@ -1976,7 +1976,11 @@ ${build_res.output}'
 
 fn test_appkit_initial_content_rect_is_clamped_to_min_size_source_guard() {
 	source := multiwindow_source_file('appkit_backend.m')
-	assert source.contains('static int v_multiwindow_appkit_max_int(int value, int minimum)')
+	helpers := multiwindow_source_file('appkit_backend.v')
+	header := multiwindow_source_file('appkit_backend_helpers.h')
+	assert helpers.contains("@[export: 'v_multiwindow_appkit_max_int']")
+	assert helpers.contains('fn v_multiwindow_appkit_max_int(value int, minimum int) int')
+	assert header.contains('int v_multiwindow_appkit_max_int(int value, int minimum);')
 	assert source.contains('int content_width = v_multiwindow_appkit_max_int(width, min_width);')
 	assert source.contains('int content_height = v_multiwindow_appkit_max_int(height, min_height);')
 	assert source.contains('NSRect rect = NSMakeRect(0, 0, (CGFloat)content_width, (CGFloat)content_height);')
