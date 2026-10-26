@@ -19399,8 +19399,7 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 					continue
 				}
 				if receiver_arg_id := receiver_inferred[receiver_param] {
-					receiver_arg := flat.source_type_name(receiver_arg_id)
-					receiver_type := tc.type_from_known_symbol(receiver_arg) or {
+					receiver_type := tc.type_from_known_symbol(receiver_arg_id) or {
 						*tc.parse_type(receiver_arg_id)
 					}
 					signature_params << receiver_param
@@ -19458,7 +19457,7 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 // module. A caller's `Row` can name a `Row` of that module there, so such an
 // argument is spelled as an explicit `f[Row]` is (`main.Row`).
 fn (tc &TypeChecker) generic_signature_arg_text(fn_name string, arg_id u32, arg_type Type) u32 {
-	if context_independent_type_text(flat.source_type_name(arg_id)) {
+	if context_independent_type(arg_id) {
 		return arg_id
 	}
 	locked_id := tc.explicit_generic_concrete_arg_text(arg_id)
