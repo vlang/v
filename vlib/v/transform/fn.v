@@ -16827,7 +16827,7 @@ fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node f
 		arg_id := t.a.child(&node, i + 1)
 		actual_type_source_id_3 := t.specialized_expr_type_name(arg_id)
 		actual_type := flat.source_type_name(actual_type_source_id_3)
-		expected_type_source_id := t.semantic_type_name(*fn_type.params[i].typ)
+		expected_type_source_id := t.semantic_type_name_in_cur_module(*fn_type.params[i].typ)
 		expected_type := flat.source_type_name(expected_type_source_id)
 		if t.resolved_receiver_arg_compatible(arg_id, actual_type_source_id_3, expected_type_source_id) {
 			continue
@@ -16838,10 +16838,22 @@ fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node f
 		t.record_monomorph_error('cannot use `${actual_type}` as argument ${i + 1} to `${display_name}`; expected `${expected_type}`')
 		valid = false
 	}
-	if !t.validate_specialized_call_result(id, t.semantic_type_name(fn_type.return_type)) {
+	if !t.validate_specialized_call_result(id, t.semantic_type_name_in_cur_module(fn_type.return_type)) {
 		valid = false
 	}
 	return valid
+}
+
+// semantic_type_name_in_cur_module spells a checker type for comparison with the
+// expression types of the current module. A type name renders main-module types
+// bare, so inside an imported generic specialization a main `Row` is locked to
+// `main.Row` like the expressions' types, or it would name the module's own `Row`.
+fn (t &Transformer) semantic_type_name_in_cur_module(typ types.Type) u32 {
+	name := t.semantic_type_name(typ)
+	if t.cur_module in ['', 'main', 'builtin'] {
+		return name
+	}
+	return t.lock_colliding_main_generic_type_text(name, t.cur_module)
 }
 
 fn transform_fn_type(typ types.Type) ?types.FnType {
