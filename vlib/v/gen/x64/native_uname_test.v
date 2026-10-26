@@ -34,15 +34,15 @@ fn copy_uname(value &C.utsname) C.utsname {
 	return unsafe { *value }
 }
 fn main() {
-	if sizeof(C.utsname) != 1280 { C.exit(1) }
+	if sizeof(C.utsname) != 390 { C.exit(1) }
 	mut value := C.utsname{}
 	if C.uname(&value) != 0 { C.exit(2) }
 	pointer := &value
-	if C.strcmp(value.sysname, c"Darwin") != 0 { C.exit(3) }
+	if C.strcmp(value.sysname, c"Linux") != 0 { C.exit(3) }
 	if C.strlen(pointer.nodename) == 0 { C.exit(4) }
 	if C.strlen(pointer.release) == 0 { C.exit(5) }
 	if C.strlen(pointer.version) == 0 { C.exit(6) }
-	if C.strcmp(pointer.machine, c"x64") != 0 { C.exit(7) }
+	if C.strcmp(pointer.machine, c"x86_64") != 0 { C.exit(7) }
 	view := UnameView{value: pointer}
 	if C.strcmp(view.value.release, value.release) != 0 { C.exit(8) }
 	if C.strcmp(copy_uname(pointer).machine, value.machine) != 0 { C.exit(9) }

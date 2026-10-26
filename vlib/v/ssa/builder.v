@@ -602,6 +602,15 @@ struct NativeCStructAbi {
 
 fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
 	if struct_name == 'C.utsname' && pointer_size == 8 {
+		$if linux {
+			// Native ABI overrides follow the compiler host OS. Linux includes
+			// domainname even when the V declaration exposes only five fields.
+			return NativeCStructAbi{
+				field_names: ['sysname', 'nodename', 'release', 'version', 'machine', 'domainname']
+				field_types: flat.TypeTextList.from_names(['[65]char', '[65]char', '[65]char',
+					'[65]char', '[65]char', '[65]char'])
+			}
+		}
 		// Darwin stores five inline char[256] fields. The V declaration uses
 		// &char so selectors have C array-to-pointer semantics.
 		return NativeCStructAbi{
