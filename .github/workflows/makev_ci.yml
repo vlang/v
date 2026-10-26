@@ -5,11 +5,14 @@ on:
     branches: [master]
     paths:
       - 'makev.bat'
+      - 'cmd/tools/makev_test.py'
+      - 'cmd/tools/windows_ci_test.py'
       - '.github/workflows/windows_ci_gcc.yml'
       - '.github/workflows/windows_ci_msvc.yml'
       - '.github/workflows/windows_ci_tcc.yml'
       - '.github/workflows/run_multiwindow_win32_w3_green.ps1'
       - '.github/workflows/run_multiwindow_win32_w4.ps1'
+      - 'cmd/tools/windows_w4_ci_test.py'
       - 'vlib/x/multiwindow/testdata/win32_nonreadback_test_oracle.h'
       - 'vlib/gg/testdata/multiwindow_win32_clipboard_no_optin_probe.v'
       - 'vlib/x/multiwindow/service_backend.v'
@@ -24,11 +27,14 @@ on:
   pull_request:
     paths:
       - 'makev.bat'
+      - 'cmd/tools/makev_test.py'
+      - 'cmd/tools/windows_ci_test.py'
       - '.github/workflows/windows_ci_gcc.yml'
       - '.github/workflows/windows_ci_msvc.yml'
       - '.github/workflows/windows_ci_tcc.yml'
       - '.github/workflows/run_multiwindow_win32_w3_green.ps1'
       - '.github/workflows/run_multiwindow_win32_w4.ps1'
+      - 'cmd/tools/windows_w4_ci_test.py'
       - 'vlib/x/multiwindow/testdata/win32_nonreadback_test_oracle.h'
       - 'vlib/gg/testdata/multiwindow_win32_clipboard_no_optin_probe.v'
       - 'vlib/x/multiwindow/service_backend.v'
@@ -69,5 +75,11 @@ jobs:
           ref: thirdparty-windows-amd64
           path: thirdparty/tcc
           persist-credentials: false
-      - name: Test bootstrap configuration (V port)
-        run: v run cmd/tools/makev_contract_test/main.v
+      - name: Test bootstrap configuration and batch error handling
+        run: python cmd/tools/makev_test.py
+      - name: Test Windows CI build failures and W3 integrity pins
+        if: ${{ !cancelled() }}
+        run: python cmd/tools/windows_ci_test.py
+      - name: Test Win32 W4 integrity pins and ordered manifests
+        if: ${{ !cancelled() }}
+        run: python cmd/tools/windows_w4_ci_test.py
