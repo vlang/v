@@ -5897,33 +5897,36 @@ fn (mut t Transformer) clone_scoped_worker_node(idx int, scope voidptr) {
 	if node.payload == 0 {
 		return
 	}
-	old_params := node.generic_params()
-	if old_params.len > 0 {
-		mut needs_owned_params := transform_scope_owns(scope, node.payload_ptr())
-			|| transform_scope_owns(scope, old_params.data)
-		if !needs_owned_params {
-			for param in old_params {
-				if param.len > 0 && transform_scope_owns(scope, param.str) {
-					needs_owned_params = true
-					break
-				}
+	payload := node.payload_ptr()
+	old_params := payload.generic_params
+	mut needs_owned_payload := transform_scope_owns(scope, payload)
+		|| transform_scope_owns(scope, old_params.data)
+		|| transform_scope_owns(scope, payload.generic_constraints.ids.data)
+		|| transform_scope_owns(scope, payload.call_type_args.ids.data)
+		|| transform_scope_owns(scope, payload.debugger_value_types.ids.data)
+	if !needs_owned_payload {
+		for param in old_params {
+			if param.len > 0 && transform_scope_owns(scope, param.str) {
+				needs_owned_payload = true
+				break
 			}
 		}
-		if needs_owned_params {
-			mut params := []string{cap: old_params.len}
-			for param in old_params {
-				if param.len > 0 && transform_scope_owns(scope, param.str) {
-					_, canonical := t.a.intern_text(param)
-					params << canonical
-				} else {
-					params << param
-				}
-			}
-			node.set_generic_params(params)
-		}
-	} else if node.has_lowered_type_metadata() && transform_scope_owns(scope, node.payload_ptr()) {
-		node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
 	}
+	if !needs_owned_payload {
+		return
+	}
+	mut params := []string{cap: old_params.len}
+	for param in old_params {
+		if param.len > 0 && transform_scope_owns(scope, param.str) {
+			_, canonical := t.a.intern_text(param)
+			params << canonical
+		} else {
+			params << param
+		}
+	}
+	// Call/debugger/enum payloads need publication even without generic names.
+	// Rebuilding also owns every ID list and preserves independent lowered types.
+	node.set_generic_params_and_constraint_ids(params, payload.generic_constraints.ids)
 }
 
 // relocate_region_in_place rewrites one worker region's appended-node child
