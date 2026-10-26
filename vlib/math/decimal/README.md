@@ -10,6 +10,11 @@ rounding), `half_down`, `up`, `down`, `ceiling` or `floor`. `div_prec` is
 `div` with `half_up`. The `/` operator uses `decimal.default_division_precision`
 and panics on a zero divisor; use `div` where the divisor can be zero.
 
+`from_string` accepts an optional base-10 exponent, for example `1.5e-2` is `0.015`.
+An exponent can have one leading `+` or `-` sign and any number of leading zeros.
+Exponents must be between -100 and 100 inclusive. Larger magnitudes return an
+`exponent out of range` error rather than changing the value or allocating large powers of ten.
+
 ## Example
 
 ```v
