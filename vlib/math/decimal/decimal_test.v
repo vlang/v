@@ -53,6 +53,47 @@ fn test_from_string_rejects_invalid_input() {
 	assert_parse_error('.', 'math.decimal: invalid decimal value `.`')
 }
 
+fn test_from_string_exponent_notation() {
+	cases := {
+		'1e3':        '1000'
+		'1.5E-2':     '0.015'
+		'-12e+2':     '-1200'
+		'+12E-1':     '1.2'
+		'.25e1':      '2.5'
+		'1.2e-2':     '0.012'
+		'1.e2':       '100'
+		' 1e2 ':      '100'
+		'001.200e0':  '1.2'
+		'1e000001':   '10'
+		'1e-00001':   '0.1'
+		'-0e+100':    '0'
+		'+0.00e-100': '0'
+	}
+	for input, expected in cases {
+		assert must_decimal(input).str() == expected, input
+	}
+	zeros := '0'.repeat(128)
+	assert must_decimal('1e${zeros}').str() == '1'
+	assert must_decimal('1e-${zeros}').str() == '1'
+	assert must_decimal('1e+${zeros}100').str() == '1' + '0'.repeat(100)
+	assert must_decimal('1e-${zeros}100').str() == '0.' + '0'.repeat(99) + '1'
+	assert must_decimal('-0e-${zeros}').is_zero()
+}
+
+fn test_from_string_rejects_invalid_exponents() {
+	for input in ['1e', '1e+', '1e-', 'e1', '.e1', '-e1', '1e--2', '1e+-2', '1e-+2', '1e++2', '1e2-',
+		'1e2+', '1e2e3', '1E2E3', '1e2.0', '1 e2', '1e 2'] {
+		assert_parse_error(input, 'math.decimal: invalid decimal value `${input}`')
+	}
+}
+
+fn test_from_string_rejects_exponents_out_of_range() {
+	for input in ['1e101', '1e-101', '1e+101', '1e2147483648', '1e-2147483648', '1e99999999999999999999',
+		'1e-99999999999999999999', '1e00000000000000101', '1e-00000000000000101'] {
+		assert_parse_error(input, 'math.decimal: exponent out of range `${input}`')
+	}
+}
+
 fn test_add_sub_and_mul() {
 	assert (must_decimal('1.23') + must_decimal('4.5')).str() == '5.73'
 	assert (must_decimal('4.5') - must_decimal('1.23')).str() == '3.27'

@@ -75,7 +75,8 @@ pub fn from_minor_units(units i64, precision int) !Decimal {
 	return new(big.integer_from_i64(units), precision)
 }
 
-// from_string parses a decimal string without exponent notation.
+// from_string parses a decimal string with an optional base-10 exponent.
+// Exponents from -100 to 100 are supported; larger magnitudes return an error.
 pub fn from_string(input string) !Decimal {
 	value := input.trim_space()
 	if value.len == 0 {
@@ -88,6 +89,7 @@ pub fn from_string(input string) !Decimal {
 	mut digits := strings.new_builder(value.len)
 	mut exponent := 0
 	mut exponent_negative := false
+	mut exponent_sign_seen := false
 	mut exponent_digits := 0
 	mut in_exponent := false
 	for index, ch in value {
@@ -97,20 +99,21 @@ pub fn from_string(input string) !Decimal {
 		}
 		if in_exponent {
 			if ch == `+` || ch == `-` {
-				if exponent_digits > 0 {
+				if exponent_digits > 0 || exponent_sign_seen {
 					return error('math.decimal: invalid decimal value `${input}`')
 				}
+				exponent_sign_seen = true
 				exponent_negative = ch == `-`
 				continue
 			}
 			if ch >= `0` && ch <= `9` {
 				exponent_digits++
-				if exponent_digits > 10 {
-					// Cap to avoid huge allocations; treat as saturated.
-					exponent = if exponent_negative { -1_000_000_000 } else { 1_000_000_000 }
-				} else {
-					exponent = exponent * 10 + int(ch - `0`)
+				digit := int(ch - `0`)
+				// Check before multiplying to reject large exponents without integer overflow.
+				if exponent > 10 || (exponent == 10 && digit > 0) {
+					return error('math.decimal: exponent out of range `${input}`')
 				}
+				exponent = exponent * 10 + digit
 				continue
 			}
 			return error('math.decimal: invalid decimal value `${input}`')
@@ -144,13 +147,6 @@ pub fn from_string(input string) !Decimal {
 	}
 	if exponent_negative {
 		exponent = -exponent
-	}
-	// Cap extreme exponents to avoid huge allocations.
-	if exponent > 100 {
-		exponent = 100
-	}
-	if exponent < -100 {
-		exponent = -100
 	}
 	mut coefficient_string := digits.str()
 	if negative {
