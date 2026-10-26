@@ -72,10 +72,12 @@ pub mut:
 	is_livemain           bool
 	is_liveshared         bool
 	is_shared             bool
-	subsystem             Subsystem
-	no_builtin            bool
-	no_preludes           bool
-	module_search_paths   []string
+	// hot_fn extracts raw machine code for a single function only (hot reload).
+	hot_fn              string
+	subsystem           Subsystem
+	no_builtin          bool
+	no_preludes         bool
+	module_search_paths []string
 	// module_resolution_root is the directory that owns the entry sources. It
 	// distinguishes a project's retired `modules/` lookup level from a project
 	// whose own root happens to carry that name.
@@ -261,7 +263,7 @@ pub fn option_may_consume_value(option string) bool {
 		'-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude', '-file-list',
 		'-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
 		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
-		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-d', '-define', '-message-limit', '-thread-stack-size', '-hot-fn', '-cc', '-c++',
 		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend', '-compile-backend',
 		'--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix',
 		'-cmain', '-line-info', '-memory-limit', '--memory-limit']
