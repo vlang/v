@@ -603,7 +603,10 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 			}
 		}
 		.resized {
-			ctx.scale = dpi_scale()
+			// set_scale re-fits on Android, where a rotation changes the
+			// framebuffer the design size was fitted to; dpi_scale would
+			// reset that fit to 1.
+			ctx.set_scale()
 			ctx.ft.scale = ctx.scale
 			ctx.set_cached_window_size(e.window_width, e.window_height)
 			if ctx.config.resized_fn != unsafe { nil } {
