@@ -3263,6 +3263,15 @@ In case of reference value, see [here](#structs-with-reference-fields).
 
 It's also possible to define custom default values.
 
+A keyword-named field can follow a default value on the next line:
+
+```v
+struct Settings {
+	enabled bool = true
+	in      string
+}
+```
+
 ### Required fields
 
 ```v
