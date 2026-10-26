@@ -116,6 +116,7 @@ pub fn darwin_draw_string(x int, y int, s string, cfg TextCfg) {
 	macos.msg_void_point_id(n, 'drawAtPoint:withAttributes:', macos.point(f64(x), f64(y - 15)), attr)
 }
 
+// darwin_draw_rect fills a rectangle in the current macOS graphics context.
 pub fn darwin_draw_rect(x f32, y f32, width f32, height f32, c Color) {
 	if width <= 0 || height <= 0 {
 		return
@@ -164,6 +165,7 @@ pub fn darwin_window_refresh() {
 	C.dispatch_async_f(queue, unsafe { nil }, voidptr(darwin_window_refresh_cb))
 }
 
+// gg_get_screen_size returns the size of the current window's screen, or the main screen.
 pub fn gg_get_screen_size() Size {
 	mut current_screen := macos.Id(unsafe { nil })
 	main_window := macos.msg_id(C.gg_darwin_application(), 'mainWindow')
