@@ -94,7 +94,7 @@ fn fastc_write_stdin_bytes(fd int, data &u8, len int) bool {
 	mut offset := 0
 	for offset < len {
 		// The caller keeps this byte range alive until the blocking write returns.
-		written := C.write(fd, unsafe { data + offset }, usize(len - offset))
+		written := C.write(fd, unsafe { data + offset }, uint(len - offset))
 		if written > 0 {
 			offset += int(written)
 		} else if written < 0 && C.errno == C.EINTR {
