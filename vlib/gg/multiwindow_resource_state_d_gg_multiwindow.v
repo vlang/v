@@ -1,7 +1,7 @@
 module gg
 
+import gg.render
 import sokol.gfx
-import sokol.sgl
 
 enum MultiWindowResourceKind {
 	buffer
@@ -40,7 +40,7 @@ struct MultiWindowAttachmentsRecipe {
 }
 
 struct MultiWindowSglMaterialization {
-	pipeline    sgl.Pipeline
+	pipeline    render.Pipeline
 	context_key string
 }
 
@@ -496,8 +496,20 @@ fn destroy_retired_resource(resource MultiWindowRetiredResource) {
 		}
 		.sgl_pipeline {
 			for _, materialization in resource.materialized_sgl {
-				sgl.destroy_pipeline(materialization.pipeline)
+				destroy_render_pipeline_pips(materialization.pipeline)
 			}
+		}
+	}
+}
+
+// destroy_render_pipeline_pips releases the concrete gfx pipelines that back a
+// render pipeline. Index 5 is an alias of index 3 (quads are emulated with
+// triangles), so it must not be destroyed twice.
+fn destroy_render_pipeline_pips(pipeline render.Pipeline) {
+	for i in 0 .. render.num_primitive_types {
+		if i != 5 {
+			mut pip := pipeline.pips[i]
+			pip.free()
 		}
 	}
 }

@@ -63,3 +63,10 @@ populated:
 Sections that have nothing to render are simply omitted, so existing apps
 see no change unless they opt in by setting these fields. See
 `examples/cli_groups.v` for a runnable program that exercises all of them.
+
+## Manpage layout
+
+`--man` is generated automatically. The manpage mirrors the help layout: local
+and inherited flags, grouped sub-commands, examples and the `learn_more` text
+are rendered in their own sections, and sections with nothing to render are
+omitted.

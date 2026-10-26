@@ -533,7 +533,18 @@ fn (t &Transformer) fn_literal_type_text(node flat.Node) u32 {
 		slot_type_id := explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(raw_id))
 		params << flat.source_type_name(mutable_fn_value_param_type_text(child, slot_type_id))
 	}
-	ret := trimmed_transform_text(node.typ_text())
+	mut ret_type := node.typ
+	if inferred_type_id(ret_type) {
+		mut param_nodes := []flat.Node{}
+		for i in 0 .. node.children_count {
+			child := t.a.child_node(&node, i)
+			if child.kind == .param {
+				param_nodes << *child
+			}
+		}
+		ret_type = t.resolve_fn_literal_inferred_return_type(ret_type, param_nodes)
+	}
+	ret := trimmed_transform_text(flat.source_type_name(ret_type))
 	if ret.len == 0 || ret == 'void' {
 		return flat.source_type_id('fn (${params.join(', ')})')
 	}
@@ -1162,6 +1173,19 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name_id u32, field_name st
 	if is_generic_app {
 		lookup_type = flat.source_type_id(base)
 	}
+	// `main.Foo` locks a program-module type (see lookup_struct_info): its bare
+	// table key must not be requalified into a current module with its own `Foo`.
+	lookup_name := flat.source_type_name(lookup_type)
+	if lookup_name.starts_with('main.') && !lookup_name['main.'.len..].contains('.') {
+		if info := t.structs[lookup_name['main.'.len..]] {
+			if info.module.len == 0 || info.module == 'main' {
+				return StructFieldLookup{
+					info:       info
+					owner_type: owner_type_id
+				}
+			}
+		}
+	}
 	if flat.source_type_name(lookup_type) !in t.structs && is_qualified_type_name_text(flat.source_type_name(lookup_type)) {
 		short_type := flat.source_type_name(lookup_type).all_after_last('.')
 		if short_type in t.structs {
@@ -1395,6 +1419,11 @@ fn (t &Transformer) type_authority_has(name string) bool {
 @[direct_array_access; inline]
 fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 	if type_id == 0 || isnil(t.tc) { return type_id }
+	if inferred_type_id(type_id) {
+		resolved := t.resolve_inferred_type_id(type_id)
+		if resolved != type_id { return t.normalize_type_alias(resolved) }
+		return type_id
+	}
 	if !isnil(t.alias_cache) && voidptr(t.alias_cache.texts) == voidptr(t.var_type_texts)
 		&& t.alias_cache.canonical_types[int(type_id & 1023)] == type_id {
 		return type_id

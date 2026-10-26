@@ -145,3 +145,35 @@ pub fn split_capital(s string) []string {
 	}
 	return res
 }
+
+// strings.repeat returns a string with `n` repetitions of the character `c`.
+// It returns an empty string if `n` is 0 or negative.
+@[direct_array_access]
+pub fn repeat(c u8, n int) string {
+	if n <= 0 {
+		return ''
+	}
+	arr := [c].repeat(n)
+	return arr.bytestr()
+}
+
+// strings.repeat_string returns a string with `n` repetitions of the substring `s`.
+// It returns an empty string if `n` is 0 or negative, or if `s` is empty.
+// Note: strings.repeat, that repeats a single byte, is faster than
+// strings.repeat_string called for a 1 char string.
+@[direct_array_access]
+pub fn repeat_string(s string, n int) string {
+	if n <= 0 || s.len == 0 {
+		return ''
+	}
+	slen := s.len
+	blen := slen * n
+	mut buf := []u8{len: blen}
+	for bi in 0 .. n {
+		bislen := bi * slen
+		for si in 0 .. slen {
+			buf[bislen + si] = s[si]
+		}
+	}
+	return buf.bytestr()
+}

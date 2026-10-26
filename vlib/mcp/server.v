@@ -1651,10 +1651,18 @@ fn (mut s Server) serve_stdio_transport(mut reader io.Reader, mut writer io.Writ
 	defer {
 		s.set_stdio_output(unsafe { nil })
 	}
+	// The client's requests and notifications are handled in order on a thread of
+	// their own, so that this loop goes on reading while a handler runs: a handler
+	// that asks the client (list_roots, sampling, elicitation) waits for an answer
+	// only this loop can read, and it delivers it.
+	work := chan string{cap: 64}
+	handler := spawn s.handle_stdio_messages(work, mut output, session_id, transport)
 	mut buffer := ''
 	for {
 		frame := try_extract_stdio_message(buffer) or {
 			if err.msg() != NoFrameError{}.msg() {
+				work.close()
+				handler.wait()!
 				error_response := Response{
 					error: normalize_response_error(err)
 				}.encode()
@@ -1665,22 +1673,15 @@ fn (mut s Server) serve_stdio_transport(mut reader io.Reader, mut writer io.Writ
 		}
 		if frame.message.len != 0 {
 			buffer = frame.remaining
-			dispatch_result := s.dispatch_message(frame.message, session_id, transport) or {
-				error_response := Response{
-					error: normalize_response_error(err)
-				}.encode()
-				output.write(mut s, session_id, error_response)!
-				continue
+			if !s.deliver_stdio_response(frame.message, session_id) {
+				work <- frame.message
 			}
-			output.write(mut s, session_id, if dispatch_result.has_response {
-				dispatch_result.response
-			} else {
-				''
-			})!
 			continue
 		}
 		mut chunk := []u8{len: 4096}
 		bytes_read := reader.read(mut chunk) or {
+			work.close()
+			handler.wait()!
 			if err is os.Eof {
 				return s.finish_stdio_stream(mut output)
 			}
@@ -1690,10 +1691,68 @@ fn (mut s Server) serve_stdio_transport(mut reader io.Reader, mut writer io.Writ
 			return err
 		}
 		if bytes_read == 0 {
+			work.close()
+			handler.wait()!
 			return s.finish_stdio_stream(mut output)
 		}
 		buffer += chunk[..bytes_read].bytestr()
 	}
+}
+
+// handle_stdio_messages handles the client's messages that serve_stdio_transport
+// reads, in the order it reads them, and writes the answers, until `work` is closed.
+// A failed write ends the transport: the rest are read and dropped, and the error is
+// returned.
+fn (mut s Server) handle_stdio_messages(work chan string, mut output StdioOutput, session_id string, transport SessionTransport) ! {
+	for {
+		message := <-work or { return }
+		dispatch_result := s.dispatch_message(message, session_id, transport) or {
+			error_response := Response{
+				error: normalize_response_error(err)
+			}.encode()
+			output.write(mut s, session_id, error_response) or {
+				drain_stdio_messages(work)
+				return err
+			}
+			continue
+		}
+		output.write(mut s, session_id, if dispatch_result.has_response {
+			dispatch_result.response
+		} else {
+			''
+		}) or {
+			drain_stdio_messages(work)
+			return err
+		}
+	}
+}
+
+// drain_stdio_messages reads `work` until it is closed, so that the read loop that
+// fills it never waits on a handler that has stopped.
+fn drain_stdio_messages(work chan string) {
+	for {
+		_ := <-work or { return }
+	}
+}
+
+// deliver_stdio_response delivers `raw` to the server request it answers, when it is
+// the client's answer to one, and reports whether it was. The read loop delivers it
+// itself, at once, as a handler may be waiting for it (handle_stdio_messages).
+fn (mut s Server) deliver_stdio_response(raw string, session_id string) bool {
+	trimmed := raw.trim_space()
+	if trimmed.len == 0 || trimmed[0] != `{` {
+		return false
+	}
+	envelope := decode_envelope(trimmed) or { return false }
+	if envelope.method.len != 0 || is_notification_id(envelope.id) {
+		return false
+	}
+	s.deliver_response(session_id, Response{
+		id:     envelope.id
+		result: envelope.result
+		error:  envelope.error
+	})
+	return true
 }
 
 // finish_stdio_stream closes the transport and terminates any listen stream

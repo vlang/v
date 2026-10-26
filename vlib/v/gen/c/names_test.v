@@ -403,6 +403,33 @@ fn test_main_sync_function_names_use_the_reserved_namespace() {
 	assert g.direct_call_name('main.syncfs') == '__v3_internal_symbol_libc_syncfs'
 }
 
+fn test_main_function_names_avoid_windows_header_macros() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for name in ['near', 'far', 'pascal', 'cdecl'] {
+		internal := '__v3_internal_symbol_macro_${name}'
+		assert g.fn_c_name_in_module('main', name) == internal
+		assert g.fn_c_name_in_module('', name) == internal
+		assert g.direct_call_name(name) == internal
+		assert g.direct_call_name('main.${name}') == internal
+		assert g.callback_c_fn_name(name) == internal
+		assert g.callback_c_fn_name('main.${name}') == internal
+		assert g.fn_c_name_in_module('main', 'main__${name}') == 'main__${name}'
+		assert g.fn_c_name_in_module('main', internal) == '__v3_internal_symbol_source_${internal}'
+		assert g.fn_c_name_in_module('worker', name) == 'worker__${name}'
+		assert g.direct_call_name('C.${name}') == name
+		assert g.callback_c_fn_name('C.${name}') == name
+	}
+	tc.cur_module = 'worker'
+	for name in ['near', 'far', 'pascal', 'cdecl'] {
+		assert g.direct_call_name('main.${name}') == '__v3_internal_symbol_macro_${name}'
+		assert g.callback_c_fn_name('main.${name}') == '__v3_internal_symbol_macro_${name}'
+	}
+}
+
 fn test_target_libc_opaque_packed_struct_restores_packing() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

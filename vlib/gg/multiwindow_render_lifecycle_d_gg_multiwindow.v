@@ -1,7 +1,6 @@
 module gg
 
 import sokol.gfx
-import sokol.sgl
 import time
 import x.multiwindow
 
@@ -302,7 +301,7 @@ fn (mut app App) run_render_batch(legacy bool, frame_fn AppFrameFn) !int {
 		terminal_errors << err.msg()
 	}
 	if outcome.committed && sokol_available {
-		app.flush_deferred_sgl_targets(outcome.batch_epoch, false)
+		app.flush_deferred_render_targets(outcome.batch_epoch, false)
 	}
 	app.clear_active_batch_state()
 	if outcome.error != '' {
@@ -377,7 +376,7 @@ fn (mut app App) execute_render_batch(batch multiwindow.RenderBatchLease, candid
 				errors << err
 				break
 			}
-			app.ensure_window_sgl_context(id, target_key, target, app.active_batch_epoch) or {
+			app.ensure_window_render_context(id, target_key, target, app.active_batch_epoch) or {
 				errors << err
 				break
 			}
@@ -528,7 +527,7 @@ fn (mut app App) draw_window_managed(id WindowId, draw WindowDrawFn) ! {
 	app.render_runtime.prepare_target_snapshot(id, candidate)!
 	target := app.render_runtime.target_info(id)!
 	target_key := app.render_runtime.target_key_for_window_without_lease(id)!
-	sgl_context := app.ensure_window_sgl_context(id, target_key, target, app.active_batch_epoch)!
+	sgl_context := app.ensure_window_render_context(id, target_key, target, app.active_batch_epoch)!
 	acquisition := app.core.acquire_render_target(app.active_batch_lease, id.core)!
 	if acquisition.status == .transient_unavailable {
 		return error(err_multiwindow_render_backend_unavailable)
@@ -558,24 +557,17 @@ fn (mut app App) draw_window_managed(id WindowId, draw WindowDrawFn) ! {
 			Color{}
 		}
 		if errors.len == 0 {
-			previous := sgl.get_context()
-			sgl.set_context(sgl_context)
-			sgl.defaults()
-			sgl.matrix_mode_projection()
-			sgl.ortho(0.0, f32(context.info.metrics.framebuffer_size.width),
+			sgl_context.defaults()
+			sgl_context.matrix_mode_projection()
+			sgl_context.ortho(0.0, f32(context.info.metrics.framebuffer_size.width),
 				f32(context.info.metrics.framebuffer_size.height), 0.0, -1.0, 1.0)
 			app.render_runtime.begin_user_callback()
 			draw(mut context) or { callback_error = err }
 			app.render_runtime.end_user_callback()
-			sgl.set_context(previous)
 			if callback_error is none {
 				app.core.with_render_target_pass(acquisition.lease, clear_pass_action(clear_color), fn [sgl_context] () ! {
-					previous_context := sgl.get_context()
-					sgl.set_context(sgl_context)
-					sgl.context_draw(sgl_context)
-					sgl_error := sgl.context_error(sgl_context)
-					sgl.set_context(previous_context)
-					if sgl_error != .no_error {
+					sgl_context.draw()
+					if sgl_context.error() != .no_error {
 						return error(err_multiwindow_render_resource_failed)
 					}
 				}) or { callback_error = err }
@@ -694,7 +686,7 @@ fn (mut app App) run_window_teardown_batch(id WindowId, reason WindowCleanupReas
 			errors << err.msg()
 			false
 		}
-		if needs_boundary || facade.has_window_sgl_context(id) {
+		if needs_boundary || facade.has_window_render_context(id) {
 			facade.core.note_render_gpu_work(batch) or { errors << err.msg() }
 		}
 		facade.render_runtime.finish_destroy(id, batch_epoch(batch))
@@ -722,8 +714,8 @@ fn (mut app App) run_window_teardown_batch(id WindowId, reason WindowCleanupReas
 		errors << err.msg()
 	}
 	if outcome.committed && sokol_available {
-		app.flush_deferred_sgl_targets(outcome.batch_epoch, false)
-		app.discard_window_sgl_context(id)
+		app.flush_deferred_render_targets(outcome.batch_epoch, false)
+		app.discard_window_render_context(id)
 	}
 	app.clear_active_batch_state()
 	if outcome.error != '' {
@@ -976,7 +968,7 @@ fn (mut app App) run_app_resource_cleanup_batch() ! {
 		errors << err.msg()
 	}
 	if outcome.committed && sokol_available {
-		app.flush_deferred_sgl_targets(outcome.batch_epoch, false)
+		app.flush_deferred_render_targets(outcome.batch_epoch, false)
 	}
 	app.clear_active_batch_state()
 	if outcome.error != '' {

@@ -287,10 +287,10 @@ ifdef NETBSD
 endif
 	rm -rf v1$(EXE_EXT) v2$(EXE_EXT)
 endif
-	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/detect_tcc.v
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler -gc none run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	@$(VEXE)$(EXE_EXT) -version
-	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run .github/problem-matchers/register_all.vsh
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler -gc none run .github/problem-matchers/register_all.vsh
 
 v1:
 ifdef LEGACY
