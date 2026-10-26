@@ -2012,6 +2012,7 @@ fn (mut b Builder) register_functions() {
 	p2 << ptr_i8
 	p2 << ptr_i8
 	b.register_extern('fprintf', b.i32_type, p2)
+	b.register_ssa_memdup_helper()
 
 	for node in b.a.nodes {
 		if node.kind != .c_fn_decl {
@@ -4599,6 +4600,9 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	if b.m.target.ptr_size == 8 {
 		b.register_native_map_index_helpers()
 	}
+	alignment_exponent_id := b.register_synthetic_function('__ssa_data_alignment_exponent',
+		b.u8_type, [b.u64_type])
+	b.generate_data_alignment_exponent_body(alignment_exponent_id)
 
 	mut p2 := []TypeID{}
 	p2 << ptr_map
@@ -6537,7 +6541,8 @@ fn (mut b Builder) generate_error_boxing_body(func_id int, interface_type TypeID
 	b.block_instr2(.store, entry, b.void_type, code_value, code_ptr)
 	size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(message_error_type)}')
 	source := b.block_instr1(.bitcast, entry, ptr_i8, message_alloca)
-	memdup_ref := b.m.add_value(.func_ref, ptr_i8, 'memdup', b.runtime_fn_id('memdup'))
+	memdup_ref := b.m.add_value(.func_ref, ptr_i8, '__ssa_memdup',
+		b.fn_ids['__ssa_memdup'])
 	object := b.block_instr3(.call, entry, ptr_i8, memdup_ref, source, size)
 	ptr_interface := b.m.type_store.get_ptr(interface_type)
 	interface_alloca := b.block_instr0(.alloca, entry, ptr_interface)
@@ -6994,14 +6999,12 @@ fn (mut b Builder) generate_new_map_aligned_body(func_id int) {
 	state := b.map_state_ptr(entry, result_slot)
 	key_alignment_ptr := b.map_state_field_ptr(entry, state, 13)
 	value_alignment_ptr := b.map_state_field_ptr(entry, state, 14)
-	exponent_ref := b.m.add_value(.func_ref, b.i32_type, 'data_alignment_exponent',
-		b.fn_ids['data_alignment_exponent'])
-	key_exponent := b.block_instr2(.call, entry, b.i32_type, exponent_ref, key_alignment)
-	value_exponent := b.block_instr2(.call, entry, b.i32_type, exponent_ref, value_alignment)
-	key_alignment8 := b.block_instr1(.trunc, entry, b.u8_type, key_exponent)
-	value_alignment8 := b.block_instr1(.trunc, entry, b.u8_type, value_exponent)
-	b.block_instr2(.store, entry, b.void_type, key_alignment8, key_alignment_ptr)
-	b.block_instr2(.store, entry, b.void_type, value_alignment8, value_alignment_ptr)
+	exponent_ref := b.m.add_value(.func_ref, b.u8_type, '__ssa_data_alignment_exponent',
+		b.fn_ids['__ssa_data_alignment_exponent'])
+	key_exponent := b.block_instr2(.call, entry, b.u8_type, exponent_ref, key_alignment)
+	value_exponent := b.block_instr2(.call, entry, b.u8_type, exponent_ref, value_alignment)
+	b.block_instr2(.store, entry, b.void_type, key_exponent, key_alignment_ptr)
+	b.block_instr2(.store, entry, b.void_type, value_exponent, value_alignment_ptr)
 	keys_ptr := b.map_state_field_ptr(entry, state, 0)
 	vals_ptr := b.map_state_field_ptr(entry, state, 1)
 	old_keys := b.block_instr1(.load, entry, b.m.type_store.get_ptr(b.i8_type), keys_ptr)
@@ -7015,6 +7018,37 @@ fn (mut b Builder) generate_new_map_aligned_body(func_id int) {
 	b.block_instr2(.store, entry, b.void_type, new_keys, keys_ptr)
 	b.block_instr2(.store, entry, b.void_type, new_vals, vals_ptr)
 	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+// generate_data_alignment_exponent_body provides the source builtin helper to
+// synthetic native runtime functions even when its source body is not selected.
+fn (mut b Builder) generate_data_alignment_exponent_body(func_id int) {
+	entry := b.m.add_block(func_id, 'alignment_exponent_entry')
+	alignment := b.func_add_argument(func_id, b.u64_type, 'alignment')
+	exponent := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.u8_type))
+	remaining := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.u64_type))
+	zero8 := b.m.get_or_add_const(b.u8_type, '0')
+	one64 := b.m.get_or_add_const(b.u64_type, '1')
+	sixteen64 := b.m.get_or_add_const(b.u64_type, '16')
+	b.block_instr2(.store, entry, b.void_type, zero8, exponent)
+	b.block_instr2(.store, entry, b.void_type, alignment, remaining)
+	check := b.m.add_block(func_id, 'alignment_exponent_check')
+	body := b.m.add_block(func_id, 'alignment_exponent_body')
+	done := b.m.add_block(func_id, 'alignment_exponent_done')
+	too_small := b.block_instr2(.ule, entry, b.i1_type, alignment, sixteen64)
+	b.block_instr3(.br, entry, b.void_type, too_small, ValueID(done), ValueID(check))
+	current_remaining := b.block_instr1(.load, check, b.u64_type, remaining)
+	more := b.block_instr2(.ugt, check, b.i1_type, current_remaining, one64)
+	b.block_instr3(.br, check, b.void_type, more, ValueID(body), ValueID(done))
+	current_exponent := b.block_instr1(.load, body, b.u8_type, exponent)
+	next_exponent := b.block_instr2(.add, body, b.u8_type, current_exponent, b.m.get_or_add_const(b.u8_type,
+		'1'))
+	next_remaining := b.block_instr2(.lshr, body, b.u64_type, current_remaining, one64)
+	b.block_instr2(.store, body, b.void_type, next_exponent, exponent)
+	b.block_instr2(.store, body, b.void_type, next_remaining, remaining)
+	b.block_instr1(.jmp, body, b.void_type, ValueID(check))
+	result := b.block_instr1(.load, done, b.u8_type, exponent)
+	b.block_instr1(.ret, done, b.void_type, result)
 }
 
 // generate_map_find_body supports generate map find body handling for Builder.
@@ -12828,7 +12862,8 @@ fn (mut b Builder) heap_copy_value(value ValueID, value_type TypeID) ValueID {
 	size_const := b.m.get_or_add_const(b.i64_type, '${size}')
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	src := b.emit1(.bitcast, ptr_i8, alloca)
-	memdup_ref := b.m.add_value(.func_ref, ptr_i8, 'memdup', b.runtime_fn_id('memdup'))
+	memdup_ref := b.m.add_value(.func_ref, ptr_i8, '__ssa_memdup',
+		b.fn_ids['__ssa_memdup'])
 	copied := b.emit3(.call, ptr_i8, memdup_ref, src, size_const)
 	return b.emit1(.bitcast, ptr_type, copied)
 }
@@ -17088,7 +17123,8 @@ fn (mut b Builder) build_heap_struct_init(id flat.NodeId, node flat.Node) ValueI
 		size_const := b.m.get_or_add_const(b.i64_type, '${size}')
 		ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 		src_cast := b.emit1(.bitcast, ptr_i8, alloca)
-		memdup_ref := b.m.add_value(.func_ref, ptr_i8, 'memdup', b.runtime_fn_id('memdup'))
+		memdup_ref := b.m.add_value(.func_ref, ptr_i8, '__ssa_memdup',
+			b.fn_ids['__ssa_memdup'])
 		result := b.emit3(.call, ptr_i8, memdup_ref, src_cast, size_const)
 		return b.emit1(.bitcast, b.m.type_store.get_ptr(typ_id), result)
 	}
