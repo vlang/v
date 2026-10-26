@@ -5,6 +5,55 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_source_c_declarations_refine_predeclared_runtime_return_types() {
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_text('extern_return_types.v', 'module main
+fn C.open(&char, int, ...int) int
+fn C.v_os_exec_capture_start(voidptr, voidptr, voidptr) int
+fn C.custom_unsigned() u32
+fn main() {
+	if C.open(c"missing", 0) != -1 { C.custom_unsigned() }
+	if C.v_os_exec_capture_start(unsafe { nil }, unsafe { nil }, unsafe { nil }) != -1 {
+		C.custom_unsigned()
+	}
+}
+')
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		use_native_c_sources: true
+	})
+	mut found := map[string]bool{}
+	main_fns := m.funcs.filter(it.name == 'main')
+	assert main_fns.len == 1
+	mut source_calls := []Instruction{}
+	for block_id in main_fns[0].blocks {
+		for value_id in m.blocks[block_id].instrs {
+			source_calls << m.instrs[m.values[value_id].index]
+		}
+	}
+	for instr in source_calls {
+		if instr.op != .call || instr.operands.len == 0 {
+			continue
+		}
+		callee := m.values[instr.operands[0]]
+		if callee.name !in ['open', 'C.open', 'v_os_exec_capture_start', 'C.v_os_exec_capture_start',
+			'custom_unsigned', 'C.custom_unsigned'] {
+			continue
+		}
+		f := m.funcs[callee.index]
+		assert f.is_c_extern
+		assert m.type_store.types[f.typ].width == 32, f.name
+		assert m.type_store.types[instr.typ].width == 32, f.name
+		assert m.type_store.types[instr.typ].is_unsigned == f.name.ends_with('custom_unsigned')
+		found[f.name.trim_string_left('C.')] = true
+	}
+	assert found.len == 3, found.str()
+}
+
 fn test_retained_c_symbols_do_not_select_unreachable_v_library_functions() ! {
 	dir := os.join_path(os.vtmp_dir(), 'ssa_c_symbols_${os.getpid()}')
 	os.mkdir_all(dir)!

@@ -1960,7 +1960,15 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 		}
 		if ret_kind == .int_t {
 			// SysV leaves upper bits unspecified for narrow integer returns.
-			g.canonicalize_narrow_int(g.m.type_store.types[instr.typ])
+			// Earlier synthetic calls can retain a wider SSA destination after
+			// a source declaration refines the callee's C ABI return type.
+			abi_type := if !is_indirect && fn_val.kind == .func_ref && fn_val.index >= 0
+				&& fn_val.index < g.m.funcs.len {
+				g.m.funcs[fn_val.index].typ
+			} else {
+				instr.typ
+			}
+			g.canonicalize_narrow_int(g.m.type_store.types[abi_type])
 		}
 		if ret_kind != .void_t {
 			g.store_reg_to_val(0, val_id)

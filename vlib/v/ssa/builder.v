@@ -2519,6 +2519,8 @@ fn (mut b Builder) register_extern(name string, ret TypeID, params []TypeID) {
 	b.runtime_fn_types[name] = fn_type
 	b.runtime_fn_ids[name] = func_id
 	mut f := b.m.funcs[func_id]
+	// Source declarations refine the signatures of predeclared runtime externs.
+	f.typ = ret
 	f.is_c_extern = true
 	f.is_prototype = true
 	f.linkage = .external
@@ -5493,8 +5495,8 @@ fn (mut b Builder) register_process_capture_helpers() {
 	} else {
 		ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 		ptr_argv := b.m.type_store.get_ptr(ptr_i8)
-		b.register_extern('v_os_execute_capture_start', b.i64_type, [ptr_i8, ptr_i64, ptr_i64])
-		b.register_extern('v_os_exec_capture_start', b.i64_type, [ptr_argv, ptr_i64, ptr_i64])
+		b.register_extern('v_os_execute_capture_start', b.i32_type, [ptr_i8, ptr_i64, ptr_i64])
+		b.register_extern('v_os_exec_capture_start', b.i32_type, [ptr_argv, ptr_i64, ptr_i64])
 	}
 }
 

@@ -115,20 +115,23 @@ fn test_x64_missing_implementations_remain_undefined() {
 
 fn test_c_integer_returns_are_extended_before_use() {
 	for unsigned in [false, true] {
-		mut m := ssa.Module.new()
-		typ := if unsigned { m.type_store.get_uint(32) } else { m.type_store.get_int(32) }
-		function := m.new_function('external_int', typ)
-		m.funcs[function].is_c_extern = true
-		callee := m.add_value(.func_ref, typ, 'external_int', function)
-		result := m.add_value(.instruction, typ, '', 0)
-		mut g := Gen.new(m)
-		g.reg_map[result] = int(rax)
-		g.gen_call(result, ssa.Instruction{ op: .call, typ: typ, operands: [callee] })
-		expected := if unsigned {
-			[u8(0x31), 0xc0, 0xe8, 0, 0, 0, 0, 0x89, 0xc0]
-		} else {
-			[u8(0x31), 0xc0, 0xe8, 0, 0, 0, 0, 0x48, 0x63, 0xc0]
+		for widened_destination in [false, true] {
+			mut m := ssa.Module.new()
+			typ := if unsigned { m.type_store.get_uint(32) } else { m.type_store.get_int(32) }
+			destination := if widened_destination { m.type_store.get_int(64) } else { typ }
+			function := m.new_function('external_int', typ)
+			m.funcs[function].is_c_extern = true
+			callee := m.add_value(.func_ref, typ, 'external_int', function)
+			result := m.add_value(.instruction, destination, '', 0)
+			mut g := Gen.new(m)
+			g.reg_map[result] = int(rax)
+			g.gen_call(result, ssa.Instruction{ op: .call, typ: destination, operands: [callee] })
+			expected := if unsigned {
+				[u8(0x31), 0xc0, 0xe8, 0, 0, 0, 0, 0x89, 0xc0]
+			} else {
+				[u8(0x31), 0xc0, 0xe8, 0, 0, 0, 0, 0x48, 0x63, 0xc0]
+			}
+			assert g.elf.text_data == expected
 		}
-		assert g.elf.text_data == expected
 	}
 }
