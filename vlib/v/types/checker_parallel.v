@@ -8,6 +8,8 @@ import v.gen.c.naming
 import v.token
 import v.workers
 
+const parallel_source_type_c_variadic = flat.source_type_id('...')
+
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
 // Scoped workers use bounded arena batches, so let self-host checks occupy all
@@ -82,7 +84,7 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 	for {
 		i := <-a.queue or { break }
 		iface_name := unsafe { iface_names[i] }
-		impls := if is_builtin_ierror_name(flat.source_type_name(iface_name)) {
+		impls := if is_builtin_ierror_name(iface_name) {
 			tc.ierror_impl_names()
 		} else {
 			tc.interface_impl_names_uncached(iface_name)
@@ -377,7 +379,7 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		param_type_source_id := child.typ
 		if flat.source_type_shape(param_type_source_id).has(.variadic) {
 			is_variadic = true
-			if flat.source_type_name(param_type_source_id) == '...' {
+			if param_type_source_id == parallel_source_type_c_variadic {
 				is_c_variadic = true
 			}
 		}
@@ -3654,11 +3656,11 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	}
 	tc.cur_scope = tc.file_scope
 	checked_return_type := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
-		node.typ_text().trim_right('?')
+		flat.source_type_id(node.typ_text().trim_right('?'))
 	} else {
-		node.typ_text()
+		node.typ
 	}
-	tc.cur_fn_ret_type = tc.parse_type(flat.source_type_id(checked_return_type))
+	tc.cur_fn_ret_type = tc.parse_type(checked_return_type)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.fn_context.node_id = fn_idx
 	// Full expression validation can query local declarations even when self-host
@@ -3705,19 +3707,19 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 				}
 				if param.is_mut {
 					implicit_mut_reference := param.op != .amp && flat.source_type_shape(param.typ).has(.pointer)
-					diagnostic_type_text := if implicit_mut_reference {
-						param.typ_text()[1..]
+					diagnostic_type_id := if implicit_mut_reference {
+						flat.source_type_id(param.typ_text()[1..])
 					} else {
-						param.typ_text()
+						param.typ
 					}
-					raw_param_type := tc.parse_scope_param_type(flat.source_type_id(diagnostic_type_text))
+					raw_param_type := tc.parse_scope_param_type(diagnostic_type_id)
 					if tc.is_params_struct_type(raw_param_type) {
-						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
+						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos(param_id, flat.source_type_name(diagnostic_type_id)))
 					}
 					param_type := unalias_type(raw_param_type)
 					if !is_specialized && !mut_param_type_is_allowed(raw_param_type) {
 						type_name := param_type.name()
-						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
+						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos(param_id, flat.source_type_name(diagnostic_type_id)))
 					}
 				}
 				tc.check_reserved_parameter_name(param_id)
@@ -3835,10 +3837,11 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 					true
 				}
 				Alias, Struct, Interface, Enum, SumType {
-					receiver_name := receiver_type.name()
+					receiver_name_id := receiver_type.source_type_id()
+					receiver_name := flat.source_type_name(receiver_name_id)
 					!receiver_name.starts_with('C.') && !receiver_name.starts_with('JS.')
-						&& tc.type_name_known(flat.source_type_id(receiver_name))
-						&& !tc.source_module_declares_type(flat.source_type_id(receiver_name))
+						&& tc.type_name_known(receiver_name_id)
+						&& !tc.source_module_declares_type(receiver_name_id)
 				}
 				else {
 					false
@@ -3878,7 +3881,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if raw_return_type.starts_with('!?') || raw_return_type.starts_with('?!') {
 		tc.record_error_at(.return_mismatch, 'the type must be Option or Result', id, tc.nested_option_result_marker_pos(node))
 	}
-	if raw_return_type == '?void' {
+	if trimmed_source_type_id(node.typ) == checker_option_void_source_type {
 		tc.record_error_at(.return_mismatch, 'use `?` instead of `?void`', id, tc.option_void_payload_diagnostic_pos(node))
 	}
 	if raw_return_type.ends_with('?') && !raw_return_type.starts_with('?') {
@@ -4137,7 +4140,7 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		child := tc.a.node(child_id)
 		if child.kind != .param {
 			stack << child_id
-		} else if child.is_mut && child.value.len > 0 && param_type_text_is_option(child.typ_text()) {
+		} else if child.is_mut && child.value.len > 0 && param_source_type_is_option(child.typ) {
 			mut_option_params[child.value] = true
 		}
 	}
@@ -4203,8 +4206,12 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	}
 }
 
-fn param_type_text_is_option(typ string) bool {
-	mut clean := typ.trim_space()
+fn param_source_type_is_option(source_id u32) bool {
+	shape := flat.source_type_shape(source_id)
+	if !shape.has(.padded) && !shape.has(.mutable_type) && !shape.has(.pointer) {
+		return shape.has(.option_type)
+	}
+	mut clean := flat.source_type_name(source_id).trim_space()
 	if clean.starts_with('mut ') {
 		clean = clean[4..].trim_space()
 	}
@@ -4381,8 +4388,8 @@ fn (mut tc TypeChecker) record_unused_top_level_vars(node flat.Node) {
 			rhs_id := tc.a.child(child, j + 1)
 			rhs := tc.a.node(rhs_id)
 			generic_interface_cast := rhs.kind == .cast_expr
-				&& (rhs.value in tc.interface_generic_params
-					|| tc.qualify_name(rhs.value) in tc.interface_generic_params)
+				&& (rhs.value_text() in tc.interface_generic_params
+					|| tc.qualify_name(rhs.value_text()) in tc.interface_generic_params)
 			if tc.expr_subtree_has_error(rhs_id) && !tc.expr_contains_nil_deref(rhs_id)
 				&& !generic_interface_cast {
 				continue
@@ -5176,7 +5183,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	// Semantic forks need their live ancestors' visited instances for recursive
 	// forwarding. Completed declaration summaries remain read-only in each fork.
-	w.checked_comptime_method_calls = tc.checked_comptime_method_calls.clone()
+	w.checked_comptime_method_calls = clone_checked_comptime_method_calls(tc.checked_comptime_method_calls)
 	w.comptime_method_calls_by_decl = tc.comptime_method_calls_by_decl.clone()
 	precomputed := tc.precomputed_check_cache()
 	// Parallel checker workers may populate this cache concurrently, so each
@@ -5209,7 +5216,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_checking_nodes = map[int]bool{}
 	w.method_values_by_fn = map[int][]string{}
 	w.fn_context = new_function_check_context()
-	w.generic_method_value_info = map[string]CallInfo{}
+	w.generic_method_value_info = map[u32]map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
 	w.ownership_time_ns = 0
 	if check_memos_enabled() {
@@ -5614,12 +5621,14 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 			tc.method_values_by_fn[fn_idx] = owned_values
 		}
 	}
-	for key, info in w.generic_method_value_info {
-		owned_key := if scoped { key.clone() } else { key }
-		tc.generic_method_value_info[owned_key] = if scoped {
-			clone_parallel_call_info(info)
-		} else {
-			info
+	for owner_id, methods in w.generic_method_value_info {
+		for method, info in methods {
+			owned_method := if scoped { method.clone() } else { method }
+			tc.generic_method_value_info[owner_id][owned_method] = if scoped {
+				clone_parallel_call_info(info)
+			} else {
+				info
+			}
 		}
 	}
 	for inferred in w.inferred_c_globals {

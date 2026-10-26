@@ -24,7 +24,7 @@ fn test_array_new_selects_noscan_for_scalar_elements() {
 		assert a.child(&call, 1) == len_expr
 		assert a.child(&call, 2) == cap_expr
 		assert a.child_node(&call, 3).kind == .sizeof_expr
-		assert a.child_node(&call, 3).value == elem_type
+		assert a.child_node(&call, 3).source_value_id() == flat.source_type_id(elem_type)
 	}
 	assert t.used_fns['__new_array_noscan']
 	enum_type := types.Type(types.Enum{ name_id: flat.source_type_id('ScalarEnum') })
@@ -55,7 +55,7 @@ fn test_array_new_keeps_pointer_bearing_and_unknown_elements_scanned() {
 		} else {
 			elem_type
 		}
-		assert a.child_node(&call, 1).value == expected_size_type
+		assert a.child_node(&call, 1).source_value_id() == flat.source_type_id(expected_size_type)
 		assert a.child(&call, 2) == len_expr
 		assert a.child(&call, 3) == cap_expr
 	}

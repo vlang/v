@@ -44,7 +44,16 @@ source formatters and stable cache signatures resolve its spelling only when ren
 Debugger child-expression source types use `NodePayload.debugger_value_types` independently of
 binding names and display text. `Node.debugger_value_type_ids()` borrows the ordered immutable IDs;
 `set_debugger_value_type_ids()` and `node_payload_with_debugger_types()` copy caller ID arrays.
-`node_payload_with_type_metadata()` preserves both typed metadata slots in syntax clones.
+`node_payload_with_type_metadata()` registers both typed metadata slots.
+
+Lowered method selectors, sum-variant accesses, and mutable optional arguments retain source IDs in
+`NodePayload.fn_value_type`, `generated_variant_type`, and `mut_optional_arg_view_type`.
+The corresponding `Node.*_id()` getters return zero when absent; `set_*_id()` setters preserve other
+payload metadata. `node_payload_with_*()` constructors create marker names plus one typed slot, and
+`set_generic_params_and_*_id()` replaces names and one typed slot in a single immutable publication.
+`has_lowered_type_metadata()` detects these slots independently of the result annotation.
+Owned clones, text publication, and worker promotion preserve all three identities. Legacy source
+signatures render their spelling bytes only at cache boundaries; marker names remain ordinary text.
 
 `TypeTextListBindings` stores ordered lists of source IDs. `set_ids` copies a caller's list;
 `append_ids` copies additional entries, preserving their order and empty spellings.

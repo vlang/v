@@ -194,12 +194,12 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 		w.type_param_texts = flat.TypeTextBindings{ ids: texts.clone() }
 		w.type_cache.parse_enabled = false
 		w.fn_context.generic_params = []string{}
-		return_text := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
-			node.typ_text().trim_right('?')
+		return_type := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
+			flat.source_type_id(node.typ_text().trim_right('?'))
 		} else {
-			node.typ_text()
+			node.typ
 		}
-		w.cur_fn_ret_type = w.parse_type(flat.source_type_id(return_text))
+		w.cur_fn_ret_type = w.parse_type(return_type)
 		w.fn_context.return_type = w.cur_fn_ret_type
 	} else {
 		w.fn_context.generic_params = tc.fn_context.generic_params.clone()
@@ -229,7 +229,6 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 // check_generic_fn_body_as): each of them is its type there, and no parse comes
 // from the cache or goes to it, which holds the types of other functions.
 fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
-	typ := flat.source_type_name(typ_id)
 	mut names := []string{cap: tc.type_param_texts.ids.len}
 	mut args := []u32{cap: tc.type_param_texts.ids.len}
 	mut name_set := map[string]bool{}
@@ -241,8 +240,8 @@ fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
 		args << text_id
 		name_set[name] = true
 	}
-	if names.len == 0 || !type_text_names_any(typ, name_set) {
-		_, result := tc.intern_type(tc.parse_type_uncached(typ))
+	if names.len == 0 || !type_text_names_any(flat.source_type_name(typ_id), name_set) {
+		_, result := tc.intern_type(tc.parse_type_uncached(typ_id))
 		return *result
 	}
 	// A type parameter that the texts put in still name, `T` of
@@ -259,7 +258,7 @@ fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
 			expanding << name
 		}
 	}
-	_, result := tc.intern_type(tc.parse_type_uncached(flat.source_type_name(subst_generic_text(typ_id, args, names))))
+	_, result := tc.intern_type(tc.parse_type_uncached(subst_generic_text(typ_id, args, names)))
 	for name in expanding {
 		fork.type_params_expanding.delete(name)
 	}
@@ -397,8 +396,12 @@ fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names [
 				if in_term := comptime_in_term(term) {
 					if in_term.left == param {
 						for item in in_term.items {
-							if !item.starts_with('$') && flat.source_type_id(item) !in found {
-								found << flat.source_type_id(item)
+							if item.starts_with('$') {
+								continue
+							}
+							item_id := flat.source_type_id(item)
+							if item_id !in found {
+								found << item_id
 							}
 						}
 					}
@@ -408,9 +411,11 @@ fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names [
 					idx := term.index(op) or { continue }
 					left := term[..idx].trim_space()
 					right := term[idx + op.len..].trim_space()
-					if left == param && right.len > 0 && !right.starts_with('$')
-						&& flat.source_type_id(right) !in found {
-						found << flat.source_type_id(right)
+					if left == param && right.len > 0 && !right.starts_with('$') {
+						right_id := flat.source_type_id(right)
+						if right_id !in found {
+							found << right_id
+						}
 					}
 					break
 				}
@@ -1161,7 +1166,7 @@ fn (tc &TypeChecker) subtree_depends_on_type_params(id flat.NodeId, names map[st
 			return true
 		}
 		if node.kind !in [.string_literal, .char_literal, .int_literal, .float_literal]
-			&& type_text_names_any(node.value, params) {
+			&& type_text_names_any(node.value_text(), params) {
 			return true
 		}
 		for i in 0 .. node.children_count {

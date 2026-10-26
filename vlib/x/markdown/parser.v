@@ -4,6 +4,7 @@
 module markdown
 
 import strings
+import encoding.html as ehtml
 
 // block_level_tags lists HTML tags that start an HTML block (type 6).
 // vfmt off
@@ -32,7 +33,12 @@ mut:
 // BlockParser.new creates a BlockParser for the given source.
 fn BlockParser.new(src string, opts Options, ref_map map[string]LinkRef) BlockParser {
 	normalized := src.replace('\r\n', '\n').replace('\r', '\n')
-	lines := normalized.split('\n')
+	mut lines := normalized.split('\n')
+	// A trailing newline in the source is not an extra blank line; drop the
+	// empty artifact produced by split.
+	if lines.len > 0 && lines[lines.len - 1] == '' {
+		lines = lines[..lines.len - 1]
+	}
 	mut refs := map[string]LinkRef{}
 	for k, v in ref_map {
 		refs[k] = v
@@ -105,6 +111,21 @@ fn (mut p BlockParser) parse_blocks(mut parent Node, indent int) {
 		sp := leading_spaces(stripped)
 		content := trim_indent(stripped, sp)
 
+		// --- blockquote (>) ---
+		// sp < 4 here (indented code handled above), so content is safe.
+		if sp <= 3 && content.starts_with('>') {
+			bq := p.parse_blockquote(indent)
+			parent.append_child(bq)
+			continue
+		}
+
+		// --- indented code block (4 spaces) ---
+		if sp >= 4 {
+			cb := p.parse_indented_code(indent)
+			parent.append_child(cb)
+			continue
+		}
+
 		// --- thematic break (---, ***, ___) ---
 		if is_thematic_break(stripped) {
 			node := new_node(.thematic_break)
@@ -114,7 +135,8 @@ fn (mut p BlockParser) parse_blocks(mut parent Node, indent int) {
 		}
 
 		// --- ATX heading (# ... ######) ---
-		if heading := p.try_atx_heading(stripped) {
+		// sp < 4 here; content has container/leading indent removed.
+		if heading := p.try_atx_heading(content) {
 			parent.append_child(heading)
 			p.pos++
 			continue
@@ -134,7 +156,7 @@ fn (mut p BlockParser) parse_blocks(mut parent Node, indent int) {
 
 		// --- link reference definition ---
 		// CommonMark allows 0-3 leading spaces after container indentation.
-		if sp <= 3 && p.try_link_ref_def(content) {
+		if sp <= 3 && p.try_link_ref_def(indent) {
 			continue
 		}
 
@@ -143,20 +165,6 @@ fn (mut p BlockParser) parse_blocks(mut parent Node, indent int) {
 			if p.try_footnote_def(stripped, indent) {
 				continue
 			}
-		}
-
-		// --- blockquote (>) ---
-		if stripped.starts_with('>') {
-			bq := p.parse_blockquote(indent)
-			parent.append_child(bq)
-			continue
-		}
-
-		// --- indented code block (4 spaces) ---
-		if sp >= 4 && !is_blank(stripped) {
-			cb := p.parse_indented_code(indent)
-			parent.append_child(cb)
-			continue
 		}
 
 		// --- list (bullet or ordered) ---
@@ -252,35 +260,51 @@ fn (mut p BlockParser) try_atx_heading(line string) ?&Node {
 
 // try_fenced_code attempts to parse a fenced code block starting at p.pos.
 fn (mut p BlockParser) try_fenced_code(line string, indent int) ?&Node {
-	fence_char, fence_len := detect_fence(line)
+	// Up to 3 spaces of indentation are allowed before the fence.
+	fence_offset := leading_spaces(line)
+	off_line := trim_indent(line, fence_offset)
+	fence_char, fence_len := detect_fence(off_line)
 	if fence_len < 3 {
 		return none
 	}
-	info := line[fence_len..].trim_space()
+	mut info := off_line[fence_len..].trim_space()
 	// info string must not contain a backtick when using backtick fence.
 	if fence_char == 96 && info.contains('`') {
 		return none
 	}
+	// The info string is the first word only; decode escapes and entities.
+	info = decode_link_string(info)
 	p.pos++
 	mut code_lines := []string{}
 	for p.pos < p.lines.len {
 		raw := expand_tabs(p.lines[p.pos])
 		stripped := trim_indent(raw, indent)
-		// Check for closing fence.
-		close_char, close_len := detect_fence(stripped)
+		// Check for closing fence (up to 3 spaces of indentation allowed).
+		close_offset := leading_spaces(stripped)
+		if close_offset > 3 {
+			code_lines << trim_indent(stripped, fence_offset)
+			p.pos++
+			continue
+		}
+		close_line := trim_indent(stripped, close_offset)
+		close_char, close_len := detect_fence(close_line)
 		if close_char == fence_char && close_len >= fence_len {
-			rest := stripped[close_len..].trim_space()
+			rest := close_line[close_len..].trim_space()
 			if rest.len == 0 {
 				p.pos++
 				break
 			}
 		}
-		code_lines << trim_indent(raw, indent)
+		code_lines << trim_indent(stripped, fence_offset)
 		p.pos++
 	}
 	mut node := new_node(.fenced_code)
 	node.fence_info = info
-	node.literal = code_lines.join('\n') + '\n'
+	mut literal := ''
+	if code_lines.len > 0 {
+		literal = code_lines.join('\n') + '\n'
+	}
+	node.literal = literal
 	return node
 }
 
@@ -312,7 +336,11 @@ fn (mut p BlockParser) parse_indented_code(indent int) &Node {
 		raw := expand_tabs(p.lines[p.pos])
 		if is_blank(raw) {
 			// Blank line may be included, but only if followed by more indented code.
-			lines << ''
+			// Whitespace beyond the code indent is content (e.g. 6 spaces
+			// contribute 2 spaces); trailing blank lines are trimmed below.
+			stripped := trim_indent(raw, indent)
+			sp := leading_spaces(stripped)
+			lines << if sp >= 4 { stripped[4..] } else { stripped[sp..] }
 			p.pos++
 			continue
 		}
@@ -325,8 +353,8 @@ fn (mut p BlockParser) parse_indented_code(indent int) &Node {
 		p.pos++
 	}
 	// Trim trailing blank lines.
-	for lines.len > 0 && lines[lines.len - 1] == '' {
-		lines = unsafe { lines[..lines.len - 1] }
+	for lines.len > 0 && is_blank(lines[lines.len - 1]) {
+		lines = lines[..lines.len - 1]
 	}
 	mut node := new_node(.code_block)
 	node.literal = lines.join('\n') + '\n'
@@ -342,6 +370,12 @@ fn (mut p BlockParser) try_html_block(line string, indent int) ?&Node {
 	mut raw_lines := []string{}
 	raw_lines << p.lines[p.pos]
 	p.pos++
+	// Types 1-5 may already end on the start line.
+	if html_block_ends_on_line(html_type, line) {
+		mut node := new_node(.html_block)
+		node.literal = raw_lines.join('\n') + '\n'
+		return node
+	}
 	// Types 1-5 end at specific end patterns; type 6-7 end at blank line.
 	for p.pos < p.lines.len {
 		raw := p.lines[p.pos]
@@ -434,12 +468,17 @@ fn detect_html_block_type(line string) int {
 			}
 		}
 	}
-	// Type 6: block-level tag
-	tag_name := extract_tag_name(low[1..])
+	// Type 6: block-level tag (`<tag` or `</tag`, followed by space, tab,
+	// end of line, `>` or `/>`).
+	tag_name, tag_end := extract_tag_name(low[1..])
 	if tag_name.len > 0 {
-		for bt in block_level_tags {
-			if tag_name == bt {
-				return 6
+		after := low[1 + tag_end..]
+		if after.len == 0 || after[0] == ` ` || after[0] == `\t` || after[0] == `>`
+			|| after[0] == `/` {
+			for bt in block_level_tags {
+				if tag_name == bt {
+					return 6
+				}
 			}
 		}
 	}
@@ -450,86 +489,181 @@ fn detect_html_block_type(line string) int {
 	return 0
 }
 
-// extract_tag_name extracts the tag name from the beginning of s.
-fn extract_tag_name(s string) string {
-	mut end := 0
+// html_block_ends_on_line reports whether an HTML block of the given type
+// already ends on its start line (the end condition is met there).
+fn html_block_ends_on_line(html_type int, line string) bool {
+	low := line.to_lower()
+	match html_type {
+		1 {
+			return low.contains('</script>') || low.contains('</pre>')
+				|| low.contains('</style>') || low.contains('</textarea>')
+		}
+		2 {
+			// A comment ends at `-->`, or abruptly at `-->`... no: at `<!-->`
+			// or `<!--->` (which are complete comments by themselves).
+			if line.contains('<!-->') || line.contains('<!--->') {
+				return true
+			}
+			return line.index_after_('-->', 4) >= 0
+		}
+		3 {
+			return line.contains('?>')
+		}
+		4 {
+			return line.contains('>')
+		}
+		5 {
+			return line.contains(']]>')
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// extract_tag_name extracts the tag name from the beginning of s (after
+// `<`), allowing an optional leading `/` for closing tags. It also returns
+// the index just past the name, for follower validation.
+fn extract_tag_name(s string) (string, int) {
+	mut start := 0
+	if start < s.len && s[start] == `/` {
+		start++
+	}
+	mut end := start
 	for end < s.len && (is_alnum(s[end]) || s[end] == `-`) {
 		end++
 	}
-	return s[..end].to_lower()
+	return s[start..end].to_lower(), end
 }
 
-// is_complete_html_tag returns true if s looks like a complete open or close tag.
+// is_complete_html_tag returns true if s is a complete open or close tag
+// (with only trailing whitespace after it), for HTML block type 7.
 fn is_complete_html_tag(s string) bool {
-	if s.len < 3 {
+	tag_end := scan_html_tag(s.trim_left(' \t'))
+	if tag_end < 0 {
 		return false
 	}
-	// Must start with < and end with >
-	if s[0] != `<` {
-		return false
-	}
-	end := s.index('>') or { return false }
-	return end == s.len - 1 || s[end + 1..].trim_space().len == 0
+	return s.trim_left(' \t')[tag_end..].trim_space().len == 0
 }
 
 // try_link_ref_def attempts to parse a link reference definition at p.pos.
 // CommonMark allows the title to appear on the next line when the destination
 // is alone on the first line.  Returns true and advances p.pos if successful.
-fn (mut p BlockParser) try_link_ref_def(line string) bool {
-	if !line.starts_with('[') {
+fn (mut p BlockParser) try_link_ref_def(indent int) bool {
+	first_raw := expand_tabs(p.lines[p.pos])
+	first := trim_indent(first_raw, indent).trim_left(' \t')
+	if !first.starts_with('[') {
 		return false
 	}
-	// Find closing bracket.
-	mut i := 1
-	for i < line.len && line[i] != `]` {
-		if line[i] == `\\` {
-			i++
+	// Find closing bracket of the label: the first `]` on the line.
+	// The label may span lines (each continuation line appended, up to a
+	// few lines, no blanks). Labels may not contain unescaped `[`.
+	mut label_parts := []string{}
+	mut end_off := 0
+	mut end_col := -1
+	mut end_text := ''
+	mut li_scan := 0
+	for li_scan < 3 {
+		cur := if li_scan == 0 {
+			first[1..]
+		} else {
+			if p.pos + li_scan >= p.lines.len {
+				break
+			}
+			trim_indent(expand_tabs(p.lines[p.pos + li_scan]), indent).trim_right(' \t')
 		}
-		i++
+		if li_scan > 0 && is_blank(cur) {
+			break
+		}
+		mut c := 0
+		mut closed := false
+		for c < cur.len {
+			if cur[c] == `\\` {
+				c += 2
+				continue
+			}
+			if cur[c] == `[` {
+				// Labels may not contain an unescaped `[`.
+				return false
+			}
+			if cur[c] == `]` {
+				closed = true
+				break
+			}
+			c++
+		}
+		if closed {
+			label_parts << cur[..c]
+			end_off = li_scan
+			end_col = c + if li_scan == 0 { 1 } else { 0 }
+			end_text = if li_scan == 0 { first } else { cur }
+			break
+		}
+		label_parts << cur
+		li_scan++
 	}
-	if i >= line.len || line[i] != `]` || i + 1 >= line.len || line[i + 1] != `:` {
+	if end_col < 0 {
 		return false
 	}
-	label := normalize_label(line[1..i])
-	rest := line[i + 2..].trim_left(' \t')
+	label := normalize_label(label_parts.join('\n'))
 	if label.len == 0 {
 		return false
 	}
-	// Parse destination.
-	dest, after_dest := parse_link_dest(rest)
-	if after_dest == rest {
+	// The `]:` must close on the same line where `]` was found.
+	// end_col is relative to end_text (both use the same trimmed form).
+	if end_col + 1 >= end_text.len || end_text[end_col + 1] != `:` {
 		return false
 	}
-	// Parse optional title.  The title may appear on the same line or, if the
-	// destination is the only content on the first line, on the very next line.
-	mut title := ''
-	mut extra_lines := 0 // number of additional lines consumed for the title
-	title_str := after_dest.trim_left(' \t')
-	if title_str.len > 0 {
-		// Title (or unwanted content) is on the same line as the destination.
-		parsed_title, title_rest := parse_link_title(title_str)
-		if title_rest == title_str {
-			// Not a valid title; reject the whole definition.
+	rest := end_text[end_col + 2..].trim_left(' \t')
+	// The destination may start on the next line (no blank line between).
+	mut li := p.pos + end_off
+	mut dest := ''
+	mut after_dest := ''
+	if rest.len > 0 {
+		dest, after_dest = parse_link_dest(rest)
+		if after_dest == rest {
 			return false
 		}
-		if title_rest.trim_space().len > 0 {
-			// Trailing content after the title – invalid.
-			return false
-		}
-		title = parsed_title
 	} else {
-		// Destination was alone on its line; look for a title on the next line.
-		next_idx := p.pos + 1
-		if next_idx < p.lines.len {
-			next_line := expand_tabs(p.lines[next_idx]).trim_left(' \t')
-			if next_line.len > 0 {
-				parsed_title, title_rest := parse_link_title(next_line)
-				if title_rest != next_line && title_rest.trim_space().len == 0 {
-					// Valid title on the next line; consume it.
-					title = parsed_title
-					extra_lines = 1
-				}
+		if li + 1 >= p.lines.len {
+			return false
+		}
+		next := expand_tabs(p.lines[li + 1]).trim_left(' \t')
+		if is_blank(next) {
+			return false
+		}
+		dest, after_dest = parse_link_dest(next)
+		if after_dest == next {
+			return false
+		}
+		li++
+	}
+	// Optional title: remainder of the destination line, else following lines.
+	// The title may span multiple lines but not contain a blank line.
+	// When both destination and title are present they must be separated.
+	mut title := ''
+	title_first := after_dest.trim_left(' \t')
+	if title_first.len > 0 {
+		if after_dest.len == title_first.len {
+			// Title abuts the destination with no separation: invalid.
+			return false
+		}
+		t, trem, used := parse_title_spanning(title_first, p.lines, li + 1, indent)
+		if trem.trim_space().len > 0 {
+			// Trailing content after the title: invalid definition.
+			return false
+		}
+		title = t
+		li += used
+	} else if li + 1 < p.lines.len {
+		cand := trim_indent(expand_tabs(p.lines[li + 1]), indent).trim_left(' \t')
+		if cand.len > 0 && (cand[0] == `"` || cand[0] == `'` || cand[0] == `(`) {
+			t, trem, used := parse_title_spanning(cand, p.lines, li + 2, indent)
+			if trem.trim_space().len == 0 {
+				title = t
+				li += 1 + used
 			}
+			// A failed next-line title does not invalidate the definition.
 		}
 	}
 	if label !in p.ref_map {
@@ -538,8 +672,37 @@ fn (mut p BlockParser) try_link_ref_def(line string) bool {
 			title: title
 		}
 	}
-	p.pos += 1 + extra_lines
+	p.pos = li + 1
 	return true
+}
+
+// parse_title_spanning parses a link title starting at frag (which must begin
+// with `"`, `'` or `(`), extending over following lines if the closing quote
+// is not on the first fragment. Returns (title, rest, extra_lines_used).
+// A blank line before the title closes fails the parse.
+fn parse_title_spanning(frag string, lines []string, start int, indent int) (string, string, int) {
+	cur := frag.trim_left(' \t')
+	if cur.len == 0 || (cur[0] != `"` && cur[0] != `'` && cur[0] != `(`) {
+		return '', frag, 0
+	}
+	mut acc := cur
+	mut used := 0
+	for {
+		t, rest := parse_link_title(acc)
+		if rest != acc {
+			return t, rest, used
+		}
+		if start + used >= lines.len {
+			return '', frag, 0
+		}
+		next := trim_indent(expand_tabs(lines[start + used]), indent).trim_right(' \t')
+		if is_blank(next) {
+			return '', frag, 0
+		}
+		acc += '\n' + next
+		used++
+	}
+	return '', frag, 0
 }
 
 // parse_link_dest parses a link destination from s and returns (dest, rest).
@@ -548,19 +711,30 @@ fn parse_link_dest(s string) (string, string) {
 		return '', s
 	}
 	if s[0] == `<` {
-		// Angle-bracket form: <url>
-		end := s.index_after_('>', 1)
-		if end < 0 {
-			return '', s
+		// Angle-bracket form: no line endings, no unescaped `<` or `>`.
+		mut i := 1
+		for i < s.len {
+			c := s[i]
+			if c == `\n` || c == `\r` || c == `<` {
+				return '', s
+			}
+			if c == `\\` && i + 1 < s.len && is_ascii_punct(rune(s[i + 1])) {
+				i += 2
+				continue
+			}
+			if c == `>` {
+				return decode_link_string(s[1..i]), s[i + 1..]
+			}
+			i++
 		}
-		return s[1..end], s[end + 1..]
+		return '', s
 	}
 	// Regular form: no spaces, no control characters, balanced parentheses.
 	mut parens := 0
 	mut i := 0
 	for i < s.len {
 		c := s[i]
-		if c == ` ` || c == `\t` || c == `\n` {
+		if c == ` ` || c == `\t` || c == `\n` || c == `\r` {
 			break
 		}
 		if c == `(` {
@@ -582,7 +756,7 @@ fn parse_link_dest(s string) (string, string) {
 	if parens != 0 {
 		return '', s
 	}
-	return s[..i], s[i..]
+	return decode_link_string(s[..i]), s[i..]
 }
 
 // parse_link_title parses an optional link title from s and returns (title, rest).
@@ -604,7 +778,7 @@ fn parse_link_title(s string) (string, string) {
 	for i < s.len {
 		c := s[i]
 		if c == close {
-			return unescape_string(s[1..i]), s[i + 1..]
+			return decode_link_string(s[1..i]), s[i + 1..]
 		}
 		if c == `\\` && i + 1 < s.len {
 			i += 2
@@ -613,6 +787,138 @@ fn parse_link_title(s string) (string, string) {
 		i++
 	}
 	return '', s
+}
+
+// is_para_text_line reports whether s could be paragraph continuation text,
+// i.e. it does not start a block construct (in container-relative coords).
+// Used to decide lazy continuation: laziness needs an open paragraph.
+fn is_para_text_line(s string) bool {
+	if is_blank(s) {
+		return false
+	}
+	// Indented code is a block start, not paragraph text.
+	if leading_spaces(s) >= 4 {
+		return false
+	}
+	t := s.trim_left(' \t')
+	if t.len == 0 {
+		return false
+	}
+	// A nested blockquote marker defers to nested parsing, which re-evaluates
+	// laziness at each level (e.g. `> > > foo` followed by `bar`).
+	ls := leading_spaces(s)
+	if ls <= 3 && s[ls..].starts_with('>') {
+		return true
+	}
+	if t.starts_with('```') || t.starts_with('~~~') {
+		return false
+	}
+	if t[0] == `#` && atx_heading_level(t) > 0 {
+		return false
+	}
+	if is_thematic_break(t) {
+		return false
+	}
+	if t[0] == `>` {
+		return false
+	}
+	if t[0] == `<` {
+		ht := detect_html_block_type(t)
+		if ht >= 1 && ht <= 6 {
+			return false
+		}
+	}
+	if setext_underline_level(t) > 0 {
+		return false
+	}
+	_, mok := parse_list_marker(t)
+	if mok {
+		// A list marker keeps a paragraph open only if content follows it
+		// on the same line (otherwise no paragraph is open yet).
+		return marker_has_content(t)
+	}
+	return true
+}
+
+// marker_has_content reports whether the list marker starting t is followed
+// by non-blank content on the same line (which opens a paragraph).
+fn marker_has_content(t string) bool {
+	mut i := 0
+	for i < t.len && t[i] == ` ` {
+		i++
+	}
+	// Skip bullet or ordered marker.
+	if t[i] == `-` || t[i] == `*` || t[i] == `+` {
+		i++
+	} else {
+		for i < t.len && is_digit(t[i]) {
+			i++
+		}
+		if i < t.len && (t[i] == `.` || t[i] == `)`) {
+			i++
+		} else {
+			return false
+		}
+	}
+	// Skip one separator space/tab.
+	if i < t.len && (t[i] == ` ` || t[i] == `\t`) {
+		i++
+	}
+	return i < t.len && !is_blank(t[i..])
+}
+
+// escape_setext_underline escapes a lazily-absorbed setext underline so the
+// nested parse keeps it as literal text: a setext underline cannot form a
+// heading from a lazy continuation line, but the line stays in the paragraph.
+fn escape_setext_underline(s string) string {
+	idx := s.index('=') or { return s }
+	return s[..idx] + '\\' + s[idx..]
+}
+
+// strip_bq_marker consumes one blockquote marker (`>`) at the start of s
+// (which must already be stripped of container indent, with up to 3 leading
+// spaces) plus one optional separator space/tab, and returns the content.
+// base_col is the column of `>` in the original line (for tab stops).
+// Tabs are expanded with tab stops relative to the line start: the separator
+// accounts for a single column, and any remaining expanded columns become
+// content indent (preserving column alignment for nested blocks). The rest
+// of the line after leading whitespace is kept byte-identical so that tabs
+// inside code content survive.
+fn strip_bq_marker(s string, base_col int) (string, bool) {
+	if s.len == 0 || s[0] != `>` {
+		return s, false
+	}
+	mut i := 1
+	mut col := base_col + 1
+	mut prefix := ''
+	if i < s.len && s[i] == ` ` {
+		i++
+		col++
+	} else if i < s.len && s[i] == `\t` {
+		// Separator tab: one column is the separator, the rest is content.
+		n := 4 - (col % 4)
+		for _ in 0 .. n - 1 {
+			prefix += ' '
+		}
+		col += n
+		i++
+	}
+	// Expand further leading tabs (column-accurate), keep the rest raw.
+	for i < s.len && (s[i] == ` ` || s[i] == `\t`) {
+		if s[i] == ` ` {
+			prefix += ' '
+			col++
+			i++
+		} else {
+			n := 4 - (col % 4)
+			for _ in 0 .. n {
+				prefix += ' '
+			}
+			col += n
+			i++
+		}
+	}
+	return prefix + s[i..], true
 }
 
 // parse_blockquote parses a blockquote block and returns a blockquote node.
@@ -626,17 +932,39 @@ fn (mut p BlockParser) parse_blockquote(indent int) &Node {
 			p.pos++
 			break
 		}
-		if stripped.starts_with('> ') {
-			bq_lines << stripped[2..]
-			p.pos++
-		} else if stripped.starts_with('>') {
-			bq_lines << stripped[1..]
-			p.pos++
-		} else {
-			// Lazy continuation line.
-			bq_lines << stripped
-			p.pos++
+		// A blockquote marker allows up to 3 leading spaces past the
+		// container indent; consume the marker plus one optional space.
+		// Tabs are expanded with tab stops: the separator is one column,
+		// and the rest of an expanded tab belongs to the content (this
+		// matters for indented code inside quotes).
+		ls := leading_spaces(stripped)
+		if ls <= 3 {
+			rest := stripped[ls..]
+			if rest.starts_with('>') {
+				content, ok := strip_bq_marker(rest, ls)
+				if ok {
+					bq_lines << content
+					p.pos++
+					continue
+				}
+			}
 		}
+		// Lazy continuation line: only paragraph continuation text with no
+		// blank line intervening can be lazy, and the quote must have an
+		// open paragraph (the previous line is paragraph text).
+		if interrupts_paragraph(stripped) {
+			break
+		}
+		if bq_lines.len == 0 || !is_para_text_line(bq_lines[bq_lines.len - 1]) {
+			break
+		}
+		lazy_line := if setext_underline_level(stripped) == 1 {
+			escape_setext_underline(stripped)
+		} else {
+			stripped
+		}
+		bq_lines << lazy_line
+		p.pos++
 	}
 	mut node := new_node(.blockquote)
 	// Recursively parse the blockquote content.
@@ -651,7 +979,8 @@ struct ListMarker {
 	is_ordered  bool
 	bullet_char u8
 	start       int
-	indent      int // total indent of content after marker
+	indent      int    // content indent in columns (leading indent included)
+	content     string // content after the marker (whitespace run processed)
 }
 
 // is_list_marker returns true if line starts with a bullet or ordered list marker.
@@ -679,41 +1008,72 @@ fn parse_list_marker(line string) (ListMarker, bool) {
 					is_ordered:  false
 					bullet_char: rest[0]
 					indent:      sp + 2
+					content:     ''
 				}, true
 			}
 			return ListMarker{}, false
 		}
-		content_indent := sp + 1 + (if rest.len > 1 && rest[1] == `\t` { 3 } else { 1 })
+		ci, cs := marker_content(rest, sp, 1)
 		return ListMarker{
 			is_ordered:  false
 			bullet_char: rest[0]
-			indent:      content_indent
+			indent:      ci
+			content:     cs
 		}, true
 	}
-	// Ordered list: 1. or 1)
+	// Ordered list: 1. or 1) with at most 9 digits (spec limit).
 	mut num_end := 0
 	for num_end < rest.len && is_digit(rest[num_end]) {
 		num_end++
 	}
-	if num_end > 0 && num_end < rest.len && (rest[num_end] == `.` || rest[num_end] == `)`) {
+	if num_end > 0 && num_end <= 9 && num_end < rest.len
+		&& (rest[num_end] == `.` || rest[num_end] == `)`) {
 		marker_end := num_end + 1
 		if marker_end < rest.len && rest[marker_end] != ` ` && rest[marker_end] != `\t` {
 			return ListMarker{}, false
 		}
 		num_str := rest[..num_end]
 		start := num_str.int()
-		mut content_indent := sp + marker_end + 1
-		if marker_end < rest.len && rest[marker_end] == `\t` {
-			content_indent = sp + marker_end + (4 - ((sp + marker_end) % 4))
-		}
+		ci, cs := marker_content(rest, sp, marker_end)
 		return ListMarker{
 			is_ordered:  true
 			start:       start
 			bullet_char: rest[num_end]
-			indent:      content_indent
+			indent:      ci
+			content:     cs
 		}, true
 	}
 	return ListMarker{}, false
+}
+
+// marker_content computes the content indent (in columns) and the content
+// string for a marker ending at marker_end (index in rest, where rest starts
+// after sp leading spaces). The whitespace run after the marker is measured
+// with tab stops: if it spans 5+ columns, only one column separates the
+// marker from the content and the rest (as spaces) belongs to the content
+// (matters for indented code); otherwise the run counts toward the indent.
+// An empty run means an empty item: content follows the marker.
+fn marker_content(rest string, sp int, marker_end int) (int, string) {
+	mut wi := marker_end
+	mut wcol := sp + marker_end
+	for wi < rest.len && (rest[wi] == ` ` || rest[wi] == `\t`) {
+		if rest[wi] == ` ` {
+			wcol++
+		} else {
+			wcol += 4 - (wcol % 4)
+		}
+		wi++
+	}
+	w := wcol - (sp + marker_end)
+	if wi >= rest.len {
+		// Empty item (nothing but whitespace after the marker): trailing
+		// spaces do not count, content follows the marker.
+		return sp + marker_end + 1, ''
+	}
+	if w >= 5 {
+		return sp + marker_end + 1, ' '.repeat(w - 1) + rest[wi..]
+	}
+	return wcol, rest[wi..]
 }
 
 // parse_list parses a list (bullet or ordered) and returns a list node.
@@ -751,11 +1111,25 @@ fn (mut p BlockParser) parse_list(indent int) &Node {
 		if !marker_ok {
 			break
 		}
+		// List markers allow 0-3 leading spaces; deeper markers cannot
+		// start an item (they are indented code or item content).
+		if leading_spaces(stripped) > 3 {
+			break
+		}
+		// A thematic break ends the list (it takes precedence over a
+		// same-marker list continuation).
+		if is_thematic_break(stripped) {
+			break
+		}
 		// Different list type → stop.
 		if cur_marker.is_ordered != marker.is_ordered {
 			break
 		}
 		if !cur_marker.is_ordered && cur_marker.bullet_char != marker.bullet_char {
+			break
+		}
+		// Ordered lists with different delimiters (`.` vs `)`) are separate lists.
+		if cur_marker.is_ordered && cur_marker.bullet_char != marker.bullet_char {
 			break
 		}
 
@@ -764,7 +1138,10 @@ fn (mut p BlockParser) parse_list(indent int) &Node {
 		}
 		had_blank = false
 
-		item := p.parse_list_item(indent)
+		item, item_loose := p.parse_list_item(indent)
+		if item_loose {
+			list.is_tight = false
+		}
 		list.append_child(item)
 	}
 
@@ -772,9 +1149,11 @@ fn (mut p BlockParser) parse_list(indent int) &Node {
 }
 
 // parse_list_item parses a single list item and returns a list_item node.
-fn (mut p BlockParser) parse_list_item(base_indent int) &Node {
+// The second return value reports whether a blank line was consumed inside
+// the item (between content lines), which makes the parent list loose.
+fn (mut p BlockParser) parse_list_item(base_indent int) (&Node, bool) {
 	if p.pos >= p.lines.len {
-		return new_node(.list_item)
+		return new_node(.list_item), false
 	}
 
 	mut item := new_node(.list_item)
@@ -788,78 +1167,93 @@ fn (mut p BlockParser) parse_list_item(base_indent int) &Node {
 	// marker: otherwise a `-` after the indent is misread and the marker
 	// text leaks into the content, which then parses as a nested list.
 	// first_leading below adds the skipped width back into content_indent.
-	marker_line := first_stripped[leading_spaces(first_stripped)..]
-	mut marker_idx := 0
+	first_leading := leading_spaces(first_stripped)
+	marker_line := first_stripped[first_leading..]
+	// Exactly one column separates the marker from the content when the
+	// whitespace run spans 5+ columns; otherwise the run counts toward
+	// the indent. parse_list_marker computes both forms.
+	m, mok := parse_list_marker(marker_line)
+	// m.indent is the content indent in columns; m.content is the content
+	// after the marker (whitespace run processed per spec).
+	mut marker_idx := if mok { m.indent } else { 0 }
+	mut first_content := if mok { m.content } else { marker_line }
 
-	// Find where marker ends in stripped line
-	if marker_line.len > 0
-		&& (marker_line[0] == `-` || marker_line[0] == `*` || marker_line[0] == `+`) {
-		// Bullet marker: skip marker and whitespace
-		marker_idx = 1
-		for marker_idx < marker_line.len
-			&& (marker_line[marker_idx] == ` ` || marker_line[marker_idx] == `\t`) {
-			marker_idx++
-		}
-	} else {
-		// Ordered marker: skip number and . or )
-		for marker_idx < marker_line.len && is_digit(marker_line[marker_idx]) {
-			marker_idx++
-		}
-		if marker_idx < marker_line.len
-			&& (marker_line[marker_idx] == `.` || marker_line[marker_idx] == `)`) {
-			marker_idx++
-		}
-		// Skip whitespace after marker
-		for marker_idx < marker_line.len
-			&& (marker_line[marker_idx] == ` ` || marker_line[marker_idx] == `\t`) {
-			marker_idx++
-		}
-	}
-
-	// Get content after marker
-	first_content := if marker_idx < marker_line.len {
-		marker_line[marker_idx..]
-	} else {
-		''
-	}
-
-	// Detect task list checkbox: [ ] or [x] or [X] at the start of content.
+	// Detect task list checkbox: [ ] or [x] or [X] at the start of content
+	// (leading spaces after an extra-wide marker are tolerated).
+	trimmed_fc := first_content.trim_left(' \t')
 	mut task_checked := false
 	mut has_task := false
 	mut task_content_start := 0
-	if p.opts.task_list && first_content.len >= 3 && first_content[0] == `[` {
-		if (first_content[1] == ` ` || first_content[1] == `x` || first_content[1] == `X`)
-			&& first_content[2] == `]` {
-			if first_content.len == 3 || first_content[3] == ` ` || first_content[3] == `\t` {
+	if p.opts.task_list && trimmed_fc.len >= 3 && trimmed_fc[0] == `[` {
+		if (trimmed_fc[1] == ` ` || trimmed_fc[1] == `x` || trimmed_fc[1] == `X`)
+			&& trimmed_fc[2] == `]` {
+			if trimmed_fc.len == 3 || trimmed_fc[3] == ` ` || trimmed_fc[3] == `\t` {
 				has_task = true
-				task_checked = first_content[1] != ` `
+				task_checked = trimmed_fc[1] != ` `
 				// Skip the checkbox and one optional following whitespace char.
-				task_content_start = if first_content.len > 3 { 4 } else { 3 }
+				task_content_start = if trimmed_fc.len > 3 { 4 } else { 3 }
 			}
 		}
 	}
 	actual_first_content := if has_task {
-		first_content[task_content_start..]
+		trimmed_fc[task_content_start..]
 	} else {
 		first_content
 	}
 
 	// Collect lines belonging to this item
 	mut item_lines := [actual_first_content]
+	// item_sps parallels item_lines with each line's indent (after container
+	// indent removal, before content-indent removal); -1 marks blank lines.
+	// It is used to attribute blank lines to the nesting level they separate.
+	mut item_sps := [0]
 	p.pos++
 
 	// Content indent is where subsequent lines must be indented to
-	first_leading := leading_spaces(first_stripped)
 	content_indent := first_leading + marker_idx
 
+	mut saw_inner_blank := false
 	for p.pos < p.lines.len {
 		raw := expand_tabs(p.lines[p.pos])
 		stripped_base := trim_indent(raw, base_indent)
 
 		if is_blank(stripped_base) {
-			item_lines << ''
-			p.pos++
-			continue
+			// An item that starts with a blank line (empty first content)
+			// cannot swallow a second blank: `-` followed by a blank line
+			// ends the (empty) item.
+			if item_lines.len == 1 && item_lines[0] == '' {
+				break
+			}
+			// Only consume blank lines that separate more item content.
+			// Peek at the next non-blank line: if it is indented enough
+			// to continue this item, the blank belongs to the item;
+			// otherwise leave it (and what follows) for the outer parser,
+			// which decides tight/loose between items.
+			mut k := p.pos + 1
+			for k < p.lines.len {
+				peek_raw := expand_tabs(p.lines[k])
+				peek_stripped := trim_indent(peek_raw, base_indent)
+				if !is_blank(peek_stripped) {
+					break
+				}
+				k++
+			}
+			if k >= p.lines.len {
+				for p.pos < p.lines.len {
+					p.pos++
+				}
+				break
+			}
+			peek_raw := expand_tabs(p.lines[k])
+			peek_stripped := trim_indent(peek_raw, base_indent)
+			if leading_spaces(peek_stripped) >= content_indent {
+				item_lines << ''
+				item_sps << -1
+				saw_inner_blank = true
+				p.pos++
+				continue
+			}
+			break
 		}
 
 		sp := leading_spaces(stripped_base)
@@ -868,16 +1262,17 @@ fn (mut p BlockParser) parse_list_item(base_indent int) &Node {
 		if sp >= content_indent {
 			// Remove the content indent
 			item_lines << trim_indent(stripped_base, content_indent)
+			item_sps << sp - content_indent
 			p.pos++
 			continue
 		}
 
-		// If line starts a new list item at base indent level, stop
-		if sp < 2 {
-			_, mk := parse_list_marker(stripped_base)
-			if mk {
-				break
-			}
+		// A list marker indented 3 or less ends this item (a same-list item
+		// or a new list is decided by the caller). A deeper marker cannot
+		// start an item, so it falls through to lazy continuation below.
+		_, is_mk := parse_list_marker(stripped_base)
+		if is_mk && sp <= 3 {
+			break
 		}
 
 		// Check if it might be a sub-block (less indented but meaningful)
@@ -885,13 +1280,88 @@ fn (mut p BlockParser) parse_list_item(base_indent int) &Node {
 			break
 		}
 
-		item_lines << stripped_base
+		// Lazy continuation: only paragraph continuation text with no
+		// blank line intervening can be lazy, and the item must have an
+		// open paragraph (the previous line is paragraph text).
+		if saw_inner_blank {
+			break
+		}
+		if item_lines.len == 0 || !is_para_text_line(item_lines[item_lines.len - 1]) {
+			break
+		}
+		lazy_line := if setext_underline_level(stripped_base) == 1 {
+			escape_setext_underline(stripped_base)
+		} else {
+			stripped_base
+		}
+		item_lines << lazy_line
+		item_sps << sp
 		p.pos++
 	}
 
 	// Trim trailing blank lines
 	for item_lines.len > 0 && item_lines[item_lines.len - 1] == '' {
-		item_lines = unsafe { item_lines[..item_lines.len - 1] }
+		item_lines = item_lines[..item_lines.len - 1]
+		item_sps = item_sps[..item_sps.len - 1]
+	}
+	// A blank line makes the parent list loose only when it directly separates
+	// two blocks of this item. Blanks fully inside nested content (a nested
+	// list, quote or code) loosen that nested structure instead: the blank is
+	// nested when the preceding line opens nested content (a list marker) that
+	// the following line continues (a list marker, or indented content).
+	mut inner_loose := false
+	// Fence state for skipping blanks swallowed by fenced code blocks.
+	mut fence_ch := u8(0)
+	mut fence_len := 0
+	for idx := 0; idx < item_lines.len; idx++ {
+		ln := item_lines[idx]
+		if ln != '' {
+			ls := leading_spaces(ln)
+			if ls <= 3 {
+				rest := ln[ls..]
+				if rest.starts_with('```') || rest.starts_with('~~~') {
+					c := rest[0]
+					mut n := 0
+					for n < rest.len && rest[n] == c {
+						n++
+					}
+					if fence_ch == 0 {
+						fence_ch = c
+						fence_len = n
+					} else if c == fence_ch && n >= fence_len
+						&& rest[n..].trim_space().len == 0 {
+						fence_ch = 0
+						fence_len = 0
+					}
+				}
+			}
+			continue
+		}
+		if fence_ch != 0 {
+			continue
+		}
+		mut pb := idx - 1
+		for pb >= 0 && item_lines[pb] == '' {
+			pb--
+		}
+		mut nb := idx + 1
+		for nb < item_lines.len && item_lines[nb] == '' {
+			nb++
+		}
+		if pb < 0 || nb >= item_lines.len {
+			continue
+		}
+		_, prev_mk := parse_list_marker(item_lines[pb])
+		if !prev_mk {
+			inner_loose = true
+			break
+		}
+		_, peek_mk := parse_list_marker(item_lines[nb])
+		if peek_mk || item_sps[nb] > 0 {
+			continue
+		}
+		inner_loose = true
+		break
 	}
 
 	// Recursively parse the item's content with fresh parser
@@ -912,7 +1382,7 @@ fn (mut p BlockParser) parse_list_item(base_indent int) &Node {
 		item.children = new_children
 	}
 
-	return item
+	return item, inner_loose
 }
 
 // try_table attempts to parse a GFM table starting at p.pos.
@@ -1154,15 +1624,17 @@ fn (mut p BlockParser) parse_paragraph(indent int) &Node {
 	for p.pos < p.lines.len {
 		raw := expand_tabs(p.lines[p.pos])
 		stripped := trim_indent(raw, indent)
+		ls := leading_spaces(stripped)
 
 		if is_blank(stripped) {
 			p.pos++
 			break
 		}
-		// Check for setext underline on the next line while para_lines is non-empty.
-		if para_lines.len > 0 {
-			if is_setext_underline(stripped) {
-				level := if stripped.trim_left(' \t')[0] == `=` { 1 } else { 2 }
+		// Check for setext underline (0-3 leading spaces) before checking
+		// block starts: a setext underline takes precedence.
+		if para_lines.len > 0 && ls <= 3 {
+			level := setext_underline_level(stripped)
+			if level > 0 {
 				content := para_lines.join('\n').trim_space()
 				mut node := new_node(.heading)
 				node.level = level
@@ -1174,17 +1646,12 @@ fn (mut p BlockParser) parse_paragraph(indent int) &Node {
 				return node
 			}
 		}
-		// Other block starters interrupt a paragraph.
-		if para_lines.len > 0 {
-			if is_thematic_break(stripped) || stripped.starts_with('#') || stripped.starts_with('>')
-				|| stripped.starts_with('```') || stripped.starts_with('~~~') {
-				break
-			}
-			if is_list_marker(stripped) {
-				break
-			}
+		// Other block starters interrupt a paragraph (0-3 leading spaces).
+		if para_lines.len > 0 && interrupts_paragraph(stripped) {
+			break
 		}
-		para_lines << stripped
+		// Continuation lines: leading whitespace is consumed.
+		para_lines << stripped.trim_left(' \t')
 		p.pos++
 	}
 	mut node := new_node(.paragraph)
@@ -1192,30 +1659,116 @@ fn (mut p BlockParser) parse_paragraph(indent int) &Node {
 	return node
 }
 
+// setext_underline_level returns 1 if line is a setext underline of `=`s and
+// 2 if it is one of `-`s, 0 otherwise. Only an unbroken run of a single
+// character (plus trailing whitespace) qualifies.
+fn setext_underline_level(line string) int {
+	trimmed := line.trim_space()
+	if trimmed.len == 0 {
+		return 0
+	}
+	c := trimmed[0]
+	if c != `=` && c != `-` {
+		return 0
+	}
+	for i := 0; i < trimmed.len; i++ {
+		if trimmed[i] != c {
+			return 0
+		}
+	}
+	return if c == `=` { 1 } else { 2 }
+}
+
 // is_setext_underline returns true if line is a setext heading underline
 // (0-3 leading spaces, then one or more = or - with optional trailing spaces).
 fn is_setext_underline(line string) bool {
-	if line.len == 0 {
+	return setext_underline_level(line) > 0
+}
+
+// interrupts_paragraph reports whether stripped (after container indent
+// removal) starts a block that can interrupt an open paragraph.
+fn interrupts_paragraph(stripped string) bool {
+	if is_blank(stripped) {
 		return false
 	}
-	// Allow up to 3 leading spaces (CommonMark spec rule 80).
-	mut start := 0
-	for start < 3 && start < line.len && line[start] == ` ` {
-		start++
-	}
-	if start >= line.len {
+	// 4+ leading spaces: indented code, which cannot interrupt a paragraph.
+	if leading_spaces(stripped) >= 4 {
 		return false
 	}
-	c := line[start]
-	if c != `=` && c != `-` {
+	t := stripped.trim_left(' \t')
+	if is_thematic_break(t) {
+		return true
+	}
+	if t[0] == `#` {
+		// Only a valid ATX heading start interrupts.
+		return atx_heading_level(t) > 0
+	}
+	if t.starts_with('```') || t.starts_with('~~~') {
+		return true
+	}
+	if t[0] == `>` {
+		return true
+	}
+	// HTML block types 1-6 interrupt a paragraph (type 7 does not).
+	if t[0] == `<` {
+		ht := detect_html_block_type(t)
+		return ht >= 1 && ht <= 6
+	}
+	// List items interrupt paragraphs, with restrictions: the content after
+	// the marker must be non-blank, and ordered markers must start at 1.
+	marker, ok := parse_list_marker(t)
+	if ok {
+		return list_marker_interrupts(t, marker)
+	}
+	return false
+}
+
+// list_marker_interrupts applies the paragraph-interruption restrictions:
+// non-blank content after the marker, and ordered markers start at 1.
+fn list_marker_interrupts(stripped string, marker ListMarker) bool {
+	if marker.is_ordered && marker.start != 1 {
 		return false
 	}
-	for i := start; i < line.len; i++ {
-		if line[i] != c && line[i] != ` ` && line[i] != `\t` {
+	t := stripped.trim_left(' \t')
+	if t.len == 0 {
+		return false
+	}
+	mut end := 0
+	if t[0] == `-` || t[0] == `*` || t[0] == `+` {
+		end = 1
+	} else {
+		for end < t.len && is_digit(t[end]) {
+			end++
+		}
+		if end >= t.len || (t[end] != `.` && t[end] != `)`) {
 			return false
 		}
+		end++
 	}
-	return true
+	// Require non-blank content after the marker.
+	for end < t.len && (t[end] == ` ` || t[end] == `\t`) {
+		end++
+	}
+	return end < t.len
+}
+
+// atx_heading_level returns the ATX heading level (1-6) or 0 if line does not
+// start a valid ATX heading.
+fn atx_heading_level(line string) int {
+	if line.len == 0 || line[0] != `#` {
+		return 0
+	}
+	mut level := 0
+	for level < line.len && line[level] == `#` {
+		level++
+	}
+	if level > 6 {
+		return 0
+	}
+	if level < line.len && line[level] != ` ` && line[level] != `\t` {
+		return 0
+	}
+	return level
 }
 
 // unescape_string decodes CommonMark backslash escapes in s.
@@ -1235,4 +1788,11 @@ fn unescape_string(s string) string {
 		}
 	}
 	return out.str()
+}
+
+// decode_link_string applies CommonMark unescaping and HTML entity decoding
+// to a link destination or title. Backslash escapes take precedence; entity
+// references are decoded afterwards as the reference implementation does.
+fn decode_link_string(s string) string {
+	return ehtml.unescape(unescape_string(s), all: true)
 }
