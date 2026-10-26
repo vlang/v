@@ -18291,7 +18291,14 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 }
 
 fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ_id u32) bool {
-	receiver_name := method_name.all_before_last('.')
+	// A borrowed view avoids copying the method name; it is only compared and
+	// looked up, and source_type_id copies spellings it stores.
+	receiver_dot := method_name.last_index_u8(`.`)
+	receiver_name := if receiver_dot < 0 {
+		method_name
+	} else {
+		unsafe { tos(method_name.str, receiver_dot) }
+	}
 	if receiver_name.len == 0 {
 		return true
 	}
