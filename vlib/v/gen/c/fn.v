@@ -1422,7 +1422,7 @@ fn (mut g FlatGen) note_main_export_c_abi_wrapper(node flat.Node, module_name st
 			break
 		}
 		param := g.a.child_node(&node, i)
-		if param.kind != .param || param.typ == 0 || param.typ_text() == '...' {
+		if param.kind != .param || param.typ == 0 || param.typ == flat.source_type_id('...') {
 			continue
 		}
 		differs = c_abi_spells_platform_int(g.tc.parse_resolution_type(param.typ))
@@ -5901,7 +5901,7 @@ fn (mut g FlatGen) write_export_wrapper_v_c_abi_params(node flat.Node, module_na
 		if param.kind != .param {
 			continue
 		}
-		if param.typ_text() == '...' {
+		if param.typ == flat.source_type_id('...') {
 			if written > 0 {
 				g.write(', ')
 			}
@@ -19381,7 +19381,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		if p.kind != .param {
 			continue
 		}
-		if p.typ_text() == '...' {
+		if p.typ == flat.source_type_id('...') {
 			g.write('...')
 			written++
 			if written < params_len {

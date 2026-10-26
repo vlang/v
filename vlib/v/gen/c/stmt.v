@@ -960,7 +960,7 @@ fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node, id flat.Node
 		entries = g.take_transformed_return_ownership_drops(source_id)
 	} else if node.typ == 0 {
 		entries = g.take_return_ownership_drops_for_node(id)
-	} else if node.typ_text()[0] !in [`!`, `?`] {
+	} else if !flat.source_type_shape(node.typ).has(.result_type) && !flat.source_type_shape(node.typ).has(.option_type) {
 		entries = []types.OwnershipDropEntry{}
 	} else if return_node_is_direct_optional_forward(node.value)
 		|| node.value == optional_success_return_value

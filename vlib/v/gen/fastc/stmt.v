@@ -1299,7 +1299,7 @@ fn (mut g Parser) parse_return() !bool {
 		expression = '${flat.source_type_name(fastc_trim_pointer_type(contextual_return_type))}__${g.last_expression[1].lit}'
 		actual_type = contextual_return_type
 	}
-	if g.selfhost && g.return_type_text().contains('_FASTC_ARRAY_OF_') && g.fixed_array_uses_raw_storage(g.last_expression) {
+	if g.selfhost && flat.source_type_syntax(g.return_type).fastc_array_marker && g.fixed_array_uses_raw_storage(g.last_expression) {
 		// A struct-field/global/`__global` fixed array is stored as a raw C array, but the
 		// by-value return type is the `struct { T data[N]; }` wrapper; copy the raw array into
 		// its `.data` so the value can be returned.
@@ -1993,7 +1993,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 	// atom (an append re-renders the value from it), so the statement's first token
 	// tells a spawn apart from any other thread-typed value.
 	if starts_with_spawn && g.last_expression.len == 1
-		&& g.last_expression_type_text().starts_with(fastc_thread_type_prefix) {
+		&& flat.source_type_query(g.last_expression_type).has(.c_thread_prefix) {
 		// Fire-and-forget `spawn f()` as a statement: the handle is discarded, so
 		// detach the thread. It then releases its own resources on completion (the
 		// run wrapper frees the packed arguments), rather than leaking a joinable.
@@ -3849,19 +3849,23 @@ fn (g &Parser) fastc_orm_enum_v_name(field_typ string) ?string {
 }
 
 fn fastc_orm_field_zero(c_type string) ?string {
-	if c_type == 'string' {
+	return fastc_orm_field_zero_id(flat.source_type_id(c_type))
+}
+
+fn fastc_orm_field_zero_id(c_type u32) ?string {
+	if c_type == flat.source_type_string {
 		return "''"
 	}
-	if c_type in ['f32', 'f64'] {
+	if c_type in [flat.source_type_f32, flat.source_type_f64] {
 		return '0.0'
 	}
-	if c_type == 'bool' {
+	if c_type == flat.source_type_bool {
 		return 'false'
 	}
-	if fastc_primitive_c_type(c_type) != none {
+	if fastc_primitive_c_type_id(c_type) != none {
 		return '0'
 	}
-	if c_type == 'time__Time' {
+	if c_type == flat.source_type_id('time__Time') {
 		return 'time.Time{}'
 	}
 	return none
@@ -3871,10 +3875,14 @@ fn fastc_orm_field_zero(c_type string) ?string {
 // when unboxing a column Primitive (`time__Time` → `time.Time`; scalars/string are
 // spelled the same in V and C).
 fn fastc_orm_field_match_type(c_type string) string {
-	if c_type == 'time__Time' {
+	return fastc_orm_field_match_type_id(flat.source_type_id(c_type))
+}
+
+fn fastc_orm_field_match_type_id(c_type u32) string {
+	if c_type == flat.source_type_id('time__Time') {
 		return 'time.Time'
 	}
-	return c_type
+	return flat.source_type_name(c_type)
 }
 
 // build_orm_select_lowering emits the V source for `select from <Table>`: it builds
@@ -3999,7 +4007,7 @@ fn (g &Parser) build_orm_select_lowering(db_source string, block_source string, 
 			if g.is_enum_type_name(field.typ_text()) {
 				continue
 			}
-			if fastc_orm_field_zero(field.typ_text()) == none {
+			if fastc_orm_field_zero_id(field.typ) == none {
 				return g.unsupported('ORM `sql`: select field `${field.name}` of type `${field.typ_text()}` is not yet supported')
 			}
 		}
@@ -4061,10 +4069,10 @@ fn (g &Parser) build_orm_select_lowering(db_source string, block_source string, 
 				col++
 				continue
 			}
-			zero := fastc_orm_field_zero(field.typ_text()) or {
+			zero := fastc_orm_field_zero_id(field.typ) or {
 				return g.unsupported('ORM `sql`: select field `${field.name}` unsupported')
 			}
-			match_type := fastc_orm_field_match_type(field.typ_text())
+			match_type := fastc_orm_field_match_type_id(field.typ)
 			build += '\t__orm_col_${col} := __orm_row[${col}]\n'
 			build += '\t__orm_field_${col} := match __orm_col_${col} { ${match_type} { __orm_col_${col} } else { ${zero} } }\n'
 			inits << '${field.name}: __orm_field_${col}'

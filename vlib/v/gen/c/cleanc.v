@@ -5105,7 +5105,7 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			adjusted = true
 		}
 		mut is_shared_param := false
-		if child.typ != 0 && child.typ_text()[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
+		if flat.source_type_shape(child.typ).has(.shared_parameter_candidate) {
 			if _ := shared_inner_type_text(child.typ) {
 				is_shared_param = true
 			}
@@ -17002,7 +17002,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			}
 		}
 		.string_literal {
-			if node.typ_text().starts_with('raw:') && unalias_type(g.expected_expr_type) is types.Pointer {
+			if (flat.source_type_capture(node.typ, flat.source_type_id('raw:'), 0) != none) && unalias_type(g.expected_expr_type) is types.Pointer {
 				// vfmt keeps `r'...'.str` as a raw literal. In a compatible
 				// pointer context emit its backing bytes, not the string header.
 				g.write('"')

@@ -2277,7 +2277,7 @@ fn (t &Transformer) negated_is_expr_info(cond_id flat.NodeId) ?IsExprInfo {
 		return none
 	}
 	info := t.extract_is_expr(inner_id)
-	if info.expr_name.len == 0 || info.sum_type_name_text().len == 0 || info.variant_name == 0 {
+	if info.expr_name.len == 0 || info.sum_type_name == 0 || info.variant_name == 0 {
 		return none
 	}
 	return info

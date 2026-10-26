@@ -5,7 +5,7 @@ import v.gen.c.naming
 import v.types { unalias_type }
 
 fn enum_decl_is_flag(node flat.Node) bool {
-	return node.typ_text() == 'flag'
+	return node.typ == flat.source_type_id('flag')
 }
 
 fn enum_decl_backing_type(node flat.Node) ?u32 {
@@ -2080,7 +2080,7 @@ fn (mut g FlatGen) enum_str_defs() {
 					continue
 				}
 				emitted[fn_cn] = true
-				if node.typ_text() == 'flag' {
+				if node.typ == flat.source_type_id('flag') {
 					// `[flag]` enum: a value can combine several bits, so build the V
 					// `Enum{.a | .b}` form by testing each field bit instead of matching a
 					// single case (which would send any combination to the integer path).

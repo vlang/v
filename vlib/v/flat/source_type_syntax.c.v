@@ -274,6 +274,7 @@ pub:
 	eval_tuple_parts                  []u32
 	implicit_tuple_components         []u32
 	generic_application_heads         []u32
+	incremental_generic_application   bool
 	system_error_suffix               bool
 	receiver_app_inner                u32
 	fastc_fixed_array_length_valid    bool
@@ -916,6 +917,7 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 				eval_tuple_parts:                   source_type_syntax_owned_ids(parsed.eval_tuple_parts, mut payload)
 				implicit_tuple_components:          source_type_syntax_owned_ids(parsed.implicit_tuple_components, mut payload)
 				generic_application_heads:          source_type_syntax_owned_ids(parsed.generic_application_heads, mut payload)
+				incremental_generic_application:    parsed.incremental_generic_application
 				system_error_suffix:                parsed.system_error_suffix
 				receiver_app_inner:                 parsed.receiver_app_inner
 				fastc_fixed_array_length_valid:     parsed.fastc_fixed_array_length_valid
@@ -1331,6 +1333,19 @@ fn source_type_syntax_application_heads(raw string, allow_at bool) []u32 {
 		if start < i { heads << source_type_id(raw[start..i]) }
 	}
 	return heads
+}
+
+fn source_type_syntax_incremental_generic_application(raw string) bool {
+	for i := 1; i < raw.len; i++ {
+		if raw[i] != `[` || !source_type_query_ident(raw[i - 1]) { continue }
+		mut start := i - 1
+		for start > 0 && source_type_query_ident(raw[start - 1]) { start-- }
+		if !(i - start == 3 && raw[start] == `m` && raw[start + 1] == `a`
+			&& raw[start + 2] == `p`) {
+			return true
+		}
+	}
+	return false
 }
 
 fn source_type_syntax_thread_value(raw string) (bool, u32) {
@@ -2200,6 +2215,7 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		}
 		implicit_tuple_components:          source_type_syntax_implicit_tuple(raw)
 		generic_application_heads:          source_type_syntax_application_heads(raw, false)
+		incremental_generic_application:    source_type_syntax_incremental_generic_application(raw)
 		system_error_suffix:                raw.ends_with('SystemError')
 		receiver_app_inner:                 if bracket > 0 && raw.ends_with(']') {
 			source_type_id(raw[bracket + 1..raw.len - 1])

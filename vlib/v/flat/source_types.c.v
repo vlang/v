@@ -81,6 +81,7 @@ pub enum SourceTypeShape {
 	generic_c_name
 	context_independent
 	unusable_decl
+	shared_parameter_candidate
 }
 
 fn source_type_spelling_shape(text string) SourceTypeShape {
@@ -105,6 +106,9 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	if text.starts_with('thread ') { shape.set(.thread_type) }
 	if text.starts_with('fn(') { shape.set(.function_compact) }
 	if text.starts_with('fn (') { shape.set(.function_spaced) }
+	if text.len > 0 && text[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
+		shape.set(.shared_parameter_candidate)
+	}
 	if text.starts_with('&[]') { shape.set(.pointer_array) }
 	if text.starts_with('&map[') { shape.set(.pointer_map) }
 	if text.starts_with('&?') { shape.set(.pointer_option) }

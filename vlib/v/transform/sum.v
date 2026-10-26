@@ -652,7 +652,7 @@ fn (t &Transformer) interface_variant_type(variant_id u32) u32 {
 
 // smartcast_target_type supports smartcast target type handling for Transformer.
 fn (t &Transformer) smartcast_target_type(sc SmartcastContext) u32 {
-	if sc.sum_type_name_text() == option_unwrap_marker {
+	if sc.sum_type_name == flat.source_type_id(option_unwrap_marker) {
 		return sc.variant_name
 	}
 	if flat.source_type_shape(sc.variant_name).has(.pointer) {

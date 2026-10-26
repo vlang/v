@@ -5192,7 +5192,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 				// leave the outer `[…]` as invalid raw C. render_array_literal_argument returns none
 				// unless the tokens truly are `[ … ]`, so it is safe to try before the map paths.
 				mut array_type := (g.infer_expression_type(tokens) or { u32(0) })
-				if !flat.source_type_query(array_type).has(.c_array_prefix) && !flat.source_type_query(array_type).has(.c_fixed_array_prefix) && (g.expected_expression_type_text().starts_with('Array_') || g.expected_expression_type_text().starts_with('FixedArray_')) {
+				if !flat.source_type_query(array_type).has(.c_array_prefix) && !flat.source_type_query(array_type).has(.c_fixed_array_prefix) && (flat.source_type_query(g.expected_expression_type).has(.c_array_prefix) || flat.source_type_query(g.expected_expression_type).has(.c_fixed_array_prefix)) {
 					array_type = fastc_trim_pointer_type(g.expected_expression_type)
 				}
 				if array_literal := g.render_array_literal_argument(tokens, array_type) {
@@ -5566,7 +5566,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 	} else {
 		tokens.len
 	}
-	if array_end == 2 && tokens[0].tok == .lsbr && tokens[1].tok == .rsbr && g.expected_expression_type_text().trim_right('*').starts_with('Array_') {
+	if array_end == 2 && tokens[0].tok == .lsbr && tokens[1].tok == .rsbr && flat.source_type_query(flat.source_type_syntax(g.expected_expression_type).c_pointer_raw_base).has(.c_array_prefix) {
 		// A dynamic empty array needs a real header carrying `element_size`, otherwise a later
 		// `<<` push copies `len * 0` bytes into a NULL buffer and silently drops the elements.
 		array_type := fastc_trim_pointer_type(g.expected_expression_type)

@@ -243,16 +243,16 @@ fn (mut g Parser) queue_mono_method(receiver_type u32, method string, concrete u
 		base_key := '${flat.source_type_name(g.semantic_type_key(receiver_type))}.${method}'
 		base := g.functions[base_key] or { FastcFunctionSignature{} }
 		parameter_types := g.mono_parameter_types(source, concrete, base)
-		return_source := source.return_type_source_text().trim_space()
+		return_source_id := flat.source_type_syntax(source.return_type_source).trimmed
 		mut return_type := base.return_type
 		mut return_types := base.return_types.ids.clone()
 		mut option_type := base.option_type
-		if fastc_generic_type_source_uses_parameter(return_source, source.type_param, g.prefs) {
+		if g.generic_type_source_uses_parameter(return_source_id, source.type_param) {
 			return_type = fastc_specialized_generic_result_type(return_type, concrete)
 			return_types = fastc_specialized_generic_result_types(return_types, concrete)
 			option_type = fastc_specialized_generic_result_type(option_type, concrete)
 		}
-		if return_source == '' {
+		if return_source_id == 0 {
 			return_type = flat.source_type_void
 		}
 		g.type_memo.clear()
@@ -433,11 +433,11 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete u32) ?string
 	if mono_key !in g.mono_functions {
 		base := g.functions[function_key] or { return none }
 		parameter_types := g.mono_parameter_types(source, concrete, base)
-		return_source := source.return_type_source_text().trim_space()
+		return_source_id := flat.source_type_syntax(source.return_type_source).trimmed
 		mut return_type := base.return_type
 		mut return_types := base.return_types.ids.clone()
 		mut option_type := base.option_type
-		if fastc_generic_type_source_uses_parameter(return_source, source.type_param, g.prefs) {
+		if g.generic_type_source_uses_parameter(return_source_id, source.type_param) {
 			return_type = fastc_specialized_generic_result_type(return_type, concrete)
 			return_types = fastc_specialized_generic_result_types(return_types, concrete)
 			option_type = fastc_specialized_generic_result_type(option_type, concrete)
@@ -571,6 +571,21 @@ fn fastc_specialized_generic_result_types(erased []u32, concrete u32) []u32 {
 		specialized << fastc_specialized_generic_result_type(typ, concrete)
 	}
 	return specialized
+}
+
+// generic_type_source_uses_parameter preserves scanner token rules on the first query.
+// Later specializations reuse the result by exact return-source and parameter IDs.
+fn (mut g Parser) generic_type_source_uses_parameter(source_id u32, type_params string) bool {
+	if source_id == 0 {
+		return false
+	}
+	key := (u64(source_id) << 32) | u64(flat.source_type_id(type_params))
+	if result := g.generic_return_parameter_memo[key] {
+		return result
+	}
+	result := fastc_generic_type_source_uses_parameter(flat.source_type_name(source_id), type_params, g.prefs)
+	g.generic_return_parameter_memo[key] = result
+	return result
 }
 
 fn fastc_generic_type_source_uses_parameter(source string, type_params string, prefs &pref.Preferences) bool {

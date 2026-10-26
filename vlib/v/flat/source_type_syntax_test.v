@@ -494,6 +494,30 @@ fn test_source_type_syntax_markused_and_incremental_name_views() {
 	assert source_type_syntax(source_type_id('main.Name')).main_at_base == source_type_id('main.Name')
 }
 
+fn test_source_type_syntax_incremental_generic_application() {
+	for text in ['Box[int]', '[]Box[int]', 'Box[', '3[', '_map[', 'map9[', 'pkg.Box[', 'map[Box[int]]',
+		'map[map[T]Box['] {
+		id := source_type_id(text)
+		assert source_type_syntax(id).incremental_generic_application, text
+		assert source_type_syntax(id).incremental_generic_application, text
+	}
+	for text in ['', 'Box', '123T', '[]int', '[3]int', 'map[string]int', 'pkg.map[int]', 'Box [T]',
+		'.[]', 'map[', 'map[map[T]]', 'Box\t[T]', 'é[T]'] {
+		id := source_type_id(text)
+		assert !source_type_syntax(id).incremental_generic_application, text
+		assert !source_type_syntax(id).incremental_generic_application, text
+	}
+}
+
+fn test_source_type_shape_shared_parameter_candidate_exact_first_byte() {
+	for text in ['s', 'string', 'shared int', ' int', '\tint', '\nint', '\rint'] {
+		assert source_type_shape(source_type_id(text)).has(.shared_parameter_candidate), text
+	}
+	for text in ['', 'int', 'Shared int', '&shared int', '\vshared int', '\fshared int'] {
+		assert !source_type_shape(source_type_id(text)).has(.shared_parameter_candidate), text
+	}
+}
+
 fn test_source_type_syntax_fixed_array_codec_metadata() {
 	encoded := source_type_syntax(source_type_id('FixedArray_EXPRHEX307846_FASTC_ARRAY_OF_u8'))
 	assert encoded.fastc_fixed_array_length_valid
