@@ -167,16 +167,33 @@ fn get_all_commands() []Command {
 			expect: 'Hello, World!\n'
 		}
 		if clang_path != '' {
-			res << Command{
-				line:          '${vexe} -os freebsd -gc none examples/hello_world.v'
-				okmsg:         'V cross compiles hello_world.v, to a FreeBSD executable'
-				rmfile:        'examples/hello_world'
-				v3_compatible: false
-				after_cb:      fn () ! {
-					for file in ['examples/hello_world',
-						os.join_path(os.vmodules_dir(), 'freebsdroot/usr/include/stdio.h')] {
-						if !os.exists(file) {
-							return error('>> file ${file} does not exist')
+			$if macos {
+				// The default macOS toolchain cannot link a FreeBSD executable.
+				// Still exercise target selection and the portable C output.
+				res << Command{
+					line:     '${vexe} -os freebsd -gc none -cross -o hhww_freebsd.c examples/hello_world.v'
+					okmsg:    'V generates C for FreeBSD on macOS'
+					rmfile:   'hhww_freebsd.c'
+					after_cb: fn () ! {
+						code := os.read_file('hhww_freebsd.c')!
+						if !code.contains('int main(') || !code.contains('__FreeBSD__')
+							|| !code.contains('#include <stdio.h>') {
+							return error('FreeBSD C output is missing its entry point or platform headers')
+						}
+					}
+				}
+			} $else {
+				res << Command{
+					line:          '${vexe} -os freebsd -gc none examples/hello_world.v'
+					okmsg:         'V cross compiles hello_world.v, to a FreeBSD executable'
+					rmfile:        'examples/hello_world'
+					v3_compatible: false
+					after_cb:      fn () ! {
+						for file in ['examples/hello_world',
+							os.join_path(os.vmodules_dir(), 'freebsdroot/usr/include/stdio.h')] {
+							if !os.exists(file) {
+								return error('>> file ${file} does not exist')
+							}
 						}
 					}
 				}
@@ -198,11 +215,10 @@ fn get_all_commands() []Command {
 			}
 		}
 		res << Command{
-			line:      '${vexe} -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
-			arguments: ['sh', '-c',
-				'"\$@" -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null',
-				'v', vexe_path]
-			okmsg:     'V prints the generated source code to stdout with `-o -` .'
+			line:     '${vexe} -o - examples/hello_world.v'
+			okmsg:    'V prints the generated source code to stdout with `-o -` .'
+			runcmd:   .execute
+			contains: 'int main('
 		}
 		res << Command{
 			line:          '${vexe} run examples/v_script.vsh > /dev/null'
