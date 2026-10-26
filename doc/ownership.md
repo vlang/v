@@ -94,6 +94,7 @@ Interpolation with multiple parts copies their storage. A sole string part can p
 unchanged, and closures retain their captured references.
 Capturing an owned aggregate transfers its root and owned descendants together. Earlier moves
 and active borrows still prevent capture, and the transferred source cannot be reused afterward.
+Lambdas may capture nested arrays and combine their elements in the same expression.
 Escaped interpolation text stays literal through compile-time reflection and promoted defaults.
 Literal text supplied by reflected attributes or source-location variables follows the same rule.
 

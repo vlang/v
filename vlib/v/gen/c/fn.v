@@ -3810,10 +3810,13 @@ fn (mut g FlatGen) add_spawn_wrapper_def(def string) {
 	if g.parallel_chunk_wrapper_capture >= 0 {
 		g.parallel_chunk_wrapper_defs[g.parallel_chunk_wrapper_capture].spawn << def.clone()
 	}
-	if g.spawn_wrapper_defs_seen[def] {
+	// Regenerating a capture expression can change its drop loop temporaries,
+	// while the helper's node-based C symbol remains the same.
+	key := if def.starts_with('static void _flctxdrop_') { def.all_before('(') } else { def }
+	if g.spawn_wrapper_defs_seen[key] {
 		return
 	}
-	g.spawn_wrapper_defs_seen[def] = true
+	g.spawn_wrapper_defs_seen[key] = true
 	g.spawn_wrapper_defs << def
 }
 
