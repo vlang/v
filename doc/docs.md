@@ -10359,6 +10359,10 @@ or
 v -os freebsd .
 ```
 
+On macOS, `-os linux` with the default C compiler or Clang uses the bundled amd64 Linux
+sysroot. V automatically enables `$if cross_compile ?` for this toolchain so modules such as
+`db.pg` select the bundled Linux headers and compatibility sources.
+
 > [!NOTE]
 > Cross-compiling a Windows binary on a Linux or macOS machine requires the GNU C compiler for
 > MinGW-w64 (targeting Win64) to first be installed. Without `-arch` and `-cc`, `-os windows`

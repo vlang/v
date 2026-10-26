@@ -12166,6 +12166,9 @@ pub fn run(args []string) {
 	}
 	macos_linux_cross_compile := v3_macos_linux_cross_compile(host_target, target, backend,
 		c_compiler)
+	if macos_linux_cross_compile {
+		record_user_define(mut user_defines, mut compile_values, 'cross_compile')
+	}
 	libc_mode = v3_apply_libc_define(mut user_defines, mut compile_values, libc_mode, c_compiler,
 		v3_should_infer_host_libc(c_only, is_o, generate_c_project, output_cross_c, target,
 			host_target))
