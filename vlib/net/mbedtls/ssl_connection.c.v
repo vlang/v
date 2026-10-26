@@ -2,6 +2,7 @@ module mbedtls
 
 import io
 import net
+import os
 import sync
 import time
 
@@ -664,6 +665,29 @@ pub fn (s &SSLConn) negotiated_alpn() string {
 	return unsafe { cstring_to_vstring(p) }
 }
 
+const system_ca_files = [
+	'/etc/ssl/certs/ca-certificates.crt', // Debian, Ubuntu, Arch, Gentoo
+	'/etc/pki/tls/certs/ca-bundle.crt', // Fedora, RHEL
+	'/etc/ssl/ca-bundle.pem', // openSUSE
+	'/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem', // CentOS, RHEL 7
+	'/etc/ssl/cert.pem', // Alpine, macOS, OpenBSD, FreeBSD
+	'/usr/local/etc/ssl/cert.pem', // FreeBSD with ca_root_nss
+]
+
+// system_ca_file returns $SSL_CERT_FILE, or the first system CA bundle that exists, or ''.
+fn system_ca_file() string {
+	env_file := os.getenv('SSL_CERT_FILE')
+	if env_file != '' && os.is_file(env_file) {
+		return env_file
+	}
+	for f in system_ca_files {
+		if os.is_file(f) {
+			return f
+		}
+	}
+	return ''
+}
+
 // connect to server using mbedtls
 fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
@@ -713,11 +737,23 @@ fn (mut s SSLConn) init() ! {
 				ret)
 		}
 	}
-	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
+	// validate without verify uses the system trust store, like the OpenSSL backend
+	system_ca := if s.config.validate && s.config.verify == '' { system_ca_file() } else { '' }
+	if s.config.validate && s.config.verify == '' && system_ca == '' {
+		return error('net.mbedtls SSLConn.init, validate is set, but no verify was given and no system CA bundle was found')
+	}
+	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' || system_ca != '' {
 		s.certs = &SSLCerts{}
 		C.mbedtls_x509_crt_init(&s.certs.cacert)
 		C.mbedtls_x509_crt_init(&s.certs.client_cert)
 		C.mbedtls_pk_init(&s.certs.client_key)
+	}
+	if system_ca != '' {
+		ret = C.mbedtls_x509_crt_parse_file(&s.certs.cacert, &char(system_ca.str))
+		if ret < 0 {
+			return error_with_code('net.mbedtls SSLConn.init, failed to load the system CA bundle ${system_ca}, ret: ${ret}',
+				ret)
+		}
 	}
 
 	if s.config.in_memory_verification {
