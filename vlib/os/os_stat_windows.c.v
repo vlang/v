@@ -139,12 +139,12 @@ fn windows_dangling_symlink_stat(path string) ?Stat {
 }
 
 fn windows_stat_from_find_data(path string, find_data Win32finddata) Stat {
-	mut mode := u32(C.S_IFREG) | u32(C.S_IREAD)
+	mut mode := u32(s_ifreg) | u32(s_irusr)
 	if find_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_READONLY) == 0 {
-		mode |= u32(C.S_IWRITE)
+		mode |= u32(s_iwusr)
 	}
 	match file_ext(path).to_lower() {
-		'.exe', '.com', '.bat', '.cmd' { mode |= u32(C.S_IEXEC) }
+		'.exe', '.com', '.bat', '.cmd' { mode |= u32(s_ixusr) }
 		else {}
 	}
 	return Stat{
@@ -167,8 +167,8 @@ fn windows_filetime_to_unix_seconds(filetime Filetime) i64 {
 
 // get_filetype returns the FileType from the Stat struct.
 pub fn (st Stat) get_filetype() FileType {
-	match st.mode & u32(C._S_IFMT) {
-		u32(C._S_IFDIR) {
+	match st.mode & u32(s_ifmt) {
+		u32(s_ifdir) {
 			return .directory
 		}
 		else {
@@ -183,19 +183,19 @@ pub fn (st Stat) get_mode() FileMode {
 	return FileMode{
 		typ:    st.get_filetype()
 		owner:  FilePermission{
-			read:    (st.mode & u32(C._S_IREAD)) != 0
-			write:   (st.mode & u32(C._S_IWRITE)) != 0
-			execute: (st.mode & u32(C._S_IEXEC)) != 0
+			read:    (st.mode & u32(s_irusr)) != 0
+			write:   (st.mode & u32(s_iwusr)) != 0
+			execute: (st.mode & u32(s_ixusr)) != 0
 		}
 		group:  FilePermission{
-			read:    (st.mode & u32(C._S_IREAD)) != 0
-			write:   (st.mode & u32(C._S_IWRITE)) != 0
-			execute: (st.mode & u32(C._S_IEXEC)) != 0
+			read:    (st.mode & u32(s_irusr)) != 0
+			write:   (st.mode & u32(s_iwusr)) != 0
+			execute: (st.mode & u32(s_ixusr)) != 0
 		}
 		others: FilePermission{
-			read:    (st.mode & u32(C._S_IREAD)) != 0
-			write:   (st.mode & u32(C._S_IWRITE)) != 0
-			execute: (st.mode & u32(C._S_IEXEC)) != 0
+			read:    (st.mode & u32(s_irusr)) != 0
+			write:   (st.mode & u32(s_iwusr)) != 0
+			execute: (st.mode & u32(s_ixusr)) != 0
 		}
 	}
 }
