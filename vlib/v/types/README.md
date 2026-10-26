@@ -15,6 +15,11 @@ Dense cache entries retain their canonical references. Sparse cache and function
 receive stable descriptor copies whose nested metadata stays shared. Keep either reference only
 while its owning checker arena remains live; use `clone_owned_type` across arena boundaries.
 
+`TypeChecker.resolve_type_reference(node)` returns `resolve_type`'s result as a canonical
+reference. It observes the same checked-cache visibility and mixed-integer widening rules.
+The reference remains valid while its owning checker arena is live; use `clone_owned_type`
+when retaining the result beyond that arena.
+
 Transform stages register generated return signatures with
 `TypeChecker.register_generated_fn_return_type(name, ret)` and remove them with
 `TypeChecker.unregister_generated_fn_return_type(name)`. Both increment the return-signature

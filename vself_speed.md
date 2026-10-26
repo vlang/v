@@ -4,6 +4,88 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Follow-up optimization, 2026-10-26
+
+The pinned follow-up uses **8.0317% fewer retired instructions**,
+exceeding the accepted 7.5% target. This compares baseline
+`f7e9ee96c22ca6db47b56d28332e7553715c659f` with measured source revision
+`e71269ceddda4651e29b0363cae5f88bda0d4362`. The later integration with upstream
+`c2eda292429ae843a501180a9ad32eca7360e380` is validated separately and has not been
+remeasured; these numbers do not claim a reduction against that newer base.
+
+The changes reuse immutable node snapshots, type references, and names; defer unnecessary
+checker, transform, markused, and C generation queries; and accelerate map, short-string, builder,
+and scanner operations. Regression tests cover cache lifetimes, custom map callbacks, overlapping
+builder writes, and borrowed storage. No language or CLI behavior change is intended.
+
+| Median metric | Before | After |
+| --- | ---: | ---: |
+| Retired instructions | 59,509,416,234.5 | 54,729,825,042 |
+| Instructions/parsed line | 106,268.71 | 97,733.58 |
+| Elapsed time, ms | 15,262.58 | 12,667.81 |
+| Peak resident memory, MiB | 1,122.44 | 1,095.13 |
+| CPU cycles, billions | 28.2215 | 26.2491 |
+
+One warmup per role precedes ten alternating measured pairs. All 22 runs succeed with exactly one
+positive retired-instruction counter each; warmups are excluded. **0/10 pairs regress**. The median
+paired instruction difference is `-4,629,942,000.5`.
+Elapsed time and cycles are contextual measurements under shared host load, without a controlled
+latency claim.
+
+The fixture remains `2d1367e589ed30c03325e586a8ddfd3bc96c8c3d`, with all **8,498 file hashes
+unchanged**. Separate verbose inventories match: **559,990 physical lines in 562 parsed `.v`
+files**, no `.vh` files. Both roles use the same fixture, executable, and C output paths.
+The fixture executable is restored after the comparison.
+
+Both compilers use the same compatible seed, then their own-source self build, then production,
+with Apple Clang 21 and **no PGO**. Restore each role to the same build path. Clear inherited
+`VFLAGS`, `VEXE`, `LLVM_PROFILE_FILE`, `CC`, `CFLAGS`, and `LDFLAGS`; use the environment below
+for `./v -cc /usr/bin/clang -gc none self` and the production build:
+
+```sh
+env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
+  VJOBS=4 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  V_MACOS_V3_VHASH=f7e9ee96c22ca6db47b56d28332e7553715c659f \
+  ./v -prod -cc /usr/bin/clang -gc none -no-memory-limit -prealloc \
+  -compile-backend fastc -nocache -o ./v-perf cmd/v
+```
+
+Install each production binary as `./v` in the fixed fixture, then measure serially:
+
+```sh
+env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  V_MACOS_V3_VHASH=2d1367e589ed30c03325e586a8ddfd3bc96c8c3d \
+  /usr/bin/time -l -o "$run_log" \
+  ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
+  -o /Users/alex/code/v-speed-next10-20261025/output.c cmd/v
+```
+
+The common seed SHA-256 is
+`a17d929dbba4205a49f5fb0e0d178e70b3902b60074478765b37749a4bfb8d6d`.
+The baseline production SHA-256 is
+`e4e2c6b42f757a99a6159b21ebda12bd15af0aa927aaccd645e1dee762db6369`;
+the candidate production SHA-256 is
+`5d12d2dd03dab024837cf41d6ef4bd15f3967681f572d7ccf89342cfa0c8bec8`.
+
+Generated C intentionally differs in audited local storage representations. Every sample matches
+its approved role output: baseline SHA-256
+`35f76ab8160d9172bfced3fea28a4970226b71f3e2da5e8445695c6e3ada8d32`, candidate
+`1fcc487b2a39c089dea4e511dd4d14c6878b00e7046acaceef038ddd90c191a3`.
+Both outputs pass Clang syntax checks and native linking. Both linked compilers generate
+byte-identical second-generation C, SHA-256
+`4b3998af7880683073a01a21ff3f726c61f2058e6c933bd8bf7f50838f46cb27`.
+
+Evidence remains under `/Users/alex/code/v-speed-next10-20261025/`:
+`c8-integrated-next/final-ten-pair/` contains all raw logs, commands, environment, inventories,
+samples, summary, and integrity checks; its sibling build and output directories retain binaries
+and generated C. Baseline build records are in `c8-integrated-original/`.
+`c9-final-validation/` pins the measured source commit and records 26 passing build/execution
+commands, with 70 test-function invocations across final-source and exact-production checks.
+Latest-base integration checks are recorded separately in `pr-integration-evidence/` and the
+`pr-integration-validation-*` directories. The full suite and `test-all` are skipped at the user's
+explicit request. Historical broader validation below belongs to its recorded revisions.
+
 ## Upstream integration, 2026-10-25
 
 A fresh comparison of the merged implementation against upstream

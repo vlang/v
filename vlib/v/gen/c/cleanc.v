@@ -1235,10 +1235,15 @@ fn (g &FlatGen) parse_node_type(node &flat.Node) types.Type {
 
 @[inline]
 fn (g &FlatGen) parse_node_type_reference(node &flat.Node) &types.Type {
-	if flat.source_type_shape(node.typ).has(.dotted) {
-		return g.tc.parse_canonical_type_cached(node.typ)
+	return g.parse_annotation_type_reference(node.typ)
+}
+
+@[inline]
+fn (g &FlatGen) parse_annotation_type_reference(type_id u32) &types.Type {
+	if flat.source_type_shape(type_id).has(.dotted) {
+		return g.tc.parse_canonical_type_cached(type_id)
 	}
-	return g.tc.parse_type_ref(node.type_text_id())
+	return g.tc.parse_type_ref(type_id)
 }
 
 pub fn (g &FlatGen) c_flags() []string {
@@ -5157,6 +5162,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	g.unused_param_seen = &UnusedParamSeen{}
 	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	type_index_args, type_index_threads := g.start_type_indexes(no_parallel)
+	if no_parallel && g.incremental_fn_names.len == 0 {
+		// Serial body generation needs the same immutable name rejection tables
+		// as the worker path. Field-position indexes still stay worker-only.
+		g.type_name_short_index = new_type_name_short_index(g.tc)
+	}
 	g.reserve_collect_gen_info_maps(no_parallel, defer_fn_signature_registrations)
 	g.precompute_export_lookups()
 	if profile {
@@ -13502,6 +13512,17 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected_type &ty
 @[direct_array_access]
 fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_type &types.Type) {
 	node := unsafe { &g.a.nodes[int(id)] }
+	// Scalar literals need no storage conversion. Keep the f32 rounding and
+	// 128-bit widening paths below, including their portable representations.
+	if expected_type is types.Primitive && expected_type.size <= 64
+		&& (node.kind in [.int_literal, .bool_literal]
+			|| (node.kind == .float_literal && !is_f32_primitive(expected_type))) {
+		if g.known_expr_type_id == int(id) {
+			g.known_expr_type_id = -1
+		}
+		g.gen_expr(id)
+		return
+	}
 	expected := g.canonical_import_alias_type_for_node(expected_type, node)
 	has_known_actual := g.known_expr_type_id == int(id)
 	known_actual := g.known_expr_type
@@ -13518,6 +13539,13 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 	g.expected_expr_type = expected
 	if expected is types.Enum {
 		g.expected_enum = expected.name_id
+	}
+	if expected is types.String && node.kind in [.string_literal, .string_interp]
+		&& (!has_known_actual || known_actual is types.String) {
+		// Raw string emission and interpolation children read the expected context.
+		// Keep that context while skipping conversions for an already string value.
+		g.gen_expr(id)
+		return
 	}
 	expected_is_ierror := if node.kind == .none_expr || node.kind == .call {
 		g.is_ierror_type_name(semantic_expected.source_type_id())
@@ -13552,22 +13580,7 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 			return
 		}
 	}
-	mut actual := if has_known_actual { known_actual } else { *g.usable_expr_type(id) }
-	if deref_type := g.source_mut_pointer_param_deref_type(id) {
-		actual = deref_type
-	}
-	if node.kind == .ident {
-		if local_type := g.local_ident_type(node.value) {
-			actual = local_type
-		}
-	}
-	if node.kind == .selector {
-		if node.typ != 0 && (flat.source_type_shape(node.typ).has(.option_type) || flat.source_type_shape(node.typ).has(.result_type)) {
-			actual = g.tc.parse_resolution_type(node.typ)
-		} else if declared_type := g.selector_declared_type(id) {
-			actual = declared_type
-		}
-	}
+	actual := g.expected_expr_actual_type(id, node, has_known_actual, known_actual)
 	if expected is types.String && actual is types.Pointer && g.pointer_stringifies_as_address(actual.base_type) && !g.type_names_match(actual.base_type, expected) {
 		g.write('ptr_str(')
 		g.gen_expr(id)
@@ -13610,6 +13623,14 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 			g.gen_expr_with_expected_type(g.a.child(node, 0), expected)
 			return
 		}
+	}
+	if expected is types.Primitive && expected.size <= 64
+		&& !is_f32_primitive(expected) && semantic_actual is types.Primitive
+		&& node.kind != .call {
+		// Mutable-parameter reads and alias casts have been handled above.
+		// Concrete scalar values need none of the aggregate conversions below.
+		g.gen_expr(id)
+		return
 	}
 	mut expected_is_shared_alias := false
 	if _ := g.shared_alias_pointer_type(expected) {
@@ -13711,6 +13732,28 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		}
 	}
 	g.gen_expr(id)
+}
+
+// Storage types override the checked expression type at conversion sites. Resolve
+// those first instead of computing a type that would immediately be discarded.
+@[inline]
+fn (g &FlatGen) expected_expr_actual_type(id flat.NodeId, node &flat.Node, has_known_actual bool, known_actual types.Type) types.Type {
+	if node.kind == .ident {
+		if local_type := g.local_ident_type(node.value) {
+			return local_type
+		}
+	} else if node.kind == .selector {
+		if node.typ != 0 && (flat.source_type_shape(node.typ).has(.option_type)
+			|| flat.source_type_shape(node.typ).has(.result_type)) {
+			return g.tc.parse_resolution_type(node.typ)
+		}
+		if declared_type := g.selector_declared_type(id) {
+			return declared_type
+		}
+	} else if deref_type := g.source_mut_pointer_param_deref_type(id) {
+		return deref_type
+	}
+	return if has_known_actual { known_actual } else { *g.usable_expr_type(id) }
 }
 
 fn is_f32_primitive(typ &types.Type) bool {
@@ -14918,6 +14961,9 @@ fn (g &FlatGen) const_storage_name(module_name string, name string) string {
 // same name, the main const keeps the bare key and the builtin const moves to
 // `builtin.name`, as in the checker (TypeChecker.const_decl_key).
 fn (mut g FlatGen) register_const_value(module_name string, file string, name string, value_id flat.NodeId) {
+	if !isnil(g.const_short_index) {
+		g.const_short_index.call_names_ready = false
+	}
 	mut key := g.const_storage_name(module_name, name)
 	if key == name && !name.contains('.') {
 		if owner := g.const_modules[name] {
@@ -15091,18 +15137,31 @@ fn (mut g FlatGen) precompute_const_short_index() {
 	mut idx := g.const_short_index
 	idx.entries = g.build_unique_const_ref_names()
 	idx.built = true
+	if isnil(g.tc) {
+		return
+	}
+	idx.call_names = [64]u64{}
+	for name, _ in g.const_vals { idx.mark_call_name(name) }
+	for name, _ in g.tc.const_exprs { idx.mark_call_name(name) }
+	for name, _ in g.tc.const_types { idx.mark_call_name(name) }
+	for name, _ in g.tc.const_suffixes { idx.mark_call_name(name) }
+	idx.call_const_vals_count = g.const_vals.len
+	idx.call_const_exprs_count = g.tc.const_exprs.len
+	idx.call_const_types_count = g.tc.const_types.len
+	idx.call_const_suffixes_count = g.tc.const_suffixes.len
+	idx.call_names_ready = true
 }
 
 // const_ref_name_from_node converts const ref name from node data for c.
-fn (g &FlatGen) const_ref_name_from_node(node flat.Node) string {
+fn (g &FlatGen) const_ref_name_from_node(node &flat.Node) string {
 	if node.kind == .paren && node.children_count > 0 {
-		return g.const_ref_name_from_node(g.a.child_node(&node, 0))
+		return g.const_ref_name_from_node(g.a.node(g.a.child(node, 0)))
 	}
 	if node.kind == .ident {
 		return g.const_ref_name(node.value)
 	}
 	if node.kind == .selector && node.children_count > 0 {
-		base := g.a.child_node(&node, 0)
+		base := g.a.node(g.a.child(node, 0))
 		if base.kind == .ident {
 			if g.selector_base_is_local_value(base.value)
 				|| g.current_module_global_type_for_ident(base.value) != none {
@@ -15111,7 +15170,7 @@ fn (g &FlatGen) const_ref_name_from_node(node flat.Node) string {
 			// Prefer the import aliases of the file that owns the selector: global
 			// initializers can be emitted while another file is current.
 			mut resolved_base := base.value
-			if module_name := g.import_alias_module_for_file(base.value, g.node_source_file(&node)) {
+			if module_name := g.import_alias_module_for_file(base.value, g.node_source_file(node)) {
 				resolved_base = module_name
 			} else if module_name := g.selector_base_module_for_member(base.value, node.value) {
 				resolved_base = module_name
@@ -15183,7 +15242,7 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 		if node.children_count == 0 {
 			return ''
 		}
-		return g.const_ref_name_from_node_cached_for_collect(g.a.child_node(&node, 0), unique_index, mut cache)
+		return g.const_ref_name_from_node_cached_for_collect(g.a.node(g.a.child(&node, 0)), unique_index, mut cache)
 	}
 	if node.kind == .ident {
 		if !cgen_name_may_be_const_ref(node.value, unique_index, g.const_vals) {
@@ -15201,7 +15260,7 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 		if node.children_count == 0 {
 			return ''
 		}
-		base := g.a.child_node(&node, 0)
+		base := g.a.node(g.a.child(&node, 0))
 		if base.kind != .ident {
 			return ''
 		}
@@ -16772,6 +16831,39 @@ fn (g &FlatGen) assoc_infix_chain_len(node flat.Node) int {
 	return depth
 }
 
+// checked_boolean_operand recognizes kinds whose usable type is the checked
+// type directly, without local storage or generated-selector reinterpretation.
+fn (g &FlatGen) checked_boolean_operand(id flat.NodeId) bool {
+	node := g.a.nodes[int(id)]
+	if node.kind !in [.bool_literal, .infix] {
+		return false
+	}
+	typ := g.tc.expr_type_reference(id) or { return false }
+	return typ is types.Primitive && typ.props == .boolean && typ.size == 0
+}
+
+// gen_boolean_infix keeps the ordinary operand parentheses and generation
+// context once both operands are known to have the primitive boolean type.
+fn (mut g FlatGen) gen_boolean_infix(node &flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId) {
+	lhs := g.a.nodes[int(lhs_id)]
+	rhs := g.a.nodes[int(rhs_id)]
+	if lhs.kind == .infix && !infix_can_skip_child_parens(node.op, lhs.op) {
+		g.write('(')
+		g.gen_expr_with_possible_enum_type(lhs_id, types.Type(types.bool_))
+		g.write(')')
+	} else {
+		g.gen_expr_with_possible_enum_type(lhs_id, types.Type(types.bool_))
+	}
+	g.write(' ${g.op_str(node.op)} ')
+	if rhs.kind == .infix && !infix_can_skip_child_parens(node.op, rhs.op) {
+		g.write('(')
+		g.gen_expr_with_possible_enum_type(rhs_id, types.Type(types.bool_))
+		g.write(')')
+	} else {
+		g.gen_expr_with_possible_enum_type(rhs_id, types.Type(types.bool_))
+	}
+}
+
 // gen_assoc_infix_chain emits a left-nested `||`/`&&` chain iteratively, producing the
 // same flat `a || b || c …` C as the recursive path but without growing the stack per
 // link (a big match's condition chain can be hundreds deep).
@@ -17140,9 +17232,21 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			}
 			lhs_id := g.a.child(node, 0)
 			rhs_id := g.a.child(node, 1)
+			is_logical := node.op in [.logical_and, .logical_or]
+			if is_logical && g.checked_boolean_operand(lhs_id) && g.checked_boolean_operand(rhs_id)
+				&& !g.expr_is_in_translated_file(id) {
+				g.gen_boolean_infix(node, lhs_id, rhs_id)
+				return
+			}
 			old_expected_enum := g.expected_enum
 			lhs_type := g.usable_expr_type(lhs_id)
 			rhs_type := g.usable_expr_type(rhs_id)
+			if is_logical && lhs_type is types.Primitive && lhs_type.props == .boolean && lhs_type.size == 0
+				&& rhs_type is types.Primitive && rhs_type.props == .boolean && rhs_type.size == 0
+				&& !g.expr_is_in_translated_file(id) {
+				g.gen_boolean_infix(node, lhs_id, rhs_id)
+				return
+			}
 			if g.gen_int128_infix(id, node, lhs_id, rhs_id, lhs_type, rhs_type) {
 				g.expected_enum = old_expected_enum
 				return
@@ -17225,7 +17329,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 					return
 				}
 			}
-			if g.gen_safe_integer_division(node, lhs_id, rhs_id, g.usable_expr_type(id)) {
+			if g.gen_safe_integer_division(id, node, lhs_id, rhs_id) {
 				g.expected_enum = old_expected_enum
 				return
 			}
@@ -27858,10 +27962,11 @@ fn integer_cast_const_fits(value i64, src CheckedIntKind, dst CheckedIntKind) bo
 	return limit >= 63 || u64(value) < (u64(1) << limit)
 }
 
-fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, result_type types.Type) bool {
+fn (mut g FlatGen) gen_safe_integer_division(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId) bool {
 	if !g.has_builtins || g.static_c_initializer || node.op !in [.div, .mod] {
 		return false
 	}
+	result_type := g.usable_expr_type(id)
 	checked_integer_bounds(result_type) or { return false }
 	c_type := g.translated_numeric_c_type(lhs_id, result_type)
 	if c_type.len == 0 {
@@ -28157,6 +28262,12 @@ fn (mut g FlatGen) write(s string) {
 		if g.indent > 0 {
 			g.line_start = false
 		}
+		return
+	}
+	if s.len == 1 {
+		byte := s[0]
+		g.sb.write_u8(byte)
+		g.line_start = byte == `\n`
 		return
 	}
 	// Append bytes directly instead of copying another string header into the builder.

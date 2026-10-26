@@ -1027,12 +1027,12 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 	if node.kind != .call || node.children_count == 0 {
 		return none
 	}
-	fn_node := g.a.child_node(&node, 0)
+	fn_node := g.a.node(g.a.child(&node, 0))
 	if fn_node.kind != .selector || fn_node.value != 'to_fixed_size' || fn_node.children_count == 0 {
 		return none
 	}
 	if node.typ != 0 {
-		if fixed := array_fixed_type(g.parse_node_type(&node)) {
+		if fixed := array_fixed_type(*g.parse_annotation_type_reference(node.typ)) {
 			return fixed
 		}
 	}

@@ -96,6 +96,9 @@ const int128_shift_ops = [flat.Op.left_shift, .right_shift, .right_shift_unsigne
 // its existing path.
 fn (mut g FlatGen) gen_int128_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	op := node.op
+	if op !in int128_arith_ops && op !in int128_comparison_ops && op !in int128_shift_ops {
+		return false
+	}
 	lhs_signed := int128_signedness(lhs_type)
 	rhs_signed := int128_signedness(rhs_type)
 	if op in int128_shift_ops {

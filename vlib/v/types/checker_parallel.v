@@ -5714,6 +5714,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 	for idx, name in w.sparse_resolved_fn_values {
 		owned_name := if scoped { name.clone() } else { name }
 		tc.sparse_resolved_fn_values[idx] = owned_name
+		tc.record_sparse_fn_value_filter_key(idx)
 	}
 	for idx, _ in w.sparse_statement_nodes {
 		if tc.parallel_check_sparse {

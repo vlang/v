@@ -47,6 +47,103 @@ fn string_index_byte(data &u8, size int, needle u8) int {
 	}
 }
 
+// string_index_pair searches adjacent bytes without reading outside the span.
+@[inline]
+fn string_index_pair(data &u8, size int, first u8, second u8) int {
+	$if prod && !tinyc && !msvc && !native && little_endian {
+		if size >= 8 && size <= 32 {
+			low_bits := u64(0x7f7f7f7f7f7f7f7f)
+			repeated_a := u64(first) * u64(0x0101010101010101)
+			repeated_b := u64(second) * u64(0x0101010101010101)
+			mut offset := 0
+			for {
+				mut word := u64(0)
+				// Seven adjacent pairs fit in this bounded, unaligned window.
+				unsafe { C.memcpy(&word, data + offset, 8) }
+				da := word ^ repeated_a
+				// Exact masks prevent a borrow from creating a false adjacent match.
+				za := ~(((da & low_bits) + low_bits) | da | low_bits)
+				mut zb := za
+				if first != second {
+					db := word ^ repeated_b
+					zb = ~(((db & low_bits) + low_bits) | db | low_bits)
+				}
+				mask := za & (zb >> 8)
+				if mask != 0 {
+					return offset + int(C.__builtin_ctzll(mask) >> 3)
+				}
+				if offset + 8 == size { return -1 }
+				offset = if offset + 15 > size { size - 8 } else { offset + 7 }
+			}
+		}
+	}
+	last_start := size - 2
+	for i := 0; i <= last_start; i++ {
+		if unsafe { data[i] } != first {
+			next := string_index_byte(unsafe { data + i + 1 }, last_start - i, first)
+			if next < 0 { return -1 }
+			i += next + 1
+		}
+		if unsafe { data[i + 1] } == second { return i }
+	}
+	return -1
+}
+
+// string_contains_byte checks readable bytes without computing a match position.
+@[inline]
+fn string_contains_byte(data &u8, size int, needle u8) bool {
+	if size <= 0 {
+		return false
+	}
+	$if freestanding || vinix || native || v2_native_windows_pe_minimal ? {
+		return string_index_byte(data, size, needle) >= 0
+	} $else {
+		$if prod && !tinyc && !msvc && !native {
+			if size <= 32 {
+				if size >= 8 {
+					ones := u64(0x0101010101010101)
+					repeated := u64(needle) * ones
+					mut head := u64(0)
+					mut tail := u64(0)
+					// Every unaligned load stays inside the readable span.
+					unsafe {
+						C.memcpy(&head, data, 8)
+						C.memcpy(&tail, data + size - 8, 8)
+					}
+					head ^= repeated
+					tail ^= repeated
+					mut mask := ((head - ones) & ~head) | ((tail - ones) & ~tail)
+					if size > 16 {
+						unsafe {
+							C.memcpy(&head, data + 8, 8)
+							C.memcpy(&tail, data + size - 16, 8)
+						}
+						head ^= repeated
+						tail ^= repeated
+						mask |= ((head - ones) & ~head) | ((tail - ones) & ~tail)
+					}
+					return mask & u64(0x8080808080808080) != 0
+				}
+				if size >= 4 {
+					ones := u32(0x01010101)
+					repeated := u32(needle) * ones
+					mut head := u32(0)
+					mut tail := u32(0)
+					unsafe {
+						C.memcpy(&head, data, 4)
+						C.memcpy(&tail, data + size - 4, 4)
+					}
+					head ^= repeated
+					tail ^= repeated
+					return (((head - ones) & ~head) | ((tail - ones) & ~tail)) & u32(0x80808080) != 0
+				}
+				return unsafe { data[0] == needle || data[size >> 1] == needle || data[size - 1] == needle }
+			}
+		}
+		return !isnil(unsafe { C.memchr(data, i32(needle), uint(size)) })
+	}
+}
+
 // string_last_index_byte searches complete words without reading outside the span.
 @[inline]
 fn string_last_index_byte(data &u8, size int, needle u8) int {

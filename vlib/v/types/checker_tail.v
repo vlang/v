@@ -5610,7 +5610,7 @@ fn (tc &TypeChecker) translated_named_cast_call_name(id flat.NodeId, node flat.N
 	if node.children_count != 2 || !tc.node_is_in_translated_file(id) {
 		return none
 	}
-	callee := tc.a.child_node(&node, 0)
+	callee := tc.a.node(tc.a.child(&node, 0))
 	if callee.kind != .ident || tc.ident_resolves_to_value(callee.value) {
 		return none
 	}
@@ -6921,7 +6921,7 @@ fn (tc &TypeChecker) unknown_import_function_call_parts(node flat.Node) ?(flat.N
 	if node.kind != .call || node.children_count == 0 {
 		return none
 	}
-	callee := tc.a.child_node(&node, 0)
+	callee := tc.a.node(tc.a.child(&node, 0))
 	if callee.kind != .selector || callee.children_count == 0 {
 		return none
 	}
@@ -7381,7 +7381,7 @@ fn (tc &TypeChecker) explicit_generic_local_fn_value(node flat.Node) ?FnType {
 	if node.children_count == 0 {
 		return none
 	}
-	callee := tc.a.child_node(&node, 0)
+	callee := tc.a.node(tc.a.child(&node, 0))
 	if callee.kind != .index || callee.children_count < 2 {
 		return none
 	}
@@ -7477,7 +7477,7 @@ fn (tc &TypeChecker) deprecated_call_diagnostic_pos(node flat.Node, is_method bo
 	if !is_method || node.children_count == 0 {
 		return node.pos
 	}
-	selector := tc.a.child_node(&node, 0)
+	selector := tc.a.node(tc.a.child(&node, 0))
 	if selector.kind != .selector {
 		return node.pos
 	}
@@ -9087,6 +9087,7 @@ fn (mut tc TypeChecker) index_multiple_module_import_lines(a &flat.FlatAst) {
 	tc.multiple_module_import_lines = map[u64]bool{}
 	tc.source_texts_by_file = map[string]string{}
 	tc.source_texts_by_id = map[int]string{}
+	tc.malformed_const_source_states = []u8{}
 	tc.import_line_indexed_files = map[int]bool{}
 	tc.index_module_import_lines_of_new_files(a)
 }
@@ -9095,11 +9096,18 @@ fn (mut tc TypeChecker) index_multiple_module_import_lines(a &flat.FlatAst) {
 // not indexed yet.
 fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) {
 	mut scans := []ImportLineScan{}
+	mut dense_file_id := tc.malformed_const_source_states.len - 1
+	// Parser file ids are dense. Sparse ids supplied by tools retain the fallback
+	// rather than making this diagnostic filter allocate an oversized table.
+	dense_limit := a.source_files.len * 2 + 64
 	for file_id, file in a.source_files {
 		if tc.import_line_indexed_files[file_id] {
 			continue
 		}
 		tc.import_line_indexed_files[file_id] = true
+		if file_id >= 0 && file_id <= dense_limit && file_id > dense_file_id {
+			dense_file_id = file_id
+		}
 		// The parser may have kept the text it read (flat.FlatAst.source_texts).
 		has_source := file_id in a.source_texts
 		scans << ImportLineScan{
@@ -9108,6 +9116,9 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 			has_source: has_source
 			source:     if has_source { a.source_texts[file_id] } else { '' }
 		}
+	}
+	if dense_file_id >= tc.malformed_const_source_states.len {
+		tc.malformed_const_source_states << []u8{len: dense_file_id + 1 - tc.malformed_const_source_states.len}
 	}
 	// Reading and scanning one file does not depend on the others. The pool's
 	// threads keep what they allocate, so the texts outlive the batch.
@@ -9137,14 +9148,35 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 			scan.run()
 		}
 	}
+	mut duplicate_names := map[string]bool{}
 	for scan in scans {
 		if !scan.read {
 			continue
 		}
+		if scan.name in tc.source_texts_by_file {
+			duplicate_names[scan.name] = true
+		}
 		tc.source_texts_by_file[scan.name] = scan.source
 		tc.source_texts_by_id[scan.file_id] = scan.source
+		if scan.file_id >= 0 && scan.file_id < tc.malformed_const_source_states.len {
+			tc.malformed_const_source_states[scan.file_id] = if scan.source.contains('cosnt') {
+				u8(2)
+			} else {
+				u8(1)
+			}
+		}
 		for line in scan.lines {
 			tc.multiple_module_import_lines[multiple_module_import_line_key(scan.file_id, line)] = true
+		}
+	}
+	if duplicate_names.len > 0 {
+		// The diagnostic reads by filename. Different ids for one filename can
+		// therefore see another id's text, including an earlier indexed file.
+		for file_id, file in a.source_files {
+			if file_id >= 0 && file_id < tc.malformed_const_source_states.len
+				&& duplicate_names[file.name] {
+				tc.malformed_const_source_states[file_id] = 0
+			}
 		}
 	}
 }
@@ -9377,7 +9409,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 	if node.children_count == 0 {
 		return none
 	}
-	fn_node := tc.a.child_node(&node, 0)
+	fn_node := tc.a.node(tc.a.child(&node, 0))
 	if fn_node.kind == .selector && '__v3_comptime_method_selector' in fn_node.generic_params()
 		&& fn_node.typ != 0 {
 		return CallInfo{
@@ -14924,7 +14956,7 @@ fn (tc &TypeChecker) visible_mutation_call_name(call_id flat.NodeId, call flat.N
 	if call.children_count == 0 {
 		return ''
 	}
-	mut fn_node := tc.a.child_node(&call, 0)
+	mut fn_node := tc.a.node(tc.a.child(&call, 0))
 	if fn_node.kind == .index && fn_node.children_count > 0 {
 		fn_node = tc.a.child_node(fn_node, 0)
 	}
@@ -17569,7 +17601,7 @@ fn (tc &TypeChecker) call_argument_target_name(node flat.Node, info CallInfo) st
 			return 'Map.delete'
 		}
 		if node.children_count > 0 {
-			mut callee := tc.a.child_node(&node, 0)
+			mut callee := tc.a.node(tc.a.child(&node, 0))
 			if callee.kind == .index && callee.children_count > 0 {
 				callee = tc.a.child_node(callee, 0)
 			}
@@ -17600,7 +17632,7 @@ fn (tc &TypeChecker) call_argument_target_name(node flat.Node, info CallInfo) st
 	if node.children_count == 0 {
 		return tc.call_display_name(node)
 	}
-	callee := tc.a.child_node(&node, 0)
+	callee := tc.a.node(tc.a.child(&node, 0))
 	if callee.kind in [.fn_literal, .lambda_expr] {
 		return 'anon'
 	}
@@ -21710,7 +21742,7 @@ fn (tc &TypeChecker) direct_call_return_type(node flat.Node) ?Type {
 	if node.children_count == 0 {
 		return none
 	}
-	fn_node := tc.a.child_node(&node, 0)
+	fn_node := tc.a.node(tc.a.child(&node, 0))
 	if fn_node.kind == .index && fn_node.children_count >= 2 && fn_node.value != 'range' {
 		base_node := tc.a.child_node(fn_node, 0)
 		name := tc.generic_call_base_name(base_node) or { return none }
@@ -21800,7 +21832,7 @@ fn (tc &TypeChecker) spawn_child_call_return_type(node flat.Node) ?Type {
 	if node.children_count == 0 {
 		return none
 	}
-	fn_node := tc.a.child_node(&node, 0)
+	fn_node := tc.a.node(tc.a.child(&node, 0))
 	if fn_node.kind == .selector && fn_node.children_count > 0 {
 		base_type := tc.resolve_type(tc.a.child(fn_node, 0))
 		clean_base := unwrap_all_pointers(base_type)
@@ -22618,7 +22650,7 @@ fn (tc &TypeChecker) c_va_macro_call_name(node flat.Node) string {
 	if node.children_count == 0 {
 		return ''
 	}
-	callee := tc.a.child_node(&node, 0)
+	callee := tc.a.node(tc.a.child(&node, 0))
 	if callee.kind == .selector && callee.children_count > 0 {
 		if tc.a.child_node(callee, 0).value != 'C' {
 			return ''
@@ -22646,7 +22678,7 @@ fn (tc &TypeChecker) call_display_name(node flat.Node) string {
 	if node.children_count == 0 {
 		return '<missing>'
 	}
-	fn_node := tc.a.child_node(&node, 0)
+	fn_node := tc.a.node(tc.a.child(&node, 0))
 	if fn_node.kind == .ident {
 		return fn_node.value_text()
 	}
