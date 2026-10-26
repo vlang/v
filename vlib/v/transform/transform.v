@@ -954,6 +954,12 @@ mut:
 	entries map[u32]u32
 	misses  map[u32]bool
 	texts   flat.TypeTextTable
+	// recent_* is a direct-mapped front for `entries`. A slot is valid only
+	// while its generation matches; clearing `entries` bumps the generation.
+	generation  u32 = 1
+	recent_gens [256]u32
+	recent_keys [256]u32
+	recent_vals [256]u32
 }
 
 // EquivalentNamesCache memoizes interface_alias_equivalent_names for one
