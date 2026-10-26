@@ -5623,7 +5623,7 @@ fn (tc &TypeChecker) bound_method_node_source_type_text(node flat.Node) string {
 	mut params := []string{}
 	mut skipped_receiver := false
 	for i in 0 .. node.children_count {
-		param := tc.a.child_node(&node, i)
+		param := tc.a.node(tc.a.child(&node, i))
 		if param.kind != .param {
 			continue
 		}
@@ -5652,7 +5652,7 @@ fn (tc &TypeChecker) bound_method_node_source_type_text(node flat.Node) string {
 fn (tc &TypeChecker) fn_node_source_type_text(node flat.Node) string {
 	mut params := []string{}
 	for i in 0 .. node.children_count {
-		param := tc.a.child_node(&node, i)
+		param := tc.a.node(tc.a.child(&node, i))
 		if param.kind != .param {
 			continue
 		}
@@ -6223,7 +6223,7 @@ fn (tc &TypeChecker) source_struct_field_decls(struct_name_id u32) []SourceStruc
 				}
 				mut fields := []SourceStructFieldDecl{}
 				for i in 0 .. decl.children_count {
-					field := tc.a.child_node(&decl, i)
+					field := tc.a.node(tc.a.child(&decl, i))
 					if field.kind != .field_decl {
 						continue
 					}
@@ -7752,8 +7752,10 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 	if base_node.kind == .ident && base_node.value == 'C' && c_int_selector_name(node.value) {
 		return builtin_int_type
 	}
-	if typ := tc.enum_selector_type(&node) {
-		return typ
+	if node.kind == .selector {
+		if typ := tc.enum_selector_type_from_base(base_id, node.value) {
+			return typ
+		}
 	}
 	if base_node.kind == .typeof_expr {
 		if node.value == 'name' {
@@ -9851,7 +9853,7 @@ fn (tc &TypeChecker) fn_value_key(node flat.Node) ?string {
 		return tc.selector_fn_value_key(node)
 	}
 	if node.kind in [.cast_expr, .paren, .expr_stmt] && node.children_count > 0 {
-		return tc.fn_value_key(tc.a.child_node(&node, 0))
+		return tc.fn_value_key(tc.a.node(tc.a.child(&node, 0)))
 	}
 	return none
 }
@@ -10529,7 +10531,11 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 	if node.kind != .selector || node.children_count == 0 {
 		return none
 	}
-	base := tc.a.child_node(node, 0)
+	return tc.enum_selector_type_from_base(tc.a.child(node, 0), node.value)
+}
+
+fn (tc &TypeChecker) enum_selector_type_from_base(base_id flat.NodeId, field string) ?Type {
+	base := tc.a.node(base_id)
 	mut enum_name := flat.source_type_id('')
 	if base.kind == .ident {
 		if !tc.ident_may_be_type(base.value) {
@@ -10543,7 +10549,7 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 			enum_name = (tc.resolve_enum_name(flat.source_type_id('${mod_name}.${base.value}')) or { flat.source_type_id('') })
 		}
 	}
-	if flat.source_type_name(enum_name).len == 0 || !tc.enum_has_field(enum_name, node.value) {
+	if flat.source_type_name(enum_name).len == 0 || !tc.enum_has_field(enum_name, field) {
 		return none
 	}
 	return Type(Enum{
@@ -16049,27 +16055,39 @@ pub fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name_id u32, variant_n
 	}
 	mut cache := tc.type_cache
 	key := (u64(sum_name_id) << 32) | u64(variant_name_id)
-	if file_entries := cache.sum_variant_pattern_entries[tc.cur_file] {
-		if module_entries := file_entries.modules[tc.cur_module] {
-			if result := module_entries.values[key] {
-				if result == 0 { return none }
-				return result
+	mut context := cache.sum_variant_pattern_recent
+	if isnil(context) || cache.sum_variant_pattern_recent_count != cache.sum_variant_pattern_entries.len
+		|| context.file != tc.cur_file || context.module != tc.cur_module {
+		context = unsafe { nil }
+		if file_entries := cache.sum_variant_pattern_entries[tc.cur_file] {
+			if module_entries := file_entries.modules[tc.cur_module] {
+				context = module_entries
+				cache.sum_variant_pattern_recent = context
+				cache.sum_variant_pattern_recent_count = cache.sum_variant_pattern_entries.len
 			}
+		}
+	}
+	if !isnil(context) {
+		if result := context.values[key] {
+			if result == 0 { return none }
+			return result
 		}
 	}
 	result := tc.sum_variant_type_for_pattern_depth(sum_name_id, variant_name_id, 0) or { u32(0) }
 	// Resolution can populate this context recursively; acquire its current tables again.
 	mut file_entries := cache.sum_variant_pattern_entries[tc.cur_file] or {
-		created := &SumVariantPatternFileEntries{}
-		cache.sum_variant_pattern_entries[tc.cur_file.clone()] = created
+		created := &SumVariantPatternFileEntries{ file: tc.cur_file.clone() }
+		cache.sum_variant_pattern_entries[created.file] = created
 		created
 	}
 	mut module_entries := file_entries.modules[tc.cur_module] or {
-		created := &SumVariantPatternModuleEntries{}
-		file_entries.modules[tc.cur_module.clone()] = created
+		created := &SumVariantPatternModuleEntries{ file: file_entries.file, module: tc.cur_module.clone() }
+		file_entries.modules[created.module] = created
 		created
 	}
 	module_entries.values[key] = result
+	cache.sum_variant_pattern_recent = module_entries
+	cache.sum_variant_pattern_recent_count = cache.sum_variant_pattern_entries.len
 	if result == 0 { return none }
 	return result
 }
@@ -19161,6 +19179,29 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	return tc.resolve_type_slow(id)
 }
 
+// resolve_type_reference returns the canonical reference for an expression's resolved type.
+// It follows resolve_type's checked-cache visibility and mixed-integer widening.
+// The reference remains valid while the owning checker arena is live.
+@[direct_array_access; inline]
+pub fn (tc &TypeChecker) resolve_type_reference(id flat.NodeId) &Type {
+	if tc.trust_checked_expr_types && isnil(tc.storage_query_probe) {
+		tidx := int(id)
+		if tidx >= 0 && tidx < tc.expr_type_set.len && tc.expr_type_set[tidx]
+			&& (!tc.parallel_check_sparse || tc.in_check_range(tidx)) {
+			typ := tc.expr_type_values[tidx]
+			if !type_contains_unknown(typ) {
+				// Non-arithmetic nodes retain their existing canonical identity.
+				if !mixed_integer_expr_type_can_widen(typ) || tidx >= tc.a.nodes.len
+					|| tc.a.nodes[tidx].kind != .infix {
+					return typ
+				}
+				return tc.intern_type_reference(tc.widen_mixed_integer_infix_type(id, typ))
+			}
+		}
+	}
+	return tc.intern_type_reference(tc.resolve_type_slow(id))
+}
+
 @[direct_array_access]
 fn (tc &TypeChecker) resolve_type_slow(id flat.NodeId) Type {
 	if tc.trust_checked_expr_types && !isnil(tc.storage_query_probe) {
@@ -20568,7 +20609,7 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	mut reached_params := false
 	mut is_variadic := false
 	for i in 0 .. node.children_count {
-		child := tc.a.child_node(&node, i)
+		child := tc.a.node(tc.a.child(&node, i))
 		if child.kind != .param {
 			// Captures precede parameters in a function literal's flat children, so a
 			// prefix-only scan must skip those identifiers, then stop once the body begins.
@@ -20734,7 +20775,7 @@ fn (tc &TypeChecker) explicit_generic_fn_value_type(node flat.Node) ?Type {
 	if node.kind != .index || node.children_count < 2 || node.value == 'range' {
 		return none
 	}
-	base_node := tc.a.child_node(&node, 0)
+	base_node := tc.a.node(tc.a.child(&node, 0))
 	if base_node.kind == .ident && tc.ident_resolves_to_value(base_node.value) {
 		return none
 	}
@@ -22535,8 +22576,13 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 	if tc.int_literal_value(other_id) != none {
 		return none
 	}
-	value := tc.implicit_integer_constant_value(lit_id, lit_type)?
 	clean_type := unalias_type(other_type)
+	// Only a concrete integer operand can adopt an untyped constant. Reject
+	// the other cases before recursively evaluating its constant expression.
+	if !clean_type.is_integer() || tc.type_name(clean_type) == flat.source_type_int {
+		return none
+	}
+	value := tc.implicit_integer_constant_value(lit_id, lit_type)?
 	if clean_type is Primitive && clean_type.props.has(.integer)
 		&& clean_type.size in [u8(8), 16] {
 		if small_integer_type_accepts_int_literal(clean_type, value) {
@@ -22547,10 +22593,7 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 	// An untyped integer literal adopts the other integer operand's concrete storage
 	// type. In particular, `24 * time.hour` is `i64`, not `int`; map literal
 	// inference relies on that distinction when it chooses its value type.
-	if clean_type.is_integer() && tc.type_name(clean_type) != flat.source_type_int {
-		return *clean_type
-	}
-	return none
+	return *clean_type
 }
 
 fn infix_integer_promotion_type(lhs Type, rhs Type) ?Type {

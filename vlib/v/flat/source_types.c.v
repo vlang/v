@@ -9,6 +9,7 @@ import hash
 const source_type_chunk_bits = 10
 const source_type_chunk_size = 1 << source_type_chunk_bits
 const source_type_chunk_count = 16384
+const source_type_read_cache_size = 4096
 
 // Builtin spellings are interned once; hot paths carry their numeric identities.
 pub const source_type_void = source_type_id('void')
@@ -247,6 +248,7 @@ struct SourceTypeIndex {
 __global g_source_types &SourceTypeTable
 __global g_source_types_lock u32
 __global g_source_type_recent_entries [16384]voidptr
+__global g_source_type_read_entries [source_type_read_cache_size]voidptr
 
 fn source_type_lock() {
 	for {
@@ -488,26 +490,45 @@ fn source_type_id_uncached(text string) u32 {
 	return id
 }
 
+// source_type_read_entry caches immutable process-owned entries by their published ID.
+@[direct_array_access; inline]
+fn source_type_read_entry(id u32) &SourceTypeEntry {
+	slot := int(id & u32(source_type_read_cache_size - 1))
+	cached := $if x32 {
+		unsafe { &SourceTypeEntry(voidptr(C.atomic_load_u32(voidptr(&g_source_type_read_entries[slot])))) }
+	} $else {
+		unsafe { &SourceTypeEntry(voidptr(C.atomic_load_u64(voidptr(&g_source_type_read_entries[slot])))) }
+	}
+	if !isnil(cached) && cached.id == id {
+		return cached
+	}
+	table := source_type_table_load()
+	if isnil(table) || id > C.atomic_load_u32(&table.count) {
+		panic('invalid source type ID')
+	}
+	entry := source_type_entry(table, id)
+	// Only a checked published ID reaches this store. Entries never move or expire,
+	// so a matching ID remains valid across index growth and disposable worker arenas.
+	$if x32 {
+		C.atomic_store_u32(voidptr(&g_source_type_read_entries[slot]), u32(voidptr(entry)))
+	} $else {
+		C.atomic_store_u64(voidptr(&g_source_type_read_entries[slot]), u64(voidptr(entry)))
+	}
+	return entry
+}
+
 // source_type_name resolves a source spelling ID at a text boundary.
 @[inline]
 pub fn source_type_name(id u32) string {
 	if id == 0 {
 		return ''
 	}
-	table := source_type_table_load()
-	if isnil(table) || id > C.atomic_load_u32(&table.count) {
-		panic('invalid source type ID')
-	}
-	return source_type_entry(table, id).text
+	return source_type_read_entry(id).text
 }
 
 // source_type_shape returns syntax properties without resolving spelling bytes.
 @[inline]
 pub fn source_type_shape(id u32) SourceTypeShape {
 	if id == 0 { return unsafe { SourceTypeShape(0) } }
-	table := source_type_table_load()
-	if isnil(table) || id > C.atomic_load_u32(&table.count) {
-		panic('invalid source type ID')
-	}
-	return source_type_entry(table, id).shape
+	return source_type_read_entry(id).shape
 }

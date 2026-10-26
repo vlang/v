@@ -1526,6 +1526,7 @@ fn ordinary_local_ident_output(name string, mode string, fast bool) string {
 	tc.cur_scope = scope
 	typ := if mode == 'void' { types.Type(types.Void{}) } else { types.Type(types.int_) }
 	owner := scope.insert_with_owner(name, typ)
+	other_owner := scope.insert_with_owner('other_local', types.Type(types.int_))
 	if mode == 'void' {
 		tc.fn_param_types[name] = []types.Type{}
 		tc.fn_ret_types[name] = types.Type(types.int_)
@@ -1538,6 +1539,10 @@ fn ordinary_local_ident_output(name string, mode string, fast bool) string {
 		'deref' { g.local_implicit_deref_by_owner[owner.storage_key()] = true }
 		'shadow' { g.shadowed_global_locals[owner.storage_key()] = true }
 		'cfn' { g.cur_c_fn_calls[g.cname(name)] = true }
+		'other_shared' { g.local_shared_storage_by_owner[other_owner.storage_key()] = true }
+		'other_deref' { g.local_implicit_deref_by_owner[other_owner.storage_key()] = true }
+		'other_shadow' { g.shadowed_global_locals[other_owner.storage_key()] = true }
+		'other_cfn' { g.cur_c_fn_calls['other_c_call'] = true }
 		'suffix' { tc.c_globals['C.${name}'] = types.Type(types.int_) }
 		'typedef' { g.inlined_c_typedef_names[g.cname(name)] = true }
 		'global' { g.global_modules[name] = 'other' }
@@ -1552,11 +1557,47 @@ fn ordinary_local_ident_output(name string, mode string, fast bool) string {
 
 fn test_ordinary_local_ident_keeps_storage_rename_and_placeholder_output() {
 	for name in ['value', 'abs', 'array', 'argv', 'int_str', 'pkg.value', '__v3_internal_symbol_local'] {
-		for mode in ['', 'shared', 'deref', 'shadow', 'cfn', 'suffix', 'typedef', 'global', 'void'] {
+		for mode in ['', 'shared', 'deref', 'shadow', 'cfn', 'other_shared', 'other_deref',
+			'other_shadow', 'other_cfn', 'suffix', 'typedef', 'global', 'void'] {
 			legacy := ordinary_local_ident_output(name, mode, false)
 			assert ordinary_local_ident_output(name, mode, true) == legacy, '${name} / ${mode}: ${legacy}'
 		}
 	}
+}
+
+fn test_ordinary_local_ident_ignores_outer_binding_storage_and_unrelated_c_calls() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'value')
+	mut tc := types.TypeChecker.new(&a)
+	mut outer_scope := types.new_scope(unsafe { nil })
+	outer := outer_scope.insert_with_owner('value', types.Type(types.int_))
+	mut inner_scope := types.new_scope(outer_scope)
+	inner := inner_scope.insert_with_owner('value', types.Type(types.int_))
+	tc.cur_scope = inner_scope
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.local_shared_storage_by_owner[outer.storage_key()] = true
+	g.local_implicit_deref_by_owner[outer.storage_key()] = true
+	g.shadowed_global_locals[outer.storage_key()] = true
+	g.cur_c_fn_calls['other_c_call'] = true
+	g.precompute_local_global_suffix_names()
+	g.precompute_c_typedef_shadow_names()
+	g.precompute_local_name_exceptions()
+	assert g.ordinary_local_cname('value', inner)? == 'value'
+	assert g.ordinary_local_cname('value', outer) == none
+	g.gen_nonliteral_expr(id, a.node(id))
+	assert g.sb.str() == 'value'
+	// A recorded C call reserves its emitted name even when the map value is false.
+	g.cur_c_fn_calls['value'] = false
+	assert g.ordinary_local_cname('value', inner) == none
+	g.cur_c_fn_calls.delete('value')
+	g.shadowed_global_locals[inner.storage_key()] = false
+	assert g.ordinary_local_cname('value', inner) == none
+	g.shadowed_global_locals.delete(inner.storage_key())
+	g.local_shared_storage_by_owner[inner.storage_key()] = false
+	g.local_implicit_deref_by_owner[inner.storage_key()] = false
+	assert g.ordinary_local_cname('value', inner)? == 'value'
 }
 
 fn test_local_name_exceptions_preserve_raw_and_emitted_names_and_rebuilds() {

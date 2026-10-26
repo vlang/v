@@ -113,8 +113,14 @@ fn (mut c CNameCache) remember(name string, value string) {
 @[heap]
 struct ConstShortIndex {
 mut:
-	built   bool
-	entries map[string]string
+	built                     bool
+	entries                   map[string]string
+	call_names_ready          bool
+	call_names                [64]u64
+	call_const_vals_count     int
+	call_const_exprs_count    int
+	call_const_types_count    int
+	call_const_suffixes_count int
 }
 
 // FnNameFactCache memoizes per-fn-name conclusions (1 = yes, -1 = no) that
@@ -285,14 +291,21 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 	c.last_valid = false
 }
 
+struct SourceTypeLookupRecentEntry {
+	name  u32
+	value u32
+	valid bool
+}
+
 // ContextSourceTypeLookupCache memoizes source-spelling lookups within one file and module.
-// Zero values record misses; last_valid distinguishes an empty cache from a cached miss.
+// Zero values record misses; validity distinguishes an empty cache from a cached miss.
 @[heap]
 struct ContextSourceTypeLookupCache {
 mut:
 	file       string = '\x00'
 	module     string
 	entries    map[u32]u32
+	recent     [64]SourceTypeLookupRecentEntry
 	last_name  u32
 	last_value u32
 	last_valid bool
@@ -301,7 +314,16 @@ mut:
 @[inline]
 fn (mut c ContextSourceTypeLookupCache) get(name u32) ?u32 {
 	if c.last_valid && c.last_name == name { return c.last_value }
+	slot := int(name & 63)
+	entry := c.recent[slot]
+	if entry.valid && entry.name == name {
+		c.last_name = name
+		c.last_value = entry.value
+		c.last_valid = true
+		return entry.value
+	}
 	if cached := c.entries[name] {
+		c.recent[slot] = SourceTypeLookupRecentEntry{ name: name, value: cached, valid: true }
 		c.last_name = name
 		c.last_value = cached
 		c.last_valid = true
@@ -313,6 +335,7 @@ fn (mut c ContextSourceTypeLookupCache) get(name u32) ?u32 {
 @[inline]
 fn (mut c ContextSourceTypeLookupCache) put(name u32, value u32) {
 	c.entries[name] = value
+	c.recent[int(name & 63)] = SourceTypeLookupRecentEntry{ name: name, value: value, valid: true }
 	c.last_name = name
 	c.last_value = value
 	c.last_valid = true
@@ -328,6 +351,7 @@ fn (mut c ContextSourceTypeLookupCache) select_context(file string, module_name 
 	c.file = file
 	c.module = module_name
 	c.entries = map[u32]u32{}
+	c.recent = [64]SourceTypeLookupRecentEntry{}
 	c.last_name = 0
 	c.last_value = 0
 	c.last_valid = false

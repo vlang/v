@@ -744,38 +744,43 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 	if field_name.len == 0 {
 		return u32(0)
 	}
-	base_selector_name := t.selector_expr_name(base_id)
-	if base_selector_name.len > 0 {
-		if enum_type_source_id := t.enum_type_name_from_selector_name(base_selector_name) {
-			enum_type_source_id_2 := enum_type_source_id
-			enum_type := flat.source_type_name(enum_type_source_id_2)
+	enum_may_match := t.enum_selector_may_match(field_name)
+	if enum_may_match {
+		base_selector_name := t.selector_expr_name(base_id)
+		if base_selector_name.len > 0 {
+			if enum_type_source_id := t.enum_type_name_from_selector_name(base_selector_name) {
+				enum_type_source_id_2 := enum_type_source_id
+				enum_type := flat.source_type_name(enum_type_source_id_2)
 
-			if fields := t.enum_types[enum_type] {
-				if field_name in fields {
-					return enum_type_source_id_2
+				if fields := t.enum_types[enum_type] {
+					if field_name in fields {
+						return enum_type_source_id_2
+					}
 				}
 			}
-		}
-		if type_name_source_id := t.qualified_enum_type_selector_name_from_selector_name(base_selector_name, field_name) {
-			type_name_source_id_2 := type_name_source_id
+			if type_name_source_id := t.qualified_enum_type_selector_name_from_selector_name(base_selector_name, field_name) {
+				type_name_source_id_2 := type_name_source_id
 
-			return type_name_source_id_2
+				return type_name_source_id_2
+			}
 		}
 	}
 	if base_node.kind == .ident {
 		if typ_source_id := t.const_type_name('${base_node.value}.${field_name}') {
 			return typ_source_id
 		}
-		if fields := t.enum_types[base_node.value] {
-			if field_name in fields {
-				return flat.source_type_id(base_node.value)
-			}
-		}
-		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			qenum := '${t.cur_module}.${base_node.value}'
-			if fields := t.enum_types[qenum] {
+		if enum_may_match {
+			if fields := t.enum_types[base_node.value] {
 				if field_name in fields {
-					return flat.source_type_id(qenum)
+					return flat.source_type_id(base_node.value)
+				}
+			}
+			if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+				qenum := '${t.cur_module}.${base_node.value}'
+				if fields := t.enum_types[qenum] {
+					if field_name in fields {
+						return flat.source_type_id(qenum)
+					}
 				}
 			}
 		}
@@ -2066,6 +2071,38 @@ fn (t &Transformer) normalized_node_type(id flat.NodeId) u32 {
 @[direct_array_access; inline]
 fn (t &Transformer) node_type(id flat.NodeId) u32 {
 	idx := int(id)
+	if idx < 0 {
+		return u32(0)
+	}
+	// These expression types cannot depend on annotations, bindings or the
+	// expected type. Resolve them before maintaining the contextual body memo.
+	match t.a.nodes[idx].kind {
+		.bool_literal { return flat.source_type_bool }
+		.float_literal { return flat.source_type_f64 }
+		.int_literal { return flat.source_type_int }
+		.string_literal, .string_interp { return flat.source_type_string }
+		.nil_literal { return flat.source_type_voidptr }
+		.char_literal {
+			return if t.a.nodes[idx].value.starts_with('c:') {
+				flat.source_type_id('&u8')
+			} else {
+				flat.source_type_rune
+			}
+		}
+		.sizeof_expr, .offsetof_expr { return flat.source_type_u32 }
+		.prefix {
+			if t.a.nodes[idx].children_count > 0 && t.a.nodes[idx].op == .not {
+				return flat.source_type_bool
+			}
+		}
+		.infix {
+			if t.a.nodes[idx].children_count >= 2
+				&& t.a.nodes[idx].op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+				return flat.source_type_bool
+			}
+		}
+		else {}
+	}
 	if !isnil(t.node_type_memo) {
 		mut memo := t.node_type_memo
 		if memo.active && idx >= memo.lo && idx <= memo.hi {

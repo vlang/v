@@ -853,6 +853,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut body_index := map[int]int{}
 	mut body_results := []BodyCalls{}
 	if body_ids.len >= min_eager_markused_bodies
+		&& (!use_prepared || markused_can_parallel_precollect(&collector))
 		&& (!tc.skips_library_bodies || a.worker_count() > 0) {
 		mut checked_ids := []int{}
 		mut checked_modules := []string{}
@@ -1948,7 +1949,7 @@ fn markused_reachable_modules(a &flat.FlatAst, tc &types.TypeChecker) map[string
 	mut has_user_root := false
 	file_modules := markused_top_level_file_modules(a, tc)
 	for file_idx in tc.top_level_idx {
-		file_node := a.nodes[file_idx]
+		file_node := &a.nodes[file_idx]
 		if file_node.kind != .file {
 			continue
 		}
@@ -1966,7 +1967,7 @@ fn markused_reachable_modules(a &flat.FlatAst, tc &types.TypeChecker) map[string
 		mut imports := module_imports[module_name] or { []string{} }
 		if file_idx >= a.user_code_start || !markused_file_is_test(file_node.value) {
 			for i in 0 .. file_node.children_count {
-				child := a.child_node(&file_node, i)
+				child := a.child_node(file_node, i)
 				if child.kind == .import_decl && child.value.len > 0 {
 					imports << child.value
 				}
@@ -5629,7 +5630,7 @@ fn (c &CallCollector) collect_body_with_generic_detection(node &flat.Node, cur_m
 			inferred_visible_idents = markused_visible_local_idents(c.a, node, visibility_names)
 		}
 	} else {
-		_, local_types, local_ident_types, inferred_visible_idents = c.local_value_info_for_names(node, cur_module, imports, local_values, has_inference_binders)
+		_, local_types, local_ident_types, inferred_visible_idents = c.local_value_info_for_names(node, cur_module, imports, local_values, visibility_names, has_inference_binders)
 	}
 	if receiver_name.len > 0 && receiver_struct != 0 {
 		local_types.set_id(receiver_name, receiver_struct)
@@ -6579,16 +6580,16 @@ fn markused_direct_sum_type(typ types.Type) bool {
 @[direct_array_access]
 fn (c &CallCollector) local_value_info_with_visibility(node &flat.Node, cur_module string, imports map[string]string) (map[string]bool, flat.TypeTextBindings, flat.NodeTypeTextBindings, map[int]bool) {
 	names, has_inference_binders := c.local_value_names(node)
-	return c.local_value_info_for_names(node, cur_module, imports, names, has_inference_binders)
+	visibility_names := c.local_value_visibility_names(names, cur_module, imports)
+	return c.local_value_info_for_names(node, cur_module, imports, names, visibility_names, has_inference_binders)
 }
 
 @[direct_array_access]
-fn (c &CallCollector) local_value_info_for_names(node &flat.Node, cur_module string, imports map[string]string, names map[string]bool, has_inference_binders bool) (map[string]bool, flat.TypeTextBindings, flat.NodeTypeTextBindings, map[int]bool) {
+fn (c &CallCollector) local_value_info_for_names(node &flat.Node, cur_module string, imports map[string]string, names map[string]bool, visibility_names map[string]bool, has_inference_binders bool) (map[string]bool, flat.TypeTextBindings, flat.NodeTypeTextBindings, map[int]bool) {
 	mut type_names := c.new_local_types()
 	mut ident_types := c.new_ident_types()
 	// Scope visibility only distinguishes local names that can also name a
-	// function or constant. Other bodies do not need a second binding walk.
-	visibility_names := c.local_value_visibility_names(names, cur_module, imports)
+	// function or constant. The caller already identified those names.
 	visible_local_idents := if visibility_names.len > 0 {
 		markused_visible_local_idents(c.a, node, visibility_names)
 	} else {
@@ -7025,14 +7026,7 @@ fn (c &CallCollector) contextual_alias_type_name(type_text_id u32, cur_module st
 			return flat.source_type_id(prefix + inner)
 		}
 	}
-	clean_id := flat.source_type_id(clean)
-	resolved := markused_resolve_imported_source_type(clean_id, imports)
-	for candidate in markused_alias_type_candidates(resolved, clean_id, cur_module) {
-		if c.tc.type_aliases.contains(flat.source_type_name(candidate)) {
-			return candidate
-		}
-	}
-	return none
+	return c.alias_type_name_from_text(clean, cur_module, imports)
 }
 
 fn markused_fn_signature_name_candidates(name string, cur_module string) []string {
@@ -7966,30 +7960,34 @@ fn (c &CallCollector) alias_type_from_name(name_id u32, cur_module string, impor
 	return c.alias_type_from_name_text(flat.source_type_name(name_id), cur_module, imports)
 }
 
-// alias_type_from_name_text checks the spellings of markused_alias_type_candidates,
-// in the same order, for a type alias. Only a spelling that names one gets a
-// source type ID: most names here are callees, and interning all of their
-// candidate spellings filled the process-wide type text table.
+// alias_type_from_name_text parses only an alias found by its source spelling.
 fn (c &CallCollector) alias_type_from_name_text(name string, cur_module string, imports map[string]string) ?types.Type {
+	alias_id := c.alias_type_name_from_text(name, cur_module, imports) or { return none }
+	return c.tc.parse_canonical_type(alias_id)
+}
+
+// alias_type_name_from_text checks the candidate spellings in their original
+// order and interns only a spelling registered as a type alias.
+fn (c &CallCollector) alias_type_name_from_text(name string, cur_module string, imports map[string]string) ?u32 {
 	if c.tc.type_aliases.ids.len == 0 {
 		return none
 	}
 	resolved := markused_resolve_imported_name(name, imports)
 	if resolved.len > 0 && c.tc.type_aliases.contains(resolved) {
-		return c.tc.parse_canonical_type(flat.source_type_id(resolved))
+		return flat.source_type_id(resolved)
 	}
 	if name != resolved && name.len > 0 && c.tc.type_aliases.contains(name) {
-		return c.tc.parse_canonical_type(flat.source_type_id(name))
+		return flat.source_type_id(name)
 	}
 	if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
 		qualified := '${cur_module}.${resolved}'
 		if c.tc.type_aliases.contains(qualified) {
-			return c.tc.parse_canonical_type(flat.source_type_id(qualified))
+			return flat.source_type_id(qualified)
 		}
 		if name != resolved {
 			qualified_name := '${cur_module}.${name}'
 			if c.tc.type_aliases.contains(qualified_name) {
-				return c.tc.parse_canonical_type(flat.source_type_id(qualified_name))
+				return flat.source_type_id(qualified_name)
 			}
 		}
 	}

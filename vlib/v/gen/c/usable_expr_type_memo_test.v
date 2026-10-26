@@ -299,3 +299,88 @@ fn test_body_resolve_reference_checks_the_full_id_on_collisions() {
 		assert g.body_resolve_type_reference(flat.NodeId(usable_expr_type_memo_slots)) is types.String
 	}
 }
+
+fn test_usable_expr_type_keeps_owned_container_child_references() {
+	for canonical in [false, true] {
+		for container_kind in 0 .. 4 {
+			mut a := flat.FlatAst.new()
+			value := a.add_val(.ident, 'value')
+			a.children << value
+			access := a.add_node(flat.Node{
+				kind:           if container_kind == 0 { .prefix } else { .index }
+				op:             .mul
+				children_start: 0
+				children_count: 1
+			})
+			mut tc := types.TypeChecker.new(&a)
+			// A raw heap-owned child need not already have interner identity.
+			child := types.new_type_reference(types.Type(types.String{}))
+			container := match container_kind {
+				0 { types.Type(types.Pointer{ base_type: child }) }
+				1 { types.Type(types.Array{ elem_type: child }) }
+				2 { types.Type(types.ArrayFixed{ elem_type: child, len: 3 }) }
+				else {
+					types.Type(types.Map{ key_type: types.new_type_reference(types.Type(types.int_)), value_type: child })
+				}
+			}
+			owned := if canonical {
+				tc.intern_type_reference(container)
+			} else {
+				types.new_type_reference(container)
+			}
+			expected := match owned {
+				types.Pointer { owned.base_type }
+				types.Array { owned.elem_type }
+				types.ArrayFixed { owned.elem_type }
+				types.Map { owned.value_type }
+				else { panic('expected container') }
+			}
+			mut g := FlatGen.new()
+			g.a = &a
+			g.tc = &tc
+			g.cur_param_types['value'] = owned
+			g.memo_usable_expr_types = true
+			g.begin_usable_expr_type_memo()
+			before := g.usable_expr_type(access)
+			assert voidptr(before) == voidptr(expected)
+			assert *before == types.Type(types.String{})
+			g.cur_param_types['value'] = tc.intern_type_reference(types.Type(types.Array{ elem_type: types.new_type_reference(types.Type(types.bool_)) }))
+			for i in 0 .. 1024 {
+				tc.intern_type_reference(types.Type(types.ArrayFixed{ elem_type: child, len: i + 1 }))
+			}
+			assert voidptr(g.usable_expr_type(access)) == voidptr(expected)
+			assert *before == types.Type(types.String{})
+			g.end_usable_expr_type_memo()
+			g.begin_usable_expr_type_memo()
+			if container_kind != 0 {
+				assert *g.usable_expr_type(access) == types.Type(types.bool_)
+			}
+			assert *before == types.Type(types.String{})
+		}
+	}
+}
+
+fn test_usable_expr_type_shared_parameter_keeps_owned_value_reference() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'value')
+	mut tc := types.TypeChecker.new(&a)
+	child := types.new_type_reference(types.Type(types.String{}))
+	parameter := types.new_type_reference(types.Type(types.Pointer{ base_type: child }))
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.cur_param_types['value'] = parameter
+	g.push_scope()
+	owner := tc.cur_scope.insert_with_owner('value', *parameter)
+	g.declare_local_shared_storage(owner, true)
+	g.memo_usable_expr_types = true
+	g.begin_usable_expr_type_memo()
+	before := g.usable_expr_type(id)
+	assert voidptr(before) == voidptr(child)
+	g.end_usable_expr_type_memo()
+	g.declare_local_shared_storage(owner, false)
+	g.begin_usable_expr_type_memo()
+	assert voidptr(g.usable_expr_type(id)) == voidptr(parameter)
+	assert *before == types.Type(types.String{})
+	g.pop_scope()
+}

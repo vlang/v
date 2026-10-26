@@ -1066,6 +1066,9 @@ fn (t &Transformer) raw_const_type_name_for_expr(id flat.NodeId) ?u32 {
 		return none
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind in [.ident, .selector] && !t.const_selector_may_match(node.value) {
+		return none
+	}
 	if t.selector_const_base_is_value(node) {
 		return none
 	}
@@ -1205,14 +1208,10 @@ fn (t &Transformer) generic_call_base_is_fn_value(base_id flat.NodeId, base flat
 		|| t.is_known_type_name(flat.source_type_id(base.value)) {
 		return false
 	}
-	for candidate in [flat.source_type_name(t.raw_var_type(base.value)),
-		flat.source_type_name(t.var_type(base.value)), base.typ_text(),
-		flat.source_type_name(t.node_type(base_id))] {
-		if t.is_fn_pointer_type_name(flat.source_type_id(candidate)) {
-			return true
-		}
-	}
-	return false
+	return t.is_fn_pointer_type_name(t.raw_var_type(base.value))
+		|| t.is_fn_pointer_type_name(t.var_type(base.value))
+		|| t.is_fn_pointer_type_name(base.typ)
+		|| t.is_fn_pointer_type_name(t.node_type(base_id))
 }
 
 // generic_call_type_arg_name supports generic call type arg name handling for Transformer.
@@ -3425,7 +3424,7 @@ fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Nod
 	}
 	if node.children_count > 0 {
 		fn_id := t.a.child(&node, 0)
-		fn_node := t.a.child_node(&node, 0)
+		fn_node := t.a.node(t.a.child(&node, 0))
 		if fn_node.kind == .ident && (t.var_type(fn_node.value)) != 0 {
 			if fn_type := t.call_callee_fn_type(fn_id) {
 				return fn_type.params.map(*it.typ)
@@ -3487,12 +3486,16 @@ fn (t &Transformer) call_callee_fn_type(fn_id flat.NodeId) ?types.FnType {
 	}
 	node := t.a.nodes[int(fn_id)]
 	if node.kind == .ident {
-		for local_type in [flat.source_type_name(t.raw_var_type(node.value)),
-			flat.source_type_name(t.var_type(node.value))] {
-			if local_type.len == 0 {
+		for candidate in 0 .. 2 {
+			local_type := if candidate == 0 {
+				t.raw_var_type(node.value)
+			} else {
+				t.var_type(node.value)
+			}
+			if local_type == 0 {
 				continue
 			}
-			if fn_type := transform_fn_type(t.tc.parse_type(flat.source_type_id(local_type))) {
+			if fn_type := transform_fn_type(t.tc.parse_type(local_type)) {
 				return fn_type
 			}
 		}
@@ -5489,11 +5492,10 @@ fn (t &Transformer) transform_param_type_is_void_pointer(type_name u32) bool {
 }
 
 fn (t &Transformer) call_arg_is_fn_pointer_value(arg_id flat.NodeId, arg_node flat.Node) bool {
-	for type_name in [arg_node.typ_text(), flat.source_type_name(t.node_type(arg_id)),
-		flat.source_type_name(t.resolve_expr_type(arg_id))] {
-		if t.is_fn_pointer_type_name(flat.source_type_id(type_name)) {
-			return true
-		}
+	if t.is_fn_pointer_type_name(arg_node.typ)
+		|| t.is_fn_pointer_type_name(t.node_type(arg_id))
+		|| t.is_fn_pointer_type_name(t.resolve_expr_type(arg_id)) {
+		return true
 	}
 	if arg_node.kind == .ident {
 		type_name_source_id := t.var_type(arg_node.value)
@@ -14315,75 +14317,84 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	if named_cast_call := t.try_lower_generic_named_type_cast_call(node) {
 		return named_cast_call
 	}
-	if flag_call := t.try_lower_flag_enum_call(_id, node) {
-		return flag_call
+	selector_callee := t.a.child_node(&node, 0)
+	has_selector_callee := selector_callee.kind == .selector && selector_callee.children_count > 0
+	if has_selector_callee {
+		if flag_call := t.try_lower_flag_enum_call(_id, node) {
+			return flag_call
+		}
 	}
 	if flag_default := t.try_lower_flag_default_value_call(node) {
 		return flag_default
 	}
-	if pool_call := t.try_lower_pool_generic_method_call(node) {
-		return pool_call
+	if has_selector_callee {
+		if pool_call := t.try_lower_pool_generic_method_call(node) {
+			return pool_call
+		}
 	}
 	if static_call := t.try_lower_static_assoc_call(_id, node) {
 		return static_call
 	}
-	if move_call := t.try_lower_move_method_call(_id, node) {
-		return move_call
-	}
-	if channel_call := t.try_lower_channel_method_call(_id, node) {
-		return channel_call
-	}
-	if map_call := t.try_lower_map_method_call(_id, node) {
-		return map_call
-	}
-	if pointer_str_call := t.try_lower_pointer_str_method_call(_id, node) {
-		return pointer_str_call
-	}
-	if array_call := t.try_lower_array_method_call(_id, node) {
-		return array_call
-	}
-	if smartcast_receiver_call := t.try_lower_smartcast_target_receiver_method_call(_id, node) {
-		return smartcast_receiver_call
-	}
-	if type_name_call := t.try_lower_sum_type_name_method_call(node) {
-		return type_name_call
-	}
-	if iface_runtime_call := t.try_lower_interface_runtime_method_call(node) {
-		return iface_runtime_call
-	}
-	if !t.validate_specialized_enum_from_call(_id, node) {
-		return t.make_empty()
-	}
-	specialized_enum_type := (if t.validating_generic_spec {
-		(t.builtin_enum_from_type(_id, node) or { u32(0) })
-	} else {
-		u32(0)
-	})
-	if enum_call := t.try_lower_enum_from_string_call(_id, node) {
-		return enum_call
-	}
-	if specialized_enum_type != 0 {
-		return t.lower_specialized_enum_from_call(node, specialized_enum_type)
-	}
-	if node.children_count > 0 {
-		string_callee := t.a.child_node(&node, 0)
-		if string_callee.kind == .selector && string_callee.children_count > 0 {
-			if folded := t.try_fold_literal_string_call(node, string_callee) {
-				return folded
+	method_callee := t.a.child_node(&node, 0)
+	if method_callee.kind == .selector && method_callee.children_count > 0 {
+		if move_call := t.try_lower_move_method_call(_id, node) {
+			return move_call
+		}
+		if channel_call := t.try_lower_channel_method_call(_id, node) {
+			return channel_call
+		}
+		if map_call := t.try_lower_map_method_call(_id, node) {
+			return map_call
+		}
+		if pointer_str_call := t.try_lower_pointer_str_method_call(_id, node) {
+			return pointer_str_call
+		}
+		if array_call := t.try_lower_array_method_call(_id, node) {
+			return array_call
+		}
+		if smartcast_receiver_call := t.try_lower_smartcast_target_receiver_method_call(_id, node) {
+			return smartcast_receiver_call
+		}
+		if type_name_call := t.try_lower_sum_type_name_method_call(node) {
+			return type_name_call
+		}
+		if iface_runtime_call := t.try_lower_interface_runtime_method_call(node) {
+			return iface_runtime_call
+		}
+		if !t.validate_specialized_enum_from_call(_id, node) {
+			return t.make_empty()
+		}
+		specialized_enum_type := (if t.validating_generic_spec {
+			(t.builtin_enum_from_type(_id, node) or { u32(0) })
+		} else {
+			u32(0)
+		})
+		if enum_call := t.try_lower_enum_from_string_call(_id, node) {
+			return enum_call
+		}
+		if specialized_enum_type != 0 {
+			return t.lower_specialized_enum_from_call(node, specialized_enum_type)
+		}
+		if node.children_count > 0 {
+			string_callee := t.a.child_node(&node, 0)
+			if string_callee.kind == .selector && string_callee.children_count > 0 {
+				if folded := t.try_fold_literal_string_call(node, string_callee) {
+					return folded
+				}
 			}
 		}
-	}
-	if free_call := t.try_lower_owned_string_free_call(_id, node) {
-		return free_call
-	}
-	if receiver_call := t.try_lower_receiver_method_call(_id, node) {
-		return receiver_call
-	}
-	if clone_call := t.try_lower_struct_clone_method_call(_id, node) {
-		return clone_call
-	}
-	if string_call := t.try_lower_string_method_call(node) {
-		return string_call
+		if free_call := t.try_lower_owned_string_free_call(_id, node) {
+			return free_call
+		}
+		if receiver_call := t.try_lower_receiver_method_call(_id, node) {
+			return receiver_call
+		}
+		if clone_call := t.try_lower_struct_clone_method_call(_id, node) {
+			return clone_call
+		}
+		if string_call := t.try_lower_string_method_call(node) {
+			return string_call
+		}
 	}
 	fn_id := t.a.children[node.children_start]
 	if int(fn_id) < 0 {
@@ -17777,12 +17788,14 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 	method_iface_comparison_type_id := method_iface_source_id
 
 	key := t.expr_key(base_id)
-	for source_type in [
-		flat.source_type_name(t.raw_var_type_for_expr(base_id) or { u32(0) }),
-		flat.source_type_name(t.original_expr_type(base_id)),
-		flat.source_type_name(t.node_type(base_id)),
-	] {
-		clean_source_source_id := t.trim_pointer_type(flat.source_type_id(source_type))
+	// Resolve later views only when the preceding receiver type did not match.
+	for candidate in 0 .. 3 {
+		source_type := match candidate {
+			0 { t.raw_var_type_for_expr(base_id) or { u32(0) } }
+			1 { t.original_expr_type(base_id) }
+			else { t.node_type(base_id) }
+		}
+		clean_source_source_id := t.trim_pointer_type(source_type)
 
 		if clean_source_source_id != 0 && method_receiver_source_id != 0
 			&& t.normalize_type_alias(clean_source_source_id) == t.normalize_type_alias(method_receiver_source_id) {
@@ -18196,7 +18209,7 @@ fn (t &Transformer) explicit_generic_call_arg_text(node flat.Node) string {
 	if node.children_count == 0 {
 		return ''
 	}
-	fn_node := t.a.child_node(&node, 0)
+	fn_node := t.a.node(t.a.child(&node, 0))
 	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
 		return ''
 	}
@@ -19486,7 +19499,7 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) u32 {
 	if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
 		&& t.cur_file.ends_with('.vsh')
 		&& node.children_count > 0 {
-		callee := t.a.child_node(&node, 0)
+		callee := t.a.node(t.a.child(&node, 0))
 		if callee.kind == .ident {
 			selected := t.resolve_call_name(node)
 			if selected != callee.value {
@@ -19500,7 +19513,7 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) u32 {
 		return ret_source_id
 	}
 	if node.children_count > 0 {
-		fn_node := t.a.child_node(&node, 0)
+		fn_node := t.a.node(t.a.child(&node, 0))
 		if fn_node.kind == .selector && fn_node.children_count > 0 {
 			receiver_type := flat.source_type_name(t.node_type(t.a.child(fn_node, 0))).trim_string_left('&')
 			if args_source_ids := t.current_specialized_receiver_args(flat.source_type_id(receiver_type)) {
@@ -19542,7 +19555,7 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) u32 {
 		}
 	}
 	if node.children_count > 0 {
-		fn_node := t.a.child_node(&node, 0)
+		fn_node := t.a.node(t.a.child(&node, 0))
 		if fn_node.kind == .ident && (t.var_type(fn_node.value)) == 0 {
 			if ret_source_id := t.local_fn_decl_return_type(fn_node.value) {
 				return t.call_return_type_name(ret_source_id, node)
@@ -19553,7 +19566,7 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) u32 {
 		return ret_source_id
 	}
 	if node.children_count > 0 {
-		fn_node := t.a.child_node(&node, 0)
+		fn_node := t.a.node(t.a.child(&node, 0))
 		if fn_node.kind == .ident {
 			local_type_source_id := t.var_type(fn_node.value)
 

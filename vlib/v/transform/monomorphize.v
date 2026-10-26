@@ -5677,7 +5677,7 @@ fn (t &Transformer) generated_selector_receiver_call_name(node flat.Node) ?strin
 	if node.children_count == 0 {
 		return none
 	}
-	fn_node := t.a.child_node(&node, 0)
+	fn_node := t.a.node(t.a.child(&node, 0))
 	if fn_node.kind != .selector || fn_node.children_count == 0 || fn_node.value.len == 0 {
 		return none
 	}
@@ -6510,7 +6510,7 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 	}
 	decl_key := t.generic_call_decl_key(id, node, t.cur_module, decls) or { return none }
 	decl := decls[decl_key] or { return none }
-	callee := t.a.child_node(&node, 0)
+	callee := t.a.node(t.a.child(&node, 0))
 	mut args := []u32{}
 	if callee.kind == .ident {
 		if exact_source_ids := t.recorded_generic_specialization_args(callee.value) {
@@ -6541,7 +6541,7 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 	params := t.generic_fn_param_names(decl.node, decl.module)
 	mut result := []types.Type{}
 	for i in 0 .. decl.node.children_count {
-		child := t.a.child_node(&decl.node, i)
+		child := t.a.node(t.a.child(&decl.node, i))
 		if child.kind != .param {
 			if t.prefix_param_scan {
 				break
@@ -9331,7 +9331,7 @@ fn (t &Transformer) explicit_generic_call_args(node flat.Node, module_name strin
 	if node.children_count == 0 {
 		return none
 	}
-	fn_node := t.a.child_node(&node, 0)
+	fn_node := t.a.node(t.a.child(&node, 0))
 	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
 		return none
 	}

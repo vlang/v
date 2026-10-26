@@ -440,9 +440,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		src := s.src
 		mut off := s.offset
 		for off < src.len {
-			c3 := src[off]
-			if (c3 >= `a` && c3 <= `z`) || (c3 >= `A` && c3 <= `Z`)
-				|| (c3 >= `0` && c3 <= `9`) || c3 == `_` {
+			if identifier_tail_bytes[src[off]] {
 				off++
 				continue
 			}

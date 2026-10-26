@@ -120,3 +120,70 @@ fn test_byte_search_handles_adjacent_borrows_and_repeated_bytes() {
 		}
 	}
 }
+
+fn test_byte_contains_checks_every_short_match_position() {
+	for size in 1 .. 34 {
+		for start in [0, 1, 3, 7, 15, 31] {
+			for byte in [u8(0), 1, 0x7f, 0x80, 0xfe, 0xff] {
+				mut bytes := []u8{len: start + size + 32, init: byte ^ 1}
+				view := unsafe { tos(&bytes[start], size) }
+				assert !view.contains_u8(byte)
+				for position in 0 .. size {
+					bytes[start + position] = byte
+					assert view.contains_u8(byte)
+					bytes[start + position] = byte ^ 1
+				}
+				bytes[start + size] = byte
+				assert !view.contains_u8(byte)
+				if start > 0 {
+					bytes[start - 1] = byte
+					assert !view.contains_u8(byte)
+				}
+			}
+		}
+	}
+}
+
+fn test_pair_search_respects_every_short_window_and_borrowed_boundary() {
+	for first in [u8(0), 1, 0x7f, 0x80, 0xfe, 0xff] {
+		for second in [u8(0), 1, 0x7f, 0x80, 0xfe, 0xff] {
+			needle_bytes := [first, second]
+			needle := unsafe { tos(&needle_bytes[0], 2) }
+			for start in 0 .. 8 {
+				for size in 0 .. 35 {
+					mut bytes := []u8{len: start + size + 2, init: first ^ 1}
+					view := unsafe { tos(&bytes[start], size) }
+					assert view.index_(needle) == byte_search_reference_index(view, needle)
+					for at in 0 .. size - 1 {
+						bytes[start + at] = first
+						bytes[start + at + 1] = second
+						expected := byte_search_reference_index(view, needle)
+						assert view.index_(needle) == expected
+						assert view.contains(needle) == (expected >= 0)
+						bytes[start + at] = first ^ 1
+						bytes[start + at + 1] = first ^ 1
+					}
+					// A pair straddling the end must not become an in-span match.
+					if size > 0 { bytes[start + size - 1] = first }
+					bytes[start + size] = second
+					assert view.index_(needle) == byte_search_reference_index(view, needle)
+				}
+			}
+		}
+	}
+}
+
+fn test_pair_search_rejects_adjacent_mask_borrows() {
+	for first in 0 .. 256 {
+		for second in 0 .. 256 {
+			needle_bytes := [u8(first), u8(second)]
+			needle := unsafe { tos(&needle_bytes[0], 2) }
+			mut bytes := []u8{len: 32, init: if index & 1 == 0 { u8(first) } else { u8(second) ^ 1 }}
+			view := unsafe { tos(&bytes[0], bytes.len) }
+			assert view.index_(needle) == byte_search_reference_index(view, needle)
+			bytes[30] = u8(first)
+			bytes[31] = u8(second)
+			assert view.index_(needle) == byte_search_reference_index(view, needle)
+		}
+	}
+}
