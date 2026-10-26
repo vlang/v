@@ -287,6 +287,8 @@ static int fons__tt_getGlyphKernAdvance(FONSttFontImpl *font, int glyph1, int gl
 
 #else
 
+#ifndef FONTSTASH_STB_TRUETYPE_INCLUDED
+#define FONTSTASH_STB_TRUETYPE_INCLUDED
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
 static void* fons__tmpalloc(size_t size, void* up);
@@ -294,6 +296,7 @@ static void fons__tmpfree(void* ptr, void* up);
 #define STBTT_malloc(x,u)    fons__tmpalloc(x,u)
 #define STBTT_free(x,u)      fons__tmpfree(x,u)
 #include "stb_truetype.h"
+#endif
 
 struct FONSttFontImpl {
 	stbtt_fontinfo font;
