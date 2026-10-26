@@ -43,6 +43,7 @@ struct SourceTypeEntry {
 	hash  u64
 	shape SourceTypeShape
 	id    u32
+	query SourceTypeQuery
 }
 
 // SourceTypeShape records spelling syntax once when a type is interned.
@@ -423,6 +424,7 @@ fn source_type_id_uncached(text string) u32 {
 	// Spelling classification is independent of the shared table. Keep it out
 	// of the insertion critical section so other writers can publish meanwhile.
 	shape := source_type_spelling_shape(text)
+	query := source_type_spelling_query(text, shape)
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
 	table = source_type_table_load()
@@ -481,6 +483,7 @@ fn source_type_id_uncached(text string) u32 {
 			hash:  hashed
 			shape: shape
 			id:    id
+			query: query
 		}
 	}
 	C.atomic_store_u32(&table.count, id)
@@ -510,4 +513,15 @@ pub fn source_type_shape(id u32) SourceTypeShape {
 		panic('invalid source type ID')
 	}
 	return source_type_entry(table, id).shape
+}
+
+// source_type_query returns context-free query results without decoding a spelling.
+@[inline]
+pub fn source_type_query(id u32) SourceTypeQuery {
+	if id == 0 { return .complete }
+	table := source_type_table_load()
+	if isnil(table) || id > C.atomic_load_u32(&table.count) {
+		panic('invalid source type ID')
+	}
+	return source_type_entry(table, id).query
 }

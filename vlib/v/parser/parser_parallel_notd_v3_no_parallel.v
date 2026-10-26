@@ -1303,6 +1303,7 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 			node.children_start += child_shift
 		}
 		node.typ = shift_inferred_type_id(node.typ, node_shift)
+		node.source_value = shift_inferred_type_id(node.source_value, node_shift)
 		node.value = shift_inferred_value(node.kind, node.value, node_shift)
 		// Declaration attributes are linked by an internal directive whose value
 		// embeds the worker-local declaration id; relocate it like a child id.
@@ -1324,24 +1325,14 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 				canonical_params << canonical
 				params_hit = params_hit && item_hit
 			}
-			constraints := node.generic_constraints()
-			mut canonical_constraints := []string{cap: constraints.len}
-			for item in constraints {
-				if item.len == 0 {
-					canonical_constraints << ''
-					continue
-				}
-				canonical, item_hit := p.a.probe_text_ptr_cached(item, mut value_cache.ptrs, mut value_cache.values)
-				canonical_constraints << canonical
-				params_hit = params_hit && item_hit
-			}
+			constraints := node.generic_constraint_ids()
 			if params_hit {
 				// The rebuilt array persists: pool-thread arenas outlive the merge.
-				node.set_generic_params_and_constraints(canonical_params, canonical_constraints)
+				node.set_generic_params_and_constraint_ids(canonical_params, constraints)
 			} else {
 				all_hit = false
 			}
-		} else if node.enum_backing_type_id() != 0 || node.debugger_value_type_ids().len > 0 {
+		} else if node.enum_backing_type_id() != 0 || node.debugger_value_type_ids().len > 0 || node.has_lowered_type_metadata() {
 			// The payload itself may belong to the retiring parser scope even
 			// when it has no attribute names. The ordered tail copies it too.
 			all_hit = false
@@ -1524,6 +1515,8 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 		}
 		for k in nodes_old_len .. p.a.nodes.len {
 			p.a.nodes[k].typ = shift_inferred_type_id(p.a.nodes[k].typ, node_shift)
+			p.a.nodes[k].source_value = shift_inferred_type_id(p.a.nodes[k].source_value,
+				node_shift)
 			p.a.nodes[k].value = shift_inferred_value(p.a.nodes[k].kind, p.a.nodes[k].value,
 				node_shift)
 			// Declaration attributes are linked by an internal directive whose value embeds the
@@ -1616,16 +1609,14 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 			p.a.comptime_skipped_goto_labels[canonical] = true
 		}
 	}
-	for name, is_contextual in w.a.contextual_anon_struct_types {
+	for type_id, is_contextual in w.a.contextual_anon_struct_types {
 		if is_contextual {
-			_, canonical := p.a.intern_text(name)
-			p.a.contextual_anon_struct_types[canonical] = true
+			p.a.contextual_anon_struct_types[type_id] = true
 		}
 	}
-	for name, is_synthesized in w.a.synthesized_anon_struct_types {
+	for type_id, is_synthesized in w.a.synthesized_anon_struct_types {
 		if is_synthesized {
-			_, canonical := p.a.intern_text(name)
-			p.a.synthesized_anon_struct_types[canonical] = true
+			p.a.synthesized_anon_struct_types[type_id] = true
 		}
 	}
 	for name, is_noreturn in w.a.noreturn_fns {

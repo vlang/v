@@ -46,7 +46,11 @@ fn (mut g FlatGen) fixed_array_decay_byte_compatible(actual types.Type, expected
 	if a is types.Pointer && e is types.Pointer {
 		return g.fixed_array_decay_byte_compatible(a.base_type, e.base_type)
 	}
-	return a.name() in ['char', 'i8', 'u8'] && e.name() in ['char', 'i8', 'u8']
+	return a.source_type_id() in [flat.source_type_char, flat.source_type_i8, flat.source_type_u8] && e.source_type_id() in [
+		flat.source_type_char,
+		flat.source_type_i8,
+		flat.source_type_u8,
+	]
 }
 
 fn (mut g FlatGen) fixed_array_decay_shape_equal(actual types.Type, expected types.Type, allow_byte_cast bool) bool {
@@ -67,8 +71,9 @@ fn (mut g FlatGen) fixed_array_decay_shape_equal(actual types.Type, expected typ
 		return false
 	}
 	return cgen_types_equal_after_alias_erasure(a, e)
-		|| (allow_byte_cast && a.name() in ['char', 'i8', 'u8']
-			&& e.name() in ['char', 'i8', 'u8'])
+		|| (allow_byte_cast && a.source_type_id() in [flat.source_type_char, flat.source_type_i8,
+			flat.source_type_u8]
+			&& e.source_type_id() in [flat.source_type_char, flat.source_type_i8, flat.source_type_u8])
 }
 
 fn fixed_array_index_info(t types.Type) (bool, bool, types.ArrayFixed) {
@@ -94,10 +99,10 @@ fn (mut g FlatGen) gen_fixed_array_index(index_id flat.NodeId, len string) {
 		return
 	}
 	index_type := unalias_type(g.usable_expr_type(index_id))
-	index_type_name := string(index_type.name())
-	helper := match index_type_name {
-		'i64' { 'v_fixed_index_i64' }
-		'u64' { 'v_fixed_index_u64' }
+	index_type_name_id := index_type.source_type_id()
+	helper := match index_type_name_id {
+		flat.source_type_i64 { 'v_fixed_index_i64' }
+		flat.source_type_u64 { 'v_fixed_index_u64' }
 		else { 'v_fixed_index' }
 	}
 	g.write('${helper}(')
@@ -133,7 +138,7 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayF
 
 fn runtime_array_struct_type(t &types.Type) bool {
 	if t is types.Struct {
-		return t.name() == 'array' || t.name() == 'Array'
+		return t.source_type_id() == cgen_array_source_type || t.source_type_id() == cgen_capital_array_source_type
 	}
 	if t is types.Alias {
 		return runtime_array_struct_type(t.base_type)
@@ -330,7 +335,8 @@ fn (mut g FlatGen) gen_pointer_arg_from_array_literal(node flat.Node, expected t
 // gen_fixed_array_data_arg emits fixed array data arg output for c.
 fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed) {
 	node := g.a.nodes[int(id)]
-	if node.kind == .cast_expr && node.value in ['voidptr', 'builtin.voidptr']
+	if node.kind == .cast_expr && node.source_value_id() in [flat.source_type_voidptr,
+		flat.source_type_id('builtin.voidptr')]
 		&& node.children_count > 0 {
 		g.gen_fixed_array_data_arg(g.a.child(&node, 0), arr)
 		return
@@ -474,10 +480,10 @@ fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, a
 	}
 	sizeof_id := g.a.child(&call, arg_start + 2)
 	sizeof_node := g.a.nodes[int(sizeof_id)]
-	if sizeof_node.kind != .sizeof_expr || sizeof_node.value.len == 0 {
+	if sizeof_node.kind != .sizeof_expr || sizeof_node.source_value_id() == 0 {
 		return false
 	}
-	elem_type := g.tc.parse_type(flat.source_type_id(sizeof_node.value))
+	elem_type := g.tc.parse_type(sizeof_node.source_value_id())
 	g.gen_fixed_array_data_arg(arg_id, types.ArrayFixed{
 		elem_type: elem_type
 	})
@@ -1269,11 +1275,11 @@ fn array_lookup_suffix(elem_type &types.Type) string {
 }
 
 fn array_last_index_suffix(elem_type &types.Type) ?string {
-	elem_name := elem_type.name()
-	return match elem_name {
-		'string' { 'string' }
-		'u8' { 'u8' }
-		'int' { 'int' }
+	elem_name_id := elem_type.source_type_id()
+	return match elem_name_id {
+		flat.source_type_string { 'string' }
+		flat.source_type_u8 { 'u8' }
+		flat.source_type_int { 'int' }
 		else { none }
 	}
 }
@@ -1658,7 +1664,8 @@ fn (mut g FlatGen) gen_slice_index_value(id flat.NodeId) {
 fn cgen_is_builtin_slice_index_type(typ &types.Type) bool {
 	clean0 := unalias_type(typ)
 	clean := types.unwrap_pointer(clean0)
-	return clean.name() in ['SliceIndex', 'builtin.SliceIndex']
+	return clean.source_type_id() in [cgen_slice_index_source_type,
+		cgen_builtin_slice_index_source_type]
 }
 
 fn cgen_builtin_slice_index_array_elem(typ types.Type) ?types.Type {
