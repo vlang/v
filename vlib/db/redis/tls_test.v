@@ -4,6 +4,10 @@ import net
 import net.mbedtls
 import time
 
+// RSA-4096 mutual TLS can exceed a second under TCC, especially during the full suite.
+// These tests check credentials and host verification, so allow a bounded setup budget.
+const redis_tls_timeout = 10 * time.second
+
 const redis_tls_ca = $embed_file('@VEXEROOT/examples/ssl_server/cert/ca.crt').to_string()
 const redis_tls_client_certificate = $embed_file('@VEXEROOT/examples/ssl_server/cert/client.crt').to_string()
 const redis_tls_client_key = $embed_file('@VEXEROOT/examples/ssl_server/cert/client.key').to_string()
@@ -37,13 +41,13 @@ fn redis_tls_expect(mut transport mbedtls.SSLConn, expected string) ! {
 	assert data.bytestr() == expected
 }
 
-fn redis_tls_serve(mut listener mbedtls.SSLListener) {
-	mut transport := listener.accept_with_timeouts(time.second, time.second) or { return }
+fn redis_tls_serve(mut listener mbedtls.SSLListener) ! {
+	mut transport := listener.accept_with_timeouts(redis_tls_timeout, redis_tls_timeout)!
 	defer { transport.close() or {} }
-	redis_tls_expect(mut transport, '*2\r\n$5\r\nHELLO\r\n$1\r\n3\r\n') or { return }
-	transport.write_string('%0\r\n') or { return }
-	redis_tls_expect(mut transport, '*1\r\n$4\r\nPING\r\n') or { return }
-	transport.write_string('+PONG\r\n') or {}
+	redis_tls_expect(mut transport, '*2\r\n$5\r\nHELLO\r\n$1\r\n3\r\n')!
+	transport.write_string('%0\r\n')!
+	redis_tls_expect(mut transport, '*1\r\n$4\r\nPING\r\n')!
+	transport.write_string('+PONG\r\n')!
 }
 
 fn test_tls_custom_ca_and_server_name() {
@@ -60,7 +64,8 @@ fn test_tls_custom_ca_and_server_name() {
 		tls_server_name: 'localhost'
 		tls_cert:        redis_tls_client_certificate
 		tls_key:         redis_tls_client_key
-		read_timeout:    time.second
+		connect_timeout: redis_tls_timeout
+		read_timeout:    redis_tls_timeout
 	)!
 	defer { db.close() or {} }
 	assert db.ping()! == 'PONG'
@@ -68,7 +73,7 @@ fn test_tls_custom_ca_and_server_name() {
 	assert db.ssl_conn.config.cert == redis_tls_client_certificate
 	assert db.ssl_conn.config.cert_key == redis_tls_client_key
 	assert !db.conn.is_blocking
-	worker.wait()
+	worker.wait()!
 }
 
 fn test_tls_rejects_wrong_server_name() {
@@ -85,13 +90,20 @@ fn test_tls_rejects_wrong_server_name() {
 		tls_server_name: 'wrong.invalid'
 		tls_cert:        redis_tls_client_certificate
 		tls_key:         redis_tls_client_key
-		read_timeout:    time.second
+		connect_timeout: redis_tls_timeout
+		read_timeout:    redis_tls_timeout
 	) or {
 		assert err is ConnectionError
-		worker.wait()
+		$if use_openssl ? {
+			assert err.msg().contains('the certificate is not valid for `wrong.invalid`')
+		} $else {
+			// MBEDTLS_ERR_X509_CERT_VERIFY_FAILED: a timeout must not satisfy this test.
+			assert err.msg().contains('ret: -9984')
+		}
+		worker.wait() or {}
 		return
 	}
-	worker.wait()
+	worker.wait() or {}
 	assert false, 'TLS accepted a certificate for another host'
 }
 
@@ -100,15 +112,16 @@ fn test_tls_client_credentials_are_used_without_server_validation() {
 	defer { listener.shutdown() or {} }
 	worker := spawn redis_tls_serve(mut listener)
 	mut db := connect(
-		host:          '127.0.0.1'
-		port:          port
-		tls:           true
-		tls_in_memory: true
-		tls_cert:      redis_tls_client_certificate
-		tls_key:       redis_tls_client_key
-		read_timeout:  time.second
+		host:            '127.0.0.1'
+		port:            port
+		tls:             true
+		tls_in_memory:   true
+		tls_cert:        redis_tls_client_certificate
+		tls_key:         redis_tls_client_key
+		connect_timeout: redis_tls_timeout
+		read_timeout:    redis_tls_timeout
 	)!
 	defer { db.close() or {} }
 	assert db.ping()! == 'PONG'
-	worker.wait()
+	worker.wait()!
 }
