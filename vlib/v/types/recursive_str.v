@@ -832,7 +832,7 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 					target := unwrap_all_pointers(tc.resolve_type(id))
 					receiver := unwrap_all_pointers(ctx.receiver_type)
 					if target !is Unknown && target !is Interface && receiver !is Unknown
-						&& target.name() != receiver.name() {
+						&& target.source_type_id() != receiver.source_type_id() {
 						binding.progressed = true
 						binding.nonreversible_progress = true
 						binding.numeric_deltas = map[string]i64{}
@@ -1924,7 +1924,7 @@ fn (tc &TypeChecker) recursive_str_method_value_targets_current(selector_id flat
 	if actual is Unknown || expected is Unknown {
 		return true
 	}
-	if actual.name() == expected.name() {
+	if actual.source_type_id() == expected.source_type_id() {
 		return true
 	}
 	return actual is Interface && !tc.recursive_str_has_concrete_fn_decl(resolved)
@@ -1937,7 +1937,7 @@ fn (tc &TypeChecker) recursive_str_call_targets_current(call_id flat.NodeId, rec
 		}
 		actual := unwrap_all_pointers(tc.parse_type(receiver.typ_name))
 		expected := unwrap_all_pointers(ctx.receiver_type)
-		return actual !is Unknown && expected !is Unknown && actual.name() == expected.name()
+		return actual !is Unknown && expected !is Unknown && actual.source_type_id() == expected.source_type_id()
 	}
 	if resolved != ctx.fn_name && tc.recursive_str_has_concrete_fn_decl(resolved) {
 		return false
@@ -1953,7 +1953,7 @@ fn (tc &TypeChecker) recursive_str_call_targets_current(call_id flat.NodeId, rec
 	if actual is Unknown || expected is Unknown {
 		return true
 	}
-	if actual.name() == expected.name() {
+	if actual.source_type_id() == expected.source_type_id() {
 		return true
 	}
 	return actual is Interface && !tc.recursive_str_has_concrete_fn_decl(resolved)
@@ -1982,7 +1982,7 @@ fn (tc &TypeChecker) recursive_str_receiver_is_concrete_match_variant(call_id fl
 				pattern_name_source_id := tc.match_type_pattern(pattern) or { continue }
 
 				pattern_type := unalias_and_unwrap_pointer_type(tc.parse_type(pattern_name_source_id))
-				if pattern_type !is Unknown && pattern_type.name() != expected.name() {
+				if pattern_type !is Unknown && pattern_type.source_type_id() != expected.source_type_id() {
 					return true
 				}
 			}
@@ -2130,17 +2130,17 @@ fn (tc &TypeChecker) recursive_str_apply_match_branch_progress(subject_id flat.N
 	for i in 0 .. condition_count {
 		condition := tc.a.child_node(&branch, i)
 		pattern_source_id := tc.match_type_pattern(*condition) or { return }
-		smartcast_text := if subject_type is SumType {
-			flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id) or { return })
+		smartcast_id := if subject_type is SumType {
+			tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id) or { return }
 		} else if is_ierror_type(subject_type) {
-			flat.source_type_name(tc.resolve_ierror_match_pattern(pattern_source_id) or { return })
+			tc.resolve_ierror_match_pattern(pattern_source_id) or { return }
 		} else if subject_type is Interface {
-			flat.source_type_name(tc.resolve_interface_match_pattern(pattern_source_id) or { return })
+			tc.resolve_interface_match_pattern(pattern_source_id) or { return }
 		} else {
 			return
 		}
-		smartcast_type := unalias_type(unwrap_pointer(tc.parse_type(flat.source_type_id(smartcast_text))))
-		if smartcast_type.name() == receiver_type.name() {
+		smartcast_type := unalias_type(unwrap_pointer(tc.parse_type(smartcast_id)))
+		if smartcast_type.source_type_id() == receiver_type.source_type_id() {
 			return
 		}
 	}
@@ -2317,7 +2317,7 @@ fn (tc &TypeChecker) recursive_str_apply_condition_facts(id flat.NodeId, truth b
 			return
 		}
 	}
-	if node.kind == .selector && tc.resolve_type(id).name() == 'bool' {
+	if node.kind == .selector && tc.resolve_type(id).source_type_id() == flat.source_type_bool {
 		if key := tc.recursive_str_condition_field_key(id) {
 			tc.recursive_str_set_value_fact(key, 'bool:${truth}', true, mut env)
 		}

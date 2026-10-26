@@ -131,3 +131,30 @@ fn test_numeric_literal_cast_retains_checked_literal_wrapper_types() {
 	tc.check_cast_expr(cast, *a.node(cast))
 	assert tc.errors.any(it.msg == 'cannot type cast an Option'), tc.errors.str()
 }
+
+// Both canonical payloads and legacy raw overrides must keep the spelling that
+// controls pointer-cast diagnostics, even when semantic targets are equivalent.
+fn test_string_pointer_cast_keeps_source_payload_and_raw_override_diagnostics() {
+	mut a := flat.FlatAst.new()
+	child_id := a.add_node(flat.Node{ kind: .ident, value: 's' })
+	for spelling in ['voidptr', 'byteptr', 'charptr'] {
+		mut tc := TypeChecker.new(&a)
+		target_id := flat.source_type_id(spelling)
+		node := flat.Node{ kind: .cast_expr, source_value: target_id }
+		target := *tc.parse_type(target_id)
+		assert tc.check_cast_from_string(child_id, node, child_id, builtin_string_type, target)
+		expected := 'cannot cast string to `${spelling}`${if spelling == 'voidptr' {
+			''
+		} else {
+			' outside `unsafe`'
+		}}, use ${spelling}(s.str) instead'
+		assert tc.errors.len == 1, tc.errors.str()
+		assert tc.errors[0].msg == expected, tc.errors.str()
+	}
+	mut tc := TypeChecker.new(&a)
+	node := flat.Node{ kind: .cast_expr, value: 'charptr', source_value: flat.source_type_voidptr }
+	target := *tc.parse_type(flat.source_type_charptr)
+	assert tc.check_cast_from_string(child_id, node, child_id, builtin_string_type, target)
+	assert tc.errors.len == 1, tc.errors.str()
+	assert tc.errors[0].msg == 'cannot cast string to `charptr` outside `unsafe`, use charptr(s.str) instead', tc.errors.str()
+}

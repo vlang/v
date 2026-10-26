@@ -191,9 +191,9 @@ fn (t &Transformer) comptime_scalar_named_const(name string, depth int, module_n
 }
 
 fn (mut t Transformer) make_comptime_scalar_literal(value ComptimeStringScalar) flat.NodeId {
-	return match value.typ_text() {
-		'string' { t.make_string_literal(value.value) }
-		'bool' { t.make_bool_literal(value.value == 'true') }
+	return match value.typ {
+		flat.source_type_string { t.make_string_literal(value.value) }
+		flat.source_type_bool { t.make_bool_literal(value.value == 'true') }
 		else { t.make_int_literal(value.value.int()) }
 	}
 }

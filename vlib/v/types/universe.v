@@ -1,6 +1,8 @@
 @[has_globals]
 module types
 
+import v.flat
+
 // platform_int_c_type is the C spelling emitted for V's platform-width `int`
 // (the `Primitive` with size 0). `int` is 64-bit on 64-bit targets and 32-bit
 // on 32-bit targets, so it lowers to `i64` or `i32` respectively. It defaults to
@@ -160,6 +162,17 @@ pub fn is_builtin_type_name(name string) bool {
 	}
 }
 
+// is_builtin_type_name_id reports whether an interned source spelling names a builtin type.
+// Source spelling IDs are distinct from checker-local semantic TypeId values.
+pub fn is_builtin_type_name_id(name_id u32) bool {
+	if flat.source_type_shape(name_id).has(.builtin_alias) {
+		return true
+	}
+	return name_id in [qualify_source_type_map, flat.source_type_nil, flat.source_type_char,
+		qualify_source_type_i128, qualify_source_type_u128, flat.source_type_none,
+		qualify_source_type_array]
+}
+
 // builtin_type_value returns the Type for a known builtin type name.
 pub fn builtin_type_value(name string) Type {
 	if name == 'bool' {
@@ -245,6 +258,48 @@ pub fn builtin_type_value(name string) Type {
 	return Type(Unknown{
 		reason: 'unknown builtin type'
 	})
+}
+
+// builtin_type_value_id returns the Type for an exact interned builtin source spelling.
+// Source spelling IDs are distinct from checker-local semantic TypeId values.
+pub fn builtin_type_value_id(name_id u32) Type {
+	return match name_id {
+		flat.source_type_bool { builtin_bool_type }
+		flat.source_type_int { builtin_int_type }
+		flat.source_type_i8 { builtin_i8_type }
+		flat.source_type_i16 { builtin_i16_type }
+		flat.source_type_i32 { builtin_i32_type }
+		flat.source_type_i64 { builtin_i64_type }
+		flat.source_type_u8 { builtin_u8_type }
+		flat.source_type_u16 { builtin_u16_type }
+		flat.source_type_u32 { builtin_u32_type }
+		flat.source_type_u64 { builtin_u64_type }
+		qualify_source_type_i128 { builtin_i128_type }
+		qualify_source_type_u128 { builtin_u128_type }
+		flat.source_type_f32 { builtin_f32_type }
+		flat.source_type_f64 { builtin_f64_type }
+		flat.source_type_string { builtin_string_type }
+		flat.source_type_char { builtin_char_type }
+		flat.source_type_rune { builtin_rune_type }
+		flat.source_type_isize { builtin_isize_type }
+		qualify_source_type_uint, flat.source_type_usize { builtin_usize_type }
+		flat.source_type_void { builtin_void_type }
+		flat.source_type_voidptr { builtin_voidptr_type }
+		qualify_source_type_array {
+			Type(Array{
+				elem_type: new_type_reference(Type(Void{}))
+			})
+		}
+		flat.source_type_charptr { builtin_charptr_type }
+		flat.source_type_byteptr { builtin_byteptr_type }
+		flat.source_type_nil { builtin_nil_type }
+		flat.source_type_none { builtin_none_type }
+		else {
+			Type(Unknown{
+				reason: 'unknown builtin type'
+			})
+		}
+	}
 }
 
 // builtin_type returns the Type for a builtin type name, or none otherwise.

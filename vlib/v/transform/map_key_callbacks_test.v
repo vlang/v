@@ -4,7 +4,7 @@ import v.flat
 import v.types
 
 fn map_callback_test_names(key string) []string {
-	hash_fn, eq_fn, clone_fn, free_fn := map_callback_names(key)
+	hash_fn, eq_fn, clone_fn, free_fn := map_callback_names(flat.source_type_id(key))
 	return [hash_fn, eq_fn, clone_fn, free_fn]
 }
 
