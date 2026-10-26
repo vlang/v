@@ -112,6 +112,11 @@ Use `.to_owned()` or
 by value are copied so they can outlive the source.
 Reassigning a borrowed view releases its loan without freeing the source bytes.
 
+Dynamic and fixed array `init:` expressions clone borrowed owning projections for each element,
+including projections indexed by `index`. Each element gets independent storage and leaves the
+source usable. Fresh returned values are evaluated once per element without an additional clone;
+a zero-length initializer does not evaluate its expression.
+
 Standard string methods, numeric parsers, path inspection and joining functions, and
 string-builder writes borrow string arguments that cannot escape through the return value.
 Signed numeric parsing preserves the caller's string while removing a leading sign.
