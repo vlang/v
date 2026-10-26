@@ -836,9 +836,6 @@ pub fn (mut ctx Context) refresh_ui() {
 
 // begin prepares the context for drawing.
 pub fn (ctx &Context) begin() {
-	if ctx.render_text && ctx.font_inited {
-		ctx.ft.flush()
-	}
 	ctx.r.defaults()
 	ctx.r.matrix_mode_projection()
 	ctx.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
@@ -938,6 +935,11 @@ pub fn (ctx &Context) end(options EndOptions) {
 	// is mutated, and Sokol consumes its descriptor before this call returns.
 	mut frame_ctx := unsafe { &Context(ctx) }
 	frame_ctx.prepare_end_pass(options, sapp.glue_swapchain())
+	// Include every glyph rasterized this frame, including the FPS overlay,
+	// in the single atlas upload before this commit's pass.
+	if ctx.render_text && ctx.font_inited {
+		ctx.ft.flush()
+	}
 	// sg_begin_pass copies its descriptor synchronously. The next pass can
 	// reuse this Context-owned storage without retaining a frame-local value.
 	gfx.begin_pass(&frame_ctx.frame_pass)

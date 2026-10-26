@@ -326,10 +326,8 @@ fn new_ft(ctx &Context, c FTConfig) ?&FT {
 }
 
 // text_atlas_pending_upload reports whether fontstash rasterized glyphs that
-// are not on the GPU yet: their upload is deferred to the next frame's
-// gg.begin (sokol allows one sg_update_image per image and frame). Callers
-// that redraw only on demand should ask for one more frame when this is true,
-// so the glyphs finish their upload instead of staying on the stale atlas.
+// are not on the GPU yet. Context.end uploads them before drawing the current
+// frame, so callers do not need to request an extra frame for new glyphs.
 pub fn (ctx &Context) text_atlas_pending_upload() bool {
 	if !ctx.font_inited || ctx.ft == unsafe { nil } {
 		return false
@@ -448,11 +446,11 @@ pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
 	ctx.draw_text(x, y, text)
 }
 
-// flush prepares the font for use.
+// flush uploads pending glyphs before drawing the font atlas.
 pub fn (ft &FT) flush() {
 	// Upload the atlas once for everything fontstash rasterized since the last
-	// flush. This runs from gg.begin, before the frame's pass opens, which is
-	// the one place sokol allows an image update per frame.
+	// flush. Context.end calls this after text has been queued and before the
+	// pass opens, so all new glyphs share one image update per commit.
 	mut rt := ft.rt
 	if rt.pending_upload && rt.atlas_img.id > 0 && rt.pending_data != unsafe { nil } {
 		mut img_data := gfx.ImageData{}
