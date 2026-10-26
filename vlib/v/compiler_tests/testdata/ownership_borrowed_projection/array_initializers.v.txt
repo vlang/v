@@ -1,0 +1,72 @@
+struct InitializerHolder {
+	items []ObservedPayload
+}
+
+fn fresh_initializer_payload(evaluations &int, clones &int, index int) ObservedPayload {
+	// The caller keeps this counter alive throughout initializer evaluation.
+	unsafe {
+		*evaluations += 1
+	}
+	return ObservedPayload{
+		values: ['fresh ${index}']
+		clones: clones
+	}
+}
+
+fn main() {
+	mut clones := 0
+	holder := &InitializerHolder{
+		items: [ObservedPayload{
+			values: ['left']
+			clones: &clones
+		}, ObservedPayload{
+			values: ['right']
+			clones: &clones
+		}]
+	}
+	mut repeated := []ObservedPayload{len: 2, init: holder.items[0]}
+	assert clones == 2
+	repeated[0].values[0] = 'changed'
+	assert repeated[1].values[0] == 'left'
+	assert holder.items[0].values[0] == 'left'
+
+	mut fixed := [2]ObservedPayload{init: holder.items[0]}
+	assert clones == 4
+	fixed[0].values[0] = 'changed'
+	assert fixed[1].values[0] == 'left'
+	assert holder.items[0].values[0] == 'left'
+
+	mut indexed := []ObservedPayload{len: 2, init: holder.items[index]}
+	assert clones == 6
+	assert indexed[0].values[0] == 'left'
+	assert indexed[1].values[0] == 'right'
+	indexed[0].values[0] = 'changed'
+	indexed[1].values[0] = 'also changed'
+	assert holder.items[0].values[0] == 'left'
+	assert holder.items[1].values[0] == 'right'
+
+	mut fixed_indexed := [2]ObservedPayload{init: holder.items[index]}
+	assert clones == 8
+	assert fixed_indexed[0].values[0] == 'left'
+	assert fixed_indexed[1].values[0] == 'right'
+	fixed_indexed[0].values[0] = 'changed'
+	fixed_indexed[1].values[0] = 'also changed'
+	assert holder.items[0].values[0] == 'left'
+	assert holder.items[1].values[0] == 'right'
+
+	mut evaluations := 0
+	fresh := []ObservedPayload{len: 2, init: fresh_initializer_payload(&evaluations, &clones, index)}
+	assert evaluations == 2
+	assert clones == 8
+	assert fresh[0].values[0] == 'fresh 0'
+	assert fresh[1].values[0] == 'fresh 1'
+	fixed_fresh := [2]ObservedPayload{init: fresh_initializer_payload(&evaluations, &clones, index)}
+	assert evaluations == 4
+	assert clones == 8
+	assert fixed_fresh[0].values[0] == 'fresh 0'
+	assert fixed_fresh[1].values[0] == 'fresh 1'
+	empty := []ObservedPayload{len: 0, init: fresh_initializer_payload(&evaluations, &clones, index)}
+	assert empty.len == 0
+	assert evaluations == 4
+	assert clones == 8
+}
