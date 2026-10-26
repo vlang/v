@@ -175,8 +175,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 							continue
 						}
 						decoded_s.write_string(decoded)
-						replacement := s.text[pos..pos + sequence_length + 1]
-						s.skip_n(replacement.len)
+						s.skip_n(sequence_length + 1)
 						continue
 					} else {
 						pos := s.state().pos
