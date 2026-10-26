@@ -18,9 +18,9 @@ fn test_native_payload_table_preserves_constant_array_layout_across_chunks() {
 		table := flat_source.all_after('struct NodePayloadTable {').all_before('__global g_node_payload_table')
 		new_table := allocator_source.all_after('fn node_payload_new_table()').all_before('// node_payload_new_chunk')
 		new_chunk := allocator_source.all_after('fn node_payload_new_chunk()')
-		payload_source := 'module flat\nfn C.calloc(usize, usize) voidptr\nfn C.free(voidptr)\nfn C.v_flat_payload_ptr_get(voidptr, usize) voidptr\nfn C.v_flat_payload_ptr_set(voidptr, usize, voidptr)\nconst node_payload_chunk_bits =' +
+		payload_source := 'module flat\nfn C.calloc(uint, uint) voidptr\nfn C.free(voidptr)\nfn C.v_flat_payload_ptr_get(voidptr, uint) voidptr\nfn C.v_flat_payload_ptr_set(voidptr, uint, voidptr)\nconst node_payload_chunk_bits =' +
 			constants + 'struct NodePayloadTable {' + table +
-			'fn node_payload_alloc_zeroed(n usize) voidptr { return unsafe { C.calloc(1, n) } }\nfn node_payload_new_table()' +
+			'fn node_payload_alloc_zeroed(n uint) voidptr { return unsafe { C.calloc(1, n) } }\nfn node_payload_new_table()' +
 			new_table + 'fn node_payload_new_chunk()' + new_chunk + r'
 pub fn verify() int {
     if sizeof(NodePayloadTable) != 32776 { return 1 }
@@ -30,12 +30,12 @@ pub fn verify() int {
     for index in 0 .. 4097 {
         payloads[index] = index + 1
         chunk_index := int(table.count) >> node_payload_chunk_bits
-        mut chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(chunk_index))
+        mut chunk := C.v_flat_payload_ptr_get(voidptr(table), uint(chunk_index))
         if chunk == voidptr(0) {
             chunk = node_payload_new_chunk()
-            C.v_flat_payload_ptr_set(voidptr(table), usize(chunk_index), chunk)
+            C.v_flat_payload_ptr_set(voidptr(table), uint(chunk_index), chunk)
         }
-        C.v_flat_payload_ptr_set(chunk, usize(int(table.count) & node_payload_chunk_mask),
+        C.v_flat_payload_ptr_set(chunk, uint(int(table.count) & node_payload_chunk_mask),
             unsafe { voidptr(&payloads[index]) })
         table.count += 1
     }

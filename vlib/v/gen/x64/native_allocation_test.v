@@ -20,7 +20,7 @@ fn main() {
 	source[2] = 3
 	source[3] = 4
 	copy := &u8(v3_aligned_memdup(&source[0], 4, 64))
-	if usize(copy) == 0 || usize(copy) % 64 != 0 { C.exit(1) }
+	if uint(copy) == 0 || uint(copy) % 64 != 0 { C.exit(1) }
 	unsafe {
 		if copy[0] != 1 || copy[1] != 2 || copy[2] != 3 || copy[3] != 4 { C.exit(2) }
 		copy[1] = 9
@@ -28,10 +28,10 @@ fn main() {
 	if source[1] != 2 { C.exit(3) }
 	C.free(copy)
 	small := v3_aligned_memdup(&source[0], 4, 1)
-	if usize(small) == 0 || usize(small) % 8 != 0 { C.exit(4) }
+	if uint(small) == 0 || uint(small) % 8 != 0 { C.exit(4) }
 	C.free(small)
 	invalid := v3_aligned_memdup(&source[0], 4, 24)
-	if usize(invalid) != 0 { C.exit(5) }
+	if uint(invalid) != 0 { C.exit(5) }
 }
 ', false)
 	}
@@ -71,7 +71,7 @@ fn main() {
 		slots[0] = voidptr(11)
 		slots[1] = voidptr(22)
 	}
-	if usize(values[0]) != 11 || usize(values[1]) != 22 { C.exit(1) }
+	if uint(values[0]) != 11 || uint(values[1]) != 22 { C.exit(1) }
 }
 ', false)
 	}

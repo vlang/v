@@ -64,11 +64,11 @@ fn test_native_pointer_elements_and_nil_terminators_keep_their_storage_addresses
 	$if linux && amd64 {
 		source := 'module main
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(source voidptr, size isize) voidptr {
-    destination := C.malloc(usize(size))
-    return C.memcpy(destination, source, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(source voidptr, size i64) voidptr {
+    destination := C.malloc(uint(size))
+    return C.memcpy(destination, source, uint(size))
 }
 fn main() {
     mut first := u8(65)

@@ -82,21 +82,21 @@ fn C.exit(int)
 fn C.alarm(u32) u32
 fn C.v_os_execute_capture_start(voidptr, &int, &int) int
 fn C.v_os_exec_capture_start(voidptr, &int, &int) int
-fn C.read(i32, voidptr, usize) isize
+fn C.read(i32, voidptr, uint) i64
 fn C.close(i32) i32
 fn C.waitpid(i32, &i32, i32) i32
-fn C.memcmp(voidptr, voidptr, usize) i32
+fn C.memcmp(voidptr, voidptr, uint) i32
 fn check_capture(pid int, fd int, expected string, code int) {
     mut buffer := [128]u8{}
     mut total := 0
     for {
-        n := C.read(i32(fd), &buffer[total], usize(128 - total))
+        n := C.read(i32(fd), &buffer[total], uint(128 - total))
         if n < 0 { C.exit(1) }
         if n == 0 { break }
         total += int(n)
     }
     C.close(i32(fd))
-    if total != expected.len || C.memcmp(&buffer[0], expected.str, usize(total)) != 0 {
+    if total != expected.len || C.memcmp(&buffer[0], expected.str, uint(total)) != 0 {
         C.exit(2)
     }
     mut status := i32(0)

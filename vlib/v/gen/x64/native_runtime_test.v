@@ -146,9 +146,9 @@ fn test_native_filelock_headers_preserve_modes_ranges_and_unlocking() {
 		run_native_runtime_fixture('filelock', 'module main
 fn C.exit(int)
 fn C.alarm(u32) u32
-fn C.malloc(usize) voidptr
+fn C.malloc(uint) voidptr
 fn C.free(voidptr)
-fn C.memcpy(voidptr, voidptr, usize) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
 fn C.mkstemp(voidptr) i32
 fn C.unlink(voidptr) i32
 fn C.close(i32) i32
@@ -164,7 +164,7 @@ fn main() {
 	C.alarm(5)
 	name := "/tmp/v-native-filelock-XXXXXX"
 	path := C.malloc(128)
-	C.memcpy(path, name.str, usize(name.len + 1))
+	C.memcpy(path, name.str, uint(name.len + 1))
 	fd := C.mkstemp(path)
 	if fd < 0 { C.exit(1) }
 	if C.v_filelock_lock(fd, 1, 1, 2, 3) != 0 { C.exit(2) }
@@ -200,10 +200,10 @@ fn test_native_flat_payload_header_helpers_preserve_pointer_identity() {
 	$if linux && amd64 {
 		run_native_runtime_fixture('payload_pointer', 'module main
 fn C.exit(int)
-fn C.malloc(usize) voidptr
+fn C.malloc(uint) voidptr
 fn C.free(voidptr)
-fn C.v_flat_payload_ptr_get(voidptr, usize) voidptr
-fn C.v_flat_payload_ptr_set(voidptr, usize, voidptr)
+fn C.v_flat_payload_ptr_get(voidptr, uint) voidptr
+fn C.v_flat_payload_ptr_set(voidptr, uint, voidptr)
 fn main() {
 	base := C.malloc(24)
 	C.v_flat_payload_ptr_set(base, 0, unsafe { nil })

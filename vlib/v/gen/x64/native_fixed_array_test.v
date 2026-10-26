@@ -16,10 +16,10 @@ fn test_native_returned_registration_fixed_array_fields_preserve_string_elements
 		source := definitions.all_before('// new_type_reference').replace('module types', 'module main') +
 			registration.replace('types.Type', 'Type') + r'
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(value voidptr, size isize) voidptr {
-    return C.memcpy(C.malloc(usize(size)), value, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(value voidptr, size i64) voidptr {
+    return C.memcpy(C.malloc(uint(size)), value, uint(size))
 }
 fn make_registration() FnSignatureRegistration {
     mut aliases := [6]string{}

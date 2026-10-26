@@ -147,7 +147,7 @@ fn test_native_compiler_string_array_constants_reserve_full_headers_and_preserve
 import ssa
 import x64
 fn C.exit(int)
-fn C.strlen(&u8) usize
+fn C.strlen(&u8) uint
 __global canary = u64(305419896)
 const neighboring = ["first", "second", "third"]
 fn main() {

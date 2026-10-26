@@ -33,10 +33,10 @@ fn test_native_real_float_unions_share_storage_before_and_after_transform() {
 		source := r'module main
 import strconv
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(value voidptr, size isize) voidptr {
-    return C.memcpy(C.malloc(usize(size)), value, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(value voidptr, size i64) voidptr {
+    return C.memcpy(C.malloc(uint(size)), value, uint(size))
 }
 fn bits64(value strconv.Float64u) u64 { return unsafe { value.u } }
 fn main() {

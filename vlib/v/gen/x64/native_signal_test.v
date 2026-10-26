@@ -12,7 +12,7 @@ fn test_native_signal_handler_calls_fallback_on_alternate_stack() {
 struct C.stack_t {
     ss_sp voidptr
     ss_flags int
-    ss_size usize
+    ss_size uint
 }
 fn C.exit(int)
 fn C.sigaltstack(voidptr, &C.stack_t) int

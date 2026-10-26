@@ -19,11 +19,11 @@ fn test_native_spawn_noreturn_worker_preserves_parent_execution() {
 			os.write_file(path, 'module main
 fn C.exit(int)
 fn C.alarm(u32) u32
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(source voidptr, size isize) voidptr {
-    destination := C.malloc(usize(size))
-    return C.memcpy(destination, source, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(source voidptr, size i64) voidptr {
+    destination := C.malloc(uint(size))
+    return C.memcpy(destination, source, uint(size))
 }
 @[noreturn]
 fn C.pthread_exit(voidptr)
