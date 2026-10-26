@@ -59,7 +59,9 @@ fn main() {
 	build := routine(source, 'build')
 	assert build.contains('vc_compat_uint.ps1" -Source "%V_C_FILE%"')
 	assert build.contains('if !ERRORLEVEL! NEQ 0 goto :error')
-	assert build.index('vc_compat_uint.ps1')! < build.index('echo Building V...')!
+	patch_at := build.index('vc_compat_uint.ps1') or { panic('missing uint patch') }
+	compile_at := build.index('echo Building V...') or { panic('missing build command') }
+	assert patch_at < compile_at
 	assert build.contains('set "V_C_FILE=%vc_dir%\\v_win_compat.c"')
 	for label in ['success', 'error'] {
 		assert routine(source, label).contains('call :try_delete "%vc_dir%\\v_win_compat.c"')
