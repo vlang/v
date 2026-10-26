@@ -10393,6 +10393,13 @@ fn (mut tc TypeChecker) ownership_clone_nonowned_string_call_arg(fn_name string,
 	if !tc.valid_node_id(clean_id) {
 		return false
 	}
+	pop_source := tc.ownership_array_pop_source_key(clean_id)
+	if pop_source != '' && (pop_source in st.owned_vars
+		|| tc.ownership_owned_dynamic_overlap_names(pop_source).len > 0) {
+		// A removed owner transfers directly to the callee. Let the normal argument
+		// consumption path move it and update the array before considering a clone.
+		return false
+	}
 	if tc.ownership_clone_nonowned_string_conditional_args(fn_name, param_idx, suffix, clean_id, expected) {
 		_ = tc.ownership_consume_conditional_call_arg(fn_name, param_idx, suffix, arg_id, expected, arg_id)
 		return true
@@ -10402,6 +10409,10 @@ fn (mut tc TypeChecker) ownership_clone_nonowned_string_call_arg(fn_name string,
 	}
 	st.borrowed_projection_actions[int(arg_id)] = .clone_value
 	st.borrowed_projection_actions[int(clean_id)] = .clone_value
+	if pop_source != '' {
+		// Cloning a non-owning result still evaluates the pop and removes its slot.
+		_ = tc.ownership_consume_array_element_method_result(arg_id, fn_name, arg_id)
+	}
 	return true
 }
 
@@ -10967,6 +10978,32 @@ fn (mut tc TypeChecker) ownership_consume_conditional_expr(expr_id flat.NodeId, 
 	tc.ownership_clear_temp_storage(tmp_name)
 	tc.ownership_flush_value_branch_moves()
 	return consumed
+}
+
+// ownership_array_pop_source_key identifies the slot removed while evaluating a call argument.
+fn (mut tc TypeChecker) ownership_array_pop_source_key(expr_id flat.NodeId) string {
+	call_id := tc.ownership_unwrap_expr(expr_id)
+	if !tc.valid_node_id(call_id) {
+		return ''
+	}
+	node := tc.a.nodes[int(call_id)]
+	if node.kind != .call || node.children_count == 0 {
+		return ''
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.children_count == 0
+		|| fn_node.value !in ['pop', 'pop_left'] {
+		return ''
+	}
+	recv_id := tc.a.child(fn_node, 0)
+	if unwrap_pointer(tc.resolve_type(recv_id)) !is Array {
+		return ''
+	}
+	array_name := tc.ownership_expr_ident_name(recv_id)
+	if array_name == '' {
+		return ''
+	}
+	return tc.ownership_array_element_method_source_key(array_name, fn_node.value)
 }
 
 fn (mut tc TypeChecker) ownership_consume_array_element_method_result(expr_id flat.NodeId, target string, pos flat.NodeId) bool {

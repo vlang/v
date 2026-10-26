@@ -2855,6 +2855,150 @@ fn main() {
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
 }
 
+fn test_ownership_array_pop_call_arguments_update_storage() {
+	v3_bin := ownership_build_v3()
+	for method in ['pop', 'pop_left'] {
+		name := 'array_${method}_call_arg_storage'
+		ok := run_ownership_check(v3_bin, name, '
+fn sink(s string, original &u8) {
+	assert s.str == original
+	assert s == "item"
+}
+
+fn main() {
+	value := "item".to_owned()
+	original := value.str
+	mut arr := [value]
+	sink(arr.${method}(), original)
+	arr << "literal"
+	x := arr[0]
+	y := x
+	assert x == "literal"
+	_ = y
+}
+')
+		assert ok.exit_code == 0, ok.output
+		binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+		run := os.exec([binary])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '', run.output
+
+		remaining := run_ownership_check(v3_bin, 'array_${method}_call_arg_retains_other_owner', '
+fn sink(s string) {
+	_ = s
+}
+
+fn main() {
+	mut arr := ["first".to_owned(), "last".to_owned()]
+	sink(arr.${method}())
+	x := arr[0]
+	y := x
+	println(x)
+	_ = y
+}
+')
+		assert remaining.exit_code != 0
+		assert remaining.output.contains('use of moved value: `x`'), remaining.output
+	}
+
+	for method in ['pop', 'pop_left'] {
+		name := 'array_${method}_literal_call_arg_clone'
+		code := '
+fn sink(s string) {
+	assert s == "seed" || s == "literal"
+}
+
+fn main() {
+	sink("seed".to_owned())
+	mut arr := ["literal"]
+	sink(arr.${method}())
+	assert arr.len == 0
+}
+'
+		cloned := run_ownership_check_c_only(v3_bin, name, code)
+		assert cloned.exit_code == 0, cloned.output
+		cloned_c_path := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out.c')
+		cloned_c := os.read_file(cloned_c_path) or { panic(err) }
+		assert cloned_c.contains('sink(string__clone(')
+		compiled := run_ownership_check(v3_bin, name, code)
+		assert compiled.exit_code == 0, compiled.output
+		binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+		run := os.exec([binary])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '', run.output
+
+		unknown := run_ownership_check(v3_bin, 'array_${method}_unknown_length_call_arg', '
+fn count() int {
+	return 0
+}
+
+fn sink(s string, original &u8) {
+	assert s.str == original
+	assert s == "item"
+}
+
+fn main() {
+	value := "item".to_owned()
+	original := value.str
+	mut arr := []string{len: count()}
+	arr << value
+	sink(arr.${method}(), original)
+	assert arr.len == 0
+}
+')
+		assert unknown.exit_code == 0, unknown.output
+		unknown_binary := os.join_path(os.temp_dir(), 'v3_ownership_array_${method}_unknown_length_call_arg_${os.getpid()}', 'out')
+		unknown_run := os.exec([unknown_binary])
+		assert unknown_run.exit_code == 0, unknown_run.output
+
+		consecutive := run_ownership_check(v3_bin, 'array_${method}_consecutive_call_args', '
+fn sink(s string, original &u8) {
+	assert s.str == original
+	assert s == "first" || s == "last"
+}
+
+fn main() {
+	first := "first".to_owned()
+	last := "last".to_owned()
+	first_ptr := first.str
+	last_ptr := last.str
+	mut arr := [first, last]
+	sink(arr.${method}(), ${if method == 'pop' { 'last_ptr' } else { 'first_ptr' }})
+	assert arr.len == 1
+	sink(arr.${method}(), ${if method == 'pop' { 'first_ptr' } else { 'last_ptr' }})
+	assert arr.len == 0
+	arr << "literal"
+	x := arr[0]
+	y := x
+	assert x == "literal"
+	_ = y
+}
+')
+		assert consecutive.exit_code == 0, consecutive.output
+		consecutive_binary := os.join_path(os.temp_dir(), 'v3_ownership_array_${method}_consecutive_call_args_${os.getpid()}', 'out')
+		consecutive_run := os.exec([consecutive_binary])
+		assert consecutive_run.exit_code == 0, consecutive_run.output
+	}
+
+	shifted := run_ownership_check(v3_bin, 'array_pop_left_cloned_call_arg_shifts_owner', '
+fn sink(s string) {
+	_ = s
+}
+
+fn main() {
+	sink("seed".to_owned())
+	mut arr := ["literal", "owned".to_owned()]
+	sink(arr.pop_left())
+	x := arr[0]
+	y := x
+	println(x)
+	_ = y
+}
+')
+	assert shifted.exit_code != 0
+	assert shifted.output.contains('use of moved value: `x`'), shifted.output
+}
+
 fn test_ownership_array_alias_builtin_method_keeps_receiver() {
 	v3_bin := ownership_build_v3()
 	ok := run_ownership_check(v3_bin, 'array_alias_insert_keeps_receiver', '
