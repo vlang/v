@@ -14579,6 +14579,11 @@ fn is_regular_v_test_file(path string) bool {
 	if path.ends_with('_test.v') || path.ends_with('_test.vv') {
 		return true
 	}
+	// Every test file spelling (`_test.v`, `_test.vv`, `_test.<backend>.v`, ...)
+	// contains `_test` in its leaf name; skip the allocating pref check otherwise.
+	if !path_leaf_view(path).contains('_test') {
+		return false
+	}
 	// Backend-qualified test files such as `foo_test.c.v` are test files
 	// too: the test driver compiles them as tests, so the test-only
 	// diagnostic relaxations must apply to them as well.
