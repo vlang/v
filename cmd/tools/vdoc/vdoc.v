@@ -1,6 +1,6 @@
 module main
 
-import markdown
+import x.markdown
 import os
 import time
 import strings
@@ -387,7 +387,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			text:        readme.content
 		}
 		if out.typ == .ansi {
-			println(markdown.to_plain(readme.content))
+			println(readme_plaintext(readme.content))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
 				head:           doc.DocNode{
@@ -531,5 +531,47 @@ fn (mut vd VDoc) generate_docs_from_file() {
 fn (vd &VDoc) vprintln(str string) {
 	if vd.cfg.is_verbose {
 		println('vdoc: ${str}')
+	}
+}
+
+// readme_plaintext keeps terminal README output free of Markdown formatting.
+fn readme_plaintext(source string) string {
+	mut md := markdown.Markdown.new(markdown.Options{})
+	node := md.parse(source)
+	mut output := strings.new_builder(source.len)
+	append_readme_plaintext(node, &md, false, mut output)
+	return output.str().trim_space()
+}
+
+fn append_readme_plaintext(node &markdown.Node, md &markdown.Markdown, tight_list bool, mut output strings.Builder) {
+	match node.kind {
+		.text, .code_span, .autolink { output.write_string(node.literal) }
+		.code_block, .fenced_code { output.write_string(node.literal) }
+		.hard_break, .soft_break { output.write_u8(`\n`) }
+		.raw_html, .html_block, .link_ref_def, .footnote_def {}
+		else {
+			if node.children.len == 0 && node.literal != '' {
+				for child in markdown.parse_inline(node.literal, markdown.Options{}, md.ref_map) {
+					append_readme_plaintext(child, md, if node.kind == .list {
+						node.is_tight
+					} else {
+						tight_list
+					}, mut output)
+				}
+			} else {
+				for child in node.children {
+					append_readme_plaintext(child, md, if node.kind == .list {
+						node.is_tight
+					} else {
+						tight_list
+					}, mut output)
+				}
+			}
+		}
+	}
+	if (node.kind == .paragraph && !tight_list) || node.kind in [.heading, .blockquote, .list,
+		.list_item, .code_block, .fenced_code, .table, .table_head, .table_body, .table_row,
+		.table_cell, .definition_list, .definition_term, .definition_desc] {
+		output.write_u8(`\n`)
 	}
 }

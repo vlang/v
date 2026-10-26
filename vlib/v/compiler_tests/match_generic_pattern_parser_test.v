@@ -45,10 +45,10 @@ fn find_match_branch_with_pattern(a &flat.FlatAst, pattern string) flat.Node {
 			continue
 		}
 		cond := a.child_node(&node, 0)
-		if cond.kind == .ident && cond.value == pattern {
+		if cond.kind == .ident && cond.value_text() == pattern {
 			return node
 		}
-		if cond.kind == .selector && cond.value == pattern {
+		if cond.kind == .selector && cond.value_text() == pattern {
 			return node
 		}
 	}
@@ -85,11 +85,11 @@ fn find_match_branch_with_qualified_pattern(a &flat.FlatAst, module_name string,
 			continue
 		}
 		cond := a.child_node(&node, 0)
-		if cond.kind != .selector || cond.value != pattern || cond.children_count == 0 {
+		if cond.kind != .selector || cond.value_text() != pattern || cond.children_count == 0 {
 			continue
 		}
 		base := a.child_node(cond, 0)
-		if base.kind == .ident && base.value == module_name {
+		if base.kind == .ident && base.value_text() == module_name {
 			return node
 		}
 	}
@@ -163,14 +163,14 @@ fn after() int {
 	nested_arg_branch := find_match_branch_with_pattern(a, 'Node[foo.Bar]')
 	nested_cond := a.child_node(&nested_arg_branch, 0)
 	assert nested_cond.kind == .ident
-	assert nested_cond.value == 'Node[foo.Bar]'
+	assert nested_cond.value_text() == 'Node[foo.Bar]'
 
 	qualified_branch := find_match_branch_with_qualified_pattern(a, 'foo', 'Node[T]')
 	cond := a.child_node(&qualified_branch, 0)
 	base := a.child_node(cond, 0)
 	assert base.kind == .ident
-	assert base.value == 'foo'
-	assert cond.value == 'Node[T]'
+	assert base.value_text() == 'foo'
+	assert cond.value_text() == 'Node[T]'
 }
 
 fn check_source_errors(name string, src string) []types.TypeError {

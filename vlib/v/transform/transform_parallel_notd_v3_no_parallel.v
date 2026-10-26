@@ -34,6 +34,9 @@ const shared_transform_chunks_per_job = 1
 // expansion estimates to the other half before assigning fixed worker regions.
 const shared_expansion_pool_divisor = 2
 const max_parallel_monomorph_jobs = 18
+// User builds keep bounded specialization batches. Use the host's wider pool
+// for those batches now that each batch releases its scratch before the next.
+const default_bounded_monomorph_jobs = 8
 // Recycle scratch arenas throughout large self-hosting transforms.
 const scoped_transform_batches = 16
 const scoped_selfhost_transform_batches = 4
@@ -1473,12 +1476,39 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		// retaining the other parallel compiler stages.
 		return false
 	}
-	if specs.len == 0 || t.emits_directly(specs) {
+	if specs.len == 0 {
 		return false
 	}
 	if t.scope_parallel_workers && t.scoped_monomorphize
 		&& should_use_scoped_monomorphize(t.a.nodes.len, specs.len) {
-		return t.run_scoped_monomorphize_specs(specs, mut emitted, mut generated)
+		// Keep specialization scratch bounded, but run each bounded batch on the
+		// shared worker pool. The old path emitted every specialization serially,
+		// which made large user projects spend tens of seconds in this drain loop.
+		mut start := 0
+		for start < specs.len {
+			end := if start + scoped_monomorph_batch_specs < specs.len {
+				start + scoped_monomorph_batch_specs
+			} else {
+				specs.len
+			}
+			if !t.run_parallel_monomorphize_specs_impl(specs[start..end], struct_decls,
+				sum_decls, mut emitted, mut generated, false) {
+				return false
+			}
+			start = end
+		}
+		return true
+	}
+	return t.run_parallel_monomorphize_specs_impl(specs, struct_decls, sum_decls, mut emitted,
+		mut generated, true)
+}
+
+fn (mut t Transformer) run_parallel_monomorphize_specs_impl(specs []PendingGenericFnSpec, struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted GenericFnSpecBoolMap, mut generated []string, allow_direct bool) bool {
+	if specs.len == 0 {
+		return false
+	}
+	if allow_direct && t.emits_directly(specs) {
+		return false
 	}
 	if isnil(t.a.worker_pool) {
 		worker_count := runtime.nr_jobs() - 1
@@ -2034,9 +2064,7 @@ fn monomorph_job_limit(available_jobs int, _node_count int, configured_jobs int)
 	if configured_jobs > 0 {
 		return int_min(available_jobs, configured_jobs)
 	}
-	// Scoped generic-transform batches keep enough memory available for the
-	// lower-latency four-way specialization path on large applications too.
-	return int_min(available_jobs, 4)
+	return int_min(available_jobs, default_bounded_monomorph_jobs)
 }
 
 // monomorph_regions_can_merge_in_place reports whether sequential leftward

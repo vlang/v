@@ -226,6 +226,9 @@ mut:
 	// file_platforms are the platforms that each file is compiled for, with `-os cross`.
 	// Files that are compiled for all of them are not listed.
 	file_platforms map[string][]Platform
+	// child_indices are the indices of the children of a parent, by the parent's name and the
+	// child's `child_key`, so that a child that is declared again is found without a scan.
+	child_indices map[string][]int
 }
 
 @[minify]
@@ -307,15 +310,17 @@ fn (mut d Doc) add_node(mut node DocNode) {
 		// `_windows.c.v`, is documented once, for all of them. A constant whose value differs,
 		// like `rtld_now = C.RTLD_NOW` on Unix and `rtld_now = 0` on Windows, is documented
 		// once for each value instead.
-		key := child_key(node)
+		index_key := parent_name + '\n' + child_key(node)
 		children := d.contents[parent_name].children
-		for i, child in children {
-			if child.kind == node.kind && child_key(child) == key && (node.kind != .const_group
+		for i in d.child_indices[index_key] {
+			child := children[i]
+			if child.kind == node.kind && (node.kind != .const_group
 				|| declaration_shape(child.content) == declaration_shape(node.content)) {
 				d.contents[parent_name].children[i] = merge_declaration(child, node)
 				return
 			}
 		}
+		d.child_indices[index_key] << children.len
 		d.contents[parent_name].children << node
 		return
 	}
@@ -584,6 +589,8 @@ fn (mut d Doc) parse_file(path string) ! {
 	source := os.read_file(path)!
 	mut assigned_comments := map[int]bool{}
 	mut parser_ := parser.Parser.new(new_vdoc_preferences())
+	// The digests of the sources are only read by the compiler's cache.
+	parser_.no_source_digests = true
 	a := parser_.parse_file(path)
 	mut file_node := &flat.Node(unsafe { nil })
 	for raw_id in a.file_node_ids {
@@ -613,6 +620,7 @@ fn (mut d Doc) parse_file(path string) ! {
 	}
 	mut module_name := 'main'
 	mut first_declaration_line := int(1 << 30)
+	end_lines := if d.with_comments { comment_end_lines(a) } else { []int{} }
 	// Collect the top-level nodes to document. Top-level `$if` blocks that are
 	// taken (their condition evaluated to true) are stored by the parser as a
 	// single `.block` node whose children are the declarations of that branch;
@@ -651,7 +659,7 @@ fn (mut d Doc) parse_file(path string) ! {
 		}
 		mut doc_node := d.node_from_flat(a, source, id, path) or { continue }
 		if d.with_comments {
-			doc_node.comments = comments_before(a, source, anchor_line, mut assigned_comments)
+			doc_node.comments = comments_before(a, source, end_lines, anchor_line, mut assigned_comments)
 		}
 		d.add_node(mut doc_node)
 		if node.kind == .enum_decl {
@@ -946,6 +954,7 @@ fn (mut d Doc) populate_scoped_contents(paths []string) {
 	}
 	d.filename = target_path
 	mut parser_ := parser.Parser.new(new_vdoc_preferences())
+	parser_.no_source_digests = true
 	a := parser_.parse_files(paths)
 	mut file_id := flat.empty_node
 	for raw_id in a.file_node_ids {
@@ -1272,19 +1281,39 @@ fn module_parent_for_docs(base_path string, module_name string) string {
 	return ''
 }
 
-fn comments_before(a &flat.FlatAst, source string, anchor_line int, mut assigned map[int]bool) []DocComment {
+// comment_end_lines returns the line that each comment of `a` ends on, in the order of the
+// comments, which is their order in the source.
+fn comment_end_lines(a &flat.FlatAst) []int {
+	mut lines := []int{cap: a.comments.len}
+	for comment in a.comments {
+		lines << doc_position(a, comment.pos).last_line + 1
+	}
+	return lines
+}
+
+fn comments_before(a &flat.FlatAst, source string, end_lines []int, anchor_line int, mut assigned map[int]bool) []DocComment {
 	mut result := []DocComment{}
 	mut expected_line := anchor_line - 1
-	for i := a.comments.len - 1; i >= 0; i-- {
-		comment := a.comments[i]
-		position := doc_position(a, comment.pos)
-		end_line := position.last_line + 1
-		if end_line > expected_line || i in assigned {
-			continue
+	// Start at the last comment that ends on the line before the declaration, or earlier.
+	mut low, mut high := 0, end_lines.len
+	for low < high {
+		mid := (low + high) / 2
+		if end_lines[mid] > expected_line {
+			high = mid
+		} else {
+			low = mid + 1
 		}
+	}
+	for i := low - 1; i >= 0; i-- {
+		comment := a.comments[i]
+		end_line := end_lines[i]
 		if end_line < expected_line {
 			break
 		}
+		if end_line > expected_line || i in assigned {
+			continue
+		}
+		position := doc_position(a, comment.pos)
 		text := source_span(source, comment.pos)
 		// A comment after code on its line, like `const a = 1 // one`, is about that code, not
 		// about the declaration on the next line.

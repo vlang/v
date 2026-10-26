@@ -9,18 +9,21 @@ import math
 
 #include "gg_darwin_force_mono.h"
 
-fn C.NSApp() voidptr
-fn C.NSMouseInRect(point macos.Point, rect macos.Rect, flipped bool) bool
+fn C.gg_darwin_application() macos.Id
+fn C.gg_darwin_color_attribute() macos.Id
+fn C.gg_darwin_font_attribute() macos.Id
+fn C.gg_darwin_device_size() macos.Id
+fn C.gg_darwin_fill_rect(ctx voidptr, x f64, y f64, width f64, height f64)
+fn C.gg_darwin_fill_ellipse(ctx voidptr, x f64, y f64, width f64, height f64)
+fn C.gg_darwin_stroke_ellipse(ctx voidptr, x f64, y f64, width f64, height f64)
+fn C.gg_darwin_mouse_in_rect(x f64, y f64, rx f64, ry f64, width f64, height f64, flipped bool) bool
 
 fn C.CGColorCreateGenericRGB(r f64, g f64, b f64, a f64) voidptr
 fn C.CGContextSetFillColorWithColor(ctx voidptr, color voidptr)
-fn C.CGContextFillRect(ctx voidptr, rect macos.Rect)
 fn C.CGContextSetStrokeColorWithColor(ctx voidptr, color voidptr)
 fn C.CGContextSetLineWidth(ctx voidptr, width f64)
 fn C.CGContextSaveGState(ctx voidptr)
 fn C.CGContextRestoreGState(ctx voidptr)
-fn C.CGContextStrokeEllipseInRect(ctx voidptr, rect macos.Rect)
-fn C.CGContextFillEllipseInRect(ctx voidptr, rect macos.Rect)
 
 fn C.dispatch_get_main_queue() voidptr
 fn C.dispatch_async_f(queue voidptr, context voidptr, work voidptr)
@@ -75,8 +78,8 @@ fn darwin_text_attrs(cfg TextCfg) macos.Id {
 
 	mut dict := macos.msg_id(macos.get_class('NSMutableDictionary'), 'alloc')
 	dict = macos.msg_id(dict, 'init')
-	macos.msg_void2(dict, 'setObject:forKey:', nscolor(cfg.color), macos.Id(C.NSForegroundColorAttributeName))
-	macos.msg_void2(dict, 'setObject:forKey:', font, macos.Id(C.NSFontAttributeName))
+	macos.msg_void2(dict, 'setObject:forKey:', nscolor(cfg.color), C.gg_darwin_color_attribute())
+	macos.msg_void2(dict, 'setObject:forKey:', font, C.gg_darwin_font_attribute())
 	return dict
 }
 
@@ -85,10 +88,10 @@ fn darwin_measure_attrs() macos.Id {
 	dict = macos.msg_id(dict, 'init')
 	if C.gg_get_force_mono() != 0 {
 		font := macos.msg_id_id_f64(macos.get_class('NSFont'), 'fontWithName:size:', macos.nsstring('Menlo'), 15.0)
-		macos.msg_void2(dict, 'setObject:forKey:', font, macos.Id(C.NSFontAttributeName))
+		macos.msg_void2(dict, 'setObject:forKey:', font, C.gg_darwin_font_attribute())
 	} else {
 		font := macos.msg_id_f64(macos.get_class('NSFont'), 'userFontOfSize:', 16.0)
-		macos.msg_void2(dict, 'setObject:forKey:', font, macos.Id(C.NSFontAttributeName))
+		macos.msg_void2(dict, 'setObject:forKey:', font, C.gg_darwin_font_attribute())
 	}
 	return dict
 }
@@ -113,6 +116,7 @@ pub fn darwin_draw_string(x int, y int, s string, cfg TextCfg) {
 	macos.msg_void_point_id(n, 'drawAtPoint:withAttributes:', macos.point(f64(x), f64(y - 15)), attr)
 }
 
+// darwin_draw_rect fills a rectangle in the current macOS graphics context.
 pub fn darwin_draw_rect(x f32, y f32, width f32, height f32, c Color) {
 	if width <= 0 || height <= 0 {
 		return
@@ -122,7 +126,7 @@ pub fn darwin_draw_rect(x f32, y f32, width f32, height f32, c Color) {
 		return
 	}
 	C.CGContextSetFillColorWithColor(context, cgcolor(c))
-	C.CGContextFillRect(context, macos.rect(f64(x), f64(y), f64(width), f64(height)))
+	C.gg_darwin_fill_rect(context, f64(x), f64(y), f64(width), f64(height))
 }
 
 fn mark_view_tree_needs_display(view macos.Id) {
@@ -141,9 +145,9 @@ fn mark_view_tree_needs_display(view macos.Id) {
 @[export: 'darwin_window_refresh_cb']
 fn darwin_window_refresh_cb(ctx voidptr) {
 	_ = ctx
-	mut window := macos.msg_id(macos.Id(C.NSApp), 'mainWindow')
+	mut window := macos.msg_id(C.gg_darwin_application(), 'mainWindow')
 	if window == unsafe { nil } {
-		window = macos.msg_id(macos.Id(C.NSApp), 'keyWindow')
+		window = macos.msg_id(C.gg_darwin_application(), 'keyWindow')
 	}
 	if window == unsafe { nil } {
 		return
@@ -161,14 +165,15 @@ pub fn darwin_window_refresh() {
 	C.dispatch_async_f(queue, unsafe { nil }, voidptr(darwin_window_refresh_cb))
 }
 
+// gg_get_screen_size returns the size of the current window's screen, or the main screen.
 pub fn gg_get_screen_size() Size {
 	mut current_screen := macos.Id(unsafe { nil })
-	main_window := macos.msg_id(macos.Id(C.NSApp), 'mainWindow')
+	main_window := macos.msg_id(C.gg_darwin_application(), 'mainWindow')
 	if main_window != unsafe { nil } {
 		current_screen = macos.msg_id(main_window, 'screen')
 	}
 	if current_screen == unsafe { nil } {
-		key_window := macos.msg_id(macos.Id(C.NSApp), 'keyWindow')
+		key_window := macos.msg_id(C.gg_darwin_application(), 'keyWindow')
 		if key_window != unsafe { nil } {
 			current_screen = macos.msg_id(key_window, 'screen')
 		}
@@ -180,7 +185,7 @@ pub fn gg_get_screen_size() Size {
 		for i in 0 .. count {
 			screen := macos.msg_id_u64(screens, 'objectAtIndex:', u64(i))
 			frame := macos.msg_rect(screen, 'frame')
-			if C.NSMouseInRect(mouse_location, frame, false) {
+			if C.gg_darwin_mouse_in_rect(mouse_location.x, mouse_location.y, frame.x, frame.y, frame.width, frame.height, false) {
 				current_screen = screen
 				break
 			}
@@ -190,7 +195,7 @@ pub fn gg_get_screen_size() Size {
 		current_screen = macos.msg_id(macos.get_class('NSScreen'), 'mainScreen')
 	}
 	desc := macos.msg_id(current_screen, 'deviceDescription')
-	size_obj := macos.msg_id1(desc, 'objectForKey:', macos.Id(C.NSDeviceSize))
+	size_obj := macos.msg_id1(desc, 'objectForKey:', C.gg_darwin_device_size())
 	display_size := macos.msg_point(size_obj, 'sizeValue')
 	return Size{ width: int(display_size.x), height: int(display_size.y) }
 }
@@ -237,6 +242,7 @@ pub fn darwin_draw_image(x f32, y f32, w f32, h f32, img &Image) {
 	macos.msg_void_rect(i, 'drawInRect:', macos.rect(f64(x), f64(y), f64(w), f64(h)))
 }
 
+// darwin_draw_circle fills a circle in the current macOS graphics context.
 pub fn darwin_draw_circle(x f32, y f32, d f32, color Color) {
 	if d <= 0 {
 		return
@@ -246,9 +252,10 @@ pub fn darwin_draw_circle(x f32, y f32, d f32, color Color) {
 		return
 	}
 	C.CGContextSetFillColorWithColor(context, cgcolor(color))
-	C.CGContextFillEllipseInRect(context, macos.rect(f64(x), f64(y), f64(d * 2), f64(d * 2)))
+	C.gg_darwin_fill_ellipse(context, f64(x), f64(y), f64(d * 2), f64(d * 2))
 }
 
+// darwin_draw_circle_empty draws a circle outline in the current macOS graphics context.
 pub fn darwin_draw_circle_empty(x f32, y f32, d f32, color Color) {
 	if d <= 0 {
 		return
@@ -260,6 +267,6 @@ pub fn darwin_draw_circle_empty(x f32, y f32, d f32, color Color) {
 	C.CGContextSaveGState(context)
 	C.CGContextSetStrokeColorWithColor(context, cgcolor(color))
 	C.CGContextSetLineWidth(context, 1.0)
-	C.CGContextStrokeEllipseInRect(context, macos.rect(f64(x), f64(y), f64(d * 2), f64(d * 2)))
+	C.gg_darwin_stroke_ellipse(context, f64(x), f64(y), f64(d * 2), f64(d * 2))
 	C.CGContextRestoreGState(context)
 }

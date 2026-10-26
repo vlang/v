@@ -231,7 +231,7 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 	source := workflow_source('update_tccbin.yml')
 	checkout_pin := '3d3c42e5aac5ba805825da76410c181273ba90b1'
 	upload_pin := '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
-	vc_lock := 'c3063f8ca58150f6c6d98d86dc95bd3543e620f3'
+	vc_lock := '0781dbf8ed16a8e9ebce3771a645b814456c0103'
 	cpa_pin := 'e0b9770014ba65d5e0815f15b74031c3a635f641'
 	mut action_calls := 0
 	for raw_line in source.split_into_lines() {

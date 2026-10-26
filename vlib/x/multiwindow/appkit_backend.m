@@ -2155,7 +2155,7 @@ static void v_multiwindow_appkit_readback_end_pass_hook(const void *command_buff
 			continue;
 		}
 		const char *path = url.standardizedURL.path.UTF8String;
-		char *copy = v_multiwindow_appkit_copy_cstring(path);
+		char *copy = v_multiwindow_appkit_copy_cstring((char *)path);
 		if (copy == NULL) {
 			continue;
 		}
@@ -2842,7 +2842,7 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr,
 			return result;
 		}
 		window.releasedWhenClosed = NO;
-		window.title = (NSString *)v_multiwindow_appkit_string(title);
+		window.title = (__bridge NSString *)v_multiwindow_appkit_string((char *)title);
 		window.acceptsMouseMovedEvents = YES;
 		window.restorable = NO;
 		if (min_width > 0 || min_height > 0) {
@@ -3157,7 +3157,7 @@ int v_multiwindow_appkit_set_window_title(void *state_ptr, const char *title) {
 		if (state.window == nil) {
 			return 0;
 		}
-		state.window.title = (NSString *)v_multiwindow_appkit_string(title);
+		state.window.title = (__bridge NSString *)v_multiwindow_appkit_string((char *)title);
 		return 1;
 	}
 }

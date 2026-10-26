@@ -154,6 +154,14 @@ source-file metadata while reusing eligible cached objects.
 Retries that reparse cached module sources preserve caller values for `V3_CACHE_FORCE_SOURCE`
 at compile time and when running the program.
 
+The experimental unchanged-build receipt cache is disabled by default. Set
+`V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to opt in; `-nocache` and
+`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` disable it. Its early executable restore does
+not yet track all compile-time environment, module-search, or native linker inputs.
+Keep it disabled when those inputs can change between builds.
+Parallel monomorphization also remains opt-in through `V3_PARALLEL_MONOMORPHIZE=1`
+while nested generic-interface dispatch is being validated.
+
 The standard bootstrap does not build the sibling `v1_fallback` executable
 (`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
 sibling is missing, it reports that it is running `make v1`. That target reuses
@@ -3255,6 +3263,15 @@ In case of reference value, see [here](#structs-with-reference-fields).
 
 It's also possible to define custom default values.
 
+A keyword-named field can follow a default value on the next line:
+
+```v
+struct Settings {
+	enabled bool = true
+	in      string
+}
+```
+
 ### Required fields
 
 ```v
@@ -4178,6 +4195,8 @@ const e = 2.71828
 
 A constant initializer may call a function with the same name, such as `const answer = answer()`.
 Reading the constant itself in its initializer is still a cycle.
+Dependencies in initializer expressions and helper calls are resolved in the initializer's module
+and source file. This context is preserved when initialization waits for another constant.
 
 V constants are more flexible than in most languages. You can assign more complex values:
 
@@ -11483,7 +11502,8 @@ for each inline-assembly statement, so prefer names such as `.Lloop%=` for loops
 functions. Numeric local labels such as `1:` with `1b` (backward) and `1f` (forward) references are
 also useful for short branches. Do not use an ordinary global-looking label in a raw block unless
 it is deliberately exported: two instantiations of a function can otherwise define the same
-assembler symbol.
+assembler symbol. In x86 and arm64 raw blocks, the compiler warns about such a label inside a
+function unless it is numeric, uses `%=`, or is exported with `.globl`, `.global`, or `.weak`.
 
 For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
 the pointer inside the template, and decrement the count until it reaches zero:

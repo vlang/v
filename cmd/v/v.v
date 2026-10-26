@@ -903,7 +903,7 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	if diagnostics != '' {
 		eprint(diagnostics)
 	}
-	fallback := ensure_v1_fallback(reason, vls_mode) or {
+	fallback := ensure_v1_fallback(reason, transparent_fixture_fallback) or {
 		report_v3_fallback_unavailable(args, reason, report_state, err.msg(), diagnostics != '')
 		exit(1)
 	}
@@ -1366,8 +1366,8 @@ fn ensure_v1_fallback(reason string, quiet_install bool) !string {
 		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()), cache_parent, cached_launcher))
 		process.set_work_folder(vroot)
 		if quiet_install {
-			// Mini-VLS responses use the diagnostic stream. Keep installer progress
-			// out of that protocol, but retain it if installation fails.
+			// Mini-VLS responses and exact-output fixtures use the diagnostic stream.
+			// Keep installer progress out of it, but retain it if installation fails.
 			process.set_redirect_stdio_merged()
 			process.run()
 			install_output = process.stdout_slurp()

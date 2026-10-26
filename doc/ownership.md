@@ -74,6 +74,8 @@ it reports the limit and exits with status 1, without running cleanup against ac
 
 Local owned values declared after a `match` keep their lexical cleanup scope, including
 inside loops with `continue` statements.
+Map insertion and replacement cleanup preserves the lexical scopes of neighboring locals,
+including assignments through map-indexed fields and owned keys.
 
 Map `clear()` and `free()` release owned entries through their stored values, including
 when the map is accessed through a pointer or a generic pointer parameter.
@@ -109,6 +111,11 @@ Use `.to_owned()` or
 `.clone()` to create an owned copy. Borrowed views stored in owned aggregates or returned
 by value are copied so they can outlive the source.
 Reassigning a borrowed view releases its loan without freeing the source bytes.
+
+Dynamic and fixed array `init:` expressions clone borrowed owning projections for each element,
+including projections indexed by `index`. Each element gets independent storage and leaves the
+source usable. Fresh returned values are evaluated once per element without an additional clone;
+a zero-length initializer does not evaluate its expression.
 
 Standard string methods, numeric parsers, path inspection and joining functions, and
 string-builder writes borrow string arguments that cannot escape through the return value.

@@ -265,6 +265,8 @@ mut:
 	var_types                           []VarTypeBinding
 	var_type_texts                      &flat.TypeTextTable = &flat.TypeTextTable{}
 	comptime_scalar_locals              map[string]ComptimeStringScalar
+	comptime_array_locals               map[string][]ComptimeStringScalar
+	comptime_array_locals_shared        bool
 	comptime_scalar_locals_shared       bool
 	cur_stmt_list                       []flat.NodeId // the statement list being transformed
 	var_type_indices                    map[string]int
@@ -1269,6 +1271,8 @@ struct VarTypeScopeMark {
 
 struct FunctionLocalState {
 	comptime_scalar_locals        map[string]ComptimeStringScalar
+	comptime_array_locals         map[string][]ComptimeStringScalar
+	comptime_array_locals_shared  bool
 	comptime_scalar_locals_shared bool
 	var_types                     []VarTypeBinding
 	var_type_indices              map[string]int
@@ -2420,6 +2424,10 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		// publish all worker-owned node strings while their arenas are still live.
 		t.a.promote_transform_texts_from(0, stage_scope)
 		t.monomorph_profile('mono wrapper text table: ${time.ticks() - debug_started} ms')
+		if !isnil(t.tc) {
+			mut mtc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+			mtc.clone_transform_metadata_owned()
+		}
 		t.release_monomorph_worker_scopes()
 		transform_stage_scope_resume(stage_scope, parent_state)
 	} else {
@@ -2453,6 +2461,21 @@ fn (mut t Transformer) release_monomorph_worker_scopes() {
 	// scope was retained. Keep it unconditional so the driver does not need a
 	// second full-AST canonicalization pass after this function returns.
 	t.a.intern_node_texts_from(0)
+	if t.monomorph_worker_scopes.len > 0 {
+		// A declaration discovered by a helper can be emitted by the master or
+		// another helper. Its module/file strings are not node payloads, so the
+		// node publication pass above does not preserve them before arena release.
+		mut modules := map[int]string{}
+		for idx, module_name in t.a.specialized_fn_modules {
+			modules[idx] = module_name.clone()
+		}
+		t.a.specialized_fn_modules = modules.move()
+		mut files := map[int]string{}
+		for idx, file in t.a.specialized_fn_files {
+			files[idx] = file.clone()
+		}
+		t.a.specialized_fn_files = files.move()
+	}
 	t.monomorph_profile('mono wrapper intern: ${time.ticks() - started} ms')
 	if !free_worker_scopes_parallel(t.a, t.monomorph_worker_scopes) {
 		for scope in t.monomorph_worker_scopes {
@@ -3397,6 +3420,8 @@ fn (mut t Transformer) reset_var_types() {
 fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 	state := FunctionLocalState{
 		comptime_scalar_locals:        t.comptime_scalar_locals
+		comptime_array_locals:         t.comptime_array_locals
+		comptime_array_locals_shared:  t.comptime_array_locals_shared
 		comptime_scalar_locals_shared: t.comptime_scalar_locals_shared
 		var_types:                     t.var_types
 		var_type_indices:              t.var_type_indices
@@ -3413,6 +3438,8 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 	t.clear_node_type_memo()
 	t.var_types = []VarTypeBinding{}
 	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
+	t.comptime_array_locals = map[string][]ComptimeStringScalar{}
+	t.comptime_array_locals_shared = false
 	t.comptime_scalar_locals_shared = false
 	t.var_type_indices = map[string]int{}
 	t.fn_value_locals = map[string]string{}
@@ -3431,6 +3458,8 @@ fn (mut t Transformer) restore_function_local_state(state FunctionLocalState) {
 	t.clear_node_type_memo()
 	t.var_types = state.var_types
 	t.comptime_scalar_locals = state.comptime_scalar_locals
+	t.comptime_array_locals = state.comptime_array_locals
+	t.comptime_array_locals_shared = state.comptime_array_locals_shared
 	t.comptime_scalar_locals_shared = state.comptime_scalar_locals_shared
 	t.var_type_indices = state.var_type_indices
 	t.fn_value_locals = state.fn_value_locals
@@ -5215,6 +5244,8 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	}
 	w.var_types = []VarTypeBinding{}
 	w.comptime_scalar_locals = map[string]ComptimeStringScalar{}
+	w.comptime_array_locals = map[string][]ComptimeStringScalar{}
+	w.comptime_array_locals_shared = false
 	w.comptime_scalar_locals_shared = false
 	w.var_type_indices = map[string]int{}
 	w.refined_node_types = t.refined_node_types.clone()
@@ -5343,6 +5374,8 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
 	w.comptime_scalar_locals = map[string]ComptimeStringScalar{}
+	w.comptime_array_locals = map[string][]ComptimeStringScalar{}
+	w.comptime_array_locals_shared = false
 	w.comptime_scalar_locals_shared = false
 	w.var_type_indices = map[string]int{}
 	w.mut_param_values = map[string]bool{}
@@ -5864,35 +5897,36 @@ fn (mut t Transformer) clone_scoped_worker_node(idx int, scope voidptr) {
 	if node.payload == 0 {
 		return
 	}
-	old_params := node.generic_params()
-	if old_params.len > 0 {
-		mut needs_owned_params := transform_scope_owns(scope, node.payload_ptr())
-			|| transform_scope_owns(scope, old_params.data)
-		if !needs_owned_params {
-			for param in old_params {
-				if param.len > 0 && transform_scope_owns(scope, param.str) {
-					needs_owned_params = true
-					break
-				}
+	payload := node.payload_ptr()
+	old_params := payload.generic_params
+	mut needs_owned_payload := transform_scope_owns(scope, payload)
+		|| transform_scope_owns(scope, old_params.data)
+		|| transform_scope_owns(scope, payload.generic_constraints.ids.data)
+		|| transform_scope_owns(scope, payload.call_type_args.ids.data)
+		|| transform_scope_owns(scope, payload.debugger_value_types.ids.data)
+	if !needs_owned_payload {
+		for param in old_params {
+			if param.len > 0 && transform_scope_owns(scope, param.str) {
+				needs_owned_payload = true
+				break
 			}
 		}
-		if needs_owned_params {
-			mut params := []string{cap: old_params.len}
-			for param in old_params {
-				if param.len > 0 && transform_scope_owns(scope, param.str) {
-					_, canonical := t.a.intern_text(param)
-					params << canonical
-				} else {
-					params << param
-				}
-			}
-			node.set_generic_params(params)
-		}
-	} else if transform_scope_owns(scope, node.payload_ptr()) {
-		// Any scope-owned payload must move out, not only the lowered-type ones: call
-		// type args, debugger types and enum backing live in the same payload.
-		node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
 	}
+	if !needs_owned_payload {
+		return
+	}
+	mut params := []string{cap: old_params.len}
+	for param in old_params {
+		if param.len > 0 && transform_scope_owns(scope, param.str) {
+			_, canonical := t.a.intern_text(param)
+			params << canonical
+		} else {
+			params << param
+		}
+	}
+	// Call/debugger/enum payloads need publication even without generic names.
+	// Rebuilding also owns every ID list and preserves independent lowered types.
+	node.set_generic_params_and_constraint_ids(params, payload.generic_constraints.ids)
 }
 
 // relocate_region_in_place rewrites one worker region's appended-node child
@@ -7510,8 +7544,15 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		format = child.typ_text()
 	}
 	t.mark_string_interp_call_part_used(expr_id)
-	// route a value `match`/`if` interpolation operand (e.g. `'${match x { ... }}'`)
-	// through its target type so its propagating arms are lowered as values.
+	// A compile-time-known array of scalars renders as the same text the
+	// printer would produce, so fold it here instead of synthesising an
+	// auto-str helper the wasm backend has no body for.
+	if format == '' {
+		if folded := t.try_fold_comptime_array_str(expr_id) {
+			return folded
+		}
+	}
+	// route a value `match`/`if` interpolation operand ...
 	mut transformed := t.transform_value_operand(expr_id)
 	// The source annotation remains `?T` inside `if value != none`, but the
 	// transformed expression is the narrowed `.value` selector. Prefer that
@@ -12479,11 +12520,17 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.fn_body_locals_in_scope = false
 	defer { t.fn_body_locals_in_scope = outer_locals_in_scope }
 	outer_comptime_locals := t.comptime_scalar_locals
+	outer_comptime_arrays := t.comptime_array_locals
+	outer_comptime_arrays_shared := t.comptime_array_locals_shared
 	outer_comptime_shared := t.comptime_scalar_locals_shared
 	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
+	t.comptime_array_locals = map[string][]ComptimeStringScalar{}
+	t.comptime_array_locals_shared = false
 	t.comptime_scalar_locals_shared = false
 	defer {
 		t.comptime_scalar_locals = outer_comptime_locals
+		t.comptime_array_locals = outer_comptime_arrays
+		t.comptime_array_locals_shared = outer_comptime_arrays_shared
 		t.comptime_scalar_locals_shared = outer_comptime_shared
 	}
 	if !isnil(t.selector_type_cache) {
@@ -13150,12 +13197,17 @@ fn (t &Transformer) fn_return_type_for_name(name string) ?u32 {
 pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 	mut result := []flat.NodeId{cap: ids.len}
 	saved_comptime_locals := t.comptime_scalar_locals
+	saved_comptime_arrays := t.comptime_array_locals
+	saved_comptime_arrays_shared := t.comptime_array_locals_shared
+	t.comptime_array_locals_shared = true
 	saved_comptime_shared := t.comptime_scalar_locals_shared
 	t.comptime_scalar_locals_shared = true
 	outer_stmt_list := t.cur_stmt_list
 	t.cur_stmt_list = ids
 	defer {
 		t.comptime_scalar_locals = saved_comptime_locals
+		t.comptime_array_locals = saved_comptime_arrays
+		t.comptime_array_locals_shared = saved_comptime_arrays_shared
 		t.comptime_scalar_locals_shared = saved_comptime_shared
 		t.cur_stmt_list = outer_stmt_list
 	}

@@ -45,6 +45,10 @@ mut:
 	// stream while it is still in flight (refs held above the pool's own
 	// baseline reference).
 	respond_delay time.Duration
+	// Hold h1 responses until every concurrent fallback request has arrived.
+	hold_h1_responses bool
+	h1_requests       chan bool = chan bool{cap: 4}
+	h1_release        chan bool = chan bool{}
 }
 
 fn (mut s H2PoolSrv) bump_accepts() {
@@ -272,6 +276,10 @@ fn h2t_h1only_srv_serve(mut s H2PoolSrv, mut conn mbedtls.SSLConn) {
 			}
 			sofar << buf[..n]
 		}
+		if s.hold_h1_responses {
+			s.h1_requests <- true
+			_ := <-s.h1_release
+		}
 		if s.respond_delay > 0 {
 			time.sleep(s.respond_delay)
 		}
@@ -316,38 +324,48 @@ fn start_h2t_h1only_srv(mut s H2PoolSrv) !(int, &mbedtls.SSLListener, thread) {
 // independently race for the h1 pool (or dial their own) the moment the
 // origin's protocol is known, not after the dialer's response arrives
 // (Codex P2, vlang/v#27643 pullrequestreview-4631763931, discussion
-// 3525390892). Verified by timing: with every response artificially
-// delayed, N concurrent requests running in parallel finish in roughly one
-// delay; serialized behind one response they would take roughly two.
+// 3525390892). The server withholds every response until all requests have
+// arrived, directly proving that waiters can proceed before the dialer's
+// response without depending on TLS handshake or scheduler timing.
 fn test_h2_pool_alpn_fallback_avoids_hol_blocking() {
 	mut srv := &H2PoolSrv{
-		respond_delay: 400 * time.millisecond
+		hold_h1_responses: true
 	}
 	port, mut listener, th := start_h2t_h1only_srv(mut srv) or {
 		assert false, 'server: ${err}'
 		return
 	}
-	sw := time.new_stopwatch()
 	mut workers := []thread int{}
 	for i in 0 .. 4 {
 		workers << spawn h2t_fetch_worker(port, '/w${i}')
 	}
+	mut arrivals := 0
+	mut timed_out := false
+	for _ in 0 .. workers.len {
+		select {
+			_ := <-srv.h1_requests {
+				arrivals++
+			}
+			10 * time.second {
+				timed_out = true
+			}
+		}
+		if timed_out {
+			break
+		}
+	}
+	// Release every response even on failure so workers can finish and the
+	// listener can be shut down before reporting the concurrency assertion.
+	srv.h1_release.close()
+	mut statuses := []int{}
 	for w in workers {
-		status := w.wait()
+		statuses << w.wait()
+	}
+	stop_h2_pool_srv(mut listener, th)
+	assert arrivals == workers.len, 'only ${arrivals}/${workers.len} requests arrived before any response was sent; concurrent ALPN fallback requests were blocked'
+	for status in statuses {
 		assert status == 200, 'concurrent fetch failed with ${status}'
 	}
-	elapsed := sw.elapsed()
-	stop_h2_pool_srv(mut listener, th)
-	// This spawns 4 REAL concurrent TLS dials/handshakes over real sockets
-	// (unlike the in-memory-pipe tests in h2_mux_conn_test.v), so it is even
-	// more exposed to CI scheduling variance. A 700ms threshold (300ms over
-	// the nominal 400ms respond_delay) failed in CI at 781ms on a commit with
-	// no relevant code changes -- the same "assumed jitter is small" mistake
-	// fixed in h2_mux_conn_test.v's timing tests. 1200ms keeps a comfortable
-	// margin below full serialization (4 x 400ms = 1600ms, what a HOL-blocked
-	// regression would actually produce) while tolerating a much larger
-	// absolute stall than 300ms.
-	assert elapsed < 1200 * time.millisecond, 'expected concurrent requests to a fresh h1-only origin to run in parallel (~1 respond_delay), not serialize behind one dialer response; took ${elapsed}'
 }
 
 // A plain, non-concurrent h2-enabled request to an h1-only origin must

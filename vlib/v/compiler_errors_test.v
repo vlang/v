@@ -257,10 +257,13 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_shader_header_1.vv'
+		// tcc has no `%=` operand in inline assembly templates.
+		m_skip_files << 'vlib/v/checker/tests/asm_raw_label_ok.vv'
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
 		m_skip_files << 'vlib/v/checker/tests/asm_immutable_err.vv'
+		m_skip_files << 'vlib/v/checker/tests/asm_raw_label_ok.vv'
 		// TODO: investigate why MSVC regressed
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'

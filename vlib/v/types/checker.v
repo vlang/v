@@ -974,6 +974,75 @@ fn clone_string_list_map(source map[string][]string) map[string][]string {
 	return result
 }
 
+fn clone_owned_string_list_map(source map[string][]string) map[string][]string {
+	mut result := map[string][]string{}
+	result.reserve(u32(source.len))
+	for key, values in source {
+		mut owned_values := []string{cap: values.len}
+		for value in values {
+			owned_values << value.clone()
+		}
+		result[key.clone()] = owned_values
+	}
+	return result
+}
+
+fn clone_owned_string_bool_map(source map[string]bool) map[string]bool {
+	mut result := map[string]bool{}
+	result.reserve(u32(source.len))
+	for key, value in source {
+		result[key.clone()] = value
+	}
+	return result
+}
+
+fn clone_owned_string_string_map(source map[string]string) map[string]string {
+	mut result := map[string]string{}
+	result.reserve(u32(source.len))
+	for key, value in source {
+		result[key.clone()] = value.clone()
+	}
+	return result
+}
+
+fn clone_owned_struct_field_map(source map[string][]StructField) map[string][]StructField {
+	mut result := map[string][]StructField{}
+	result.reserve(u32(source.len))
+	for key, fields in source {
+		mut owned_fields := []StructField{cap: fields.len}
+		for field in fields {
+			owned_fields << StructField{
+				name:        field.name.clone()
+				typ:         clone_owned_type(field.typ)
+				has_default: field.has_default
+				is_embed:    field.is_embed
+				is_mut:      field.is_mut
+				is_volatile: field.is_volatile
+			}
+		}
+		result[key.clone()] = owned_fields
+	}
+	return result
+}
+
+fn clone_owned_type_owner_field_flags(source map[u32]map[string]bool) map[u32]map[string]bool {
+	mut result := map[u32]map[string]bool{}
+	result.reserve(u32(source.len))
+	for owner_id, fields in source {
+		result[owner_id] = clone_owned_string_bool_map(fields)
+	}
+	return result
+}
+
+fn clone_owned_type_owner_c_abi_fields(source map[u32]map[string]string) map[u32]map[string]string {
+	mut result := map[u32]map[string]string{}
+	result.reserve(u32(source.len))
+	for owner_id, fields in source {
+		result[owner_id] = clone_owned_string_string_map(fields)
+	}
+	return result
+}
+
 // InterfaceImplIndex maps source spelling IDs to stable runtime dispatch IDs.
 pub struct InterfaceImplIndex {
 pub:
@@ -2050,6 +2119,47 @@ pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
 		tc.transform_signature_maps_shared = false
 	}
 	tc.transform_signature_maps_changed = true
+}
+
+// clone_transform_metadata_owned detaches every transform-mutated metadata map
+// and its string payloads from a disposable worker or stage arena.
+pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
+	tc.runtime_type_indexes = tc.runtime_type_indexes.clone()
+	tc.fn_ret_type_texts = tc.fn_ret_type_texts.clone_owned()
+	tc.fn_param_type_texts = tc.fn_param_type_texts.clone_owned()
+	tc.fn_generic_params = clone_owned_string_list_map(tc.fn_generic_params)
+	tc.mut_receiver_methods = clone_owned_string_bool_map(tc.mut_receiver_methods)
+	tc.c_variadic_fns = clone_owned_string_bool_map(tc.c_variadic_fns)
+	tc.fn_implicit_veb_ctx = clone_owned_string_bool_map(tc.fn_implicit_veb_ctx)
+	tc.promote_scoped_declaration_visibility()
+	tc.fn_type_files = clone_owned_string_string_map(tc.fn_type_files)
+	tc.fn_type_modules = clone_owned_string_string_map(tc.fn_type_modules)
+	tc.structs = clone_owned_struct_field_map(tc.structs)
+	tc.struct_modules = clone_owned_string_string_map(tc.struct_modules)
+	tc.struct_files = clone_owned_string_string_map(tc.struct_files)
+	tc.soa_structs = clone_owned_string_bool_map(tc.soa_structs)
+	tc.declared_type_scope_keys = clone_owned_string_bool_map(tc.declared_type_scope_keys)
+	tc.struct_error_embeds_shadow_builtin = tc.struct_error_embeds_shadow_builtin.clone()
+	tc.struct_generic_params = clone_owned_string_list_map(tc.struct_generic_params)
+	tc.struct_implements = tc.struct_implements.clone_owned()
+	tc.struct_shared_fields = clone_owned_type_owner_field_flags(tc.struct_shared_fields)
+	tc.struct_shared_element_fields = clone_owned_type_owner_field_flags(tc.struct_shared_element_fields)
+	tc.struct_field_c_abi_fns = clone_owned_type_owner_c_abi_fields(tc.struct_field_c_abi_fns)
+	tc.unions = clone_owned_string_bool_map(tc.unions)
+	tc.params_structs = clone_owned_string_bool_map(tc.params_structs)
+	tc.c_typedef_structs = clone_owned_string_bool_map(tc.c_typedef_structs)
+	tc.type_alias_generic_params = clone_owned_string_list_map(tc.type_alias_generic_params)
+	tc.type_alias_c_abi_fns = clone_owned_string_string_map(tc.type_alias_c_abi_fns)
+	tc.sum_types = tc.sum_types.clone_owned()
+	tc.sum_generic_params = clone_owned_string_list_map(tc.sum_generic_params)
+	tc.enum_names = clone_owned_string_bool_map(tc.enum_names)
+	tc.enum_fields = clone_owned_string_list_map(tc.enum_fields)
+	tc.flag_enums = clone_owned_string_bool_map(tc.flag_enums)
+	tc.interface_names = clone_owned_string_bool_map(tc.interface_names)
+	tc.interface_generic_params = clone_owned_string_list_map(tc.interface_generic_params)
+	tc.interface_fields = clone_owned_struct_field_map(tc.interface_fields)
+	tc.interface_embeds = tc.interface_embeds.clone_owned()
+	tc.interface_abstract_methods = clone_owned_string_list_map(tc.interface_abstract_methods)
 }
 
 // transform_signatures_changed reports whether a transform fork detached and

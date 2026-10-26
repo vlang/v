@@ -1,0 +1,21 @@
+vlib/v/checker/tests/asm_raw_label_without_suffix.vv:16:4: warning: label `.Ldone` in a raw assembly template has no `%=` suffix, so a second instantiation of this function (inlining, or a generic specialization) defines the same assembler symbol again; use `.Ldone%=`, a numeric local label such as `1:`, or export the label with `.globl`
+   14 |         "decq %[len]\n\t"
+   15 |         "jnz .Lloop\n\t"
+   16 |         ".Ldone:"
+      |          ~~~~~~
+   17 |         ; [sum] "+r" (sum)
+   18 |           [ptr] "+r" (ptr)
+vlib/v/checker/tests/asm_raw_label_without_suffix.vv:10:4: warning: label `.Lloop` in a raw assembly template has no `%=` suffix, so a second instantiation of this function (inlining, or a generic specialization) defines the same assembler symbol again; use `.Lloop%=`, a numeric local label such as `1:`, or export the label with `.globl`
+    8 |         "testq %[len], %[len]\n\t"
+    9 |         "jz .Ldone\n\t"
+   10 |         ".Lloop:\n\t"
+      |          ~~~~~~
+   11 |         "movzbl (%[ptr]), %%eax\n\t"
+   12 |         "addq %%rax, %[sum]\n\t"
+vlib/v/checker/tests/asm_raw_label_without_suffix.vv:25:15: error: undefined ident: `undefined_total`
+   23 |           cc
+   24 |     }
+   25 |     return sum + undefined_total
+      |                  ~~~~~~~~~~~~~~~
+   26 | }
+   27 |

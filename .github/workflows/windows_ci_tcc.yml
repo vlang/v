@@ -359,8 +359,8 @@ jobs:
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler tcc `
-            -ExpectedCompositeSha256 '1567c7a3a81d6a7cfe14ec231fd1f138e2fb7b116a3a944a30acd51c93f40e69' `
-            -ExpectedRunnerSha256 'a0e080811b904d44113e024aa9cb831475d0ad91d33f92c2d8b57491015646d6'
+            -ExpectedCompositeSha256 'fbadc42268663be07624cb23373a235a7b2b5f528a76c7166c464a74c362ad42' `
+            -ExpectedRunnerSha256 '0b67bfa4791ea4087821e81b6f0b570a341fd9a87648e1d085c30847854a1843'
       - name: Multiwindow render runtime contract
         id: multiwindow_render_runtime_contract
         if: ${{ success() && !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
@@ -497,17 +497,17 @@ jobs:
             -Compiler tcc `
             -Expectation Green `
             -ExpectedOracleSha256 '804e8cbc5f5f7c390e90736d54a60d65d19b649a94afa4915bd9cb4e95c4e04d' `
-            -ExpectedNativeTestSha256 'a67fe2c406bfee3a67db212679e0157a5474c1859e0971b80b3f2609f5a67664' `
-            -ExpectedPublicTestSha256 'c42841ea38453a4e9041c940b73e4621ee093f82338da47adb936a094b2b09a2' `
+            -ExpectedNativeTestSha256 '43a451c95d3e7df849ee795aa22d06ce68fc84a28ca1fb10732339180f33cd21' `
+            -ExpectedPublicTestSha256 'aae9e07b56175987fb94f794380c1bf0b36c53fb7ef8c7e77efc423879b43234' `
             -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
-            -ExpectedWin32BackendSha256 '1f2bfbd43b20b6d33896fb1c517673b4041d5408f15cde6d014bd2b98ddedc9e' `
-            -ExpectedWin32ServiceBackendSha256 'faaf67be3e0381ea8a0e7a753b477b7965dde6e655f83f220eca036da19c5df6' `
+            -ExpectedWin32BackendSha256 'ebcd169ec1c382edf3cb05f3c7036c4cb149ceae34f141419ea01d24bcc948d6' `
+            -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
-            -ExpectedGreenSurfaceSha256 '7703f28d10cb60e000a016e4dbd4a2ec85d7501e54c2fdcff07933368e89231d' `
-            -ExpectedRunnerSha256 'adaab1bcabdce34ae6f9b103d770c6fab0b6a63870a90829e56b245e2b245835'
+            -ExpectedGreenSurfaceSha256 '12b88570044e1cda2e3c630e4c700e71990dcecfa10a424c0019a996dff4cf8c' `
+            -ExpectedRunnerSha256 '2ec67dd5433d8ed083d42770b0a5045450d4389f41a5e281c5b0b58b725aa675'
       - name: Win32 W5 raw-input A0 preflight
         id: win32_w5_raw_input_a0_preflight
         if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}

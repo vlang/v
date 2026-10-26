@@ -198,11 +198,54 @@ fn (mut t Transformer) make_comptime_scalar_literal(value ComptimeStringScalar) 
 	}
 }
 
+// comptime_int_arg_value reads an int argument as its literal text. A negative
+// count is spelled by the parser as a prefix node, which the scalar folder does
+// not evaluate, so `repeat(-2)` would otherwise reach the backend unresolved.
+fn (t &Transformer) comptime_int_arg_value(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .minus && node.children_count == 1 {
+		inner := t.comptime_scalar_expr(t.a.child(&node, 0), 0) or { return none }
+		if inner.typ != flat.source_type_int {
+			return none
+		}
+		return '-${inner.value}'
+	}
+	scalar := t.comptime_scalar_expr(id, 0) or { return none }
+	if scalar.typ != flat.source_type_int {
+		return none
+	}
+	return scalar.value
+}
+
+// make_comptime_option_value spells a folded `?int` the way the transformer
+// spells every other synthesized option: the struct literal both backends lower.
+// A bare literal in an option position would be read as an `int`, so the value a
+// program prints for `"x".index("y")` would lose its `Option(...)` wrapper.
+fn (mut t Transformer) make_comptime_option_value(found bool, value int) flat.NodeId {
+	payload := t.make_int_literal(value)
+	optional_type_id := flat.source_type_id('?int')
+	if found {
+		return t.make_optional_some(payload, optional_type_id)
+	}
+	return t.make_optional_none(optional_type_id)
+}
+
 // A statement scope borrows its incoming scalar bindings until the first write.
 fn (mut t Transformer) detach_comptime_scalar_locals() {
 	if t.comptime_scalar_locals_shared {
 		t.comptime_scalar_locals = t.comptime_scalar_locals.clone()
 		t.comptime_scalar_locals_shared = false
+	}
+}
+
+// Array bindings detach independently so scalar-only scopes do not copy an array map.
+fn (mut t Transformer) detach_comptime_array_locals() {
+	if t.comptime_array_locals_shared {
+		t.comptime_array_locals = t.comptime_array_locals.clone()
+		t.comptime_array_locals_shared = false
 	}
 }
 
@@ -218,6 +261,10 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 			t.detach_comptime_scalar_locals()
 			t.comptime_scalar_locals.delete(lhs.value)
 		}
+		if lhs.value in t.comptime_array_locals {
+			t.detach_comptime_array_locals()
+			t.comptime_array_locals.delete(lhs.value)
+		}
 		// Generated staging locals can be assigned later despite lacking `mut` flags.
 		if node.pos.is_valid() && !lhs.is_mut && !node.is_mut {
 			if scalar := value {
@@ -228,9 +275,193 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 					t.comptime_scalar_locals[lhs.value] = scalar
 				}
 			}
+			elements := t.comptime_array_decl_elements(node)
+			if elements.len > 0 && !t.later_stmts_write_array_local(id, lhs.value) {
+				t.detach_comptime_array_locals()
+				t.comptime_array_locals[lhs.value] = elements
+			}
 		}
 	}
 	return result
+}
+
+// comptime_string_split_parts returns the folded parts of a `split` call whose
+// operands are all compile-time known. The declaration tracker below reads the
+// same fold, so what a program prints for the local is what the call produced.
+fn (t &Transformer) comptime_string_split_parts(node flat.Node, callee flat.Node) ?[]string {
+	if callee.children_count == 0 || callee.value != 'split' || node.children_count != 2 {
+		return none
+	}
+	receiver := t.comptime_scalar_expr(t.a.child(&callee, 0), 0) or { return none }
+	delim := t.comptime_scalar_expr(t.a.child(&node, 1), 0) or { return none }
+	if receiver.typ != flat.source_type_string || delim.typ != flat.source_type_string {
+		return none
+	}
+	return comptime_string_split(receiver.value, delim.value)
+}
+
+// comptime_array_decl_elements returns the elements of a declared array whose
+// parts are all compile-time known: either an array literal or a folded `split`.
+fn (t &Transformer) comptime_array_decl_elements(node flat.Node) []ComptimeStringScalar {
+	if node.children_count != 2 {
+		return []
+	}
+	rhs := t.a.nodes[int(t.a.child(&node, 1))]
+	match rhs.kind {
+		.array_literal {
+			return t.comptime_scalar_array_elements(t.a.child(&node, 1)) or { [] }
+		}
+		.call {
+			if rhs.children_count == 0 {
+				return []
+			}
+			callee := t.a.nodes[int(t.a.child(&rhs, 0))]
+			if callee.kind != .selector {
+				return []
+			}
+			parts := t.comptime_string_split_parts(rhs, callee) or { return [] }
+			mut elements := []ComptimeStringScalar{cap: parts.len}
+			for part in parts {
+				elements << ComptimeStringScalar{flat.source_type_string, part}
+			}
+			return elements
+		}
+		else {
+			return []
+		}
+	}
+}
+
+// try_fold_comptime_array_str renders an array of compile-time-known scalars as
+// the text a normal build prints for it. Without this the printer is synthesized
+// as auto-str calls, and the wasm stub set registers no body for those.
+fn (mut t Transformer) try_fold_comptime_array_str(id flat.NodeId) ?flat.NodeId {
+	elem_type := t.comptime_array_elem_type(id)
+	if elem_type !in [flat.source_type_string, flat.source_type_int, flat.source_type_bool] {
+		return none
+	}
+	elements := t.comptime_scalar_array_elements(id) or { return none }
+	mut parts := []string{cap: elements.len}
+	for element in elements {
+		if element.typ != elem_type {
+			return none
+		}
+		parts << comptime_array_elem_text(element, elem_type)?
+	}
+	return t.make_string_literal('[${parts.join(', ')}]')
+}
+
+// comptime_array_elem_type names the element source type of an array
+// expression, or 0 when it is not an array this fold covers.
+fn (t &Transformer) comptime_array_elem_type(id flat.NodeId) u32 {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return 0
+	}
+	node := t.a.nodes[int(id)]
+	mut declared := u32(0)
+	if node.kind == .ident {
+		raw := t.raw_var_type(node.value)
+		declared = if flat.source_type_shape(raw).has(.array_type) {
+			raw
+		} else {
+			t.var_type(node.value)
+		}
+	} else if node.kind == .array_literal {
+		declared = node.typ
+	} else {
+		return 0
+	}
+	if !flat.source_type_shape(declared).has(.array_type) {
+		return 0
+	}
+	name := flat.source_type_name(declared)
+	if !name.starts_with('[]') || name.len <= 2 {
+		return 0
+	}
+	return flat.source_type_id(name[2..])
+}
+
+// comptime_scalar_array_elements folds every element of an array expression, or
+// reports none when any of them is not a compile-time-known scalar.
+fn (t &Transformer) comptime_scalar_array_elements(id flat.NodeId) ?[]ComptimeStringScalar {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.array_literal {
+			mut elements := []ComptimeStringScalar{cap: int(node.children_count)}
+			for child in t.a.children_of(node) {
+				elements << t.comptime_scalar_expr(child, 0)?
+			}
+			return elements
+		}
+		.ident {
+			if elements := t.comptime_array_locals[node.value] {
+				return elements
+			}
+		}
+		else {}
+	}
+	return none
+}
+
+// comptime_array_elem_text quotes a string element the way the array printer
+// does, and normalizes integer spellings to decimal.
+fn comptime_array_elem_text(element ComptimeStringScalar, elem_type u32) ?string {
+	if elem_type == flat.source_type_string {
+		return "'${element.value}'"
+	}
+	if elem_type == flat.source_type_int {
+		return util.comptime_string_bound(element.value)?.str()
+	}
+	return element.value
+}
+
+// later_stmts_write_array_local reports whether a statement after the declaration
+// writes through the local. An element write or a mutable borrow changes the array
+// a print would render, so a compile-time array is only trusted when none follows.
+fn (t &Transformer) later_stmts_write_array_local(decl_id flat.NodeId, name string) bool {
+	ids := t.cur_stmt_list
+	mut first := 0
+	for i, id in ids {
+		if id == decl_id {
+			first = i + 1
+			break
+		}
+	}
+	for i in first .. ids.len {
+		if t.node_writes_array_local(ids[i], name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) node_writes_array_local(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	// A function literal has its own scope, so a name declared there is another
+	// binding and a captured array is a copy that belongs to the closure.
+	if node.kind == .fn_literal {
+		return false
+	}
+	if node.kind == .ident && node.is_mut && node.value == name {
+		return true
+	}
+	if node.kind in [.index_assign, .selector_assign] {
+		if t.node_writes_array_local(t.a.child(&node, 0), name) {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.node_writes_array_local(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
 }
 
 // later_stmts_assign_local reports whether a statement that follows the declaration
