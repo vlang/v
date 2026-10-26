@@ -271,3 +271,30 @@ fn main() {
 	assert !source.contains('extern ptrdiff_t write(i32, const void*'), source
 	declaration_abi_run_c('target_write', source)
 }
+
+fn test_fastc_interpolates_native_pointer_differences() {
+	$if !macos && !linux {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	program := r"module main
+@[c_extern]
+fn C.native_difference() C.ptrdiff_t
+fn main() {
+	difference := C.native_difference()
+	assert '${difference}' == '-15'
+	assert '${difference:05d}' == '-0015'
+}
+"
+	for selfhost in [false, true] {
+		prefs.target_libc_headers = selfhost
+		source := if selfhost {
+			declaration_abi_generate('ptrdiff', program, prefs)
+		} else {
+			generate(program, 'ptrdiff.c.v', prefs) or { panic(err) }
+		}
+		assert source.contains('extern ptrdiff_t native_difference('), source
+		declaration_abi_run_c('ptrdiff_${selfhost}', '#include <stddef.h>\n' + source + '\nptrdiff_t native_difference(void) { return -15; }\n')
+	}
+}

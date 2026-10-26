@@ -185,6 +185,8 @@ fn main() {
  assert null is &Item
  assert voidptr(null as &Item) == unsafe { nil }
 }')!
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-no-closures', 'run', path])
-	assert result.exit_code == 0, result.output
+	for flags in [['-nocache'], []string{}] {
+		result := os.exec([@VEXE, '-new-compiler', ...flags, '-no-closures', 'run', path])
+		assert result.exit_code == 0, result.output
+	}
 }

@@ -16564,12 +16564,13 @@ fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key strin
 			// The loop condition re-narrows `key` at the top of every iteration, but a
 			// write to `key` earlier in the same iteration drops that narrowing for the
 			// rest of the body (the dynamic pass deletes the smartcast on assignment).
-			// Only reconstruct the condition smartcast when no preceding body statement,
-			// nor the statement holding `id`, writes `key`.
+			// Only reconstruct the condition smartcast when no statement before `id`
+			// in this iteration writes `key`.
 			if body_index >= 3 && tc.condition_may_smartcast_key(tc.a.child(parent, 1), key) {
 				for binding in tc.extract_smartcasts(tc.a.child(parent, 1)) {
 					if binding.name == key
-						&& !tc.for_body_writes_key_before(parent, body_index, current, key, binding.typ) {
+						&& !tc.for_body_writes_key_before(parent, body_index, current, id, key,
+							binding.typ) {
 						return binding.typ
 					}
 				}
@@ -16604,18 +16605,19 @@ fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key strin
 	return none
 }
 
-// for_body_writes_key_before reports whether any loop-body statement up to and
-// including `current` (the statement holding the checked node) ends the narrowing
-// of `key` to `narrowed` (see subtree_ends_narrowing). Such a write invalidates the
-// loop-condition narrowing for the rest of that iteration, so the lexical fallback
-// must not restore it.
-fn (tc &TypeChecker) for_body_writes_key_before(parent flat.Node, body_index int, current flat.NodeId, key string, narrowed Type) bool {
+// for_body_writes_key_before reports whether any loop-body statement before
+// the checked `target` within `current` ends the narrowing of `key` to `narrowed`
+// (see subtree_ends_narrowing). Such a write invalidates the loop-condition
+// narrowing for the rest of that iteration, so the lexical fallback must not restore it.
+fn (tc &TypeChecker) for_body_writes_key_before(parent flat.Node, body_index int, current flat.NodeId, target flat.NodeId, key string, narrowed Type) bool {
 	for i in 3 .. body_index {
 		if tc.subtree_ends_narrowing(tc.a.child(parent, i), key, narrowed, true) {
 			return true
 		}
 	}
-	return tc.subtree_ends_narrowing(current, key, narrowed, true)
+	// The current assignment has not stored its value while its RHS is resolved.
+	// Resolving it here would query the same loop smartcast recursively.
+	return tc.subtree_writes_key_before(current, target, key, narrowed, true)
 }
 
 // branch_writes_key_before reports whether a statement that runs before `target`
@@ -16633,15 +16635,23 @@ fn (tc &TypeChecker) branch_writes_key_before(branch_id flat.NodeId, target flat
 	if branch.kind !in [.block, .match_branch] {
 		return false
 	}
-	calls := branch.kind == .block
+	return tc.subtree_writes_key_before(branch_id, target, key, narrowed, branch.kind == .block)
+}
+
+fn (tc &TypeChecker) subtree_writes_key_before(root flat.NodeId, target flat.NodeId, key string, narrowed Type, calls bool) bool {
+	root_kind := tc.a.node(root).kind
 	mut child := target
+	if child == root {
+		return false
+	}
 	for _ in 0 .. 128 {
 		parent_id := tc.direct_parent_id(child)
 		if !tc.valid_node_id(parent_id) {
 			return false
 		}
-		if parent_id == branch_id {
-			return tc.statements_before_end_narrowing(parent_id, child, key, narrowed, calls)
+		if parent_id == root {
+			return root_kind in [.block, .match_branch]
+				&& tc.statements_before_end_narrowing(parent_id, child, key, narrowed, calls)
 		}
 		if tc.a.node(parent_id).kind in [.block, .match_branch, .for_stmt, .for_in_stmt, .lock_expr,
 			.defer_stmt, .select_branch]
@@ -16650,7 +16660,7 @@ fn (tc &TypeChecker) branch_writes_key_before(branch_id flat.NodeId, target flat
 		}
 		child = parent_id
 	}
-	return tc.statements_before_end_narrowing(branch_id, flat.empty_node, key, narrowed, calls)
+	return tc.statements_before_end_narrowing(root, flat.empty_node, key, narrowed, calls)
 }
 
 // statements_before_end_narrowing reports whether a child of `parent_id` before
@@ -20036,11 +20046,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 			}
 			if node.op in [.plus, .minus] {
 				if node.op == .minus && lt is Pointer && rt is Pointer {
-					return if tc.node_is_in_translated_file(id) {
-						builtin_isize_type
-					} else {
-						builtin_int_type
-					}
+					return builtin_int_type
 				}
 				if lt is Pointer && (rt_raw.is_integer()
 					|| (tc.node_is_in_translated_file(id) && translated_integer_type(rt_raw))) {

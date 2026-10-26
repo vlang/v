@@ -6057,6 +6057,13 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 		return false
 	}
 	relative := path[root.len + 6..]
+	// Cached module headers stand in for every source, but their owner can be
+	// any file in that module. Keep os's mmap declarations headerless on warm builds.
+	if !isnil(g.a) && source_file in g.a.cached_header_sources
+		&& relative.starts_with('os/') && include_arg == '<sys/mman.h>' {
+		return g.target.pointer_bits == 64 && g.target.os in ['macos', 'linux', 'android', 'termux',
+			'freebsd', 'openbsd', 'dragonfly']
+	}
 	if relative.starts_with('term/termios/termios_') && relative.ends_with('.c.v') {
 		return include_arg in ['<termios.h>', '<sys/ioctl.h>']
 	}

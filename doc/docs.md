@@ -739,6 +739,7 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 `isize` and `usize` are deprecated. Replace `isize` with `int` and `usize` with `uint`.
 Use `uint` for pointer addresses and C `size_t` values to preserve
 the full unsigned range. Existing spellings still compile with deprecation warnings.
+Pointer subtraction returns `int`, including in translated C code.
 
 ### 128-bit integers
 
@@ -5174,6 +5175,8 @@ fixed-array elements.
 A mutable sum argument requires a variable of the sum type: it can replace the complete sum
 with another variant. Wrap a concrete value in a sum variable before passing it with `mut`.
 Inside a mutable smartcast, modifying a field modifies the selected payload in that sum.
+Assigning `0` to a sum with integer and reference variants selects the integer variant,
+including when its current variant is a reference.
 
 Sum payloads must have finite layout. References, dynamic arrays, and maps break recursive
 storage cycles; ordinary fields, options, and fixed arrays do not. A function variant stores
