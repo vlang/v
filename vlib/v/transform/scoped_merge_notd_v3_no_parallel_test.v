@@ -4,6 +4,88 @@ import os
 import v.flat
 import v.types
 
+fn test_clone_scoped_worker_node_publishes_every_payload_kind() {
+	$if prealloc {
+		mut a := flat.FlatAst.new()
+		for kind in [flat.NodeKind.call, .debugger_stmt, .enum_decl, .ident, .ident, .ident, .fn_decl,
+			.fn_decl] {
+			a.add_node(flat.Node{ kind: kind })
+		}
+		mut tc := types.TypeChecker.new(&a)
+		mut master := new_transformer(mut a, &tc, map[string]bool{})
+		type_id := flat.source_type_id('string')
+		constraint_id := flat.source_type_id('Named')
+		scope := transform_worker_scope_begin(true)
+		a.nodes[0].set_call_type_args([type_id])
+		a.nodes[1].set_debugger_value_type_ids([type_id])
+		a.nodes[2].set_enum_backing_type_id(type_id)
+		a.nodes[3].set_fn_value_type_id(type_id)
+		a.nodes[4].set_generated_variant_type_id(type_id)
+		a.nodes[5].set_mut_optional_arg_view_type_id(type_id)
+		a.nodes[6].set_generic_params_and_constraint_ids(['T'.clone()], [constraint_id])
+		a.nodes[6].set_call_type_args([type_id])
+		a.nodes[6].set_debugger_value_type_ids([type_id])
+		a.nodes[6].set_enum_backing_type_id(type_id)
+		a.nodes[6].set_fn_value_type_id(type_id)
+		a.nodes[6].set_generated_variant_type_id(type_id)
+		a.nodes[6].set_mut_optional_arg_view_type_id(type_id)
+		a.nodes[7].set_generic_params_and_constraint_ids([]string{}, [constraint_id])
+		transform_worker_scope_leave(scope)
+		for idx in 0 .. a.nodes.len {
+			assert transform_scope_owns(scope, a.nodes[idx].payload_ptr())
+			master.clone_scoped_worker_node(idx, scope)
+			payload := a.nodes[idx].payload_ptr()
+			assert !transform_scope_owns(scope, payload), 'payload ${idx}'
+			assert !transform_scope_owns(scope, payload.generic_params.data)
+			for param in payload.generic_params {
+				assert !transform_scope_owns(scope, param.str)
+			}
+			assert !transform_scope_owns(scope, payload.generic_constraints.ids.data)
+			assert !transform_scope_owns(scope, payload.call_type_args.ids.data)
+			assert !transform_scope_owns(scope, payload.debugger_value_types.ids.data)
+		}
+		transform_worker_scope_free(scope)
+		assert a.nodes[0].call_type_args() == [type_id]
+		assert a.nodes[1].debugger_value_type_ids() == [type_id]
+		assert a.nodes[2].enum_backing_type_id() == type_id
+		assert a.nodes[3].fn_value_type_id() == type_id
+		assert a.nodes[4].generated_variant_type_id() == type_id
+		assert a.nodes[5].mut_optional_arg_view_type_id() == type_id
+		payload := a.nodes[6].payload_ptr()
+		assert payload.generic_params == ['T']
+		assert payload.generic_constraints.ids == [constraint_id]
+		assert payload.call_type_args.ids == [type_id]
+		assert payload.debugger_value_types.ids == [type_id]
+		assert payload.enum_backing_type == type_id
+		assert payload.fn_value_type == type_id
+		assert payload.generated_variant_type == type_id
+		assert payload.mut_optional_arg_view_type == type_id
+		assert a.nodes[7].generic_params().len == 0
+		assert a.nodes[7].generic_constraint_ids() == [constraint_id]
+	}
+}
+
+fn test_clone_scoped_worker_node_publishes_indirect_generic_names() {
+	$if prealloc {
+		mut a := flat.FlatAst.new()
+		a.add_node(flat.Node{ kind: .fn_decl })
+		mut tc := types.TypeChecker.new(&a)
+		mut master := new_transformer(mut a, &tc, map[string]bool{})
+		mut params := ['unscoped']
+		scope := transform_worker_scope_begin(true)
+		params[0] = 'scoped parameter'.clone()
+		transform_worker_scope_leave(scope)
+		a.nodes[0].set_generic_params(params)
+		assert !transform_scope_owns(scope, a.nodes[0].payload_ptr())
+		assert !transform_scope_owns(scope, a.nodes[0].generic_params().data)
+		assert transform_scope_owns(scope, a.nodes[0].generic_params()[0].str)
+		master.clone_scoped_worker_node(0, scope)
+		assert !transform_scope_owns(scope, a.nodes[0].generic_params()[0].str)
+		transform_worker_scope_free(scope)
+		assert a.nodes[0].generic_params() == ['scoped parameter']
+	}
+}
+
 fn test_scoped_text_scan_finds_borrowed_text_in_unscoped_payloads() {
 	$if prealloc {
 		mut node := flat.Node{ kind: .fn_decl, value: 'unscoped' }
