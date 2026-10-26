@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_for_in_loads_mutable_container_headers() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 fn C.exit(int)
 fn array_new(element_size int, len int, cap int) []int { return []int{} }

@@ -7,7 +7,7 @@ import v.ssa
 import v.types
 
 fn test_native_platform_file_flags_and_thread_local_errno() {
-	$if linux && x64 {
+	$if !linux || !amd64 {
 		return
 	}
 	path := os.join_path(os.vtmp_dir(), 'x64_platform_${os.getpid()}.v')

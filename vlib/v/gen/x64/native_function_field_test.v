@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_function_fields_take_precedence_over_method_names() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 import callbacks
 fn C.exit(int)

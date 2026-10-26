@@ -9,7 +9,7 @@ import v.transform
 import v.types
 
 fn test_native_constructor_returns_more_than_256_mixed_fields() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		mut source := strings.new_builder(16000)
 		source.writeln('module main\nfn C.exit(int)\nstruct ManyFields {\n anchor &int = unsafe { nil }')
 		field_types := ['i64', '[]i64', 'map[string]int', 'u8']

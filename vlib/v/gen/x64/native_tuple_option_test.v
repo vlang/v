@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_optional_tuple_guards_preserve_both_strings() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 fn C.exit(int)
 const static_type_method_name_marker = "@static@"

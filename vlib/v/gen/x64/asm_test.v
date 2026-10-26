@@ -96,3 +96,19 @@ fn test_x64_condition_and_select_encodings() {
 		0x84,
 	]
 }
+
+fn test_x64_missing_implementations_remain_undefined() {
+	mut m := ssa.Module.new()
+	m.new_function('unsupported__body', 0)
+	mut g := Gen.new(m)
+	for name in ['unsupported__body', '__getpid', 'custom__external'] {
+		g.elf.add_undefined(name)
+	}
+	g.gen()
+	assert g.elf.text_data.len == 0
+	for symbol in g.elf.symbols {
+		if symbol.name in ['unsupported__body', '__getpid', 'custom__external'] {
+			assert symbol.shndx == 0, symbol.name
+		}
+	}
+}

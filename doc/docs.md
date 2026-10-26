@@ -10677,6 +10677,8 @@ build as if `-gc none` was passed. Add `-prod` to enable SSA optimization, scala
 allocation, and optimized compilation of linked native C helpers. Very large modules may
 skip the global SSA pass to bound compiler memory while retaining register allocation and
 optimized C helper compilation.
+The x64 backend is experimental. Calls without a native implementation fail compilation
+or linking rather than producing placeholder implementations.
 
 Currently there is no debugging support for binaries created by the native backends.
 

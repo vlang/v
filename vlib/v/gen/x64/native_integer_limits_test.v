@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_int_limits_match_storage_and_capacity_guards_after_transform() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := 'module main
 fn C.exit(int)
 const min_i32 = i32(-2147483648)

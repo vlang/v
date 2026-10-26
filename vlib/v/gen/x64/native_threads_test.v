@@ -8,7 +8,7 @@ import v.ssa
 import v.types
 
 fn test_native_spawn_overlaps_parent_and_returns_aggregate() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_thread_fixture('aggregate', 'module main
 fn C.exit(int)
 fn C.alarm(u32) u32
@@ -46,7 +46,7 @@ fn main() {
 }
 
 fn test_native_detached_spawn_performs_side_effect() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_thread_fixture('detached', 'module main
 fn C.exit(int)
 fn C.alarm(u32) u32
@@ -76,7 +76,7 @@ fn main() {
 }
 
 fn test_native_spawn_calls_indirect_function_values() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_thread_fixture('callback', 'module main
 fn C.exit(int)
 fn add(value i64) i64 { return value + 35 }

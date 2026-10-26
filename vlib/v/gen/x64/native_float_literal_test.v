@@ -29,7 +29,7 @@ fn exec_native(args []string) os.Result {
 }
 
 fn test_native_real_float_unions_share_storage_before_and_after_transform() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 import strconv
 fn C.exit(int)
@@ -99,7 +99,7 @@ fn main() {
 }
 
 fn test_native_decimal_parsing_preserves_float_constant_bits() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		path := os.join_path(os.vtmp_dir(), 'x64_float_parse_${os.getpid()}.v')
 		output := path.all_before_last('.')
 		defer {
@@ -138,7 +138,7 @@ fn main() {
 }
 
 fn test_native_float_formatting_matches_c_rounding_and_shortest_decimal_expansion() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		path := os.join_path(os.vtmp_dir(), 'x64_float_format_parity_${os.getpid()}.v')
 		c_output := path.all_before_last('.') + '_c'
 		native_output := path.all_before_last('.') + '_native'
@@ -207,7 +207,7 @@ fn test_native_float_formatting_matches_c_rounding_and_shortest_decimal_expansio
 }
 
 fn test_native_float_unary_minus_preserves_zero_sign_bits() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		path := os.join_path(os.vtmp_dir(), 'x64_negative_zero_${os.getpid()}.v')
 		output := path.all_before_last('.')
 		defer {
@@ -252,7 +252,7 @@ fn main() {
 }
 
 fn test_native_default_float_sort_keeps_nan_and_zero_identity() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		path := os.join_path(os.vtmp_dir(), 'x64_float_sort_${os.getpid()}.v')
 		output := path.all_before_last('.')
 		defer {
@@ -287,7 +287,7 @@ fn main() {
 }
 
 fn test_native_mixed_fixed_f32_literal_preserves_fractional_lanes() {
-	$if !linux || !x64 {
+	$if !linux || !amd64 {
 		return
 	}
 	path := os.join_path(os.vtmp_dir(), 'x64_mixed_fixed_float_${os.getpid()}.v')
@@ -315,7 +315,7 @@ fn main() {
 }
 
 fn test_native_f32_arguments_convert_numeric_literals() {
-	$if !linux || !x64 {
+	$if !linux || !amd64 {
 		return
 	}
 	path := os.join_path(os.vtmp_dir(), 'x64_f32_literal_arguments_${os.getpid()}.v')

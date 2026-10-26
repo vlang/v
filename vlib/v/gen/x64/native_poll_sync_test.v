@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_poll_detects_closed_capture_pipes_and_invalid_descriptors() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		result := native_poll_sync_fixture('poll', [r'module main
 fn C.exit(int)
 fn C.alarm(u32) u32
@@ -41,7 +41,7 @@ fn main() {
 }
 
 fn test_native_semaphore_timeout_returns_and_monitor_thread_terminates() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		darwin := os.read_file(os.join_path(@VMODROOT, 'vlib', 'sync', 'sync_darwin.c.v')) or {
 			panic(err)
 		}
@@ -101,7 +101,7 @@ fn main() {
 }
 
 fn test_native_directory_listing_skips_dot_entries_before_recursive_cleanup() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		root := os.join_path(os.vtmp_dir(), 'x64_directory_${os.getpid()}')
 		empty := os.join_path(root, 'empty')
 		target := os.join_path(root, 'target')

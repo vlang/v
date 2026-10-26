@@ -7,7 +7,7 @@ import v.ssa
 import v.types
 
 fn test_native_map_pieces_format_primitive_widths_and_float_arrays() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_map_format_fixture('pieces', 'module main
 fn C.exit(int)
 fn v3_map_str_piece(p voidptr, kind int, bytes int, fixed_len int) string { return "" }
@@ -59,7 +59,7 @@ fn main() {
 }
 
 fn test_native_map_strings_read_state_storage_and_skip_deleted_entries() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_map_format_fixture('maps', 'module main
 fn C.exit(int)
 fn v3_map_str(m map[string]int, key_kind int, val_kind int, fixed_len int) string { return "" }

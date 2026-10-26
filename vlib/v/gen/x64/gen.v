@@ -78,9 +78,6 @@ pub fn (mut g Gen) gen() {
 	for func in g.m.funcs {
 		g.gen_func(func)
 	}
-	// Generate stub functions for any unresolved symbols (e.g., auto-generated
-	// map helpers like FnType__clone_fn that the SSA builder doesn't emit).
-	g.gen_undefined_stubs()
 	g.gen_post_pass()
 }
 
@@ -144,30 +141,6 @@ fn (g &Gen) indirect_params(func ssa.Function) []bool {
 	return result
 }
 
-fn (mut g Gen) gen_undefined_stubs() {
-	for i := 1; i < g.elf.symbols.len; i++ {
-		sym := g.elf.symbols[i]
-		// shndx == 0 means undefined (SHN_UNDEF)
-		if sym.shndx == 0 && sym.name.contains('__')
-			&& !g.is_forced_external_symbol(sym.name) {
-			// Only stub V-mangled symbols (contain '__'), not C library
-			// functions like calloc/malloc/free which must remain as
-			// external relocations for the linker to resolve.
-			stub_offset := u64(g.elf.text_data.len)
-			g.elf.add_symbol(sym.name, stub_offset, true, 1)
-			// xor eax, eax (2 bytes)
-			g.elf.text_data << 0x31
-			g.elf.text_data << 0xC0
-			// ret (1 byte)
-			g.elf.text_data << 0xC3
-		}
-	}
-}
-
-fn (g &Gen) is_forced_external_symbol(name string) bool {
-	return '_${name}' in force_external_syms
-}
-
 fn (mut g Gen) gen_post_pass() {
 	// `C._wyp` is a generated C constant, not a libc symbol. Native builds must
 	// materialize it themselves because map hashing refers to it through SSA.
@@ -225,9 +198,7 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 		g.dump_function(func)
 	}
 	if func.blocks.len == 0 {
-		g.elf.add_symbol(func.name, u64(g.elf.text_data.len), true, 1)
-		asm_xor_eax_eax(mut g)
-		asm_ret(mut g)
+		// Leave unsupported bodies undefined so the linker reports the missing implementation.
 		return
 	}
 	g.curr_offset = g.elf.text_data.len

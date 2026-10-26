@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_optional_pointer_literals_and_thread_results_preserve_the_pointer() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 import prepared
 fn C.exit(int)

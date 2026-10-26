@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_map_index_handles_many_keys_updates_and_numeric_bits() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_map_index_fixture('many_keys', r'module main
 fn C.exit(int)
 fn C.memcpy(voidptr, voidptr, usize) voidptr
@@ -110,7 +110,7 @@ fn main() {
 }
 
 fn test_native_map_index_resolves_collisions_and_hashes_string_content_and_length() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_map_index_fixture('collisions', r'module main
 fn C.exit(int)
 fn println(s string) {}

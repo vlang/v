@@ -7,7 +7,7 @@ import v.ssa
 import v.types
 
 fn test_native_signal_handler_calls_fallback_on_alternate_stack() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_signal_fixture('alternate', 'module main
 struct C.stack_t {
     ss_sp voidptr
@@ -35,7 +35,7 @@ fn main() {
 }
 
 fn test_native_signal_installation_preserves_existing_handler() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_signal_fixture('preserve', 'module main
 fn C.exit(int)
 fn C.signal(int, voidptr) voidptr

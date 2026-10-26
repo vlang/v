@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_const_map_membership_and_value_addresses_use_typed_storage() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := 'module main
 fn C.exit(int)
 struct Profile { first i64 second i64 }

@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_returned_registration_fixed_array_fields_preserve_string_elements() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		definitions := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'types', 'type.v'))!
 		cgen := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'gen', 'c', 'cleanc.v'))!
 		registration := 'struct FnSignatureRegistration {' +
@@ -89,7 +89,7 @@ fn main() {
 }
 
 fn test_native_mut_fixed_array_parameters_preserve_element_sizes_and_values() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := 'module main
 fn C.exit(int)
 struct Cache {

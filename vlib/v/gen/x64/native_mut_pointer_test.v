@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_mut_pointer_parameters_preserve_forwarding_indexing_and_reassignment() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := 'module main
 fn C.exit(int)
 fn write(code u32, mut buffer &u8) int {

@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_unsigned_literals_preserve_real_strconv_overflow_checks() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		integers := os.read_file(os.join_path(@VMODROOT, 'vlib', 'builtin', 'int.v'))!
 		atoi := os.read_file(os.join_path(@VMODROOT, 'vlib', 'strconv', 'atoi.v'))!
 		sources := [

@@ -3,7 +3,7 @@ module x64
 import os
 
 fn test_native_stdlib_core_semantics() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		path := os.join_path(os.vtmp_dir(), 'x64_stdlib_semantics_${os.getpid()}.v')
 		output := path.all_before_last('.')
 		defer {

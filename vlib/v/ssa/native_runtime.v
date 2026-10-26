@@ -87,6 +87,7 @@ fn (mut b Builder) generate_native_map_eq_body(func_id int) {
 	right_slot := b.block_instr0(.alloca, entry, ptr_map)
 	left_len_slot := b.block_instr0(.alloca, entry, ptr_i64)
 	right_len_slot := b.block_instr0(.alloca, entry, ptr_i64)
+	left_dense_len_slot := b.block_instr0(.alloca, entry, ptr_i64)
 	i_slot := b.block_instr0(.alloca, entry, ptr_i64)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	one := b.m.get_or_add_const(b.i64_type, '1')
@@ -96,6 +97,7 @@ fn (mut b Builder) generate_native_map_eq_body(func_id int) {
 	b.block_instr2(.store, entry, b.void_type, right, right_slot)
 	b.block_instr2(.store, entry, b.void_type, zero, left_len_slot)
 	b.block_instr2(.store, entry, b.void_type, zero, right_len_slot)
+	b.block_instr2(.store, entry, b.void_type, zero, left_dense_len_slot)
 	b.block_instr2(.store, entry, b.void_type, zero, i_slot)
 	left_state := b.map_state_ptr(entry, left_slot)
 	right_state := b.map_state_ptr(entry, right_slot)
@@ -113,13 +115,27 @@ fn (mut b Builder) generate_native_map_eq_body(func_id int) {
 	return_true := b.m.add_block(func_id, 'map_eq_true')
 	return_false := b.m.add_block(func_id, 'map_eq_false')
 	b.block_instr3(.br, entry, b.void_type, has_left, ValueID(read_left), ValueID(check_right))
-	left_count := b.map_state_load_i64(read_left, left_state, 3)
+	left_dense_count := b.map_state_load_i64(read_left, left_state, 3)
+	b.block_instr2(.store, read_left, b.void_type, left_dense_count, left_dense_len_slot)
+	left_count := if b.m.target.ptr_size == 8 {
+		count_ptr := b.block_struct_field_ptr(read_left, left_state, b.map_state_type, 13)
+		count := b.block_instr1(.load, read_left, b.i32_type, count_ptr)
+		b.block_instr1(.zext, read_left, b.i64_type, count)
+	} else {
+		left_dense_count
+	}
 	b.block_instr2(.store, read_left, b.void_type, left_count, left_len_slot)
 	b.block_instr1(.jmp, read_left, b.void_type, ValueID(check_right))
 	has_right := b.block_instr2(.ne, check_right, b.i1_type, right_state, nil_state)
 	b.block_instr3(.br, check_right, b.void_type, has_right, ValueID(read_right),
 		ValueID(check_lengths))
-	right_count := b.map_state_load_i64(read_right, right_state, 3)
+	right_count := if b.m.target.ptr_size == 8 {
+		count_ptr := b.block_struct_field_ptr(read_right, right_state, b.map_state_type, 13)
+		count := b.block_instr1(.load, read_right, b.i32_type, count_ptr)
+		b.block_instr1(.zext, read_right, b.i64_type, count)
+	} else {
+		b.map_state_load_i64(read_right, right_state, 3)
+	}
 	b.block_instr2(.store, read_right, b.void_type, right_count, right_len_slot)
 	b.block_instr1(.jmp, read_right, b.void_type, ValueID(check_lengths))
 	left_len := b.block_instr1(.load, check_lengths, b.i64_type, left_len_slot)
@@ -130,7 +146,8 @@ fn (mut b Builder) generate_native_map_eq_body(func_id int) {
 	is_empty := b.block_instr2(.eq, check_empty, b.i1_type, left_len, zero)
 	b.block_instr3(.br, check_empty, b.void_type, is_empty, ValueID(return_true), ValueID(loop))
 	i := b.block_instr1(.load, loop, b.i64_type, i_slot)
-	more := b.block_instr2(.lt, loop, b.i1_type, i, left_len)
+	left_dense_len := b.block_instr1(.load, loop, b.i64_type, left_dense_len_slot)
+	more := b.block_instr2(.lt, loop, b.i1_type, i, left_dense_len)
 	b.block_instr3(.br, loop, b.void_type, more, ValueID(check_live),
 		ValueID(return_true))
 	live := b.map_entry_is_live(check_live, left_state, i)

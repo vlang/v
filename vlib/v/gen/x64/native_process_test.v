@@ -7,7 +7,7 @@ import v.ssa
 import v.types
 
 fn test_native_process_exec_preserves_split_and_quoted_argv() ! {
-	$if linux && x64 {
+	$if !linux || !amd64 {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'x64_process_argv_${os.getpid()}')
@@ -70,7 +70,7 @@ fn main() {
 }
 
 fn test_native_process_capture_preserves_output_arguments_exit_status_and_errors() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		path := os.join_path(os.vtmp_dir(), 'x64_process_capture_${os.getpid()}.v')
 		output := path.all_before_last('.')
 		defer {

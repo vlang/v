@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_fixed_array_lengths_fold_in_runtime_constant_initializers() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		result := native_constant_fixture('fixed_array_lengths', [
 			r'module templates
 pub const bytes = [u8(0x11), 0x00, 0xfe, 0x5c, 0x30, 0x00, 0xfe, 0x58, 0x00, 0x02, 0x1f, 0xd6]!
@@ -41,7 +41,7 @@ fn main() {
 }
 
 fn test_native_runtime_constants_initialize_once_after_their_dependencies() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		result := native_constant_fixture('dependencies', [r'module main
 fn C.exit(int)
 struct Pair { value int }
@@ -76,7 +76,7 @@ fn main() {
 }
 
 fn test_native_linux_clock_and_stopwatch_advance_without_unsigned_underflow() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		time_source := r'module time
 struct C.timespec {
 	tv_sec  i64
@@ -129,7 +129,7 @@ fn main() {
 }
 
 fn test_native_compiler_string_array_constants_reserve_full_headers_and_preserve_libc_calls() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		builder := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'ssa', 'builder.v')) or {
 			panic(err)
 		}
@@ -203,7 +203,7 @@ fn native_constant_fixture(name string, sources []string) os.Result {
 }
 
 fn test_native_string_array_constant_indexing_without_a_type_checker() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		result := native_constant_fixture('without_checker', [r'module main
 fn C.exit(int)
 const words = ["first", "second", "third"]

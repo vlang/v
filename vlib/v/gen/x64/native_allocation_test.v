@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_aligned_memdup_copies_bytes_and_honors_alignment() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_allocation_fixture('aligned', 'module main
 fn C.exit(int)
 fn C.free(voidptr)
@@ -38,7 +38,7 @@ fn main() {
 }
 
 fn test_native_heap_array_copies_header_and_retains_data_view() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_allocation_fixture('array', 'module main
 fn C.exit(int)
 fn C.free(voidptr)
@@ -58,7 +58,7 @@ fn main() {
 }
 
 fn test_native_void_pointer_tables_use_pointer_sized_slots() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_allocation_fixture('pointers', 'module main
 fn C.exit(int)
 fn pointer_slots(data voidptr) &voidptr {
@@ -112,7 +112,7 @@ fn run_native_allocation_fixture(name string, source string, lower bool) {
 }
 
 fn test_native_conditional_void_pointer_values_preserve_addresses() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_allocation_fixture('conditional_pointers', 'module main
 fn C.exit(int)
 fn receive(value voidptr) voidptr { return value }

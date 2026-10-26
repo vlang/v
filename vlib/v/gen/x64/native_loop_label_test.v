@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_labeled_break_continue_and_goto_before_and_after_transform() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 fn C.exit(int)
 fn C.alarm(u32) u32

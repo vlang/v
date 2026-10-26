@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_payload_table_preserves_constant_array_layout_across_chunks() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		flat_source := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'flat', 'flat.v')) or {
 			panic(err)
 		}

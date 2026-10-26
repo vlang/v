@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_if_string_branches_preserve_pointer_field_map_keys() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 fn C.exit(int)
 struct Binding { value string }
@@ -45,7 +45,7 @@ fn main() {
 }
 
 fn test_native_pointer_map_or_keeps_type_across_terminating_branches() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 fn C.exit(int)
 fn C.malloc(usize) voidptr

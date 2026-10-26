@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_compiler_types_preserve_semantic_payload_identity() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		type_source := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'types', 'type.v'))!
 		identity_source := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'types', 'type_interner.v'))!
 		assert identity_source.contains('pub fn semantic_type_hash(')

@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_c_opaque_pointer_locals_and_explicit_pointer_addresses() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		for building_v in [false, true] {
 			path := os.join_path(os.vtmp_dir(), 'x64_c_pointer_local_${building_v}_${os.getpid()}.v')
 			output := path.all_before_last('.')
@@ -61,7 +61,7 @@ fn main() {
 }
 
 fn test_native_pointer_elements_and_nil_terminators_keep_their_storage_addresses() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := 'module main
 fn C.exit(int)
 fn C.malloc(usize) voidptr

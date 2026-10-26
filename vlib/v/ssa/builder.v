@@ -6896,7 +6896,10 @@ fn (mut b Builder) map_entry_is_live(block_id BlockID, state_ptr ValueID, index 
 	bitmap := b.block_instr1(.load, block_id, ptr_i8, bitmap_ptr)
 	effective_bitmap := b.block_instr3(.select, block_id, ptr_i8, has_tombstones, bitmap,
 		zero_slot)
-	flag_ptr := b.block_instr2(.add, block_id, ptr_i8, effective_bitmap, index)
+	// The fallback contains one byte, independent of the dense entry index.
+	effective_index := b.block_instr3(.select, block_id, b.i64_type, has_tombstones, index,
+		b.m.get_or_add_const(b.i64_type, '0'))
+	flag_ptr := b.block_instr2(.add, block_id, ptr_i8, effective_bitmap, effective_index)
 	flag := b.block_instr1(.load, block_id, b.i8_type, flag_ptr)
 	return b.block_instr2(.eq, block_id, b.i1_type, flag, zero8)
 }

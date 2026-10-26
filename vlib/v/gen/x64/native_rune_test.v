@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_rune_writes_preserve_utf8_lengths_pointer_slots_and_builder_growth() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		utf8 := os.read_file(os.join_path(@VMODROOT, 'vlib', 'builtin', 'utf8.v')) or {
 			panic(err)
 		}

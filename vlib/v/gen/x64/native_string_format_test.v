@@ -7,7 +7,7 @@ import v.ssa
 import v.types
 
 fn test_native_zero_padding_preserves_signs_values_width_and_special_floats() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_string_format_fixture('zero_padding', 'module main
 fn C.exit(int)
 fn v3_string_zpad(s string, width int) string { return "" }
@@ -38,7 +38,7 @@ fn main() {
 }
 
 fn test_native_string_formatting_adds_signs_and_preserves_non_ascii_bytes() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_string_format_fixture('string_formatting', 'module main
 fn C.exit(int)
 fn v3_string_upper_ascii(s string) string { return "" }
@@ -60,7 +60,7 @@ fn main() {
 }
 
 fn test_native_float_formatting_uses_values_precision_exponents_and_dynamic_storage() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_string_format_fixture('float_formatting', 'module main
 fn C.exit(int)
 fn v3_f64_fixed(value f64, precision int) string { return "" }
@@ -97,7 +97,7 @@ fn main() {
 }
 
 fn test_native_float_strings_roundtrip_values_and_expand_decimal_notation() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_string_format_fixture('float_strings', 'module main
 fn C.exit(int)
 fn f64_to_str_l(value f64) string { return "" }
@@ -124,7 +124,7 @@ fn main() {
 }
 
 fn test_native_character_formatting_encodes_ascii_and_utf8() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_string_format_fixture('characters', 'module main
 fn C.exit(int)
 fn v3_char_string(code int) string { return "" }
@@ -141,7 +141,7 @@ fn main() {
 }
 
 fn test_native_interpolation_preserves_constant_strings_and_scalar_values() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_string_format_fixture('constant_interpolation', r'module main
 const label = "expected"
 const chained = label + "!"

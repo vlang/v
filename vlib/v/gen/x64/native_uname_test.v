@@ -7,7 +7,7 @@ import v.ssa
 import v.types
 
 fn test_native_uname_uses_inline_arrays_with_pointer_field_values() {
-	$if linux && x64 {
+	$if !linux || !amd64 {
 		return
 	}
 	path := os.join_path(os.vtmp_dir(), 'x64_uname_${os.getpid()}.v')

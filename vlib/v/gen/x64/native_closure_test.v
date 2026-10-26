@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_spawn_noreturn_worker_preserves_parent_execution() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		for building_v in [false, true] {
 			path := os.join_path(os.vtmp_dir(), 'x64_spawn_noreturn_${building_v}_${os.getpid()}.v')
 			output := path.all_before_last('.')
@@ -83,7 +83,7 @@ fn main() {
 }
 
 fn test_native_capturing_closures_preserve_context_and_call_abi() {
-	$if !linux || !x64 {
+	$if !linux || !amd64 {
 		return
 	}
 	path := os.join_path(os.vtmp_dir(), 'x64_closure_${os.getpid()}.v')

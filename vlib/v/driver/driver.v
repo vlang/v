@@ -15404,13 +15404,12 @@ pub fn run(args []string) {
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
 				// The optimizer rebuilds use lists once before consuming them.
 				// Incremental tracking is quadratic for large generic functions.
-				track_uses:             false
-				thread_stack_size:      prefs.thread_stack_size
-				test_files:             test_files
-				test_run_only:          run_only
-				allow_missing_fn_stubs: true
-				exact_used_fns:         true
-				use_native_c_sources:   true
+				track_uses:           false
+				thread_stack_size:    prefs.thread_stack_size
+				test_files:           test_files
+				test_run_only:        run_only
+				exact_used_fns:       true
+				use_native_c_sources: true
 			})
 			b.step('ssa build')
 			b.metric('SSA values before optimize', m.values.len, 'values')

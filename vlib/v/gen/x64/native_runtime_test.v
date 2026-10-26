@@ -7,7 +7,7 @@ import v.ssa
 import v.types
 
 fn test_native_startup_initializes_globals_before_module_init() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_runtime_fixture('startup', 'module main
 fn C.exit(int)
 struct StartupValues { first i64 second i64 third i64 }
@@ -34,7 +34,7 @@ fn main() {
 }
 
 fn test_native_module_globals_and_initializers_follow_dependencies() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		result := native_runtime_fixture_result('module_globals', [
 			'module main
 import parent
@@ -68,7 +68,7 @@ pub fn value() int { return shared }
 }
 
 fn test_native_builtin_initialization_precedes_module_globals_and_init() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		result := native_runtime_fixture_result('builtin_startup', [
 			'module main
 import dependent
@@ -96,7 +96,7 @@ pub fn startup_phase() int { return native_startup_phase }
 }
 
 fn test_native_panic_preserves_its_message() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		result := native_runtime_fixture_result('panic', ['module main
 fn main() { panic("native panic message") }
 '])
@@ -106,7 +106,7 @@ fn main() { panic("native panic message") }
 }
 
 fn test_native_literal_pointer_store_preserves_adjacent_canary() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		mut m := ssa.Module.new()
 		i8_type := m.type_store.get_int(8)
 		i32_type := m.type_store.get_int(32)
@@ -142,7 +142,7 @@ fn test_native_literal_pointer_store_preserves_adjacent_canary() {
 }
 
 fn test_native_filelock_headers_preserve_modes_ranges_and_unlocking() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_runtime_fixture('filelock', 'module main
 fn C.exit(int)
 fn C.alarm(u32) u32
@@ -197,7 +197,7 @@ fn main() {
 }
 
 fn test_native_flat_payload_header_helpers_preserve_pointer_identity() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_runtime_fixture('payload_pointer', 'module main
 fn C.exit(int)
 fn C.malloc(usize) voidptr
@@ -222,7 +222,7 @@ fn main() {
 }
 
 fn test_native_stdio_globals_use_the_libc_stream() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		result := native_runtime_fixture_result('stdio', ['module main
 struct C.FILE {}
 __global C.stderr &C.FILE
@@ -240,7 +240,7 @@ fn main() {
 }
 
 fn test_native_c_string_literals_preserve_stdio_format_and_variadic_arguments() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		result := native_runtime_fixture_result('c_string_stdio', ["module main
 struct C.FILE {}
 __global C.stderr &C.FILE
@@ -266,7 +266,7 @@ fn main() {
 }
 
 fn test_native_startup_preserves_the_process_arguments() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_runtime_fixture('arguments', 'module main
 fn C.exit(int)
 __global g_main_argc = int(0)
@@ -284,7 +284,7 @@ fn main() {
 }
 
 fn test_native_map_equality_handles_order_values_missing_keys_and_empty_maps() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_runtime_fixture('map_equality', 'module main
 fn C.exit(int)
 fn map_map_eq(a map[string]int, b map[string]int) bool { return false }
@@ -298,13 +298,20 @@ fn main() {
 	empty := map[string]int{}
 	if !map_map_eq(empty, map[string]int{}) { C.exit(5) }
 	if map_map_eq(empty, left) { C.exit(6) }
+	mut deleted := map[string]int{"first": 11, "second": 22}
+	deleted.delete("first")
+	remaining := map[string]int{"second": 22}
+	if !map_map_eq(deleted, remaining) { C.exit(7) }
+	if !map_map_eq(remaining, deleted) { C.exit(8) }
+	deleted.delete("second")
+	if !map_map_eq(deleted, empty) { C.exit(9) }
 }
 ')
 	}
 }
 
 fn test_native_string_ordering_preserves_signed_libc_comparisons() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_runtime_fixture('string_ordering', 'module main
 fn C.exit(int)
 fn main() {
@@ -319,7 +326,7 @@ fn main() {
 }
 
 fn test_native_backtrace_capture_honors_skipped_frames() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_runtime_fixture('backtrace', 'module main
 fn C.exit(int)
 fn print_backtrace_skipping_top_frames(skipframes int) bool { return false }
@@ -331,7 +338,7 @@ fn main() {
 }
 
 fn test_native_map_get_and_set_inserts_once_and_returns_writable_storage() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_runtime_fixture('map_get_and_set', 'module main
 fn C.exit(int)
 fn map__get_and_set(m &map[string]i64, key voidptr, fallback voidptr) voidptr { return 0 }
@@ -381,4 +388,17 @@ fn native_runtime_fixture_result(name string, sources []string) os.Result {
 	g.gen()
 	g.write_and_link(output)
 	return os.exec([output])
+}
+
+fn test_native_c_symbols_with_double_underscores_remain_external() {
+	$if linux && amd64 {
+		run_native_runtime_fixture('external_double_underscore', 'module main
+fn C.__getpid() int
+fn C.getpid() int
+fn C.exit(int)
+fn main() {
+	if C.__getpid() <= 0 || C.__getpid() != C.getpid() { C.exit(1) }
+}
+')
+	}
 }

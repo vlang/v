@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_map_array_fields_keep_map_indexing_through_pointer_receivers() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 fn C.exit(int)
 fn C.malloc(usize) voidptr

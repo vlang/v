@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_struct_defaults_include_omitted_mkdir_params_and_explicit_overrides() {
-	$if linux && x64 {
+	$if !linux || !amd64 {
 		return
 	}
 	decl := os.read_file(@VEXEROOT + '/vlib/os/os.v') or { panic(err) }

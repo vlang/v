@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_negative_sum_guards_preserve_enum_payload_fields() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		type_source := os.read_file(os.join_path(os.dir(@FILE), '..', '..', 'types', 'type.v')) or {
 			panic(err)
 		}

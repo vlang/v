@@ -24,7 +24,7 @@ fn exec_native(args []string) os.Result {
 }
 
 fn test_native_byte_hex_and_real_sha256_tool_cache_keys() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		path := os.join_path(os.vtmp_dir(), 'x64_byte_hex_${os.getpid()}.v')
 		output := path.all_before_last('.')
 		defer {

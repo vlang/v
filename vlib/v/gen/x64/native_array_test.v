@@ -8,7 +8,7 @@ import v.transform
 import v.types
 
 fn test_native_cloned_array_fields_survive_return_statement_deferred_restoration() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		source := r'module main
 fn C.exit(int)
 struct OwnershipDropEntry {
@@ -125,7 +125,7 @@ fn main() {
 }
 
 fn test_native_array_growth_handles_managed_storage_and_preserves_views() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_array_fixture('managed', 'module main
 fn C.exit(int)
 fn C.malloc(usize) voidptr
@@ -180,7 +180,7 @@ fn main() {
 }
 
 fn test_native_array_bulk_growth_and_slice_append_preserve_parent_storage() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_array_fixture('bulk', 'module main
 fn C.exit(int)
 fn main() {
@@ -206,7 +206,7 @@ fn main() {
 }
 
 fn test_native_string_builder_growth_handles_managed_array_backing() {
-	$if linux && x64 {
+	$if linux && amd64 {
 		run_native_array_fixture('builder', 'module main
 fn C.exit(int)
 fn C.malloc(usize) voidptr
@@ -236,9 +236,13 @@ fn main() {
     mut builder := Builder([]u8{})
     C.memcpy(&builder, &header, sizeof(NativeArray))
     builder.write_string("cd")
-    if builder.str() != "abcd" { C.exit(1) }
+    first := builder.str()
+    if first != "abcd" || builder.len != 0 { C.exit(1) }
+    builder.write_string(first)
     builder.write_string("efghijklmnop")
-    if builder.str() != "abcdefghijklmnop" { C.exit(2) }
+    second := builder.str()
+    if second != "abcdefghijklmnop" || builder.len != 0 { C.exit(2) }
+    builder.write_string(second)
     builder.write_byte(u8(0))
     builder.write_byte(u8(255))
     builder.write_string("Q")
@@ -254,6 +258,8 @@ fn main() {
         if text[20 + index] != u8(index) { C.exit(8) }
     }
     if unsafe { text.str[text.len] } != u8(0) { C.exit(9) }
+    if first != "abcd" || second != "abcdefghijklmnop" { C.exit(10) }
+    if builder.len != 0 { C.exit(11) }
 }
 ')
 	}

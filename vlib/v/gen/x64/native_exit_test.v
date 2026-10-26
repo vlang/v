@@ -7,7 +7,7 @@ import v.ssa
 import v.types
 
 fn test_native_at_exit_runs_callbacks_after_return_and_exit() {
-	$if linux && x64 {
+	$if !linux || !amd64 {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'v_x64_exit_${os.getpid()}')
