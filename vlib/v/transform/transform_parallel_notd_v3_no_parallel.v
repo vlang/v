@@ -2360,10 +2360,10 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 	// strings before adding a worker-local entry; generic specialization clones
 	// otherwise retain another copy of almost every source identifier and type.
 	mut canonical := ''
-	if promoted := t.scoped_promoted_texts[value] {
-		canonical = promoted
-	} else if id := t.a.text_ids[value] {
+	if id := t.a.text_ids[value] {
 		canonical = t.a.text_values[int(id) - 1]
+	} else if promoted := t.scoped_promoted_texts[value] {
+		canonical = promoted
 	} else {
 		publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
 		canonical = value.clone()

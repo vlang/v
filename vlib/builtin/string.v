@@ -1551,18 +1551,7 @@ fn (s string) index_multibyte(p string) int {
 
 @[direct_array_access]
 fn (s string) index_pair(p string) int {
-	first := unsafe { p.str[0] }
-	second := unsafe { p.str[1] }
-	last_start := s.len - 2
-	for i := 0; i <= last_start; i++ {
-		if unsafe { s.str[i] } != first {
-			next := string_index_byte(unsafe { s.str + i + 1 }, last_start - i, first)
-			if next < 0 { return -1 }
-			i += next + 1
-		}
-		if unsafe { s.str[i + 1] } == second { return i }
-	}
-	return -1
+	return string_index_pair(s.str, s.len, unsafe { p.str[0] }, unsafe { p.str[1] })
 }
 
 // Needles up to this length are searched directly; longer ones use KMP, which
@@ -1759,7 +1748,7 @@ pub fn (s string) count(substr string) int {
 // See also: [`string.index_u8`](#string.index_u8) , to get the index of the byte as well.
 @[inline]
 pub fn (s string) contains_u8(x u8) bool {
-	return string_index_byte(s.str, s.len, x) >= 0
+	return string_contains_byte(s.str, s.len, x)
 }
 
 // contains returns `true` if the string contains `substr`.

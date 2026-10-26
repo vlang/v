@@ -207,6 +207,9 @@ mut:
 	cached_hashbits u8
 	// Used for right-shifting out used hashbits
 	shift u8
+	// Callback tags occupy existing padding and preserve custom hash/equality independently.
+	hash_kind u8
+	eq_kind   u8
 	// Array storing key-values (ordered)
 	key_values DenseArray
 	// Pointer to meta-data:
@@ -215,14 +218,16 @@ mut:
 	metas &u32
 	// Extra metas that allows for no ranging when incrementing
 	// index in the hashmap
-	extra_metas     u32
-	has_string_keys bool
-	hash_fn         MapHashFn
-	key_eq_fn       MapEqFn
-	clone_fn        MapCloneFn
-	free_fn         MapFreeFn
+	extra_metas u32
+	hash_fn     MapHashFn
+	key_eq_fn   MapEqFn
+	clone_fn    MapCloneFn
+	free_fn     MapFreeFn
 	// Number of key-values currently in the hashmap
 	count int
+	// Conservative residues of cloned standard string keys; deletions retain a superset.
+	string_length_bits u64
+	string_first_bits  u64
 }
 
 // map is the pointer-sized internal representation of a V `map` type.
@@ -350,10 +355,80 @@ fn map_free_string(pkey voidptr) {
 fn map_free_nop(_ voidptr) {
 }
 
+// Classify once when constructing the map; zero preserves custom callbacks.
+@[inline]
+fn map_hash_kind(callback MapHashFn) u8 {
+	return if voidptr(callback) == voidptr(map_hash_string) {
+		u8(1)
+	} else if voidptr(callback) == voidptr(map_hash_int_4) {
+		u8(4)
+	} else if voidptr(callback) == voidptr(map_hash_int_8) {
+		u8(8)
+	} else {
+		u8(0)
+	}
+}
+
+@[inline]
+fn map_eq_kind(callback MapEqFn) u8 {
+	return if voidptr(callback) == voidptr(map_eq_string) {
+		u8(1)
+	} else if voidptr(callback) == voidptr(map_eq_int_4) {
+		u8(4)
+	} else if voidptr(callback) == voidptr(map_eq_int_8) {
+		u8(8)
+	} else {
+		u8(0)
+	}
+}
+
+// The extra bit enables the filter without repeating callback comparisons on reads.
+// A custom clone is excluded because it can change the stored string bytes.
+@[inline]
+fn map_length_filter_eq_kind(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn) u8 {
+	kind := map_eq_kind(key_eq_fn)
+	if kind == 1 && voidptr(hash_fn) == voidptr(map_hash_string)
+		&& voidptr(clone_fn) == voidptr(map_clone_string) {
+		return kind | u8(16)
+	}
+	return kind
+}
+
+@[inline]
+fn map_string_length_bit(key voidptr) u64 {
+	return u64(1) << (u32(unsafe { (&string(key)).len }) & u32(63))
+}
+
+@[inline]
+fn map_string_first_bit(key voidptr) u64 {
+	value := unsafe { &string(key) }
+	first := if value.len == 0 { u8(0) } else { unsafe { value.str[0] } }
+	return u64(1) << (u32(first) & u32(63))
+}
+
+@[inline]
+fn (m &VMapData) rejects_string_key(key voidptr) bool {
+	return m.eq_kind & 16 != 0
+		&& (m.string_length_bits & map_string_length_bit(key) == 0
+			|| m.string_first_bits & map_string_first_bit(key) == 0)
+}
+
+@[inline]
+fn (mut m VMapData) remember_string_key(key voidptr) {
+	if m.eq_kind & 16 == 0 {
+		return
+	}
+	m.string_length_bits |= map_string_length_bit(key)
+	m.string_first_bits |= map_string_first_bit(key)
+	if m.string_length_bits == u64(0xffffffffffffffff)
+		&& m.string_first_bits == u64(0xffffffffffffffff) {
+		// Neither saturated filter can reject another lookup until clear.
+		m.eq_kind &= u8(0xef)
+	}
+}
+
 fn new_map_data(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn,
 	free_fn MapFreeFn) &VMapData {
-	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > int(sizeof(voidptr))
 	// Arenas retain old metadata slabs, so reserve a modest probe tail before
 	// insertion instead of repeatedly copying the slab to add four entries.
 	mut initial_extra_metas := u32(extra_metas_inc)
@@ -366,11 +441,12 @@ fn new_map_data(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn Map
 		even_index:      init_even_index
 		cached_hashbits: max_cached_hashbits
 		shift:           init_log_capicity
+		hash_kind:       map_hash_kind(hash_fn)
+		eq_kind:         map_length_filter_eq_kind(hash_fn, key_eq_fn, clone_fn)
 		key_values:      DenseArray{ key_bytes: key_bytes, value_bytes: value_bytes }
 		metas:           unsafe { nil }
 		extra_metas:     initial_extra_metas
 		count:           0
-		has_string_keys: has_string_keys
 		hash_fn:         hash_fn
 		key_eq_fn:       key_eq_fn
 		clone_fn:        clone_fn
@@ -380,25 +456,31 @@ fn new_map_data(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn Map
 
 fn new_map_with_dense_array(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
 	clone_fn MapCloneFn, free_fn MapFreeFn, key_values DenseArray, metas &u32) map {
-	has_string_keys := key_bytes > int(sizeof(voidptr))
-	return map{
-		data: &VMapData{
-			key_bytes:       key_bytes
-			value_bytes:     value_bytes
-			even_index:      init_even_index
-			cached_hashbits: max_cached_hashbits
-			shift:           init_log_capicity
-			key_values:      key_values
-			metas:           unsafe { metas }
-			extra_metas:     extra_metas_inc
-			count:           0
-			has_string_keys: has_string_keys
-			hash_fn:         hash_fn
-			key_eq_fn:       key_eq_fn
-			clone_fn:        clone_fn
-			free_fn:         free_fn
+	mut data := &VMapData{
+		key_bytes:       key_bytes
+		value_bytes:     value_bytes
+		even_index:      init_even_index
+		cached_hashbits: max_cached_hashbits
+		shift:           init_log_capicity
+		hash_kind:       map_hash_kind(hash_fn)
+		eq_kind:         map_length_filter_eq_kind(hash_fn, key_eq_fn, clone_fn)
+		key_values:      key_values
+		metas:           unsafe { metas }
+		extra_metas:     extra_metas_inc
+		count:           0
+		hash_fn:         hash_fn
+		key_eq_fn:       key_eq_fn
+		clone_fn:        clone_fn
+		free_fn:         free_fn
+	}
+	if data.eq_kind & 16 != 0 {
+		for i in 0 .. key_values.len {
+			if key_values.has_index(i) {
+				data.remember_string_key(key_values.key(i))
+			}
 		}
 	}
+	return map{ data: data }
 }
 
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
@@ -470,6 +552,9 @@ fn (mut m VMapData) clear() {
 	if m.metas == unsafe { nil } {
 		return
 	}
+	m.string_length_bits = 0
+	m.string_first_bits = 0
+	m.eq_kind = map_length_filter_eq_kind(m.hash_fn, m.key_eq_fn, m.clone_fn)
 	unsafe {
 		if m.key_values.all_deleted != 0 {
 			free(m.key_values.all_deleted)
@@ -503,24 +588,35 @@ fn (m &VMapData) panic_nil_map_hash_fn() {
 // the callback for all other key representations and custom comparators.
 @[inline]
 fn (m &VMapData) keys_equal(a voidptr, b voidptr) bool {
-	if voidptr(m.key_eq_fn) == voidptr(map_eq_string) {
+	if m.eq_kind & 1 != 0 {
 		return map_eq_string(a, b)
+	}
+	if m.eq_kind == 4 {
+		return map_eq_int_4(a, b)
+	}
+	if m.eq_kind == 8 {
+		return map_eq_int_8(a, b)
 	}
 	return m.key_eq_fn(a, b)
 }
 
 @[inline]
 fn (m &VMapData) key_to_index(pkey voidptr) (u32, u32) {
-	if voidptr(m.hash_fn) == unsafe { nil } {
-		m.panic_nil_map_hash_fn()
-	}
-	hash := if voidptr(m.hash_fn) == voidptr(map_hash_string) {
+	hash := if m.hash_kind & 1 != 0 {
 		map_hash_string(pkey)
+	} else if m.hash_kind == 4 {
+		map_hash_int_4(pkey)
+	} else if m.hash_kind == 8 {
+		map_hash_int_8(pkey)
 	} else {
+		if voidptr(m.hash_fn) == unsafe { nil } {
+			m.panic_nil_map_hash_fn()
+		}
 		m.hash_fn(pkey)
 	}
 	index := hash & m.even_index
-	meta := ((hash >> m.shift) & hash_mask) | probe_inc
+	// Valid table growth cannot exhaust the 64-bit hash before the u32 index.
+	meta := ((hash >> (m.shift & 63)) & hash_mask) | probe_inc
 	return u32(index), u32(meta)
 }
 
@@ -652,6 +748,7 @@ fn (mut m VMapData) set_general(key voidptr, value voidptr) {
 		pkey := m.key_values.key(kv_index)
 		pvalue := m.key_values.value(kv_index)
 		m.clone_fn(pkey, key)
+		m.remember_string_key(pkey)
 		vmemcpy(pvalue, value, m.value_bytes)
 	}
 	m.meta_greater(index, meta, u32(kv_index))
@@ -845,6 +942,9 @@ fn (m &VMapData) get_nonempty(key voidptr, zero voidptr) voidptr {
 		}
 		return zero
 	}
+	if m.rejects_string_key(key) {
+		return zero
+	}
 	mut index, mut meta := m.key_to_index(key)
 	for {
 		stored_meta := unsafe { m.metas[index] }
@@ -893,6 +993,9 @@ fn (m &VMapData) get_check_nonempty(key voidptr) voidptr {
 		if i >= 0 {
 			return m.key_values.value(i)
 		}
+		return 0
+	}
+	if m.rejects_string_key(key) {
 		return 0
 	}
 	mut index, mut meta := m.key_to_index(key)
@@ -988,6 +1091,9 @@ fn (m &VMapData) exists_nonempty(key voidptr) bool {
 		if i >= 0 {
 			return true
 		}
+		return false
+	}
+	if m.rejects_string_key(key) {
 		return false
 	}
 	mut index, mut meta := m.key_to_index(key)
@@ -1256,23 +1362,26 @@ fn (m &VMapData) clone() &VMapData {
 	}
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := &VMapData{
-		key_bytes:       m.key_bytes
-		value_bytes:     m.value_bytes
-		even_index:      m.even_index
-		cached_hashbits: m.cached_hashbits
-		shift:           m.shift
-		key_values:      unsafe { m.key_values.clone() }
-		metas:           unsafe { &u32(malloc_noscan(metasize)) }
-		extra_metas:     m.extra_metas
-		count:           m.count
-		has_string_keys: m.has_string_keys
-		hash_fn:         m.hash_fn
-		key_eq_fn:       m.key_eq_fn
-		clone_fn:        m.clone_fn
-		free_fn:         m.free_fn
+		key_bytes:          m.key_bytes
+		value_bytes:        m.value_bytes
+		even_index:         m.even_index
+		cached_hashbits:    m.cached_hashbits
+		shift:              m.shift
+		hash_kind:          m.hash_kind
+		eq_kind:            m.eq_kind
+		key_values:         unsafe { m.key_values.clone() }
+		metas:              unsafe { &u32(malloc_noscan(metasize)) }
+		extra_metas:        m.extra_metas
+		count:              m.count
+		string_length_bits: m.string_length_bits
+		string_first_bits:  m.string_first_bits
+		hash_fn:            m.hash_fn
+		key_eq_fn:          m.key_eq_fn
+		clone_fn:           m.clone_fn
+		free_fn:            m.free_fn
 	}
 	unsafe { vmemcpy(res.metas, m.metas, metasize) }
-	if !m.has_string_keys {
+	if m.key_bytes <= int(sizeof(voidptr)) {
 		return res
 	}
 	// clone keys
@@ -1350,6 +1459,8 @@ fn (m &VMapData) free() {
 		}
 		// TODO: the next lines assume that callback functions are static and independent from each particular
 		// map instance. Closures may invalidate that assumption, so revisit when RC for closures works.
+		m.hash_kind = 0
+		m.eq_kind = 0
 		m.hash_fn = nil
 		m.key_eq_fn = nil
 		m.clone_fn = nil
@@ -1361,7 +1472,8 @@ fn (m &VMapData) free() {
 		m.cached_hashbits = 0
 		m.shift = 0
 		m.extra_metas = 0
-		m.has_string_keys = false
+		m.string_length_bits = 0
+		m.string_first_bits = 0
 		m.count = 0
 	}
 }

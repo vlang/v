@@ -224,11 +224,14 @@ fn (mut g FlatGen) value_c_type(t &types.Type) string {
 			return qualified + pointer_suffix
 		}
 	}
-	if target_source_id := g.tc.type_aliases.type_id(ct) {
-		return g.tc.c_type(unalias_type(g.tc.parse_type(target_source_id)))
-	}
-	if target_source_id := g.tc.type_aliases.type_id('main.${ct}') {
-		return g.tc.c_type(unalias_type(g.tc.parse_type(target_source_id)))
+	// Both alias keys have the same final component, including C spellings.
+	if g.name_may_be_type_alias(ct) {
+		if target_source_id := g.tc.type_aliases.type_id(ct) {
+			return g.tc.c_type(unalias_type(g.tc.parse_type(target_source_id)))
+		}
+		if target_source_id := main_type_alias_id(g.tc.type_aliases, ct) {
+			return g.tc.c_type(unalias_type(g.tc.parse_type(target_source_id)))
+		}
 	}
 	return ct
 }
@@ -928,7 +931,7 @@ fn (g &FlatGen) node_source_file(node &flat.Node) string {
 			}
 		}
 		for i in 0 .. child.children_count {
-			pending << g.a.child_node(&child, i)
+			pending << g.a.node(g.a.child(&child, i))
 		}
 	}
 	if g.cur_fn_source_file.len > 0 {
