@@ -1,63 +1,62 @@
 module main
 
 import os
-import strings
+import json2
 
-fn count_field(content string, field string, value string) int {
-	mut n := 0
-	mut pos := 0
-	needle := '"' + field + '": "' + value + '"'
-	for {
-		idx := content.index_after(needle, pos) or { -1 }
-		if idx < 0 { break }
-		n++
-		pos = idx + needle.len
-	}
-	return n
+struct ReportCount {
+	total  int
+	failed int
 }
 
+fn check_report(content string, group string) !ReportCount {
+	decoded := json2.decode[json2.Any](content)!
+	if decoded !is map[string]json2.Any {
+		return error('report must be an object')
+	}
+	groups := decoded.as_map()
+	cases := groups[group] or { return error('missing report group ${group}') }
+	if cases !is map[string]json2.Any {
+		return error('report group ${group} must be an object')
+	}
+	mut failed := 0
+	for name, entry in cases.as_map() {
+		if entry !is map[string]json2.Any {
+			return error('case ${name} must be an object')
+		}
+		fields := entry.as_map()
+		behavior := fields['behavior'] or { return error('case ${name} has no behavior') }
+		close := fields['behaviorClose'] or { return error('case ${name} has no behaviorClose') }
+		if behavior !is string || close !is string {
+			return error('case ${name} behaviors must be strings')
+		}
+		if behavior.str() == 'FAILED' || close.str() == 'FAILED' {
+			failed++
+		}
+	}
+	return ReportCount{ total: cases.as_map().len, failed: failed }
+}
+
+fn check_reports(root string, clients_only bool) !bool {
+	clients := check_report(os.read_file(os.join_path(root, 'clients', 'index.json'))!, 'v-client')!
+	if clients_only {
+		println('CLIENT ERRORS ${clients.failed} of ${clients.total}')
+		return clients.failed == 0
+	}
+	servers := check_report(os.read_file(os.join_path(root, 'servers', 'index.json'))!, 'AutobahnServer')!
+	println('CLIENT ERRORS ${clients.failed} of ${clients.total}, SERVER ERRORS ${servers.failed} of ${servers.total}')
+	return clients.failed == 0 && servers.failed == 0
+}
 
 fn main() {
-	if os.args.len < 2 {
-		eprintln('usage: check_autobahn_results <reports_dir>')
+	if os.args.len < 2 || os.args.len > 3 || (os.args.len == 3 && os.args[2] != '--clients-only') {
+		eprintln('usage: check_autobahn_results <reports_dir> [--clients-only]')
 		exit(1)
 	}
-	root := os.args[1]
-	clients_path := os.join_path(root, 'clients', 'index.json')
-	servers_path := os.join_path(root, 'servers', 'index.json')
-
-	clients_content := os.read_file(clients_path) or {
-		eprintln('cannot read ${clients_path}: ${err}')
+	ok := check_reports(os.args[1], os.args.len == 3) or {
+		eprintln(err)
 		exit(1)
 	}
-	servers_content := os.read_file(servers_path) or {
-		eprintln('cannot read ${servers_path}: ${err}')
-		exit(1)
-	}
-
-	// count tests: number of "behavior" keys
-	mut ct := 0
-	mut pos := 0
-	for {
-		idx := clients_content.index_after('"behavior"', pos) or { -1 }
-		if idx < 0 { break }
-		ct++
-		pos = idx + 10
-	}
-	mut st := 0
-	pos = 0
-	for {
-		idx := servers_content.index_after('"behavior"', pos) or { -1 }
-		if idx < 0 { break }
-		st++
-		pos = idx + 10
-	}
-
-	ce := count_field(clients_content, 'behavior', 'FAILED') + count_field(clients_content, 'behaviorClose', 'FAILED')
-	se := count_field(servers_content, 'behavior', 'FAILED') + count_field(servers_content, 'behaviorClose', 'FAILED')
-
-	println('CLIENT ERRORS ${ce} of ${ct}, SERVER ERRORS ${se} of ${st}')
-	if ce > 0 || se > 0 {
+	if !ok {
 		exit(1)
 	}
 }

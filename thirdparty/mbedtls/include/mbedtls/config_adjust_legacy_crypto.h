@@ -33,7 +33,7 @@
 #endif /* */
 
 /* Ideally, we'd set those as defaults in mbedtls_config.h, but
- * putting an #ifdef _WIN32 in mbedtls_config.h would confuse the config tool.
+ * putting an #ifdef _WIN32 in mbedtls_config.h would confuse config.py.
  *
  * So, adjust it here.
  * Not related to crypto, but this is the bottom of the stack. */

@@ -8963,6 +8963,13 @@ fn v3_test_standard_dependency_probe(define string) ?V3TestDependencyProbe {
 				args:    ['--version']
 			}
 		}
+		'present_python' {
+			return V3TestDependencyProbe{
+				command:        'python'
+				args:           ['--version']
+				pkgconfig_name: 'python3'
+			}
+		}
 		'present_ruby' {
 			return V3TestDependencyProbe{
 				command:        'ruby'
@@ -9047,7 +9054,7 @@ fn v3_test_build_defines(expression string, user_defines []string) []string {
 			defines[define] = true
 		}
 	}
-	for define in ['present_node', 'present_ruby', 'present_go'] {
+	for define in ['present_node', 'present_python', 'present_ruby', 'present_go'] {
 		if !expression.contains('${define}?') {
 			continue
 		}

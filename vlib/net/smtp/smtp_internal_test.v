@@ -394,7 +394,7 @@ fn test_send_auth_rejects_plaintext_credentials() {
 }
 
 fn test_tls_validation_rejects_untrusted_and_mismatched_certificates_before_auth() ! {
-	helper := os.join_path(@VMODROOT, 'vlib', 'net', 'smtp', 'smtp_tls_test_server.v')
+	helper := os.join_path(@VMODROOT, 'vlib', 'net', 'smtp', 'testdata', 'smtp_tls_test_server.v')
 	assert os.exists(helper)
 	cert_dir := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert')
 	server_cert := os.join_path(cert_dir, 'server.crt')
@@ -418,7 +418,7 @@ fn smtp_tls_test_case(helper string, starttls bool, hostname string, verify stri
 	prefix := os.join_path(os.temp_dir(), 'v_smtp_tls_${rand.uuid_v4()}')
 	ready_path := '${prefix}.ready'
 	result_path := '${prefix}.result'
-	mut server := os.new_process('v')
+	mut server := os.new_process(@VEXE)
 	server.set_work_folder(@VMODROOT)
 	server.set_args([
 		'run',

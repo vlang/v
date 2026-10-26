@@ -48,7 +48,7 @@ fn record_no_auth(path string) {
 }
 
 fn main() {
-	if os.args.len < 8 {
+	if os.args.len < 7 {
 		eprintln('usage: smtp_tls_test_server <mode> <host> <cert> <key> <ready_path> <result_path>')
 		exit(1)
 	}
@@ -92,13 +92,13 @@ fn main() {
 	if mode == 'starttls' {
 		tcp_conn.write_string('220 localhost ESMTP ready\r\n') or {}
 		line := read_line_tcp(mut tcp_conn)
-		if !line.str().starts_with('EHLO ') { // EHLO
+		if !line.bytestr().starts_with('EHLO ') { // EHLO
 			record(result_path, 'ERROR: expected EHLO before STARTTLS')
 			return
 		}
 		tcp_conn.write_string('250-localhost\r\n250-STARTTLS\r\n250 OK\r\n') or {}
 		line2 := read_line_tcp(mut tcp_conn)
-		if line2.str().trim_space().to_upper() != 'STARTTLS' {
+		if line2.bytestr().trim_space().to_upper() != 'STARTTLS' {
 			record(result_path, 'ERROR: expected STARTTLS')
 			return
 		}
@@ -115,15 +115,15 @@ fn main() {
 			record(result_path, 'NO_AUTH')
 			return
 		}
-		if !auth.str().starts_with('AUTH') { // AUTH
+		if !auth.bytestr().starts_with('AUTH') { // AUTH
 			record(result_path, 'UNEXPECTED: ${auth.hex()}')
 			return
 		}
 		record(result_path, 'AUTH')
-		if auth.str().starts_with('AUTH PLAIN ') {
+		if auth.bytestr().starts_with('AUTH PLAIN ') {
 			tls_conn.write_string('235 Authentication successful\r\n') or {}
 			q := read_line_ssl(mut tls_conn)
-			if q.str().trim_space().to_upper() == 'QUIT' {
+			if q.bytestr().trim_space().to_upper() == 'QUIT' {
 				tls_conn.write_string('221 Bye\r\n') or {}
 			}
 		}
@@ -136,7 +136,7 @@ fn main() {
 		defer { tls_conn.shutdown() or {} }
 		tls_conn.write_string('220 localhost ESMTP ready\r\n') or {}
 		line := read_line_ssl(mut tls_conn)
-		if !line.str().starts_with('EHLO ') {
+		if !line.bytestr().starts_with('EHLO ') {
 			record_no_auth(result_path)
 			return
 		}
@@ -146,15 +146,15 @@ fn main() {
 			record(result_path, 'NO_AUTH')
 			return
 		}
-		if !auth.str().starts_with('AUTH') {
+		if !auth.bytestr().starts_with('AUTH') {
 			record(result_path, 'UNEXPECTED: ${auth.hex()}')
 			return
 		}
 		record(result_path, 'AUTH')
-		if auth.str().starts_with('AUTH PLAIN ') {
+		if auth.bytestr().starts_with('AUTH PLAIN ') {
 			tls_conn.write_string('235 Authentication successful\r\n') or {}
 			q := read_line_ssl(mut tls_conn)
-			if q.str().trim_space().to_upper() == 'QUIT' {
+			if q.bytestr().trim_space().to_upper() == 'QUIT' {
 				tls_conn.write_string('221 Bye\r\n') or {}
 			}
 		}

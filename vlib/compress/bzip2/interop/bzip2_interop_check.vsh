@@ -38,7 +38,8 @@ fn main() {
 
 fn ensure_tools() ! {
 	must_succeed('bzip2 --help >/dev/null 2>&1', 'system bzip2 command is not available')!
-
+	must_succeed("python3 -c 'import bz2' >/dev/null 2>&1",
+		'python3 with bz2 module is not available')!
 }
 
 fn make_test_vectors() []TestVector {
@@ -57,12 +58,14 @@ fn run_case(tmp_root string, level int, case_idx int, vec TestVector) !int {
 
 	v_bz2 := bzip2.compress(vec.data, block_size: level)!
 	cli_bz2 := cli_compress(case_dir, vec.data, level)!
+	py_bz2 := py_compress(case_dir, vec.data, level)!
 
 	mut checks := 0
 
 	producers := {
 		'v':   v_bz2
 		'cli': cli_bz2
+		'py':  py_bz2
 	}
 	for producer, compressed in producers {
 		v_plain := bzip2.decompress(compressed)!
@@ -72,6 +75,11 @@ fn run_case(tmp_root string, level int, case_idx int, vec TestVector) !int {
 		cli_plain := cli_decompress(case_dir, producer, compressed)!
 		assert_equal_bytes('cli.decompress(${producer}.compress, level=${level})', vec.data,
 			cli_plain)!
+		checks++
+
+		py_plain := py_decompress(case_dir, producer, compressed)!
+		assert_equal_bytes('py.decompress(${producer}.compress, level=${level})', vec.data,
+			py_plain)!
 		checks++
 	}
 	return checks
@@ -92,6 +100,26 @@ fn cli_decompress(case_dir string, producer string, compressed []u8) ![]u8 {
 	write_file_array(in_path, compressed)!
 	must_succeed('bzip2 -d -c -- ${shell_quote(in_path)} > ${shell_quote(out_path)}',
 		'bzip2 decompression failed')!
+	return read_bytes(out_path)!
+}
+
+fn py_compress(case_dir string, plain []u8, level int) ![]u8 {
+	in_path := join_path(case_dir, 'plain_py.in')
+	out_path := join_path(case_dir, 'py_l${level}.bz2')
+	write_file_array(in_path, plain)!
+	py_code := 'import bz2, pathlib, sys; p=pathlib.Path(sys.argv[1]); o=pathlib.Path(sys.argv[2]); l=int(sys.argv[3]); o.write_bytes(bz2.compress(p.read_bytes(), compresslevel=l))'
+	must_succeed('python3 -c ${shell_quote(py_code)} ${shell_quote(in_path)} ${shell_quote(out_path)} ${level}',
+		'python bz2 compression failed')!
+	return read_bytes(out_path)!
+}
+
+fn py_decompress(case_dir string, producer string, compressed []u8) ![]u8 {
+	in_path := join_path(case_dir, '${producer}.for_py.bz2')
+	out_path := join_path(case_dir, '${producer}.from_py.out')
+	write_file_array(in_path, compressed)!
+	py_code := 'import bz2, pathlib, sys; p=pathlib.Path(sys.argv[1]); o=pathlib.Path(sys.argv[2]); o.write_bytes(bz2.decompress(p.read_bytes()))'
+	must_succeed('python3 -c ${shell_quote(py_code)} ${shell_quote(in_path)} ${shell_quote(out_path)}',
+		'python bz2 decompression failed')!
 	return read_bytes(out_path)!
 }
 

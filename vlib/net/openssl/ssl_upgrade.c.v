@@ -5,7 +5,8 @@ import net
 // new_ssl_server_conn wraps an already-established TCP connection in a
 // server-side TLS connection using `config`'s certificate. It performs the
 // TLS handshake before returning. This enables protocols that upgrade a
-// plain connection to TLS (e.g. SMTP STARTTLS) in pure V.
+// plain connection to TLS (e.g. SMTP STARTTLS). The caller retains ownership of
+// tcp_conn and must keep it open until the returned TLS connection is shut down.
 pub fn new_ssl_server_conn(mut tcp_conn net.TcpConn, config SSLConnectConfig) !&SSLConn {
 	if config.cert == '' || config.cert_key == '' {
 		return error('net.openssl new_ssl_server_conn, no certificate or key provided')
@@ -76,7 +77,7 @@ pub fn new_ssl_server_conn(mut tcp_conn net.TcpConn, config SSLConnectConfig) !&
 		duration:    tcp_conn.read_timeout()
 		owns_socket: false
 	}
-	// keep tcp_conn alive by not closing; owns_socket false so SSLConn won't close fd on shutdown? check
+	// The TLS connection borrows the socket; shutdown leaves closing it to the caller.
 	conn.accept_handshake() or {
 		C.SSL_free(voidptr(conn.ssl))
 		C.SSL_CTX_free(sslctx)

@@ -2,7 +2,7 @@ module json2
 
 // The oracle counts and FNV-1a checksums come directly from Unicode 15.0.0
 // UnicodeData.txt, independently of the generated range lookup. The generator in
-// Unicode table generated; regeneration tooling removed (was Python).
+// testdata/gen_json5_unicode.py prints them when regenerating the tables.
 fn test_json5_identifier_categories_match_unicode_data() {
 	mut start_count := 0
 	mut part_count := 0

@@ -41,6 +41,7 @@ const yaml_value_exceptions = [
 ]
 
 const jq = os.find_abs_path_of_executable('jq') or { '' }
+const python = os.find_abs_path_of_executable('python') or { '' }
 const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_iarna')
 // From: https://stackoverflow.com/a/38266731/1904615
 const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
@@ -142,14 +143,50 @@ fn test_iarna_toml_spec_tests() {
 				valid_test_file_name := os.file_name(valid_test_file).all_before_last('.')
 				uses_json_format := os.exists(valid_test_file.all_before_last('.') + '.json')
 
-				// YAML files are not converted (Python helper removed)
+				// Use python to convert the YAML files to json - it yields some inconsistencies
 				// so we skip some of them
 				mut converted_from_yaml := false
 				mut converted_json_path := ''
 				if !uses_json_format {
-					// YAML->JSON conversion previously used Python+PyYAML; removed.
-					println('N/A  [${i + 1}/${valid_test_files.len}] "${valid_test_file}"...')
-					continue
+					$if windows {
+						println('N/A  [${i + 1}/${valid_test_files.len}] "${valid_test_file}"...')
+						continue
+					}
+					if python == '' {
+						println('N/A  [${i + 1}/${valid_test_files.len}] "${valid_test_file}"...')
+						continue
+					}
+					if !do_yaml_conversion || relative in yaml_value_exceptions {
+						e++
+						idx := yaml_value_exceptions.index(relative) + 1
+						println('SKIP [${i + 1}/${valid_test_files.len}] "${valid_test_file}" YAML VALUE EXCEPTION [${idx}/${valid_value_exceptions.len}]...')
+						continue
+					}
+
+					if !do_large_files && valid_test_file.contains('qa-') {
+						e++
+						println('SKIP [${i + 1}/${valid_test_files.len}] "${valid_test_file}" LARGE FILE...')
+						continue
+					}
+
+					iarna_yaml_path := valid_test_file.all_before_last('.') + '.yaml'
+					if os.exists(iarna_yaml_path) {
+						converted_json_path = os.join_path(compare_work_dir_root,
+							'${valid_test_file_name}.yaml.json')
+						run([python, '-c',
+							'import sys, yaml, json; json.dump(yaml.load(open(sys.argv[1]), Loader=yaml.FullLoader), open(sys.argv[2], "w"), indent=4)',
+							iarna_yaml_path, converted_json_path]) or {
+							contents := os.read_file(iarna_yaml_path)!
+							// NOTE there's known errors with the python convention method.
+							// For now we just ignore them as it's a broken tool - not a wrong test-case.
+							// Uncomment this print to see/check them.
+							// eprintln(err.msg() + '\n${contents}')
+							e++
+							println('ERR  [${i + 1}/${valid_test_files.len}] "${valid_test_file}" EXCEPTION [${e}/${valid_value_exceptions.len}]...')
+							continue
+						}
+						converted_from_yaml = true
+					}
 				}
 
 				if !hide_oks {

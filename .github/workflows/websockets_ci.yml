@@ -76,7 +76,7 @@ jobs:
       - name: Test success
         run: v run cmd/tools/check_autobahn_results/main.v ${{github.workspace}}/reports
       - name: Test success WSS
-        run: v run cmd/tools/check_autobahn_results/main.v ${{github.workspace}}/reports_wss
+        run: v run cmd/tools/check_autobahn_results/main.v ${{github.workspace}}/reports_wss --clients-only
 
       - name: Publish all reports
         uses: actions/upload-artifact@v7

@@ -158,7 +158,7 @@ how much stack is used by each of its 4 public functions on selected cores:
 | `p256_ecdsa_sign`         |       664 |       604 |       604 |
 | `p256_ecdsa_verify`       |       752 |       700 |       700 |
 
-For details, see `stack.sh` and `libc.msu` (the above figures assume
+For details, see `stack.sh`, `wcs.py` and `libc.msu` (the above figures assume
 that the externally-provided RNG function uses at most 384 bytes of stack).
 
 ## Runtime performance
@@ -414,8 +414,8 @@ A self-contained, straightforward, pure-Python implementation was first
 produced as a warm-up and to help check intermediate values. Test vectors from
 various sources are embedded and used to validate the implementation.
 
-This implementation is used by a second script,
-`gen-test-data`, to generate additional data for both positive and negative
+This implementation, `p256.py`, is used by a second Python script,
+`gen-test-data.py`, to generate additional data for both positive and negative
 testing, available from a C header file, that is then used by the closed-box
 and open-box test programs.
 

@@ -4,7 +4,7 @@
  *
  * Generate using:
  * \code
- *	combine sources: -r ../../lib -x legacy/zstd_legacy.h -o zstd.c zstd-in.c
+ *	python combine.py -r ../../lib -x legacy/zstd_legacy.h -o zstd.c zstd-in.c
  * \endcode
  */
 /*
@@ -28,7 +28,7 @@
  * Note: the undefs for xxHash allow Zstd's implementation to coincide with
  * standalone xxHash usage (with global defines).
  *
- * Note: if you enable ZSTD_LEGACY_SUPPORT the combine tool will need
+ * Note: if you enable ZSTD_LEGACY_SUPPORT the combine.py script will need
  * re-running without the "-x legacy/zstd_legacy.h" option (it excludes the
  * legacy support at the source level).
  *

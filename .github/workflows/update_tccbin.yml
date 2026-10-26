@@ -1005,12 +1005,14 @@ jobs:
             exit 1
           fi
 
+          v -silent test cmd/tools/tccbin_validate/
           SHOWCC_OUTPUT="$showcc_output" \
             EXPECTED_TCC="$expected_tcc" \
             EXPECTED_LIBGC="$expected_libgc" \
             EXPECTED_RPATH="$expected_rpath" \
             EXPECTED_BINARY=/tmp/tcc_boehm_gc_smoke \
             v run cmd/tools/tccbin_validate/main.v
+          /tmp/tcc_boehm_gc_smoke
 
       - name: Authenticate the Phase A candidate with an independent payload export
         id: phase_a
