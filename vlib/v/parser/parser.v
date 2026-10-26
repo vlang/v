@@ -12140,9 +12140,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// skip auto-semicolons before infix operators (multi-line expressions)
 		if p.tok == .semicolon {
 			// Const/global initializers and struct field defaults end at a newline
-			// when a keyword follows. Other operators can continue multiline values.
-			// (`in`, `is`, `as`) follows: it starts a new declaration, not
-			// an infix continuation of the initializer. Other operators
+			// when a keyword (`in`, `is`, `as`) follows a value. Other operators
 			// still continue multiline initializers (`&&`, trailing `+`, ...).
 			if (p.in_const_value || p.in_struct_field_default) && p.peek().is_keyword() {
 				break
