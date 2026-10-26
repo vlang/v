@@ -42,3 +42,14 @@ fn test_attribute_warning_heads_keep_leading_and_trailing_child_ownership() {
 	assert heads[3].leading
 	assert heads[3].declaration_offset == source.index('three') or { -1 }
 }
+
+fn test_attribute_warning_heads_keep_inline_field_access_modifiers() {
+	source := 'struct Fields {\n@[before_mut]\nmut first int\nmut @[after_mut] second int\n@[before_pub_mut]\npub mut third int\npub mut @[after_pub_mut] fourth int\n@[before_module_mut]\npub module_mut fifth int\npub @[after_pub] sixth int\n}'
+	heads := attribute_warning_heads(source)
+	assert heads.map(it.name) == ['before_mut', 'after_mut', 'before_pub_mut', 'after_pub_mut',
+		'before_module_mut', 'after_pub']
+	for i, field in ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'] {
+		assert heads[i].leading
+		assert heads[i].declaration_offset == source.index('${field} int') or { -1 }
+	}
+}

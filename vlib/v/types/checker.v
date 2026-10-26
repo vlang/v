@@ -18612,6 +18612,7 @@ fn attribute_warning_heads(source string) []AttributeWarningHead {
 	mut after_dot := false
 	mut previous_kind := token.Token.eof
 	mut previous_offset := -1
+	mut previous_access := false
 	mut group_start := 0
 	mut group_leading := false
 	mut group_legacy := false
@@ -18627,18 +18628,21 @@ fn attribute_warning_heads(source string) []AttributeWarningHead {
 			continue
 		}
 		if !in_group {
+			access := kind in [.key_pub, .key_mut]
+				|| (kind == .name && lexer.lit == 'module_mut' && previous_kind == .key_pub)
 			if kind in [.attribute, .lsbr] {
 				in_group = true
 				expects_head = true
 				group_start = heads.len
-				group_leading = previous_kind in [.eof, .semicolon, .lcbr, .rcbr, .colon, .key_pub]
+				group_leading = previous_access
+					|| previous_kind in [.eof, .semicolon, .lcbr, .rcbr, .colon]
 				group_legacy = kind == .lsbr
 				group_previous_kind = previous_kind
 				group_previous_offset = previous_offset
 				group_first_kind = .eof
 				continue
 			}
-			if pending_start < heads.len && kind !in [.semicolon, .key_pub, .comment] {
+			if pending_start < heads.len && kind != .semicolon && !access {
 				attached_start = pending_start
 				attached_end = heads.len
 				for i in attached_start .. attached_end {
@@ -18657,6 +18661,7 @@ fn attribute_warning_heads(source string) []AttributeWarningHead {
 			}
 			previous_kind = kind
 			previous_offset = lexer.pos
+			previous_access = access
 			continue
 		}
 		if group_first_kind == .eof {
@@ -18700,6 +18705,7 @@ fn attribute_warning_heads(source string) []AttributeWarningHead {
 				}
 				previous_kind = .rsbr
 				previous_offset = lexer.pos
+				previous_access = false
 			}
 			.lpar { depth++ }
 			.comma, .semicolon { expects_head = true }

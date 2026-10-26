@@ -145,3 +145,45 @@ vlib/v/checker/tests/attribute_warning_source_names.vv:64:3: warning: unknown at
       |   ~~~~~~~~~~~
    65 | pub fn public_function() {}
    66 |
+vlib/v/checker/tests/attribute_warning_source_names.vv:68:7: warning: unknown attribute `before_mut` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   66 |
+   67 | struct InlineFieldAttributes {
+   68 |     @[before_mut]
+      |       ~~~~~~~~~~
+   69 |     mut first int
+   70 |     mut @[after_mut] second int
+vlib/v/checker/tests/attribute_warning_source_names.vv:70:11: warning: unknown attribute `after_mut` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   68 |     @[before_mut]
+   69 |     mut first int
+   70 |     mut @[after_mut] second int
+      |           ~~~~~~~~~
+   71 |     @[before_pub_mut]
+   72 |     pub mut third int
+vlib/v/checker/tests/attribute_warning_source_names.vv:71:7: warning: unknown attribute `before_pub_mut` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   69 |     mut first int
+   70 |     mut @[after_mut] second int
+   71 |     @[before_pub_mut]
+      |       ~~~~~~~~~~~~~~
+   72 |     pub mut third int
+   73 |     pub mut @[after_pub_mut] fourth int
+vlib/v/checker/tests/attribute_warning_source_names.vv:73:15: warning: unknown attribute `after_pub_mut` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   71 |     @[before_pub_mut]
+   72 |     pub mut third int
+   73 |     pub mut @[after_pub_mut] fourth int
+      |               ~~~~~~~~~~~~~
+   74 |     @[before_module_mut]
+   75 |     pub module_mut fifth int
+vlib/v/checker/tests/attribute_warning_source_names.vv:74:7: warning: unknown attribute `before_module_mut` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   72 |     pub mut third int
+   73 |     pub mut @[after_pub_mut] fourth int
+   74 |     @[before_module_mut]
+      |       ~~~~~~~~~~~~~~~~~
+   75 |     pub module_mut fifth int
+   76 |     pub @[after_pub] sixth int
+vlib/v/checker/tests/attribute_warning_source_names.vv:76:11: warning: unknown attribute `after_pub` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   74 |     @[before_module_mut]
+   75 |     pub module_mut fifth int
+   76 |     pub @[after_pub] sixth int
+      |           ~~~~~~~~~
+   77 | }
+   78 |

@@ -64,5 +64,17 @@ fn long_argument() {}
 @[pub_unknown]
 pub fn public_function() {}
 
+struct InlineFieldAttributes {
+    @[before_mut]
+    mut first int
+    mut @[after_mut] second int
+    @[before_pub_mut]
+    pub mut third int
+    pub mut @[after_pub_mut] fourth int
+    @[before_module_mut]
+    pub module_mut fifth int
+    pub @[after_pub] sixth int
+}
+
 @[console]
 fn main() {}
