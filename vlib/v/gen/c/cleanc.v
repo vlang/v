@@ -5165,9 +5165,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	type_index_args, type_index_threads := g.start_type_indexes(no_parallel)
 	if no_parallel && g.incremental_fn_names.len == 0 {
-		// Serial body generation needs the same immutable name rejection tables
-		// as the worker path. Field-position indexes still stay worker-only.
+		// Serial body generation needs the same immutable lookup tables as the
+		// worker path. Building the field index once here keeps scoped batches
+		// from re-indexing large structs after every scratch cache swap.
 		g.type_name_short_index = new_type_name_short_index(g.tc)
+		g.struct_field_index_base = new_struct_field_index_base(g.tc.structs)
 	}
 	g.reserve_collect_gen_info_maps(no_parallel, defer_fn_signature_registrations)
 	g.precompute_export_lookups()
