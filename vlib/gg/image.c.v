@@ -67,7 +67,7 @@ pub fn (mut ctx Context) create_image(file string, cfg ImageConfig) !Image {
 	}
 	$if macos {
 		if ctx.native_rendering {
-			mut img := C.darwin_create_image(file)
+			mut img := darwin_create_image(file)
 			img.texture_filter = cfg.texture_filter or { ctx.config.texture_filter }
 
 			img.id = ctx.image_cache.len
@@ -414,7 +414,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 				} else {
 					config.img_rect.height
 				}
-				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width, height,
+				darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width, height,
 					img)
 				return
 			}

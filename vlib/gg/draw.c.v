@@ -253,7 +253,7 @@ pub fn (ctx &Context) draw_rect_empty_no_context(x f32, y f32, w f32, h f32, c C
 pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_rect(x, ctx.height - (y + h), w, h, c)
+			darwin_draw_rect(x, ctx.height - (y + h), w, h, c)
 			return
 		}
 	}
@@ -946,7 +946,7 @@ fn radius_to_segments(r f32) int {
 pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
+			darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
@@ -980,7 +980,7 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
+			darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
@@ -1042,7 +1042,7 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
+			darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
