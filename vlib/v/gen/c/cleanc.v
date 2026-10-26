@@ -24269,6 +24269,9 @@ fn (mut g FlatGen) fixed_array_typedef_type_module(name string, fallback string)
 	if info := g.struct_decl_infos[name] {
 		return info.module
 	}
+	if module_name := g.tc.struct_modules[name] {
+		return module_name
+	}
 	mod := module_from_qualified_name(name)
 	if mod.len > 0 {
 		return mod
