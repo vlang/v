@@ -1365,3 +1365,24 @@ type Choice = int | string
 		}
 	}
 }
+
+fn test_forwarded_generic_call_keeps_caller_context_identity() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{ kind: .ident, value: 'forward' })
+	arg := a.add_node(flat.Node{ kind: .ident, value: 'T' })
+	start := a.children.len
+	a.children << callee
+	a.children << arg
+	index := flat.Node{ kind: .index, children_start: start, children_count: 2 }
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Context'] = []types.StructField{}
+	tc.structs['callee.Context'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'callee'
+	t.active_generic_params = ['T']
+	t.structs['Context'] = StructInfo{}
+	t.structs['callee.Context'] = StructInfo{ module: 'callee' }
+	mut children := [callee, arg]
+	t.substitute_cloned_generic_call_type_args(index, mut children, [flat.source_type_id('Context')])
+	assert t.a.node(children[1]).value_text() == 'main.Context'
+}

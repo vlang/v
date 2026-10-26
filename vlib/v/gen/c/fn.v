@@ -13546,7 +13546,11 @@ fn (g &FlatGen) field_type(base_type types.Type, field_name string) ?types.Type 
 	if struct_name.len == 0 {
 		return none
 	}
-	fields := g.tc.structs[struct_name] or { return none }
+	fields := g.tc.structs[struct_name] or {
+		// Checked generic arguments can retain `main.` to distinguish the caller's
+		// type from an imported namesake; materialized structs use bare main names.
+		g.tc.structs[strip_main_module_qualifier(struct_name)] or { return none }
+	}
 	for field in fields {
 		if field.name == field_name {
 			return field.typ

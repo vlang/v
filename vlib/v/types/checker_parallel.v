@@ -4941,9 +4941,42 @@ fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u
 		if child.kind == .comptime_for && child.typ == param_type_id {
 			return true
 		}
+		if child.kind == .comptime_if && comptime_cond_mentions_type(child.value, param_type) {
+			return true
+		}
 		for i in 0 .. child.children_count {
 			stack << tc.a.child(child, i)
 		}
+	}
+	return false
+}
+
+// comptime_cond_mentions_type reports whether the text of a comptime `$if`
+// condition mentions `type_name` as a whole token outside quoted literals,
+// e.g. `T is $function` for a generic parameter `T`. A body that specialises on
+// the type of the parameter alone still needs it passed, even when the body never names it;
+// such bodies are the usual shape of test helpers like `assert_function[T](f T)`.
+fn comptime_cond_mentions_type(condition string, type_name string) bool {
+	if condition.len == 0 || type_name.len == 0 {
+		return false
+	}
+	mut j := 0
+	for j < condition.len {
+		if condition[j] == `'` || condition[j] == `"` {
+			j = comptime_cond_skip_string(condition, j)
+			continue
+		}
+		start := j
+		for j < condition.len && comptime_cond_name_char(condition[j]) {
+			j++
+		}
+		if j > start {
+			if condition[start..j] == type_name {
+				return true
+			}
+			continue
+		}
+		j++
 	}
 	return false
 }

@@ -2,6 +2,31 @@ module types
 
 import v.flat
 
+fn test_generic_receiver_field_keeps_explicit_main_argument() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'foreign'
+	tc.cur_file = 'foreign.v'
+	tc.structs['Record'] = []StructField{}
+	tc.structs['foreign.Record'] = []StructField{}
+	tc.struct_generic_params['foreign.Slot'] = ['T']
+	tc.structs['foreign.Slot'] = [StructField{
+		name: 'value'
+		typ:  unknown_type('generic placeholder `T`')
+	}]
+	assert tc.qualified_generic_suffix([flat.source_type_id('main.Record')]) == '[main.Record]'
+	receiver := tc.parse_scope_param_type(flat.source_type_id('&foreign.Slot[main.Record]'))
+	assert receiver.name() == '&foreign.Slot[main.Record]'
+	field := tc.struct_field_type(flat.source_type_id('foreign.Slot[main.Record]'), 'value') or {
+		panic('missing generic field')
+	}
+	assert field.name() == 'Record'
+	// A real import named main must still resolve through that import.
+	tc.register_file_import('main', 'other')
+	tc.structs['other.Record'] = []StructField{}
+	assert tc.qualified_generic_suffix([flat.source_type_id('main.Record')]) == '[other.Record]'
+}
+
 fn test_qualified_generic_argument_ids_keep_nested_commas_and_file_imports() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -41,4 +66,23 @@ fn test_generic_alias_argument_ids_keep_substitution_order_and_arity_fallback() 
 		assert fallback.name_id == flat.source_type_id('Fallback')
 		assert fallback.base_type.source_type_id() == flat.source_type_u64
 	}
+}
+
+fn test_main_generic_base_keeps_canonical_specialization_spelling() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'foreign'
+	tc.struct_generic_params['Box'] = ['T']
+	tc.structs['Box'] = []StructField{}
+	tc.struct_generic_params['foreign.Box'] = ['T']
+	tc.structs['foreign.Box'] = []StructField{}
+	assert tc.qualified_generic_suffix([flat.source_type_id('main.Box[string]')]) == '[Box[string]]'
+}
+
+fn test_main_callback_type_keeps_unqualified_diagnostic_spelling() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	tc.structs['Context'] = []StructField{}
+	assert flat.source_type_name(tc.qualify_resolution_type_text(flat.source_type_id('fn (mut main.Context) bool'))) == 'fn(mut Context) bool'
 }

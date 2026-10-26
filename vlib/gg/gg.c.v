@@ -174,6 +174,9 @@ pub mut:
 	add      render.Pipeline
 	multiply render.Pipeline
 	screen   render.Pipeline
+	// font draws the text atlas: the same alpha blend as `alpha`, but with the
+	// font shader that reads the r8 atlas's red channel as coverage.
+	font render.Pipeline
 }
 
 fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
@@ -230,6 +233,24 @@ fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
 		}
 	}
 	container.screen = r.make_pipeline(screen_pipdesc)
+
+	// Font: alpha blend with the font shader, which treats the r8 text atlas's
+	// red channel as alpha coverage. The generic shader multiplies the sampled
+	// vec4 into the color, which renders white glyphs red (r8 samples as
+	// vec4(r, 0, 0, 1)) and empty texels black.
+	if gfx.is_valid() {
+		mut font_pipdesc := gfx.PipelineDesc{}
+		unsafe { vmemset(&font_pipdesc, 0, int(sizeof(font_pipdesc))) }
+		font_pipdesc.label = c'font-pipeline'
+		font_pipdesc.colors[0] = gfx.ColorTargetState{
+			blend: gfx.BlendState{
+				enabled:        true
+				src_factor_rgb: .src_alpha
+				dst_factor_rgb: .one_minus_src_alpha
+			}
+		}
+		container.font = r.make_pipeline_with_shader(font_pipdesc, render.make_font_shader())
+	}
 }
 
 @[heap]
@@ -309,6 +330,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 		max_vertices: 1 << 17
 		max_commands: 1 << 15
 		face_winding: .ccw
+		// Pipelines have to match the window framebuffer's sample count, or
+		// sg_apply_pipeline rejects every draw of the default pass.
+		sample_count: if ctx.config.sample_count > 0 { ctx.config.sample_count } else { 1 }
 	})
 	ctx.r.defaults()
 	ctx.set_scale()
@@ -817,9 +841,6 @@ pub fn (mut ctx Context) refresh_ui() {
 
 // begin prepares the context for drawing.
 pub fn (ctx &Context) begin() {
-	if ctx.render_text && ctx.font_inited {
-		ctx.ft.flush()
-	}
 	ctx.r.defaults()
 	ctx.r.matrix_mode_projection()
 	ctx.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
@@ -919,6 +940,11 @@ pub fn (ctx &Context) end(options EndOptions) {
 	// is mutated, and Sokol consumes its descriptor before this call returns.
 	mut frame_ctx := unsafe { &Context(ctx) }
 	frame_ctx.prepare_end_pass(options, sapp.glue_swapchain())
+	// Include every glyph rasterized this frame, including the FPS overlay,
+	// in the single atlas upload before this commit's pass.
+	if ctx.render_text && ctx.font_inited {
+		ctx.ft.flush()
+	}
 	// sg_begin_pass copies its descriptor synchronously. The next pass can
 	// reuse this Context-owned storage without retaining a frame-local value.
 	gfx.begin_pass(&frame_ctx.frame_pass)

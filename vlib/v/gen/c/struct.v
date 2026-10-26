@@ -8308,6 +8308,11 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 			g.writeln('\t${qualifier}${ct}* ${g.cname(f.name)};')
 			return
 		}
+		if _ := array_fixed_type(types.unwrap_all_pointers(field_type.base_type)) {
+			// Cached C spellings can retain a length evaluated in another module.
+			g.writeln('\t${qualifier}${g.value_c_type(field_type)} ${g.cname(f.name)};')
+			return
+		}
 	}
 	if field_type is types.FnType {
 		c_abi_fn := g.struct_field_c_abi_fn_ptr_type(flat.source_type_id(_struct_name), f.name) or {

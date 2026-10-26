@@ -26,6 +26,10 @@ import term
 // Note 2: Git supports skipping the hooks, by passing the `--no-verify` option.
 // That can be used to commit some .v files that are not formatted, without removing
 // the hook.
+//
+// Note 3: Git runs the hook with the `v` found on PATH (see the first line), which
+// can be an older V release than the one that installed the hook. Keep the script
+// to syntax and APIs that the latest V release supports.
 
 fn main() {
 	// This hook cares only about the changed V files, that will be committed, as reported by git itself:
@@ -52,7 +56,7 @@ fn main() {
 	configured_stop_committing := os.exec(['git', 'config', '--bool',
 		'hooks.stopCommitOfNonVfmtedVFiles'])
 	if configured_stop_committing.output.trim_space().bool() {
-		verify_result := os.exec([@VEXE, 'fmt', '-verify', ...vfiles])
+		verify_result := exec_with_files([@VEXE, 'fmt', '-verify'], vfiles)
 		if verify_result.exit_code != 0 {
 			eprintln(verify_result.output)
 		}
@@ -64,7 +68,16 @@ fn main() {
 			eprintln('    ${term.bold('${vfile}')}')
 		}
 		// vfmt on
-		os.system_args([@VEXE, 'fmt', '-w', ...vfiles])
-		os.system_args(['git', 'add', ...vfiles])
+		print(exec_with_files([@VEXE, 'fmt', '-w'], vfiles).output)
+		print(exec_with_files(['git', 'add'], vfiles).output)
 	}
+}
+
+// exec_with_files runs `args` followed by `files`, without a shell.
+// It builds the arguments with `<<` and runs them with `os.exec`, instead of
+// array spreading and `os.system_args`, which V releases may not have yet.
+fn exec_with_files(args []string, files []string) os.Result {
+	mut all_args := args.clone()
+	all_args << files
+	return os.exec(all_args)
 }

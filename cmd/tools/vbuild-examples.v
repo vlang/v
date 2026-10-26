@@ -24,14 +24,18 @@ fn main() {
 	mut requested_flags := vflags.tokenize_to_args(os.getenv('VFLAGS'))
 	requested_flags << vflags.tokenize_to_args(params)
 	strict_v3 := '-old-compiler' !in requested_flags
-	mut skip_prefixes := efolders.map(normalised_vroot_path(it))
-	res := testing.v_build_failing_skipped(params, 'examples', skip_prefixes, fn [strict_v3] (mut session testing.TestSession) {
+	mut project_folders := efolders.clone()
+	$if macos {
+		project_folders << 'examples/macos_tray'
+	}
+	mut skip_prefixes := project_folders.map(normalised_vroot_path(it))
+	res := testing.v_build_failing_skipped(params, 'examples', skip_prefixes, fn [strict_v3, project_folders] (mut session testing.TestSession) {
 		if strict_v3 {
 			// V3 has only a limited JavaScript compatibility generator. Keep full-backend
 			// examples visible as skips unless the legacy compiler was explicitly selected.
 			session.skip_files << session.files.filter(it.ends_with('.js.v'))
 		}
-		for x in efolders {
+		for x in project_folders {
 			pathsegments := x.split_any('/')
 			fpath := os.real_path(os.join_path(vroot, ...pathsegments))
 			session.skip_files = session.skip_files.filter(it != fpath)
