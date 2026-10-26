@@ -17079,6 +17079,12 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	] {
 		return true
 	}
+	// An integer converts to a float parameter as it does outside a
+	// specialization: `app.record(30)` for a `record(value f64)`.
+	if !isnil(t.tc) && types.implicit_integer_to_float_compatible(t.tc.parse_type(actual),
+		t.tc.parse_type(expected_comparison_type_id_3)) {
+		return true
+	}
 	// A char literal (`\`x\``) types as rune but coerces to u8 params.
 	if arg.kind == .char_literal && expected_comparison_type_id_3 in [
 		flat.source_type_u8,
