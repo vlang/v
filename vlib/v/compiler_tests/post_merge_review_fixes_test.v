@@ -10293,7 +10293,7 @@ fn main() {
 	// vacuously. Assert the precondition directly instead of only its absence
 	// of symptoms, so a future break in the assumption fails loudly here
 	// rather than silently losing coverage.
-	preceding_body := c_fn_body(c_source, 'memdup_noscan(void* src, ptrdiff_t sz) {')
+	preceding_body := c_fn_body(c_source, 'memdup_noscan(void* src, i64 sz) {')
 	assert preceding_body != '', c_source
 	assert preceding_body.contains('bool _prev_v__profile_enabled ='), preceding_body
 	assert c_source.index(preceding_body) or { -1 } < c_source.index('naked_fn(void) {') or { -1 }, c_source
