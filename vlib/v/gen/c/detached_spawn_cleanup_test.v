@@ -1,7 +1,48 @@
 module c
 
+import os
+import v.cmdexec
 import v.flat
 import v.types
+
+fn test_detached_spawn_nested_error_cleanup_compiles_as_c11() ! {
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	dir := os.join_path(os.vtmp_dir(), 'detached_error_cleanup_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'main.v')
+	os.write_file(source, 'struct NestedError { cause IError }
+fn (e NestedError) msg() string { return e.cause.msg() }
+fn (e NestedError) code() int { return 1 }
+interface Container { cause IError }
+type Choice = NestedError | int
+fn fail() ! { return NestedError{cause: error("nested")} }
+fn boxed() Container { return NestedError{cause: error("boxed")} }
+fn choice() Choice { return NestedError{cause: error("choice")} }
+fn main() {
+	spawn fail()
+	spawn boxed()
+	spawn choice()
+}
+')!
+	// Modern Clang accepts declarations after case labels as a C23 extension;
+	// older macOS CI compilers reject them. Exercise uncached, cold and warm builds.
+	for mode in ['uncached', 'cold', 'warm'] {
+		mut args := ['-cc', cc, '-cstrict', '-show-c-output', '-cflags',
+			'-std=gnu11 -Wc23-extensions -Wno-unknown-warning-option', '-o',
+			os.join_path(dir, 'program')]
+		if mode == 'uncached' {
+			args << '-nocache'
+		}
+		args << source
+		result := cmdexec.run_in_merged_with_env(@VEXE, args, dir, {
+			'V3CACHE': os.join_path(dir, 'cache')
+			'VJOBS':   '1'
+		})
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+		assert !result.output.contains('label followed by a declaration'), '${mode}: ${result.output}'
+	}
+}
 
 fn test_detached_spawn_cleanup_reaches_deep_thread_results() {
 	mut ast := flat.FlatAst.new()

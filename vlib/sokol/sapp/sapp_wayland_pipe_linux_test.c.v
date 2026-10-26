@@ -31,7 +31,7 @@ fn test_wayland_drop_pipe_has_two_independent_descriptors() {
 	}
 	for i, fds in [first, second] {
 		payload := [u8(41 + i)]!
-		assert C.write(fds[1], &payload[0], usize(payload.len)) == 1
+		assert C.write(fds[1], &payload[0], uint(payload.len)) == 1
 	}
 	for i, fds in [first, second] {
 		mut byte := u8(0)
@@ -47,14 +47,14 @@ fn test_wayland_drop_pipe_transfers_uri_list_and_reaches_eof() {
 	}
 	assert fds[0] >= 0 && fds[1] >= 0 && fds[0] != fds[1]
 	payload := 'file:///tmp/drop%20path.v\r\nfile:///tmp/caf%C3%A9.v\r\n'
-	assert C.write(fds[1], payload.str, usize(payload.len)) == isize(payload.len)
+	assert C.write(fds[1], payload.str, uint(payload.len)) == int(payload.len)
 	assert C.close(fds[1]) == 0
 	fds[1] = -1
 	mut buffer := [128]u8{}
 	mut total := 0
 	for {
 		assert total < buffer.len
-		n := C.read(fds[0], unsafe { &buffer[0] + total }, usize(buffer.len - total))
+		n := C.read(fds[0], unsafe { &buffer[0] + total }, uint(buffer.len - total))
 		assert n >= 0
 		if n == 0 {
 			break

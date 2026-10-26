@@ -119,7 +119,7 @@ const wayland_fractional_scale_denominator = u32(120)
 const wayland_protocol_extent_max = u64(0x7fffffff)
 const wayland_prot_read = 1
 const wayland_map_private = 2
-const wayland_map_failed = voidptr(usize(~u64(0)))
+const wayland_map_failed = voidptr(uint(~u64(0)))
 const err_wayland_egl_config_failed = 'multiwindow: wayland egl config failed'
 const err_wayland_egl_context_failed = 'multiwindow: wayland egl context failed'
 const err_wayland_egl_display_failed = 'multiwindow: wayland egl display failed'
@@ -302,7 +302,7 @@ mut:
 	exercise_transport_plan    bool
 	fail_flush_after_selection bool
 	selection_requests         int
-	destroyed                  []usize
+	destroyed                  []uint
 	destroyed_local            []bool
 }
 
@@ -961,8 +961,8 @@ $if linux && sokol_wayland ? {
 	struct C.wl_output {}
 
 	struct C.wl_array {
-		size  usize
-		alloc usize
+		size  uint
+		alloc uint
 		data  voidptr
 	}
 
@@ -1010,10 +1010,10 @@ $if linux && sokol_wayland ? {
 	fn C.strcmp(a &char, b &char) int
 	fn C.close(fd int) int
 	fn C.pipe(fds &i32) i32
-	fn C.read(fd int, buf voidptr, count usize) isize
-	fn C.write(fd int, buf voidptr, count usize) isize
-	fn C.mmap(addr voidptr, length usize, prot int, flags int, fd int, offset i64) voidptr
-	fn C.munmap(addr voidptr, length usize) int
+	fn C.read(fd int, buf voidptr, count uint) C.ptrdiff_t
+	fn C.write(fd int, buf voidptr, count uint) C.ptrdiff_t
+	fn C.mmap(addr voidptr, length uint, prot int, flags int, fd int, offset i64) voidptr
+	fn C.munmap(addr voidptr, length uint) int
 	fn C.xkb_context_new(flags int) &C.xkb_context
 	fn C.xkb_context_unref(ctx &C.xkb_context)
 	fn C.xkb_keymap_new_from_string(ctx &C.xkb_context, str &char, format int, flags int) &C.xkb_keymap
@@ -1021,7 +1021,7 @@ $if linux && sokol_wayland ? {
 	fn C.xkb_keymap_key_repeats(keymap &C.xkb_keymap, key u32) int
 	fn C.xkb_state_new(keymap &C.xkb_keymap) &C.xkb_state
 	fn C.xkb_state_unref(state &C.xkb_state)
-	fn C.xkb_state_key_get_utf8(state &C.xkb_state, key u32, buf &char, size usize) int
+	fn C.xkb_state_key_get_utf8(state &C.xkb_state, key u32, buf &char, size uint) int
 	fn C.xkb_state_update_mask(state &C.xkb_state, depressed u32, latched u32, locked u32, dep_group u32, lat_group u32, lock_group u32) int
 	fn C.xkb_state_mod_name_is_active(state &C.xkb_state, name &char, @type int) int
 	fn C.v_multiwindow_wayland_compositor_bind_version(version u32) u32
@@ -1082,7 +1082,7 @@ $if linux && sokol_wayland ? {
 	fn C.v_multiwindow_wayland_fd_set_nonblocking(fd int) int
 	fn C.v_multiwindow_wayland_read_would_block() int
 	fn C.v_multiwindow_wayland_io_interrupted() int
-	fn C.v_multiwindow_wayland_safe_write(fd int, buffer voidptr, size usize) isize
+	fn C.v_multiwindow_wayland_safe_write(fd int, buffer voidptr, size uint) C.ptrdiff_t
 	fn C.v_multiwindow_wayland_safe_write_broken_pipe_probe() int
 	fn C.v_multiwindow_wayland_toplevel_state_contains(states &C.wl_array, expected u32) int
 	fn C.wl_surface_set_buffer_scale(surface &C.wl_surface, scale int)
@@ -1142,8 +1142,8 @@ $if linux && sokol_wayland ? {
 	fn C.v_multiwindow_wayland_xdg_toplevel_set_title(toplevel &C.xdg_toplevel, title &char)
 	fn C.v_multiwindow_wayland_xdg_toplevel_set_app_id(toplevel &C.xdg_toplevel, app_id &char)
 	fn C.v_multiwindow_wayland_get_last_marshaled_app_id() &char
-	fn C.v_multiwindow_wayland_get_last_parent_child() usize
-	fn C.v_multiwindow_wayland_get_last_parent_owner() usize
+	fn C.v_multiwindow_wayland_get_last_parent_child() uint
+	fn C.v_multiwindow_wayland_get_last_parent_owner() uint
 	fn C.v_multiwindow_wayland_xdg_toplevel_set_parent(toplevel &C.xdg_toplevel, parent &C.xdg_toplevel)
 	fn C.v_multiwindow_wayland_xdg_toplevel_set_min_size(toplevel &C.xdg_toplevel, width i32, height i32)
 	fn C.v_multiwindow_wayland_xdg_toplevel_set_max_size(toplevel &C.xdg_toplevel, width i32, height i32)
@@ -2180,14 +2180,14 @@ $if linux && sokol_wayland ? {
 			return
 		}
 		map_str :=
-			C.mmap(unsafe { nil }, usize(size), wayland_prot_read, wayland_map_private, fd, 0)
+			C.mmap(unsafe { nil }, uint(size), wayland_prot_read, wayland_map_private, fd, 0)
 		if map_str == wayland_map_failed {
 			C.close(fd)
 			return
 		}
 		keymap := C.xkb_keymap_new_from_string(unsafe { &C.xkb_context(backend.xkb_context) },
 			&char(map_str), wayland_xkb_keymap_format_text_v1, wayland_xkb_keymap_compile_no_flags)
-		C.munmap(map_str, usize(size))
+		C.munmap(map_str, uint(size))
 		C.close(fd)
 		if keymap == unsafe { nil } {
 			return
@@ -5104,7 +5104,7 @@ fn (backend &WaylandBackend) char_code_for_key(key u32) u32 {
 		}
 		mut buf := [8]u8{}
 		count := C.xkb_state_key_get_utf8(unsafe { &C.xkb_state(backend.xkb_state) }, key,
-			&char(&buf[0]), usize(buf.len))
+			&char(&buf[0]), uint(buf.len))
 		if count <= 0 || count >= buf.len {
 			return 0
 		}
@@ -7062,7 +7062,7 @@ fn (mut backend WaylandBackend) destroy_clipboard_source_handle(source voidptr, 
 		}
 		$if test {
 			if backend.clipboard_source_test.active {
-				backend.clipboard_source_test.destroyed << usize(source)
+				backend.clipboard_source_test.destroyed << uint(source)
 				backend.clipboard_source_test.destroyed_local << local_only
 				return
 			}
@@ -7111,7 +7111,7 @@ fn (mut backend WaylandBackend) add_clipboard_source_listener(source voidptr) in
 	return -1
 }
 
-fn (mut backend WaylandBackend) clipboard_read_once(fd int, buffer voidptr, size usize) i64 {
+fn (mut backend WaylandBackend) clipboard_read_once(fd int, buffer voidptr, size uint) i64 {
 	$if linux && sokol_wayland ? {
 		$if test {
 			if backend.io_test.clipboard_read_interruptions > 0 {
@@ -7124,7 +7124,7 @@ fn (mut backend WaylandBackend) clipboard_read_once(fd int, buffer voidptr, size
 	return -1
 }
 
-fn (mut backend WaylandBackend) clipboard_write_once(fd int, buffer voidptr, size usize) i64 {
+fn (mut backend WaylandBackend) clipboard_write_once(fd int, buffer voidptr, size uint) i64 {
 	$if linux && sokol_wayland ? {
 		$if test {
 			if backend.io_test.clipboard_write_interruptions > 0 {
@@ -7175,7 +7175,7 @@ fn (mut backend WaylandBackend) drain_clipboard_send() {
 				backend.clipboard_sends[index].payload.str + backend.clipboard_sends[index].offset
 			}
 			attempts++
-			n := backend.clipboard_write_once(backend.clipboard_sends[index].fd, ptr, usize(chunk))
+			n := backend.clipboard_write_once(backend.clipboard_sends[index].fd, ptr, uint(chunk))
 			if n > 0 {
 				backend.clipboard_sends[index].deadline_ns = vtime.sys_mono_now() +
 					wayland_clipboard_timeout_ns
@@ -7266,7 +7266,7 @@ fn (mut backend WaylandBackend) drain_clipboard_read() {
 			if remaining <= 0 {
 				mut probe := [1]u8{}
 				n := backend.clipboard_read_once(backend.clipboard_read.fd, unsafe { &probe[0] },
-					usize(1))
+					uint(1))
 				if n > 0 {
 					backend.clipboard_read.deadline_ns = vtime.sys_mono_now() +
 						wayland_clipboard_timeout_ns
@@ -7299,7 +7299,7 @@ fn (mut backend WaylandBackend) drain_clipboard_read() {
 				wayland_clipboard_io_chunk_size
 			}
 			n := backend.clipboard_read_once(backend.clipboard_read.fd, unsafe { &chunk[0] },
-				usize(read_size))
+				uint(read_size))
 			if n > 0 {
 				backend.clipboard_read.deadline_ns = vtime.sys_mono_now() +
 					wayland_clipboard_timeout_ns
@@ -7469,7 +7469,7 @@ fn (mut backend WaylandBackend) pending_drop_poll_once(poll_fd voidptr) int {
 	return -1
 }
 
-fn (mut backend WaylandBackend) pending_drop_read_once(fd int, buffer voidptr, size usize) i64 {
+fn (mut backend WaylandBackend) pending_drop_read_once(fd int, buffer voidptr, size uint) i64 {
 	$if linux && sokol_wayland ? {
 		$if test {
 			if backend.io_test.pending_drop_read_interruptions > 0 {
@@ -7517,7 +7517,7 @@ fn (mut backend WaylandBackend) drain_pending_data_offer_drop() {
 				if remaining <= 0 {
 					mut probe := [1]u8{}
 					n := backend.pending_drop_read_once(backend.pending_drop_fd,
-						unsafe { &probe[0] }, usize(1))
+						unsafe { &probe[0] }, uint(1))
 					if n > 0 {
 						backend.clear_data_offer(true)
 						return
@@ -7543,7 +7543,7 @@ fn (mut backend WaylandBackend) drain_pending_data_offer_drop() {
 					wayland_data_offer_drain_chunk_size
 				}
 				n := backend.pending_drop_read_once(backend.pending_drop_fd, unsafe { &chunk[0] },
-					usize(read_size))
+					uint(read_size))
 				if n > 0 {
 					made_progress = true
 					for i in 0 .. int(n) {

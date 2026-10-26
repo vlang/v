@@ -3,8 +3,7 @@
 module gg
 
 import fontstash
-import sokol.sfons
-import sokol.sgl
+import sokol.gfx
 import os
 import os.font
 
@@ -16,8 +15,22 @@ pub:
 	font_mono   int
 	font_italic int
 pub mut:
-	fonts_map map[string]int // for storing custom fonts, provided via cfg.family in draw_text()
-	scale     f32 = 1.0
+	fonts_map map[string]int
+	scale     f32               = 1.0
+	rt        &FonsRenderTarget = unsafe { nil }
+}
+
+// FonsRenderTarget holds the atlas state used by the fontstash render callbacks.
+// It is allocated *before* the fontstash context, because fontstash calls
+// renderCreate synchronously from fonsCreateInternal, i.e. while the FT that
+// will own this target does not exist yet.
+struct FonsRenderTarget {
+mut:
+	ctx       &Context = unsafe { nil }
+	atlas_img gfx.Image
+	atlas_smp gfx.Sampler
+	atlas_w   int
+	atlas_h   int
 }
 
 pub enum HorizontalAlign {
@@ -34,6 +47,118 @@ pub enum VerticalAlign {
 }
 
 const initial_text_atlas_size = int($d('gg_text_buff_size', 2048))
+
+fn fons_render_create(uptr voidptr, width i32, height i32) i32 {
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	rt.create_atlas(int(width), int(height))
+	return 1
+}
+
+fn (mut rt FonsRenderTarget) create_atlas(width int, height int) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	if rt.atlas_img.id > 0 {
+		gfx.destroy_image(rt.atlas_img)
+	}
+	mut img_desc := gfx.ImageDesc{
+		type:         ._2d
+		width:        width
+		height:       height
+		num_mipmaps:  1
+		pixel_format: .r8
+		usage:        .dynamic
+	}
+	rt.atlas_img = gfx.make_image(&img_desc)
+	if rt.atlas_smp.id == 0 {
+		mut smp_desc := gfx.SamplerDesc{
+			min_filter: .linear
+			mag_filter: .linear
+			wrap_u:     .clamp_to_edge
+			wrap_v:     .clamp_to_edge
+		}
+		rt.atlas_smp = gfx.make_sampler(&smp_desc)
+	}
+	rt.atlas_w = width
+	rt.atlas_h = height
+	if rt.ctx != unsafe { nil } && rt.ctx.r != unsafe { nil } {
+		rt.ctx.r.register_image(int(rt.atlas_img.id), unsafe { nil }, width, height, 1, 0)
+	}
+}
+
+fn fons_render_resize(uptr voidptr, width i32, height i32) i32 {
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	rt.create_atlas(int(width), int(height))
+	return 1
+}
+
+fn fons_render_update(uptr voidptr, rect &i32, data &u8) {
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	if rt.atlas_img.id == 0 || rt.atlas_w <= 0 || rt.atlas_h <= 0 {
+		return
+	}
+	mut img_data := gfx.ImageData{}
+	img_data.subimage[0][0] = gfx.Range{
+		ptr:  voidptr(data)
+		size: usize(rt.atlas_w * rt.atlas_h)
+	}
+	gfx.update_image(rt.atlas_img, &img_data)
+	if rt.ctx != unsafe { nil } && rt.ctx.r != unsafe { nil } {
+		// rect is {x, y, width, height} of the dirty atlas region; only that
+		// region is copied into the CPU texture registry.
+		mut rx := 0
+		mut ry := 0
+		mut rw := 0
+		mut rh := 0
+		unsafe {
+			rx = rect[0]
+			ry = rect[1]
+			rw = rect[2]
+			rh = rect[3]
+		}
+		rt.ctx.r.update_image_region(int(rt.atlas_img.id), voidptr(data), rx, ry, rw, rh, 1)
+	}
+}
+
+fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts i32) {
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	if rt.ctx == unsafe { nil } || rt.ctx.r == unsafe { nil } {
+		return
+	}
+	if rt.ctx.pipeline == unsafe { nil } {
+		return
+	}
+	ctx := rt.ctx
+	ctx.r.enable_texture()
+	ctx.r.texture(rt.atlas_img, rt.atlas_smp)
+	ctx.r.load_pipeline(ctx.pipeline.alpha)
+	ctx.r.begin_quads()
+	for i in 0 .. int(nverts) {
+		x := unsafe { verts[i * 2] }
+		y := unsafe { verts[i * 2 + 1] }
+		u := unsafe { tcoords[i * 2] }
+		vv := unsafe { tcoords[i * 2 + 1] }
+		c := unsafe { colors[i] }
+		ctx.r.c1i(c)
+		ctx.r.t2f(u, vv)
+		ctx.r.v2f(x, y)
+	}
+	ctx.r.end()
+	ctx.r.disable_texture()
+}
+
+fn fons_render_delete(uptr voidptr) {
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	if rt.atlas_img.id > 0 {
+		gfx.destroy_image(rt.atlas_img)
+		rt.atlas_img = gfx.Image{}
+	}
+	if rt.atlas_smp.id > 0 {
+		gfx.destroy_sampler(rt.atlas_smp)
+		rt.atlas_smp = gfx.Sampler{}
+	}
+}
+
 const max_text_atlas_size = 8192
 
 fn expand_atlas_callback(uptr voidptr, error i32, _val i32) {
@@ -64,10 +189,21 @@ fn expand_atlas_callback(uptr voidptr, error i32, _val i32) {
 	fons.expand_atlas(next_width, next_height)
 }
 
-fn new_ft(c FTConfig) ?&FT {
+fn new_ft(ctx &Context, c FTConfig) ?&FT {
 	if c.font_path == '' {
 		if c.bytes_normal.len > 0 {
-			fons := sfons.create(initial_text_atlas_size, initial_text_atlas_size, 1)
+			mut params := C.FONSparams{}
+			params.width = initial_text_atlas_size
+			params.height = initial_text_atlas_size
+			params.flags = 1
+			params.renderCreate = fons_render_create
+			params.renderResize = fons_render_resize
+			params.renderUpdate = fons_render_update
+			params.renderDraw = fons_render_draw
+			params.renderDelete = fons_render_delete
+			rt := &FonsRenderTarget{ ctx: ctx }
+			params.userPtr = voidptr(rt)
+			fons := fontstash.create_internal(&params)
 			bytes_normal := c.bytes_normal
 			bytes_bold := if c.bytes_bold.len > 0 {
 				c.bytes_bold
@@ -95,6 +231,7 @@ fn new_ft(c FTConfig) ?&FT {
 				font_mono:   fons.add_font_mem('sans', bytes_mono.clone(), true)
 				font_italic: fons.add_font_mem('sans', bytes_italic.clone(), true)
 				scale:       c.scale
+				rt:          rt
 			}
 		} else {
 			// Load default font
@@ -148,7 +285,18 @@ fn new_ft(c FTConfig) ?&FT {
 		italic_path = c.font_path
 		bytes
 	}
-	fons := sfons.create(initial_text_atlas_size, initial_text_atlas_size, 1)
+	mut params := C.FONSparams{}
+	params.width = initial_text_atlas_size
+	params.height = initial_text_atlas_size
+	params.flags = 1
+	params.renderCreate = fons_render_create
+	params.renderResize = fons_render_resize
+	params.renderUpdate = fons_render_update
+	params.renderDraw = fons_render_draw
+	params.renderDelete = fons_render_delete
+	rt := &FonsRenderTarget{ ctx: ctx }
+	params.userPtr = voidptr(rt)
+	fons := fontstash.create_internal(&params)
 	debug_font_println('Font used for font_normal : ${normal_path}')
 	debug_font_println('Font used for font_bold   : ${bold_path}')
 	debug_font_println('Font used for font_mono   : ${mono_path}')
@@ -161,6 +309,7 @@ fn new_ft(c FTConfig) ?&FT {
 		font_mono:   fons.add_font_mem('sans', bytes_mono.clone(), true)
 		font_italic: fons.add_font_mem('sans', bytes_italic.clone(), true)
 		scale:       c.scale
+		rt:          rt
 	}
 }
 
@@ -197,9 +346,9 @@ pub fn (ctx &Context) set_text_cfg(cfg TextCfg) {
 	size := if cfg.mono { cfg.size - 2 } else { cfg.size }
 	ctx.ft.fons.set_size(scale * f32(size))
 	ctx.ft.fons.set_align(int(cfg.align) | int(cfg.vertical_align))
-	color := sfons.rgba(cfg.color.r, cfg.color.g, cfg.color.b, cfg.color.a)
+	color := u32(cfg.color.r) | (u32(cfg.color.g) << 8) | (u32(cfg.color.b) << 16) | (u32(cfg.color.a) << 24)
 	if cfg.color.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
 	ctx.ft.fons.set_color(color)
 	ascender := f32(0.0)
@@ -246,11 +395,11 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg TextCfg) {
 	$if macos {
 		if ctx.native_rendering {
 			if cfg.align == align_right {
-				width := C.darwin_text_width_with_cfg(text_, cfg)
+				width := darwin_text_width_with_cfg(text_, cfg)
 				// println('draw text ctx.height = ${ctx.height}')
-				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
+				darwin_draw_string(x - width, ctx.height - y, text_, cfg)
 			} else {
-				C.darwin_draw_string(x, ctx.height - y, text_, cfg)
+				darwin_draw_string(x, ctx.height - y, text_, cfg)
 			}
 			return
 		}
@@ -277,7 +426,8 @@ pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
 
 // flush prepares the font for use.
 pub fn (ft &FT) flush() {
-	sfons.flush(ft.fons)
+	mut dirty := [4]int{}
+	_ = ft.fons.validate_texture(&dirty[0])
 }
 
 @[inline]
@@ -291,7 +441,7 @@ fn (ctx &Context) text_metrics(s string) (f32, [4]f32) {
 pub fn (ctx &Context) text_width(s string) int {
 	$if macos {
 		if ctx.native_rendering {
-			return C.darwin_text_width(s)
+			return darwin_text_width(s)
 		}
 	}
 	// ctx.set_text_cfg(cfg) TODO
@@ -326,7 +476,7 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 pub fn (ctx &Context) text_width_f(s string) f32 {
 	$if macos {
 		if ctx.native_rendering {
-			return C.darwin_text_width(s)
+			return darwin_text_width(s)
 		}
 	}
 	// ctx.set_text_cfg(cfg) TODO

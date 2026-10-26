@@ -22,8 +22,8 @@ $if windows && gg_multiwindow ? {
 	fn C.v_multiwindow_test_win32_monitor_enumeration_reset()
 	fn C.v_multiwindow_test_win32_monitor_enumeration_empty_calls() int
 	fn C.v_multiwindow_test_win32_monitor_enumeration_replay_calls() int
-	fn C.v_multiwindow_test_win32_clipboard_equals(expected &u16, expected_units usize) int
-	fn C.v_multiwindow_test_win32_set_clipboard(owner voidptr, text &u16, units usize) int
+	fn C.v_multiwindow_test_win32_clipboard_equals(expected &u16, expected_units uint) int
+	fn C.v_multiwindow_test_win32_set_clipboard(owner voidptr, text &u16, units uint) int
 	fn C.SetForegroundWindow(hwnd voidptr) int
 	fn C.GetForegroundWindow() voidptr
 	fn C.SetFocus(hwnd voidptr) voidptr
@@ -71,10 +71,10 @@ fn win32_public_hwnd(mut app App, window WindowId) !voidptr {
 	return probe.hwnd
 }
 
-fn win32_public_utf16_units(text string) usize {
-	mut units := usize(1)
+fn win32_public_utf16_units(text string) uint {
+	mut units := uint(1)
 	for codepoint in text.runes() {
-		units += if codepoint > 0xffff { usize(2) } else { usize(1) }
+		units += if codepoint > 0xffff { uint(2) } else { uint(1) }
 	}
 	return units
 }

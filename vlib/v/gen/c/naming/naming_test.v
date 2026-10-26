@@ -113,7 +113,7 @@ fn test_complex_header_macro_name_is_escaped() {
 }
 
 fn test_windows_header_macro_names_are_escaped() {
-	for name in ['near', 'far', 'pascal', 'cdecl'] {
+	for name in ['near', 'far', 'pascal', 'cdecl', 'min', 'max'] {
 		assert c_name(name) == '${internal_symbol_c_prefix}macro_${name}'
 		assert c_name(name) != c_name('v_${name}')
 		assert c_name(name) != c_name(c_name(name))

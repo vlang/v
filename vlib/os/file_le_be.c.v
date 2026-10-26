@@ -134,7 +134,7 @@ fn swap_bytes[T](input T) T {
 	}
 }
 
-fn check_cf(x usize, label string) ! {
+fn check_cf(x uint, label string) ! {
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
@@ -143,10 +143,10 @@ fn check_cf(x usize, label string) ! {
 	}
 }
 
-fn check_fwrite(x usize) ! {
+fn check_fwrite(x uint) ! {
 	check_cf(x, 'fwrite')!
 }
 
-fn check_fread(x usize) ! {
+fn check_fread(x uint) ! {
 	check_cf(x, 'fread')!
 }

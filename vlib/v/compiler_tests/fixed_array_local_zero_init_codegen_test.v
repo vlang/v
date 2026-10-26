@@ -67,8 +67,15 @@ fn main() {
 
 	assert compact.contains('i64nested[2][3]={0};')
 		|| compact.contains('i64nested[2][3]={{0,0,0},{0,0,0}};'), generated
-	assert !generated.contains(' = (Array_fixed_'), generated
-	assert !generated.contains('Array_fixed_voidptr_32 handles'), generated
+	// Check only `local_score`: platform helpers linked from vlib (such as the glibc
+	// backtrace reader) may legitimately keep a fixed array on the heap.
+	body_start := generated.index('local_score(void) {') or {
+		panic('missing local_score definition:\n${generated}')
+	}
+	body_end := generated.index_after('\n}\n', body_start) or { generated.len }
+	body := generated[body_start..body_end]
+	assert !body.contains(' = (Array_fixed_'), body
+	assert !body.contains('Array_fixed_voidptr_32 handles'), body
 }
 
 fn test_struct_field_rejects_pointer_to_fixed_array_alias() {

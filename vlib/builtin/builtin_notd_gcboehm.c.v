@@ -4,22 +4,22 @@ module builtin
 
 // Note: they will NOT be used, since calls to them are wrapped with `$if gcboehm ? { }`
 
-fn C.GC_MALLOC(n usize) voidptr
+fn C.GC_MALLOC(n uint) voidptr
 
-fn C.GC_MALLOC_ATOMIC(n usize) voidptr
+fn C.GC_MALLOC_ATOMIC(n uint) voidptr
 
-fn C.GC_MALLOC_UNCOLLECTABLE(n usize) voidptr
+fn C.GC_MALLOC_UNCOLLECTABLE(n uint) voidptr
 
-fn C.GC_REALLOC(ptr voidptr, n usize) voidptr
+fn C.GC_REALLOC(ptr voidptr, n uint) voidptr
 
 fn C.GC_FREE(ptr voidptr)
 
-fn C.GC_memalign(align usize, size usize) voidptr
+fn C.GC_memalign(align uint, size uint) voidptr
 
-fn C.GC_get_heap_usage_safe(pheap_size &usize, pfree_bytes &usize, punmapped_bytes &usize, pbytes_since_gc &usize,
-	ptotal_bytes &usize)
+fn C.GC_get_heap_usage_safe(pheap_size &uint, pfree_bytes &uint, punmapped_bytes &uint, pbytes_since_gc &uint,
+	ptotal_bytes &uint)
 
-fn C.GC_get_memory_use() usize
+fn C.GC_get_memory_use() uint
 
 fn C.GC_gcollect()
 
@@ -67,7 +67,7 @@ pub fn gc_collect() {
 	}
 }
 
-pub type FnGC_WarnCB = fn (msg &char, arg usize)
+pub type FnGC_WarnCB = fn (msg &char, arg uint)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.GC_set_warn_proc(cb FnGC_WarnCB)
@@ -81,4 +81,4 @@ pub fn gc_get_warn_proc() {}
 pub fn gc_set_warn_proc(cb FnGC_WarnCB) {}
 
 // used by builtin_init
-fn internal_gc_warn_proc_none(msg &char, arg usize) {}
+fn internal_gc_warn_proc_none(msg &char, arg uint) {}

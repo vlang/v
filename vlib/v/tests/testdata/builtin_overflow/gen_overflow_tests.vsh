@@ -10,7 +10,7 @@ struct OverflowStruct {
 	mid  [2]string // mult by 10 every time, should overflow
 }
 
-// TODO: add tests for `rune`,`int`,`isize`,`usize`.
+// TODO: add tests for `rune`, `int`, `uint`.
 const overflows = [
 	OverflowStruct{
 		name: 'u8'

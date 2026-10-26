@@ -130,3 +130,24 @@ fn test_recent_primitive_cache_preserves_all_identity_bits_and_clear() {
 	assert !isnil(entry)
 	assert voidptr(entry.typ) == voidptr(found)
 }
+
+fn test_interner_clear_releases_every_identity_cache_slot() {
+	mut interner := new_type_interner()
+	id, canonical := interner.canonicalize(Type(Pointer{ base_type: &Type(int_) }))
+	entry := interner.canonical_identity(canonical)
+	assert !isnil(entry)
+	assert entry.id == id
+	// Promotion must release pointers throughout the identity table, including
+	// its last slot.
+	interner.identities[interner.identities.len - 1] = voidptr(entry)
+	interner.clear_recent_canonical_types()
+	for cached in interner.identities {
+		assert isnil(cached)
+	}
+	assert isnil(interner.canonical_identity(canonical))
+	found := interner.probe(canonical) or { panic('cleared canonical type was lost') }
+	assert semantic_types_equal(found, canonical)
+	new_id, new_canonical := interner.canonicalize(canonical)
+	assert new_id == id
+	assert voidptr(new_canonical) == voidptr(canonical)
+}

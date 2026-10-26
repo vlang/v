@@ -721,6 +721,9 @@ struct FastcGenericMethod {
 	def_end            int // offset just past the body `}`
 	receiver_ref_start int // offset of `S` in the receiver type `S[T]`
 	receiver_ref_end   int // offset just past `]`
+	// self_refs holds start/end offset pairs of further `S[T]` references in the
+	// parameters, return type and body; they become `S_mono_<C>` like the receiver.
+	self_refs []int
 }
 
 // fastc_monomorphize_sources monomorphizes entry-module generic functions and
@@ -2199,7 +2202,8 @@ fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preference
 			continue
 		}
 		tok = s.scan()
-		if tok != .name {
+		// The method name, or the operator of an operator overload (`fn (a S[T]) + (b S[T])`).
+		if tok != .name && tok !in fastc_overloadable_operators {
 			continue
 		}
 		tok = s.scan()
@@ -2209,8 +2213,10 @@ fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preference
 			continue
 		}
 		mut has_nested := false
+		mut self_refs := []int{}
 		mut prev_body := token.Token.unknown
 		mut prev_lit := ''
+		mut prev_pos := 0
 		mut depth := 0
 		for {
 			if tok == .lpar {
@@ -2223,19 +2229,37 @@ fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preference
 			} else if tok == .eof {
 				break
 			} else if tok == .lsbr && prev_body == .name && prev_lit in by_name {
-				has_nested = true
+				is_self, next := fastc_read_method_self_ref(mut s, prev_lit == struct_name, type_param)
+				tok = next
+				if !is_self {
+					has_nested = true
+					prev_body = .unknown
+					continue
+				}
+				self_refs << prev_pos
+				self_refs << s.offset
 			}
 			prev_body = tok
 			prev_lit = s.lit
+			prev_pos = s.pos
 			tok = s.scan()
 		}
 		tok = s.scan()
 		for tok !in [.lcbr, .eof] {
 			if tok == .lsbr && prev_body == .name && prev_lit in by_name {
-				has_nested = true
+				is_self, next := fastc_read_method_self_ref(mut s, prev_lit == struct_name, type_param)
+				tok = next
+				if !is_self {
+					has_nested = true
+					prev_body = .unknown
+					continue
+				}
+				self_refs << prev_pos
+				self_refs << s.offset
 			}
 			prev_body = tok
 			prev_lit = s.lit
+			prev_pos = s.pos
 			tok = s.scan()
 		}
 		if tok != .lcbr {
@@ -2255,10 +2279,19 @@ fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preference
 				ok = false
 				break
 			} else if tok == .lsbr && prev_body == .name && prev_lit in by_name {
-				has_nested = true
+				is_self, next := fastc_read_method_self_ref(mut s, prev_lit == struct_name, type_param)
+				tok = next
+				if !is_self {
+					has_nested = true
+					prev_body = .unknown
+					continue
+				}
+				self_refs << prev_pos
+				self_refs << s.offset
 			}
 			prev_body = tok
 			prev_lit = s.lit
+			prev_pos = s.pos
 			tok = s.scan()
 		}
 		if !ok {
@@ -2276,8 +2309,12 @@ fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preference
 				def_end:            def_end
 				receiver_ref_start: receiver_ref_start
 				receiver_ref_end:   receiver_ref_end
+				self_refs:          self_refs
 			}
 			receiver_skip['${source_index}#${receiver_ref_start}'] = true
+			for i := 0; i < self_refs.len; i += 2 {
+				receiver_skip['${source_index}#${self_refs[i]}'] = true
+			}
 		}
 		previous = .rcbr
 		previous_pos = def_end
@@ -2285,19 +2322,45 @@ fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preference
 	}
 }
 
+// fastc_overloadable_operators lists the operator tokens that can name an
+// operator overload method.
+const fastc_overloadable_operators = [token.Token.plus, .minus, .mul, .div, .mod, .eq, .ne, .lt,
+	.gt, .le, .ge, .xor, .pipe, .power]
+
+// fastc_read_method_self_ref reads the `[...]` type arguments that follow a
+// generic struct name inside a generic method (the current token is `[`). It
+// reports whether the reference is the method's own struct with its own type
+// parameters (`S[T]` in a method of `S[T]`), leaving the scanner on `]`;
+// otherwise it returns the token it stopped on.
+fn fastc_read_method_self_ref(mut s scanner.Scanner, is_own_struct bool, type_param string) (bool, token.Token) {
+	tok := s.scan()
+	if tok != .name {
+		return false, tok
+	}
+	names, next := fastc_read_bracket_names(mut s)
+	return is_own_struct && next == .rsbr && names == type_param, next
+}
+
 // fastc_render_mapped_generic_method produces the concrete source of one method
-// instance: the receiver reference `S[T]` becomes `S__mono_<C>` and the type
-// parameter is substituted everywhere else (parameters, return type, body).
+// instance: the receiver reference `S[T]`, and every other `S[T]` in the method,
+// becomes `S_mono_<C>`, and the type parameter is substituted everywhere else
+// (parameters, return type, body).
 fn fastc_render_mapped_generic_method(source_file FastcSourceFile, method FastcGenericMethod, concrete string, prefs &pref.Preferences) FastcSourceFile {
 	definition := source_file.source[method.fn_start..method.def_end]
 	base := method.fn_start
-	receiver_low := method.receiver_ref_start - base
-	receiver_high := method.receiver_ref_end - base
+	mono_name := fastc_monomorphized_name(method.struct_name_text(), concrete)
+	// ranges holds start/end pairs, relative to `definition`, of the `S[T]` references.
+	mut ranges := [method.receiver_ref_start - base, method.receiver_ref_end - base]
+	for offset in method.self_refs {
+		ranges << offset - base
+	}
 	mut edits := []FastcSourceEdit{}
-	edits << FastcSourceEdit{
-		start:       receiver_low
-		end:         receiver_high
-		replacement: fastc_monomorphized_name(method.struct_name_text(), concrete)
+	for i := 0; i < ranges.len; i += 2 {
+		edits << FastcSourceEdit{
+			start:       ranges[i]
+			end:         ranges[i + 1]
+			replacement: mono_name
+		}
 	}
 	file := token.File.unindexed('method', definition.len)
 	mut s := scanner.new_scanner(prefs, .normal)
@@ -2305,7 +2368,7 @@ fn fastc_render_mapped_generic_method(source_file FastcSourceFile, method FastcG
 	substitutions := fastc_type_param_substitutions(method.type_param, concrete)
 	mut tok := s.scan()
 	for tok != .eof {
-		if tok == .name && !(s.pos >= receiver_low && s.pos < receiver_high) {
+		if tok == .name && !fastc_offset_in_ranges(ranges, s.pos) {
 			if replacement := substitutions[s.lit] {
 				edits << FastcSourceEdit{
 					start:       s.pos
@@ -2321,6 +2384,16 @@ fn fastc_render_mapped_generic_method(source_file FastcSourceFile, method FastcG
 		source:        definition
 		source_offset: source_file.source_offset + base
 	}, edits)
+}
+
+// fastc_offset_in_ranges reports whether `offset` lies in one of the start/end pairs.
+fn fastc_offset_in_ranges(ranges []int, offset int) bool {
+	for i := 0; i < ranges.len; i += 2 {
+		if offset >= ranges[i] && offset < ranges[i + 1] {
+			return true
+		}
+	}
+	return false
 }
 
 // struct_name_text resolves the indexed source type spelling.

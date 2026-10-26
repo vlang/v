@@ -106,7 +106,7 @@ pub fn (mut m Mmap) close() {
 // mmap_check_length rejects lengths that cannot be represented as V array lengths.
 fn mmap_check_length(len u64) ! {
 	if len == 0 { return error('os.mmap_create: length must be positive') }
-	if len > u64(max_int) || len > u64(max_i64) || u64(usize(len)) != len {
+	if len > u64(max_int) || len > u64(max_i64) || u64(uint(len)) != len {
 		return error('os.mmap: length exceeds the supported array size')
 	}
 }

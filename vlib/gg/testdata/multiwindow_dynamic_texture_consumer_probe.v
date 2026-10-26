@@ -276,7 +276,7 @@ fn run_app_resource_only_identity_probe(backend gg.MultiWindowBackend, stale_ima
 			mut data := gfx.ImageData{}
 			data.subimage[0][0] = gfx.Range{
 				ptr:  pixels.data
-				size: usize(pixels.len)
+				size: uint(pixels.len)
 			}
 			mut rejected := false
 			resources.update_image(stale_image, &data) or {
@@ -497,7 +497,7 @@ fn update_dynamic_texture(mut resources gg.AppResourceContext, mut state Dynamic
 	mut data := gfx.ImageData{}
 	data.subimage[0][0] = gfx.Range{
 		ptr:  pixels.data
-		size: usize(pixels.len)
+		size: uint(pixels.len)
 	}
 	resources.update_image(state.texture, &data)!
 	state.texture_updates++

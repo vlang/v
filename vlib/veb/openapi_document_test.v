@@ -835,10 +835,10 @@ fn test_typed_openapi_sum_first_reference_observes_later_override() {
 fn test_typed_openapi_unsigned_64_bit_schema_accepts_full_range() {
 	mut doc := new_openapi(title: 'Unsigned values')!
 	assert json2.encode(u64(18446744073709551615)) == '18446744073709551615'
-	for schema in [doc.schema[u64](), doc.schema[usize]()] {
+	for schema in [doc.schema[u64](), doc.schema[uint]()] {
 		assert schema['type']!.str() == 'integer'
 		assert api_at(json2.Any(schema), 'minimum').str() == '0'
-		if sizeof(usize) == 8 {
+		if sizeof(uint) == 8 {
 			assert 'format' !in schema
 		}
 	}

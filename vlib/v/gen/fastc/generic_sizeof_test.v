@@ -10,8 +10,8 @@ fn test_fastc_unbound_generic_sizeof_uses_the_existing_diagnostic_body() {
 	// A source without main retains every definition, so this checks the actual
 	// erased body rather than relying on dead-code elimination to hide it.
 	source := generate(r'module main
-fn element_bytes[T](values []T) usize { return sizeof(T) }
-fn nested_bytes[T](values []T) usize { return 2 * sizeof([3]&T) }
+fn element_bytes[T](values []T) uint { return sizeof(T) }
+fn nested_bytes[T](values []T) uint { return 2 * sizeof([3]&T) }
 ', 'unbound_generic_sizeof.v', prefs) or { panic(err) }
 	assert !source.contains('sizeof(T)'), source
 	assert !source.contains('sizeof([3]&T)'), source

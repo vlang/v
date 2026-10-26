@@ -40,16 +40,29 @@ static inline v_fastc_native_pair_u64 v_fastc_native_pair_from_multi(MultiReturn
 // ownership in V source, following only selected compile-time branches. C headers
 // belong to the C compiler and are never opened or parsed by FastC.
 fn fastc_target_collect_native_context(source string, path string, prefs &pref.Preferences, mut references map[string]bool, mut declarations map[string]bool) bool {
+	return fastc_target_collect_native_facts(source, path, prefs, mut references, mut declarations).has_header
+}
+
+struct FastcNativeSourceFacts {
+mut:
+	has_header   bool
+	links_native bool
+}
+
+// fastc_target_collect_native_facts also records whether the file's selected
+// `#flag` directives link a C/Objective-C source or object, like cgen's
+// files_linking_c_sources.
+fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Preferences, mut references map[string]bool, mut declarations map[string]bool) FastcNativeSourceFacts {
 	// Only these V-source lexemes can produce a native reference,
 	// declaration or header directive. Comments and strings stay candidates.
 	if !source.contains('#') && !fastc_source_contains_word(source, 'C') {
-		return false
+		return FastcNativeSourceFacts{}
 	}
 	mut scan := scanner.new_scanner(prefs, .normal)
 	file := token.File.unindexed(path, source.len)
 	scan.init(file, source)
 	mut previous := token.Token.unknown
-	mut has_header := false
+	mut facts := FastcNativeSourceFacts{}
 	mut tok := scan.scan()
 	for tok != .eof {
 		if tok == .dollar {
@@ -57,7 +70,9 @@ fn fastc_target_collect_native_context(source string, path string, prefs &pref.P
 			if selected_scan.scan() == .key_if {
 				if selected := fastc_scan_selected_comptime_branch(mut selected_scan, .key_if, path, prefs) {
 					if selected.source != '' {
-						has_header = fastc_target_collect_native_context(selected.source, path, prefs, mut references, mut declarations) || has_header
+						branch := fastc_target_collect_native_facts(selected.source, path, prefs, mut references, mut declarations)
+						facts.has_header = facts.has_header || branch.has_header
+						facts.links_native = facts.links_native || branch.links_native
 					}
 					scan = selected_scan
 					tok = selected.tok
@@ -68,11 +83,18 @@ fn fastc_target_collect_native_context(source string, path string, prefs &pref.P
 		}
 		if tok == .hash {
 			directive := scan.lit.trim_space().fields()
-			if directive.len > 0 && directive[0] in ['include', 'preinclude', 'insert'] {
+			if directive.len > 0 && directive[0] in ['include', 'preinclude', 'insert', 'flag'] {
 				qualifier := if directive.len > 1 { directive[1] } else { '' }
 				if qualifier !in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd',
 					'dragonfly', 'solaris', 'android'] || pref.comptime_flag_value(prefs, qualifier) {
-					has_header = true
+					if directive[0] != 'flag' {
+						facts.has_header = true
+					} else if directive[1..].any(!it.starts_with('-')
+						&& (it.ends_with('.c') || it.ends_with('.cpp') || it.ends_with('.cc')
+							|| it.ends_with('.m') || it.ends_with('.mm') || it.ends_with('.o')
+							|| it.ends_with('.obj'))) {
+						facts.links_native = true
+					}
 				}
 			}
 		}
@@ -97,14 +119,15 @@ fn fastc_target_collect_native_context(source string, path string, prefs &pref.P
 		previous = tok
 		tok = scan.scan()
 	}
-	return has_header
+	return facts
 }
 
 struct FastcNativeSourceContext {
 mut:
-	references         map[string]bool
-	files_with_headers map[string]bool
-	declaration_paths  map[string][]string
+	references                   map[string]bool
+	files_with_headers           map[string]bool
+	files_linking_native_sources map[string]bool
+	declaration_paths            map[string][]string
 }
 
 fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) FastcNativeSourceContext {
@@ -112,8 +135,12 @@ fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Pref
 	for i in start .. end {
 		source := sources[i]
 		mut declarations := map[string]bool{}
-		if fastc_target_collect_native_context(source.source, source.path, prefs, mut context.references, mut declarations) {
+		facts := fastc_target_collect_native_facts(source.source, source.path, prefs, mut context.references, mut declarations)
+		if facts.has_header {
 			context.files_with_headers[source.path] = true
+		}
+		if facts.links_native {
+			context.files_linking_native_sources[source.path] = true
 		}
 		for name, _ in declarations {
 			mut paths := context.declaration_paths[name] or { []string{} }
@@ -132,6 +159,9 @@ fn fastc_merge_native_source_context(mut context FastcNativeSourceContext, chunk
 	}
 	for path, _ in chunk.files_with_headers {
 		context.files_with_headers[path] = true
+	}
+	for path, _ in chunk.files_linking_native_sources {
+		context.files_linking_native_sources[path] = true
 	}
 	for name, chunk_paths in chunk.declaration_paths {
 		mut paths := context.declaration_paths[name] or { []string{} }
