@@ -140,6 +140,9 @@ pub fn validate_vc_bootstrap_contract(automation_root string) !VcBootstrapLock {
 		r'-d "tccbin_contract_repository=${contract_repository}"',
 		r'-d "tccbin_contract_sha=${contract_sha}"',
 		'contract-binding',
+		'export V_MACOS_V3_NO_FALLBACK=1',
+		'vc_compat="$private_contract_root/cmd/tools/vc_compat.sh"',
+		'cmd/tools/openbsd_vc_compat.c',
 	] {
 		if !script.contains(marker) {
 			return error('VC bootstrap helper omits a required closed-world control')
@@ -147,7 +150,7 @@ pub fn validate_vc_bootstrap_contract(automation_root string) !VcBootstrapLock {
 	}
 	// The three cmd/v stages all call build_v_program; each of its two branches holds one direct invocation.
 	if script.count('build_v_program "$private_contract_root/') != 3
-		|| script.count('-no-parallel -nocache -cc "$cc_command"') != 2 {
+		|| script.count('-new-compiler -no-parallel -nocache -cc "$cc_command"') != 2 {
 		return error('VC bootstrap helper must compile all three V stages with explicit flags')
 	}
 	if script.count('-gc none') != 3 {

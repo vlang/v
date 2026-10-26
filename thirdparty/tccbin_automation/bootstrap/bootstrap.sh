@@ -406,6 +406,7 @@ export VJOBS=1
 export CFLAGS=
 export CPPFLAGS=
 export LDFLAGS=
+export V_MACOS_V3_NO_FALLBACK=1
 
 private_contract_root="$work_root/contract-source"
 clone_contract_checkout "$contract_root" "$private_contract_root" "$contract_repository_url" \
@@ -441,7 +442,7 @@ build_v_program() {
 	local -a flags=("${@:3:$(($# - 3))}")
 	case "$(uname -s)" in
 		MINGW* | MSYS* | CYGWIN*)
-			"$compiler" -no-parallel -nocache -cc "$cc_command" "${flags[@]}" -o "$output.c" "$package"
+			"$compiler" -new-compiler -no-parallel -nocache -cc "$cc_command" "${flags[@]}" -o "$output.c" "$package"
 			"$cc_command" -std=gnu11 -municode -w -fwrapv -o "$output" "$output.c" \
 				vlib/builtin/core_windows.c vlib/v/modulecache/file_metadata.c \
 				vlib/time/ticks_windows.c vlib/v/winthread_helper_windows.c \
@@ -451,27 +452,49 @@ build_v_program() {
 			rm -f -- "$output.c"
 			;;
 		*)
-			"$compiler" -no-parallel -nocache -cc "$cc_command" "${flags[@]}" -o "$output" "$package"
+			"$compiler" -new-compiler -no-parallel -nocache -cc "$cc_command" "${flags[@]}" ${v_link_flags[@]+"${v_link_flags[@]}"} -o "$output" "$package"
 			;;
 	esac
 }
 
 cc_command=$(resolve_cc)
+vc_compat="$private_contract_root/cmd/tools/vc_compat.sh"
+vc_cc_flags=()
+vc_link_inputs=()
+v_link_flags=()
+case "$(uname -s)" in
+	OpenBSD)
+		vc_cc_flags=(-DSYS_getrandom=0)
+		vc_link_inputs=("$private_contract_root/cmd/tools/openbsd_vc_compat.c")
+		;;
+esac
+case "$(uname -s)" in
+	FreeBSD | OpenBSD)
+		vc_link_inputs+=(-lexecinfo)
+		v_link_flags=(-ldflags -lexecinfo)
+		;;
+esac
 case "$(uname -s)" in
 	MINGW* | MSYS* | CYGWIN*)
 		vc_source=$vc_source_win
 		vc_record=$lock_v_win_c
 		exe_suffix='.exe'
+		# Native Windows compilers need a regular input file rather than the Unix adapter's FIFO.
+		vc_windows_compat="$work_root/v_win_compat.c"
+		powershell -NoProfile -ExecutionPolicy Bypass \
+			-File "$private_contract_root/cmd/tools/vc_compat_uint.ps1" \
+			-Source "$vc_source" -Destination "$vc_windows_compat"
 		"$cc_command" -std=c99 -DCUSTOM_DEFINE_v1_fallback -municode -w \
-			-o "$private_contract_root/v1.exe" "$vc_source" \
+			-o "$private_contract_root/v1.exe" "$vc_windows_compat" \
 			-ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+		rm -f -- "$vc_windows_compat"
 		;;
 	*)
 		vc_source=$vc_source_v
 		vc_record=$lock_v_c
 		exe_suffix=''
-		"$cc_command" -std=c99 -DCUSTOM_DEFINE_v1_fallback -w \
-			-o "$private_contract_root/v1" "$vc_source" -lm -lpthread
+		sh "$vc_compat" "$vc_source" "$cc_command" -std=c99 -DCUSTOM_DEFINE_v1_fallback -w \
+			${vc_cc_flags[@]+"${vc_cc_flags[@]}"} -o "$private_contract_root/v1" -- -lm -lpthread ${vc_link_inputs[@]+"${vc_link_inputs[@]}"}
 		;;
 esac
 cli_path="$work_root/tccbin-automation${exe_suffix}"
