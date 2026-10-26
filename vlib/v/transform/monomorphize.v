@@ -101,15 +101,18 @@ struct GenericCallSite {
 // the wrapper loop continues from it instead of scanning the whole tree again.
 struct MonomorphPassState {
 mut:
-	ready                       bool
-	ignored_nodes               []bool
-	emitted                     GenericFnSpecBoolMap
-	generic_call_sites          []GenericCallSite
-	recorded_call_sites         map[int]bool
-	scan_start                  int
-	generic_fn_value_scan_start int
-	interface_box_scan_start    int
-	used_fns_at_scan            int
+	ready                        bool
+	ignored_nodes                []bool
+	emitted                      GenericFnSpecBoolMap
+	generic_call_sites           []GenericCallSite
+	recorded_call_sites          map[int]bool
+	generic_refresh_call_parents map[int][]int
+	generic_refresh_alias_calls  []int
+	generic_refresh_scan_start   int
+	scan_start                   int
+	generic_fn_value_scan_start  int
+	interface_box_scan_start     int
+	used_fns_at_scan             int
 }
 
 struct PendingGenericFnSpec {
@@ -181,7 +184,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	// A later pass continues the previous one: it scans the nodes appended since
 	// and the bodies that became reachable, not the whole tree again. Nodes the
 	// previous pass scanned keep their specializations and recorded call sites;
-	// the type refresh below still covers the whole tree.
+	// type refresh revisits their recorded calls and any newly appended parents.
 	resume := t.mono_pass_state.ready
 	struct_decls := t.collect_generic_struct_decls()
 	t.monomorph_profile('mono driver struct decls: ${time.ticks() - debug_started} ms')
@@ -208,6 +211,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	mut generated := []string{}
 	mut generic_call_sites := unsafe { state.generic_call_sites }
 	mut recorded_call_sites := state.recorded_call_sites
+	mut generic_refresh_call_parents := state.generic_refresh_call_parents
+	mut generic_refresh_alias_calls := state.generic_refresh_alias_calls.clone()
+	mut generic_refresh_scan_start := state.generic_refresh_scan_start
 	mut changed := true
 	mut scan_start := state.scan_start
 	mut generic_fn_value_scan_start := state.generic_fn_value_scan_start
@@ -524,9 +530,15 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		t.monomorph_profile('mono round ${debug_round} drain: ${time.ticks() - debug_round_started} ms')
 	}
 	t.monomorph_profile('mono driver rounds: ${time.ticks() - debug_started} ms')
-	t.rewrite_generic_call_sites(decls, generic_call_sites)
+	t.collect_generic_refresh_call_parents(generic_refresh_scan_start, t.a.nodes.len, mut generic_refresh_call_parents,
+		mut generic_refresh_alias_calls)
+	generic_refresh_scan_start = t.a.nodes.len
+	mut rewritten_call_sites := t.rewrite_generic_call_sites(decls, generic_call_sites)
+	rewritten_call_sites << generic_refresh_alias_calls
 	t.monomorph_profile('mono driver rewrite: ${time.ticks() - debug_started} ms')
-	if t.refresh_decl_assign_types_after_generic_rewrite() {
+	refresh_nodes := generic_refresh_nodes_for_calls(rewritten_call_sites,
+		generic_refresh_call_parents)
+	if t.refresh_decl_assign_types_after_generic_rewrite(refresh_nodes) {
 		t.monomorph_profile('mono driver refresh: ${time.ticks() - debug_started} ms')
 		mut missed_call_sites := []int{cap: t.generic_call_spec_misses.len}
 		for id, missed in t.generic_call_spec_misses {
@@ -540,8 +552,14 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		if extra_call_sites.len > 0 {
 			for t.drain_pending_generic_fn_specs(struct_decls, sum_decls, mut emitted, mut generated) {
 			}
-			t.rewrite_generic_call_sites(decls, extra_call_sites)
-			t.refresh_decl_assign_types_after_generic_rewrite()
+			t.collect_generic_refresh_call_parents(generic_refresh_scan_start, t.a.nodes.len,
+				mut generic_refresh_call_parents, mut generic_refresh_alias_calls)
+			generic_refresh_scan_start = t.a.nodes.len
+			mut extra_rewrites := t.rewrite_generic_call_sites(decls, extra_call_sites)
+			extra_rewrites << generic_refresh_alias_calls
+			extra_refresh_nodes := generic_refresh_nodes_for_calls(extra_rewrites,
+				generic_refresh_call_parents)
+			t.refresh_decl_assign_types_after_generic_rewrite(extra_refresh_nodes)
 		}
 	}
 	t.monomorph_profile('mono driver extra: ${time.ticks() - debug_started} ms')
@@ -550,15 +568,18 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	t.generic_materialization_scan_from = t.a.nodes.len
 	t.generic_materialization_ready = true
 	t.mono_pass_state = MonomorphPassState{
-		ready:                       true
-		ignored_nodes:               ignored_nodes
-		emitted:                     emitted
-		generic_call_sites:          generic_call_sites
-		recorded_call_sites:         recorded_call_sites
-		scan_start:                  scan_start
-		generic_fn_value_scan_start: generic_fn_value_scan_start
-		interface_box_scan_start:    interface_box_scan_start
-		used_fns_at_scan:            used_fns_at_scan
+		ready:                        true
+		ignored_nodes:                ignored_nodes
+		emitted:                      emitted
+		generic_call_sites:           generic_call_sites
+		recorded_call_sites:          recorded_call_sites
+		generic_refresh_call_parents: generic_refresh_call_parents
+		generic_refresh_alias_calls:  generic_refresh_alias_calls
+		generic_refresh_scan_start:   generic_refresh_scan_start
+		scan_start:                   scan_start
+		generic_fn_value_scan_start:  generic_fn_value_scan_start
+		interface_box_scan_start:     interface_box_scan_start
+		used_fns_at_scan:             used_fns_at_scan
 	}
 	t.monomorph_profile('mono driver finish: ${time.ticks() - debug_started} ms')
 	return generated
@@ -6196,7 +6217,8 @@ fn specialized_generic_fn_signature_aliases(decl GenericFnDecl, args_ids []u32) 
 	]
 }
 
-fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl, call_sites []GenericCallSite) {
+fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl, call_sites []GenericCallSite) []int {
+	mut rewritten := []int{cap: call_sites.len}
 	for site in call_sites {
 		i := int(site.id)
 		if i < 0 || i >= t.a.nodes.len {
@@ -6222,19 +6244,81 @@ fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl
 		} else {
 			t.rewrite_generic_plain_call(site.id, node, decl, concrete_args_source_ids)
 		}
+		rewritten << i
+	}
+	return rewritten
+}
+
+// collect_generic_refresh_call_parents indexes only the parent nodes whose
+// result types can change when their child call is rewritten. Scanning each
+// AST range once keeps later refreshes independent of the full specialized tree.
+// Ordinary factories returning generic function aliases also need normalization,
+// even though their calls are not rewritten as generic specializations.
+fn (mut t Transformer) collect_generic_refresh_call_parents(start int, end int, mut parents map[int][]int, mut alias_calls []int) {
+	if start < 0 || start >= end {
+		return
+	}
+	limit := int_min(end, t.a.nodes.len)
+	for i in start .. limit {
+		node := t.a.nodes[i]
+		if node.kind == .call && node.children_count > 0 && !isnil(t.tc) {
+			callee := t.a.child_node(&node, 0)
+			if callee.kind == .ident && t.fn_ret_type_is_generic_app(callee.value_text()) {
+				alias_calls << i
+			}
+		}
+		if node.kind == .or_expr {
+			if node.children_count > 0 && t.a.child_node(&node, 0).kind == .call {
+				call_id := t.a.child(&node, 0)
+				parents[int(call_id)] << i
+			}
+		} else if node.kind == .decl_assign && node.children_count == 2 {
+			rhs_id := t.a.child(&node, 1)
+			if int(rhs_id) >= 0 && int(rhs_id) < t.a.nodes.len {
+				rhs := t.a.nodes[int(rhs_id)]
+				if rhs.kind == .call {
+					parents[int(rhs_id)] << i
+				} else if rhs.kind == .or_expr && rhs.children_count > 0 {
+					call_id := t.a.child(&rhs, 0)
+					parents[int(call_id)] << i
+				}
+			}
+		}
 	}
 }
 
-fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
+fn generic_refresh_nodes_for_calls(call_ids []int, parents map[int][]int) []int {
+	mut seen := map[int]bool{}
+	mut nodes := []int{cap: call_ids.len * 2}
+	for call_id in call_ids {
+		if !seen[call_id] {
+			seen[call_id] = true
+			nodes << call_id
+		}
+		for parent_id in parents[call_id] {
+			if !seen[parent_id] {
+				seen[parent_id] = true
+				nodes << parent_id
+			}
+		}
+	}
+	nodes.sort()
+	return nodes
+}
+
+fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []int) bool {
 	mut changed := false
 	// Whether a callee returns a generic application depends on its name alone,
 	// and the same names are called over and over: remember, by the address of
 	// the name, those that do not.
 	mut plain_callee_ptrs := []voidptr{len: 4096}
 	mut plain_callee_lens := []int{len: 4096}
-	// Later specializations can update calls whose parents already existed at
-	// the previous refresh, so every refresh must revisit those parents too.
-	for i in 0 .. t.a.nodes.len {
+	// A later specialization can update a call whose parent was indexed in an
+	// earlier pass; generic_refresh_nodes_for_calls adds that parent here.
+	for i in nodes {
+		if i < 0 || i >= t.a.nodes.len {
+			continue
+		}
 		if t.a.nodes[i].kind !in [.call, .or_expr, .decl_assign] {
 			continue
 		}
