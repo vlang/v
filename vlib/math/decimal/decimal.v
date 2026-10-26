@@ -230,6 +230,46 @@ pub fn (dividend Decimal) rem(divisor Decimal) !Decimal {
 	return new(remainder, scale)
 }
 
+// floor_div returns the quotient of `dividend` and `divisor` rounded towards
+// negative infinity. With `floor_mod` it satisfies
+// `dividend == dividend.floor_div(divisor) * divisor + dividend.floor_mod(divisor)`.
+pub fn (dividend Decimal) floor_div(divisor Decimal) !Decimal {
+	return dividend.div(divisor, 0, .floor)
+}
+
+// floor_mod returns the remainder of dividing `dividend` by `divisor` with the
+// quotient rounded towards negative infinity. Like `math.floor_mod`, the result
+// takes the sign of `divisor`: `-7.5 floor_mod 2` is `0.5`.
+pub fn (dividend Decimal) floor_mod(divisor Decimal) !Decimal {
+	remainder := dividend.rem(divisor)!
+	if remainder.coefficient_value.signum != 0
+		&& remainder.coefficient_value.signum != divisor.coefficient_value.signum {
+		return remainder + divisor
+	}
+	return remainder
+}
+
+// div_euclid returns the Euclidean quotient of `dividend` and `divisor`. With
+// `mod_euclid` it satisfies
+// `dividend == dividend.div_euclid(divisor) * divisor + dividend.mod_euclid(divisor)`.
+pub fn (dividend Decimal) div_euclid(divisor Decimal) !Decimal {
+	if divisor.coefficient_value.signum < 0 {
+		return dividend.div(divisor, 0, .ceiling)
+	}
+	return dividend.div(divisor, 0, .floor)
+}
+
+// mod_euclid returns the Euclidean remainder of dividing `dividend` by
+// `divisor`. Like `big.Integer.mod_euclid`, the result is never negative and
+// is smaller than `|divisor|`: `-7.5 mod_euclid -2` is `0.5`.
+pub fn (dividend Decimal) mod_euclid(divisor Decimal) !Decimal {
+	remainder := dividend.rem(divisor)!
+	if remainder.coefficient_value.signum < 0 {
+		return remainder + divisor.abs()
+	}
+	return remainder
+}
+
 // to_minor_units returns `d` as an amount in units of `10^-precision`, so
 // `19.99` with precision 2 is `1999`. It returns an error when `d` has more
 // than `precision` digits after the decimal point (round it first), or when
