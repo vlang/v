@@ -1,0 +1,13 @@
+vlib/v/checker/tests/attribute_unknown_warn.vv:6:3: warning: unknown attribute `Rout`. Did you mean `Route`? Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    4 | }
+    5 | 
+    6 | @[Rout('/index')]
+      |   ~~~~
+    7 | fn index() {}
+    8 |
+vlib/v/checker/tests/attribute_unknown_warn.vv:9:3: warning: unknown attribute `completely_unknown_flag` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    7 | fn index() {}
+    8 | 
+    9 | @[completely_unknown_flag]
+      |   ~~~~~~~~~~~~~~~~~~~~~~~
+   10 | struct Conf {}

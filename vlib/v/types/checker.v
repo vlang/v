@@ -18043,6 +18043,120 @@ fn is_attribute_target_name(name string) bool {
 	return name in ['fn', 'struct', 'enum', 'field', 'value', 'interface', 'module']
 }
 
+// builtin_attribute_names enumerates the attribute names the compiler itself
+// consumes, plus the ad-hoc names the standard library still parses by hand
+// at comptime (orm, json, cbor, toml, vweb, ...). The warn-first pass for
+// unregistered names (vlang/rfcs#35) never warns about these. The set is
+// exact and case-sensitive: a name differing only in casing is unknown.
+const builtin_attribute_names = [
+	'_allow_multiple_values',
+	'_linker_section',
+	'_naked',
+	'_pack',
+	'_packed',
+	'aligned',
+	'alias',
+	'assert_continues',
+	'application',
+	'attribute',
+	'c',
+	'callconv',
+	'c_anon',
+	'cbor',
+	'cbor_rename_all',
+	'cinit',
+	'comptime',
+	'comment',
+	'context_specific',
+	'c_extern',
+	'default',
+	'deprecated',
+	'deprecated_after',
+	'delete',
+	'direct_array_access',
+	'email',
+	'env',
+	'explicit',
+	'export',
+	'flag',
+	'freed',
+	'fkey',
+	'generated',
+	'generic',
+	'get',
+	'has_default',
+	'has_globals',
+	'head',
+	'heap',
+	'host',
+	'implicit',
+	'ignore_overflow',
+	'index',
+	'inline',
+	'inner',
+	'json',
+	'json_as_number',
+	'json_null',
+	'keep_args_alive',
+	'live',
+	'long',
+	'manualfree',
+	'markused',
+	'max',
+	'min',
+	'must_use',
+	'noalloc',
+	'nocopy',
+	'noinit',
+	'noinline',
+	'noreturn',
+	'omitempty',
+	'only',
+	'optional',
+	'options',
+	'packed',
+	'params',
+	'patch',
+	'post',
+	'primary',
+	'private',
+	'put',
+	'raw',
+	'references',
+	'repeats',
+	'required',
+	'serial',
+	'serialize',
+	'short',
+	'skip',
+	'soa',
+	'spawn_stack',
+	'sql',
+	'sql_select',
+	'sql_type',
+	'str',
+	'strict_map_index',
+	'sumtype_to',
+	'table',
+	'tail',
+	'toml',
+	'translated',
+	'trusted',
+	'typedef',
+	'unique',
+	'unique_key',
+	'union',
+	'unsafe',
+	'unscoped',
+	'wasm_import_namespace',
+]
+
+// is_builtin_attribute_name reports whether `name` names a compiler-known
+// attribute, case-sensitively.
+fn is_builtin_attribute_name(name string) bool {
+	return name in builtin_attribute_names
+}
+
 // attribute_modules_compatible reports whether a schema declared in
 // `schema_module` is visible to a bare use in `use_module`. Bare names
 // resolve V-strict: the current module only.
@@ -18352,15 +18466,17 @@ fn attribute_whole_word_index(s string, word string) ?int {
 // check_custom_attribute_uses validates every attribute use whose name
 // matches a registered `@[attribute]` schema (vlang/rfcs#35, slice 2):
 // target restrictions, argument counts and names, and argument types.
-// Unregistered names stay silent here; they are slice-3 warn-first material.
+// Names that match no schema are reported by warn_unknown_attribute_names
+// (vlang/rfcs#35, warn-first): they may be typos or legacy ad-hoc attributes,
+// so they warn instead of erroring and nothing that compiles today stops
+// compiling.
 fn (mut tc TypeChecker) check_custom_attribute_uses() {
 	if tc.valid_diagnostic_fast {
 		return
 	}
 	tc.collect_attribute_schemas()
-	if tc.attribute_schemas.len == 0 {
-		return
-	}
+	// The warn-first pass below needs the registry even when it is empty:
+	// with no schemas registered every non-builtin attribute name warns.
 	mut cur_module := ''
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
@@ -18446,7 +18562,8 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 // declaration, field, or enum value against the registered schemas. `lo` and
 // `hi` bound the source range the attributes of this node occupy.
 fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int) {
-	for use in tc.attribute_use_schemas(pieces, module) {
+	uses := tc.attribute_use_schemas(pieces, module)
+	for use in uses {
 		pos := tc.attribute_use_pos(node, use.base, lo, hi)
 		if use.schema.targets.len > 0
 			&& attribute_target_kind_word(node.kind) !in use.schema.targets {
@@ -18455,6 +18572,103 @@ fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node fla
 		}
 		tc.check_attribute_use_args(node_id, use.schema, use.base, pieces, pos, module)
 	}
+	tc.warn_unknown_attribute_names(node_id, node, pieces, module, uses, lo, hi)
+}
+
+// warn_unknown_attribute_names is the warn-first half of the custom attribute
+// pass (vlang/rfcs#35, "What the compiler checks"): an attribute that is
+// neither a builtin nor a registered schema warns. It may be a typo, or a
+// legacy ad-hoc name that should become a schema. The parser flattens
+// `@[Name(p0, key: v1, p1)]` into `Name`, `Name_key: v1`, `Name_1: p1`
+// pieces, so pieces of the form `Name_*` following their head never warn:
+// the warning lands once, on the head name, pointing at the attribute in
+// the source. Whole-string attributes and fragments keep their silence.
+fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node flat.Node, pieces []string, module string, uses []AttributeUse, lo int, hi int) {
+	mut matched := map[string]bool{}
+	for use in uses {
+		matched[use.base] = true
+	}
+	mut open_head := ''
+	mut warned := map[string]bool{}
+	for raw in pieces {
+		name := raw.all_before(':').trim_space()
+		if name.len == 0 {
+			continue
+		}
+		if open_head.len > 0 && name.starts_with(open_head + '_') {
+			continue
+		}
+		open_head = name
+		if matched[name] || warned[name] {
+			continue
+		}
+		if !is_attribute_warnable_name(name) {
+			open_head = ''
+			continue
+		}
+		if is_builtin_attribute_name(name) {
+			continue
+		}
+		hint := tc.attribute_unknown_hint(name, module)
+		mut message := 'unknown attribute `${name}`'
+		if hint.len > 0 {
+			message = 'unknown attribute `${name}`.${hint}'
+		}
+		message += ' Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.'
+		tc.record_warning_at(.assignment_mismatch, message, node_id, tc.attribute_use_pos(node, name, lo, hi))
+		warned[name] = true
+	}
+}
+
+// attribute_unknown_hint returns the matching ` Did you mean \`X\`?` fragment
+// for an unknown attribute name, or an empty string, per the RFC sample
+// wording. An exact same-named schema in another module beats fuzzy
+// matching: the qualified form is the fix per "Name resolution across
+// modules". Otherwise a name sharing the first letter within the edit
+// budget suggests the closest schema short name or builtin.
+fn (tc &TypeChecker) attribute_unknown_hint(name string, module string) string {
+	mut qualified := []string{}
+	if name.contains('.') {
+		qualifier := name.all_before_last('.')
+		short := name.all_after_last('.')
+		for schema in tc.attribute_schemas[short] or { []AttributeSchema{} } {
+			if schema.module != qualifier {
+				qualified << '${schema.module}.${short}'
+			}
+		}
+	} else {
+		for schema in tc.attribute_schemas[name] or { []AttributeSchema{} } {
+			if !attribute_modules_compatible(schema.module, module) {
+				qualified << '${schema.module}.${name}'
+			}
+		}
+	}
+	if qualified.len > 0 {
+		return ' Did you mean `${qualified[0]}`?'
+	}
+	mut candidates := builtin_attribute_names.clone()
+	for short, _ in tc.attribute_schemas {
+		candidates << short
+	}
+	mut closest := ''
+	mut closest_distance := name.len + 1
+	lower_name := name.to_lower()
+	for candidate in candidates {
+		lower_candidate := candidate.to_lower()
+		if lower_name.len == 0 || lower_candidate.len == 0 || lower_name[0] != lower_candidate[0] {
+			continue
+		}
+		distance := strings.levenshtein_distance(lower_name, lower_candidate)
+		max_distance := if name.len <= 3 { 1 } else { int_max(1, name.len / 3) }
+		if distance <= max_distance && distance < closest_distance {
+			closest = candidate
+			closest_distance = distance
+		}
+	}
+	if closest.len > 0 {
+		return ' Did you mean `${closest}`?'
+	}
+	return ''
 }
 
 // attribute_use_schemas finds the schemas `pieces` uses, V-strict (RFC
@@ -18622,6 +18836,13 @@ fn is_bare_ident(s string) bool {
 		}
 	}
 	return true
+}
+
+// is_attribute_warnable_name reports whether `name` looks like an attribute
+// name: a bare identifier or a `mod.Name` piece. Whole-string attributes and
+// arbitrary fragments are not attribute names and never warn.
+fn is_attribute_warnable_name(name string) bool {
+	return is_bare_ident(name.all_after_last('.'))
 }
 
 // attribute_dot_enum_value reassembles a dot-prefixed enum value that the

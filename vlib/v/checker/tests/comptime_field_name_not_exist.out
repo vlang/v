@@ -1,3 +1,14 @@
+vlib/v/checker/tests/comptime_field_name_not_exist.vv:2:3: warning: unknown attribute `bar` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    1 | @[foo: 123]
+    2 | @[bar]
+      |   ~~~
+    3 | fn abc() {
+    4 | }
+vlib/v/checker/tests/comptime_field_name_not_exist.vv:1:3: warning: unknown attribute `foo` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    1 | @[foo: 123]
+      |   ~~~
+    2 | @[bar]
+    3 | fn abc() {
 vlib/v/checker/tests/comptime_field_name_not_exist.vv:9:23: error: unknown field `has_xdargfdsafsdfx` from f
     7 |         mut c := 0
     8 |         $for f in abc.attributes {
