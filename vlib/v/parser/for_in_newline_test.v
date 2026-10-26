@@ -43,8 +43,9 @@ fn test_for_in_newline_body_compiles_and_runs() {
 	child.set_redirect_stdio_merged()
 	child.run()
 	defer { child.close() }
+	output := child.stdout_slurp()
 	child.wait()
-	assert child.code == 0, child.stdout_slurp()
+	assert child.code == 0, output
 }
 
 fn test_for_in_explicit_semicolon_before_body_remains_invalid() {
