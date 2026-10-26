@@ -12,6 +12,13 @@ vlib/v/checker/tests/attribute_warning_source_names.vv:15:4: notice: unused func
       |    ~~~~~~~~~~~~~~~~~~~
    16 |
    17 | struct FieldMetadata {
+vlib/v/checker/tests/attribute_warning_source_names.vv:62:4: notice: unused function: `long_argument`
+   60 |
+   61 | @[LongCall('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')]
+   62 | fn long_argument() {}
+      |    ~~~~~~~~~~~~~
+   63 |
+   64 | @[pub_unknown]
 vlib/v/checker/tests/attribute_warning_source_names.vv:4:3: warning: unknown attribute `legacy` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
     2 | struct QuotedMetadata {}
     3 |
@@ -61,3 +68,80 @@ vlib/v/checker/tests/attribute_warning_source_names.vv:20:13: warning: unknown a
       |                ~~~~~~~~
    21 | }
    22 |
+vlib/v/checker/tests/attribute_warning_source_names.vv:23:2: warning: unknown attribute `legacy_bare` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   21 | }
+   22 |
+   23 | [legacy_bare]
+      |  ~~~~~~~~~~~
+   24 | struct OldDeclaration {}
+   25 |
+vlib/v/checker/tests/attribute_warning_source_names.vv:39:25: warning: unknown attribute `legacy_field` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   37 |     @['legacy']
+   38 |     quoted_index int = [1, 2][legacy - 1]
+   39 |     grouped_type (int) [legacy_field]
+      |                         ~~~~~~~~~~~~
+   40 |     quoted_prefix int ['metadata'; legacy_after_quoted]
+   41 |     keyword_head int [pub]
+vlib/v/checker/tests/attribute_warning_source_names.vv:40:36: warning: unknown attribute `legacy_after_quoted` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   38 |     quoted_index int = [1, 2][legacy - 1]
+   39 |     grouped_type (int) [legacy_field]
+   40 |     quoted_prefix int ['metadata'; legacy_after_quoted]
+      |                                    ~~~~~~~~~~~~~~~~~~~
+   41 |     keyword_head int [pub]
+   42 |     @[lead_field]
+vlib/v/checker/tests/attribute_warning_source_names.vv:41:23: warning: unknown attribute `pub`. Did you mean `put`? Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   39 |     grouped_type (int) [legacy_field]
+   40 |     quoted_prefix int ['metadata'; legacy_after_quoted]
+   41 |     keyword_head int [pub]
+      |                       ~~~
+   42 |     @[lead_field]
+   43 |     leading int
+vlib/v/checker/tests/attribute_warning_source_names.vv:42:7: warning: unknown attribute `lead_field` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   40 |     quoted_prefix int ['metadata'; legacy_after_quoted]
+   41 |     keyword_head int [pub]
+   42 |     @[lead_field]
+      |       ~~~~~~~~~~
+   43 |     leading int
+   44 | }
+vlib/v/checker/tests/attribute_warning_source_names.vv:51:7: warning: unknown attribute `lead_enum` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   49 |
+   50 | enum LegacyValues {
+   51 |     @[lead_enum]
+      |       ~~~~~~~~~
+   52 |     one
+   53 |     [legacy_lead_enum]
+vlib/v/checker/tests/attribute_warning_source_names.vv:53:6: warning: unknown attribute `legacy_lead_enum` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   51 |     @[lead_enum]
+   52 |     one
+   53 |     [legacy_lead_enum]
+      |      ~~~~~~~~~~~~~~~~
+   54 |     two
+   55 |     three [legacy_enum]
+vlib/v/checker/tests/attribute_warning_source_names.vv:55:12: warning: unknown attribute `legacy_enum` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   53 |     [legacy_lead_enum]
+   54 |     two
+   55 |     three [legacy_enum]
+      |            ~~~~~~~~~~~
+   56 |     four @[enum_name]
+   57 |     @['enum_name']
+vlib/v/checker/tests/attribute_warning_source_names.vv:56:12: warning: unknown attribute `enum_name` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   54 |     two
+   55 |     three [legacy_enum]
+   56 |     four @[enum_name]
+      |            ~~~~~~~~~
+   57 |     @['enum_name']
+   58 |     five
+vlib/v/checker/tests/attribute_warning_source_names.vv:61:3: warning: unknown attribute `LongCall` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   59 | }
+   60 |
+   61 | @[LongCall('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')]
+      |   ~~~~~~~~
+   62 | fn long_argument() {}
+   63 |
+vlib/v/checker/tests/attribute_warning_source_names.vv:64:3: warning: unknown attribute `pub_unknown` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   62 | fn long_argument() {}
+   63 |
+   64 | @[pub_unknown]
+      |   ~~~~~~~~~~~
+   65 | pub fn public_function() {}
+   66 |

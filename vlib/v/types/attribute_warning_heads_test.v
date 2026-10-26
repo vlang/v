@@ -28,3 +28,17 @@ fn test_attribute_warning_heads_keep_declaration_ownership_and_qualified_names()
 	assert heads[0].declaration_end < source.index('struct Quoted') or { -1 }
 	assert heads[1].declaration_end > source.index('example()') or { -1 }
 }
+
+fn test_attribute_warning_heads_keep_leading_and_trailing_child_ownership() {
+	source := "struct Fields {\n@[lead]\nvalue int @[tail]\n}\nenum Values {\none [old]\n@['old']\ntwo\n[old_lead]\nthree\n}"
+	heads := attribute_warning_heads(source)
+	assert heads.map(it.name) == ['lead', 'tail', 'old', 'old_lead']
+	assert heads[0].leading
+	assert heads[0].declaration_offset == source.index('value int') or { -1 }
+	assert !heads[1].leading
+	assert !heads[2].leading
+	assert heads[2].legacy
+	assert heads[2].previous_offset == source.index('one [old]') or { -1 }
+	assert heads[3].leading
+	assert heads[3].declaration_offset == source.index('three') or { -1 }
+}

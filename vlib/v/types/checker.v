@@ -18574,15 +18574,21 @@ fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node fla
 		}
 		tc.check_attribute_use_args(node_id, use.schema, use.base, pieces, pos, module)
 	}
-	tc.warn_unknown_attribute_names(node_id, node, pieces, module, uses, lo, hi, mut warning_heads)
+	tc.warn_unknown_attribute_names(node_id, node, pieces, module, uses, mut warning_heads)
 }
 
 // AttributeWarningHead retains a real, unquoted source name, rather than a
 // synthetic Name_key piece produced by flattening an attribute call.
 struct AttributeWarningHead {
-	name   string
-	offset int
+	name            string
+	offset          int
+	leading         bool
+	legacy          bool
+	previous_offset int
+	previous_kind   token.Token
+	first_kind      token.Token
 mut:
+	group_end          int
 	declaration_offset int = -1
 	declaration_end    int = -1
 }
@@ -18604,23 +18610,42 @@ fn attribute_warning_heads(source string) []AttributeWarningHead {
 	mut name := ''
 	mut name_offset := 0
 	mut after_dot := false
+	mut previous_kind := token.Token.eof
+	mut previous_offset := -1
+	mut group_start := 0
+	mut group_leading := false
+	mut group_legacy := false
+	mut group_previous_kind := token.Token.eof
+	mut group_previous_offset := -1
+	mut group_first_kind := token.Token.eof
 	for {
 		kind := lexer.scan()
 		if kind == .eof {
 			break
 		}
+		if kind == .comment {
+			continue
+		}
 		if !in_group {
-			if kind == .attribute {
+			if kind in [.attribute, .lsbr] {
 				in_group = true
 				expects_head = true
+				group_start = heads.len
+				group_leading = previous_kind in [.eof, .semicolon, .lcbr, .rcbr, .colon, .key_pub]
+				group_legacy = kind == .lsbr
+				group_previous_kind = previous_kind
+				group_previous_offset = previous_offset
+				group_first_kind = .eof
 				continue
 			}
 			if pending_start < heads.len && kind !in [.semicolon, .key_pub, .comment] {
 				attached_start = pending_start
 				attached_end = heads.len
 				for i in attached_start .. attached_end {
-					heads[i].declaration_offset = lexer.pos
-					heads[i].declaration_end = source.len
+					if heads[i].leading {
+						heads[i].declaration_offset = lexer.pos
+						heads[i].declaration_end = source.len
+					}
 				}
 				pending_start = heads.len
 			}
@@ -18630,7 +18655,12 @@ fn attribute_warning_heads(source string) []AttributeWarningHead {
 				}
 				attached_start = attached_end
 			}
+			previous_kind = kind
+			previous_offset = lexer.pos
 			continue
+		}
+		if group_first_kind == .eof {
+			group_first_kind = kind
 		}
 		if depth > 0 {
 			if kind == .lpar {
@@ -18651,14 +18681,26 @@ fn attribute_warning_heads(source string) []AttributeWarningHead {
 				continue
 			}
 			heads << AttributeWarningHead{
-				name:   name
-				offset: name_offset
+				name:            name
+				offset:          name_offset
+				leading:         group_leading
+				legacy:          group_legacy
+				previous_offset: group_previous_offset
+				previous_kind:   group_previous_kind
+				first_kind:      group_first_kind
 			}
 			name = ''
 			after_dot = false
 		}
 		match kind {
-			.rsbr { in_group = false }
+			.rsbr {
+				in_group = false
+				for i in group_start .. heads.len {
+					heads[i].group_end = lexer.pos + 1
+				}
+				previous_kind = .rsbr
+				previous_offset = lexer.pos
+			}
 			.lpar { depth++ }
 			.comma, .semicolon { expects_head = true }
 			else {
@@ -18675,10 +18717,51 @@ fn attribute_warning_heads(source string) []AttributeWarningHead {
 	return heads
 }
 
+// attribute_warning_head_owns_node distinguishes leading groups from trailing
+// child groups without a byte limit or borrowing a neighbouring child's name.
+fn (tc &TypeChecker) attribute_warning_head_owns_node(head AttributeWarningHead, node flat.Node) bool {
+	start := int(node.pos.offset)
+	if node.kind !in [.field_decl, .enum_field] {
+		return head.leading && start >= head.declaration_offset && start < head.declaration_end
+	}
+	if head.leading {
+		return head.declaration_offset == start
+	}
+	if node.kind == .enum_field {
+		mut end := int(node.pos.end)
+		for i in 0 .. node.children_count {
+			end = int_max(end, int(tc.a.child_node(&node, i).pos.end))
+		}
+		return head.previous_offset >= start && head.previous_offset < end
+	}
+	if head.offset < start || head.offset >= int(node.pos.end) {
+		return false
+	}
+	if !head.legacy {
+		return true
+	}
+	// Legacy field attributes finish the field. Brackets in its type or default
+	// expression must not turn quoted metadata into a named attribute.
+	if head.group_end != int(node.pos.end) {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if head.offset < int(tc.a.child_node(&node, i).pos.end) {
+			return false
+		}
+	}
+	if head.previous_kind == .name
+		&& head.first_kind in [.name, .amp, .and, .question, .not, .lsbr, .lpar, .key_fn, .key_struct,
+			.ellipsis, .key_mut, .key_shared, .key_atomic, .key_typeof] {
+		return false
+	}
+	return true
+}
+
 // warn_unknown_attribute_names warns once per real attribute name. Whole-string
 // metadata and flattened call arguments are not names, while independently
 // written Name and Name_key attributes both remain eligible for warnings.
-fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node flat.Node, pieces []string, module string, uses []AttributeUse, lo int, hi int, mut warning_heads map[string][]AttributeWarningHead) {
+fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node flat.Node, pieces []string, module string, uses []AttributeUse, mut warning_heads map[string][]AttributeWarningHead) {
 	mut matched := map[string]bool{}
 	for use in uses {
 		matched[use.base] = true
@@ -18698,11 +18781,7 @@ fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node f
 		mut offset := -1
 		heads := warning_heads[file.name] or { []AttributeWarningHead{} }
 		for head in heads {
-			if head.name != name || head.offset < lo || head.offset >= hi {
-				continue
-			}
-			if node.kind !in [.field_decl, .enum_field]
-				&& (hi < head.declaration_offset || hi >= head.declaration_end) {
+			if head.name != name || !tc.attribute_warning_head_owns_node(head, node) {
 				continue
 			}
 			offset = head.offset
