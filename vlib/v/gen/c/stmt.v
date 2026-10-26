@@ -1523,6 +1523,17 @@ fn (mut g FlatGen) ownership_drop_value_to_string(typ types.Type, expr string) s
 	return g.ownership_drop_value_string(typ, expr, false)
 }
 
+fn ownership_map_key_freed_by_runtime(typ &types.Type) bool {
+	clean := unalias_type(typ)
+	if clean is types.String {
+		return true
+	}
+	if clean is types.ArrayFixed {
+		return ownership_map_key_freed_by_runtime(clean.elem_type)
+	}
+	return false
+}
+
 fn (mut g FlatGen) ownership_drop_value_string(typ types.Type, expr string, inline_root bool) string {
 	orig := g.sb
 	orig_line_start := g.line_start
@@ -1642,20 +1653,22 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		}
 		types.Map {
 			key_values := '(${expr}).data->key_values'
-			if g.ownership_type_requires_destruction(typ.key_type, depth + 1)
-				|| g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
+			// map__free releases string keys through its callback, including nested fixed arrays.
+			key_needs_drop := g.ownership_type_requires_destruction(typ.key_type, depth + 1)
+				&& !ownership_map_key_freed_by_runtime(typ.key_type)
+			value_needs_drop := g.ownership_type_requires_destruction(typ.value_type, depth + 1)
+			if key_needs_drop || value_needs_drop {
 				idx := g.tmp_count
 				g.tmp_count++
 				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < ${key_values}.len; _drop_i${idx}++) {')
 				g.indent++
 				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[_drop_i${idx}]) continue;')
-				if g.ownership_type_requires_destruction(typ.key_type, depth + 1)
-					&& typ.key_type !is types.String {
+				if key_needs_drop {
 					key_ct := g.map_key_temp_c_type(typ.key_type)
 					key_slot := '${key_values}.keys + _drop_i${idx} * ${key_values}.key_bytes'
 					g.gen_ownership_drop_value_inner(typ.key_type, '*(${key_ct}*)(${key_slot})', depth + 1, mut expanding)
 				}
-				if g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
+				if value_needs_drop {
 					value_ct := g.value_c_type(typ.value_type)
 					value_slot := '${key_values}.values + _drop_i${idx} * ${key_values}.value_bytes'
 					g.gen_ownership_drop_value_inner(typ.value_type, '*(${value_ct}*)(${value_slot})', depth + 1, mut expanding)

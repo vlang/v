@@ -81,6 +81,7 @@ Map `clear()` and `free()` release owned entries through their stored values, in
 when the map is accessed through a pointer or a generic pointer parameter.
 String map keys retain their cloned storage until the map releases it. Boxed values use the
 selected allocator during ownership cleanup, including VGC.
+Map runtime callbacks release string keys, including nested fixed arrays and aliases, exactly once.
 
 ## Creating owned values
 
