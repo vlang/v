@@ -1292,7 +1292,8 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			if sc := t.find_smartcast_in_context(node.value, contexts) {
 				return t.smartcast_target_type(sc)
 			}
-			return t.node_type(id)
+			// A `mut` param is a value in V even though it is stored as a pointer.
+			return t.expr_value_type(id)
 		}
 		.selector {
 			if node.children_count == 0 {
