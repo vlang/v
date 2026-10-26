@@ -3211,13 +3211,14 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // a method or an operator that such a type lacks, as when `show(1)` reads
 // `x.name` or `add(1)` adds a string to `a`, a returned name or field of
 // another type than the function returns, as when `is_set(1)` returns `x` from
-// a `fn is_set[T](x T) bool`, and an array or map whose elements are stored
+// a `fn is_set[T](x T) bool`, an array or map whose elements are stored
 // differently from the one it is used or cast as, as when `to_bytes([1, 2])`
 // returns `[]u8(a)` for an `a []int` (see is_container_layout_error), and an
-// `if x := a` guard whose `a` is declared neither as an option nor as a result
-// (see is_concrete_if_guard_error). Every other error and warning of the clone
-// is dropped: checked before the clone is lowered, only these are reliable
-// outside checker fixtures, where many valid generic programs would fail. `args`
+// `if x := a` guard whose `a` is declared neither as an option nor as a result,
+// as when `h(User{})` guards its `a T` (see is_concrete_if_guard_error). Every
+// other error and warning of the clone is dropped: checked before the clone is
+// lowered, only these are reliable outside checker fixtures, where many valid
+// generic programs would fail. `args`
 // are source-spelling IDs of the types of the instance: the clone spells an
 // alias among them by its base type, and a member of the alias is none of its base (see
 // member_of_an_alias_argument).

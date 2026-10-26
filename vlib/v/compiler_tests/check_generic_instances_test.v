@@ -443,32 +443,6 @@ fn test_operators_that_each_instance_has_stay_valid() {
 	}
 }
 
-// An `if v := a` guard over an `a T` whose instance is neither an option nor a
-// result is reported for that instance, in a check and in a build, as V1 did,
-// instead of failing in the C compiler.
-fn test_an_if_guard_over_a_plain_instance_is_reported() {
-	source := "fn show[T](a T) {\n\tif v := a {\n\t\tprintln(v)\n\t}\n}\n\nfn main() {\n\tshow(User{ name: 'a' })\n}\n"
-	for res in [check_program('if_guard_check', source), build_program('if_guard_build', source)] {
-		assert res.exit_code != 0, res.output
-		assert !res.output.contains('C compilation error'), res.output
-		assert error_lines(res.output) == [
-			'11:10: expression should either return an Option or a Result',
-		], res.output
-	}
-}
-
-// Guards over instances that are options, over `?T` and `mut ?T` parameters, over
-// a map index, and over options smartcast to their payload (`if a != none`, the
-// `else` of `if a == none`, a `match` arm, a `?T` field) give no error.
-fn test_if_guards_over_options_in_instances_stay_valid() {
-	source := "fn plain[T](a T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn opt[T](a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn mut_opt[T](mut a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn index[T](m map[string]T) string {\n\tif v := m['a'] {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn smart[T](a ?T) string {\n\tif a != none {\n\t\tif v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_else[T](mut a ?T) string {\n\tif a == none {\n\t\treturn 'none'\n\t} else {\n\t\tif mut v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_match[T](mut a ?T, n int) string {\n\tif a != none {\n\t\tmatch n {\n\t\t\t1 {\n\t\t\t\tif mut v := a {\n\t\t\t\t\treturn '\${v}'\n\t\t\t\t}\n\t\t\t}\n\t\t\telse {}\n\t\t}\n\t}\n\treturn 'none'\n}\n\nstruct Box[T] {\n\tval ?T\n}\n\nfn (b Box[T]) get() string {\n\tif b.val != none {\n\t\tif v := b.val {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn main() {\n\tx := ?int(3)\n\tprintln(plain(x))\n\tprintln(opt[int](4))\n\tmut y := ?string('s')\n\tprintln(mut_opt(mut y))\n\tprintln(index({\n\t\t'a': 5\n\t}))\n\tprintln(smart[int](6))\n\tprintln(smart_else(mut y))\n\tprintln(smart_match(mut y, 1))\n\tprintln(Box[int]{ val: 7 }.get())\n}\n"
-	for res in [check_program('if_guard_valid_check', source),
-		build_program('if_guard_valid_build', source)] {
-		assert res.exit_code == 0, res.output
-		assert error_lines(res.output) == [], res.output
-	}
-}
-
 // A returned name or field of an instance with another type than the function
 // returns is reported for that instance, in a check and in a build: `is_set(1)`
 // returns an `int` as a `bool`. So is one in a generic closure and in a method of
@@ -497,6 +471,32 @@ fn test_instances_that_return_values_of_their_types_stay_valid() {
 	source := "type Value = int | string\n\nfn same[T](x T) T {\n\treturn x\n}\n\nfn widen[T](x T) i64 {\n\treturn x\n}\n\nfn greeting[T](x T) string {\n\tf := fn [x] [T] () string {\n\t\treturn x.greet()\n\t}\n\treturn f()\n}\n\nfn zero[T]() T {\n\treturn T{}\n}\n\nfn pick[T](v Value, fallback T) int {\n\tif v is int {\n\t\treturn v\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(same(1))\n\tprintln(same('a'))\n\tprintln(widen(i32(2)))\n\tprintln(widen(u8(3)))\n\tprintln(greeting(User{ name: 'c' }))\n\tprintln(zero[map[string]int]())\n\tprintln(pick(Value(4), 0))\n}\n"
 	for res in [check_program('return_valid_check', source),
 		build_program('return_valid_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+// An `if v := a` guard over an `a T` whose instance is neither an option nor a
+// result is reported for that instance, in a check and in a build, as V1 did,
+// instead of failing in the C compiler.
+fn test_an_if_guard_over_a_plain_instance_is_reported() {
+	source := "fn show[T](a T) {\n\tif v := a {\n\t\tprintln(v)\n\t}\n}\n\nfn main() {\n\tshow(User{ name: 'a' })\n}\n"
+	for res in [check_program('if_guard_check', source), build_program('if_guard_build', source)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == [
+			'11:10: expression should either return an Option or a Result',
+		], res.output
+	}
+}
+
+// Guards over instances that are options, over `?T` and `mut ?T` parameters, over
+// a map index, and over options smartcast to their payload (`if a != none`, the
+// `else` of `if a == none`, a `match` arm, a `?T` field) give no error.
+fn test_if_guards_over_options_in_instances_stay_valid() {
+	source := "fn plain[T](a T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn opt[T](a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn mut_opt[T](mut a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn index[T](m map[string]T) string {\n\tif v := m['a'] {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn smart[T](a ?T) string {\n\tif a != none {\n\t\tif v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_else[T](mut a ?T) string {\n\tif a == none {\n\t\treturn 'none'\n\t} else {\n\t\tif mut v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_match[T](mut a ?T, n int) string {\n\tif a != none {\n\t\tmatch n {\n\t\t\t1 {\n\t\t\t\tif mut v := a {\n\t\t\t\t\treturn '\${v}'\n\t\t\t\t}\n\t\t\t}\n\t\t\telse {}\n\t\t}\n\t}\n\treturn 'none'\n}\n\nstruct Box[T] {\n\tval ?T\n}\n\nfn (b Box[T]) get() string {\n\tif b.val != none {\n\t\tif v := b.val {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn main() {\n\tx := ?int(3)\n\tprintln(plain(x))\n\tprintln(opt[int](4))\n\tmut y := ?string('s')\n\tprintln(mut_opt(mut y))\n\tprintln(index({\n\t\t'a': 5\n\t}))\n\tprintln(smart[int](6))\n\tprintln(smart_else(mut y))\n\tprintln(smart_match(mut y, 1))\n\tprintln(Box[int]{ val: 7 }.get())\n}\n"
+	for res in [check_program('if_guard_valid_check', source),
+		build_program('if_guard_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
