@@ -68,6 +68,27 @@ fn test_module_signature_changes_with_an_implementer_of_a_visible_interface() {
 	assert scopes.module_signature(visible_modules('io')) != other.module_signature(visible_modules('io'))
 }
 
+fn test_builtin_object_signature_does_not_depend_on_error_implementers() {
+	signature := scope_signature + '\n#reach MyErr=Shape'
+	scopes := parse_v3_interface_scopes(signature)
+	other := parse_v3_interface_scopes(signature.replace('IError=Error,MessageError,io.Eof,MyErr',
+		'IError=Error,MessageError,io.Eof,OtherErr').replace('Shape=Circle,Square',
+		'Shape=Circle,Square,Triangle') + '\n#module OtherErr=main\n#reach OtherErr=Shape')
+	assert scopes.object_signature(visible_modules(), true) == ''
+	assert scopes.object_signature(visible_modules(), true) == other.object_signature(visible_modules(), true)
+	// Imported module objects can inspect error payloads and retain their scope.
+	assert scopes.module_signature(visible_modules()) != other.module_signature(visible_modules())
+	// Other visible interfaces still affect the bundle's generated helpers.
+	changed_reader := parse_v3_interface_scopes(signature.replace('io.Reader=io.BufferedReader,os.File,Feed',
+		'io.Reader=io.BufferedReader,os.File,Feed,OtherReader'))
+	assert scopes.object_signature(visible_modules('io'), true) != changed_reader.object_signature(visible_modules('io'), true)
+	// A project module named `hash` is not the builtin bundle.
+	state := V3ModuleCacheState{}
+	assert v3_cached_object_alias_signature('', scopes, state, ['hash'], []) != v3_cached_object_alias_signature('', other, state, [
+		'hash',
+	], [])
+}
+
 // An implementer that the module cannot name brings the interfaces among its fields
 // with it: the code that tells the implementers of `io.Reader` apart, to compare or
 // to print them, handles the `Shape` inside a `Feed` as well.

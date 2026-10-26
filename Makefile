@@ -148,7 +148,8 @@ v:
 	./v -new-compiler run ./cmd/tools/detect_tcc.v; \
 	echo "V has been successfully built"; \
 	./v version; \
-	./v -new-compiler run .github/problem-matchers/register_all.vsh
+	./v -new-compiler run .github/problem-matchers/register_all.vsh; \
+	./v $(VFLAGS) -new-compiler cmd/tools/cache_basic_modules_test.v
 
 v1:
 	@set -e; \

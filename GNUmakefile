@@ -291,6 +291,7 @@ endif
 	@echo "V has been successfully built"
 	@$(VEXE)$(EXE_EXT) -version
 	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler -gc none run .github/problem-matchers/register_all.vsh
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) $(VFLAGS) -new-compiler cmd/tools/cache_basic_modules_test.v
 
 v1:
 ifdef LEGACY

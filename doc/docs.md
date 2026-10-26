@@ -69,6 +69,13 @@ Different build flags, program or test modes, and import sequences can require
 separate checks. Pass `v up -v` to see each checked configuration.
 Cached module headers preserve struct field attribute groups, so valid deprecation
 attributes do not introduce warnings during refresh.
+
+`make` also warms the default test configuration's builtin module bundle, including
+`strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
+when the program introduces new error types. A missing object for another module
+rebuilds that module while retaining compatible cached modules. Compiler flags,
+source changes and dependency changes still invalidate the affected objects.
+
 Ordinary builds report cache progress on standard error. Refreshes retain absolute
 module search paths, resolved C compiler commands, and build modes. They omit
 linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
