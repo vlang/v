@@ -5965,6 +5965,20 @@ fn comptime_string_scalar(receiver string, method string, args []string) ?Compti
 	return ComptimeStringScalar{value.typ, value.value}
 }
 
+fn comptime_string_repeat(receiver string, count_text string) ?ComptimeStringScalar {
+	value := util.comptime_string_repeat(receiver, count_text)?
+	return ComptimeStringScalar{value.typ, value.value}
+}
+
+fn comptime_string_index(receiver string, needle string) (ComptimeStringScalar, bool) {
+	value, found := util.comptime_string_index(receiver, needle)
+	return ComptimeStringScalar{value.typ, value.value}, found
+}
+
+fn comptime_string_split(receiver string, delim string) []string {
+	return util.comptime_string_split(receiver, delim)
+}
+
 // comptime_cond_string_member folds literal string method chains to literal condition text.
 fn comptime_cond_string_member(expr string) ?string {
 	clean := comptime_condition_strip_outer_parens(trimmed_transform_text(expr))
