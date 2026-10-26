@@ -73,6 +73,7 @@ struct FieldMeta {
 	is_mut             bool
 	is_pub             bool
 	attrs              []string
+	attributes         []AttributeMeta
 	indirections       int
 }
 
@@ -81,6 +82,7 @@ struct EnumValueMeta {
 	value        i64
 	value_from_c bool
 	attrs        []string
+	attributes   []AttributeMeta
 	enum_name    u32
 }
 
@@ -2675,9 +2677,10 @@ fn (t &Transformer) comptime_enum_members(base_type_id u32) []EnumValueMeta {
 	mut fallback := []EnumValueMeta{cap: names.len}
 	for idx, name in names {
 		fallback << EnumValueMeta{
-			name:      name
-			value:     i64(idx)
-			enum_name: resolved
+			name:       name
+			value:      i64(idx)
+			enum_name:  resolved
+			attributes: []AttributeMeta{}
 		}
 	}
 	return fallback
@@ -2776,6 +2779,7 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 					val
 				}
 				attrs:        f.attrs.clone()
+				attributes:   comptime_attribute_metas_from_raw(f.attrs.clone(), []int{})
 				enum_name:    qualified_id
 			}
 			next_val = val + 1
@@ -3052,6 +3056,9 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 				}
 				'attrs' {
 					return t.make_string_array_literal(item.attrs)
+				}
+				'attributes' {
+					return t.make_attribute_array_literal(item.attributes)
 				}
 				else {}
 			}
@@ -3787,17 +3794,19 @@ fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 	}
 	value_field := t.make_named_field_init('value', value, flat.source_type_i64)
 	attrs_field := t.make_named_field_init('attrs', t.make_string_array_literal(item.attrs), flat.source_type_id('[]string'))
+	attrs_attributes_field := t.make_named_field_init('attributes', t.make_attribute_array_literal(item.attributes), flat.source_type_id('[]VAttribute'))
 	start := t.a.children.len
 	t.a.children << name_field
 	t.a.children << value_field
 	t.a.children << attrs_field
+	t.a.children << attrs_attributes_field
 	literal_type_id := flat.source_type_id('EnumData')
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
 		source_value:   literal_type_id
 		typ:            literal_type_id
 		children_start: start
-		children_count: 3
+		children_count: 4
 	})
 }
 
@@ -3822,6 +3831,7 @@ fn (mut t Transformer) make_field_data_literal(fm FieldMeta) flat.NodeId {
 		t.make_named_field_init('typ', t.make_int_literal(fm.typ_id), flat.source_type_int),
 		t.make_named_field_init('unaliased_typ', t.make_int_literal(fm.unaliased_id), flat.source_type_int),
 		t.make_named_field_init('attrs', t.make_string_array_literal(fm.attrs), flat.source_type_id('[]string')),
+		t.make_named_field_init('attributes', t.make_attribute_array_literal(fm.attributes), flat.source_type_id('[]VAttribute')),
 		t.make_named_field_init('is_pub', t.make_bool_literal(fm.is_pub), flat.source_type_bool),
 		t.make_named_field_init('is_mut', t.make_bool_literal(fm.is_mut), flat.source_type_bool),
 		t.make_named_field_init('is_embed', t.make_bool_literal(fm.is_embed), flat.source_type_bool),
@@ -4306,6 +4316,7 @@ fn (t &Transformer) field_meta_for(name string, ftyp_id u32, resolved_typ_id u32
 		is_mut:             extra.is_mut
 		is_pub:             extra.is_pub
 		attrs:              extra.attrs
+		attributes:         comptime_attribute_metas_from_raw(extra.attrs, []int{})
 		indirections:       indir
 	}
 }
@@ -5303,6 +5314,7 @@ fn (mut t Transformer) field_member_value(member string, fm FieldMeta) ?flat.Nod
 		'is_pub' { t.make_bool_literal(fm.is_pub) }
 		'indirections' { t.make_int_literal(fm.indirections) }
 		'attrs' { t.make_string_array_literal(fm.attrs) }
+		'attributes' { t.make_attribute_array_literal(fm.attributes) }
 		'typ' { t.make_int_literal(fm.typ_id) }
 		'unaliased_typ' { t.make_int_literal(fm.unaliased_id) }
 		else {

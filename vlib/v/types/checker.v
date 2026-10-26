@@ -54,6 +54,7 @@ const comptime_field_members = [
 	'is_pub',
 	'indirections',
 	'attrs',
+	'attributes',
 	'str',
 	'typ',
 	'unaliased_typ',
@@ -63,6 +64,7 @@ const comptime_enum_value_members = [
 	'name',
 	'value',
 	'attrs',
+	'attributes',
 ]!
 
 const comptime_variant_members = [

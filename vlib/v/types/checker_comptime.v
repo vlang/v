@@ -711,6 +711,9 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 			'attrs' {
 				*tc.parse_type(comptime_source_type_strings)
 			}
+			'attributes' {
+				*tc.parse_type(comptime_source_type_attributes)
+			}
 			else {
 				none
 			}
@@ -725,6 +728,9 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 		}
 		'attrs' {
 			*tc.parse_type(comptime_source_type_strings)
+		}
+		'attributes' {
+			*tc.parse_type(comptime_source_type_attributes)
 		}
 		'indirections' {
 			*tc.parse_type(flat.source_type_u8)
