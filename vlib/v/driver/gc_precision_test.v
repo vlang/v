@@ -42,11 +42,11 @@ fn test_precise_boehm_counts_each_small_allocation_after_warmup() {
 	os.write_file(source, 'module main
 #include <gc.h>
 struct C.GC_prof_stats_s {
- bytes_allocd_since_gc usize
- allocd_bytes_before_gc usize
- gc_no usize
+ bytes_allocd_since_gc uint
+ allocd_bytes_before_gc uint
+ gc_no uint
 }
-fn C.GC_get_prof_stats(&C.GC_prof_stats_s, usize) usize
+fn C.GC_get_prof_stats(&C.GC_prof_stats_s, uint) uint
 fn allocated_bytes() u64 {
  mut stats := C.GC_prof_stats_s{}
  C.GC_get_prof_stats(&stats, sizeof(C.GC_prof_stats_s))

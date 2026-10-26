@@ -1087,7 +1087,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			} else {
 				fastc_primitive_c_type(item.lit) or { '' }
 			}
-			is_c_cast := i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot && item.lit.len > 0 && 'C.${item.lit}' !in g.functions && fastc_call_has_one_argument(tokens, i + 1) && (item.lit[0].is_capital() || '#Cstruct#${item.lit}' in g.declared_types)
+			is_c_cast := i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot && item.lit.len > 0 && 'C.${item.lit}' !in g.functions && fastc_call_has_one_argument(tokens, i + 1) && (item.lit[0].is_capital() || '#Cstruct#${item.lit}' in g.declared_types || '#Ctypedef#${item.lit}' in g.declared_types)
 			if is_c_cast {
 				cast_type = if '#Cstruct#${item.lit}' in g.declared_types {
 					'struct ${item.lit}'
@@ -1643,7 +1643,7 @@ fn (g &Parser) constant_integer_factor(tokens []FastcExpressionToken, start int)
 		return none
 	}
 	if start + 1 < tokens.len && tokens[start + 1].tok == .lpar && item.lit in ['u8', 'u16', 'u32',
-		'u64', 'i8', 'i16', 'i32', 'i64', 'int', 'usize', 'isize'] && item.lit !in g.locals {
+		'u64', 'i8', 'i16', 'i32', 'i64', 'int', 'uint', 'usize', 'isize'] && item.lit !in g.locals {
 		value, close := g.constant_integer_sum(tokens, start + 2)?
 		if close >= tokens.len || tokens[close].tok != .rpar { return none }
 		converted := match item.lit {
@@ -1653,7 +1653,7 @@ fn (g &Parser) constant_integer_factor(tokens []FastcExpressionToken, start int)
 			'i8' { int(i8(value)) }
 			'i16' { int(i16(value)) }
 			'i32' { int(i32(value)) }
-			'usize' {
+			'uint', 'usize' {
 				if g.prefs.target.pointer_bits == 32 { return int(u32(value)), close + 1 }
 				if g.prefs.target.pointer_bits != 64 { return none }
 				if value < 0 { return none }

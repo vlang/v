@@ -142,7 +142,7 @@ fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) {
 		src_width = target_width
 		src_height = target_height
 		simg_desc.data.subimage[0][level].ptr = target
-		simg_desc.data.subimage[0][level].size = usize(target_width * target_height * 4)
+		simg_desc.data.subimage[0][level].size = uint(target_width * target_height * 4)
 		unsafe {
 			target += target_width * target_height * 4
 		}
@@ -164,7 +164,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	}
 
 	// NOTE the following code, sometimes, result in hard-to-detect visual errors/bugs:
-	// img_size := usize(img.nr_channels * img.width * img.height)
+	// img_size := uint(img.nr_channels * img.width * img.height)
 	// As an example see https://github.com/vlang/vab/issues/239
 	// The image will come out blank for some reason and no SOKOL_ASSERT
 	// nor any CI check will/can currently catch this.
@@ -174,7 +174,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	// 3 (or less) channels which stbi will correctly detect and set as `img.nr_channels`
 	// but the current sokol_gl context setup expects 4. It *should* be the same with
 	// all other stbi supported formats.
-	img_size := usize(4 * img.width * img.height)
+	img_size := uint(4 * img.width * img.height)
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr:  img.data
 		size: img_size
@@ -232,7 +232,7 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 	// Sokol requires that streamed images have NO .ptr/.size initially:
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr:  0
-		size: usize(0)
+		size: uint(0)
 	}
 	img.simg = gfx.make_image(&img_desc)
 
@@ -262,7 +262,7 @@ pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 pub fn (mut img Image) update_pixel_data(buf &u8) {
 	mut data := gfx.ImageData{}
 	data.subimage[0][0].ptr = buf
-	data.subimage[0][0].size = usize(img.width * img.height * img.nr_channels)
+	data.subimage[0][0].size = uint(img.width * img.height * img.nr_channels)
 	gfx.update_image(img.simg, &data)
 }
 

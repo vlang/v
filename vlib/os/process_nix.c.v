@@ -93,7 +93,7 @@ fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
 // It is used between fork() and execve(), so it must not allocate.
 fn unix_child_write(s string) {
 	if s.len > 0 {
-		unsafe { C.write(2, s.str, usize(s.len)) }
+		unsafe { C.write(2, s.str, uint(s.len)) }
 	}
 }
 
@@ -136,7 +136,7 @@ fn unix_child_report_errno(prefix string) {
 	}
 	buf[n] = `\n`
 	n++
-	unsafe { C.write(2, &buf[0], usize(n)) }
+	unsafe { C.write(2, &buf[0], uint(n)) }
 }
 
 fn (mut p Process) unix_spawn_process() int {

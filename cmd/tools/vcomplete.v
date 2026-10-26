@@ -40,6 +40,7 @@
 module main
 
 import os
+import v.pref
 
 const auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell'] // list of supported shells
 
@@ -565,6 +566,25 @@ fn nearest_path_or_root(path string) string {
 	return fixed_path
 }
 
+fn completing_command(parts []string) bool {
+	mut i := 1
+	for i < parts.len - 1 {
+		part := parts[i]
+		if part == '--' {
+			return false
+		}
+		if part.starts_with('-') {
+			i += if pref.option_may_consume_value(part) { 2 } else { 1 }
+		} else if part == 'help' || part == '' {
+			i++
+		} else {
+			return false
+		}
+	}
+	// An option value is completed as a path, even when it matches a command prefix.
+	return i == parts.len - 1
+}
+
 // auto_complete_request returns a list of completions resolved from a full argument list.
 fn auto_complete_request(args []string) []string {
 	// Using space will ensure a uniform input in cases where the shell
@@ -666,7 +686,7 @@ fn auto_complete_request(args []string) []string {
 			if list.len == 1 && part == list[0] {
 				list.clear()
 			}
-		} else {
+		} else if completing_command(parts) {
 			match part {
 				'help' { // 'v help <tab>' -> top level commands except "help".
 					list = auto_complete_commands.filter(it != part && it != 'complete')

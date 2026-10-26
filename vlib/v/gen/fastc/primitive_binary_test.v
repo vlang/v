@@ -79,7 +79,7 @@ fn test_fastc_plain_numeric_binary_guard_keeps_non_arithmetic_and_represented_va
 
 fn test_fastc_plain_numeric_binary_guard_respects_program_metadata_and_translated_files() {
 	assert fastc_numeric_arithmetic_has_no_overloads(map[string]FastcFunctionSignature{}, flat.TypeTextBindings{}, flat.TypeTextBindings{}, map[string]flat.TypeTextBindings{})
-	for name in ['int.+', 'u64.-', 'f32.*', 'usize./', 'u8.%'] {
+	for name in ['int.+', 'u64.-', 'f32.*', 'uint./', 'u8.%'] {
 		assert !fastc_numeric_arithmetic_has_no_overloads({
 			name: FastcFunctionSignature{}
 		}, flat.TypeTextBindings{}, flat.TypeTextBindings{}, map[string]flat.TypeTextBindings{})

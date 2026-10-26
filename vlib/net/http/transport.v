@@ -764,6 +764,7 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		}
 		resp, reusable := conn.exchange(req, raw) or {
 			conn.close_conn()
+			if err is ProgressCallbackError { return err }
 			// The write helpers do partial writes and cannot report how many
 			// bytes reached the server, so a failed exchange may have delivered
 			// part of the request. Only idempotent methods are safe to replay;
@@ -832,6 +833,7 @@ fn (mut t Transport) tls_fresh_round_trip_ssl(req &Request, key string, raw stri
 	}
 	resp, reusable := conn.exchange(req, raw) or {
 		conn.close_conn()
+		if err is ProgressCallbackError { return err }
 		// Past the TLS handshake the request bytes may have been (partially)
 		// written; a non-idempotent method must not be replayed by the outer
 		// retry loop. (A dial/handshake failure above propagates before this and

@@ -207,7 +207,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 		cmd := '${os.quoted_path(context.myself)} ${verbosity} --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path ${os.quoted_path(path)} '
 		context.log(cmd)
 		mut res := os.exec(['${context.myself}', ...(os.split_args(verbosity) or { panic(err) }),
-			'--worker', '--timeout_ms', '${context.timeout_ms:5}', '--cut_index', '${i:5}', '--path',
+			'--worker', '--timeout_ms', '${context.timeout_ms}', '--cut_index', '${i}', '--path',
 			path])
 		context.log('worker exit_code: ${res.exit_code} | worker output:\n${res.output}')
 		if res.exit_code != 0 {

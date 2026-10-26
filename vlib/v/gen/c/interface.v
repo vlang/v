@@ -23,7 +23,7 @@ fn (g &FlatGen) sum_type_index(sum_name_id u32, variant_id u32) int {
 	if !g.tc.sum_types.contains(flat.source_type_name(resolved_sum)) && flat.source_type_shape(resolved_sum).has(.dotted) {
 		// Resolve an import-aliased sum name (`tast.Value` for module `sub.tast`)
 		// exactly first. Use suffix and bare-name fallbacks only when unique.
-		aliased_sum := flat.source_type_id(g.tc.qualify_name(flat.source_type_name(resolved_sum)))
+		aliased_sum := g.tc.qualify_type_name(resolved_sum)
 		if g.tc.sum_types.contains(flat.source_type_name(aliased_sum)) {
 			resolved_sum = aliased_sum
 		} else {
@@ -70,7 +70,7 @@ fn (g &FlatGen) sum_type_index_resolved(sum_name_id u32, variant_id u32) int {
 		return exact + 1
 	}
 	variant := flat.source_type_name(variant_id)
-	qualified_id := flat.source_type_id(g.tc.qualify_name(variant))
+	qualified_id := g.tc.qualify_type_name(variant_id)
 	qualified := variants.index(qualified_id)
 	if qualified >= 0 {
 		return qualified + 1
@@ -430,14 +430,13 @@ fn (mut g FlatGen) collect_interface_impls() {
 	g.ierror_method_emit_names = map[string]bool{}
 	g.register_specialized_interface_applications()
 	g.collect_interface_boxed_types_for_dispatch()
-	mut boxed_concrete_types := map[string][]u32{}
+	mut boxed_concrete_types := map[u32][]u32{}
 	for key, _ in g.interface_boxed_types {
 		iface_id := u32(key >> 32)
 		concrete_id := u32(key)
 		if iface_id == 0 || concrete_id == 0 {
 			continue
 		}
-		iface := flat.source_type_name(iface_id)
 		mut concrete := flat.source_type_name(concrete_id)
 		// `[` covers both dynamic (`[]T`) and fixed (`[N]T`) arrays.
 		is_container := concrete.starts_with('[') || concrete.starts_with('map[')
@@ -455,11 +454,11 @@ fn (mut g FlatGen) collect_interface_impls() {
 			}
 			concrete = qualified
 		}
-		mut concrete_types := boxed_concrete_types[iface] or { []u32{} }
+		mut concrete_types := boxed_concrete_types[iface_id] or { []u32{} }
 		concrete_name_id := flat.source_type_id(concrete)
 		if concrete_name_id !in concrete_types {
 			concrete_types << concrete_name_id
-			boxed_concrete_types[iface] = concrete_types
+			boxed_concrete_types[iface_id] = concrete_types
 		}
 	}
 	mut iface_names := []string{}
@@ -468,17 +467,18 @@ fn (mut g FlatGen) collect_interface_impls() {
 	}
 	iface_names.sort()
 	for iface in iface_names {
+		iface_id := flat.source_type_id(iface)
 		mut impls := []u32{}
 		mut base_impls := []u32{}
-		if g.is_ierror_type_name(flat.source_type_id(iface)) {
+		if g.is_ierror_type_name(iface_id) {
 			impls = g.tc.ierror_impl_names()
 		} else {
 			// Structs plus type aliases with their own implementing methods; ids
 			// must come from tc.interface_impl_names so the transform's `is`
 			// checks agree with the dispatch ids assigned here.
-			impls = g.tc.interface_impl_names(flat.source_type_id(iface))
+			impls = g.tc.interface_impl_names(iface_id)
 			base_impls = impls.clone()
-			mut concrete_types := boxed_concrete_types[iface] or { []u32{} }
+			mut concrete_types := boxed_concrete_types[iface_id] or { []u32{} }
 			concrete_types.sort_with_compare(compare_interface_source_type_ids)
 			for concrete in concrete_types {
 				if concrete !in impls {
@@ -487,21 +487,21 @@ fn (mut g FlatGen) collect_interface_impls() {
 			}
 		}
 		impls = impls.filter(!g.interface_impl_is_open_generic(it))
-		type_ids := if g.is_ierror_type_name(flat.source_type_id(iface)) {
+		type_ids := if g.is_ierror_type_name(iface_id) {
 			types.stable_interface_type_ids(impls)
 		} else if impls.len > base_impls.len {
 			types.stable_interface_type_ids_preserving_prefix(base_impls, impls)
 		} else {
-			g.tc.interface_type_ids(flat.source_type_id(iface))
+			g.tc.interface_type_ids(iface_id)
 		}
 		// Keep checker-assigned IDs stable while omitting unused C dispatch layouts.
 		impls = impls.filter(!flat.source_type_name(it).starts_with('C.')
 			|| g.referenced_c_struct_ids[it])
 		g.iface_impls[iface] = impls
 		for concrete_id in impls {
-			g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id(iface), concrete_id)] = type_ids[concrete_id]
+			g.iface_type_ids[interface_dispatch_boxed_type_key(iface_id, concrete_id)] = type_ids[concrete_id]
 		}
-		if g.is_ierror_type_name(flat.source_type_id(iface)) {
+		if g.is_ierror_type_name(iface_id) {
 			g.collect_ierror_method_emit_names(impls)
 		}
 	}
@@ -786,9 +786,9 @@ fn (g &FlatGen) iface_type_id_for_pattern(iface_id u32, pattern_id u32) int {
 	if id != 0 {
 		return id
 	}
-	qpattern := g.tc.qualify_name(pattern_key)
-	if qpattern != pattern_key {
-		qid := g.iface_type_id(iface_id, flat.source_type_id(qpattern))
+	qpattern_id := g.tc.qualify_type_name(pattern_key_id)
+	if qpattern_id != pattern_key_id {
+		qid := g.iface_type_id(iface_id, qpattern_id)
 		if qid != 0 {
 			return qid
 		}
@@ -852,10 +852,10 @@ fn (g &FlatGen) ierror_direct_method_name(concrete_id u32, method string) ?strin
 	if g.ierror_method_signature_matches(direct, concrete_id, method) {
 		return direct
 	}
-	qconcrete := g.tc.qualify_name(concrete)
-	if qconcrete != concrete {
-		qdirect := '${qconcrete}.${method}'
-		if g.ierror_method_signature_matches(qdirect, flat.source_type_id(qconcrete), method) {
+	qconcrete_id := g.tc.qualify_type_name(concrete_id)
+	if qconcrete_id != concrete_id {
+		qdirect := '${flat.source_type_name(qconcrete_id)}.${method}'
+		if g.ierror_method_signature_matches(qdirect, qconcrete_id, method) {
 			return qdirect
 		}
 	}
@@ -970,7 +970,7 @@ fn (g &FlatGen) ierror_concrete_name(t &types.Type) ?u32 {
 	if g.iface_type_id(iface_id, name_id) != 0 {
 		return name_id
 	}
-	qname_id := flat.source_type_id(g.tc.qualify_name(flat.source_type_name(name_id)))
+	qname_id := g.tc.qualify_type_name(name_id)
 	if qname_id != name_id && g.iface_type_id(iface_id, qname_id) != 0 {
 		return qname_id
 	}
@@ -1234,8 +1234,9 @@ fn (g &FlatGen) iface_type_id_for_concrete(iface_id u32, concrete types.Type) in
 	mut matches := 0
 	for impl_id in g.iface_impls[flat.source_type_name(iface_id)] or { []u32{} } {
 		impl := flat.source_type_name(impl_id)
-		target := flat.source_type_name(g.tc.type_aliases.type_id(impl) or { continue })
-		if target == concrete_name || g.tc.qualify_name(target) == g.tc.qualify_name(concrete_name) {
+		target_id := g.tc.type_aliases.type_id(impl) or { continue }
+		if target_id == concrete_name_id
+			|| g.tc.qualify_type_name(target_id) == g.tc.qualify_type_name(concrete_name_id) {
 			alias_id = g.iface_type_id(iface_id, impl_id)
 			matches++
 		}
@@ -1757,7 +1758,7 @@ fn (g &FlatGen) interface_alias_names(iface_name_id u32) []u32 {
 	mut aliases := []u32{}
 	for alias, target_id in g.tc.type_aliases.ids {
 		if target_id == iface_name_id
-			|| flat.source_type_id(g.tc.qualify_name(flat.source_type_name(target_id))) == iface_name_id {
+			|| g.tc.qualify_type_name(target_id) == iface_name_id {
 			aliases << flat.source_type_id(alias)
 		}
 	}
@@ -2381,7 +2382,7 @@ fn (g &FlatGen) interface_concrete_type(concrete_id u32) types.Type {
 	if types.is_builtin_type_name(concrete) {
 		return *g.tc.parse_type(concrete_id)
 	}
-	for candidate_id in [concrete_id, flat.source_type_id(g.tc.qualify_name(concrete))] {
+	for candidate_id in [concrete_id, g.tc.qualify_type_name(concrete_id)] {
 		candidate := flat.source_type_name(candidate_id)
 		if g.tc.type_aliases.contains(candidate) {
 			return types.Type(types.Alias{
@@ -2524,6 +2525,11 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 		types.Primitive {
 			name := types.Type(clean).name()
 			if clean.props.has(.float) {
+				// An f32 widened to f64 would print the binary error of its
+				// rounding (`1.2000000476837158` instead of `1.2`).
+				if name == 'f32' {
+					return 'f32__str(${expr})'
+				}
 				return 'f64__str((double)(${expr}))'
 			}
 			if name == 'bool' {
@@ -2836,8 +2842,10 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 }
 
 fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string, mut stack []InterfaceStringifyVisit) ?string {
-	iface_name := iface.name()
-	stack_key := InterfaceStringifyVisit{ typ: flat.source_type_id(g.tc.qualify_name(iface_name)), kind: .interface_type }
+	iface_name_id := iface.source_type_id()
+	iface_name := flat.source_type_name(iface_name_id)
+	qualified_iface_id := g.tc.qualify_type_name(iface_name_id)
+	stack_key := InterfaceStringifyVisit{ typ: qualified_iface_id, kind: .interface_type }
 	if stack_key in stack {
 		return none
 	}
@@ -2846,7 +2854,7 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 		stack.delete_last()
 	}
 	impls := g.iface_impls[iface_name] or {
-		qualified := g.tc.qualify_name(iface_name)
+		qualified := flat.source_type_name(qualified_iface_id)
 		g.iface_impls[qualified] or { return none }
 	}
 	ct := g.tc.c_type(types.Type(iface))
@@ -2855,7 +2863,7 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 	fallback := g.interface_str_lit('${iface_name.all_after_last('.')}{}')
 	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${fallback}; if (${tmp}._object != 0) { switch (${tmp}._typ) {'
 	for concrete_id in impls {
-		id := g.iface_type_id(flat.source_type_id(iface_name), concrete_id)
+		id := g.iface_type_id(iface_name_id, concrete_id)
 		if id == 0 {
 			continue
 		}

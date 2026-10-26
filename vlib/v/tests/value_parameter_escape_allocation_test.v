@@ -145,20 +145,20 @@ struct EncodedAddressValue {
 	value int
 }
 
-type EncodedAddress = usize
+type EncodedAddress = uint
 
-type TaggedAddress = usize | string
+type TaggedAddress = uint | string
 
 @[noinline]
-fn encode_local_address(value int) usize {
+fn encode_local_address(value int) uint {
 	local := EncodedAddressValue{value}
-	return usize(&local.value)
+	return uint(&local.value)
 }
 
 @[noinline]
-fn encode_local_address_as_signed(value int) isize {
+fn encode_local_address_as_signed(value int) int {
 	local := EncodedAddressValue{value}
-	return isize(&local.value)
+	return int(&local.value)
 }
 
 @[noinline]
@@ -171,51 +171,51 @@ fn encode_local_address_through_alias(value int) u64 {
 @[noinline]
 fn encode_local_address_through_nested_casts(value int) u64 {
 	local := EncodedAddressValue{value}
-	return u64(usize(&local.value))
+	return u64(uint(&local.value))
 }
 
 @[noinline]
-fn encode_local_address_through_sum_type(value int) usize {
+fn encode_local_address_through_sum_type(value int) uint {
 	local := EncodedAddressValue{value}
-	tagged := TaggedAddress(usize(&local.value))
-	return tagged as usize
+	tagged := TaggedAddress(uint(&local.value))
+	return tagged as uint
 }
 
-fn unavailable_encoded_address() !usize {
+fn unavailable_encoded_address() !uint {
 	return error('unavailable')
 }
 
 @[noinline]
-fn encode_local_address_in_or_fallback(value int) usize {
+fn encode_local_address_in_or_fallback(value int) uint {
 	local := EncodedAddressValue{value}
-	return unavailable_encoded_address() or { usize(&local.value) }
+	return unavailable_encoded_address() or { uint(&local.value) }
 }
 
 @[noinline]
-fn encode_parameter_address(value EncodedAddressValue) usize {
-	return usize(&value.value)
+fn encode_parameter_address(value EncodedAddressValue) uint {
+	return uint(&value.value)
 }
 
 @[noinline]
-fn encode_local_pointer_alias(value int) usize {
+fn encode_local_pointer_alias(value int) uint {
 	local := EncodedAddressValue{value}
 	pointer := &local.value
-	return usize(pointer)
+	return uint(pointer)
 }
 
 @[noinline]
-fn encode_local_address_through_option(value int) usize {
+fn encode_local_address_through_option(value int) uint {
 	local := EncodedAddressValue{value}
-	encoded := ?usize(usize(&local.value))
-	return encoded or { usize(0) }
+	encoded := ?uint(uint(&local.value))
+	return encoded or { uint(0) }
 }
 
-fn encoded_unsigned_result(value &EncodedAddressValue) !usize {
-	return usize(&value.value)
+fn encoded_unsigned_result(value &EncodedAddressValue) !uint {
+	return uint(&value.value)
 }
 
-fn encoded_signed_result(value &EncodedAddressValue) !isize {
-	return isize(&value.value)
+fn encoded_signed_result(value &EncodedAddressValue) !int {
+	return int(&value.value)
 }
 
 fn encoded_alias_result(value &EncodedAddressValue) !EncodedAddress {
@@ -223,13 +223,13 @@ fn encoded_alias_result(value &EncodedAddressValue) !EncodedAddress {
 }
 
 @[noinline]
-fn encode_parameter_through_unsigned_result(value EncodedAddressValue) usize {
-	return encoded_unsigned_result(&value) or { usize(0) }
+fn encode_parameter_through_unsigned_result(value EncodedAddressValue) uint {
+	return encoded_unsigned_result(&value) or { uint(0) }
 }
 
 @[noinline]
-fn encode_parameter_through_signed_result(value EncodedAddressValue) isize {
-	return encoded_signed_result(&value) or { isize(0) }
+fn encode_parameter_through_signed_result(value EncodedAddressValue) int {
+	return encoded_signed_result(&value) or { int(0) }
 }
 
 @[noinline]
@@ -275,7 +275,7 @@ fn encode_parameter_through_int_result(value EncodedAddressValue) int {
 }
 
 fn encoded_float_result(value &EncodedAddressValue) !f64 {
-	return f64(usize(&value.value))
+	return f64(uint(&value.value))
 }
 
 @[noinline]
@@ -284,7 +284,7 @@ fn encode_parameter_through_float_result(value EncodedAddressValue) f64 {
 }
 
 fn encoded_halves_result(value &EncodedAddressValue) !(u32, u32) {
-	address := u64(usize(&value.value))
+	address := u64(uint(&value.value))
 	return u32(address), u32(address >> 32)
 }
 
@@ -341,13 +341,13 @@ fn test_integer_casts_keep_the_addressed_local_alive() {
 		assert *(&int(u64_result)) == 956
 		assert *(&int(i64_result)) == 967
 		assert *(&int(int_result)) == 978
-		assert *(&int(usize(float_result))) == 989
-		assert *(&int(usize(halves))) == 990
+		assert *(&int(uint(float_result))) == 989
+		assert *(&int(uint(halves))) == 990
 	}
 }
 
 __global scalar_retained &EncodedAddressValue = unsafe { nil }
-__global scalar_retained_bits usize
+__global scalar_retained_bits uint
 
 type ScalarSuccess = bool
 
@@ -362,7 +362,7 @@ struct ScalarCarrier {
 }
 
 struct ScalarEncodedCarrier {
-	bits usize
+	bits uint
 }
 
 @[noinline]
@@ -440,7 +440,7 @@ fn scalar_retain_encoded(value ScalarEncodedCarrier) !bool {
 }
 
 @[noinline]
-fn scalar_retain_pointee(value &usize) !bool {
+fn scalar_retain_pointee(value &uint) !bool {
 	scalar_retained_bits = unsafe { *value }
 	return true
 }
@@ -563,14 +563,14 @@ fn scalar_carrier_wrapper(seed int) bool {
 @[noinline]
 fn scalar_encoded_field_wrapper(seed int) bool {
 	local := EncodedAddressValue{seed}
-	carrier := ScalarEncodedCarrier{usize(&local.value)}
+	carrier := ScalarEncodedCarrier{uint(&local.value)}
 	return scalar_retain_encoded(carrier) or { false }
 }
 
 @[noinline]
 fn scalar_encoded_pointee_wrapper(seed int) bool {
 	local := EncodedAddressValue{seed}
-	bits := usize(&local.value)
+	bits := uint(&local.value)
 	return scalar_retain_pointee(&bits) or { false }
 }
 

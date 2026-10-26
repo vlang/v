@@ -2,7 +2,7 @@
 // type from it (not `voidptr`), and a generic can recurse over `pointee_type`.
 
 fn new_pointer_to[T](value T) &T {
-	mut ptr := unsafe { &T(vcalloc(sizeof(T))) }
+	mut ptr := unsafe { &T(vcalloc(int(sizeof(T)))) }
 	unsafe {
 		*ptr = value
 	}

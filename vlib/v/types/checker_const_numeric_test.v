@@ -42,6 +42,61 @@ fn main() {}
 	}
 }
 
+fn test_numeric_const_literal_shortcut_preserves_names_and_expression_lookup() {
+	_, mut tc := numeric_const_fixture('literal_lookup', 'module main
+enum NumericChoice {
+ small = 3
+ large = 9
+}
+const base = 11
+const _123 = 17
+const helper_value = 21
+fn main() {}
+')
+	for literal, expected in {
+		'16':    16
+		'1_024': 1024
+		'0x1_f': 31
+		'0o17':  15
+		'0b110': 6
+	} {
+		assert (tc.const_int_value(literal, []string{}) or { panic('missing ${literal}') }) == expected
+	}
+	assert tc.const_int_value('16', ['16']) == none
+	assert (tc.const_int_value('_123', []string{}) or { panic('missing named const') }) == 17
+	assert (tc.const_int_value('-16', []string{}) or { panic('missing signed literal') }) == -16
+	assert (tc.const_int_value('+16', []string{}) or { panic('missing signed literal') }) == 16
+	assert (tc.const_int_value('u16(2)', []string{}) or { panic('missing cast') }) == 2
+	assert (tc.const_int_value('NumericChoice.large', []string{}) or { panic('missing enum') }) == 9
+	assert (tc.const_int_value('base + 0x10', []string{}) or { panic('missing arithmetic') }) == 27
+	tc.const_exprs['helper.base'] = tc.const_exprs['helper_value'] or { panic('missing value') }
+	tc.const_modules['helper.base'] = 'helper'
+	assert (tc.const_int_value_in_module('base', 'helper', []string{}) or { panic('missing module const') }) == 21
+}
+
+fn test_module_const_shortcut_preserves_failed_evaluation_and_seen_fallback() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.const_exprs['helper.value'] = a.add_val(.ident, 'missing')
+	tc.const_modules['helper.value'] = 'helper'
+	tc.const_exprs['value'] = a.add_val(.int_literal, '41')
+	tc.const_modules['value'] = 'builtin'
+	// Finding a module binding ends lookup even when its initializer is unresolved.
+	assert tc.const_int_value_in_module('value', 'helper', []string{}) == none
+	// A binding already in the dependency chain is skipped before evaluating it.
+	assert (tc.const_int_value_in_module('value', 'helper', ['helper.value']) or {
+		panic('missing fallback')
+	}) == 41
+	tc.const_exprs['helper.value'] = a.add_val(.int_literal, '13')
+	assert (tc.const_int_value_in_module('value', 'helper', []string{}) or {
+		panic('missing module const')
+	}) == 13
+	tc.const_exprs.delete('helper.value')
+	assert (tc.const_int_value_in_module('value', 'helper', []string{}) or {
+		panic('missing fallback')
+	}) == 41
+}
+
 fn test_independent_numeric_const_initializer_uses_actual_literal_shapes() {
 	a, tc := numeric_const_fixture('shapes', 'module main
 type Count = u64

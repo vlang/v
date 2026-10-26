@@ -78,17 +78,24 @@ fn (mut ws Client) dial_socket() !&net.TcpConn {
 	} else {
 		http.dial_tcp_via_proxy(ws.proxy_url, tcp_address)!
 	}
-	optval := int(1)
-	t.sock.set_option_int(.keep_alive, optval)!
+	return ws.configure_socket(mut t)
+}
+
+// configure_socket takes ownership of a connected TCP candidate, including
+// option/TLS setup failures before Client.conn can be assigned.
+fn (mut ws Client) configure_socket(mut t net.TcpConn) !&net.TcpConn {
+	mut transferred := false
+	defer {
+		if !transferred { t.close() or {} }
+	}
+	t.sock.set_option_int(.keep_alive, 1)!
 	t.set_read_timeout(ws.read_timeout)
 	t.set_write_timeout(ws.write_timeout)
 	if ws.is_ssl {
-		ws.ssl_conn.connect(mut t, ws.uri.hostname) or {
-			// The TcpConn is not the client's yet, so nothing else can close it: a failed TLS
-			// handshake would otherwise leak the connected socket, and the peer's half of it.
-			t.close() or {}
-			return err
-		}
+		ws.ssl_conn.connect(mut t, ws.uri.hostname)!
+		// SSLConn.connect borrows TCP; a WebSocket owns it until shutdown.
+		ws.ssl_conn.owns_socket = true
 	}
-	return t
+	transferred = true
+	return unsafe { &t }
 }

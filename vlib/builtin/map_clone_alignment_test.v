@@ -7,7 +7,7 @@ struct AlignedCloneCell {
 
 fn clone_aligned_map_key(destination voidptr, source voidptr) {
 	// The raw map callback copies the complete aligned key, including its padding.
-	unsafe { vmemcpy(destination, source, sizeof(AlignedCloneCell)) }
+	unsafe { vmemcpy(destination, source, int(sizeof(AlignedCloneCell))) }
 }
 
 fn assert_aligned_map_clone_storage(value &map) {
@@ -16,25 +16,25 @@ fn assert_aligned_map_clone_storage(value &map) {
 	if value.data.count == 0 {
 		return
 	}
-	assert usize(value.data.key_values.keys) % 64 == 0
-	assert usize(value.data.key_values.values) % 64 == 0
+	assert uint(value.data.key_values.keys) % 64 == 0
+	assert uint(value.data.key_values.values) % 64 == 0
 	keys := value.keys()
 	values := value.values()
 	assert keys.data_alignment() == 64
 	assert values.data_alignment() == 64
-	assert usize(keys.data) % 64 == 0
-	assert usize(values.data) % 64 == 0
+	assert uint(keys.data) % 64 == 0
+	assert uint(values.data) % 64 == 0
 	for i in 0 .. keys.len {
 		// Raw map exports have the same aligned element layout as the input cells.
 		key := unsafe { &AlignedCloneCell(&u8(keys.data) + i * int(sizeof(AlignedCloneCell))) }
 		item := unsafe { &AlignedCloneCell(&u8(values.data) + i * int(sizeof(AlignedCloneCell))) }
-		assert usize(key) % 64 == 0
-		assert usize(item) % 64 == 0
+		assert uint(key) % 64 == 0
+		assert uint(item) % 64 == 0
 		assert key.value == u64(i + 1)
 		assert item.value == key.value * 10
 		zero := AlignedCloneCell{}
 		stored := unsafe { &AlignedCloneCell(value.get(key, &zero)) }
-		assert usize(stored) % 64 == 0
+		assert uint(stored) % 64 == 0
 		assert stored.value == item.value
 	}
 	unsafe {
@@ -87,13 +87,13 @@ fn test_sparse_typed_map_clone_keeps_aligned_values() {
 	assert copied['only'].value == 42
 	// Inspect each map element's address before any subsequent map mutation.
 	first_address := unsafe { voidptr(&copied['only']) }
-	assert usize(first_address) % 64 == 0
+	assert uint(first_address) % 64 == 0
 	values := copied.values()
-	assert usize(values.data) % 64 == 0
+	assert uint(values.data) % 64 == 0
 	assert values[0].value == 42
 	copied['next'] = AlignedCloneCell{ value: 99 }
 	next_address := unsafe { voidptr(&copied['next']) }
-	assert usize(next_address) % 64 == 0
+	assert uint(next_address) % 64 == 0
 	assert 'next' !in original
 	unsafe {
 		values.free()

@@ -1182,8 +1182,10 @@ pub struct GenerationResult {
 pub:
 	c_pieces     []string
 	source_paths []string
-	uses_threads bool
-	c_flags      []string
+	// Only these files need the frontend pass that locates deprecated type spellings.
+	deprecated_integer_paths []string
+	uses_threads             bool
+	c_flags                  []string
 	// units describes how c_pieces split into translation units that the
 	// drivers can compile in parallel (see fastc_write_c_units).
 	units FastcUnitLayout
@@ -1731,8 +1733,13 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
+	mut deprecated_integer_paths := []string{}
 	for source_file in sources {
 		source_paths << source_file.path
+		if source_file.header.module_name != 'builtin'
+			&& (source_file.source.contains('isize') || source_file.source.contains('usize')) {
+			deprecated_integer_paths << source_file.path
+		}
 	}
 	// The layout comes back through a parameter: a struct of arrays as a
 	// multi-return component is not carried correctly by the self-hosted
@@ -1743,11 +1750,12 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
-		c_pieces:     c_pieces
-		source_paths: source_paths
-		uses_threads: uses_threads
-		c_flags:      c_flags
-		units:        units
+		c_pieces:                 c_pieces
+		source_paths:             source_paths
+		deprecated_integer_paths: deprecated_integer_paths
+		uses_threads:             uses_threads
+		c_flags:                  c_flags
+		units:                    units
 	}
 }
 
@@ -2692,7 +2700,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	} else {
 		FastcNativeSourceContext{}
 	}
-	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context)
+	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context,
+		prefs.vroot)
 	if prefs.target_libc_headers {
 		pieces << fastc_target_c_extern_prototypes_for_context(functions, used_function_names, prefs, native_context)
 	}
@@ -3012,11 +3021,34 @@ fn fastc_c_declaration_has_native_input(path string, inputs []string) bool {
 	return false
 }
 
-fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
-	return fastc_c_extern_prototypes_for_source_inputs(functions, inputs, FastcNativeSourceContext{})
+// fastc_vlib_native_helper_has_input mirrors cgen: vlib's shipped native objects
+// export private facades (`v3_`, `v_runtime_`, ...) whose declaring file may include
+// an unrelated header and need not share the object's stem
+// (builtin_d_gcboehm.c.v links gc_boehm_helpers.o). The declaring vlib file must
+// itself link a native source or object.
+fn fastc_vlib_native_helper_has_input(name string, paths []string, inputs []string, context FastcNativeSourceContext, vroot string) bool {
+	if !(name.starts_with('v3_') || name.starts_with('v_runtime_') || name.starts_with('v_time_')
+		|| name.starts_with('v_builtin_') || name.starts_with('v_set_')
+		|| name.starts_with('v__gc_')) {
+		return false
+	}
+	root := vroot.replace('\\', '/').trim_right('/')
+	if root.len == 0 {
+		return false
+	}
+	vlib := '${root}/vlib/'
+	return paths.any(context.files_linking_native_sources[it]
+		&& it.replace('\\', '/').starts_with(vlib))
+		&& inputs.any((it.ends_with('.c') || it.ends_with('.o'))
+			&& it.replace('\\', '/').starts_with(vlib))
 }
 
-fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext) string {
+fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
+	return fastc_c_extern_prototypes_for_source_inputs(functions, inputs, FastcNativeSourceContext{},
+		'')
+}
+
+fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext, vroot string) string {
 	mut keys := functions.keys().filter(it.starts_with('C.'))
 	keys.sort()
 	mut out := strings.new_builder(128)
@@ -3028,7 +3060,8 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 		name := key.all_after_first('C.')
 		paths := context.declaration_paths[name] or { [signature.path] }
 		if !signature.is_c_extern && !paths.any(!context.files_with_headers[it]
-			&& fastc_c_declaration_has_native_input(it, inputs)) {
+			&& fastc_c_declaration_has_native_input(it, inputs))
+			&& !fastc_vlib_native_helper_has_input(name, paths, inputs, context, vroot) {
 			continue
 		}
 		mut parameters := []string{cap: signature.parameter_types.ids.len + 1}

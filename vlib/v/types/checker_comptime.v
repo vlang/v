@@ -37,6 +37,7 @@ fn (mut tc TypeChecker) initialize_pointer_parameter_binding(owner ScopeBindingO
 	key := owner.storage_key()
 	if unalias_type(typ) is Pointer && key.len > 0 {
 		// Distinct parameter bindings may receive the same pointer at a call site.
+		tc.prepare_pointer_binding_write()
 		tc.fn_context.pointer_binding_value_keys[key] = [
 			pointer_binding_parameter_value(key),
 		]
@@ -46,6 +47,7 @@ fn (mut tc TypeChecker) initialize_pointer_parameter_binding(owner ScopeBindingO
 fn (mut tc TypeChecker) initialize_unknown_pointer_binding(owner ScopeBindingOwner, typ Type) {
 	key := owner.storage_key()
 	if unalias_type(typ) is Pointer && key.len > 0 {
+		tc.prepare_pointer_binding_write()
 		tc.fn_context.pointer_binding_value_keys[key] = [
 			pointer_binding_unknown_value(key),
 		]
@@ -767,7 +769,7 @@ fn (tc &TypeChecker) comptime_static_enum_name(raw_id u32) ?u32 {
 	for cur != 0 && cur !in seen {
 		seen[cur] = true
 		text := flat.source_type_name(cur)
-		mut candidates := [cur, flat.source_type_id(tc.qualify_name(text))]
+		mut candidates := [cur, tc.qualify_type_name(cur)]
 		if resolved := tc.resolve_selective_import_type_symbol(text) {
 			candidates << flat.source_type_id(resolved)
 		}
@@ -1232,7 +1234,7 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				.left_shift { i64(u64(left) << right) }
 				.right_shift {
 					typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), map[string]Type{})).name()
-					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
 				}
 				.right_shift_unsigned {
 					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(&node, 0), map[string]Type{})).source_type_id())
@@ -1402,7 +1404,7 @@ pub fn comptime_enum_integer_literal(value string) ?i64 {
 // comptime_enum_integer_division uses unsigned arithmetic for unsigned 64-bit operands.
 // typ_id is a process-wide source-spelling ID.
 pub fn comptime_enum_integer_division(left i64, right i64, typ_id u32, remainder bool) i64 {
-	if typ_id in [flat.source_type_u64, flat.source_type_usize] {
+	if typ_id in [flat.source_type_u64, flat.source_type_uint] {
 		return if remainder { i64(u64(left) % u64(right)) } else { i64(u64(left) / u64(right)) }
 	}
 	return if remainder { left % right } else { left / right }
@@ -1569,7 +1571,7 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 				.left_shift { i64(u64(left) << right) }
 				.right_shift {
 					typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).name()
-					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
 				}
 				.right_shift_unsigned {
 					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).source_type_id())
@@ -1737,7 +1739,7 @@ fn (tc &TypeChecker) comptime_static_struct_name(raw_id u32) ?u32 {
 	for cur != 0 && cur !in seen {
 		seen[cur] = true
 		text := flat.source_type_name(cur)
-		mut candidates := [cur, flat.source_type_id(tc.qualify_name(text))]
+		mut candidates := [cur, tc.qualify_type_name(cur)]
 		if resolved := tc.resolve_selective_import_type_symbol(text) {
 			candidates << flat.source_type_id(resolved)
 		}
@@ -5844,11 +5846,10 @@ pub fn (mut tc TypeChecker) check_interface_embedding_limits() bool {
 	if tc.valid_diagnostic_fast {
 		return false
 	}
-	mut embedded := map[string]bool{}
+	mut embedded := map[u32]bool{}
 	for _, embeds_id in tc.interface_embeds.ids {
-		embeds := embeds_id.map(flat.source_type_name(it))
-		for embed in embeds {
-			embedded[flat.source_type_name(tc.interface_metadata_name(flat.source_type_id(embed)))] = true
+		for embed_id in embeds_id {
+			embedded[tc.interface_metadata_name(embed_id)] = true
 		}
 	}
 	for idx in tc.top_level_idx {
@@ -5856,14 +5857,15 @@ pub fn (mut tc TypeChecker) check_interface_embedding_limits() bool {
 		if node.kind != .interface_decl {
 			continue
 		}
-		iface_name := flat.source_type_name(tc.interface_metadata_name(flat.source_type_id(node.value)))
-		if embedded[iface_name] {
+		iface_name_id := tc.interface_metadata_name(flat.source_type_id(node.value))
+		if embedded[iface_name_id] {
 			continue
 		}
 		mut embedding_path := map[u32]bool{}
-		if !tc.interface_embedding_exceeds(flat.source_type_id(iface_name), 0, mut embedding_path) {
+		if !tc.interface_embedding_exceeds(iface_name_id, 0, mut embedding_path) {
 			continue
 		}
+		iface_name := flat.source_type_name(iface_name_id)
 		decl_id, decl_pos := tc.interface_declaration_diagnostic(iface_name)
 		tc.errors << tc.make_type_error_at(.unknown_type, 'too many interface embedding levels: 101, for interface `${iface_name.all_after_last('.')}`', decl_id, decl_pos)
 		return true
@@ -6091,11 +6093,11 @@ fn (tc &TypeChecker) interface_actual_field_inner(concrete_name_id u32, field_na
 	}
 	for field in fields {
 		embedded_type := embedded_field_type(field) or { continue }
-		embedded_name := flat.source_type_name(method_type_name(unwrap_pointer(embedded_type)))
-		if embedded_name.len == 0 {
+		embedded_name_id := method_type_name(unwrap_pointer(embedded_type))
+		if embedded_name_id == 0 {
 			continue
 		}
-		if promoted := tc.interface_actual_field_inner(flat.source_type_id(embedded_name), field_name, mut seen) {
+		if promoted := tc.interface_actual_field_inner(embedded_name_id, field_name, mut seen) {
 			return promoted
 		}
 	}
@@ -6118,17 +6120,19 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 			|| tc.interface_implements_interface(clean_actual.source_type_id(), expected.source_type_id())) {
 		return false
 	}
-	actual_name := flat.source_type_name(method_type_name(unwrap_pointer(actual)))
+	actual_name_id := method_type_name(unwrap_pointer(actual))
+	actual_name := flat.source_type_name(actual_name_id)
 	actual_display := if unalias_type(actual) is Pointer {
 		'&${actual_name.all_after_last('.')}'
 	} else {
 		actual_name.all_after_last('.')
 	}
-	expected_name := flat.source_type_name(tc.interface_metadata_name(expected.source_type_id()))
+	expected_name_id := tc.interface_metadata_name(expected.source_type_id())
+	expected_name := flat.source_type_name(expected_name_id)
 	expected_display := expected_name.all_after_last('.')
 	mut missing_methods := false
-	for method in tc.interface_abstract_method_names(flat.source_type_id(expected_name)) {
-		expected_key := tc.interface_method_signature_key(flat.source_type_id(expected_name), method) or {
+	for method in tc.interface_abstract_method_names(expected_name_id) {
+		expected_key := tc.interface_method_signature_key(expected_name_id, method) or {
 			'${expected_name}.${method}'
 		}
 		if actual_name == 'char' && method == 'str'
@@ -6137,22 +6141,22 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 			missing_methods = true
 			continue
 		}
-		mut actual_key := tc.concrete_method_signature_key(flat.source_type_id(actual_name), method) or { '' }
+		mut actual_key := tc.concrete_method_signature_key(actual_name_id, method) or { '' }
 		mut actual_params := []Type{}
 		mut actual_ret := builtin_void_type
 		if actual_key.len > 0 {
 			actual_params = tc.fn_param_types[actual_key] or { []Type{} }
 			actual_ret = tc.fn_ret_types[actual_key] or { builtin_void_type }
-		} else if info := tc.resolve_generic_struct_method(flat.source_type_id(actual_name), method) {
+		} else if info := tc.resolve_generic_struct_method(actual_name_id, method) {
 			actual_key = info.name
 			actual_params = info.params
 			actual_ret = info.return_type
-		} else if info := tc.resolve_generic_sum_method(flat.source_type_id(actual_name), method) {
+		} else if info := tc.resolve_generic_sum_method(actual_name_id, method) {
 			actual_key = info.name
 			actual_params = info.params
 			actual_ret = info.return_type
 		} else if method == 'str' && tc.interface_method_is_str_requirement(expected_key)
-			&& tc.type_has_implicit_str_method(flat.source_type_id(actual_name)) {
+			&& tc.type_has_implicit_str_method(actual_name_id) {
 			continue
 		} else {
 			tc.record_error_at(kind, "`${actual_display}` doesn't implement method `${method}` of interface `${expected_display}`", id, pos)
@@ -6206,8 +6210,8 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 	if missing_methods {
 		return true
 	}
-	for field in tc.interface_field_list(flat.source_type_id(expected_name)) {
-		actual_field := tc.interface_actual_field(flat.source_type_id(actual_name), field.name) or {
+	for field in tc.interface_field_list(expected_name_id) {
+		actual_field := tc.interface_actual_field(actual_name_id, field.name) or {
 			tc.record_error_at(kind, "`${actual_display}` doesn't implement field `${field.name}` of interface `${expected_display}`", id, pos)
 			return true
 		}
@@ -8854,11 +8858,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		lhs_type = tc.resolve_expr(lhs_id, rhs_type)
 	}
 	if node.op in [.eq, .ne] {
-		if rhs_node.kind == .map_init && rhs_node.children_count == 0
-			&& unalias_type(lhs_type) is Map {
+		if rhs_node.kind == .map_init && unalias_type(lhs_type) is Map {
 			rhs_type = tc.resolve_expr(rhs_id, lhs_type)
-		} else if lhs_node.kind == .map_init && lhs_node.children_count == 0
-			&& unalias_type(rhs_type) is Map {
+		} else if lhs_node.kind == .map_init && unalias_type(rhs_type) is Map {
 			lhs_type = tc.resolve_expr(lhs_id, rhs_type)
 		}
 	}
@@ -8941,8 +8943,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	// of the aliased storage type. This is especially important for aliases of
 	// maps, arrays, pointers, and primitives: validating their unaliased type
 	// first would reject the expression before its operator method can be used.
-	if lhs_type is Alias && tc.type_has_infix_operator_method(lhs_type, node.op)
-		&& tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none {
+	// `>`, `<=` and `>=` are generated from the alias's own `<`.
+	operator_method_op := if node.op in [.gt, .le, .ge] { flat.Op.lt } else { node.op }
+	if lhs_type is Alias && tc.type_has_infix_operator_method(lhs_type, operator_method_op)
+		&& tc.infix_operator_return_type(operator_method_op, lhs_type, rhs_type) != none {
 		return
 	}
 	if node.op == .plus && is_string_concat_pair(lhs_type, rhs_type) {
@@ -9344,7 +9348,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		}
 		skip_inactive_compact_else := tc.shift_is_in_inactive_compact_else(id)
 		bit_size := if tc.node_is_in_translated_file(id) {
-			int_max(32, tc.integer_shift_bit_size(lhs_type))
+			int_max(32, tc.integer_shift_bit_size(tc.translated_promoted_shift_type(lhs_type)))
 		} else {
 			tc.integer_shift_bit_size(lhs_type)
 		}
@@ -9645,12 +9649,12 @@ fn (tc &TypeChecker) integer_shift_bit_size(typ Type) int {
 	}
 	if clean is Primitive {
 		if clean.name() == 'int' || clean.size == 0 {
-			return 32
+			return platform_int_bits()
 		}
 		return int(clean.size)
 	}
 	if clean is ISize || clean is USize {
-		return 64
+		return platform_int_bits()
 	}
 	return 0
 }
@@ -12378,7 +12382,7 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 			continue
 		}
 		receiver := tc.sql_orm_call_receiver_type(tokens, i) or { continue }
-		method := tc.concrete_method_signature_key(flat.source_type_id(unwrap_all_pointers(receiver).name()), tokens[i]) or {
+		method := tc.concrete_method_signature_key(unwrap_all_pointers(receiver).source_type_id(), tokens[i]) or {
 			continue
 		}
 		if method.all_before_last('.') !in tc.type_aliases.ids {
@@ -13874,7 +13878,7 @@ fn (tc &TypeChecker) dynamic_sql_field_pos(query_id flat.NodeId, field_name stri
 }
 
 fn (tc &TypeChecker) sql_struct_field_type(owner Type, field_name string) ?Type {
-	return tc.sql_table_field_type(flat.source_type_id(unalias_type(unwrap_pointer(owner)).name()), field_name)
+	return tc.sql_table_field_type(unalias_type(unwrap_pointer(owner)).source_type_id(), field_name)
 }
 
 fn (tc &TypeChecker) sql_table_field_type(struct_name_id u32, field_name string) ?Type {
@@ -14362,6 +14366,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		}
 		if child.kind == .ident && (child.is_mut || child.typ_text() == 'atomic') && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
+				tc.prepare_mut_local_owner_write()
 				tc.fn_context.mut_local_owners[child.value] = owner
 				if base := captured_mut_params[child.value] {
 					// A captured mutable parameter retains its caller-owned reference.
@@ -16060,8 +16065,10 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			tc.fn_context.mut_param_base_types.delete(mut_binding_name)
 		}
 		if had_mut_owner {
+			tc.prepare_mut_local_owner_write()
 			tc.fn_context.mut_local_owners[mut_binding_name] = saved_mut_owner
 		} else {
+			tc.prepare_mut_local_owner_write()
 			tc.fn_context.mut_local_owners.delete(mut_binding_name)
 		}
 	}
@@ -16898,6 +16905,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		// Record the binding so reads through it are treated as mutable dependencies.
 		if owner.storage_key().len > 0 && tc.expr_is_unsafe_reference_alias(rhs_id)
 			&& (clean_decl_type is Map || clean_decl_type is Array || clean_decl_type is ArrayFixed) {
+			tc.prepare_unsafe_alias_owner_write()
 			tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()] = true
 		}
 		if lhs_node.value != '_' && lhs_is_mut {
@@ -20071,6 +20079,7 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 					tc.fn_context.mut_param_base_types.delete(lhs.value)
 				}
 			}
+			tc.prepare_mut_local_owner_write()
 			tc.fn_context.mut_local_owners[lhs.value] = owner
 		}
 		tc.register_synth_type(lhs_id, typ)
@@ -20234,6 +20243,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	mut ownership_lhs_types := []Type{}
 	mut ownership_rhs_types := []Type{}
 	mut smartcast_write_keys := []string{}
+	mut smartcast_descendant_write_keys := []string{}
 	mut option_assignment_smartcasts := []LocalBinding{}
 	assignment_is_translated := tc.node_is_from_translated_file(node)
 	is_cross_assignment := node.op == .assign && node.children_count > 2
@@ -20336,9 +20346,10 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		lhs_type := if unknown_assign_ident {
 			builtin_void_type
 		} else if node.kind == .index_assign {
-			tc.resolve_index_lvalue_type(lhs_id, node.op)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_index_lvalue_type(lhs_id,
+				node.op))
 		} else {
-			tc.resolve_lvalue_type(lhs_id)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_lvalue_type(lhs_id))
 		}
 		if lhs_node.kind == .selector && lhs_type is Void && lhs_node.children_count > 0 {
 			base_id := tc.a.child(&lhs_node, 0)
@@ -20347,8 +20358,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
-		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
+		expected_type := tc.narrowed_sum_assignment_expected_type(node.op, lhs_id, rhs_id,
+			source_rhs_type, tc.assignment_expected_type(lhs_id, lhs_type))
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		saved_mut_binding_value_id := tc.mut_binding_value_id
 		if node.op == .assign && lhs_node.kind == .ident && lhs_node.value != '_'
@@ -20680,7 +20692,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 					name: lhs_key
 					typ:  smartcast
 				}
-			} else if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
+			} else if tc.assignment_preserves_smartcast(node.op, lhs_id, rhs_id, source_rhs_type) {
+				smartcast_descendant_write_keys << lhs_key
+			} else {
 				smartcast_write_keys << lhs_key
 			}
 		}
@@ -20688,6 +20702,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	}
 	for key in smartcast_write_keys {
 		tc.invalidate_smartcasts_for_write_key(key)
+	}
+	for key in smartcast_descendant_write_keys {
+		tc.invalidate_smartcast_descendants_for_write_key(key)
 	}
 	for smartcast in option_assignment_smartcasts {
 		tc.smartcasts[smartcast.name] = smartcast.typ
@@ -20712,19 +20729,22 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 		return
 	}
 	mut smartcast_write_keys := []string{}
+	mut smartcast_descendant_write_keys := []string{}
 	mut option_assignment_smartcasts := []LocalBinding{}
 	mut i := 0
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_type := if node.kind == .index_assign {
-			tc.resolve_index_lvalue_type(lhs_id, node.op)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_index_lvalue_type(lhs_id,
+				node.op))
 		} else {
-			tc.resolve_lvalue_type(lhs_id)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_lvalue_type(lhs_id))
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
-		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
+		expected_type := tc.narrowed_sum_assignment_expected_type(node.op, lhs_id, rhs_id,
+			source_rhs_type, tc.assignment_expected_type(lhs_id, lhs_type))
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		tc.check_node_with_expected_context(rhs_id, expected_type)
 		_ = tc.resolve_expr(rhs_id, expected_type)
@@ -20749,7 +20769,9 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 					name: lhs_key
 					typ:  smartcast
 				}
-			} else if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
+			} else if tc.assignment_preserves_smartcast(node.op, lhs_id, rhs_id, source_rhs_type) {
+				smartcast_descendant_write_keys << lhs_key
+			} else {
 				smartcast_write_keys << lhs_key
 			}
 		}
@@ -20757,6 +20779,9 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 	}
 	for key in smartcast_write_keys {
 		tc.invalidate_smartcasts_for_write_key(key)
+	}
+	for key in smartcast_descendant_write_keys {
+		tc.invalidate_smartcast_descendants_for_write_key(key)
 	}
 	for smartcast in option_assignment_smartcasts {
 		tc.smartcasts[smartcast.name] = smartcast.typ
@@ -20776,6 +20801,7 @@ fn (mut tc TypeChecker) update_unsafe_reference_alias_assignment(lhs_id flat.Nod
 	if key.len == 0 {
 		return
 	}
+	tc.prepare_unsafe_alias_owner_write()
 	if tc.expr_is_unsafe_reference_alias(rhs_id) {
 		tc.fn_context.unsafe_reference_alias_owners[key] = true
 	} else {
@@ -20798,6 +20824,7 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 				tc.invalidate_all_pointer_binding_aliases()
 				return
 			}
+			tc.prepare_pointer_binding_write()
 			tc.fn_context.pointer_binding_value_keys[target_key] = values
 		}
 		return
@@ -20810,6 +20837,7 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 	values := tc.pointer_binding_alias_values(left_key, rhs_id, lhs_type, rhs_alias_state) or {
 		return
 	}
+	tc.prepare_pointer_binding_write()
 	tc.fn_context.pointer_binding_value_keys[left_key] = values
 }
 
@@ -20832,6 +20860,7 @@ fn (tc &TypeChecker) indirect_pointer_lvalue_storage_keys(id flat.NodeId) ?[]str
 }
 
 fn (mut tc TypeChecker) invalidate_all_pointer_binding_aliases() {
+	tc.prepare_pointer_binding_write()
 	for key, _ in tc.fn_context.pointer_binding_value_keys {
 		tc.fn_context.pointer_binding_value_keys[key] = [
 			pointer_binding_unknown_value(key),
@@ -20853,6 +20882,7 @@ fn (mut tc TypeChecker) invalidate_pointer_binding_alias_after_mut_call(id flat.
 	if key.len == 0 {
 		return
 	}
+	tc.prepare_pointer_binding_write()
 	tc.fn_context.pointer_binding_value_keys[key] = [
 		pointer_binding_unknown_value(key),
 	]
@@ -20867,6 +20897,7 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 		return
 	}
 	values := tc.pointer_binding_alias_values(left_key, rhs_id, typ, tc.fn_context.pointer_binding_value_keys) or { return }
+	tc.prepare_pointer_binding_write()
 	tc.fn_context.pointer_binding_value_keys[left_key] = values
 }
 
@@ -20925,6 +20956,23 @@ fn (tc &TypeChecker) pointer_binding_ident_values(owner ScopeBindingOwner, state
 		return []string{}
 	}
 	return (state[key] or { [tc.pointer_binding_storage_value(owner)] }).clone()
+}
+
+// share_pointer_binding_value_keys keeps a read-only branch snapshot of the current map.
+@[inline]
+fn (mut tc TypeChecker) share_pointer_binding_value_keys() map[string][]string {
+	tc.fn_context.pointer_binding_values_shared = true
+	return tc.fn_context.pointer_binding_value_keys
+}
+
+// prepare_pointer_binding_write detaches branch snapshots before replacing a value list.
+@[inline]
+fn (mut tc TypeChecker) prepare_pointer_binding_write() {
+	if tc.fn_context.pointer_binding_values_shared {
+		tc.fn_context.pointer_binding_value_keys =
+			snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		tc.fn_context.pointer_binding_values_shared = false
+	}
 }
 
 // snapshot_pointer_binding_value_keys copies a branch's map while sharing its immutable value lists.
@@ -21083,6 +21131,22 @@ fn apply_pointer_binding_value_state_delta(before map[string][]string, after map
 		}
 	}
 	return result
+}
+
+// share_unsafe_alias_owners keeps a read-only branch snapshot until the next update.
+@[inline]
+fn (mut tc TypeChecker) share_unsafe_alias_owners() map[string]bool {
+	tc.fn_context.unsafe_alias_owners_shared = true
+	return tc.fn_context.unsafe_reference_alias_owners
+}
+
+// prepare_unsafe_alias_owner_write detaches active branch snapshots before a map update.
+@[inline]
+fn (mut tc TypeChecker) prepare_unsafe_alias_owner_write() {
+	if tc.fn_context.unsafe_alias_owners_shared {
+		tc.fn_context.unsafe_reference_alias_owners = clone_unsafe_alias_owners(tc.fn_context.unsafe_reference_alias_owners)
+		tc.fn_context.unsafe_alias_owners_shared = false
+	}
 }
 
 fn intersect_unsafe_reference_alias_states(states []map[string]bool, fallback map[string]bool) map[string]bool {
@@ -21298,7 +21362,7 @@ fn (tc &TypeChecker) assignment_rhs_is_void_selector(rhs_id flat.NodeId) bool {
 		return false
 	}
 	base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&rhs, 0)))
-	if base_type is Struct && flat.TypeTextList{ ids: tc.embedded_field_candidates(base_type.source_type_id(), rhs.value) }.names().len > 1 {
+	if base_type is Struct && tc.embedded_field_candidates(base_type.source_type_id(), rhs.value).len > 1 {
 		return true
 	}
 	return base_type is Void || resolved is Void

@@ -134,10 +134,6 @@ fn parse_arguments(args []string) Config {
 			}
 			'-os' {
 				platform_str := cmdline.option(current_args, '-os', '')
-				if platform_str == 'cross' {
-					eprintln('`v doc -os cross` is not supported yet.')
-					exit(1)
-				}
 				selected_platform := doc.platform_from_string(platform_str) or {
 					eprintln(err.msg())
 					exit(1)

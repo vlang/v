@@ -154,10 +154,10 @@ fn test_parser_canonicalizes_repeated_node_text() {
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
 	p.parse_into(path)
-	mut pointers := []usize{}
+	mut pointers := []uint{}
 	for idx in 0 .. p.a.nodes.len {
 		if p.a.nodes[idx].value == 'repeated' {
-			pointers << usize(p.a.nodes[idx].value.str)
+			pointers << uint(p.a.nodes[idx].value.str)
 		}
 	}
 	assert pointers.len >= 3

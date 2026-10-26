@@ -4,6 +4,176 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Upstream integration, 2026-10-25
+
+A fresh comparison of the merged implementation against upstream
+`fca9fad345075a468aef230453816841ebd141b7` uses **7.8398% fewer retired
+instructions**, preserving the requested 7% improvement. Both compilers use the same self-built
+seed and direct `-prod` Apple Clang recipe **without PGO**. This comparison is separate from
+the historical C12 PGO result below.
+
+| Median metric | Updated upstream | Merged optimization |
+| --- | ---: | ---: |
+| Retired instructions | 64,435,580,516.5 | 59,383,971,240 |
+| Instructions/parsed line | 115,065.59 | 106,044.70 |
+| CPU cycles, billions | 27.1854 | 24.8506 |
+| Peak resident memory, MiB | 1,442.68 | 1,122.41 |
+| Elapsed time, ms | 8,711.12 | 7,634.60 |
+
+One warmup per role precedes ten alternating measured pairs. All 22 runs exit successfully with
+exactly one positive retired-instruction counter and byte-identical generated C. The common C
+passes Clang's Objective-C syntax check before the measured pairs. **0/10 pairs regress**;
+the median paired instruction difference is `-4,967,599,700`. Elapsed time and cycles are
+contextual measurements under shared host load, without a controlled latency claim.
+
+The fixed fixture, all 8,498 tracked file hashes, and the parsed inventory remain unchanged:
+**559,990 physical lines in 562 parsed `.v` files**, with no parsed `.vh` files. Both roles run
+from the fixture directory using the same executable and output paths. The fixture executable is
+restored after measuring. A common `V_MACOS_V3_VHASH` controls only build metadata; both roles use
+`SOURCE_DATE_EPOCH=0`, `V_MACOS_V3_NO_FALLBACK=1`, and no inherited compiler overrides.
+
+Both production builds use this recipe, outside the measured workload:
+
+```sh
+env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
+  VJOBS=4 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  ./v -prod -cc /usr/bin/clang -gc none -no-memory-limit -prealloc \
+  -compile-backend fastc -nocache -o ./v-perf cmd/v
+```
+
+Each role is installed as `./v` in the fixed fixture directory, then measured serially with:
+
+```sh
+env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  V_MACOS_V3_VHASH=2d1367e589ed30c03325e586a8ddfd3bc96c8c3d \
+  /usr/bin/time -l -o "$run_log" \
+  ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
+  -o /Users/alex/code/v-speed-7pct-20261023/pr-conflicts-20261025/output.c cmd/v
+```
+
+The upstream production SHA-256 is
+`b9e6b3e0daabe0ae68b86d54e0949b66c244eb731aeb9051d33e27562dcfb922`;
+the merged production SHA-256 is
+`cfd1597ab0b3d04205424f919ec32220cb57e20f39f5e566c98478a72fbc40ce`.
+The common generated C SHA-256 is
+`0e690ac8d47aea18e67aa4ae7a929bd6ef6f2df06a42d149853f4a26dd1239be`.
+
+Evidence is retained in `/Users/alex/code/v-speed-7pct-20261023/pr-conflicts-20261025/`:
+`upstream-build/` and `merged-build/` record exact sources, seed, flags, toolchain, and binaries;
+`measurement/` retains commands, effective environment, inventories, raw logs, all samples,
+summary, independent audit, output syntax check, and fixture restoration proof. Two test-only
+follow-ups replace deprecated `usize` fixture spellings with `uint`; their exact diffs and passing
+reruns are retained in `fixture-uint-followup/`. No assertions or production build inputs change.
+
+## Compiler hot paths, historical C12 focused validation
+
+The corrected C12 production compiler uses **8.0268% fewer retired instructions** on the
+fixed self-compilation workload with `VJOBS=1`, meeting the requested 7% improvement.
+It uses **85,064.49 instructions per parsed line**. These are fresh measurements of the
+exact final production binary; default-worker performance has not been measured for C12.
+
+The comparison baseline is compiler revision `b5bcdbb224752525c0a38aaccd3487a78641e269`.
+
+The changes reuse canonical type references, source spellings, function signatures, and immutable
+worker metadata. They avoid repeated declaration walks, name qualification, parameter copies, and
+temporary strings in checking, transforms, markused, and C generation. Snapshot, cache lifetime,
+recursive lookup, and borrowed-storage tests cover these optimizations. C12 also corrects primitive
+type lookup in `checker_tail_stmt.v`, fixing the FastC bootstrap regression found in C11.
+
+The fixture remains commit `2d1367e589ed30c03325e586a8ddfd3bc96c8c3d`: **559,990 physical
+lines in 562 parsed `.v` files**, with no parsed `.vh` files. Its 8,498 tracked files match the
+original fixture manifest. The SSD restoration has no `.git` directory, which changes five build
+metadata literals relative to historical generated C. Within this new comparison, both roles and
+all 22 runs produce byte-identical C; that output passes Clang's Objective-C syntax check.
+
+The production build preserves the original compatible seed, production flags, and Apple Clang
+toolchain recipe. It reuses the retained canonical merged PGO profile, originally trained with
+default and serial workers. C12 does not claim a newly trained profile. An exact copy of the main
+compiler input and the existing `-path` option preserve the `c__` and `bench__` profile namespaces.
+Imported sources and the baked resource root resolve to `/Users/alex/code/v`; production use does
+not require the old RAM source mounts. Distinct build paths and profile reuse are recorded.
+
+One warmup per role precedes ten alternating measured pairs (`AB`, `BA`, and so on). All 22
+runs finish successfully, each with exactly one positive retired-instruction counter. Warmups are
+excluded from the medians. Separate unmeasured verbose runs verify identical parsed-file hashes
+and line counts. The executable, fixture, working directory, input flags, and output path match
+between roles; only one benchmark process runs at a time under the measurement lock.
+
+| Median metric | Baseline, VJOBS=1 | C12 production, VJOBS=1 |
+| --- | ---: | ---: |
+| Retired instructions, billions | 51.7926 | 47.6353 |
+| Instructions/parsed line | 92,488.37 | 85,064.49 |
+| CPU cycles, billions | 27.0106 | 24.9303 |
+| Peak resident memory, MiB | 1,431.49 | 1,111.36 |
+| Elapsed seconds | 23.8192 | 20.7233 |
+
+The median paired instruction difference is `-4,203,069,670.0`; **0/10 pairs
+regress**. Concurrent tests and other host activity were allowed. Elapsed time and cycles describe
+uncontrolled host load and support no controlled latency claim.
+
+At the user's explicit request, `skip full suite create pr`, the full suite was stopped after **297
+passed, 7 failed, and 1 skipped out of 305 observed tests** (exit status -15). Of 4,305 scheduled
+tests, **4,000 remain unobserved**. The user waived full-suite completion; this result does not
+establish a full-suite pass.
+All 7 observed failures have independently verified strict-baseline classifications; 7 reuse
+disclosed historical baseline replays with fresh input and diagnostic equivalence checks. No new
+regressions were found in the observed results; the 4,000 unobserved tests have no such conclusion.
+The exact measured Clang production compiler separately passes 1,855 compiler-error cases
+(five skipped; 1,860 total), eight define cases, 115 C-generation tests, FastC bootstrap, and
+outside-checkout checks, plus reflection, optional-call ABI, and C-name tests in both normal
+and preallocated modes (six direct checks).
+The measured production binary ran the focused checks and observed full-suite prefix.
+After the build and both outside-checkout checks pass, the production artifact is installed
+at `./v`. The focused tests, performance comparison, and observed full-suite prefix use that exact
+production identity. The installation record retains its predecessor and binds all input proofs.
+The frozen source has 9,222 V/VH files and 82 task files: 30 implementation files, 51 tests,
+and the type ownership README.
+The final changed-file set has 83 files when this performance document is included. No test
+expectations are changed to hide a regression.
+
+Production and performance evidence uses the frozen 82-file task source set. The subsequent PR
+commit `1d10482791e891852711f332ff84c16bc670ebda` separately removes 119 trace-only lines from nine
+new tests. All nine cleaned tests pass with 49 assertions preserved. This test-only follow-up is
+validated separately from the frozen production evidence; the final PR contains those cleaned tests.
+
+The measured command, from the fixed fixture directory, is:
+
+```sh
+env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  /usr/bin/time -l -o "$run_log" \
+  ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
+  -o /Volumes/v-speed-7pct-20261023/fixed-self.c cmd/v
+```
+
+The logical output path above links to a physical SSD task file. Outside-checkout validation denies
+access to `/Volumes` for the compiler and its child processes. The benchmark preserves the old
+output argument for path matching. The fixture's baseline executable is restored after measuring.
+
+The baseline executable SHA-256 is
+`ef0a6a621fe4caf10c9e0d6e5f1f95175c3c83849e20e510f8531bf902bdb5d9`;
+the measured C12 production executable SHA-256 is
+`48bf63d71323b662f3f89205084bec864b15d51e31bd37681fcc0e3e239b25e6`;
+the observed full-suite-prefix compiler SHA-256 is
+`48bf63d71323b662f3f89205084bec864b15d51e31bd37681fcc0e3e239b25e6`.
+The common generated C SHA-256 is
+`ee07cbaf2f2293587981aab4f9e14c07a64d1f6ae540d3437af613f9e94aaf90`.
+The unchanged fixture manifest SHA-256 is
+`f53a9b162657ba667fde1d8a00cd6f59c0f7e6c7f847985894d61189122a2966`.
+
+Evidence is retained under `/Users/alex/code/v-speed-7pct-20261023/`, including:
+
+- `candidate12-final-focused-acceptance-gate.json` and its hash-bound independent audits;
+- `candidate12-root-production-installation.json` with exact installed and retained binary hashes;
+- `candidate12-final-source-hashes.json` and the complete frozen source proof;
+- `candidate12-root-path-production-build/metadata.json`, captured C, flags, and profile hashes;
+- `candidate12-root-path-production-confirmed-serial` timing, inventory, output, and summary files;
+- the serial output syntax check, focused logs, partial-suite stop proof, and explicit user waiver.
+
+Incomplete attempts and superseded candidates remain separate and are excluded from these
+statistics. The following sections are historical comparisons with different compiler baselines.
+
 ## Compact semantic type descriptors
 
 `types.Type` is again **16 bytes on 64-bit targets**, down from the tagged-union revision's
@@ -26,7 +196,7 @@ The compiler build directories differed; measured executable, input, output, and
 paths matched. The measured candidate combines compact types and hot-path changes in the retained
 `compact-v76` source snapshot. Subsequent FastC correctness fixes and master integration, including
 atomic cache portability changes, are outside this measurement. The final reviewed revision has
-not been benchmarked.
+not been benchmarked in that earlier comparison.
 
 One warmup per role preceded ten alternating measured pairs with `VJOBS=1`. All 22 runs
 succeeded, each with one positive retired-instruction counter and byte-identical generated C.
@@ -43,8 +213,9 @@ The common output passed Apple Clang's Objective-C syntax check with the fixture
 The candidate used **8.81% fewer instructions**, with **0/10 regressing pairs** and a median
 paired difference of `-4,934,100,840.5` instructions. Peak memory increased by about 46 MiB.
 Elapsed time and cycles are contextual shared-host measurements, not controlled latency claims.
-The **90,000 instructions/line target remains unmet**: it requires `50,399,100,000` instructions
-on this unchanged fixture. Keep the fixture and denominator fixed when checking future changes.
+That comparison did not meet the **90,000 instructions/line target**, which requires
+`50,399,100,000` instructions on this unchanged fixture. Keep the fixture and denominator fixed
+when checking future changes.
 
 The baseline executable SHA-256 is
 `56b5b8210947b185aa7e73585ba33f4df072dabd2d0e5403ed8cbcc7db0e82bd`;

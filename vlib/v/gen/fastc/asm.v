@@ -488,6 +488,7 @@ fn fastc_asm_lower_template(source string, arch string, aliases map[string]Fastc
 					flat.source_type_int,
 					flat.source_type_i64,
 					flat.source_type_u64,
+					flat.source_type_uint,
 					flat.source_type_usize,
 					flat.source_type_isize,
 				] {
@@ -652,7 +653,7 @@ fn fastc_asm_intel_memory_size(typ u32) string {
 			'dword ptr '
 		}
 		flat.source_type_int, flat.source_type_i64, flat.source_type_u64, flat.source_type_isize,
-		flat.source_type_usize, flat.source_type_f64 {
+		flat.source_type_uint, flat.source_type_usize, flat.source_type_f64 {
 			'qword ptr '
 		}
 		else { '' }

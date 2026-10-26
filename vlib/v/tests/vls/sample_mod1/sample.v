@@ -44,7 +44,7 @@ pub type PublicAlias1_1 = u8 | u16 | int
 pub type PublicAlias1_2 = PublicStruct1
 
 // PublicCB is a funtion type
-pub type PublicCB = fn (msg &char, arg usize)
+pub type PublicCB = fn (msg &char, arg uint)
 
 // public_fn1 is a public function, return string
 pub fn public_fn1(val int) string {
@@ -85,7 +85,7 @@ type PrivateAlias1_1 = u8 | u16 | int
 
 type PrivateAlias1_2 = PublicStruct1
 
-type PrivateCB = fn (msg &char, arg usize)
+type PrivateCB = fn (msg &char, arg uint)
 
 fn private_fn1(val int) string {
 	return '${val}'

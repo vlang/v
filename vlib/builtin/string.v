@@ -1512,7 +1512,7 @@ pub fn (s string) index_(p string) int {
 	if p.len == 0 {
 		return 0
 	}
-	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
+	if p.len > s.len || uint(s.str) <= 0xFFFF || uint(p.str) <= 0xFFFF {
 		return -1
 	}
 	if p.len == 1 {
@@ -1818,7 +1818,7 @@ pub fn (s string) contains_any_substr(substrs []string) bool {
 // starts_with returns `true` if the string starts with `p`.
 @[direct_array_access; inline]
 pub fn (s string) starts_with(p string) bool {
-	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
+	if p.len > s.len || uint(s.str) <= 0xFFFF || uint(p.str) <= 0xFFFF {
 		return false
 	}
 	return string_content_equal(s.str, p.str, p.len)
@@ -1827,7 +1827,7 @@ pub fn (s string) starts_with(p string) bool {
 // ends_with returns `true` if the string ends with `p`.
 @[direct_array_access; inline]
 pub fn (s string) ends_with(p string) bool {
-	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
+	if p.len > s.len || uint(s.str) <= 0xFFFF || uint(p.str) <= 0xFFFF {
 		return false
 	}
 	return string_content_equal(unsafe { s.str + s.len - p.len }, p.str, p.len)

@@ -12,6 +12,18 @@ import time
 
 pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url string) !
 
+// A callback abort is application control flow, not a failed transport that
+// can be replayed. Keep its original error until Request.do returns it.
+const progress_callback_error_code = -20015
+
+struct ProgressCallbackError {
+	cause IError @[required]
+}
+
+fn (err ProgressCallbackError) msg() string { return err.cause.msg() }
+
+fn (_ ProgressCallbackError) code() int { return progress_callback_error_code }
+
 pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64) !
 
 pub type RequestProgressBodyFn = fn (request &Request, chunk []u8, body_read_so_far u64, body_expected_size u64, status_code int) !
@@ -87,37 +99,37 @@ fn (mut req Request) free() {
 		for i := 0; i < req.header.cur_pos; i++ {
 			mut key := req.header.data[i].key
 			mut value := req.header.data[i].value
-			key_ptr := u64(usize(key.str))
+			key_ptr := u64(uint(key.str))
 			if key_ptr !in freed_ptrs {
 				key.free()
 				freed_ptrs[key_ptr] = true
 			}
-			value_ptr := u64(usize(value.str))
+			value_ptr := u64(uint(value.str))
 			if value_ptr !in freed_ptrs {
 				value.free()
 				freed_ptrs[value_ptr] = true
 			}
 		}
 		mut host := req.host
-		host_ptr := u64(usize(host.str))
+		host_ptr := u64(uint(host.str))
 		if host_ptr !in freed_ptrs {
 			host.free()
 			freed_ptrs[host_ptr] = true
 		}
 		mut data := req.data
-		data_ptr := u64(usize(data.str))
+		data_ptr := u64(uint(data.str))
 		if data_ptr !in freed_ptrs {
 			data.free()
 			freed_ptrs[data_ptr] = true
 		}
 		mut url := req.url
-		url_ptr := u64(usize(url.str))
+		url_ptr := u64(uint(url.str))
 		if url_ptr !in freed_ptrs {
 			url.free()
 			freed_ptrs[url_ptr] = true
 		}
 		mut user_agent := req.user_agent
-		user_agent_ptr := u64(usize(user_agent.str))
+		user_agent_ptr := u64(uint(user_agent.str))
 		if user_agent_ptr !in freed_ptrs {
 			user_agent.free()
 			freed_ptrs[user_agent_ptr] = true
@@ -127,25 +139,25 @@ fn (mut req Request) free() {
 		// there is no port to strip. The freed_ptrs guard is what keeps that
 		// from being a double free, here as for every other field.
 		mut remote_addr := req.remote_addr
-		remote_addr_ptr := u64(usize(remote_addr.str))
+		remote_addr_ptr := u64(uint(remote_addr.str))
 		if remote_addr_ptr !in freed_ptrs {
 			remote_addr.free()
 			freed_ptrs[remote_addr_ptr] = true
 		}
 		mut verify := req.verify
-		verify_ptr := u64(usize(verify.str))
+		verify_ptr := u64(uint(verify.str))
 		if verify_ptr !in freed_ptrs {
 			verify.free()
 			freed_ptrs[verify_ptr] = true
 		}
 		mut cert := req.cert
-		cert_ptr := u64(usize(cert.str))
+		cert_ptr := u64(uint(cert.str))
 		if cert_ptr !in freed_ptrs {
 			cert.free()
 			freed_ptrs[cert_ptr] = true
 		}
 		mut cert_key := req.cert_key
-		cert_key_ptr := u64(usize(cert_key.str))
+		cert_key_ptr := u64(uint(cert_key.str))
 		if cert_key_ptr !in freed_ptrs {
 			cert_key.free()
 			freed_ptrs[cert_key_ptr] = true
@@ -292,7 +304,10 @@ pub fn (req &Request) do() !Response {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
-		qresp := req.method_and_url_to_response(method, rurl, data, header)!
+		qresp := req.method_and_url_to_response(method, rurl, data, header) or {
+			if err is ProgressCallbackError { return err.cause }
+			return err
+		}
 		resp = qresp
 		if !req.allow_redirect {
 			break
@@ -529,6 +544,7 @@ fn (req &Request) http_do(host string, method Method, path string, data string, 
 	host_name, port := net.split_address(host)!
 	s := req.build_request_headers_with(method, host_name, port, 80, path, data, header)!
 	mut client := net.dial_tcp(host)!
+	defer { client.close() or {} }
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
 	// TODO: this really needs to be exposed somehow
@@ -539,7 +555,6 @@ fn (req &Request) http_do(host string, method Method, path string, data string, 
 		eprintln('')
 	}
 	response_data := req.read_all_from_client_connection(client)!
-	client.close()!
 	response_text := response_data.data.bytestr()
 	$if trace_http_response ? {
 		eprint('< ')
@@ -831,7 +846,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			status_code = http_line.all_after(' ').all_before(' ').int()
 		}
 		if req.on_progress != unsafe { nil } {
-			req.on_progress(req, bchunk, u64(new_len))!
+			req.on_progress(req, bchunk, u64(new_len)) or { return ProgressCallbackError{ cause: err } }
 		}
 		if headers_end < 0 {
 			unsafe { header_buf.write_ptr(bp, len) }
@@ -892,10 +907,10 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			progress_body_so_far = chunked_body_tracker.decoded_len
 			if req.on_progress_body != unsafe { nil } && dechunked.len > 0 {
 				req.on_progress_body(req, dechunked, progress_body_so_far, expected_size,
-					status_code)!
+					status_code) or { return ProgressCallbackError{ cause: err } }
 			}
 		} else if req.on_progress_body != unsafe { nil } {
-			req.on_progress_body(req, bchunk, progress_body_so_far, expected_size, status_code)!
+			req.on_progress_body(req, bchunk, progress_body_so_far, expected_size, status_code) or { return ProgressCallbackError{ cause: err } }
 		}
 		if headers_end < 0 || req.stop_copying_limit <= 0 {
 			unsafe { content.write_ptr(bp, len) }
@@ -1387,5 +1402,6 @@ fn is_no_need_retry_error(err_code int) bool {
 		net.err_connect_timed_out.code(),
 		net.err_timed_out_code,
 		transport_err_unsafe_retry,
+		progress_callback_error_code,
 	]
 }

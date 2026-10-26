@@ -356,7 +356,7 @@ fn C.mbedtls_ecdsa_init(ctx &C.mbedtls_ecdsa_context)
 
 fn C.mbedtls_ecdsa_free(ctx &C.mbedtls_ecdsa_context)
 
-fn C.mbedtls_ecdsa_genkey(ctx &C.mbedtls_ecdsa_context, gid int, f_rng fn (voidptr, &u8, usize) int, p_rng voidptr) int
+fn C.mbedtls_ecdsa_genkey(ctx &C.mbedtls_ecdsa_context, gid int, f_rng fn (voidptr, &u8, uint) int, p_rng voidptr) int
 
 // mbedtls_ecdsa_write_signature/read_signature operate on a whole context
 // (not bare grp/d/Q like the lower-level mbedtls_ecdsa_sign/verify) and
@@ -373,9 +373,9 @@ fn C.mbedtls_ecdsa_genkey(ctx &C.mbedtls_ecdsa_context, gid int, f_rng fn (voidp
 // fails -- which it always does for MBEDTLS_MD_NONE (0), since md.c's own
 // switch has no case for it. PrivateKey.sign() (ecdsa_notd_use_openssl.v)
 // relies on this: it never calls write_signature with md_alg 0.
-fn C.mbedtls_ecdsa_write_signature(ctx &C.mbedtls_ecdsa_context, md_alg int, hash &u8, hlen usize, sig &u8, sig_size usize, slen &usize, f_rng fn (voidptr, &u8, usize) int, p_rng voidptr) int
+fn C.mbedtls_ecdsa_write_signature(ctx &C.mbedtls_ecdsa_context, md_alg int, hash &u8, hlen uint, sig &u8, sig_size uint, slen &uint, f_rng fn (voidptr, &u8, uint) int, p_rng voidptr) int
 
-fn C.mbedtls_ecdsa_read_signature(ctx &C.mbedtls_ecdsa_context, hash &u8, hlen usize, sig &u8, slen usize) int
+fn C.mbedtls_ecdsa_read_signature(ctx &C.mbedtls_ecdsa_context, hash &u8, hlen uint, sig &u8, slen uint) int
 
 fn C.mbedtls_ecp_group_init(grp &C.mbedtls_ecp_group)
 
@@ -387,9 +387,9 @@ fn C.mbedtls_ecp_point_init(pt &C.mbedtls_ecp_point)
 
 fn C.mbedtls_ecp_point_free(pt &C.mbedtls_ecp_point)
 
-fn C.mbedtls_ecp_point_write_binary(grp &C.mbedtls_ecp_group, pt &C.mbedtls_ecp_point, format int, olen &usize, buf &u8, buflen usize) int
+fn C.mbedtls_ecp_point_write_binary(grp &C.mbedtls_ecp_group, pt &C.mbedtls_ecp_point, format int, olen &uint, buf &u8, buflen uint) int
 
-fn C.mbedtls_ecp_point_read_binary(grp &C.mbedtls_ecp_group, pt &C.mbedtls_ecp_point, buf &u8, ilen usize) int
+fn C.mbedtls_ecp_point_read_binary(grp &C.mbedtls_ecp_group, pt &C.mbedtls_ecp_point, buf &u8, ilen uint) int
 
 fn C.mbedtls_ecp_point_cmp(p &C.mbedtls_ecp_point, q &C.mbedtls_ecp_point) int
 
@@ -412,18 +412,18 @@ fn C.mbedtls_ecp_set_public_key(grp_id int, key &C.mbedtls_ecdsa_context, q &C.m
 // the big-endian private scalar `d`, then rejects it via
 // mbedtls_ecp_check_privkey unless it lies in `[1, curve_order-1]`. It does
 // NOT compute the public point -- call mbedtls_ecp_keypair_calc_public next.
-fn C.mbedtls_ecp_read_key(grp_id int, key &C.mbedtls_ecdsa_context, buf &u8, buflen usize) int
+fn C.mbedtls_ecp_read_key(grp_id int, key &C.mbedtls_ecdsa_context, buf &u8, buflen uint) int
 
 // mbedtls_ecp_keypair_calc_public computes and stores `Q = d * G` for a
 // keypair whose group and private scalar are already set. `f_rng` is
 // required (used for scalar-multiplication blinding, not for the key itself).
-fn C.mbedtls_ecp_keypair_calc_public(key &C.mbedtls_ecdsa_context, f_rng fn (voidptr, &u8, usize) int, p_rng voidptr) int
+fn C.mbedtls_ecp_keypair_calc_public(key &C.mbedtls_ecdsa_context, f_rng fn (voidptr, &u8, uint) int, p_rng voidptr) int
 
 fn C.mbedtls_mpi_init(x &C.mbedtls_mpi)
 
 fn C.mbedtls_mpi_free(x &C.mbedtls_mpi)
 
-fn C.mbedtls_mpi_write_binary(x &C.mbedtls_mpi, buf &u8, buflen usize) int
+fn C.mbedtls_mpi_write_binary(x &C.mbedtls_mpi, buf &u8, buflen uint) int
 
 fn C.mbedtls_mpi_cmp_mpi(x &C.mbedtls_mpi, y &C.mbedtls_mpi) int
 
@@ -432,18 +432,18 @@ fn C.mbedtls_mpi_cmp_mpi(x &C.mbedtls_mpi, y &C.mbedtls_mpi) int
 // directly from bare grp/d/Q -- the lower-level API, not the stateful
 // mbedtls_ecdh_context one, since this module never needs to hold ECDH
 // state across calls the way a TLS handshake would.
-fn C.mbedtls_ecdh_compute_shared(grp &C.mbedtls_ecp_group, z &C.mbedtls_mpi, q &C.mbedtls_ecp_point, d &C.mbedtls_mpi, f_rng fn (voidptr, &u8, usize) int, p_rng voidptr) int
+fn C.mbedtls_ecdh_compute_shared(grp &C.mbedtls_ecp_group, z &C.mbedtls_mpi, q &C.mbedtls_ecp_point, d &C.mbedtls_mpi, f_rng fn (voidptr, &u8, uint) int, p_rng voidptr) int
 
 fn C.mbedtls_ctr_drbg_init(ctx &C.mbedtls_ctr_drbg_context)
 
 fn C.mbedtls_ctr_drbg_free(ctx &C.mbedtls_ctr_drbg_context)
 
-fn C.mbedtls_ctr_drbg_seed(ctx &C.mbedtls_ctr_drbg_context, f_entropy fn (voidptr, &u8, usize) int, p_entropy voidptr, custom &u8, len usize) int
+fn C.mbedtls_ctr_drbg_seed(ctx &C.mbedtls_ctr_drbg_context, f_entropy fn (voidptr, &u8, uint) int, p_entropy voidptr, custom &u8, len uint) int
 
-fn C.mbedtls_ctr_drbg_random(p_rng voidptr, output &u8, output_len usize) int
+fn C.mbedtls_ctr_drbg_random(p_rng voidptr, output &u8, output_len uint) int
 
 fn C.mbedtls_entropy_init(ctx &C.mbedtls_entropy_context)
 
 fn C.mbedtls_entropy_free(ctx &C.mbedtls_entropy_context)
 
-fn C.mbedtls_entropy_func(data voidptr, output &u8, len usize) int
+fn C.mbedtls_entropy_func(data voidptr, output &u8, len uint) int

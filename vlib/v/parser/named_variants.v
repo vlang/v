@@ -336,7 +336,7 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 // followed by a capitalized variant, including an owner's generic arguments.
 fn (mut p Parser) imported_named_variant_pattern_starts_here(module_name string) bool {
 	if module_name !in p.imported_module_names || p.is_local_binding(module_name)
-		|| p.tok != .name || !p.is_imported_named_variant_owner_name(module_name, p.lit) {
+		|| p.tok != .name {
 		return false
 	}
 	mut next := p.peek()
@@ -350,7 +350,11 @@ fn (mut p Parser) imported_named_variant_pattern_starts_here(module_name string)
 	if next != .dot {
 		return false
 	}
+	// Ordinary imported constants are also valid match patterns. Resolve a
+	// generated type only after the following tokens can name its variant;
+	// otherwise that lookup needlessly indexes every file of the module.
 	return lookahead.scan() == .name && is_plain_capitalized_ident(lookahead.lit)
+		&& p.is_imported_named_variant_owner_name(module_name, p.lit)
 }
 
 // named_variant_value lowers a payload-less variant reference `Expr.Void` to

@@ -9,7 +9,7 @@ fn test_sizeof_reserved_types_do_not_index_sibling_declarations() {
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
 	for name in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'string', 'rune', 'usize', 'isize', 'voidptr'] {
+		'f64', 'string', 'rune', 'uint', 'voidptr'] {
 		os.write_file(path, 'module main\nfn main() { _ = sizeof(${name}) }\n')!
 		mut p := Parser.new(pref.new_preferences())
 		p.parse_file(path)

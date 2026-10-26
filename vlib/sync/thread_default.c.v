@@ -3,7 +3,7 @@ module sync
 $if macos {
 	fn C.pthread_self() voidptr
 } $else {
-	fn C.pthread_self() usize
+	fn C.pthread_self() uint
 }
 
 // thread_id returns a unique identifier for the caller thread.

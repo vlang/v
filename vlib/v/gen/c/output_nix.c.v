@@ -6,7 +6,7 @@ import os
 
 fn write_c_output_sequential(mut file os.File, prefix []u8, segments []string, tail string, separator string) ! {
 	if prefix.len > 0 {
-		unsafe { file.write_full_buffer(prefix.data, usize(prefix.len))! }
+		unsafe { file.write_full_buffer(prefix.data, uint(prefix.len))! }
 	}
 	for segment in segments {
 		if segment.len > 0 {
@@ -37,7 +37,7 @@ fn write_c_output_vectored_batches(path string, prefix []u8, segments []string, 
 	if prefix.len > 0 {
 		iovs << C.iovec{
 			iov_base: prefix.data
-			iov_len:  usize(prefix.len)
+			iov_len:  uint(prefix.len)
 		}
 	}
 	for segment in segments {
@@ -45,19 +45,19 @@ fn write_c_output_vectored_batches(path string, prefix []u8, segments []string, 
 			if separator.len > 0 {
 				iovs << C.iovec{
 					iov_base: separator.str
-					iov_len:  usize(separator.len)
+					iov_len:  uint(separator.len)
 				}
 			}
 			iovs << C.iovec{
 				iov_base: segment.str
-				iov_len:  usize(segment.len)
+				iov_len:  uint(segment.len)
 			}
 		}
 	}
 	if tail.len > 0 {
 		iovs << C.iovec{
 			iov_base: tail.str
-			iov_len:  usize(tail.len)
+			iov_len:  uint(tail.len)
 		}
 	}
 	mut file := os.open_file(path, 'wb')!
@@ -85,7 +85,7 @@ fn write_c_output_vectored_batches(path string, prefix []u8, segments []string, 
 		}
 		// A short write stops inside some piece: skip the completed pieces and
 		// resume from the unwritten remainder of the partial one.
-		mut left := usize(written)
+		mut left := uint(written)
 		for left > 0 && i < iovs.len {
 			if left >= iovs[i].iov_len {
 				left -= iovs[i].iov_len
@@ -106,7 +106,7 @@ const c_output_iov_batch = 512
 struct C.iovec {
 mut:
 	iov_base voidptr
-	iov_len  usize
+	iov_len  uint
 }
 
-fn C.writev(fd int, const_iov &C.iovec, iovcnt int) isize
+fn C.writev(fd int, const_iov &C.iovec, iovcnt int) C.ptrdiff_t

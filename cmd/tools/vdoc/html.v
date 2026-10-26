@@ -508,8 +508,6 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer) or {
 		''
 	}
-	// The attributes are shown above the signature, so they are left out of it.
-	highlighted_code := html_highlight(without_attribute_lines(dn.content))
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
 	mut deprecated_tags := dn.tags.filter(is_deprecated_attribute(it))
@@ -538,20 +536,42 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		}
 		dnw.write_string('</div>\n')
 	}
-	if deprecated_tags.len > 0 {
+	// The declarations of a symbol with variants can have different attributes, so each of them
+	// shows its own in its signature, instead of above all of them.
+	attributes_in_signatures := dn.variants.len > 0
+	if deprecated_tags.len > 0 && !attributes_in_signatures {
 		attributes :=
 			deprecated_tags.map('<div class="attribute attribute-deprecated">${html.escape(it)}</div>\n').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
-	if tags.len > 0 {
+	if tags.len > 0 && !attributes_in_signatures {
 		attributes := tags.map('<div class="attribute">${html.escape(it)}</div>').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>')
 	}
+	comments_apart := !head && dn.content.len > 0 && has_variant_comments(dn)
 	if !head && dn.content.len > 0 {
-		dnw.writeln('<pre class="signature">\n<code>${highlighted_code}</code></pre>')
+		dnw.write_string(declaration_html(dn, attributes_in_signatures))
+		// The comment is shown once, after all the declarations, unless they have their own.
+		if comments_apart {
+			dnw.writeln(md_content)
+		}
+		for variant in dn.variants {
+			dnw.write_string(declaration_html(variant, true))
+			if has_own_comments(variant, dn) {
+				mut variant_renderer := markdown.HtmlRenderer{
+					transformer: &MdHtmlCodeHighlighter{
+						relative_link_base: md_link_base
+					}
+				}
+				variant_comments := prepare_markdown_for_html(variant.merge_comments_without_examples())
+				dnw.writeln(markdown.render(variant_comments, mut variant_renderer) or { '' })
+			}
+		}
 	}
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
-	dnw.writeln('${md_content}\n')
+	if !comments_apart {
+		dnw.writeln('${md_content}\n')
+	}
 	// Write examples if any found
 	examples := dn.examples()
 	if include_examples && examples.len > 0 {
@@ -566,6 +586,22 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	return dnw_str
+}
+
+// declaration_html returns the signature of `dn`, after the platforms that it is available on,
+// since they apply to all the declarations of a group of constants.
+fn declaration_html(dn doc.DocNode, with_attributes bool) string {
+	mut result := ''
+	platforms := doc.platforms_note(dn.platforms, fn (name string) string {
+		return '<strong>${name}</strong>'
+	})
+	if platforms != '' {
+		result += '<p class="platforms">${platforms}</p>\n'
+	}
+	// The attributes are usually shown above the signature, so they are left out of it.
+	code := if with_attributes { dn.content } else { without_attribute_lines(dn.content) }
+	highlighted_code := html_highlight(code)
+	return result + '<pre class="signature">\n<code>${highlighted_code}</code></pre>\n'
 }
 
 fn prepare_markdown_for_html(text string) string {

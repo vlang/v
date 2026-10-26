@@ -1331,6 +1331,9 @@ fn fastc_method_c_name(module_name string, receiver_type string, name string) st
 	// the element type (`Any`) and its method C name collides with the element type's own
 	// method (`json2__Any_str` defined for both `Any` and `[]Any` → C redefinition).
 	mut receiver_base := receiver_type.trim_right('*')
+	if receiver_base == 'usize' {
+		receiver_base = 'uint'
+	}
 	mut composite_prefix := ''
 	for {
 		if receiver_base.starts_with('Array_') {
@@ -1666,7 +1669,7 @@ fn (mut g Parser) parse_multi_return_types() !([]u32, []bool) {
 // spelling equals the V spelling for each of these, so it doubles as the smart-
 // cast type in a `match` branch.
 const fastc_boxed_primitive_types = ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
-	'f32', 'f64', 'bool', 'rune', 'isize', 'usize', 'char', 'voidptr']
+	'f32', 'f64', 'bool', 'rune', 'isize', 'uint', 'usize', 'char', 'voidptr']
 
 // fastc_output_c_type maps a semantic FastC type string to the C spelling that
 // is physically written into a declaration or cast. Only the platform-width
@@ -1675,6 +1678,9 @@ const fastc_boxed_primitive_types = ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u1
 // `int` and `i64` keep distinct methods). Pointer suffixes are preserved.
 fn fastc_output_c_type(t string) string {
 	base := t.trim_right('*')
+	if base == 'uint' {
+		return 'usize' + t[base.len..]
+	}
 	if base == 'int' {
 		return fastc_platform_int_c_type + t[base.len..]
 	}
@@ -1701,7 +1707,7 @@ fn fastc_primitive_c_type(raw_type string) ?string {
 		'u16' { 'u16' }
 		'u32' { 'u32' }
 		'u64' { 'u64' }
-		'uint' { 'unsigned int' }
+		'uint' { 'usize' }
 		'usize' { 'usize' }
 		'voidptr' { 'voidptr' }
 		'byteptr' { 'byteptr' }

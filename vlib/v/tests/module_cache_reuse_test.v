@@ -248,6 +248,55 @@ fn test_default_cache_keeps_the_closure_runtime_when_module_bodies_are_not_parse
 	}
 }
 
+fn test_warm_generic_function_literals_belong_to_program_specializations() {
+	$if !linux && !macos {
+		return
+	}
+	for compiler in ['cc', 'tcc'] {
+		root := new_project('module_cache_generic_literals_${compiler}')
+		mut saved := pin_module_cache(os.join_path(root, 'cache'))
+		saved << save_env('VMODULES')
+		os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+		defer {
+			for env in saved { env.restore() }
+			os.rmdir_all(root) or {}
+		}
+		os.mkdir_all(os.join_path(root, 'modules', 'callbacks'))!
+		os.write_file(os.join_path(root, 'modules', 'callbacks', 'callbacks.v'), 'module callbacks
+pub fn first[T]() fn (T) int { return fn [T](c T) int { return c.value } }
+pub fn second[T]() fn (T) int { return fn [T](c T) int { return c.value * 2 } }
+pub fn third[T]() fn (T) int { return fn [T](c T) int { return c.value * 3 } }
+')!
+		main_file := os.join_path(root, 'main.v')
+		prefix := 'import callbacks\npub struct Context { value int }\n'
+		os.write_file(main_file, prefix + 'fn main() {
+	x := callbacks.first[Context]()
+	println(x(Context{value: 1}))
+}
+')!
+		flags := ['-cc', compiler, '-gc', 'none', '-no-retry-compilation']
+		build(root, flags, main_file, 'cold')
+		assert run_built(root, 'cold') == '1'
+		published := module_objects(root)
+		program := prefix + 'fn main() {
+	x := callbacks.first[Context]()
+	y := callbacks.second[Context]()
+	z := callbacks.third[Context]()
+	println(x(Context{value: 1}) + y(Context{value: 2}) + z(Context{value: 3}))
+}
+'
+		for i in 0 .. 2 {
+			os.write_file(main_file, program + '\nfn added_${i}() {}\n')!
+			mut warm_flags := flags.clone()
+			if i == 1 { warm_flags << '-no-parallel' }
+			warm := build(root, warm_flags, main_file, 'warm')
+			assert_reused_modules(warm)
+			assert module_objects(root) == published
+			assert run_built(root, 'warm') == '14'
+		}
+	}
+}
+
 fn test_tcc_uses_cached_declarations_for_anonymous_and_fixed_arrays() {
 	$if !linux && !macos {
 		return

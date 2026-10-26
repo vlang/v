@@ -3,6 +3,7 @@ module json2
 import strconv
 import time
 import math
+import sync.stdatomic
 
 const null_in_string = 'null'
 
@@ -519,7 +520,7 @@ fn (mut decoder Decoder) decode_new_pointer[P](_ P) !P {
 // new_pointer_to returns a new heap pointer to `value`: one more level of
 // indirection, for decoding `&&T`, `&&&T`, ... values.
 fn new_pointer_to[T](value T) &T {
-	mut ptr := unsafe { &T(vcalloc(sizeof(T))) }
+	mut ptr := unsafe { &T(vcalloc(int(sizeof(T)))) }
 	unsafe {
 		*ptr = value
 	}
@@ -593,10 +594,20 @@ mut:
 @[manualfree; unsafe]
 fn (mut decoder Decoder) cached_struct_field_infos[T]() &StructFieldInfoCache {
 	static cache := &StructFieldInfoCache(nil)
-	if cache == nil {
-		cache = &StructFieldInfoCache{}
-		$for field in T.fields {
-			cache.field_infos << struct_field_info(field.name, field.attrs)
+	static initializing := u64(0)
+	static initialized := u64(0)
+	// Publish immutable field metadata only after its initialization completes.
+	if stdatomic.load_u64(&initialized) == 0 {
+		if stdatomic.fetch_add_u64(&initializing, 1) == 0 {
+			cache = &StructFieldInfoCache{}
+			$for field in T.fields {
+				cache.field_infos << struct_field_info(field.name, field.attrs)
+			}
+			stdatomic.store_u64(&initialized, 1)
+		} else {
+			for stdatomic.load_u64(&initialized) == 0 {
+				time.sleep(time.microsecond)
+			}
 		}
 	}
 	return cache
@@ -1910,12 +1921,10 @@ fn parse_integer_number[T](str string) !T {
 		return T(strconv.atou64(int_str)!)
 	} $else $if T is int {
 		return int(strconv.atoi64(int_str)!)
-	} $else $if T.unaliased_typ is int {
+	} $else $if T.unaliased_typ is int || T.unaliased_typ is isize {
 		return T(int(strconv.atoi64(int_str)!))
-	} $else $if T.unaliased_typ is isize {
-		return T(isize(strconv.atoi64(int_str)!))
-	} $else $if T.unaliased_typ is usize {
-		return T(usize(strconv.atou64(int_str)!))
+	} $else $if T.unaliased_typ is uint {
+		return T(uint(strconv.atou64(int_str)!))
 	} $else {
 		return error('`parse_integer_number` cannot decode ${T.name} type')
 	}
@@ -1979,7 +1988,7 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		u64 { *val = parse_integer_number[T](str)! }
 		int { *val = parse_int_number(str)! }
 		isize { *val = parse_integer_number[T](str)! }
-		usize { *val = parse_integer_number[T](str)! }
+		uint { *val = parse_integer_number[T](str)! }
 		f32 { *val = parse_float_number[T](str)! }
 		f64 { *val = parse_float_number[T](str)! }
 		$else { return error('`decode_number` can not decode ${T.name} type') }
@@ -2014,11 +2023,9 @@ fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 		return parse_integer_number[T](str)!
 	} $else $if T is int {
 		return parse_int_number(str)!
-	} $else $if T.unaliased_typ is int {
+	} $else $if T.unaliased_typ is int || T.unaliased_typ is isize {
 		return parse_integer_number[T](str)!
-	} $else $if T.unaliased_typ is isize {
-		return parse_integer_number[T](str)!
-	} $else $if T.unaliased_typ is usize {
+	} $else $if T.unaliased_typ is uint {
 		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is f32 {
 		return parse_float_number[T](str)!

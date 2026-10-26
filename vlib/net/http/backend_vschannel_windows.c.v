@@ -25,7 +25,7 @@ fn C.vschannel_request_on_open(&C.TlsContext, &u8, u32, &&char, fn (voidptr, i64
 
 // Match the void-pointer allocator callback expected by SChannel.
 fn vschannel_realloc(buffer voidptr, new_size i64) voidptr {
-	return unsafe { v_realloc(&u8(buffer), isize(new_size)) }
+	return unsafe { v_realloc(&u8(buffer), int(new_size)) }
 }
 
 fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
@@ -87,7 +87,9 @@ fn (req &Request) vschannel_finish_response(buff &u8, length int, err_code int) 
 	}
 	response_text := unsafe { buff.vstring_with_len(length) }
 	if req.on_progress != unsafe { nil } {
-		req.on_progress(req, unsafe { buff.vbytes(length) }, u64(length))!
+		req.on_progress(req, unsafe { buff.vbytes(length) }, u64(length)) or {
+			return ProgressCallbackError{ cause: err }
+		}
 	}
 	$if trace_http_response ? {
 		eprintln('< ${response_text}')

@@ -97,6 +97,18 @@ fn fastc_thread_wait_name(thread_type string) string {
 	return '__vf_thread_wait_${thread_type.all_after(fastc_thread_type_prefix)}'
 }
 
+// fastc_thread_wait_helper returns the waiter of one thread handle type,
+// registering its typedef and waiter when no `spawn` has done so yet.
+fn (g &Parser) fastc_thread_wait_helper(thread_type string, value_type_source_id u32) string {
+	wait_name := g.fastc_unclaimed_generated_name(fastc_thread_wait_name(thread_type))
+	if thread_type in g.spawn_typedefs && wait_name in g.spawn_helpers {
+		return wait_name
+	}
+	// Rendering keeps an immutable parser; the helper maps are per-file output.
+	mut w := unsafe { &Parser(g) }
+	return w.register_thread_type_helpers(thread_type, value_type_source_id)
+}
+
 // read_spawn_expression parses `spawn callee(arguments)` eagerly at an
 // expression start. The callee must be a collected plain or imported
 // function; its signature supplies the packed-argument field types.
@@ -390,11 +402,10 @@ fn (g &Parser) generated_name_is_claimed(candidate string) bool {
 	return false
 }
 
-// register_spawn_helpers records the thread typedef, waiter, packed-argument
-// struct, run wrapper, and creator for one spawn target. The result is the
-// first packed field, so the per-type waiter reads it without knowing which
-// call site produced the thread.
-fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type_source_id u32, parameter_types []u32, start_name string, target_c_name string) {
+// register_thread_type_helpers records the typedef and waiter of one thread
+// handle type, and returns the waiter name. `.wait()` calls register them too:
+// a handle can be waited on in code whose only `spawn` is compiled out by `$if`.
+fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_source_id u32) string {
 	value_type := flat.source_type_name(value_type_source_id)
 	g.type_memo.clear()
 	g.thread_value_types.set_id(thread_type, value_type_source_id)
@@ -430,6 +441,16 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 		}
 		g.spawn_helpers[wait_name] = waiter
 	}
+	return wait_name
+}
+
+// register_spawn_helpers records the thread typedef, waiter, packed-argument
+// struct, run wrapper, and creator for one spawn target. The result is the
+// first packed field, so the per-type waiter reads it without knowing which
+// call site produced the thread.
+fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type_source_id u32, parameter_types []u32, start_name string, target_c_name string) {
+	value_type := flat.source_type_name(value_type_source_id)
+	g.register_thread_type_helpers(thread_type, value_type_source_id)
 	if start_name in g.spawn_helpers {
 		return
 	}

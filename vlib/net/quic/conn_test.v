@@ -58,8 +58,8 @@ fn conn_test_sign_certificate_verify(signed_content []u8) ![]u8 {
 	}
 	// pk_type 6 = MBEDTLS_PK_RSASSA_PSS, md_alg 9 = MBEDTLS_MD_SHA256.
 	mut sig := []u8{len: 600}
-	mut sig_len := usize(0)
-	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, usize(hash.len), sig.data, usize(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+	mut sig_len := uint(0)
+	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, uint(hash.len), sig.data, uint(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 	if ret != 0 {
 		return error('test: mbedtls_pk_sign_ext failed, mbedtls ret: ${ret}')
 	}

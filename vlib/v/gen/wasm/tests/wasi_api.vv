@@ -70,7 +70,7 @@ fn wasi_fd_write() {
 	message := 'fd_write: Hello from WASI WOORLD!\n'
 	message_struct := CIOVec{
 		buf: message.str
-		len: usize(message.len)
+		len: uint(message.len)
 	}
 
 	if WASM.fd_write(1, &message_struct, 1, 0) == 0 {
@@ -86,15 +86,15 @@ fn wasi_fd_write_multiple_iovecs() {
 	iovs := [
 		CIOVec{
 			buf: msg1.str
-			len: usize(msg1.len)
+			len: uint(msg1.len)
 		},
 		CIOVec{
 			buf: msg2.str
-			len: usize(msg2.len)
+			len: uint(msg2.len)
 		},
 		CIOVec{
 			buf: msg3.str
-			len: usize(msg3.len)
+			len: uint(msg3.len)
 		},
 	]!
 

@@ -22,7 +22,7 @@ fn fastc_builtin_type_idx(type_name_source_id u32) ?int {
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
-		'usize' { 15 }
+		'uint', 'usize' { 15 }
 		'f32' { 16 }
 		'f64' { 17 }
 		'char' { 18 }
@@ -788,7 +788,12 @@ fn (g &Parser) render_ordinary_string_print_expression(tokens []FastcExpressionT
 }
 
 fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
-	if tokens.len < 4 || tokens[0].tok != .name || tokens[0].lit !in ['print', 'println'] || tokens[1].tok != .lpar || tokens.last().tok != .rpar {
+	if tokens.len < 4 || tokens[0].tok != .name || tokens[1].tok != .lpar || tokens.last().tok != .rpar {
+		return none
+	}
+	// `eprint`/`eprintln` exist only in the real builtin of the selfhost path.
+	to_stderr := tokens[0].lit in ['eprint', 'eprintln']
+	if tokens[0].lit !in ['print', 'println'] && !(to_stderr && g.selfhost) {
 		return none
 	}
 	call_end := fastc_matching_rpar(tokens, 1) or { return none }
@@ -804,6 +809,12 @@ fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?Fast
 	enum_key := g.underlying_enum_type_key(flat.source_type_name(type_key)) or { return none }
 	c_type := fastc_c_declared_type_name(enum_key)
 	argument := g.render_call_argument_expression(call_arguments[0], flat.source_type_id(c_type)) or { return none }
+	if to_stderr {
+		return FastcRenderedExpression{
+			source: 'builtin__${tokens[0].lit}(v_fastc_enum_str_${c_type}(${argument}))'
+			typ:    flat.source_type_void
+		}
+	}
 	return FastcRenderedExpression{
 		source: 'v_fastc_print_enum_${c_type}(${argument}, ${if tokens[0].lit == 'println' {
 			'true'
@@ -870,6 +881,8 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 	if !g.selfhost || tokens.len < 4 || tokens[0].tok != .name || tokens[0].lit !in [
 		'print',
 		'println',
+		'eprint',
+		'eprintln',
 	] || tokens[1].tok != .lpar || tokens.last().tok != .rpar {
 		return none
 	}
@@ -889,6 +902,19 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 	}
 	argument := g.render_call_argument_expression(call_arguments[0], argument_type) or {
 		return none
+	}
+	argument_type_name := flat.source_type_name(g.underlying_alias_type(argument_type))
+	if argument_type_name == 'Option' || (argument_type_name.ends_with('*')
+		&& !g.is_reference_local_base(call_arguments[0], argument_type)
+		&& !g.expression_uses_member_smartcast(call_arguments[0])) {
+		// `&T` and `?T` values print as `&...` and `Option(...)`, even when `T`
+		// has a `str()` method.
+		string_value := g.print_value_string_expression(argument, argument_type,
+			call_arguments[0]) or { return none }
+		return FastcRenderedExpression{
+			source: 'builtin__${tokens[0].lit}(${string_value})'
+			typ:    flat.source_type_void
+		}
 	}
 	method_key, embedded_path := g.resolve_method(argument_type, 'str')
 	if embedded_path.len > 0 {
@@ -924,15 +950,29 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 }
 
 // print_value_string_expression returns the C string of `value`, a value of
-// `value_type` without a `str()` method, formatted as read_interpolated_string
-// formats it. Pointers and options print differently in V, so they are left out.
+// `value_type`, formatted as read_interpolated_string formats it: `&...` for a
+// pointer, `Option(...)` for an option. A `mut` local or a smartcast, which C
+// holds through a pointer, prints as its value.
 fn (g &Parser) print_value_string_expression(value string, value_type u32, value_tokens []FastcExpressionToken) ?string {
-	type_name := flat.source_type_name(g.underlying_alias_type(value_type))
-	if type_name.ends_with('*') || type_name in ['Option', '__v_result'] {
+	type_name_id := g.underlying_alias_type(value_type)
+	type_name := flat.source_type_name(type_name_id)
+	if type_name == '__v_result' || type_name.ends_with('**') {
 		return none
 	}
 	mut w := unsafe { &Parser(g) }
-	if element_type := fastc_fixed_array_element_type(flat.source_type_id(type_name)) {
+	if type_name == 'Option' {
+		option_helper := w.fastc_option_str_name(g.option_value_type_for_expression(value_tokens))?
+		return '${option_helper}(${value})'
+	}
+	if type_name.ends_with('*') {
+		if g.is_reference_local_base(value_tokens, value_type)
+			|| g.expression_uses_member_smartcast(value_tokens) {
+			return g.print_value_string_expression('(*(${value}))',
+				flat.source_type_id(type_name[..type_name.len - 1]), value_tokens)
+		}
+		return w.fastc_reference_str_expression(value, type_name, value_tokens)
+	}
+	if element_type := fastc_fixed_array_element_type(type_name_id) {
 		helper := w.fastc_fixed_array_str_name(type_name)?
 		// A fixed array field or global is raw C array storage; a local is FastC's
 		// wrapper struct.
@@ -1487,7 +1527,7 @@ fn (g &Parser) checked_integer_operation_type(operand_type u32) string {
 	resolved := flat.source_type_name(g.underlying_alias_type(operand_type))
 	return match resolved {
 		'int', 'integer literal', 'negative integer literal' { fastc_output_c_type('int') }
-		'char', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'isize', 'usize' {
+		'char', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'isize', 'uint', 'usize' {
 			fastc_output_c_type(resolved)
 		}
 		'rune' { 'u32' }
@@ -1545,7 +1585,7 @@ fn (g &Parser) shift_type_parts(operand_type u32) ?(string, string) {
 		'i32', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
 		'i64', 'u64' { 'u64', '64' }
 		'int' { 'u${g.prefs.target.pointer_bits}', '${g.prefs.target.pointer_bits}' }
-		'isize', 'usize' { 'usize', '${g.prefs.target.pointer_bits}' }
+		'isize', 'uint', 'usize' { 'usize', '${g.prefs.target.pointer_bits}' }
 		else {
 			return none
 		}
@@ -1881,8 +1921,8 @@ fn (g &Parser) narrowed_numeric_operand_type(tokens []FastcExpressionToken, infe
 // fastc_numeric_arithmetic_has_no_overloads is shared by every file generator.
 // Ambiguous primitive metadata disables the shortcut conservatively.
 fn fastc_numeric_arithmetic_has_no_overloads(functions map[string]FastcFunctionSignature, declared_type_c_names flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings) bool {
-	for type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64', 'usize',
-		'f32', 'f64'] {
+	for type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64', 'uint',
+		'usize', 'f32', 'f64'] {
 		if declared_type_c_names.contains(type_name) || alias_base_types.contains(type_name)
 			|| type_name in struct_fields {
 			return false
@@ -1974,7 +2014,7 @@ fn (g &Parser) plain_numeric_arithmetic_expression(tokens []FastcExpressionToken
 // generation. Primitive metadata or comparison methods keep the full renderer.
 fn fastc_primitive_comparisons_have_no_overloads(functions map[string]FastcFunctionSignature, declared_type_c_names flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings) bool {
 	for type_name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-		'usize', 'f32', 'f64'] {
+		'uint', 'usize', 'f32', 'f64'] {
 		if declared_type_c_names.contains(type_name) || alias_base_types.contains(type_name)
 			|| type_name in struct_fields {
 			return false
@@ -2081,7 +2121,7 @@ fn fastc_primitive_member_comparison_value_type(typ u32) bool {
 	return typ in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
 		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
 		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
-		flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
+		flat.source_type_uint, flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
 }
 
 fn (g &Parser) primitive_member_comparison_operand_type(tokens []FastcExpressionToken) u32 {
@@ -5107,44 +5147,16 @@ fn (g &Parser) render_map_literal_argument(tokens []FastcExpressionToken, expect
 		return none
 	}
 	entries := fastc_map_literal_entries(tokens, 1, close) or { return none }
+	// The literal's type can be inferred (`println({'k': 1})`), so no declaration
+	// registers its typedef.
+	mut w := unsafe { &Parser(g) }
+	fastc_register_composite_type(map_type, mut w.composite_types)
 	hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
 	mut statements := [
 		'map __vf_argument_map = builtin__new_map(sizeof(${g.collection_runtime_type(key_type)}), sizeof(${g.collection_runtime_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn});',
 	]
 	for entry_index, entry in entries {
-		mut colon := -1
-		mut parens := 0
-		mut brackets := 0
-		mut braces := 0
-		for i, item in entry {
-			match item.tok {
-				.lpar {
-					parens++
-				}
-				.rpar {
-					parens--
-				}
-				.lsbr {
-					brackets++
-				}
-				.rsbr {
-					brackets--
-				}
-				.lcbr {
-					braces++
-				}
-				.rcbr {
-					braces--
-				}
-				.colon {
-					if parens == 0 && brackets == 0 && braces == 0 {
-						colon = i
-						break
-					}
-				}
-				else {}
-			}
-		}
+		colon := fastc_map_literal_entry_colon(entry)
 		if colon <= 0 || colon + 1 >= entry.len {
 			return none
 		}
@@ -5162,6 +5174,43 @@ fn (g &Parser) render_map_literal_argument(tokens []FastcExpressionToken, expect
 		source: '({ ${statements.join(' ')} __vf_argument_map; })'
 		typ:    flat.source_type_id(map_type)
 	}
+}
+
+// fastc_map_literal_entry_colon returns the index of the `:` separating a map literal
+// entry's key from its value, or -1.
+fn fastc_map_literal_entry_colon(entry []FastcExpressionToken) int {
+	mut parens := 0
+	mut brackets := 0
+	mut braces := 0
+	for i, item in entry {
+		match item.tok {
+			.lpar {
+				parens++
+			}
+			.rpar {
+				parens--
+			}
+			.lsbr {
+				brackets++
+			}
+			.rsbr {
+				brackets--
+			}
+			.lcbr {
+				braces++
+			}
+			.rcbr {
+				braces--
+			}
+			.colon {
+				if parens == 0 && brackets == 0 && braces == 0 {
+					return i
+				}
+			}
+			else {}
+		}
+	}
+	return -1
 }
 
 fn fastc_map_literal_entries(tokens []FastcExpressionToken, start int, end int) ?[][]FastcExpressionToken {
@@ -5584,7 +5633,7 @@ fn fastc_map_runtime_functions(key_type_source_id u32, pointer_bits int) (string
 		'8'
 	} else if key_type in ['i128', 'u128'] {
 		'16'
-	} else if key_type in ['isize', 'usize'] || fastc_is_pointer_type(key_type_source_id) {
+	} else if key_type in ['isize', 'uint', 'usize'] || fastc_is_pointer_type(key_type_source_id) {
 		if pointer_bits == 32 { '4' } else { '8' }
 	} else {
 		'4'
