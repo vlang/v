@@ -3965,28 +3965,45 @@ fn (t &Transformer) call_is_variadic_for_node(call_name string, node flat.Node) 
 	return false
 }
 
+// name_has_generic_marker reports whether `name` contains `_T_`, the
+// separator of generic specialization names.
+@[direct_array_access]
+fn name_has_generic_marker(name string) bool {
+	for i := 1; i + 1 < name.len; i++ {
+		if name[i] == `T` && name[i - 1] == `_` && name[i + 1] == `_` {
+			return true
+		}
+	}
+	return false
+}
+
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
-	// Generic specializations are re-checked on every call (see below).
-	if isnil(t.call_variadic_cache) || call_name.contains('_T_') {
-		return t.call_is_variadic_keyed(call_name)
+	if isnil(t.call_variadic_cache) {
+		return t.call_is_variadic_keyed(call_name, name_has_generic_marker(call_name))
 	}
-	// Answer repeated lookups before building the memo's composite key.
+	// Answer repeated lookups before building the memo's composite key. Only
+	// non-generic names are stored here (keys compare exactly), so a hit never
+	// hides a generic specialization.
 	mut cache := t.call_variadic_cache
 	mut recent := cache.recent_cache()
 	state, _ := recent.get(t.cur_file, call_name, '')
 	if state != 0 {
 		return state > 0
 	}
-	result := t.call_is_variadic_keyed(call_name)
-	recent.put(t.cur_file, call_name, '', if result { i8(1) } else { i8(-1) }, '')
+	generic := name_has_generic_marker(call_name)
+	result := t.call_is_variadic_keyed(call_name, generic)
+	// Generic specializations are re-checked on every call (see below).
+	if !generic {
+		recent.put(t.cur_file, call_name, '', if result { i8(1) } else { i8(-1) }, '')
+	}
 	return result
 }
 
-fn (t &Transformer) call_is_variadic_keyed(call_name string) bool {
+fn (t &Transformer) call_is_variadic_keyed(call_name string, generic bool) bool {
 	// Generic signatures are registered after some early transform probes. Do not
 	// let an earlier negative cache entry hide the template's variadic marker.
-	if !isnil(t.tc) && call_name.contains('_T_') && t.tc.specialized_generic_fns[call_name]
+	if generic && !isnil(t.tc) && t.tc.specialized_generic_fns[call_name]
 		&& t.tc.fn_variadic[call_name.all_before('_T_')] {
 		return true
 	}
@@ -13074,8 +13091,41 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 }
 
 fn (t &Transformer) array_builtin_method_name(method string) ?string {
+	if isnil(t.fn_return_name_cache) || method.len == 0 {
+		method_name := 'array.${method}'
+		if t.is_known_fn_name(method_name) {
+			return method_name
+		}
+		return none
+	}
+	mut cache := t.fn_return_name_cache
+	tc_ptr := voidptr(t.tc)
+	tc_revision := if isnil(t.tc) { u64(0) } else { t.tc.fn_ret_types_revision }
+	tc_rets := if isnil(t.tc) { 0 } else { t.tc.fn_ret_types.len }
+	tc_params := if isnil(t.tc) { 0 } else { t.tc.fn_param_types.len }
+	if cache.array_method_rets != t.fn_ret_types.ids.len || cache.array_method_tc != tc_ptr
+		|| cache.array_method_revision != tc_revision || cache.array_method_tc_rets != tc_rets
+		|| cache.array_method_params != tc_params {
+		cache.array_method_states = [32]i8{}
+		cache.array_method_rets = t.fn_ret_types.ids.len
+		cache.array_method_tc = tc_ptr
+		cache.array_method_revision = tc_revision
+		cache.array_method_tc_rets = tc_rets
+		cache.array_method_params = tc_params
+	}
+	slot := int((uint(method.len) * 7 + uint(method[0]) + uint(method[method.len - 1])) & 31)
+	if cache.array_method_states[slot] != 0 && cache.array_methods[slot] == method {
+		if cache.array_method_states[slot] < 0 {
+			return none
+		}
+		return cache.array_method_names[slot]
+	}
 	method_name := 'array.${method}'
-	if t.is_known_fn_name(method_name) {
+	known := t.is_known_fn_name(method_name)
+	cache.array_methods[slot] = method
+	cache.array_method_names[slot] = method_name
+	cache.array_method_states[slot] = if known { i8(1) } else { i8(-1) }
+	if known {
 		return method_name
 	}
 	return none

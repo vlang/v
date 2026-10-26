@@ -1518,6 +1518,16 @@ mut:
 	revision                 u64
 	count                    int = -1
 	memo_semantic_type_names bool
+	// `array.<method>` lookups, keyed by method spelling. The signature maps
+	// only grow between revision bumps, so their sizes identify a snapshot.
+	array_methods         [32]string
+	array_method_names    [32]string
+	array_method_states   [32]i8
+	array_method_tc       voidptr
+	array_method_revision u64
+	array_method_rets     int = -1
+	array_method_tc_rets  int
+	array_method_params   int
 }
 
 fn new_fn_return_name_cache() &FnReturnNameCache {
@@ -1535,6 +1545,7 @@ fn (t &Transformer) clear_fn_return_name_cache() {
 		cache.names = [128]string{}
 		cache.states = [128]i8{}
 		cache.count = -1
+		cache.array_method_states = [32]i8{}
 	}
 }
 
