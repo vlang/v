@@ -802,7 +802,7 @@ fn test_module_qualified_generic_callee_is_not_treated_as_value_index() {
 	}
 
 	assert !t.index_callee_is_value_index(index_node)
-	assert t.generic_call_type_args_name(index_node) == 'Payload'
+	assert t.generic_call_type_args(index_node) == [flat.source_type_id('Payload')]
 }
 
 fn test_local_module_generic_call_keeps_explicit_type_args_when_normalized() {
@@ -834,14 +834,14 @@ fn test_local_module_generic_call_keeps_explicit_type_args_when_normalized() {
 
 	normalized_id := t.normalize_generic_call_expr(call_id, t.a.nodes[int(call_id)])
 	assert normalized_id != call_id
-	assert t.a.nodes[int(normalized_id)].value == 'int'
+	assert t.a.nodes[int(normalized_id)].call_type_args() == [flat.source_type_int]
 }
 
 fn test_flattened_generic_receiver_short_variants() {
-	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
+	assert flattened_generic_receiver_short_variants(flat.source_type_id('foo__Bar_baz__Qux')) == [
 		'Bar_Qux',
 	]
-	assert flattened_generic_receiver_short_variants('mod.foo__Bar_baz__Qux') == [
+	assert flattened_generic_receiver_short_variants(flat.source_type_id('mod.foo__Bar_baz__Qux')) == [
 		'Bar_Qux',
 		'mod.Bar_Qux',
 	]
@@ -849,25 +849,25 @@ fn test_flattened_generic_receiver_short_variants() {
 
 fn test_generic_specialized_type_matching_preserves_name_spellings() {
 	for spelling in ['Box[int]', 'Box_int'] {
-		assert generic_specialized_type_matches_flat_name(spelling, 'Box', ['int'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(spelling), 'Box', flat.TypeTextList.from_names(['int']).ids)
 	}
 	for spelling in ['Box[time.Time]', 'Box_time__Time', 'Box_time.Time'] {
-		assert generic_specialized_type_matches_flat_name(spelling, 'Box', ['time.Time'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(spelling), 'Box', flat.TypeTextList.from_names(['time.Time']).ids)
 	}
 	for spelling in ['pkg.Box[int]', 'pkg__Box_int'] {
-		assert generic_specialized_type_matches_flat_name(spelling, 'pkg.Box', ['int'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(spelling), 'pkg.Box', flat.TypeTextList.from_names(['int']).ids)
 	}
 	for spelling in ['Box[int]', 'Box_int', 'main.Box_v_int', 'main__Box_v_int'] {
-		assert generic_specialized_type_matches_flat_name(spelling, 'main.Box', ['int'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(spelling), 'main.Box', flat.TypeTextList.from_names(['int']).ids)
 	}
 	for base in ['Box_Name', 'pkg.Box__Name', 'C.Box', '__v3_internal_symbol_Box'] {
-		assert generic_specialized_type_matches_flat_name('${base}[int]', base, ['int'])
-		assert generic_specialized_type_matches_flat_name(c_name('${base}[int]'), base, ['int'])
-		assert generic_specialized_type_matches_flat_name(c_name('${base}[int]').replace('__', '.'), base, ['int'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id('${base}[int]'), base, flat.TypeTextList.from_names(['int']).ids)
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(c_name('${base}[int]')), base, flat.TypeTextList.from_names(['int']).ids)
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(c_name('${base}[int]').replace('__', '.')), base, flat.TypeTextList.from_names(['int']).ids)
 	}
-	assert !generic_specialized_type_matches_flat_name('Other_time__Time', 'Box', ['time.Time'])
-	assert !generic_specialized_type_matches_flat_name('pkg__Other_int', 'pkg.Box', ['int'])
-	assert !generic_specialized_type_matches_flat_name('Box_string', 'Box', ['int'])
+	assert !generic_specialized_type_matches_flat_name(flat.source_type_id('Other_time__Time'), 'Box', flat.TypeTextList.from_names(['time.Time']).ids)
+	assert !generic_specialized_type_matches_flat_name(flat.source_type_id('pkg__Other_int'), 'pkg.Box', flat.TypeTextList.from_names(['int']).ids)
+	assert !generic_specialized_type_matches_flat_name(flat.source_type_id('Box_string'), 'Box', flat.TypeTextList.from_names(['int']).ids)
 }
 
 fn test_receiver_method_guard_accepts_short_name_for_qualified_type() {
@@ -1188,12 +1188,12 @@ fn test_specialized_zero_arg_method_is_not_lowered_as_generic_cast() {
 	children_start := a.children.len
 	a.children << callee_id
 	a.children << receiver_id
-	call := flat.Node{
+	mut call := flat.Node{
 		kind:           .call
 		children_start: children_start
 		children_count: 2
-		value:          'f64'
 	}
+	call.set_call_type_args([flat.source_type_f64])
 	mut tc := types.TypeChecker.new(&a)
 	tc.specialized_generic_fns['Tree_f64.min'] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -1498,20 +1498,20 @@ fn test_non_veb_reflected_call_keeps_receiver_param_offset() {
 	t.append_missing_params_struct_args(mut configure_args, configure_params, configure_offset)
 	assert configure_args.len == 2
 	assert t.a.node(configure_args[1]).kind == .struct_init
-	assert t.a.node(configure_args[1]).value == 'Config'
+	assert t.a.node(configure_args[1]).source_value_id() == flat.source_type_id('Config')
 }
 
 fn test_pending_generic_specialization_keys_are_private_initialized_maps() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
-	master.pending_generic_fn_spec_keys['master'] = true
-	assert master.pending_generic_fn_spec_keys['master']
+	master.pending_generic_fn_spec_keys.set(generic_fn_spec_key('master', []u32{}), true)
+	assert master.pending_generic_fn_spec_keys.contains(generic_fn_spec_key('master', []u32{}))
 
 	mut worker := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
-	worker.pending_generic_fn_spec_keys['worker'] = true
-	assert worker.pending_generic_fn_spec_keys['worker']
-	assert 'worker' !in master.pending_generic_fn_spec_keys
+	worker.pending_generic_fn_spec_keys.set(generic_fn_spec_key('worker', []u32{}), true)
+	assert worker.pending_generic_fn_spec_keys.contains(generic_fn_spec_key('worker', []u32{}))
+	assert !master.pending_generic_fn_spec_keys.contains(generic_fn_spec_key('worker', []u32{}))
 }
 
 fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
@@ -2051,7 +2051,7 @@ fn test_generic_cast_prescreen_keeps_selectively_imported_type_spellings() {
 		panic('selectively imported generic cast was skipped')
 	}
 	assert a.nodes[int(lowered)].kind == .cast_expr
-	assert a.nodes[int(lowered)].value == 'library.Box[int]'
+	assert a.nodes[int(lowered)].source_value_id() == flat.source_type_id('library.Box[int]')
 }
 
 fn test_pointer_storage_addresses_keep_literal_and_index_element_types() {
@@ -2096,4 +2096,23 @@ fn test_pointer_storage_addresses_keep_literal_and_index_element_types() {
 	for node in a.nodes {
 		assert node.kind != .ident || node.value != 'memdup'
 	}
+}
+
+fn test_receiver_method_guard_preserves_direct_and_alias_candidates() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set_id('AliasThing', flat.source_type_id('Thing'))
+	tc.type_aliases.set_id('AliasAgain', flat.source_type_id('AliasThing'))
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'pkg'
+	for spelling in ['Thing', '&Thing', '  &&Thing  ', 'pkg.Thing', 'other.Thing'] {
+		assert t.receiver_method_matches_type_name('Thing.run', flat.source_type_id(spelling))
+	}
+	assert t.receiver_method_matches_type_name('pkg.Thing.run', flat.source_type_id('Thing'))
+	assert t.receiver_method_matches_type_name('pkg.Thing.run', flat.source_type_id('pkg.Thing'))
+	assert t.receiver_method_matches_type_name('AliasAgain.run', flat.source_type_id('AliasAgain'))
+	assert t.receiver_method_matches_type_name('AliasThing.run', flat.source_type_id('AliasAgain'))
+	assert t.receiver_method_matches_type_name('Thing.run', flat.source_type_id('main.AliasAgain'))
+	assert !t.receiver_method_matches_type_name('other.Thing.run', flat.source_type_id('Thing'))
+	assert !t.receiver_method_matches_type_name('Different.run', flat.source_type_id('AliasAgain'))
 }

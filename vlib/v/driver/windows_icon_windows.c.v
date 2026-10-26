@@ -103,5 +103,5 @@ fn add_windows_long_path_manifest(exe_path string) !bool {
 }
 
 fn windows_resource_id(id int) voidptr {
-	return voidptr(usize(id))
+	return voidptr(uint(id))
 }

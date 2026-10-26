@@ -13,7 +13,7 @@ fn store[T](mut destination T, value T) {
 
 struct Counter[T] {
 mut:
-	value usize
+	value uint
 }
 
 fn (mut c Counter[T]) step() {
@@ -21,7 +21,7 @@ fn (mut c Counter[T]) step() {
 	store(mut &c.value, (value + 1) & 7)
 }
 
-fn bitwise_ops[T](start usize) usize {
+fn bitwise_ops[T](start uint) uint {
 	mut v := start
 	value := load(&v)
 	store(mut &v, value | 8)

@@ -13,7 +13,7 @@ $if !native && !no_segfault_handler ?&& !freestanding && !vinix {
 fn C.v_install_segfault_handler(fallback voidptr, main_argv voidptr)
 
 @[markused]
-fn C.v_thread_signal_stack_enter(stack_top voidptr, stack_size usize) voidptr
+fn C.v_thread_signal_stack_enter(stack_top voidptr, stack_size uint) voidptr
 
 @[markused]
 fn C.v_thread_signal_stack_leave(alt_stack voidptr)

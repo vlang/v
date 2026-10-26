@@ -13,7 +13,7 @@ fn test_fastc_collection_field_defaults_preserve_storage_width() {
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.c.v'), r"module main
 @[c_extern]
-fn C.alias_map_value_size(voidptr) usize
+fn C.alias_map_value_size(voidptr) uint
 type Counts = map[string]int
 type ScopeStack = []int
 struct Tracker {
@@ -65,7 +65,7 @@ fn main() {
     t.wide.delete(key)
     assert (t.wide[key] or { -1 }) == -1, 'wide key deletion'
     assert (t.wide[2] or { -1 }) == -7, 'other key survives deletion'
-    assert C.alias_map_value_size(voidptr(&t.aliased_counts)) == usize(sizeof(value)), 'aliased map storage size'
+    assert C.alias_map_value_size(voidptr(&t.aliased_counts)) == uint(sizeof(value)), 'aliased map storage size'
     t.aliased_scopes << value
     assert t.aliased_scopes[0] == value, 'aliased array storage'
     assert (optional(value) or { -1 }) == value, 'wide optional payload'

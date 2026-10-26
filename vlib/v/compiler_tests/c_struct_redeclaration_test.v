@@ -108,7 +108,7 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	cached_termios_good := run_v3_project(v3_bin, 'module_cache_termios_shims', {
 		'v.mod':                   'Module { name: "cached_termios_shims" }\n'
 		'term/term_cached.vh':     'module term\n\nstruct C.termios {\n\tc_iflag int\n}\n'
-		'term/termios/termios.vh': 'module termios\n\nstruct C.termios {\n\tc_iflag usize\n\tc_ispeed usize\n}\n'
+		'term/termios/termios.vh': 'module termios\n\nstruct C.termios {\n\tc_iflag uint\n\tc_ispeed uint\n}\n'
 		'main.v':                  'module main\n\nimport term\nimport term.termios\n\nfn main() {}\n'
 	})
 	assert cached_termios_good.exit_code == 0, cached_termios_good.output

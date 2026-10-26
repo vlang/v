@@ -54,7 +54,7 @@ fn C.XSetWMProtocols(display &C.Display, window Window, protocols &Atom, count i
 fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual &Atom, actual_format &int, count &NativeULong, bytes &NativeULong, prop &&u8) int
 fn C.take_time(value &C.NativeTime)
 
-fn helper(display &C.Display, window Window, value &&u8) usize {
+fn helper(display &C.Display, window Window, value &&u8) uint {
 	mut actual_type := Atom(0)
 	mut item_count := NativeULong(0)
 	mut bytes_after := NativeULong(0)
@@ -62,7 +62,7 @@ fn helper(display &C.Display, window Window, value &&u8) usize {
 	property := Atom(0)
 	C.XGetWindowProperty(display, window, property, 0, 1, 0, property, &actual_type,
 		&actual_format, &item_count, &bytes_after, value)
-	return usize(item_count)
+	return uint(item_count)
 }
 
 fn main() {

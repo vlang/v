@@ -1401,7 +1401,7 @@ struct CacheLine {
 
 fn local_is_aligned() bool {
 	value := CacheLine{value: 7}
-	return usize(&value) % 64 == 0
+	return uint(&value) % 64 == 0
 }
 
 fn main() {
@@ -1597,7 +1597,7 @@ fn test_fastc_arm64_string_slice_owns_terminated_storage() {
 		}
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
-		os.write_file(source_path, 'fn C.strlen(value &char) usize
+		os.write_file(source_path, 'fn C.strlen(value &char) uint
 fn C.free(value voidptr)
 
 fn main() {

@@ -146,8 +146,9 @@ pub fn query_buffer_overflow(buf Buffer) bool {
 	return C.sg_query_buffer_overflow(buf)
 }
 
+// query_buffer_will_overflow reports whether appending size bytes would overflow buf.
 @[inline]
-pub fn query_buffer_will_overflow(buf Buffer, size usize) bool {
+pub fn query_buffer_will_overflow(buf Buffer, size uint) bool {
 	return C.sg_query_buffer_will_overflow(buf, size)
 }
 
@@ -414,4 +415,17 @@ pub fn frame_stats_enabled() bool {
 @[inline]
 pub fn query_frame_stats() FrameStats {
 	return C.sg_query_frame_stats()
+}
+
+// add_commit_listener registers a callback that fires at sg_commit time.
+// Used by the gg V renderer to rewind per-frame buffers.
+@[inline]
+pub fn add_commit_listener(listener CommitListener) bool {
+	return C.sg_add_commit_listener(listener)
+}
+
+// remove_commit_listener removes a previously registered commit listener.
+@[inline]
+pub fn remove_commit_listener(listener CommitListener) bool {
+	return C.sg_remove_commit_listener(listener)
 }

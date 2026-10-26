@@ -164,7 +164,7 @@ fn compress_file(fname string, oname string, params CompressParams) ! {
 
 		mut finished := false
 		input.src = buf_in.data
-		input.size = usize(read_len)
+		input.size = uint(read_len)
 		input.pos = 0
 		for !finished {
 			output.dst = buf_out.data
@@ -208,11 +208,11 @@ fn decompress_file(fname string, oname string, params DecompressParams) ! {
 		pos:  0
 	}
 
-	mut last_ret := usize(0)
+	mut last_ret := uint(0)
 	for {
 		read_len := fin.read(mut buf_in)!
 		input.src = buf_in.data
-		input.size = usize(read_len)
+		input.size = uint(read_len)
 		input.pos = 0
 		for input.pos < input.size {
 			output.dst = buf_out.data

@@ -197,12 +197,14 @@ These block until the client returns the matching JSON-RPC response (or until
 the timeout fires). They are a 2025-11-25 facility; under 2026-07-28 a server
 cannot originate requests at all and uses MRTR instead — see below.
 
-On stdio, the request is written as soon as it is sent, but the answer is read
-by the same loop that runs handlers, so call these from another thread, never
-from a tool, resource or prompt handler. To react to the client,
+On stdio, the request is written as soon as it is sent, and the answer is read
+by a loop that goes on reading while handlers run, so a tool, resource or prompt
+handler may call these and wait for the answer. The client's next requests are
+handled in order once that handler returns. To react to the client,
 `ServerConfig.notification_handler` sees every notification it sends; a server
 that wants the client's roots asks once the handshake is done and again when
-they change:
+they change, from another thread so that the client's next requests are not held
+up:
 
 ```v oksyntax
 import mcp
@@ -213,7 +215,8 @@ mut server := mcp.new_server(
 	version:              '0'
 	notification_handler: fn (ctx mcp.Context, method string, _ string) {
 		if method in ['notifications/initialized', 'notifications/roots/list_changed'] {
-			// the read loop must keep reading to receive the answer
+			// asked from another thread, so that the client's next requests
+			// are not held up while it waits
 			spawn fn (ctx mcp.Context) {
 				roots := ctx.list_roots(5 * time.second) or { return }
 				eprintln(roots.roots.map(it.uri))

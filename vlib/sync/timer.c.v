@@ -21,7 +21,7 @@ mut:
 
 fn new_timer_thread_args(duration time.Duration, output chan time.Time, stop chan chan bool, done chan bool) &TimerThreadArgs {
 	// Keep the channels visible to tracing collectors until the detached worker finishes.
-	mut args := unsafe { &TimerThreadArgs(vcalloc(sizeof(TimerThreadArgs))) }
+	mut args := unsafe { &TimerThreadArgs(vcalloc(int(sizeof(TimerThreadArgs)))) }
 	if args == unsafe { nil } {
 		panic('could not allocate timer thread arguments')
 	}

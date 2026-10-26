@@ -428,9 +428,9 @@ fn mark_read_deadline(mut w Worker, mut cs ConnState) {
 fn drain_file(fd int, mut cs ConnState) int {
 	for cs.file_remaining > 0 {
 		want := if cs.file_remaining > sendfile_chunk {
-			usize(sendfile_chunk)
+			uint(sendfile_chunk)
 		} else {
-			usize(cs.file_remaining)
+			uint(cs.file_remaining)
 		}
 		sent := sendfile_without_sigpipe(fd, cs.file_fd, &cs.file_off, want)
 		if sent > 0 {
@@ -461,7 +461,7 @@ fn drain_file(fd int, mut cs ConnState) int {
 fn flush_batch(mut w Worker, fd int, mut cs ConnState) FlushResult {
 	// Phase 1: the buffered response bytes (status lines, headers, small bodies).
 	for cs.write_off < cs.write_buf.len {
-		n := C.send(fd, unsafe { &u8(cs.write_buf.data) + cs.write_off }, usize(cs.write_buf.len - cs.write_off), C.MSG_NOSIGNAL)
+		n := C.send(fd, unsafe { &u8(cs.write_buf.data) + cs.write_off }, uint(cs.write_buf.len - cs.write_off), C.MSG_NOSIGNAL)
 		if n > 0 {
 			cs.write_off += n
 			continue
@@ -565,7 +565,7 @@ fn compact_read_buf(mut cs ConnState, pos int) {
 		return
 	}
 	if leftover > 0 {
-		unsafe { C.memmove(cs.read_buf.data, &u8(cs.read_buf.data) + pos, usize(leftover)) }
+		unsafe { C.memmove(cs.read_buf.data, &u8(cs.read_buf.data) + pos, uint(leftover)) }
 	}
 	unsafe {
 		cs.read_buf.len = leftover
@@ -658,7 +658,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 				return flush_batch(mut w, fd, mut cs) != .closed
 			}
 			decoded.client_conn_fd = fd
-			decoded.client_conn_handle = usize(fd)
+			decoded.client_conn_handle = uint(fd)
 			decoded.user_data = w.server.user_data
 			decoded.worker_state = w.worker_state
 			mut ctl := ResponseControl{}
@@ -728,7 +728,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 				return flush_batch(mut w, fd, mut cs) != .closed
 			}
 			decoded.client_conn_fd = fd
-			decoded.client_conn_handle = usize(fd)
+			decoded.client_conn_handle = uint(fd)
 			decoded.user_data = w.server.user_data
 			decoded.worker_state = w.worker_state
 			mut resp := w.server.request_handler(decoded) or {
@@ -859,7 +859,7 @@ fn serve_conn(mut w Worker, fd int, mut cs ConnState) {
 			}
 		}
 		spare := cs.read_buf.cap - cs.read_buf.len
-		n := C.recv(fd, unsafe { &u8(cs.read_buf.data) + cs.read_buf.len }, usize(spare), 0)
+		n := C.recv(fd, unsafe { &u8(cs.read_buf.data) + cs.read_buf.len }, uint(spare), 0)
 		if n < 0 {
 			if C.errno == C.EAGAIN {
 				break // socket drained

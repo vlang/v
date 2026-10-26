@@ -767,7 +767,7 @@ fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_
 	mut a := flat.FlatAst.new()
 	_, canonical := a.intern_text('persistent value')
 	a.add_node(flat.Node{ kind: .ident, value: canonical })
-	persistent_ptr := usize(voidptr(a.nodes[0].value.str))
+	persistent_ptr := uint(voidptr(a.nodes[0].value.str))
 	constraints := ['persistent constraint'.clone()]
 	scope := prealloc_scope_begin_for_v3()
 	value := 'retiring value'.clone()
@@ -778,7 +778,7 @@ fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_
 	a.nodes << generated
 	prealloc_scope_leave_for_v3(scope)
 	cloned := clone_flat_ast_after_transform_from_scope(&a, scope)
-	assert usize(voidptr(cloned.nodes[0].value.str)) == persistent_ptr
+	assert uint(voidptr(cloned.nodes[0].value.str)) == persistent_ptr
 	assert !scoped_value_owned(scope, cloned.nodes.data)
 	assert !scoped_value_owned(scope, cloned.nodes[1].value.str)
 	assert !scoped_value_owned(scope, cloned.nodes[1].typ_text().str)
@@ -790,4 +790,37 @@ fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_
 	assert cloned.nodes[1].typ_text() == 'retiring type'
 	assert cloned.nodes[1].generic_params() == ['retiring parameter']
 	assert cloned.nodes[1].generic_constraints() == constraints
+}
+
+fn test_scoped_generic_constraint_ids_survive_all_payload_promotion_paths() {
+	$if !prealloc {
+		return
+	}
+	for mode in 0 .. 3 {
+		mut a := flat.FlatAst.new()
+		a.add_node(flat.Node{ kind: .fn_decl })
+		scope := prealloc_scope_begin_for_v3()
+		constraint := flat.source_type_id('support.Constraint[[]int]'.clone())
+		mut node := flat.Node{ kind: .fn_decl, value: 'generic'.clone() }
+		node.set_generic_params_and_constraint_ids(['T'.clone()], [constraint])
+		a.nodes[0] = node
+		prealloc_scope_leave_for_v3(scope)
+		match mode {
+			0 { promote_scoped_node(mut a.nodes[0], scope) }
+			1 { canonicalize_scoped_node(mut a, 0, scope) }
+			else {
+				mut cache_ptrs := [4096]voidptr{}
+				mut cache_values := [4096]string{}
+				canonicalize_scoped_node_cached(mut a, 0, scope, mut cache_ptrs, mut cache_values)
+			}
+		}
+		assert !scoped_value_owned(scope, a.nodes[0].payload_ptr())
+		assert !scoped_value_owned(scope, a.nodes[0].generic_params().data)
+		assert !scoped_value_owned(scope, a.nodes[0].generic_params()[0].str)
+		assert !scoped_value_owned(scope, a.nodes[0].generic_constraint_ids().data)
+		prealloc_scope_free_for_v3(scope)
+		assert a.nodes[0].generic_params() == ['T']
+		assert a.nodes[0].generic_constraint_ids() == [constraint]
+		assert a.nodes[0].generic_constraints() == ['support.Constraint[[]int]']
+	}
 }

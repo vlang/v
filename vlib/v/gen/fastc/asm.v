@@ -239,7 +239,7 @@ fn (mut g Parser) render_asm_operand(operand FastcAsmOperand) !FastcAsmRenderedO
 		if local := g.locals[source] {
 			if local.is_reference {
 				expression = '(*(${expression}))'
-				if flat.source_type_name(typ).ends_with('*') {
+				if flat.source_type_query(typ).has(.c_pointer_suffix) {
 					typ = flat.source_type_id(flat.source_type_name(typ)[..flat.source_type_name(typ).len - 1])
 				}
 			}
@@ -488,6 +488,7 @@ fn fastc_asm_lower_template(source string, arch string, aliases map[string]Fastc
 					flat.source_type_int,
 					flat.source_type_i64,
 					flat.source_type_u64,
+					flat.source_type_uint,
 					flat.source_type_usize,
 					flat.source_type_isize,
 				] {
@@ -652,7 +653,7 @@ fn fastc_asm_intel_memory_size(typ u32) string {
 			'dword ptr '
 		}
 		flat.source_type_int, flat.source_type_i64, flat.source_type_u64, flat.source_type_isize,
-		flat.source_type_usize, flat.source_type_f64 {
+		flat.source_type_uint, flat.source_type_usize, flat.source_type_f64 {
 			'qword ptr '
 		}
 		else { '' }

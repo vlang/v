@@ -943,33 +943,48 @@ fn test_qualified_mut_parameter_copy_preserves_value_staging_storage() {
 	}
 }
 
-fn test_staging_declarations_preserve_explicit_stack_alignment() {
-	mut a := flat.FlatAst.new()
-	node := flat.Node{ kind: .struct_decl, value: 'Aligned', typ: flat.source_type_id('aligned=64') }
-	decl := a.add_node(node)
-	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Aligned'] = []types.StructField{}
-	tc.type_declaration_ids['Aligned'] = [int(decl)]
-	tc.declaration_attributes[int(decl)] = ['aligned: 64']
-	mut g := FlatGen.new()
-	g.a = &a
-	g.tc = &tc
-	g.set_ccompiler('tcc')
-	g.register_struct_decl_info_at(int(decl), node.value, node.value,
-		'main', 'aligned.v', node)
-	lhs := stmt_test_node(mut a, .ident, 'staging', [])
-	rhs := stmt_test_node(mut a, .struct_init, 'Aligned', [])
-	staging := stmt_test_node(mut a, .decl_assign,
-		'__v3_zeroed_stack_value_decl', [lhs, rhs])
-	a.nodes[int(staging)].typ = flat.source_type_id('Aligned')
-	g.gen_decl_assign(a.nodes[int(staging)])
-	generated := g.sb.str()
-	assert generated.contains('__builtin_alloca(sizeof(Aligned)'), generated
-	assert generated.contains('(size_t)(64)')
-	assert generated.contains('Aligned* staging')
-	assert generated.contains('memset(staging, 0, sizeof(Aligned))')
-	assert !generated.contains('memdup')
-	assert g.local_storage_c_type('staging') or { '' } == 'Aligned*'
+fn test_tinyc_declarations_preserve_explicit_stack_alignment() {
+	for decl_kind in ['', '__v3_zeroed_stack_value_decl'] {
+		mut a := flat.FlatAst.new()
+		node := flat.Node{ kind: .struct_decl, value: 'Aligned', typ: flat.source_type_id('aligned=64') }
+		decl := a.add_node(node)
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs['Aligned'] = []types.StructField{}
+		tc.type_declaration_ids['Aligned'] = [int(decl)]
+		tc.declaration_attributes[int(decl)] = ['aligned: 64']
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		g.set_ccompiler('tcc')
+		g.register_struct_decl_info_at(int(decl), node.value, node.value,
+			'main', 'aligned.v', node)
+		for name in ['alloca', 'v_alloca', '__v3_internal_symbol_libc_alloca'] {
+			local := stmt_test_node(mut a, .ident, name, [])
+			value := stmt_test_node(mut a, .int_literal, '7', [])
+			assignment := stmt_test_node(mut a, .decl_assign, '', [local, value])
+			a.nodes[int(assignment)].typ = flat.source_type_id('int')
+			g.gen_decl_assign(a.nodes[int(assignment)])
+		}
+		lhs := stmt_test_node(mut a, .ident, 'staging', [])
+		rhs := stmt_test_node(mut a, .struct_init, 'Aligned', [])
+		staging := stmt_test_node(mut a, .decl_assign, decl_kind, [lhs, rhs])
+		a.nodes[int(staging)].typ = flat.source_type_id('Aligned')
+		g.gen_decl_assign(a.nodes[int(staging)])
+		generated := g.sb.str()
+		assert generated.contains('= alloca(sizeof(Aligned)'), generated
+		assert !generated.contains('__builtin_alloca'), generated
+		assert generated.contains(' __v3_internal_symbol_libc_alloca = 7;'), generated
+		assert generated.contains(' v_alloca = 7;'), generated
+		assert generated.contains(' __v3_internal_symbol_source___v3_internal_symbol_libc_alloca = 7;'), generated
+		assert !generated.contains(' alloca ='), generated
+		assert generated.contains('(size_t)(64)')
+		assert generated.contains('Aligned* staging')
+		if decl_kind == '__v3_zeroed_stack_value_decl' {
+			assert generated.contains('memset(staging, 0, sizeof(Aligned))')
+		}
+		assert !generated.contains('memdup')
+		assert g.local_storage_c_type('staging') or { '' } == 'Aligned*'
+	}
 }
 
 fn test_ownership_drop_expansion_keys_keep_kind_and_spelling_order() {

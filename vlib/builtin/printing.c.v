@@ -1,12 +1,12 @@
 module builtin
 
-fn C.setvbuf(fstream &C.FILE, buffer &char, mode i32, size usize) i32
+fn C.setvbuf(fstream &C.FILE, buffer &char, mode i32, size uint) i32
 
 // set_stream_unbuffered switches a stdio stream to unbuffered mode without using the
 // deprecated `setbuf` API on Windows toolchains.
 @[unsafe]
 fn set_stream_unbuffered(stream &C.FILE) {
-	C.setvbuf(stream, &char(nil), C._IONBF, usize(0))
+	C.setvbuf(stream, &char(nil), C._IONBF, uint(0))
 }
 
 // race_stdio_write marks a write to stdout or stderr in a race build (`v -race`), like
@@ -219,8 +219,8 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 		}
 	} $else {
 		mut ptr := unsafe { buf }
-		mut remaining_bytes := isize(buf_len)
-		mut x := isize(0)
+		mut remaining_bytes := int(buf_len)
+		mut x := int(0)
 		$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
 			// Flush any pending libc stdio output (from C.puts, C.putchar, etc.)
 			// before writing directly via write() syscall to prevent output reordering.
@@ -243,7 +243,7 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 			}
 			unsafe {
 				for remaining_bytes > 0 {
-					x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+					x = int(C.fwrite(ptr, 1, remaining_bytes, stream))
 					if x <= 0 {
 						// GUI programs on Windows may not have a writable stdout/stderr stream.
 						break

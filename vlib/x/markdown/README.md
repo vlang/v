@@ -20,6 +20,10 @@ extensions. Designed for feature parity with
   entities, raw HTML
 - **Link reference definitions** for DRY Markdown
 
+HTML output follows CommonMark block boundaries, including a newline before a
+nested list or code block inside a tight list. Image alt text flattens inline
+formatting, nested links, and images to their text content.
+
 ### GFM Extensions (via `.gfm()` helper or individual extensions)
 - **Tables**: `| col | col |` with alignment (`:--`, `:--:`, `--:`)
 - **Strikethrough**: `~~text~~`

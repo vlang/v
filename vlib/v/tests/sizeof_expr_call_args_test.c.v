@@ -1,14 +1,14 @@
 #include <string.h>
 
-fn C.memset(dest voidptr, value int, count usize) voidptr
+fn C.memset(dest voidptr, value int, count uint) voidptr
 
-fn expression_byte_count(value usize) usize {
+fn expression_byte_count(value uint) uint {
 	return value
 }
 
 struct SizeReceiver {}
 
-fn (receiver SizeReceiver) byte_count(value usize) usize {
+fn (receiver SizeReceiver) byte_count(value uint) uint {
 	return value
 }
 

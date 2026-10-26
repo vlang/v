@@ -184,6 +184,15 @@ cd "$TINYCC_SOURCE"
 git checkout $TCC_COMMIT
 export TCC_COMMIT_FULL_HASH=$(git rev-parse HEAD)
 
+## vlang/v#29744: with chained fixups, TCC lists the zero-fill __bss pages in __DATA's
+## page_count, and macOS 27 dyld maps them from the file, which gives garbage globals.
+## The patch counts only file-backed pages. It only affects builds that keep chained fixups,
+## so the configure step below (--config-new_macho=no) does not use it. See vlang/v#29744.
+git apply "$V_REPO_ROOT/thirdparty/build_scripts/patches/tccmacho-page-count-filesize.diff" || {
+  echo "tccmacho page_count patch failed to apply" >&2
+  exit 2
+}
+
 ### NB: the symlinks below are needed, to ensure proper support for bootstrapping tcc, otherwise backtraces will be disabled .
 for i in include/*.h; do echo $i; ln -s $i $(basename $i); done
 

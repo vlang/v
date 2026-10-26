@@ -99,37 +99,37 @@ fn (mut req Request) free() {
 		for i := 0; i < req.header.cur_pos; i++ {
 			mut key := req.header.data[i].key
 			mut value := req.header.data[i].value
-			key_ptr := u64(usize(key.str))
+			key_ptr := u64(uint(key.str))
 			if key_ptr !in freed_ptrs {
 				key.free()
 				freed_ptrs[key_ptr] = true
 			}
-			value_ptr := u64(usize(value.str))
+			value_ptr := u64(uint(value.str))
 			if value_ptr !in freed_ptrs {
 				value.free()
 				freed_ptrs[value_ptr] = true
 			}
 		}
 		mut host := req.host
-		host_ptr := u64(usize(host.str))
+		host_ptr := u64(uint(host.str))
 		if host_ptr !in freed_ptrs {
 			host.free()
 			freed_ptrs[host_ptr] = true
 		}
 		mut data := req.data
-		data_ptr := u64(usize(data.str))
+		data_ptr := u64(uint(data.str))
 		if data_ptr !in freed_ptrs {
 			data.free()
 			freed_ptrs[data_ptr] = true
 		}
 		mut url := req.url
-		url_ptr := u64(usize(url.str))
+		url_ptr := u64(uint(url.str))
 		if url_ptr !in freed_ptrs {
 			url.free()
 			freed_ptrs[url_ptr] = true
 		}
 		mut user_agent := req.user_agent
-		user_agent_ptr := u64(usize(user_agent.str))
+		user_agent_ptr := u64(uint(user_agent.str))
 		if user_agent_ptr !in freed_ptrs {
 			user_agent.free()
 			freed_ptrs[user_agent_ptr] = true
@@ -139,25 +139,25 @@ fn (mut req Request) free() {
 		// there is no port to strip. The freed_ptrs guard is what keeps that
 		// from being a double free, here as for every other field.
 		mut remote_addr := req.remote_addr
-		remote_addr_ptr := u64(usize(remote_addr.str))
+		remote_addr_ptr := u64(uint(remote_addr.str))
 		if remote_addr_ptr !in freed_ptrs {
 			remote_addr.free()
 			freed_ptrs[remote_addr_ptr] = true
 		}
 		mut verify := req.verify
-		verify_ptr := u64(usize(verify.str))
+		verify_ptr := u64(uint(verify.str))
 		if verify_ptr !in freed_ptrs {
 			verify.free()
 			freed_ptrs[verify_ptr] = true
 		}
 		mut cert := req.cert
-		cert_ptr := u64(usize(cert.str))
+		cert_ptr := u64(uint(cert.str))
 		if cert_ptr !in freed_ptrs {
 			cert.free()
 			freed_ptrs[cert_ptr] = true
 		}
 		mut cert_key := req.cert_key
-		cert_key_ptr := u64(usize(cert_key.str))
+		cert_key_ptr := u64(uint(cert_key.str))
 		if cert_key_ptr !in freed_ptrs {
 			cert_key.free()
 			freed_ptrs[cert_key_ptr] = true

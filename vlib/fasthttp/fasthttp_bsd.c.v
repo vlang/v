@@ -30,9 +30,9 @@ fn C.socket(domain i32, typ i32, protocol i32) i32
 
 fn C.bind(sockfd i32, addr voidptr, addrlen u32) i32
 
-fn C.send(__fd i32, __buf voidptr, __n usize, __flags i32) i32
+fn C.send(__fd i32, __buf voidptr, __n uint, __flags i32) i32
 
-fn C.recv(__fd i32, __buf voidptr, __n usize, __flags i32) i32
+fn C.recv(__fd i32, __buf voidptr, __n uint, __flags i32) i32
 
 fn C.setsockopt(__fd i32, __level i32, __optname i32, __optval voidptr, __optlen u32) i32
 
@@ -100,21 +100,21 @@ fn send_file_bytes(file_fd i32, sock_fd i32, offset i64, nbytes i64) (int, i64) 
 		if want > sendfile_fallback_buf_size {
 			want = sendfile_fallback_buf_size
 		}
-		nread := C.pread(file_fd, &buf[0], usize(want), offset)
+		nread := C.pread(file_fd, &buf[0], uint(want), offset)
 		if nread <= 0 {
 			// nread == 0 is EOF (shouldn't happen given write_pos < file_len
 			// guards in send_pending, but treat it as an error to close the
 			// connection); nread < 0 propagates errno for EAGAIN handling.
 			return -1, i64(0)
 		}
-		nsent := C.send(sock_fd, &buf[0], usize(nread), send_flags)
+		nsent := C.send(sock_fd, &buf[0], uint(nread), send_flags)
 		if nsent < 0 {
 			return -1, i64(0)
 		}
 		return 0, i64(nsent)
 	} $else {
 		mut sbytes := i64(0)
-		ret := C.sendfile(file_fd, sock_fd, offset, usize(nbytes), unsafe { nil }, &sbytes, 0)
+		ret := C.sendfile(file_fd, sock_fd, offset, uint(nbytes), unsafe { nil }, &sbytes, 0)
 		return int(ret), sbytes
 	}
 }
@@ -125,11 +125,11 @@ $if macos {
 } $else $if openbsd {
 
 	// ssize_t pread(int fd, void *buf, size_t nbyte, off_t offset);
-	fn C.pread(fd i32, buf voidptr, nbyte usize, offset i64) isize
+	fn C.pread(fd i32, buf voidptr, nbyte uint, offset i64) C.ptrdiff_t
 } $else {
 
 	// int sendfile(int fd, int s, off_t offset, size_t nbytes, struct sf_hdtr *hdtr, off_t *sbytes, int flags);
-	fn C.sendfile(fd i32, s i32, offset i64, nbytes usize, hdtr voidptr, sbytes &i64, flags i32) i32
+	fn C.sendfile(fd i32, s i32, offset i64, nbytes uint, hdtr voidptr, sbytes &i64, flags i32) i32
 }
 
 struct C.kevent {
@@ -137,12 +137,12 @@ struct C.kevent {
 	filter i16
 	flags  u16
 	fflags u32
-	data   isize
+	data   int
 	udata  voidptr
 }
 
 // Helper to set fields of a kevent struct.
-fn ev_set(mut ev C.kevent, ident u64, filter i16, flags u16, fflags u32, data isize, udata voidptr) {
+fn ev_set(mut ev C.kevent, ident u64, filter i16, flags u16, fflags u32, data int, udata voidptr) {
 	ev.ident = ident
 	ev.filter = filter
 	ev.flags = flags
@@ -289,13 +289,13 @@ fn set_nonblocking(fd int) {
 
 fn add_event(kq int, ident u64, filter i16, flags u16, udata voidptr) int {
 	mut ev := C.kevent{}
-	ev_set(mut &ev, ident, filter, flags, u32(0), isize(0), udata)
+	ev_set(mut &ev, ident, filter, flags, u32(0), int(0), udata)
 	return C.kevent(kq, &ev, 1, unsafe { nil }, 0, unsafe { nil })
 }
 
 fn delete_event(kq int, ident u64, filter i16, udata voidptr) {
 	mut ev := C.kevent{}
-	ev_set(mut &ev, ident, filter, u16(C.EV_DELETE), u32(0), isize(0), udata)
+	ev_set(mut &ev, ident, filter, u16(C.EV_DELETE), u32(0), int(0), udata)
 	C.kevent(kq, &ev, 1, unsafe { nil }, 0, unsafe { nil })
 }
 
@@ -445,7 +445,7 @@ fn process_request(server &Server, kq int, c_ptr voidptr, frame_total int, mut c
 	server.begin_request()
 	c.request_active = true
 	decoded.client_conn_fd = c.fd
-	decoded.client_conn_handle = usize(c.fd)
+	decoded.client_conn_handle = uint(c.fd)
 	decoded.user_data = server.user_data
 	decoded.worker_state = c.worker_state
 
@@ -583,7 +583,7 @@ fn (mut c Conn) consume_read_prefix(full_data []u8, consumed int) {
 		return
 	}
 	fixed_len := if leftover < buf_size { leftover } else { buf_size }
-	unsafe { C.memcpy(&c.read_buf[0], &full_data[consumed], usize(fixed_len)) }
+	unsafe { C.memcpy(&c.read_buf[0], &full_data[consumed], uint(fixed_len)) }
 	c.read_len = fixed_len
 	if leftover > fixed_len {
 		c.read_extra << full_data[consumed + fixed_len..]

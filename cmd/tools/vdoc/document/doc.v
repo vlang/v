@@ -507,26 +507,6 @@ fn declaration_shape(content string) string {
 	return shape
 }
 
-// without_line_comment returns `line` without its `//` comment, if it has one outside of a string.
-fn without_line_comment(line string) string {
-	mut quote := u8(0)
-	for i := 0; i < line.len; i++ {
-		c := line[i]
-		if quote != 0 {
-			if c == `\\` {
-				i++
-			} else if c == quote {
-				quote = 0
-			}
-		} else if c in [`'`, `"`, `\``] {
-			quote = c
-		} else if c == `/` && i + 1 < line.len && line[i + 1] == `/` {
-			return line[..i]
-		}
-	}
-	return line
-}
-
 // without_parameter_names removes the names of the receiver and the parameters of the function
 // signature `sig`, like `fn (mut s Server) run(a int)` -> `fn (mut Server) run(int)`.
 fn without_parameter_names(sig string) string {
@@ -633,10 +613,33 @@ fn (mut d Doc) parse_file(path string) ! {
 	}
 	mut module_name := 'main'
 	mut first_declaration_line := int(1 << 30)
+	// Collect the top-level nodes to document. Top-level `$if` blocks that are
+	// taken (their condition evaluated to true) are stored by the parser as a
+	// single `.block` node whose children are the declarations of that branch;
+	// unwrap them so their declarations are documented too (issue: vdoc
+	// previously skipped every symbol guarded by `$if`).
+	mut top_level_ids := []flat.NodeId{}
 	for id in a.children_of(file_node) {
 		node := a.node(id)
 		if node.kind == .module_decl {
 			module_name = node.value
+			continue
+		}
+		if node.kind == .block {
+			block_node := a.node(id)
+			for bid in a.children_of(block_node) {
+				top_level_ids << bid
+			}
+			continue
+		}
+		top_level_ids << id
+	}
+	for id in top_level_ids {
+		node := a.node(id)
+		if node.kind == .module_decl {
+			if module_name == 'main' {
+				module_name = node.value
+			}
 			continue
 		}
 		if !is_documentable(node.kind) {

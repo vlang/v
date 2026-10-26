@@ -13,8 +13,33 @@ VOID WINAPI ReleaseSRWLockExclusive(PSRWLOCK SRWLock);
 VOID WINAPI ReleaseSRWLockShared(PSRWLOCK SRWLock);
 VOID WINAPI AcquireSRWLockExclusive(PSRWLOCK SRWLock);
 VOID WINAPI AcquireSRWLockShared(PSRWLOCK SRWLock);
-WINBASEAPI BOOLEAN WINAPI TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
-WINBASEAPI BOOLEAN WINAPI TryAcquireSRWLockShared(PSRWLOCK SRWLock);
+// TinyCC links kernel32.dll through its own lib/kernel32.def, which has no TryAcquireSRWLock*:
+// a program that calls them would not link. Calls to them go to these functions instead, which
+// look them up in kernel32.dll once. Every Windows that V runs on has them; without them, the
+// lock is never acquired. Each translation unit caches its own copy of the same address.
+typedef BOOLEAN (WINAPI *v_sync_try_acquire_srw_fn)(PSRWLOCK SRWLock);
+static BOOLEAN v_sync_try_acquire_srw(PSRWLOCK SRWLock, const char* name, void* volatile* cache) {
+	void* fn = *cache;
+	if (fn == NULL) {
+		HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+		fn = kernel32 != NULL ? (void*)GetProcAddress(kernel32, name) : NULL;
+		if (fn == NULL) {
+			return FALSE;
+		}
+		*cache = fn;
+	}
+	return ((v_sync_try_acquire_srw_fn)fn)(SRWLock);
+}
+static BOOLEAN WINAPI v_sync_try_acquire_srw_exclusive(PSRWLOCK SRWLock) {
+	static void* volatile fn;
+	return v_sync_try_acquire_srw(SRWLock, "TryAcquireSRWLockExclusive", &fn);
+}
+static BOOLEAN WINAPI v_sync_try_acquire_srw_shared(PSRWLOCK SRWLock) {
+	static void* volatile fn;
+	return v_sync_try_acquire_srw(SRWLock, "TryAcquireSRWLockShared", &fn);
+}
+#define TryAcquireSRWLockExclusive v_sync_try_acquire_srw_exclusive
+#define TryAcquireSRWLockShared v_sync_try_acquire_srw_shared
 WINBASEAPI VOID WINAPI InitializeConditionVariable(PVOID ConditionVariable);
 WINBASEAPI VOID WINAPI WakeConditionVariable(PVOID ConditionVariable);
 WINBASEAPI VOID WINAPI WakeAllConditionVariable(PVOID ConditionVariable);

@@ -14,6 +14,11 @@ headers keep the conservative fallback when their original context cannot be rec
 Compiler response files and config/spec files also retain the fallback.
 Production, shared, and GNU89 inline modes retain this fallback for bundled mbedTLS headers.
 
+Module object cache keys distinguish system libc headers from V's fallback declarations.
+A program import or `#include` can select system headers for the whole program, changing native
+type layouts even in modules whose V source is unchanged. Objects from these two header modes
+are kept separate, including when reusing a cache populated by an older compiler.
+
 Set `V3_CACHE_TRACE=1` to inspect cache decisions, and use `-show-timings` to see
 `monomorphize (cached)` on an unchanged build. External native inputs without a safe
 ownership or replication policy still fall back to an uncached build. TCC selection

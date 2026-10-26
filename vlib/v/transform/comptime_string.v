@@ -63,7 +63,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			if node.children_count != 2 { return none }
 			left := t.comptime_scalar_expr_in_context(t.a.child(node, 0), depth + 1, module_name, file, allow_locals)?
 			right := t.comptime_scalar_expr_in_context(t.a.child(node, 1), depth + 1, module_name, file, allow_locals)?
-			if left.typ_text() != right.typ_text() { return none }
+			if left.typ != right.typ { return none }
 			if left.typ == flat.source_type_string && node.op == .plus {
 				return ComptimeStringScalar{flat.source_type_string, left.value + right.value}
 			}
@@ -191,10 +191,18 @@ fn (t &Transformer) comptime_scalar_named_const(name string, depth int, module_n
 }
 
 fn (mut t Transformer) make_comptime_scalar_literal(value ComptimeStringScalar) flat.NodeId {
-	return match value.typ_text() {
-		'string' { t.make_string_literal(value.value) }
-		'bool' { t.make_bool_literal(value.value == 'true') }
+	return match value.typ {
+		flat.source_type_string { t.make_string_literal(value.value) }
+		flat.source_type_bool { t.make_bool_literal(value.value == 'true') }
 		else { t.make_int_literal(value.value.int()) }
+	}
+}
+
+// A statement scope borrows its incoming scalar bindings until the first write.
+fn (mut t Transformer) detach_comptime_scalar_locals() {
+	if t.comptime_scalar_locals_shared {
+		t.comptime_scalar_locals = t.comptime_scalar_locals.clone()
+		t.comptime_scalar_locals_shared = false
 	}
 }
 
@@ -206,13 +214,17 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 	value := t.comptime_scalar_expr(t.a.child(&node, 1), 0)
 	result := t.transform_decl_assign_stmt(id, node)
 	if lhs.kind == .ident {
-		t.comptime_scalar_locals.delete(lhs.value)
+		if lhs.value in t.comptime_scalar_locals {
+			t.detach_comptime_scalar_locals()
+			t.comptime_scalar_locals.delete(lhs.value)
+		}
 		// Generated staging locals can be assigned later despite lacking `mut` flags.
 		if node.pos.is_valid() && !lhs.is_mut && !node.is_mut {
 			if scalar := value {
 				// So can a source local of a generic function, whose body is not checked
 				// for assignments to immutable names.
 				if !t.later_stmts_assign_local(id, lhs.value) {
+					t.detach_comptime_scalar_locals()
 					t.comptime_scalar_locals[lhs.value] = scalar
 				}
 			}
