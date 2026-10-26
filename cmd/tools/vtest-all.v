@@ -529,6 +529,9 @@ fn (mut cmd Command) run() ? {
 			is_failed_contains = true
 		}
 	}
+	if is_failed && cmd.ecode == 0 {
+		cmd.ecode = 1
+	}
 
 	run_label := if is_failed { term.failed('FAILED') } else { term_highlight('OK') }
 	println('> Running: "${cmd.line}" took: ${spent} ms ... ${run_label}')
