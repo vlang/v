@@ -167,6 +167,11 @@ inside parentheses or a collapsed struct literal. Bare `nil` still requires an u
 Calls inferred inside a comptime sum-type branch use that branch's concrete variant type.
 Explicit generic arguments retain the types written at the call site.
 
+Concrete generic instances report incompatible returned names and fields during checking and
+building, including generic closures and methods. For example, `fn flag[T](value T) bool`
+cannot return an `int` instance's `value`. Returns narrowed by type tests retain their normal
+smartcast behavior.
+
 Compiler integrations can prepare a `LibraryBodyFrontier` after the initial semantic check
 and pass reached declaration IDs to `TypeChecker.check_library_body_frontier_nodes`.
 The snapshot preserves declaration order, source context, and checking ranges. A changed

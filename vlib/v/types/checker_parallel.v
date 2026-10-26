@@ -3209,14 +3209,16 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // check_concrete_instance_members checks a concrete clone of one of the
 // program's generic functions for what only its concrete types decide: a field,
 // a method or an operator that such a type lacks, as when `show(1)` reads
-// `x.name` or `add(1)` adds a string to `a`, and an array or map whose elements
-// are stored differently from the one it is used or cast as, as when
-// `to_bytes([1, 2])` returns `[]u8(a)` for an `a []int` (see
-// is_container_layout_error), and an `if x := a` guard whose `a` is declared
-// neither as an option nor as a result, as when `h(User{})` guards its `a T` (see
-// is_concrete_if_guard_error). Every other error and warning of the
-// clone is dropped: checked before the clone is lowered, only these are reliable
-// outside checker fixtures, where many valid generic programs would fail. `args`
+// `x.name` or `add(1)` adds a string to `a`, a returned name or field of
+// another type than the function returns, as when `is_set(1)` returns `x` from
+// a `fn is_set[T](x T) bool`, an array or map whose elements are stored
+// differently from the one it is used or cast as, as when `to_bytes([1, 2])`
+// returns `[]u8(a)` for an `a []int` (see is_container_layout_error), and an
+// `if x := a` guard whose `a` is declared neither as an option nor as a result,
+// as when `h(User{})` guards its `a T` (see is_concrete_if_guard_error). Every
+// other error and warning of the clone is dropped: checked before the clone is
+// lowered, only these are reliable outside checker fixtures, where many valid
+// generic programs would fail. `args`
 // are source-spelling IDs of the types of the instance: the clone spells an
 // alias among them by its base type, and a member of the alias is none of its base (see
 // member_of_an_alias_argument).
@@ -3239,6 +3241,8 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	for err in tc.errors[errors_start..] {
 		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
+			|| (is_concrete_return_error(err) && tc.operand_is_plain(err.node)
+				&& !tc.value_is_type_tested(err.node, fn_idx))
 			|| (is_concrete_if_guard_error(err.msg) && tc.operand_is_plain(err.node)
 				&& !tc.concrete_guard_options[err.node])
 			|| tc.is_container_layout_error(err.msg)
@@ -3309,6 +3313,46 @@ fn is_concrete_operator_error(msg string) bool {
 	}
 	return msg.starts_with('operator `') || msg.starts_with('undefined operation `')
 		|| msg.starts_with('infix expr: cannot use `')
+}
+
+// is_concrete_return_error reports whether `err` says that a returned value has
+// another type than its function returns. Only a plain value (see
+// operand_is_plain) is reported for an instance: a clone types those with its
+// concrete types, where the result of a call or a literal of a type parameter
+// can still have the type of the open body (`return f()` in a closure, or
+// `return T{}` for a map alias). A `voidptr` in it is a type the clone did not
+// resolve.
+fn is_concrete_return_error(err TypeError) bool {
+	return err.kind == .return_mismatch && err.msg.starts_with('cannot use `')
+		&& err.msg.ends_with('` in return argument') && !err.msg.contains('`voidptr`')
+}
+
+// value_is_type_tested reports whether the value at `id`, or a value it is a
+// field of, is tested with `is` or matched anywhere in the clone `fn_idx`: a
+// clone can type it by its declared type where it is narrowed, as `c.any` in
+// `if c.any is T { return c.any }`.
+fn (tc &TypeChecker) value_is_type_tested(id flat.NodeId, fn_idx int) bool {
+	key := tc.expr_key(id)
+	if key.len == 0 || !tc.valid_node_id(flat.NodeId(fn_idx)) {
+		return false
+	}
+	mut stack := [flat.NodeId(fn_idx)]
+	for stack.len > 0 {
+		node := tc.a.node(stack.pop())
+		if node.kind in [.is_expr, .match_stmt] && node.children_count > 0 {
+			tested := tc.expr_key(tc.a.child(node, 0))
+			if tested.len > 0 && (key == tested || key.starts_with(tested + '.')) {
+				return true
+			}
+		}
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if tc.valid_node_id(child) {
+				stack << child
+			}
+		}
+	}
+	return false
 }
 
 // operator_operands_are_plain reports whether the operator at `id` applies to
