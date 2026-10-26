@@ -970,6 +970,12 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 		total_cost += i64(item.cost) + 1
 	}
 	n_batches := scoped_check_batch_count(items.len, total_cost, batch_limit)
+	// A caller that did not opt in (the serial check) reuses one batch arena
+	// for all of its batches here, as the workers do across their chunks.
+	owns_batch_scope := !tc.reuse_check_batch_scope
+	if owns_batch_scope {
+		tc.reuse_check_batch_scope = true
+	}
 	mut start := 0
 	mut consumed_cost := i64(0)
 	for batch_idx in 0 .. n_batches {
@@ -988,6 +994,11 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 		tc.merge_parallel_check_worker_scoped(batch, true)
 		tc.end_check_batch_scope(scratch_scope)
 		start = end
+	}
+	if owns_batch_scope {
+		check_worker_scope_free(tc.check_batch_scope)
+		tc.check_batch_scope = unsafe { nil }
+		tc.reuse_check_batch_scope = false
 	}
 }
 
