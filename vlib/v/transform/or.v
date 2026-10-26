@@ -2752,11 +2752,22 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 		if t.tc.resolved_call_never_returns(id) || resolved in t.a.noreturn_fns {
 			return true
 		}
-		resolved_module := resolved.all_before_last('.')
+		// Compare against views of `resolved` instead of building a string per candidate.
+		dot := resolved.last_index_u8(`.`)
+		mut short_name := ''
+		mut main_or_builtin := false
+		if dot >= 0 {
+			resolved_module := unsafe { tos(resolved.str, dot) }
+			main_or_builtin = resolved_module == 'main' || resolved_module == 'builtin'
+			short_name = unsafe { tos(resolved.str + dot + 1, resolved.len - dot - 1) }
+		}
 		for candidate, _ in t.a.noreturn_fns {
-			if (candidate.contains('.') && resolved.ends_with('.${candidate}'))
-				|| (!candidate.contains('.') && resolved_module in ['main', 'builtin']
-					&& resolved == '${resolved_module}.${candidate}') {
+			if candidate.contains_u8(`.`) {
+				if resolved.len > candidate.len && resolved[resolved.len - candidate.len - 1] == `.`
+					&& resolved.ends_with(candidate) {
+					return true
+				}
+			} else if main_or_builtin && short_name == candidate {
 				return true
 			}
 		}
