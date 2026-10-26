@@ -26923,6 +26923,11 @@ fn (mut g FlatGen) const_emission_order_owned() []string {
 	return names
 }
 
+struct DeferredConstInit {
+	name string
+	deps []string
+}
+
 fn (mut g FlatGen) const_emission_order() []string {
 	old_helper_dependencies := g.const_helper_dependencies
 	g.const_helper_dependencies = &ConstHelperDependencies{}
@@ -26930,7 +26935,7 @@ fn (mut g FlatGen) const_emission_order() []string {
 		g.const_helper_dependencies = old_helper_dependencies
 	}
 	mut emitted := map[string]bool{}
-	mut deferred := []string{}
+	mut deferred := []DeferredConstInit{}
 	mut names := g.const_init_order.clone()
 	for name, _ in g.const_vals {
 		if g.is_const_alias_name(name) || name in names {
@@ -26949,11 +26954,16 @@ fn (mut g FlatGen) const_emission_order() []string {
 			continue
 		}
 		old_module := g.tc.cur_module
+		old_file := g.tc.cur_file
 		if name in g.const_modules {
 			g.tc.cur_module = g.const_modules[name]
 		}
+		if file := g.const_files[name] {
+			g.tc.cur_file = file
+		}
 		deps := g.const_get_deps(val_id)
 		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
 		mut all_met := true
 		for dep in deps {
 			if dep !in emitted {
@@ -26962,7 +26972,8 @@ fn (mut g FlatGen) const_emission_order() []string {
 			}
 		}
 		if !all_met {
-			deferred << name
+			// Reuse dependencies resolved in the initializer's module and file.
+			deferred << DeferredConstInit{ name: name, deps: deps }
 		} else {
 			result << name
 			emitted[name] = true
@@ -26972,27 +26983,27 @@ fn (mut g FlatGen) const_emission_order() []string {
 		if deferred.len == 0 {
 			break
 		}
-		mut remaining := []string{}
-		for name in deferred {
-			val_id := g.const_vals[name]
-			deps := g.const_get_deps(val_id)
+		mut remaining := []DeferredConstInit{}
+		for item in deferred {
 			mut all_met := true
-			for dep in deps {
+			for dep in item.deps {
 				if dep !in emitted {
 					all_met = false
 					break
 				}
 			}
 			if all_met {
-				result << name
-				emitted[name] = true
+				result << item.name
+				emitted[item.name] = true
 			} else {
-				remaining << name
+				remaining << item
 			}
 		}
 		deferred = remaining.clone()
 	}
-	result << deferred
+	for item in deferred {
+		result << item.name
+	}
 	return result
 }
 
