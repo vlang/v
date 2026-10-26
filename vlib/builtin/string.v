@@ -3405,3 +3405,35 @@ pub fn (mut ri RunesIterator) next() ?rune {
 	ri.i += if char_len > 0 { char_len } else { 1 }
 	return r
 }
+
+// rpad pads right side of the string using the value * times supplied
+@[inline]
+pub fn (s string) rpad(value string, times int) string {
+	if times <= 0 { return s.clone() }
+	return s + value.repeat(times)
+}
+
+// lpad pads left side of the string using the value * times supplied
+@[inline]
+pub fn (s string) lpad(value string, times int) string {
+	if times <= 0 { return s.clone() }
+	return value.repeat(times) + s
+}
+
+// rfill fills the right side of the string with the rune till max_len
+@[inline]
+pub fn (s string) rfill(value rune, max_len int) string {
+	if max_len <= 0 { return s.clone() }
+	len := s.runes().len
+	if len >= max_len { return s }
+	return s + value.str().repeat(max_len - len)
+}
+
+// lfill fills the left side of the string with the rune till max_len
+@[inline]
+pub fn (s string) lfill(value rune, max_len int) string {
+	if max_len <= 0 { return s.clone() }
+	len := s.runes().len
+	if len >= max_len { return s }
+	return value.str().repeat(max_len - len) + s
+}
