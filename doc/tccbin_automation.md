@@ -221,6 +221,13 @@ temporary, child, build-fact, no-run, job, and compiler/linker flag overrides ar
 the helper creates private V directories and passes one resolved `CC` explicitly to every V
 compilation.
 
+The seed compiler uses the same VC compatibility adapter as the normal V build, including the
+BSD bootstrap libraries and OpenBSD compatibility source. All V stages explicitly select the new
+compiler and disable automatic fallback, so a compilation failure cannot download another compiler.
+On macOS, callers must also provide an exact, clean, architecture-matching `vlang/tccbin` checkout
+through `TCCBIN_BOOTSTRAP_TCC_ROOT` and its full `TCCBIN_BOOTSTRAP_TCC_COMMIT`. The helper attaches
+that bundle only to its private clone and removes the attachment before final attestation.
+
 The bootstrap interface is:
 
 ```sh
@@ -235,6 +242,9 @@ to discover the validator path, a result file, or a last-line protocol.
 
 Materializing the two exact checkouts is the caller's responsibility. A workflow must use reviewed,
 immutable checkout actions and must not ask the bootstrap helper to contact a remote repository.
+When adopting a new contract, update `CONTRACT_SHA`, `VC_SHA`, and both manifest contract bindings
+together in every managed tccbin branch: Linux, macOS Intel and ARM, FreeBSD, OpenBSD, and Windows
+amd64. Distribution aliases without workflows do not bootstrap a validator independently.
 
 ### VC lock dry run
 
