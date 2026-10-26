@@ -20,6 +20,12 @@ Other less frequently used commands supported by V include:
 
   clean            Remove the executables that a default V build leaves behind.
 
+  compress         Compress a file with zlib (DEFLATE).
+
+  cover            Make coverage reports from the data files produced
+                   by running programs and tests, compiled with
+                   `-coverage folder/`. See `v help cover`.
+
   doctor           Display some useful info about your system to help reporting bugs.
 
   env               Print the environment variables that steer the V compiler
@@ -44,6 +50,14 @@ Other less frequently used commands supported by V include:
 
   share            Send your code to the V Playground
 
+  should-compile-all
+                   Compile all .v files of the given folders/files, one
+                   by one, exiting with 1 if any of them fails.
+
+  sqlite           A SQLite command line tool written in V. Opens an
+                   interactive session, or executes single SQL
+                   statements. See `v help sqlite`.
+
   tool              Run a tool module by name. `v tool` with no argument lists
                    the tool modules of the project and the global module folders.
 
@@ -57,6 +71,9 @@ Other less frequently used commands supported by V include:
   test-all         Run most checks, that the CI does locally.
                    It may take over 2 minutes, and it needs internet connectivity too,
                    because it tries to also verify that `v install` works.
+
+  test-cleancode   Run `v vet`, and check formatting with `v fmt -verify`,
+                   over most .v files of the repo.
 
   test-fmt         Test if all files in the current directory are formatted properly.
 
