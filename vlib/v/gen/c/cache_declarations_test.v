@@ -1,7 +1,84 @@
 module c
 
+import os
 import v.flat
+import v.markused
+import v.parser
+import v.pref
+import v.transform
 import v.types
+
+fn test_incremental_cgen_declares_new_tuple_payloads_before_wrappers() {
+	source_path := os.join_path(os.vtmp_dir(), 'incremental_tuple_declarations_${os.getpid()}.v')
+	os.write_file(source_path, 'module main
+
+fn pair() ?(i64, string) {
+	return 1, "one"
+}
+
+fn result_pair() !(u64, bool) {
+	return u64(2), true
+}
+
+fn main() {
+	a, b := pair() or { return }
+	c, d := result_pair() or { return }
+	println(a)
+	println(b)
+	println(c)
+	println(d)
+}
+') or { panic(err) }
+	defer {
+		os.rm(source_path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(source_path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnose_unknown_calls = true
+	tc.diagnostic_files[source_path] = true
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, &tc)
+	tc.annotate_types()
+	used_fns := markused.mark_used(a, tc)
+	for cached in [false, true] {
+		mut g := FlatGen.new()
+		g.set_cache_split(true)
+		g.set_program_body_only(true)
+		g.set_incremental_fn_names({
+			'pair':        true
+			'result_pair': true
+			'main':        true
+		})
+		if cached {
+			g.set_cached_support_declarations('typedef struct multi_return_i64_string multi_return_i64_string;
+struct multi_return_i64_string { i64 arg0; string arg1; };
+typedef struct multi_return_u64_bool multi_return_u64_bool;
+struct multi_return_u64_bool { u64 arg0; bool arg1; };')
+		}
+		output := g.gen_with_used_options(a, used_fns, &tc, true)
+		for tuple, wrapper in {
+			'multi_return_i64_string': '__v_option'
+			'multi_return_u64_bool':   '__v_result'
+		} {
+			forward := 'typedef struct ${tuple} ${tuple};'
+			definition := 'struct ${tuple} {'
+			if cached {
+				assert !output.contains(forward), output
+				assert !output.contains(definition), output
+			} else {
+				forward_position := output.index(forward) or { -1 }
+				tuple_position := output.index(definition) or { -1 }
+				wrapper_position := output.index('typedef struct ${wrapper}_${tuple}') or { -1 }
+				assert forward_position >= 0, output
+				assert tuple_position > forward_position, output
+				assert wrapper_position > tuple_position, output
+			}
+		}
+	}
+}
 
 fn test_final_cached_signatures_declare_tuple_payloads_before_wrappers() {
 	for is_result in [false, true] {

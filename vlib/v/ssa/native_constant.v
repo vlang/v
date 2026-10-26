@@ -46,7 +46,7 @@ fn (b &Builder) native_const_requires_storage(id flat.NodeId, module_name string
 	if node.kind == .call {
 		callee := b.qualified_expr_name(b.a.child(node, 0))
 		required = callee !in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-			'usize', 'rune', 'f32', 'f64', 'bool', 'voidptr', 'char']
+			'uint', 'rune', 'f32', 'f64', 'bool', 'voidptr', 'char']
 	}
 	if node.kind == .infix && b.checked_expr_type_name(id) == flat.source_type_string {
 		required = true

@@ -18,7 +18,7 @@ struct AlignedSumHolder {
 fn test_explicit_sum_references_inherit_variant_alignment() {
 	for i in 0 .. 64 {
 		value := &AlignedSum(SumSmallValue{i})
-		assert usize(voidptr(value)) % 64 == 0
+		assert uint(voidptr(value)) % 64 == 0
 		assert value is SumSmallValue
 		assert value.value == i
 	}
@@ -26,16 +26,16 @@ fn test_explicit_sum_references_inherit_variant_alignment() {
 
 fn test_sum_aliases_and_containing_values_inherit_alignment() {
 	value := &AlignedSumAlias(SumSmallValue{5})
-	assert usize(voidptr(value)) % 64 == 0
+	assert uint(voidptr(value)) % 64 == 0
 	holder := &AlignedSumHolder{ value: SumSmallValue{7} }
-	assert usize(voidptr(holder)) % 64 == 0
+	assert uint(voidptr(holder)) % 64 == 0
 	assert holder.value is SumSmallValue
 	assert holder.value.value == 7
 }
 
 fn test_fixed_arrays_of_sums_inherit_alignment() {
 	values := &[2]AlignedSum{init: SumSmallValue{3}}
-	assert usize(voidptr(values)) % 64 == 0
+	assert uint(voidptr(values)) % 64 == 0
 	for i in 0 .. 2 {
 		assert (*values)[i] is SumSmallValue
 		assert (*values)[i].value == 3

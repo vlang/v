@@ -65,12 +65,21 @@ const reserved_words = {
 	'while':    true
 	// The C99 header <complex.h> defines this as the keyword _Complex.
 	'complex':  true
+	// Windows headers define these as memory-model and calling-convention macros.
+	'near':     true
+	'far':      true
+	'pascal':   true
+	'cdecl':    true
+	// windef.h defines these as function-like macros, which reject a one-argument
+	// declaration (`double min(Tree* tree)`) or a two-argument definition.
+	'min':      true
+	'max':      true
 	// GNU C modes predefine these as macros (`linux` on Linux, `unix` on Unix).
 	'unix':     true
 	'linux':    true
 }
 
-// libc_collisions are libc function names that are not C keywords but clash at
+// libc_collisions are C runtime and intrinsic names that are not keywords but clash at
 // link/declaration time when a user defines a plain (module `main`) function with
 // the same name (e.g. `fn rint(...)` vs libc's `double rint(double)`). They are
 // mangled to `v_<name>` consistently at definition and call sites. `C.<name>`
@@ -79,6 +88,7 @@ const libc_collisions = {
 	'abort':    true
 	'abs':      true
 	'access':   true
+	'alloca':   true
 	'acos':     true
 	'atexit':   true
 	'ceil':     true
@@ -170,13 +180,16 @@ pub fn c_name(name string) string {
 	if n == 'complex' || name == '@complex' {
 		return '${internal_symbol_c_prefix}macro_complex'
 	}
-	if n in ['mktemp', 'truncate'] {
+	if n in ['mktemp', 'truncate', 'alloca'] {
 		return '${internal_symbol_c_prefix}libc_${n}'
 	}
 	mut result := n
 	// The collision sets contain only short names; longer identifiers cannot match.
 	if (n.len <= max_c_collision_name_len && (n in reserved_words || n in libc_collisions))
 		|| is_string_literal_symbol(n) {
+		if n in ['near', 'far', 'pascal', 'cdecl', 'min', 'max'] {
+			return '${internal_symbol_c_prefix}macro_${n}'
+		}
 		if name.contains('@') {
 			result = '_v_${n}'
 		} else {

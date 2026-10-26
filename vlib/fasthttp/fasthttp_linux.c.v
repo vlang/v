@@ -22,9 +22,9 @@ fn C.socket(domain i32, typ i32, protocol i32) i32
 
 fn C.bind(sockfd i32, addr voidptr, addrlen u32) i32
 
-fn C.send(__fd i32, __buf voidptr, __n usize, __flags i32) i32
+fn C.send(__fd i32, __buf voidptr, __n uint, __flags i32) i32
 
-fn C.recv(__fd i32, __buf voidptr, __n usize, __flags i32) i32
+fn C.recv(__fd i32, __buf voidptr, __n uint, __flags i32) i32
 
 fn C.setsockopt(__fd i32, __level i32, __optname i32, __optval voidptr, __optlen u32) i32
 
@@ -46,7 +46,7 @@ fn C.epoll_ctl(__epfd i32, __op i32, __fd i32, __event &C.epoll_event) i32
 
 fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout i32) i32
 
-fn C.sendfile(out_fd i32, in_fd i32, offset voidptr, count usize) i32
+fn C.sendfile(out_fd i32, in_fd i32, offset voidptr, count uint) i32
 
 @[typedef]
 pub struct C.sigset_t {}
@@ -64,7 +64,7 @@ fn C.pthread_sigmask(how i32, const_set voidptr, oldset voidptr) i32
 fn C.sigtimedwait(const_set &C.sigset_t, info voidptr, const_timeout &C.timespec) i32
 
 // sendfile_without_sigpipe confines SIGPIPE blocking to one sendfile call.
-fn sendfile_without_sigpipe(out_fd i32, in_fd i32, offset &i64, count usize) i32 {
+fn sendfile_without_sigpipe(out_fd i32, in_fd i32, offset &i64, count uint) i32 {
 	mut sigpipe_set := C.sigset_t{}
 	mut previous_mask := C.sigset_t{}
 	C.sigemptyset(&sigpipe_set)
@@ -107,7 +107,7 @@ fn C.fstat(fd i32, buf &C.stat) i32
 
 fn C.open(pathname &char, flags i32, mode ...int) i32
 
-fn C.memmove(dest voidptr, src voidptr, n usize) voidptr
+fn C.memmove(dest voidptr, src voidptr, n uint) voidptr
 
 @[typedef]
 union C.epoll_data_t {

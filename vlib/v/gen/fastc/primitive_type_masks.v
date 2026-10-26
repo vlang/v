@@ -50,6 +50,7 @@ const fastc_scalar_type_mask = fastc_primitive_type_mask([
 	flat.source_type_u16,
 	flat.source_type_u32,
 	flat.source_type_u64,
+	flat.source_type_uint,
 	flat.source_type_usize,
 ])
 
@@ -65,6 +66,7 @@ const fastc_comparison_type_mask = fastc_primitive_type_mask([
 	flat.source_type_u16,
 	flat.source_type_u32,
 	flat.source_type_u64,
+	flat.source_type_uint,
 	flat.source_type_usize,
 	flat.source_type_f32,
 	flat.source_type_f64,
@@ -81,6 +83,7 @@ const fastc_arithmetic_type_mask = fastc_primitive_type_mask([
 	flat.source_type_u16,
 	flat.source_type_u32,
 	flat.source_type_u64,
+	flat.source_type_uint,
 	flat.source_type_usize,
 	flat.source_type_f32,
 	flat.source_type_f64,
@@ -100,6 +103,7 @@ const fastc_integer_type_mask = fastc_primitive_type_mask([
 	flat.source_type_u32,
 	flat.source_type_u64,
 	fastc_type_unsigned_int,
+	flat.source_type_uint,
 	flat.source_type_usize,
 ])
 
@@ -109,6 +113,7 @@ const fastc_unsigned_integer_type_mask = fastc_primitive_type_mask([
 	flat.source_type_u32,
 	flat.source_type_u64,
 	fastc_type_unsigned_int,
+	flat.source_type_uint,
 	flat.source_type_usize,
 ])
 
@@ -116,6 +121,7 @@ const fastc_wide_unsigned_integer_type_mask = fastc_primitive_type_mask([
 	flat.source_type_u32,
 	flat.source_type_u64,
 	fastc_type_unsigned_int,
+	flat.source_type_uint,
 	flat.source_type_usize,
 ])
 
@@ -135,6 +141,6 @@ fn fastc_plain_arithmetic_value_type(typ u32) bool {
 	if fastc_arithmetic_type_mask.enabled { return fastc_arithmetic_type_mask.contains(typ) }
 	return typ in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
 		flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, flat.source_type_u8,
-		flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_usize,
-		flat.source_type_f32, flat.source_type_f64]
+		flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint,
+		flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
 }

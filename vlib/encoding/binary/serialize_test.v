@@ -14,8 +14,8 @@ fn test_encode_decode_primitive_string() ! {
 	a_f64 := f64(-32144.3133)
 	a_bool := bool(true)
 	a_rune := `♥`
-	a_isize := isize(-45433)
-	a_usize := usize(432211)
+	a_isize := int(-45433)
+	a_usize := uint(432211)
 	a_string := '♥🖊dsser333100'
 
 	b_u8 := encode_binary(a_u8)!
@@ -48,8 +48,8 @@ fn test_encode_decode_primitive_string() ! {
 	c_f64 := decode_binary[f64](b_f64)!
 	c_bool := decode_binary[bool](b_bool)!
 	c_rune := decode_binary[rune](b_rune)!
-	c_isize := decode_binary[isize](b_isize)!
-	c_usize := decode_binary[usize](b_usize)!
+	c_isize := decode_binary[int](b_isize)!
+	c_usize := decode_binary[uint](b_usize)!
 	c_string := decode_binary[string](b_string)!
 
 	assert a_u8 == c_u8
@@ -84,11 +84,10 @@ fn test_encode_decode_primitive_string() ! {
 	assert b_rune == [u8(101), 38, 0, 0]
 	assert b_string == [u8(18), 0, 0, 0, 0, 0, 0, 0, 226, 153, 165, 240, 159, 150, 138, 100, 115,
 		115, 101, 114, 51, 51, 51, 49, 48, 48]
-	$if x64 {
-		assert b_isize == [u8(135), 78, 255, 255, 255, 255, 255, 255]
+	assert b_isize == [u8(135), 78, 255, 255, 255, 255, 255, 255]
+	if sizeof(uint) == 8 {
 		assert b_usize == [u8(83), 152, 6, 0, 0, 0, 0, 0]
-	} $else {
-		assert b_isize == [u8(135), 78, 255, 255]
+	} else {
 		assert b_usize == [u8(83), 152, 6, 0]
 	}
 }
@@ -107,8 +106,8 @@ fn test_encode_decode_array() {
 	a_f64 := [f64(-32144.3133), 432e-13]
 	a_bool := [bool(true), false]
 	a_rune := [`♥`, `🖊`]
-	a_isize := [isize(-45433), 24342]
-	a_usize := [usize(432211), 888533]
+	a_isize := [int(-45433), 24342]
+	a_usize := [uint(432211), 888533]
 	a_string := ['♥', '🖊', 'dfd21']
 
 	b_u8 := encode_binary(a_u8)!
@@ -141,8 +140,8 @@ fn test_encode_decode_array() {
 	c_f64 := decode_binary[[]f64](b_f64)!
 	c_bool := decode_binary[[]bool](b_bool)!
 	c_rune := decode_binary[[]rune](b_rune)!
-	c_isize := decode_binary[[]isize](b_isize)!
-	c_usize := decode_binary[[]usize](b_usize)!
+	c_isize := decode_binary[[]int](b_isize)!
+	c_usize := decode_binary[[]uint](b_usize)!
 	c_string := decode_binary[[]string](b_string)!
 
 	assert a_u8 == c_u8
@@ -181,13 +180,12 @@ fn test_encode_decode_array() {
 	assert b_rune == [u8(2), 0, 0, 0, 0, 0, 0, 0, 101, 38, 0, 0, 138, 245, 1, 0]
 	assert b_string == [u8(3), 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 226, 153, 165, 4, 0,
 		0, 0, 0, 0, 0, 0, 240, 159, 150, 138, 5, 0, 0, 0, 0, 0, 0, 0, 100, 102, 100, 50, 49]
-	$if x64 {
-		assert b_isize == [u8(2), 0, 0, 0, 0, 0, 0, 0, 135, 78, 255, 255, 255, 255, 255, 255, 22,
-			95, 0, 0, 0, 0, 0, 0]
+	assert b_isize == [u8(2), 0, 0, 0, 0, 0, 0, 0, 135, 78, 255, 255, 255, 255, 255, 255, 22, 95,
+		0, 0, 0, 0, 0, 0]
+	if sizeof(uint) == 8 {
 		assert b_usize == [u8(2), 0, 0, 0, 0, 0, 0, 0, 83, 152, 6, 0, 0, 0, 0, 0, 213, 142, 13,
 			0, 0, 0, 0, 0]
-	} $else {
-		assert b_isize == [u8(2), 0, 0, 0, 0, 0, 0, 0, 135, 78, 255, 255, 22, 95, 0, 0]
+	} else {
 		assert b_usize == [u8(2), 0, 0, 0, 0, 0, 0, 0, 83, 152, 6, 0, 213, 142, 13, 0]
 	}
 }
@@ -240,10 +238,10 @@ fn test_encode_decode_map() {
 		'abc': `♥`
 	}
 	a_map_string_isize := {
-		'abc': isize(-45433)
+		'abc': int(-45433)
 	}
 	a_map_string_usize := {
-		'abc': usize(432211)
+		'abc': uint(432211)
 	}
 
 	a_map_string_struct := {
@@ -282,8 +280,8 @@ fn test_encode_decode_map() {
 	c_map_string_f64 := decode_binary[map[string]f64](b_map_string_f64)!
 	c_map_string_bool := decode_binary[map[string]bool](b_map_string_bool)!
 	c_map_string_rune := decode_binary[map[string]rune](b_map_string_rune)!
-	c_map_string_isize := decode_binary[map[string]isize](b_map_string_isize)!
-	c_map_string_usize := decode_binary[map[string]usize](b_map_string_usize)!
+	c_map_string_isize := decode_binary[map[string]int](b_map_string_isize)!
+	c_map_string_usize := decode_binary[map[string]uint](b_map_string_usize)!
 	c_map_string_struct := decode_binary[map[string]St](b_map_string_struct)!
 
 	assert a_map_string_string == c_map_string_string
@@ -332,14 +330,12 @@ fn test_encode_decode_map() {
 		1]
 	assert b_map_string_rune == [u8(1), 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99,
 		101, 38, 0, 0]
-	$if x64 {
-		assert b_map_string_isize == [u8(1), 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 97, 98,
-			99, 135, 78, 255, 255, 255, 255, 255, 255]
+	assert b_map_string_isize == [u8(1), 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99,
+		135, 78, 255, 255, 255, 255, 255, 255]
+	if sizeof(uint) == 8 {
 		assert b_map_string_usize == [u8(1), 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 97, 98,
 			99, 83, 152, 6, 0, 0, 0, 0, 0]
-	} $else {
-		assert b_map_string_isize == [u8(1), 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 97, 98,
-			99, 135, 78, 255, 255]
+	} else {
 		assert b_map_string_usize == [u8(1), 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 97, 98,
 			99, 83, 152, 6, 0]
 	}
@@ -361,8 +357,8 @@ struct MyStruct {
 	f_f64          f64
 	f_bool         bool
 	f_rune         rune
-	f_isize        isize
-	f_usize        usize
+	f_isize        int
+	f_usize        uint
 	f_string       string
 	f_array_u8     []u8
 	f_array_string []string
@@ -383,8 +379,8 @@ fn test_encode_decode_struct() {
 		f_f64:          f64(22421.32)
 		f_bool:         bool(true)
 		f_rune:         rune(`♥`)
-		f_isize:        isize(42323)
-		f_usize:        usize(83842)
+		f_isize:        int(42323)
+		f_usize:        uint(83842)
 		f_string:       'fds♥323s'
 		f_array_u8:     [u8(32), 22, 55, 72]
 		f_array_string: ['dfdss', 'dfsd3', '54344']
@@ -411,8 +407,8 @@ mut:
 	f_f64          f64
 	f_bool         bool
 	f_rune         rune
-	f_isize        isize
-	f_usize        usize
+	f_isize        int
+	f_usize        uint
 	f_string       string
 	f_array_u8     []u8 @[serialize: '-']
 	f_array_string []string
@@ -433,8 +429,8 @@ fn test_encode_decode_struct_skip_fields() {
 		f_f64:          f64(22421.32)
 		f_bool:         bool(true)
 		f_rune:         rune(`♥`)
-		f_isize:        isize(42323)
-		f_usize:        usize(83842)
+		f_isize:        int(42323)
+		f_usize:        uint(83842)
 		f_string:       'fds♥323s'
 		f_array_u8:     [u8(32), 22, 55, 72]
 		f_array_string: ['dfdss', 'dfsd3', '54344']
@@ -480,8 +476,8 @@ fn test_encode_decode_complex() {
 				f_f64:          f64(22421.32)
 				f_bool:         bool(true)
 				f_rune:         rune(`♥`)
-				f_isize:        isize(42323)
-				f_usize:        usize(83842)
+				f_isize:        int(42323)
+				f_usize:        uint(83842)
 				f_string:       'fds♥323s'
 				f_array_u8:     [u8(32), 22, 55, 72]
 				f_array_string: ['dfdss', 'dfsd3', '54344']
@@ -500,8 +496,8 @@ fn test_encode_decode_complex() {
 				f_f64:          f64(32421.32)
 				f_bool:         bool(true)
 				f_rune:         rune(`♥`)
-				f_isize:        isize(52323)
-				f_usize:        usize(93842)
+				f_isize:        int(52323)
+				f_usize:        uint(93842)
 				f_string:       'ads♥323s'
 				f_array_u8:     [u8(22), 22, 55, 72]
 				f_array_string: ['dxfdss', 'dsefsd3', 'po54344']
@@ -557,4 +553,23 @@ fn test_skip_shared_field() {
     b: {}
     c: 200
 }'
+}
+
+fn test_legacy_signed_encoding_preserves_wire_width() ! {
+	value := isize(-42)
+	for use_big_endian in [false, true] {
+		bytes := encode_binary(value, big_endian: use_big_endian)!
+		assert bytes.len == int(sizeof(isize))
+		assert decode_binary[isize](bytes, big_endian: use_big_endian)! == value
+		values := [value, isize(123)]
+		assert decode_binary[[]isize](encode_binary(values, big_endian: use_big_endian)!,
+			big_endian: use_big_endian
+		)! == values
+		mapping := {
+			value: isize(123)
+		}
+		assert decode_binary[map[isize]isize](encode_binary(mapping, big_endian: use_big_endian)!,
+			big_endian: use_big_endian
+		)! == mapping
+	}
 }

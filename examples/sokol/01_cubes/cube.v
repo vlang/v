@@ -42,7 +42,7 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	// comment, if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr:  buf
-		size: usize(sz)
+		size: uint(sz)
 	}
 
 	sg_img := gfx.make_image(&img_desc)

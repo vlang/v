@@ -14,7 +14,7 @@ fn C.exit(int)
 fn C.alarm(u32) u32
 fn C.pipe(&i32) i32
 fn C.close(i32) i32
-fn C.read(i32, voidptr, usize) isize
+fn C.read(i32, voidptr, uint) C.ptrdiff_t
 struct C.pollfd { fd int events i16 revents i16 }
 fn C.poll(&C.pollfd, u64, int) int
 fn main() {
@@ -63,11 +63,11 @@ import sync
 fn C.exit(int)
 fn C.alarm(u32) u32
 fn C.usleep(u32) int
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(source voidptr, size isize) voidptr {
-    result := C.malloc(usize(size))
-    return C.memcpy(result, source, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(source voidptr, size int) voidptr {
+    result := C.malloc(uint(size))
+    return C.memcpy(result, source, uint(size))
 }
 fn monitor(sem &sync.Semaphore) int {
     mut wake := unsafe { &sync.Semaphore(voidptr(sem)) }

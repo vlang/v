@@ -13,8 +13,8 @@ fn test_native_spawn_overlaps_parent_and_returns_aggregate() {
 fn C.exit(int)
 fn C.alarm(u32) u32
 fn C.pipe(voidptr) i32
-fn C.read(i32, voidptr, usize) isize
-fn C.write(i32, voidptr, usize) isize
+fn C.read(i32, voidptr, uint) C.ptrdiff_t
+fn C.write(i32, voidptr, uint) C.ptrdiff_t
 fn C.close(i32) i32
 fn C.pthread_self() u64
 fn C.v3_pthread_is_current(u64) int
@@ -51,8 +51,8 @@ fn test_native_detached_spawn_performs_side_effect() {
 fn C.exit(int)
 fn C.alarm(u32) u32
 fn C.pipe(voidptr) i32
-fn C.read(i32, voidptr, usize) isize
-fn C.write(i32, voidptr, usize) isize
+fn C.read(i32, voidptr, uint) C.ptrdiff_t
+fn C.write(i32, voidptr, uint) C.ptrdiff_t
 fn C.close(i32) i32
 fn C.pthread_self() u64
 fn send(fd i32, parent u64) {

@@ -6,6 +6,26 @@ import v.flat
 import v.pref
 import v.types
 
+fn test_allocation_runtime_prototypes_match_legacy_and_modern_sizes() {
+	for size in [types.Type(types.int_), types.Type(types.isize_)] {
+		mut ast := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&ast)
+		tc.fn_param_types['malloc_noscan'] = [size]
+		tc.fn_param_types['memdup'] = [types.Type(types.voidptr_), size]
+		tc.fn_param_types['memdup_align'] = [types.Type(types.voidptr_), size, size]
+		mut g := FlatGen.new()
+		g.a = &ast
+		g.tc = &tc
+		g.has_builtins = true
+		g.builtin_abi_decls()
+		code := g.sb.str()
+		ct := tc.c_type(size)
+		assert code.contains('u8* malloc_noscan(${ct} n);'), code
+		assert code.contains('void* memdup(void* src, ${ct} sz);'), code
+		assert code.contains('void* memdup_align(void* src, ${ct} sz, ${ct} alignment);'), code
+	}
+}
+
 fn test_partial_c_closure_view_keeps_the_v_runtime_layout() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)

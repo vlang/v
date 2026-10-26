@@ -11,7 +11,7 @@ fn test_native_signal_handler_calls_fallback_on_alternate_stack() {
 		run_native_signal_fixture('alternate', 'module main
 struct C.stack_t {
     ss_sp voidptr
-    ss_size usize
+    ss_size uint
     ss_flags int
 }
 fn C.exit(int)

@@ -71,11 +71,11 @@ pub fn (a &Asset) get_length_64() i64 {
 	return C.AAsset_getLength64(a)
 }
 
-fn C.AAsset_read(&C.AAsset, voidptr, usize) i32
+fn C.AAsset_read(&C.AAsset, voidptr, uint) i32
 
 // read attempts to read 'count' bytes of data from the current offset.
 // read returns the number of bytes read, zero on EOF, or < 0 on error.
-pub fn (a &Asset) read(buffer voidptr, count usize) int {
+pub fn (a &Asset) read(buffer voidptr, count uint) int {
 	return C.AAsset_read(a, buffer, count)
 }
 
@@ -99,7 +99,7 @@ pub fn read_apk_asset(path string) ![]u8 {
 		len := asset.get_length()
 		buf := []u8{len: len}
 		for {
-			if asset.read(buf.data, usize(len)) > 0 {
+			if asset.read(buf.data, uint(len)) > 0 {
 				break
 			}
 		}

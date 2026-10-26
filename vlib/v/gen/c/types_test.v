@@ -763,7 +763,9 @@ fn test_unqualified_type_normalization_cache_preserves_spacing_and_nesting() {
 		'&&int':                          '&&int'
 		'& ? []int':                      '&?[]int'
 		'[]map[ string ] []int':          '[]map[string][]int'
+		'map[string]Box[int,string]':     'map[string]Box[int, string]'
 		'Box[int,string]':                'Box[int, string]'
+		'Box[ int ,string ]':             'Box[int, string]'
 		'Box[map[string][]int, ?string]': 'Box[map[string][]int, ?string]'
 		'[3]int':                         '[3]int'
 	} {
@@ -1333,7 +1335,7 @@ fn test_import_alias_canonicalization_is_idempotent_for_module_path_prefix() {
 		canonical := flat.source_type_name(canonical_source_id)
 		assert canonical.contains('tsc.execute.tsc.CompileTimes')
 		assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(canonical_source_id, 'other.v')) == canonical
-		assert g.canonical_import_alias_type_text_in_file_uncached(canonical, 'other.v') == canonical
+		assert g.canonical_import_alias_type_text_in_file_uncached(canonical_source_id, 'other.v') == canonical_source_id
 	}
 }
 
@@ -1346,8 +1348,8 @@ fn test_import_type_ids_preserve_padded_wrapper_normalization() {
 	for source in ['Foo', 'fn () int', 'shared Foo', ' Foo ', ' & ? Foo ', ' & ! Foo '] {
 		id := flat.source_type_id(source)
 		numeric := g.canonical_import_alias_type_text_in_file(id, 'clean.v')
-		parsed := g.canonical_import_alias_type_text_in_file_uncached(source, 'clean.v')
-		assert flat.source_type_name(numeric) == parsed
+		parsed := g.canonical_import_alias_type_text_in_file_uncached(id, 'clean.v')
+		assert numeric == parsed
 	}
 	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(' & ? Foo '), 'clean.v')) == '&?Foo'
 	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(' & ! Foo '), 'clean.v')) == '&!Foo'
@@ -1378,5 +1380,36 @@ fn test_field_type_cache_distinguishes_many_owners_with_the_same_field() {
 			assert g.struct_field_type(id, 'missing') == none
 			assert g.struct_field_type(id, 'value')? == expected
 		}
+	}
+}
+
+fn test_shared_generic_substitution_keeps_exact_source_ids() {
+	type_param := flat.source_type_id('T')
+	concrete := flat.source_type_id('lib.Box[map[string][]lib.Item]')
+	assert substitute_shared_generic_type_text(type_param, ['T'], [concrete]) == concrete
+	assert substitute_shared_generic_type_text(flat.source_type_id(' \tT '), ['T'], [concrete]) == concrete
+	assert substitute_shared_generic_type_text(type_param, ['T'], [u32(0)]) == 0
+	assert substitute_shared_generic_type_text(type_param, ['T', 'T'], [concrete, flat.source_type_int]) == concrete
+	unchanged := flat.source_type_id('Unrelated')
+	assert substitute_shared_generic_type_text(unchanged, ['T'], [concrete]) == unchanged
+	padded := flat.source_type_id(' T ')
+	assert substitute_shared_generic_type_text(padded, ['T'], []u32{}) == padded
+	blank := flat.source_type_id(' \t ')
+	assert substitute_shared_generic_type_text(blank, ['T'], [concrete]) == blank
+	assert substitute_shared_generic_type_text(flat.source_type_id(' U '), ['T', 'U'], [concrete]) == flat.source_type_id('U')
+}
+
+fn test_shared_generic_substitution_preserves_composite_spelling_rules() {
+	params := ['T', 'U']
+	args := [flat.source_type_id('lib.Item'), flat.source_type_int]
+	inputs := ['&T', 'mut T', '?T', '!T', '...T', 'shared T', 'atomic T', 'chan T', 'thread T',
+		'[]T', 'map[T][]U', '[T]U', '(T, []U)', 'Box[T, map[string]U]',
+		'fn (mut item T, next fn (U) T) ?T']
+	expected := ['&lib.Item', 'mut lib.Item', '?lib.Item', '!lib.Item', '...lib.Item', 'shared lib.Item',
+		'atomic lib.Item', 'chan lib.Item', 'thread lib.Item', '[]lib.Item', 'map[lib.Item][]int',
+		'[T]int', '(lib.Item, []int)', 'Box[lib.Item, map[string]int]',
+		'fn (mut item lib.Item, next fn (int) lib.Item) ?lib.Item']
+	for i, input in inputs {
+		assert substitute_shared_generic_type_text(flat.source_type_id(input), params, args) == flat.source_type_id(expected[i])
 	}
 }

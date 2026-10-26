@@ -114,7 +114,7 @@ const values = [u64(0xffff_ffff_ffff_ffff), u64(0o1777777777777777777777), u64(1
 const negatives = [i64(-1), i64(-9223372036854775807)]!
 const wide = [u128(18446744073709551616), u128(340282366920938463463374607431768211455)]!
 const aliases = [Wide(u128(18446744073709551616))]!
-const platform = [int(123), isize(123), usize(123)]!
+const platform = [int(123), int(123), uint(123)]!
 fn main() {}
 ')!
 	defer { os.rm(path) or {} }

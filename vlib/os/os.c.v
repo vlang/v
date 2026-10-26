@@ -19,7 +19,7 @@ pub const args = arguments()
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink(pathname &char, buf &char, bufsiz usize) i32
+fn C.readlink(pathname &char, buf &char, bufsiz uint) i32
 
 fn C.getline(voidptr, voidptr, voidptr) i32
 
@@ -60,7 +60,7 @@ fn write_file_direct(path string, text string) ! {
 			return error('0 bytes written')
 		}
 		remaining -= written
-		sp = unsafe { &u8(voidptr(usize(sp) + usize(written))) }
+		sp = unsafe { &u8(voidptr(uint(sp) + uint(written))) }
 	}
 }
 
@@ -730,7 +730,7 @@ pub fn get_raw_line() string {
 			}
 		}
 	} $else {
-		max := usize(0)
+		max := uint(0)
 		buf := &u8(unsafe { nil })
 
 		mut str := ''
@@ -782,7 +782,7 @@ pub fn get_raw_stdin() []u8 {
 			}
 		}
 	} $else {
-		max := usize(0)
+		max := uint(0)
 		buf := &u8(unsafe { nil })
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
 		$if race ? {
@@ -881,7 +881,7 @@ pub fn executable() string {
 		return unsafe { cstring_to_vstring(self_path) }
 	}
 	$if freebsd {
-		bufsize := usize(max_path_buffer_size)
+		bufsize := uint(max_path_buffer_size)
 		mib := [sysctl_ctl_kern, freebsd_kern_proc, freebsd_kern_proc_pathname, -1]! // C `int` mib buffer
 		unsafe { C.sysctl(&mib[0], mib.len, &result[0], &bufsize, 0, 0) }
 		res := unsafe { tos_clone(&result[0]) }
@@ -895,7 +895,7 @@ pub fn executable() string {
 		// See also https://github.com/gpakosz/whereami/blob/master/src/whereami.c#L591
 		// and https://github.com/ziglang/zig/issues/6718#issuecomment-711134120 .
 		mut pbuf := unsafe { &&u8(&result[0]) }
-		bufsize := usize(max_path_buffer_size)
+		bufsize := uint(max_path_buffer_size)
 		pid := C.getpid()
 		mib := [sysctl_ctl_kern, openbsd_kern_proc_args, pid, openbsd_kern_proc_argv]! // C `int` mib buffer
 		if unsafe { C.sysctl(&mib[0], mib.len, nil, &bufsize, nil, 0) } == 0 {
@@ -1041,13 +1041,13 @@ fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
 		// both parts, the separator and the terminator was compared with `size` above.
 		unsafe {
 			mut dst := &u8(buf)
-			C.memcpy(dst, cwd, usize(cwd_len))
+			C.memcpy(dst, cwd, uint(cwd_len))
 			mut n := cwd_len
 			if cwd[cwd_len - 1] != `/` {
 				dst[n] = `/`
 				n++
 			}
-			C.memcpy(dst + n, fpath.str, usize(fpath.len))
+			C.memcpy(dst + n, fpath.str, uint(fpath.len))
 			dst[n + fpath.len] = 0
 		}
 		return cwd_len
@@ -1372,7 +1372,7 @@ pub fn write_file_array(path string, buffer array) ! {
 	defer {
 		f.close()
 	}
-	unsafe { f.write_full_buffer(buffer.data, usize(buffer.len * buffer.element_size))! }
+	unsafe { f.write_full_buffer(buffer.data, uint(buffer.len * buffer.element_size))! }
 }
 
 // glob function searches for all the pathnames matching patterns and returns a

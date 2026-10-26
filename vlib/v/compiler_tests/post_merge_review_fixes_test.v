@@ -257,11 +257,11 @@ fn main() {
 }
 
 fn test_c_integer_parameters_accept_other_integer_variable_types() {
-	check_good('c_integer_variable_arguments', 'fn C.integer_probe(usize, isize, u64) int
+	check_good('c_integer_variable_arguments', 'fn C.integer_probe(uint, int, u64) int
 
 fn main() {
-	signed := isize(1)
-	unsigned := usize(2)
+	signed := int(1)
+	unsigned := uint(2)
 	word := int(3)
 	_ = C.integer_probe(signed, unsigned, word)
 }
@@ -4245,7 +4245,7 @@ fn test_latest_pr_review_codegen_regressions() {
 ')
 	assert small_int_comparison == 'true\ntrue'
 
-	c_strings := run_good(v3_bin, 'single_char_c_string_pointer_context', "fn C.strlen(charptr) usize
+	c_strings := run_good(v3_bin, 'single_char_c_string_pointer_context', "fn C.strlen(charptr) uint
 
 fn main() {
 	println(C.strlen(c'\\n'))
@@ -8042,7 +8042,7 @@ fn test_user_c_string_function_is_not_inferred_unsafe() {
 	v3_bin := build_v3()
 	src_path := '${tmp_test_path('user_c_strlen_not_unsafe')}.v'
 	bin_path := tmp_test_path('user_c_strlen_not_unsafe')
-	os.write_file(src_path, "fn C.strlen(charptr) usize
+	os.write_file(src_path, "fn C.strlen(charptr) uint
 
 fn main() {
 	println(C.strlen(c'x'))
