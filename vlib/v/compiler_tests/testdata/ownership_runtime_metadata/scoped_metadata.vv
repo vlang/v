@@ -72,7 +72,7 @@ fn test_ownership_results_survive_batch_arena_release() {
 		state.ownership_fn_return_descs['return_desc'.clone()] = [OwnershipReturnDescendant{
 			slot_idx:  1
 			suffix:    '.field'.clone()
-			type_name: 'string'.clone()
+			type_name: flat.source_type_id('string'.clone())
 		}]
 		state.ownership_fn_return_param_descs['param_desc'.clone()] = [OwnershipReturnParamDescendant{
 			param_idx:     0
@@ -84,7 +84,7 @@ fn test_ownership_results_survive_batch_arena_release() {
 		state.ownership_fn_param_descs['param'.clone()] = [OwnershipParamDescendant{
 			param_idx: 0
 			suffix:    '.field'.clone()
-			type_name: 'string'.clone()
+			type_name: flat.source_type_id('string'.clone())
 		}]
 		state.ownership_fn_literal_ret_types['literal'.clone()] = Type(FnType{
 			params:      [FnParam{ typ: new_type_reference(Type(Struct{ name_id: flat.source_type_id('ScopedItem'.clone()) })) }]
@@ -92,7 +92,7 @@ fn test_ownership_results_survive_batch_arena_release() {
 		})
 		state.drop_at_fn_exit['drop_fn'.clone()] = [OwnershipDropEntry{
 			name:      'local'.clone()
-			type_name: 'ScopedItem'.clone()
+			type_name: flat.source_type_id('ScopedItem'.clone())
 		}]
 		unsafe { prealloc_scope_leave(scope) }
 		tc.ownership_merge_parallel_check_worker(&worker)
@@ -106,7 +106,7 @@ fn test_ownership_results_survive_batch_arena_release() {
 		assert !unsafe { prealloc_scope_owns(scope, dst.owned_globals.value('global').str) }
 		assert !unsafe { prealloc_scope_owns(scope, dst.ownership_fn_return_descs['return_desc'][0].suffix.str) }
 		assert !unsafe { prealloc_scope_owns(scope, dst.ownership_fn_return_param_descs['param_desc'][0].via[0].str) }
-		assert !unsafe { prealloc_scope_owns(scope, dst.ownership_fn_param_descs['param'][0].type_name.str) }
+		assert !unsafe { prealloc_scope_owns(scope, flat.source_type_name(dst.ownership_fn_param_descs['param'][0].type_name).str) }
 		assert !unsafe { prealloc_scope_owns(scope, dst.drop_at_fn_exit['drop_fn'][0].name.str) }
 		assert !unsafe { prealloc_scope_owns(scope, dst.drop_at_fn_exit['drop_fn'].data) }
 		assert !unsafe { prealloc_scope_owns(scope, dst.ownership_fn_return_param_descs['param_desc'][0].via.data) }
@@ -115,6 +115,7 @@ fn test_ownership_results_survive_batch_arena_release() {
 		if literal_type is FnType {
 			assert !unsafe { prealloc_scope_owns(scope, literal_type.FnTypeDataRef) }
 			assert !unsafe { prealloc_scope_owns(scope, literal_type.params.data) }
+			assert !unsafe { prealloc_scope_owns(scope, literal_type.return_type) }
 			assert !unsafe { prealloc_scope_owns(scope, literal_type.params[0].typ) }
 			param_type := *literal_type.params[0].typ
 			assert param_type is Struct
@@ -128,7 +129,7 @@ fn test_ownership_results_survive_batch_arena_release() {
 		assert dst.ownership_fn_return_descs['return_desc'][0].suffix == '.field'
 		assert dst.ownership_fn_return_param_descs['param_desc'][0].source_suffix == '.source'
 		assert dst.ownership_fn_return_param_descs['param_desc'][0].via == ['callee']
-		assert dst.ownership_fn_param_descs['param'][0].type_name == 'string'
+		assert dst.ownership_fn_param_descs['param'][0].type_name == flat.source_type_id('string')
 		assert dst.ownership_fn_literal_ret_types['literal'].name() == 'fn(ScopedItem) string'
 		assert dst.drop_at_fn_exit['drop_fn'][0].name == 'local'
 	}

@@ -113,7 +113,7 @@ fn test_ownership_drop_name_collection_keeps_all_destructors() {
 			StructField{ name: 'second', typ: Struct{ name_id: flat.source_type_id('SecondDrop') } },
 		]
 		tc.ownership_note_drop_types('pair_function', [OwnershipDropEntry{
-			type_name: 'Pair'
+			type_name: flat.source_type_id('Pair')
 		}])
 		assert state.drop_type_names[flat.source_type_id('FirstDrop')]
 		assert state.drop_type_names[flat.source_type_id('SecondDrop')]
