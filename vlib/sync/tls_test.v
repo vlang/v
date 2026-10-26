@@ -284,7 +284,7 @@ fn test_cross_thread_type() {
 }
 
 fn test_legacy_signed_tls() ! {
-	value := isize(-42)
+	value := int(-42)
 	mut tls := sync.new_tls(value)!
 	assert tls.get()! == value
 	tls.set(-123)!

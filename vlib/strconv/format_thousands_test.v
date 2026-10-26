@@ -101,5 +101,5 @@ fn test_format_thousands_float_non_finite() {
 }
 
 fn test_format_legacy_signed_integer() {
-	assert format_thousands(isize(-1234567), ',') == '-1,234,567'
+	assert format_thousands(int(-1234567), ',') == '-1,234,567'
 }

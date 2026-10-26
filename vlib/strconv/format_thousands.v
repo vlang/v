@@ -19,9 +19,8 @@ pub type SeparatorOptions = string | Separator
 // Numeric is the set of built-in numeric types accepted by `format_thousands`:
 // `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `uint`,
 // `f32` and `f64`. Generic code that forwards a `T` to it can use
-// `[T strconv.Numeric]` as its constraint. The deprecated `isize` remains accepted.
-pub type Numeric = isize
-	| int
+// `[T strconv.Numeric]` as its constraint.
+pub type Numeric = int
 	| i8
 	| i16
 	| i32

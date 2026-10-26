@@ -100,7 +100,7 @@ fn fons_render_update(uptr voidptr, rect &i32, data &u8) {
 	mut img_data := gfx.ImageData{}
 	img_data.subimage[0][0] = gfx.Range{
 		ptr:  voidptr(data)
-		size: usize(rt.atlas_w * rt.atlas_h)
+		size: uint(rt.atlas_w * rt.atlas_h)
 	}
 	gfx.update_image(rt.atlas_img, &img_data)
 	if rt.ctx != unsafe { nil } && rt.ctx.r != unsafe { nil } {

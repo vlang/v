@@ -60,21 +60,19 @@ fn test_legacy_unsigned_sum_type_uses_the_same_tag_as_uint() {
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.v'), 'module main
-type Value = usize | string
+type Value = uint | string
 fn is_numeric(value Value) bool {
-	return match value { usize { true } else { false } }
+	return match value { uint { true } else { false } }
 }
 fn unbox(value Value) uint {
-	match value { usize { return value } else { return 0 } }
+	match value { uint { return value } else { return 0 } }
 }
 fn main() {
-	value := Value(usize(42))
+	value := Value(uint(42))
 	assert is_numeric(value)
 	assert unbox(value) == 42
-	assert value is usize
 	assert value is uint
 	assert !(value is string)
-	assert (value as usize) == 42
 	assert (value as uint) == 42
 	assert is_numeric(Value(uint(123)))
 	assert !is_numeric(Value("text"))
