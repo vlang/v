@@ -2,6 +2,31 @@ module types
 
 import v.flat
 
+fn test_generic_receiver_field_keeps_explicit_main_argument() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'foreign'
+	tc.cur_file = 'foreign.v'
+	tc.structs['Record'] = []StructField{}
+	tc.structs['foreign.Record'] = []StructField{}
+	tc.struct_generic_params['foreign.Slot'] = ['T']
+	tc.structs['foreign.Slot'] = [StructField{
+		name: 'value'
+		typ:  unknown_type('generic placeholder `T`')
+	}]
+	assert tc.qualified_generic_suffix([flat.source_type_id('main.Record')]) == '[main.Record]'
+	receiver := tc.parse_scope_param_type(flat.source_type_id('&foreign.Slot[main.Record]'))
+	assert receiver.name() == '&foreign.Slot[main.Record]'
+	field := tc.struct_field_type(flat.source_type_id('foreign.Slot[main.Record]'), 'value') or {
+		panic('missing generic field')
+	}
+	assert field.name() == 'Record'
+	// A real import named main must still resolve through that import.
+	tc.register_file_import('main', 'other')
+	tc.structs['other.Record'] = []StructField{}
+	assert tc.qualified_generic_suffix([flat.source_type_id('main.Record')]) == '[other.Record]'
+}
+
 fn test_qualified_generic_argument_ids_keep_nested_commas_and_file_imports() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

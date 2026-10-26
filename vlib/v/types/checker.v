@@ -7090,6 +7090,15 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic
 		}
 	}
 	if resolution && clean.contains('.') {
+		// Keep caller-owned main types locked inside generic applications too.
+		// Dropping the prefix here lets field substitution rebind the bare name
+		// to a homonym in the generic declaration's module.
+		if clean.starts_with('main.') && !clean['main.'.len..].contains('.') {
+			if _ := tc.resolve_import_alias('main') {
+			} else if tc.qualify_candidate_type_exists(clean['main.'.len..]) {
+				return clean
+			}
+		}
 		resolved := flat.source_type_name(tc.resolve_imported_type_text(flat.source_type_id(clean)))
 		if resolved != clean {
 			return resolved
