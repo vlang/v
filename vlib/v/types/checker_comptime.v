@@ -2320,6 +2320,11 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 	}
 	node := tc.a.nodes[idx]
 	kind_id := node_kind_id(node)
+	// A function literal's return type names its own parameters; it is checked
+	// after they are bound, in check_fn_literal.
+	if node.kind != .fn_literal {
+		tc.check_node_inferred_type_witnesses(node)
+	}
 	if node.kind in [.break_stmt, .continue_stmt] {
 		tc.check_loop_control_statement(id, node)
 		return
@@ -14402,7 +14407,6 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	tc.fn_context = new_function_check_context()
 	tc.fn_context.node_id = saved_fn_context.node_id
 	tc.fn_context.generic_params = saved_fn_context.generic_params.clone()
-	tc.fn_context.return_type = tc.parse_type(node.typ)
 	tc.fn_context.method_value_locals = saved_fn_context.method_value_locals.clone()
 	tc.fn_context.method_value_local_owners =
 		clone_scope_binding_owner_map(saved_fn_context.method_value_local_owners)
@@ -14416,6 +14420,13 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		snapshot_pointer_binding_value_keys(captured_pointer_values)
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(id, node)
+	}
+	// Parameter types are written in the enclosing scope.
+	for i in 0 .. node.children_count {
+		param := tc.a.child_node(&node, i)
+		if param.kind == .param {
+			tc.check_inferred_type_witnesses(param.typ)
+		}
 	}
 	tc.push_scope()
 	tc.fn_context.closure_scope = tc.cur_scope
@@ -14448,6 +14459,10 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
+	// A `typeof(expr)` return type is resolved and checked with the parameters
+	// bound, so `fn (x string) typeof(x)` names the parameter, not an outer `x`.
+	tc.check_inferred_type_witnesses(node.typ)
+	tc.fn_context.return_type = tc.parse_type(node.typ)
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.nodes[int(child_id)]

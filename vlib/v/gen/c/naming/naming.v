@@ -70,6 +70,10 @@ const reserved_words = {
 	'far':      true
 	'pascal':   true
 	'cdecl':    true
+	// windef.h defines these as function-like macros, which reject a one-argument
+	// declaration (`double min(Tree* tree)`) or a two-argument definition.
+	'min':      true
+	'max':      true
 	// GNU C modes predefine these as macros (`linux` on Linux, `unix` on Unix).
 	'unix':     true
 	'linux':    true
@@ -183,7 +187,7 @@ pub fn c_name(name string) string {
 	// The collision sets contain only short names; longer identifiers cannot match.
 	if (n.len <= max_c_collision_name_len && (n in reserved_words || n in libc_collisions))
 		|| is_string_literal_symbol(n) {
-		if n in ['near', 'far', 'pascal', 'cdecl'] {
+		if n in ['near', 'far', 'pascal', 'cdecl', 'min', 'max'] {
 			return '${internal_symbol_c_prefix}macro_${n}'
 		}
 		if name.contains('@') {

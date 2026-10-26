@@ -1302,6 +1302,9 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		if node.children_count != 0 {
 			node.children_start += child_shift
 		}
+		node.typ = shift_inferred_type_id(node.typ, node_shift)
+		node.source_value = shift_inferred_type_id(node.source_value, node_shift)
+		node.value = shift_inferred_value(node.kind, node.value, node_shift)
 		// Declaration attributes are linked by an internal directive whose value
 		// embeds the worker-local declaration id; relocate it like a child id.
 		if node.kind == .directive && node.value.starts_with('@attributes:') {
@@ -1511,6 +1514,11 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 			w.a.nodes.len = 0
 		}
 		for k in nodes_old_len .. p.a.nodes.len {
+			p.a.nodes[k].typ = shift_inferred_type_id(p.a.nodes[k].typ, node_shift)
+			p.a.nodes[k].source_value = shift_inferred_type_id(p.a.nodes[k].source_value,
+				node_shift)
+			p.a.nodes[k].value = shift_inferred_value(p.a.nodes[k].kind, p.a.nodes[k].value,
+				node_shift)
 			// Declaration attributes are linked by an internal directive whose value embeds the
 			// worker-local declaration id. Relocate that id just like child NodeId references.
 			if p.a.nodes[k].kind == .directive && p.a.nodes[k].value.starts_with('@attributes:') {

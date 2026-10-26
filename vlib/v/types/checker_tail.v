@@ -1108,6 +1108,11 @@ fn (tc &TypeChecker) assignment_preserves_smartcast(op flat.Op, lhs_id flat.Node
 // type (`x = 5` in `if mut x is int`), as in V 0.5.2. Any other value may select
 // another variant, so the narrowing ends.
 fn (tc &TypeChecker) assigned_value_keeps_narrowing(rhs_id flat.NodeId, rhs_type &Type, narrowed &Type) bool {
+	// An untyped zero selects a numeric variant rather than a null pointer.
+	if (narrowed is Pointer || (narrowed is Alias && narrowed.base_type is Pointer))
+		&& tc.zero_literal_can_be_pointer(rhs_id, narrowed) {
+		return false
+	}
 	return tc.expr_compatible(rhs_id, rhs_type, narrowed)
 		|| tc.pointer_value_compatible(rhs_type, narrowed)
 }
@@ -23217,11 +23222,16 @@ fn (mut tc TypeChecker) enable_explicit_mut_smartcast_target(id flat.NodeId) {
 fn (mut tc TypeChecker) record_constant_condition_diagnostics(id flat.NodeId) {
 	value := tc.constant_bool_value(id) or { return }
 	pos := tc.constant_condition_diagnostic_pos(id)
-	tc.record_notice_at(.condition_mismatch, if value {
-		'condition is always true'
-	} else {
-		'condition is always false'
-	}, id, pos)
+	// Test files routinely use constant conditions on purpose (e.g. `if true`
+	// to exercise a branch), so the notice is pure noise there. The
+	// self-comparison warning below is kept, since it points at a probable bug.
+	if !is_regular_v_test_file(tc.cur_file) {
+		tc.record_notice_at(.condition_mismatch, if value {
+			'condition is always true'
+		} else {
+			'condition is always false'
+		}, id, pos)
+	}
 	if value && tc.is_always_true_self_comparison(id) {
 		tc.record_warning_at(.condition_mismatch, 'self-comparison in `if` condition is always true; following branches may be unreachable', id, pos)
 	}

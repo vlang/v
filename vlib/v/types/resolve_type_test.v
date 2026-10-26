@@ -2,6 +2,35 @@ module types
 
 import v.flat
 
+fn test_aliased_local_callback_return_type_precedes_named_function() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_val(.ident, 'h')
+	children_start := a.begin_children()
+	a.add_child(callee)
+	call := a.add_node(flat.Node{
+		kind:           .call
+		children_start: children_start
+		children_count: 1
+	})
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'callbacks'
+	tc.fn_ret_types['h'] = builtin_string_type
+	callback := Type(FnType{ return_type: builtin_int_type })
+	alias := Type(Alias{ name_id: flat.source_type_id('callbacks.Handler'), base_type: callback })
+	for typ in [callback, alias, Type(Pointer{ base_type: callback }),
+		Type(Pointer{ base_type: alias }),
+		Type(Alias{ name_id: flat.source_type_id('callbacks.Nested'), base_type: alias })] {
+		tc.cur_scope.insert('h', typ)
+		assert tc.resolve_type(call) == builtin_int_type
+	}
+	for typ in [builtin_int_type, Type(Pointer{ base_type: builtin_int_type }),
+		Type(OptionType{ base_type: callback }),
+		Type(Alias{ name_id: flat.source_type_id('callbacks.Number'), base_type: builtin_int_type })] {
+		tc.cur_scope.insert('h', typ)
+		assert tc.resolve_type(call) == builtin_string_type
+	}
+}
+
 fn integer_widen_cast(mut a flat.FlatAst, typ string) flat.NodeId {
 	value := a.add_node(flat.Node{ kind: .int_literal, value: '1' })
 	children_start := a.begin_children()

@@ -194,7 +194,7 @@ fn test_cached_cname_classifier_preserves_special_names_and_bytes() {
 	mut g := FlatGen.new()
 	for name in ['', '.', '9name', 'a..b', 'a__b.c', '__v3_internal_symbol_x',
 		'__v3_internal_symbol_x.y', 'x@static@y', 'x.[]=', 'x.+', '_str_123', 'C.name', 'C.SSL_CTX.str',
-		'complex', 'near', 'far', 'pascal', 'cdecl', 'alloca', 'v_alloca',
+		'complex', 'near', 'far', 'pascal', 'cdecl', 'min', 'max', 'alloca', 'v_alloca',
 		'__v3_internal_symbol_libc_alloca', 'C.alloca', 'int_str', 'malloc'] {
 		for _ in 0 .. 2 {
 			assert g.cname(name) == c_name(name), name
@@ -401,6 +401,33 @@ fn test_main_sync_function_names_use_the_reserved_namespace() {
 	tc.cur_module = 'worker'
 	assert g.direct_call_name('main.sync') == '__v3_internal_symbol_libc_sync'
 	assert g.direct_call_name('main.syncfs') == '__v3_internal_symbol_libc_syncfs'
+}
+
+fn test_main_function_names_avoid_windows_header_macros() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for name in ['near', 'far', 'pascal', 'cdecl'] {
+		internal := '__v3_internal_symbol_macro_${name}'
+		assert g.fn_c_name_in_module('main', name) == internal
+		assert g.fn_c_name_in_module('', name) == internal
+		assert g.direct_call_name(name) == internal
+		assert g.direct_call_name('main.${name}') == internal
+		assert g.callback_c_fn_name(name) == internal
+		assert g.callback_c_fn_name('main.${name}') == internal
+		assert g.fn_c_name_in_module('main', 'main__${name}') == 'main__${name}'
+		assert g.fn_c_name_in_module('main', internal) == '__v3_internal_symbol_source_${internal}'
+		assert g.fn_c_name_in_module('worker', name) == 'worker__${name}'
+		assert g.direct_call_name('C.${name}') == name
+		assert g.callback_c_fn_name('C.${name}') == name
+	}
+	tc.cur_module = 'worker'
+	for name in ['near', 'far', 'pascal', 'cdecl'] {
+		assert g.direct_call_name('main.${name}') == '__v3_internal_symbol_macro_${name}'
+		assert g.callback_c_fn_name('main.${name}') == '__v3_internal_symbol_macro_${name}'
+	}
 }
 
 fn test_target_libc_opaque_packed_struct_restores_packing() {

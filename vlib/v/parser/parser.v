@@ -192,10 +192,13 @@ mut:
 	inside_array_init_type_expr       bool
 	in_map_value                      int
 	in_struct_init_value              int
+	in_enum_field_value               int
 	unsupported_inline_asm_guards     map[int]bool
 	parsing_inferred_fixed_array_type bool
 	parsing_struct_field_type         bool
+	in_const_value                    bool
 	parsing_c_struct_fields           bool
+	seen_default_param_value          bool
 	diagnostic_limit_reached          bool
 	local_type_names                  flat.TypeTextBindings
 	local_type_decls_by_block         map[int][]string
@@ -2101,6 +2104,8 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 	// params
 	p.check(.lpar)
 	mut param_ids := []flat.NodeId{}
+	was_seen_default_param_value := p.seen_default_param_value
+	p.seen_default_param_value = false
 	if is_method && receiver_name.len > 0 {
 		param_ids << p.add_node(flat.Node{
 			kind:   .param
@@ -2154,12 +2159,13 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
 	}
-	if !p.prefs.is_fmt && p.tok == .lcbr
+	if !p.prefs.is_fmt && p.tok == .lcbr && !p.seen_default_param_value
 		&& param_ids.any(p.a.node(it).kind == .param && p.a.node(it).typ == 0
 			&& p.a.node(it).value.len > 0) {
 		p.record_diagnostic_span('functions with type only params can not have bodies', p.tok_pos,
 			p.tok_end)
 	}
+	p.seen_default_param_value = was_seen_default_param_value
 	if p.tok == .lsbr {
 		p.record_diagnostic_span('unexpected token `[` after function signature, expecting `{`',
 			p.tok_pos, p.tok_end)
@@ -2551,6 +2557,20 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 	}
 	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
+	// V has no default parameter values: `fn f(a int = 2)` is invalid.
+	// Diagnose the `=` here instead of letting the params loop re-enter
+	// parse_param_group on it, which shredded the rest of the signature
+	// into phantom params (`2`, `b`, ...) and reported argument-count
+	// errors at call sites far from the actual mistake.
+	if p.tok == .assign {
+		p.record_diagnostic_span('default parameter values are not supported', p.tok_pos,
+			p.tok_end)
+		p.seen_default_param_value = true
+		p.next()
+		if p.tok !in [.comma, .rpar, .eof] {
+			p.expr(.lowest)
+		}
+	}
 	param_group_end := p.prev_tok_end
 	for i, name in names {
 		param_is_mut := is_mut || (p.prefs.is_fmt && name_mutabilities[i])
@@ -3202,7 +3222,10 @@ fn (mut p Parser) global_decl() flat.NodeId {
 			if p.tok == .assign {
 				// global with initializer: __global name = expr, or __global name Type = expr
 				p.next()
+				was_in_const_value := p.in_const_value
+				p.in_const_value = true
 				val_id = p.expr(.lowest)
+				p.in_const_value = was_in_const_value
 			}
 			mut qualifiers := []string{}
 			if is_const {
@@ -3337,7 +3360,11 @@ fn (mut p Parser) const_decl() flat.NodeId {
 					p.record_diagnostic('unexpected eof, expecting an expression', p.s.src.len)
 					p.add(flat.NodeKind.empty)
 				} else {
-					p.expr(.lowest)
+					was_in_const_value := p.in_const_value
+					p.in_const_value = true
+					val_id := p.expr(.lowest)
+					p.in_const_value = was_in_const_value
+					val_id
 				}
 				p.comptime_string_consts[comptime_const_value_key(p.cur_module, full_name)] = true
 				if value := p.comptime_node_value(val_id) {
@@ -3381,6 +3408,13 @@ fn (mut p Parser) const_decl() flat.NodeId {
 			}
 			break
 		} else {
+			// Keywords cannot name consts (a const named `in` could never be
+			// referenced in an expression), so diagnose them instead of letting
+			// `const (x = 2 / in = 3)` silently emit a garbage field.
+			if p.tok.is_keyword() {
+				p.record_diagnostic_span('unexpected keyword `${p.tok.str()}`, expecting name',
+					p.tok_pos, p.tok_end)
+			}
 			p.next()
 			if !is_grouped {
 				break
@@ -3471,7 +3505,9 @@ fn (mut p Parser) enum_decl_fields() []flat.NodeId {
 		mut children_count := flat.child_count(0)
 		if p.tok == .assign {
 			p.next()
+			p.in_enum_field_value++
 			val_id := p.expr(.lowest)
+			p.in_enum_field_value--
 			children_start = p.add_child(val_id)
 			children_count = 1
 		}
@@ -3964,6 +4000,17 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				}
 				mut ptype := p.parse_type_name_bytes()
 				param_end := p.prev_tok_end
+				// V has no default parameter values: diagnose `=` here instead of
+				// letting the loop re-enter on it and shred the rest of the
+				// signature into phantom empty params.
+				if p.tok == .assign {
+					p.record_diagnostic_span('default parameter values are not supported', p.tok_pos,
+						p.tok_end)
+					p.next()
+					if p.tok !in [.comma, .rpar, .eof] {
+						p.expr(.lowest)
+					}
+				}
 				explicit_mut_ref := param_is_mut && ptype.starts_with('&')
 				mut_builtin_pointer := param_is_mut
 					&& ptype in ['voidptr', 'byteptr', 'charptr']
@@ -8252,7 +8299,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		return p.parse_embed_file_expr()
 	}
 	if p.tok == .name && p.lit == 'vml' {
-		return p.parse_vml_template_expr(dollar_pos)
+		return p.parse_removed_vml_expr(dollar_pos)
 	}
 	if p.tok == .name && p.lit in ['zero', 'new'] {
 		name := p.lit
@@ -8288,6 +8335,26 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.add_val_id(5, '')
+}
+
+// `$vml(path)` used to compile a VML document. VML now belongs to ui2's own
+// generator; report the removal instead of letting the call fall through to the
+// unknown comptime expression, which would silently produce an empty string.
+fn (mut p Parser) parse_removed_vml_expr(dollar_pos int) flat.NodeId {
+	p.next() // skip 'vml'
+	if p.tok == .lpar {
+		p.next()
+		p.skip_defer_result_arguments()
+	}
+	pos := p.span_to(dollar_pos)
+	p.record_diagnostic_span('`\$vml` has been removed; generate V from VML with `ui2 gen` instead',
+		pos.offset, pos.end)
+	return p.add_node(flat.Node{
+		kind:  .ident
+		value: '__v3_removed_vml'
+		typ:   flat.source_type_id('invalid')
+		pos:   pos
+	})
 }
 
 fn (mut p Parser) formatter_comptime_call_starts() bool {
@@ -8615,7 +8682,15 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 // copies into every program, and its source tree changes under it: after a `git pull`,
 // the executable that has to rebuild V would otherwise generate C from the new headers.
 fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
-	if !p.prefs.is_prod && !p.prefs.output_cross_c && !p.prefs.building_v {
+	mut embed := p.prefs.is_prod || p.prefs.output_cross_c || p.prefs.building_v
+	if p.prefs.target.os == 'android' {
+		// An Android app cannot read the compile-time file system: `path` and
+		// `apath` name locations on the machine that compiled the program, and
+		// the panic in `reload_from_file_at_runtime` would abort the app at
+		// startup. Embed the bytes, like a portable `-os cross` snapshot does.
+		embed = true
+	}
+	if !embed {
 		return none
 	}
 	if apath.len == 0 || !os.is_file(apath) {
@@ -11648,6 +11723,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			&& p.peek() == .colon {
 			break
 		}
+		// In an enum, a keyword after the newline names the next field (`a = 1`, then `in = 2`),
+		// so it must not continue the value as `in`/`is`/`as`/`or`.
+		if p.in_enum_field_value > 0 && p.tok == .semicolon && p.peek().is_keyword() {
+			break
+		}
 		// A newline (scanned as `;`) directly followed by `.` continues the
 		// expression: `expr or { ... }` / `expr` on one line, `.method()` on
 		// the next. Inside a map literal, however, `.member:` can begin the next
@@ -11667,7 +11747,9 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// V1 allowed an `or {}` handler to start on the line after the
 		// option/result expression. Ignore only scanner-inserted newline
 		// semicolons here; an explicit `;` still terminates the expression.
-		if p.current_token_is_newline_semicolon() && p.peek() == .key_or {
+		// Const/global initializers end at the newline: a keyword name (`or`)
+		// on the next line starts a new declaration, not an `or` handler.
+		if !p.in_const_value && p.current_token_is_newline_semicolon() && p.peek() == .key_or {
 			p.next()
 			continue
 		}
@@ -12064,6 +12146,13 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// skip auto-semicolons before infix operators (multi-line expressions)
 		if p.tok == .semicolon {
+			// Const/global initializers end at the newline when a keyword
+			// (`in`, `is`, `as`) follows: it starts a new declaration, not
+			// an infix continuation of the initializer. Other operators
+			// still continue multiline initializers (`&&`, trailing `+`, ...).
+			if p.in_const_value && p.peek().is_keyword() {
+				break
+			}
 			peek_tok := p.peek()
 			if (token_is_infix(peek_tok) || peek_tok == .key_as) && peek_tok != .mul
 				&& peek_tok != .amp && peek_tok != .arrow {
@@ -15660,7 +15749,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	ret_type_start := p.tok_pos
 	if p.tok != .lcbr && p.tok != .semicolon && p.tok != .eof {
 		if p.tok == .name || p.tok == .amp || p.tok == .question || p.tok == .not || p.tok == .lsbr
-			|| p.tok == .lpar || p.tok == .key_fn {
+			|| p.tok == .lpar || p.tok == .key_fn || p.tok == .key_typeof {
 			ret_type = p.parse_type_name()
 			p.record_inline_sum_return_type_diagnostic(flat.source_type_name(ret_type), ret_type_start)
 		} else {
@@ -17708,11 +17797,27 @@ fn (mut p Parser) parse_type_name_bytes() string {
 	}
 	if p.tok == .key_typeof {
 		start := p.tok_pos
-		_ = p.typeof_expr()
+		saved_type_context := p.inside_array_init_type_expr
+		p.inside_array_init_type_expr = true
+		typeof_id := p.typeof_expr()
+		p.inside_array_init_type_expr = saved_type_context
 		if p.tok == .dot && p.peek() == .name && p.peek_lit in ['element_type', 'key_type',
 			'payload_type', 'pointee_type', 'return_type', 'value_type'] {
 			p.next()
 			p.next()
+		} else if !p.prefs.is_fmt {
+			// `typeof(expr)` used as a type names the type of `expr`, resolved in the
+			// lexical scope the type is written in (like C++ `decltype`): code
+			// generators can declare closures and containers of inferred types.
+			// vfmt keeps the source spelling, and `typeof(Type)` keeps naming a type.
+			typeof_node := p.a.node(typeof_id)
+			if typeof_node.children_count == 1 {
+				inner_id := p.a.child(typeof_node, 0)
+				inner := p.a.node(inner_id)
+				if inner.kind != .ident || !parser_name_can_start_pointer_type(inner.value) {
+					return 'typeof(__expr_' + int(inner_id).str() + ')'
+				}
+			}
 		}
 		if p.tok_pos > start && p.tok_pos <= p.s.src.len {
 			return p.s.src[start..p.tok_pos].trim_space()
@@ -17767,6 +17872,16 @@ fn (mut p Parser) parse_type_name_bytes() string {
 			typ := p.parse_fn_type_param()
 			if typ.len > 0 {
 				ptypes << typ
+			}
+			// V has no default parameter values: diagnose `=` here instead
+			// of silently dropping the default from the type.
+			if p.tok == .assign {
+				p.record_diagnostic_span('default parameter values are not supported', p.tok_pos,
+					p.tok_end)
+				p.next()
+				if p.tok !in [.comma, .rpar, .eof] {
+					p.expr(.lowest)
+				}
 			}
 			if p.tok == .comma {
 				p.next()

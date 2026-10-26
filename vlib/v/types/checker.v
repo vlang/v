@@ -6724,9 +6724,10 @@ fn (tc &TypeChecker) qualify_type_text_with_generic_params(typ_id u32, generic_p
 // module's caller may stay bare when the module-qualified spelling does not
 // exist. Never use for registration.
 fn (tc &TypeChecker) qualify_resolution_type_text(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
+	source_id := tc.resolved_inferred_type(typ_id) or { typ_id }
+	typ := flat.source_type_name(source_id)
 	qualified := tc.qualify_type_text_impl(typ, true, []string{})
-	return if qualified == typ { typ_id } else { flat.source_type_id(qualified) }
+	return if qualified == typ { source_id } else { flat.source_type_id(qualified) }
 }
 
 // parse_resolution_type parses type text that can mix declaration-local names with concrete
@@ -6824,6 +6825,7 @@ pub fn (mut tc TypeChecker) disable_resolution_type_view_cache() {
 
 fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic_params []string) string {
 	clean := trimmed_space(typ)
+	if clean.starts_with('typeof(__expr_') { return clean }
 	if clean.len == 0 {
 		return typ
 	}
@@ -9447,6 +9449,19 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 			continue
 		}
 		node := tc.a.nodes[int(current_id)]
+		// A function literal's return type is resolved with its parameters bound.
+		if node.kind != .fn_literal && inferred_type_source(node.typ) {
+			_ = tc.resolve_inferred_type_text(flat.source_type_name(node.typ))
+		}
+		if node.kind == .ident {
+			if node.value.len > 0 {
+				if node.value.contains('typeof(__expr_') {
+					_ = tc.resolve_inferred_type_text(node.value)
+				}
+			} else if inferred_type_source(node.source_value) {
+				_ = tc.resolve_inferred_type_text(flat.source_type_name(node.source_value))
+			}
+		}
 		match node.kind {
 			.decl_assign {
 				lhs_count := tc.multi_assign_lhs_count(node)
@@ -9631,12 +9646,13 @@ fn (mut tc TypeChecker) annotate_fn_literal(node flat.Node) {
 	tc.fn_context = new_function_check_context()
 	tc.fn_context.node_id = saved_fn_context.node_id
 	tc.fn_context.generic_params = saved_fn_context.generic_params.clone()
-	tc.fn_context.return_type = tc.parse_type(node.typ)
 	tc.push_scope()
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		tc.insert_fn_param_binding(child_id, tc.a.node(child_id))
 	}
+	// The return type may name the parameters through `typeof(expr)`.
+	tc.fn_context.return_type = tc.parse_type(node.typ)
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
@@ -14305,7 +14321,13 @@ fn is_c_backend_test_file(path string) bool {
 }
 
 fn is_regular_v_test_file(path string) bool {
-	return path.ends_with('_test.v') || path.ends_with('_test.vv')
+	if path.ends_with('_test.v') || path.ends_with('_test.vv') {
+		return true
+	}
+	// Backend-qualified test files such as `foo_test.c.v` are test files
+	// too: the test driver compiles them as tests, so the test-only
+	// diagnostic relaxations must apply to them as well.
+	return is_c_backend_test_file(path)
 }
 
 // is_exported_fn reports whether the function `name` declared in `module_name` has

@@ -1238,6 +1238,10 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) u32 {
 	node := t.a.node(id)
 	match node.kind {
 		.ident {
+			arg_id := node.source_value_id()
+			if inferred_type_id(arg_id) {
+				return t.resolve_inferred_type_id(arg_id)
+			}
 			// Map type arguments are represented by a synthetic `Map_key_value`
 			// identifier, while `typ` retains the source-level `map[key]value`.
 			// Keep the latter so comptime type groups and generic substitution can
@@ -3816,6 +3820,13 @@ fn (t &Transformer) decl_param_type_in_module(typ_id u32, module_name string) u3
 }
 
 fn (t &Transformer) decl_param_type_in_scope(typ_id u32, module_name string, file_name string) u32 {
+	if inferred_type_id(typ_id) {
+		resolved := t.resolve_inferred_type_id(typ_id)
+		if resolved != typ_id {
+			return t.decl_param_type_in_scope(resolved, module_name, file_name)
+		}
+		return typ_id
+	}
 	typ := flat.source_type_name(typ_id)
 	clean := trimmed_transform_text(typ)
 	clean_id := if flat.source_type_shape(typ_id).has(.padded) {
@@ -13802,8 +13813,6 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	} else {
 		flat.source_type_void
 	})
-	ret_type_source_id := t.decl_param_type_in_scope(raw_ret_type, source_module, source_file)
-	result_may_alias_capture := t.immediate_closure_result_may_alias_capture(ret_type_source_id)
 	mut param_types := []types.Type{}
 	mut param_type_ids := []u32{}
 	mut param_ids := []flat.NodeId{}
@@ -13947,6 +13956,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			body_ids << child_id
 		}
 	}
+	ret_type_source_id := t.fn_literal_return_type_in_scope(raw_ret_type, param_ids,
+		source_module, source_file)
+	result_may_alias_capture := t.immediate_closure_result_may_alias_capture(ret_type_source_id)
 	if result_may_alias_capture {
 		for capture_name in capture_names {
 			capture_type := capture_types[capture_name] or { continue }
@@ -14220,6 +14232,18 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	], flat.source_type_voidptr)
 	t.mark_fn_used_name('closure.closure_create_with_data')
 	return t.make_cast(fn_value_type, create, fn_value_type)
+}
+
+// fn_literal_return_type_in_scope resolves a lifted literal's return type. A
+// `typeof(expr)` return type may name the literal's parameters, which shadow
+// enclosing locals of the same name while it is resolved.
+fn (mut t Transformer) fn_literal_return_type_in_scope(raw_ret_type u32, param_ids []flat.NodeId, source_module string, source_file string) u32 {
+	mut params := []flat.Node{cap: param_ids.len}
+	for param_id in param_ids {
+		params << t.a.nodes[int(param_id)]
+	}
+	ret_type := t.resolve_fn_literal_inferred_return_type(raw_ret_type, params)
+	return t.decl_param_type_in_scope(ret_type, source_module, source_file)
 }
 
 fn fn_literal_value_type_text(params []types.Type, ret_type_id u32) u32 {
@@ -17153,6 +17177,12 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		flat.source_type_f32,
 		flat.source_type_f64,
 	] {
+		return true
+	}
+	// An integer converts to a float parameter as it does outside a
+	// specialization: `app.record(30)` for a `record(value f64)`.
+	if !isnil(t.tc) && types.implicit_integer_to_float_compatible(t.tc.parse_type(actual),
+		t.tc.parse_type(expected_comparison_type_id_3)) {
 		return true
 	}
 	// A char literal (`\`x\``) types as rune but coerces to u8 params.

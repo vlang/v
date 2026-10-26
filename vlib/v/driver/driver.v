@@ -1954,8 +1954,12 @@ fn c_object_dependencies_from_output(output string, source_file string) CObjectD
 		// entire compiler output and tokenize it as bogus dependencies.
 		return fallback
 	}
+	// A compiler on Windows writes the list in text mode, with CRLF line ends. Its
+	// line continuations are then a backslash before `\r\n`, and the backslash
+	// would escape the `\r` into a dependency of its own, which is not a file, so
+	// no object would ever be cached.
 	continuation := '\\' + '\n'
-	dep_text := output.replace(continuation, ' ').all_after(marker)
+	dep_text := output.replace('\r\n', '\n').replace(continuation, ' ').all_after(marker)
 	dependencies := cmdexec.split_args(dep_text) or { return fallback }
 	if dependencies.len == 0 {
 		return fallback
@@ -2346,6 +2350,8 @@ fn maybe_delegate_v3_to_vvmrc(input_file string, verbose bool) {
 	if verbose {
 		eprintln('v3: `.vvmrc` selected V `${requested_version}` from `${vvmrc_path}` => ${requested_exe}')
 	}
+	// The selected compiler builds the program and reports its own failures.
+	release_v3_fallback_marker()
 	mut process := os.new_process(requested_exe)
 	process.set_args(os.args[1..])
 	mut envs := os.environ()
@@ -12269,6 +12275,9 @@ pub fn run(args []string) {
 	}
 	macos_linux_cross_compile := v3_macos_linux_cross_compile(host_target, target, backend,
 		c_compiler)
+	if macos_linux_cross_compile {
+		record_user_define(mut user_defines, mut compile_values, 'cross_compile')
+	}
 	libc_mode = v3_apply_libc_define(mut user_defines, mut compile_values, libc_mode, c_compiler,
 		v3_should_infer_host_libc(c_only, is_o, generate_c_project, output_cross_c, target,
 			host_target))
@@ -17062,8 +17071,7 @@ pub fn run(args []string) {
 					}
 				}
 				$if windows {
-					release_v3_cache_population_lock()
-					exit(os.system_args([os.executable(), ...regeneration_args]))
+					exit_with_child_build(os.executable(), regeneration_args)
 				}
 				os.execvp(os.executable(), regeneration_args) or {
 					eprintln('failed to restart monolithic C compilation: ${err.msg()}')
@@ -17101,6 +17109,7 @@ pub fn run(args []string) {
 					cleanup_c_build_dir(cc_dir)
 					// The retry is another process on every platform.
 					release_v3_cache_population_lock()
+					release_v3_fallback_marker()
 					retry_result := cmdexec.run(os.executable(), retry_args)
 					if retry_result.output.len > 0 {
 						print(retry_result.output)
@@ -17830,8 +17839,7 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	$if windows {
 		// `_execvp` would exit this process with status 0 before the retried
 		// build finishes, so forward the retried build's status instead.
-		release_v3_cache_population_lock()
-		exit(os.system_args([executable, ...restart_args]))
+		exit_with_child_build(executable, restart_args)
 	}
 	os.execvp(executable, restart_args) or {
 		eprintln('failed to restart the build after discarding stale cache entries: ${err.msg()}')
@@ -17913,6 +17921,7 @@ fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_
 	flush_stderr()
 	$if windows {
 		release_v3_cache_population_lock()
+		release_v3_fallback_marker()
 		retry_result := cmdexec.run(os.executable(), retry_args)
 		if retry_result.output.len > 0 {
 			print(retry_result.output)
@@ -19280,14 +19289,32 @@ fn restart_v3_with_args(extra_args []string, build_dir string) {
 		// Windows has no exec either: `_execvp` would start the child and then
 		// exit this process with status 0, dropping the restarted build's
 		// result on the floor.
-		release_v3_cache_population_lock()
-		exit(os.system_args([executable, ...args]))
+		exit_with_child_build(executable, args)
 	} $else {
 		os.execvp(executable, args) or {
 			eprintln('failed to restart ${executable}: ${err.msg()}')
 			exit(1)
 		}
 	}
+}
+
+// exit_with_child_build runs the build again as a child V process and exits with its
+// status, where there is no exec to replace this process with it, as on Windows.
+// The child is a process of its own: its launcher stages a fallback marker under the
+// child's pid and reports the child's failures itself.
+fn exit_with_child_build(executable string, args []string) {
+	release_v3_cache_population_lock()
+	release_v3_fallback_marker()
+	exit(os.system_args([executable, ...args]))
+}
+
+// release_v3_fallback_marker removes the fallback marker that this process staged,
+// before a child build that reports its own failures takes over. Left in place, it
+// tells this process's launcher at exit that the build failed in V3, and the
+// launcher compiles the whole build again to replay diagnostics, even when the
+// child succeeded.
+fn release_v3_fallback_marker() {
+	clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
 }
 
 fn c_source_references_identifiers(source string, identifiers map[string]bool) bool {
@@ -20861,7 +20888,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
 	// One report names the same few files many times over.
-	mut run := compiler_errors.DiagnosticRun{}
+	mut diag_run := compiler_errors.DiagnosticRun{}
 	mut printed_diagnostics := 0
 	for notice in ordered_notices {
 		if skip_notices && notice.severity in ['', 'notice:'] {
@@ -20875,7 +20902,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			continue
 		}
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
-		print_type_diagnostic(mut run, a, severity, notice)
+		print_type_diagnostic(mut diag_run, a, severity, notice)
 		printed_diagnostics++
 	}
 	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a, type_errors))
@@ -20911,7 +20938,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	for ei in 0 .. max_errors {
 		err := ordered_errors[ei]
 		severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-		print_type_diagnostic(mut run, a, severity, err)
+		print_type_diagnostic(mut diag_run, a, severity, err)
 	}
 	if message_limit < 0 && !fatal_errors && !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
@@ -24095,7 +24122,7 @@ fn rerun_as_one_shot_check_with(reason string, question string, extra_args []str
 		for name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
 			os.unsetenv(name)
 		}
-		exit(os.system_args([os.executable(), ...args]))
+		exit_with_child_build(os.executable(), args)
 	} $else {
 		mut envs := []string{}
 		for name, value in os.environ() {

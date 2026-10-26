@@ -4,6 +4,8 @@ import v.flat
 import strings
 import v.token
 
+const fastc_type_ptrdiff_t = flat.source_type_id('ptrdiff_t')
+
 // fastc_default_struct_str_name returns the C name of an auto-generated default `str()`
 // for the struct/union `c_type` — V's `Type{\n    field: value\n ...}` format — used when
 // a struct with no user `str()` is interpolated. The function (and any nested struct
@@ -501,10 +503,14 @@ fn (mut g Parser) read_interpolated_string() !string {
 		value_type := fastc_normalize_inferred_type(g.last_expression_type)
 		value_key := g.semantic_type_key(value_type)
 		alias_has_str_method := g.declared_kinds[flat.source_type_name(value_key)] == .alias_ && '${flat.source_type_name(value_key)}.str' in g.functions
-		interpolation_type_id := if alias_has_str_method {
+		mut interpolation_type_id := if alias_has_str_method {
 			value_type
 		} else {
 			g.underlying_alias_type(value_type)
+		}
+		// C pointer differences use the signed pointer-sized integer formatter.
+		if interpolation_type_id == fastc_type_ptrdiff_t {
+			interpolation_type_id = flat.source_type_isize
 		}
 		interpolation_type := flat.source_type_name(interpolation_type_id)
 		mut format_specifier := ''
