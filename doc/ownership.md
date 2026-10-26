@@ -126,6 +126,11 @@ by-value string parameters still consume owned strings. When a parameter takes o
 string or borrowed view passed to it is copied for the callee, leaving the caller's value available.
 Returned copies remain owned; use `.clone()` when retaining another copy.
 
+Passing `array.pop()` or `array.pop_left()` to an owning string parameter removes that element
+from the array's tracked storage. An owned element transfers to the callee; a non-owning element,
+such as a string literal, is copied for the callee. Remaining elements keep their ownership. For
+arrays with known lengths, later appends use the updated length.
+
 Standard library modules other than `builtin` keep V's value semantics in their own function
 bodies. Their parameters, locals and loop variables never become owners, so library code does not
 move them or drop them at scope exit, and no ownership errors are reported inside it. Assignments
