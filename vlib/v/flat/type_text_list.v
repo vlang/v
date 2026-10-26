@@ -26,7 +26,11 @@ pub fn (values TypeTextList) names() []string {
 
 // clone copies numeric storage without formatting or cloning spellings.
 pub fn (values TypeTextList) clone() TypeTextList {
-	return TypeTextList{ ids: values.ids.clone() }
+	ids := values.ids
+	if ids.len == 0 {
+		return TypeTextList{ ids: g_empty_source_type_ids }
+	}
+	return TypeTextList{ ids: ids.clone() }
 }
 
 // at resolves one element without allocating an intermediate spelling array.

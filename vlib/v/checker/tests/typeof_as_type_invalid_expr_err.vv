@@ -1,0 +1,12 @@
+fn choose(n int) string {
+	return n.str()
+}
+
+fn main() {
+	a := []typeof(choose('bad')){}
+	b := []typeof(choose()){}
+	c := []typeof(1 + 'x'){}
+	println(a)
+	println(b)
+	println(c)
+}

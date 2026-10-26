@@ -81,6 +81,17 @@ fn test_skip_defaults_drops_zero_valued_properties() {
 	assert out.contains('"value":\t"main"')
 }
 
+fn test_dump_keeps_original_type_operand_values() {
+	a := astjson.parse(write_fixture('module main\nstruct Item {}\nfn main() { _ = Item{} }\n')!)
+	initializers := a.nodes.filter(it.kind == .struct_init)
+	assert initializers.len == 1
+	assert initializers[0].value == ''
+	assert initializers[0].source_value != 0
+	out := astjson.dump(a, astjson.Options{ skip_defaults: true })
+	assert out.contains('"value":\t"Item"')
+	assert !out.contains('"source_value"')
+}
+
 fn test_hidden_names_remove_a_property() {
 	out := dump_of(write_fixture(hello_world)!, astjson.Options{
 		hidden: ['pos', 'value']

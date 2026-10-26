@@ -93,3 +93,28 @@ fn test_generic_type_application_parts_keeps_map_value_behind_wrappers() {
 	_, _, ok := generic_type_application_parts('map[string]')
 	assert !ok
 }
+
+fn test_generic_whole_spelling_ids_keep_file_resolution_and_trimmed_substrings() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	tc.structs['one.Widget'] = []StructField{}
+	tc.structs['two.Widget'] = []StructField{}
+	tc.cur_file = 'one.v'
+	tc.register_file_import('dep', 'one')
+	tc.cur_file = 'two.v'
+	tc.register_file_import('dep', 'two')
+	for file, module_name in {
+		'one.v': 'one'
+		'two.v': 'two'
+	} {
+		tc.cur_file = file
+		qualified := flat.source_type_id('${module_name}.Widget')
+		for spelling in ['dep.Widget', ' dep.Widget '] {
+			assert tc.generic_type_base_matches(flat.source_type_id(spelling), qualified)
+			assert tc.generic_type_arg_matches(flat.source_type_id(spelling), qualified)
+		}
+		assert !tc.generic_type_arg_matches(flat.source_type_id('dep.Widget'), flat.source_type_id('other.Widget'))
+		assert tc.generic_type_name_matches(flat.source_type_id('Box[?dep.Widget]'), flat.source_type_id('Box[?${module_name}.Widget]'))
+	}
+}

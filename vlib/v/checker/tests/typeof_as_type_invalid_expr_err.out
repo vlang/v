@@ -1,0 +1,23 @@
+vlib/v/checker/tests/typeof_as_type_invalid_expr_err.vv:6:23: error: cannot use `string` as `int` in argument 1 to `choose`
+    4 | 
+    5 | fn main() {
+    6 |     a := []typeof(choose('bad')){}
+      |                          ~~~~~
+    7 |     b := []typeof(choose()){}
+    8 |     c := []typeof(1 + 'x'){}
+vlib/v/checker/tests/typeof_as_type_invalid_expr_err.vv:7:16: error: expected 1 argument, but got 0
+    5 | fn main() {
+    6 |     a := []typeof(choose('bad')){}
+    7 |     b := []typeof(choose()){}
+      |                   ~~~~~~~~
+    8 |     c := []typeof(1 + 'x'){}
+    9 |     println(a)
+Details: have ()
+         want (int)
+vlib/v/checker/tests/typeof_as_type_invalid_expr_err.vv:8:16: error: operator `+` cannot concatenate `int` and `string`
+    6 |     a := []typeof(choose('bad')){}
+    7 |     b := []typeof(choose()){}
+    8 |     c := []typeof(1 + 'x'){}
+      |                   ~~~~~~~
+    9 |     println(a)
+   10 |     println(b)

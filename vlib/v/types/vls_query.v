@@ -625,7 +625,7 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 			return start, end
 		}
 		.cast_expr, .struct_init {
-			name := node.value
+			name := node.value_text()
 			if name.len == 0 || start + name.len > end || !vls_holds_at(source, start, name) {
 				return none
 			}
@@ -633,7 +633,7 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 		}
 		.is_expr, .as_expr {
 			// `x is Type`: the type ends the node.
-			name := node.value
+			name := node.value_text()
 			if name.len == 0 || name.len > end - start || !vls_holds_at(source, end - name.len, name) {
 				return none
 			}

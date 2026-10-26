@@ -65,6 +65,43 @@ fn test_interface_dispatch_keeps_object_aliases_without_retaining_the_header() {
 	}
 }
 
+// `owner.node.element()` with `node &Node` passes the stored pointer: the call
+// result can hold what `node` points to, but never the address of `owner`.
+fn test_pointer_field_receiver_does_not_retain_its_owner() {
+	for is_pointer in [false, true] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		owner := t.make_ident('owner')
+		tc.register_synth_type(owner, types.Type(types.Struct{ name_id: flat.source_type_id('Element') }))
+		node_type := types.Type(types.Struct{ name_id: flat.source_type_id('Node') })
+		receiver_type := if is_pointer {
+			types.Type(types.Pointer{ base_type: node_type })
+		} else {
+			node_type
+		}
+		tc.fn_param_types['Node.element'] = [types.Type(types.Pointer{ base_type: node_type })]
+		result_type := types.Type(types.Struct{ name_id: flat.source_type_id('Element') })
+		tc.fn_ret_types['Node.element'] = result_type
+		receiver := t.make_selector(owner, 'node', flat.source_type_id(if is_pointer { '&Node' } else { 'Node' }))
+		tc.register_synth_type(receiver, receiver_type)
+		method := t.make_selector(receiver, 'element', 0)
+		start := a.children.len
+		a.children << method
+		call := a.add_node(flat.Node{ kind: .call, children_start: start, children_count: 1 })
+		tc.register_synth_type(call, result_type)
+		t.set_resolved_call_entry(int(call), 'Node.element')
+		assert t.escape_aggregate_address_sources(call, map[string][]string{}, map[string]string{}) == if is_pointer {
+			[]string{}
+		} else {
+			['owner']
+		}
+		assert t.escape_aggregate_address_sources(call, {
+			'owner': ['local']
+		}, map[string]string{}) == ['local']
+	}
+}
+
 fn test_direct_dereference_and_pointer_cast_keep_the_inline_address_owner() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
