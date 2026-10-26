@@ -6,12 +6,21 @@ const directive_order_v3_dir = os.dir(directive_order_tests_dir)
 const directive_order_vlib_dir = os.dir(directive_order_v3_dir)
 const directive_order_v3_src = os.join_path(directive_order_v3_dir, 'v.v')
 
+fn directive_order_temp_dir() string {
+	return os.join_path(os.temp_dir(), 'v3_directive_order_codegen_${os.getpid()}')
+}
+
 fn directive_order_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_c_directive_order_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
+	return os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {
-	os.rm(directive_order_v3_bin_path()) or {}
+	os.rmdir_all(directive_order_temp_dir()) or {}
+	os.mkdir_all(directive_order_temp_dir()) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(directive_order_temp_dir()) or {}
 }
 
 fn directive_order_build_v3() string {
@@ -33,7 +42,7 @@ fn directive_order_write_file(root string, rel string, src string) {
 }
 
 fn directive_order_gen_c(v3_bin string, portable bool) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order' }\n")
@@ -66,7 +75,7 @@ import sokol.c as _
 ')
 	directive_order_write_file(root, 'sokol/f/util/sokol_fontstash.h', '')
 	directive_order_write_file(root, 'sokol/f/sokol_gfx.h', '')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order.c')
 	os.rm(c_out) or {}
 	mut args := [v3_bin, '-b', 'c', '-o', c_out]
 	if portable {
@@ -79,7 +88,7 @@ import sokol.c as _
 }
 
 fn directive_order_gen_c_dotted_collision(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_dotted_collision_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_dotted_collision_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -105,7 +114,7 @@ import foo.bar as _
 
 #define FOO_USER
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_dotted_collision.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_dotted_collision.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -113,7 +122,7 @@ import foo.bar as _
 }
 
 fn directive_order_gen_and_run_importer_macro(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_importer_macro_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_importer_macro_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_importer_macro' }\n")
@@ -145,7 +154,7 @@ static inline int foo_value(void) {
 	return 42;
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_importer_macro')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_importer_macro')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -157,7 +166,7 @@ static inline int foo_value(void) {
 }
 
 fn directive_order_gen_and_run_dir_header(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_dir_header_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_dir_header_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_dir_header' }\n")
@@ -183,7 +192,7 @@ pub fn value() int {
 	return 24;
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_dir_header')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_dir_header')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -195,7 +204,7 @@ pub fn value() int {
 }
 
 fn directive_order_gen_and_run_flag_include_dir_header(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_flag_include_dir_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_flag_include_dir_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -221,7 +230,7 @@ static inline int flag_value(void) {
 	return 52;
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_flag_include_dir')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_flag_include_dir')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -233,7 +242,7 @@ static inline int flag_value(void) {
 }
 
 fn directive_order_gen_and_run_late_flag_include_dir_header(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_late_flag_include_dir_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_late_flag_include_dir_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -259,7 +268,7 @@ static inline int late_flag_value(void) {
 	return 63;
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_late_flag_include_dir')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_late_flag_include_dir')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -271,7 +280,7 @@ static inline int late_flag_value(void) {
 }
 
 fn directive_order_gen_and_run_multiline_static_inline(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_multiline_static_inline_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_multiline_static_inline_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -291,7 +300,7 @@ int multiline_value(void) {
 	return 33;
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_multiline_static_inline')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_multiline_static_inline')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -303,7 +312,7 @@ int multiline_value(void) {
 }
 
 fn directive_order_gen_c_extern_after_header(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_extern_after_header_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_extern_after_header_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -336,7 +345,7 @@ fn main() {
 
 int native_use(NativeThing* item) { return item->value; }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_extern_after_header')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_extern_after_header')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -348,7 +357,7 @@ int native_use(NativeThing* item) { return item->value; }
 }
 
 fn directive_order_gen_c_header_declared_prototype(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_header_declared_proto_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_header_declared_proto_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -365,7 +374,7 @@ fn main() {
 ')
 	directive_order_write_file(root, 'declared_proto.h', 'const char* declared_text(void);
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_header_declared_proto.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_header_declared_proto.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -373,7 +382,7 @@ fn main() {
 }
 
 fn directive_order_gen_c_struct_field_after_header(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_struct_field_after_header_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_struct_field_after_header_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -399,7 +408,7 @@ fn main() {
 	int value;
 } FieldThing;
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_struct_field_after_header.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_struct_field_after_header.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -407,7 +416,7 @@ fn main() {
 }
 
 fn directive_order_gen_and_run_anonymous_typedef(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_anonymous_typedef_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_anonymous_typedef_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -438,7 +447,7 @@ static inline int anonymous_value(AnonymousThing* item) {
 	return item->value;
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_anonymous_typedef')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_anonymous_typedef')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -450,7 +459,7 @@ static inline int anonymous_value(AnonymousThing* item) {
 }
 
 fn directive_order_gen_and_run_tagged_typedef_alias(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_tagged_typedef_alias_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_tagged_typedef_alias_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -481,7 +490,7 @@ static inline int tagged_value(TaggedAlias* item) {
 	return item->value;
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_tagged_typedef_alias')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_tagged_typedef_alias')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -493,7 +502,7 @@ static inline int tagged_value(TaggedAlias* item) {
 }
 
 fn directive_order_gen_c_union_typedef_aliases(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_union_typedef_aliases_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_union_typedef_aliases_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -529,7 +538,7 @@ typedef union TaggedUnionImpl {
 	int value;
 } TaggedUnionAlias;
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_union_typedef_aliases.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_union_typedef_aliases.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -537,7 +546,7 @@ typedef union TaggedUnionImpl {
 }
 
 fn directive_order_gen_and_run_nested_include(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_include_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_nested_include_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_nested_include' }\n")
@@ -573,7 +582,7 @@ typedef struct {
 	uint32_t value;
 } NestedThing;
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_include')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_nested_include')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -585,7 +594,7 @@ typedef struct {
 }
 
 fn directive_order_gen_c_unresolved_system_include(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_unresolved_system_include_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_unresolved_system_include_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -607,7 +616,7 @@ fn main() {
 	_ = C.dlopen(nil_cstr, 0)
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_unresolved_system_include.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_unresolved_system_include.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -615,7 +624,7 @@ fn main() {
 }
 
 fn directive_order_gen_c_unresolved_quoted_include(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_unresolved_quoted_include_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_unresolved_quoted_include_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -627,7 +636,7 @@ fn directive_order_gen_c_unresolved_quoted_include(v3_bin string) string {
 
 fn main() {}
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_unresolved_quoted_include.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_unresolved_quoted_include.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -635,7 +644,7 @@ fn main() {}
 }
 
 fn directive_order_gen_c_nested_system_include(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_system_include_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_nested_system_include_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
@@ -655,7 +664,7 @@ fn main() {}
 
 typedef uint64_t NestedWord;
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_system_include.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_nested_system_include.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -663,7 +672,7 @@ typedef uint64_t NestedWord;
 }
 
 fn directive_order_gen_c_sdk_x11_aggregates(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_x11_aggregates_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_x11_aggregates_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_x11_aggregates' }\n")
@@ -692,7 +701,7 @@ fn main() {
 	_ := Wrap{}
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_x11_aggregates.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_x11_aggregates.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -700,7 +709,7 @@ fn main() {
 }
 
 fn directive_order_gen_c_sdk_bcrypt_fn(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_bcrypt_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_bcrypt_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_bcrypt' }\n")
@@ -714,7 +723,7 @@ fn main() {
 	_ := C.BCryptGenRandom(0, voidptr(0), 0, 0)
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_bcrypt.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_bcrypt.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -722,7 +731,7 @@ fn main() {
 }
 
 fn directive_order_gen_c_sdk_mach_headers(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_mach_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_mach_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_mach' }\n")
@@ -744,7 +753,7 @@ fn main() {
 	C.mach_timebase_info(&tb)
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_mach.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_mach.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -752,7 +761,7 @@ fn main() {
 }
 
 fn directive_order_gen_c_task_info_reference(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_task_info_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_task_info_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_task_info' }\n")
@@ -764,7 +773,7 @@ fn main() {
 	_ := C.task_info()
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_task_info.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_task_info.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -772,7 +781,7 @@ fn main() {
 }
 
 fn directive_order_gen_c_sdk_timerfd_header(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_timerfd_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_timerfd_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_timerfd' }\n")
@@ -806,7 +815,7 @@ fn main() {
 	C.timerfd_gettime(fd, &spec)
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_timerfd.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_timerfd.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -814,7 +823,7 @@ fn main() {
 }
 
 fn directive_order_gen_and_run_stdarg_header(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_stdarg_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_stdarg_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_stdarg' }\n")
@@ -848,7 +857,7 @@ static inline int stdarg_sum(int count, ...) {
 	return total;
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_stdarg')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_stdarg')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -860,7 +869,7 @@ static inline int stdarg_sum(int count, ...) {
 }
 
 fn directive_order_gen_and_run_inttypes_header(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_inttypes_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_inttypes_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_inttypes' }\n")
@@ -883,7 +892,7 @@ static inline int inttypes_macro_widths(void) {
 	return (int) (sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64));
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_inttypes')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_inttypes')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -895,7 +904,7 @@ static inline int inttypes_macro_widths(void) {
 }
 
 fn directive_order_gen_c_nested_poll_header(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_poll_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_poll_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_poll' }\n")
@@ -919,7 +928,7 @@ static inline int poll_user_fd(struct pollfd* item) {
 	return item->fd;
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_poll.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_poll.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -927,7 +936,7 @@ static inline int poll_user_fd(struct pollfd* item) {
 }
 
 fn directive_order_gen_c_rwmutex(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_rwmutex_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_rwmutex_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_rwmutex' }\n")
@@ -942,7 +951,7 @@ fn main() {
 	println("OK")
 }
 ')
-	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_rwmutex')
+	bin_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_rwmutex')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	result := os.exec([v3_bin, '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
@@ -954,7 +963,7 @@ fn main() {
 }
 
 fn directive_order_gen_c_shared_runtime(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_shared_runtime_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_shared_runtime_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_shared_runtime' }\n")
@@ -968,7 +977,7 @@ fn main() {
 	_ := SharedOnly{}
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_shared_runtime.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_shared_runtime.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -976,7 +985,7 @@ fn main() {
 }
 
 fn directive_order_gen_c_request_extern(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_request_extern_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_request_extern_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_request_extern' }\n")
@@ -991,7 +1000,7 @@ fn main() {
 	_ := C.request(7)
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_request_extern.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_request_extern.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, '-b', 'c', '-o', '${c_out}', os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
@@ -999,7 +1008,7 @@ fn main() {
 }
 
 fn directive_order_gen_c_request_macro(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_request_macro_project')
+	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_request_macro_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_request_macro' }\n")
@@ -1015,7 +1024,7 @@ fn main() {
 	_ := C.request(7)
 }
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_request_macro.c')
+	c_out := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_request_macro.c')
 	os.rm(c_out) or {}
 	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
 	assert result.exit_code == 0, result.output
@@ -1065,7 +1074,7 @@ fn test_c_directives_follow_import_dependency_order() {
 
 fn test_native_c_directives_preserve_resolved_includes_in_dependency_order() {
 	c_code := directive_order_gen_c(directive_order_build_v3(), false)
-	root := os.real_path(os.join_path(os.temp_dir(), 'v3_c_directive_order_project'))
+	root := os.real_path(os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_project'))
 	gfx_header := os.join_path(root, 'sokol/c/sokol_gfx.h').replace('\\', '/')
 	fontstash_header := os.join_path(root, 'sokol/f/util/sokol_fontstash.h').replace('\\', '/')
 	gfx_define := directive_order_index(c_code, '#define SOKOL_GFX_IMPL')
@@ -1353,7 +1362,7 @@ fn test_header_backed_request_macro_does_not_get_extern_prototype() {
 	c_code := directive_order_gen_c_request_macro(directive_order_build_v3())
 	// request.h sits beside main.v, and the generated C is compiled elsewhere,
 	// so the include names the header by its resolved path.
-	header := os.real_path(os.join_path(os.temp_dir(),
+	header := os.real_path(os.join_path(directive_order_temp_dir(),
 		'v3_c_directive_order_request_macro_project', 'request.h')).replace('\\', '/')
 	assert c_code.contains('#include "${header}"'), c_code
 	assert !c_code.contains('int request(int'), c_code
