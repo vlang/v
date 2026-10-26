@@ -55,7 +55,7 @@ fn (g &Parser) lower_power_expressions(tokens []FastcExpressionToken) ?[]FastcEx
 			rendered := g.render_power_expression(result[start..i], result[i + 1..end])?
 			next << FastcExpressionToken{
 				tok:    .name
-				source: rendered.source
+				source: fastc_token_source(rendered.source)
 				typ:    rendered.typ
 			}
 		}

@@ -100,10 +100,10 @@ fn test_fastc_argument_fallback_preserves_complex_dispatch_and_narrowing() {
 		'value !in node'] {
 		assert !g.can_reuse_special_expression_miss(fastc_special_token_flags(fastc_argument_fallback_tokens(source))), source
 	}
-	atom := [FastcExpressionToken{ tok: .name, source: '({ side_effect(); value; })', typ: flat.source_type_int }]
+	atom := [FastcExpressionToken{ tok: .name, source: fastc_token_source('({ side_effect(); value; })'), typ: flat.source_type_int }]
 	assert !g.can_reuse_special_expression_miss(fastc_special_token_flags(atom))
 	// Non-name synthetic tokens remain opaque, copied verbatim by both paths.
-	string_atom := [FastcExpressionToken{ tok: .string, lit: '"ignored"', source: '_S("literal")', typ: flat.source_type_string }]
+	string_atom := [FastcExpressionToken{ tok: .string, lit: '"ignored"', source: fastc_token_source('_S("literal")'), typ: flat.source_type_string }]
 	string_raw := g.render_raw_expression_tokens(string_atom) or { panic('opaque string') }
 	assert g.can_reuse_special_expression_miss(fastc_special_token_flags(string_atom))
 	assert g.render_special_expression(string_atom, string_raw) == none
@@ -165,12 +165,12 @@ fn main() {
 fn test_fastc_pre_rendered_argument_borrows_keep_other_representations() {
 	g := fastc_argument_fallback_parser(true, false, 0)
 	source := '({ side_effect(); record; })'
-	value := [FastcExpressionToken{ tok: .name, source: source, typ: flat.source_type_id('Record') }]
+	value := [FastcExpressionToken{ tok: .name, source: fastc_token_source(source), typ: flat.source_type_id('Record') }]
 	for expected in ['Record', 'Record**', 'int*', 'voidptr*'] {
 		assert g.render_call_argument_expression(value, flat.source_type_id(expected)) or { panic(expected) } == source, expected
 	}
 	for actual in [u32(0), flat.source_type_voidptr, flat.source_type_id('Record*')] {
-		tokens := [FastcExpressionToken{ tok: .name, source: source, typ: actual }]
+		tokens := [FastcExpressionToken{ tok: .name, source: fastc_token_source(source), typ: actual }]
 		assert g.render_call_argument_expression(tokens, flat.source_type_id('Record*')) or { panic('unchanged representation') } == source
 	}
 	ordinary := fastc_argument_fallback_parser(false, false, 0)

@@ -99,7 +99,11 @@ fn test_fastc_generic_normalization_preserves_surrounding_indexes_and_token_sour
 		if item.tok == .number && item.lit in ['1', '2'] {
 			tokens[index] = FastcExpressionToken{
 				...item
-				source: if item.lit == '1' { 'first_value' } else { 'second_value' }
+				source: fastc_token_source(if item.lit == '1' {
+					'first_value'
+				} else {
+					'second_value'
+				})
 				typ:    flat.source_type_u64
 			}
 		}

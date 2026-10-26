@@ -103,7 +103,7 @@ fn test_fastc_aggregate_local_arguments_reject_coercions_and_special_storage() {
 	}
 	for value in [
 		FastcExpressionToken{ tok: .name, lit: 'record', is_mut_argument: true },
-		FastcExpressionToken{ tok: .name, lit: 'record', source: '__pre_rendered', typ: flat.source_type_id('fixture__Record') },
+		FastcExpressionToken{ tok: .name, lit: 'record', source: fastc_token_source('__pre_rendered'), typ: flat.source_type_id('fixture__Record') },
 		FastcExpressionToken{ tok: .name, lit: 'record', typ: flat.source_type_id('Empty') },
 		FastcExpressionToken{ tok: .number, lit: '0' },
 	] {

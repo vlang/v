@@ -10935,10 +10935,13 @@ $if !skip_fastc ? {
 			final_args << atomic_arg
 		}
 		final_args << link_ld_flags
+		mut aggregated_host_support := false
 		if prefs.building_v && prefs.normalized_target_os() == 'macos'
 			&& prefs.normalized_target_arch() == 'arm64' && !is_debug
 			&& environment_c_flags.len == 0 && user_c_flags.len == 0 && link_ld_flags.len == 0 {
 			final_args = v3_fastc_aggregate_host_support_args(prefs.vroot, build_dir, compile_args, final_args, macos_sdk_root, tcc_resources.base_arg, tcc_resources.include_arg)
+			aggregated_host_support = final_args.len > 0
+				&& final_args[0] == os.join_path(build_dir, 'host_support_darwin.c')
 		}
 		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && !final_args.any(fastc.fastc_flag_is_native_input(it)))
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
@@ -11004,6 +11007,14 @@ $if !skip_fastc ? {
 				mut prepared_link := fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_args, final_args)
 				preload_link := (feeds_prestarted || rendering_units.paths.len > 0)
 					&& fastc.fastc_prepared_link_accepts_inputs(&prepared_link)
+				mut native_compile := fastc.FastcNativeCompile{}
+				defer {
+					fastc.fastc_discard_native_compile(mut native_compile)
+				}
+				if preload_link && !cache_enabled && aggregated_host_support {
+					native_compile = fastc.fastc_begin_native_compile(tcc_path, compile_args,
+						final_args[0], os.join_path(build_dir, 'host_support_darwin.o'))
+				}
 				if feeds_prestarted {
 					if !uses_prestarted {
 						fastc.fastc_discard_link(mut prepared_link)
@@ -11050,7 +11061,12 @@ $if !skip_fastc ? {
 					sign_in_process = shim_dir.dir != ''
 				}
 				finish_inputs := if preload_link { []string{} } else { link_inputs }
-				result = fastc.fastc_finish_link(mut prepared_link, finish_inputs, final_args, staged_binary)
+				mut finish_final_args := final_args
+				if native_object := fastc.fastc_finish_native_compile(mut native_compile) {
+					finish_final_args = final_args.clone()
+					finish_final_args[0] = native_object
+				}
+				result = fastc.fastc_finish_link(mut prepared_link, finish_inputs, finish_final_args, staged_binary)
 			}
 			if bench_phases {
 				eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
