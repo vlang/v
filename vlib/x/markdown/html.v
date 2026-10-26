@@ -105,7 +105,18 @@ fn (mut r HTMLRenderer) render_inline(src string) {
 	}
 }
 
+// cr writes a newline unless the output is empty or already ends with one.
+// Block-level renderers call it on entry, matching the reference renderer:
+// blocks are always newline-separated, while tight-list paragraphs and
+// <li> open tags stay on the same line as their text.
+fn (mut r HTMLRenderer) cr() {
+	if r.sb.len > 0 && r.sb.byte_at(r.sb.len - 1) != `\n` {
+		r.sb.write_string('\n')
+	}
+}
+
 fn (mut r HTMLRenderer) render_heading(node &Node) {
+	r.cr()
 	tag := 'h${node.level}'
 	if node.id.len > 0 {
 		r.sb.write_string('<${tag} id="${html_escape(node.id)}">')
@@ -130,6 +141,7 @@ fn (mut r HTMLRenderer) render_paragraph(node &Node) {
 		}
 		return
 	}
+	r.cr()
 	r.sb.write_string('<p>')
 	if node.children.len > 0 {
 		r.render_children(node)
@@ -140,12 +152,18 @@ fn (mut r HTMLRenderer) render_paragraph(node &Node) {
 }
 
 fn (mut r HTMLRenderer) render_blockquote(node &Node) {
+	r.cr()
 	r.sb.write_string('<blockquote>\n')
+	// A blockquote breaks tight-list context for its own paragraphs.
+	prev_tight := r.tight_list
+	r.tight_list = false
 	r.render_children(node)
+	r.tight_list = prev_tight
 	r.sb.write_string('</blockquote>\n')
 }
 
 fn (mut r HTMLRenderer) render_list(node &Node) {
+	r.cr()
 	tag := if node.is_ordered { 'ol' } else { 'ul' }
 	if node.is_ordered && node.list_start != 1 {
 		r.sb.write_string('<${tag} start="${node.list_start}">\n')
@@ -181,6 +199,7 @@ fn (mut r HTMLRenderer) render_list_item(node &Node) {
 }
 
 fn (mut r HTMLRenderer) render_code_block(node &Node) {
+	r.cr()
 	r.sb.write_string('<pre><code>')
 	if r.code_highlighter != unsafe { nil } {
 		r.sb.write_string(r.code_highlighter('', node.literal))
@@ -191,6 +210,8 @@ fn (mut r HTMLRenderer) render_code_block(node &Node) {
 }
 
 fn (mut r HTMLRenderer) render_fenced_code(node &Node) {
+	r.cr()
+	// Use only the first word of the info string as the language class.
 	lang := if node.fence_info.len > 0 {
 		node.fence_info.split(' ')[0].split('\t')[0]
 	} else {
@@ -210,6 +231,7 @@ fn (mut r HTMLRenderer) render_fenced_code(node &Node) {
 }
 
 fn (mut r HTMLRenderer) render_thematic_break() {
+	r.cr()
 	if r.opts.renderer_opts.xhtml {
 		r.sb.write_string('<hr />\n')
 	} else {
@@ -218,6 +240,7 @@ fn (mut r HTMLRenderer) render_thematic_break() {
 }
 
 fn (mut r HTMLRenderer) render_html_block(node &Node) {
+	r.cr()
 	if r.opts.renderer_opts.unsafe_ {
 		r.sb.write_string(node.literal)
 	} else {
@@ -360,7 +383,7 @@ fn (mut r HTMLRenderer) render_link(node &Node) {
 }
 
 fn (mut r HTMLRenderer) render_image(node &Node) {
-	alt := node.text_content()
+	alt := node.image_alt_text()
 	mut dest := node.dest
 	if r.link_resolver != unsafe { nil } {
 		dest = r.link_resolver(r.link_base, dest)
