@@ -144,6 +144,42 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 	}
 }
 
+fn test_bootstrap_preserves_compiler_flag_argument_boundaries() {
+	source := os.read_file(os.join_path(automation_root(), 'bootstrap', 'bootstrap.sh')) or {
+		panic(err)
+	}
+	start := source.index('build_v_program() {\n') or { panic('build helper missing') }
+	end := source[start..].index('\n}\n') or { panic('build helper end missing') }
+	build_function := source[start..start + end + 3]
+	ifs := source.split_into_lines().filter(it.starts_with('IFS='))
+	assert ifs.len == 1
+	script := 'set -euo pipefail\n${ifs[0]}\n' + build_function + '
+uname() { printf "Linux\\n"; }
+record_compiler() { printf "<%s>\\n" "$@"; }
+cc_command="cc with space"
+v_link_flags=(-ldflags "-lexecinfo -other")
+build_v_program record_compiler "output path" -gc none -d "contract value" "package path"
+'
+	result := os.exec(['bash', '-c', script])
+	assert result.exit_code == 0, result.output
+	assert result.output.split_into_lines() == [
+		'<-new-compiler>',
+		'<-no-parallel>',
+		'<-nocache>',
+		'<-cc>',
+		'<cc with space>',
+		'<-gc>',
+		'<none>',
+		'<-d>',
+		'<contract value>',
+		'<-ldflags>',
+		'<-lexecinfo -other>',
+		'<-o>',
+		'<output path>',
+		'<package path>',
+	]
+}
+
 fn test_bootstrap_contract_rejects_republished_cli_path_expressions() {
 	root := automation_root()
 	bootstrap_root := os.join_path(root, 'bootstrap')
@@ -244,11 +280,13 @@ fn bootstrap_test_git(args []string) os.Result {
 	return os.exec(command)
 }
 
-fn prepare_contract_bootstrap_checkout(source_root string, destination string, remote string) string {
+fn prepare_contract_bootstrap_checkout(source_root string, destination string, remote string,
+	local_objects bool) string {
 	template_root := '${destination}.empty-template'
 	os.mkdir_all(template_root) or { panic(err) }
+	transport := if local_objects { '--local' } else { '--no-local' }
 	clone := bootstrap_test_git(['-c', 'protocol.file.allow=always', 'clone', '--quiet', '--no-checkout',
-		'--single-branch', '--no-local', '--no-hardlinks', '--template=${template_root}', source_root,
+		'--single-branch', transport, '--no-hardlinks', '--template=${template_root}', source_root,
 		destination])
 	assert clone.exit_code == 0, clone.output
 	os.rmdir_all(template_root) or { panic(err) }
@@ -385,8 +423,9 @@ fn prepare_bootstrap_tcc_environment(source_root string, base string) map[string
 			'--untracked-files=all', '--ignored=matching'])
 		assert status.exit_code == 0, status.output
 		assert status.output == ''
+		// Copy the local object store without hardlinks: partial bundles may omit historical blobs.
 		tcc_input := prepare_contract_bootstrap_checkout(tcc_source_root, os.join_path(base,
-			'tcc-input'), 'https://github.com/vlang/tccbin')
+			'tcc-input'), 'https://github.com/vlang/tccbin', true)
 		commit := bootstrap_test_git(['-C', tcc_input, 'rev-parse', 'HEAD'])
 		assert commit.exit_code == 0, commit.output
 		return {
@@ -486,7 +525,7 @@ fn test_bootstrap_compiles_the_real_local_contract_without_network_or_moving_inp
 			os.rmdir_all(base) or {}
 		}
 		contract_input := prepare_contract_bootstrap_checkout(source_root, os.join_path(base,
-			'contract-input'), 'https://github.com/GGRei/v')
+			'contract-input'), 'https://github.com/GGRei/v', false)
 		contract_sha := commit_current_automation_contract(source_root, contract_input)
 		vc_input := prepare_locked_vc_capsule(vc_source_root, os.join_path(base, 'vc-input'),
 			'https://github.com/vlang/vc', vc_lock)
@@ -529,7 +568,7 @@ fn test_bootstrap_rejects_missing_selected_and_nonselected_vc_objects_and_cleans
 			os.rmdir_all(base) or {}
 		}
 		contract_input := prepare_contract_bootstrap_checkout(source_root, os.join_path(base,
-			'contract-input'), 'https://github.com/GGRei/v')
+			'contract-input'), 'https://github.com/GGRei/v', false)
 		contract_sha := commit_current_automation_contract(source_root, contract_input)
 		cases := [
 			MissingVcObjectCase{

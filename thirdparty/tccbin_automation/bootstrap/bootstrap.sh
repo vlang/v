@@ -439,7 +439,10 @@ materialize_vc_artifact "$vc_root" "$lock_v_win_c" "$vc_source_win"
 # declarations as errors (gcc 14 and later).
 build_v_program() {
 	local compiler=$1 output=$2 package=${!#}
-	local -a flags=("${@:3:$(($# - 3))}")
+	# Bash 3.2 joins a quoted positional slice when IFS omits spaces. Copy then drop the package.
+	shift 2
+	local -a flags=("$@")
+	unset "flags[$(($# - 1))]"
 	case "$(uname -s)" in
 		MINGW* | MSYS* | CYGWIN*)
 			"$compiler" -new-compiler -no-parallel -nocache -cc "$cc_command" "${flags[@]}" -o "$output.c" "$package"
