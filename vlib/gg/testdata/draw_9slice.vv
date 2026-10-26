@@ -1,0 +1,17 @@
+module main
+
+import gg
+
+gg.start(
+	width:        300
+	height:       200
+	window_title: '9-slice'
+	frame_fn:     fn (mut ctx gg.Context) {
+		img := gg.Image{}
+		ctx.begin()
+		ctx.draw_9slice(&img, 10, 10, 100, 80, 16, 16, 16, 16)
+		// slices larger than the target rect are clamped, not negative
+		ctx.draw_9slice(&img, 120, 10, 40, 30, 32, 32, 32, 32)
+		ctx.end()
+	}
+)

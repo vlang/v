@@ -1,12 +1,10 @@
 module gg
 
-import sokol.sgl
-
 // Stuff for ui from now for screenshot (that would be interesting for gg if screenshot is implemented also for gg)
 
 // required for ui.DrawDevice interface (with &gg.Context as an instance)
 pub fn (ctx &Context) scissor_rect(x int, y int, w int, h int) {
-	sgl.scissor_rect(int(ctx.scale * x), int(ctx.scale * y), int(ctx.scale * w),
+	ctx.r.scissor_rect(int(ctx.scale * x), int(ctx.scale * y), int(ctx.scale * w),
 		int(ctx.scale * h), true)
 }
 
