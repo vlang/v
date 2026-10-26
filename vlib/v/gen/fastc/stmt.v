@@ -2239,7 +2239,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			component_type := if i < component_types.len {
 				flat.source_type_name(component_types[i])
 			} else {
-				'uint', 'usize'
+				'uint'
 			}
 			c_name := fastc_c_identifier(name)
 			c_type := fastc_output_c_type(component_type)

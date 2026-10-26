@@ -492,10 +492,14 @@ fn (mut g Parser) read_interpolated_string() !string {
 		value_type := fastc_normalize_inferred_type(g.last_expression_type)
 		value_key := g.semantic_type_key(value_type)
 		alias_has_str_method := g.declared_kinds[flat.source_type_name(value_key)] == .alias_ && '${flat.source_type_name(value_key)}.str' in g.functions
-		interpolation_type := if alias_has_str_method {
+		mut interpolation_type := if alias_has_str_method {
 			flat.source_type_name(value_type)
 		} else {
 			flat.source_type_name(g.underlying_alias_type(value_type))
+		}
+		// C pointer differences use the signed pointer-sized integer formatter.
+		if interpolation_type == 'ptrdiff_t' {
+			interpolation_type = 'isize'
 		}
 		mut format_specifier := ''
 		if g.tok == .colon {
