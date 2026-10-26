@@ -40,18 +40,29 @@ fn test_interface_impls_preserves_qualified_identity_and_worker_lists() {
 	g.interface_boxed_types[interface_dispatch_boxed_type_key(beta_id, beta_map_id)] = true
 	g.interface_boxed_types_done = true
 
+	// Empty interfaces also accept the builtin implementers discovered by the checker.
+	mut alpha_impls := tc.interface_impl_names(alpha_id)
+	mut beta_impls := tc.interface_impl_names(beta_id)
+	alpha_impls << alpha_map_id
+	beta_impls << beta_map_id
+	assert beta_map_id !in alpha_impls
+	assert alpha_map_id !in beta_impls
+	alpha_map_index := alpha_impls.index(alpha_map_id)
+
 	g.collect_interface_impls()
 
-	assert g.iface_impls[alpha_id] == [alpha_map_id]
-	assert g.iface_impls[beta_id] == [beta_map_id]
+	assert g.iface_impls[alpha_id] == alpha_impls
+	assert g.iface_impls[beta_id] == beta_impls
 	$if !v3_no_parallel ? {
 		mut published := clone_cgen_source_type_list_map(g.iface_impls)
 		mut changed := published[alpha_id] or { panic('missing alpha implementation') }
-		changed[0] = beta_map_id
+		changed[alpha_map_index] = beta_map_id
 		published[alpha_id] = changed
-		assert g.iface_impls[alpha_id] == [alpha_map_id]
-		assert published[alpha_id] == [beta_map_id]
-		assert published[beta_id] == [beta_map_id]
+		mut expected_changed := alpha_impls.clone()
+		expected_changed[alpha_map_index] = beta_map_id
+		assert g.iface_impls[alpha_id] == alpha_impls
+		assert published[alpha_id] == expected_changed
+		assert published[beta_id] == beta_impls
 	}
 }
 
