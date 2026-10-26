@@ -53,6 +53,47 @@ fn test_from_string_rejects_invalid_input() {
 	assert_parse_error('.', 'math.decimal: invalid decimal value `.`')
 }
 
+fn test_from_string_exponent_notation() {
+	cases := {
+		'1e3':        '1000'
+		'1.5E-2':     '0.015'
+		'-12e+2':     '-1200'
+		'+12E-1':     '1.2'
+		'.25e1':      '2.5'
+		'1.2e-2':     '0.012'
+		'1.e2':       '100'
+		' 1e2 ':      '100'
+		'001.200e0':  '1.2'
+		'1e000001':   '10'
+		'1e-00001':   '0.1'
+		'-0e+100':    '0'
+		'+0.00e-100': '0'
+	}
+	for input, expected in cases {
+		assert must_decimal(input).str() == expected, input
+	}
+	zeros := '0'.repeat(128)
+	assert must_decimal('1e${zeros}').str() == '1'
+	assert must_decimal('1e-${zeros}').str() == '1'
+	assert must_decimal('1e+${zeros}100').str() == '1' + '0'.repeat(100)
+	assert must_decimal('1e-${zeros}100').str() == '0.' + '0'.repeat(99) + '1'
+	assert must_decimal('-0e-${zeros}').is_zero()
+}
+
+fn test_from_string_rejects_invalid_exponents() {
+	for input in ['1e', '1e+', '1e-', 'e1', '.e1', '-e1', '1e--2', '1e+-2', '1e-+2', '1e++2', '1e2-',
+		'1e2+', '1e2e3', '1E2E3', '1e2.0', '1 e2', '1e 2'] {
+		assert_parse_error(input, 'math.decimal: invalid decimal value `${input}`')
+	}
+}
+
+fn test_from_string_rejects_exponents_out_of_range() {
+	for input in ['1e101', '1e-101', '1e+101', '1e2147483648', '1e-2147483648', '1e99999999999999999999',
+		'1e-99999999999999999999', '1e00000000000000101', '1e-00000000000000101'] {
+		assert_parse_error(input, 'math.decimal: exponent out of range `${input}`')
+	}
+}
+
 fn test_add_sub_and_mul() {
 	assert (must_decimal('1.23') + must_decimal('4.5')).str() == '5.73'
 	assert (must_decimal('4.5') - must_decimal('1.23')).str() == '3.27'
@@ -83,4 +124,63 @@ fn test_div_operator_uses_default_precision() {
 fn test_div_prec_errors() {
 	assert_div_error('1', '0', 2, 'math.decimal: cannot divide by zero')
 	assert_div_error('1', '2', -1, 'math.decimal: precision cannot be negative')
+}
+
+struct RoundingCase {
+	mode     decimal.RoundingMode
+	expected []string
+}
+
+fn test_round_modes_to_integer() {
+	// The reference table from java.math.RoundingMode.
+	inputs := ['5.5', '2.5', '1.6', '1.1', '1.0', '-1.0', '-1.1', '-1.6', '-2.5', '-5.5']
+	cases := [
+		RoundingCase{.up, ['6', '3', '2', '2', '1', '-1', '-2', '-2', '-3', '-6']},
+		RoundingCase{.down, ['5', '2', '1', '1', '1', '-1', '-1', '-1', '-2', '-5']},
+		RoundingCase{.ceiling, ['6', '3', '2', '2', '1', '-1', '-1', '-1', '-2', '-5']},
+		RoundingCase{.floor, ['5', '2', '1', '1', '1', '-1', '-2', '-2', '-3', '-6']},
+		RoundingCase{.half_up, ['6', '3', '2', '1', '1', '-1', '-1', '-2', '-3', '-6']},
+		RoundingCase{.half_down, ['5', '2', '2', '1', '1', '-1', '-1', '-2', '-2', '-5']},
+		RoundingCase{.half_even, ['6', '2', '2', '1', '1', '-1', '-1', '-2', '-2', '-6']},
+	]
+	for c in cases {
+		for i, input in inputs {
+			got := must_decimal(input).round(0, c.mode)!.str()
+			assert got == c.expected[i], '${c.mode} ${input}: got ${got}'
+		}
+	}
+}
+
+fn test_round_to_places() {
+	vat := must_decimal('19.99') * must_decimal('0.21')
+	assert vat.round(2, .half_up)!.str() == '4.2'
+	assert vat.round(3, .down)!.str() == '4.197'
+	assert must_decimal('0.125').round(2, .half_even)!.str() == '0.12'
+	assert must_decimal('0.135').round(2, .half_even)!.str() == '0.14'
+	assert must_decimal('0.125').round(2, .half_up)!.str() == '0.13'
+	assert must_decimal('-0.004').round(2, .half_up)!.is_zero()
+	assert must_decimal('-0.001').round(2, .floor)!.str() == '-0.01'
+	assert must_decimal('9.995').round(2, .half_up)!.str() == '10'
+	assert must_decimal('1.5').round(3, .up)!.str() == '1.5'
+}
+
+fn test_div_with_modes() {
+	one := must_decimal('1')
+	assert one.div(must_decimal('6'), 2, .down)!.str() == '0.16'
+	assert one.div(must_decimal('-6'), 2, .floor)!.str() == '-0.17'
+	assert one.div(must_decimal('-6'), 2, .ceiling)!.str() == '-0.16'
+	assert one.div(must_decimal('8'), 2, .half_even)!.str() == '0.12'
+	assert must_decimal('3').div(must_decimal('8'), 2, .half_even)!.str() == '0.38'
+	assert one.div(must_decimal('8'), 2, .half_down)!.str() == '0.12'
+	assert must_decimal('0.1').div(must_decimal('0.08'), 1, .half_even)!.str() == '1.2'
+	assert must_decimal('10').div(must_decimal('4'), 0, .half_even)!.str() == '2'
+}
+
+fn test_round_and_div_errors() {
+	mut messages := []string{}
+	must_decimal('1.25').round(-1, .half_up) or { messages << err.msg() }
+	must_decimal('1').div(decimal.zero, 2, .half_even) or { messages << err.msg() }
+	must_decimal('1').div(must_decimal('3'), -1, .floor) or { messages << err.msg() }
+	assert messages == ['math.decimal: precision cannot be negative',
+		'math.decimal: cannot divide by zero', 'math.decimal: precision cannot be negative']
 }

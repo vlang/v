@@ -28,7 +28,7 @@ const source_body_marker = '// v3cache: source bodies required'
 // `recover()`. A header has the declarations of a module and not its code, so a
 // build that reads it cannot tell otherwise that the program reaches that call.
 const recover_call_marker = '// v3cache: calls recover'
-const source_signature_cache_format = 'v3-source-signature-cache-9'
+const source_signature_cache_format = 'v3-source-signature-cache-12'
 const program_executable_format = 'v3-program-executable-2'
 
 // PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
@@ -560,50 +560,6 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		vml_paths, vml_lookup_paths, vml_lookup_candidates, has_unresolved_vml_path := compile_time_vml_paths(source, path)
-		if has_unresolved_vml_path {
-			cacheable = false
-		}
-		for lookup_path in vml_lookup_paths {
-			resolved := os.real_path(lookup_path)
-			metadata := file_change_signature(lookup_path)
-			if metadata.len == 0 {
-				cacheable = false
-			}
-			validation << 'vmllookup=${lookup_path}\t${resolved}\t${metadata}'
-			hash = hash_bytes(hash, [u8(0xf7)])
-			hash = hash_bytes(hash, lookup_path.bytes())
-			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, resolved.bytes())
-			hash = hash_bytes(hash, [u8(0xff)])
-		}
-		for candidate in vml_lookup_candidates {
-			metadata := file_change_signature(candidate)
-			if metadata.len == 0 {
-				cacheable = false
-			}
-			validation << 'vmlcandidate=${candidate}\t${metadata}'
-			hash = hash_bytes(hash, [u8(0xf6)])
-			hash = hash_bytes(hash, candidate.bytes())
-			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, metadata.bytes())
-			hash = hash_bytes(hash, [u8(0xff)])
-		}
-		for vml_path in vml_paths {
-			// Record the file state before reading the bytes the signature hashes, so an
-			// edit in between leaves an older record that the next validation rejects.
-			vml_signature := file_change_signature(vml_path)
-			if vml_signature.len == 0 {
-				cacheable = false
-			}
-			vml_content := os.read_bytes(vml_path) or { return SourceSignatureDetails{} }
-			validation << 'vml=${vml_path}\t${vml_signature}'
-			hash = hash_bytes(hash, [u8(0xf8)])
-			hash = hash_bytes(hash, vml_path.bytes())
-			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, vml_content)
-			hash = hash_bytes(hash, [u8(0xff)])
-		}
 		if source_uses_pseudo(source, [
 			'@BUILD_TIMESTAMP',
 			'@BUILD_DATE',
@@ -690,7 +646,7 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 	}
 	if !cacheable {
 		// Keep repeated queries consistent inside one compiler process, while
-		// ensuring another process cannot reuse an artifact whose VML input path
+		// ensuring another process cannot reuse an artifact whose compile-time input
 		// could not be extracted from source text.
 		hash = hash_bytes(hash, [u8(0xf7)])
 		hash = hash_bytes(hash, os.getpid().str().bytes())
@@ -1072,30 +1028,6 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			}
 			continue
 		}
-		if line.starts_with('vml=') {
-			parts := line['vml='.len..].split('\t')
-			if parts.len != 2 || parts[0].len == 0
-				|| !file_change_signature_matches(parts[0], parts[1]) {
-				return none
-			}
-			continue
-		}
-		if line.starts_with('vmlcandidate=') {
-			parts := line['vmlcandidate='.len..].split('\t')
-			if parts.len != 2 || parts[0].len == 0
-				|| !file_change_signature_matches(parts[0], parts[1]) {
-				return none
-			}
-			continue
-		}
-		if line.starts_with('vmllookup=') {
-			parts := line['vmllookup='.len..].split('\t')
-			if parts.len != 3 || parts[0].len == 0 || os.real_path(parts[0]) != parts[1]
-				|| !file_change_signature_matches(parts[0], parts[2]) {
-				return none
-			}
-			continue
-		}
 		if line.starts_with('vmod=') {
 			parts := line['vmod='.len..].split('\t')
 			if parts.len != 4 || parts[0].len == 0 {
@@ -1321,87 +1253,6 @@ fn signature_string_call_arg_prefix(source string, start int) (string, int, bool
 	return '', source.len, false, false
 }
 
-fn compile_time_vml_paths(source string, source_file string) ([]string, []string, []string, bool) {
-	if !source.contains('\$vml') {
-		return []string{}, []string{}, []string{}, false
-	}
-	mut paths := map[string]bool{}
-	mut lookup_paths := map[string]bool{}
-	mut lookup_candidates := map[string]bool{}
-	mut has_unresolved_path := false
-	mut pos := 0
-	for pos < source.len {
-		if source[pos] == `/` && pos + 1 < source.len
-			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
-			pos = skip_signature_space_and_comments(source, pos)
-			continue
-		}
-		if source[pos] in [`'`, `"`, `\``] {
-			pos = skip_signature_quoted_text(source, pos, false)
-			continue
-		}
-		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
-			pos = skip_signature_quoted_text(source, pos + 1, true)
-			continue
-		}
-		if pos + 4 > source.len || source[pos..pos + 4] != '\$vml'
-			|| (pos + 4 < source.len && signature_name_char(source[pos + 4])) {
-			pos++
-			continue
-		}
-		raw_path, next_pos, ok, is_raw := signature_string_call_arg(source, pos + 4)
-		if ok {
-			path_value := if is_raw { raw_path } else { cached_unescape_v_string(raw_path) }
-			path, candidates := resolve_signature_vml_path(path_value, source_file)
-			paths[os.real_path(path)] = true
-			lookup_paths[path] = true
-			for candidate in candidates {
-				lookup_candidates[os.real_path(candidate)] = true
-			}
-		} else {
-			has_unresolved_path = true
-		}
-		pos = if next_pos > pos { next_pos } else { pos + 4 }
-	}
-	mut result := paths.keys()
-	result.sort()
-	mut lookups := lookup_paths.keys()
-	lookups.sort()
-	mut candidates := lookup_candidates.keys()
-	candidates.sort()
-	return result, lookups, candidates, has_unresolved_path
-}
-
-fn resolve_signature_vml_path(path string, source_file string) (string, []string) {
-	if os.is_abs_path(path) {
-		return path, []string{}
-	}
-	dir := os.dir(os.real_path(source_file))
-	direct := os.join_path_single(dir, path)
-	if os.exists(direct) {
-		return direct, []string{}
-	}
-	mut candidates := [direct]
-	in_templates := os.join_path(dir, 'templates', path)
-	if os.exists(in_templates) {
-		return in_templates, candidates
-	}
-	candidates << in_templates
-	root, _ := signature_vmod_root(source_file)
-	if root != dir {
-		vmod_direct := os.join_path_single(root, path)
-		if os.exists(vmod_direct) {
-			return vmod_direct, candidates
-		}
-		candidates << vmod_direct
-		vmod_templates := os.join_path(root, 'templates', path)
-		if os.exists(vmod_templates) {
-			return vmod_templates, candidates
-		}
-	}
-	return direct, []string{}
-}
-
 // file_change_signature returns a value that changes whenever the file at `path`
 // changes, appears or disappears: its metadata when the file system reports one,
 // a digest of its contents when it does not, and `missing` when nothing exists at
@@ -1515,7 +1366,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	source_details := m.source_signature_details(source_files)
 	if !source_details.cacheable {
-		cache_trace_module_miss(module_name, 'source has an unresolved compile-time VML path')
+		cache_trace_module_miss(module_name, 'source has an unresolved compile-time input')
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
@@ -2023,6 +1874,18 @@ pub fn (m &Manager) valid_program_executable(source_files []string, generation_s
 	identity := m.program_executable_identity(source_files, generation_signature, dependency_inputs,
 		link_signature) or { return none }
 	if !stamp.starts_with(identity) {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			actual_lines := stamp.split_into_lines()
+			expected_lines := identity.split_into_lines()
+			mut line := 0
+			for line < actual_lines.len && line < expected_lines.len
+				&& actual_lines[line] == expected_lines[line] {
+				line++
+			}
+			actual := if line < actual_lines.len { actual_lines[line] } else { '<missing>' }
+			expected := if line < expected_lines.len { expected_lines[line] } else { '<missing>' }
+			eprintln('  V3 program executable miss: stamp line ${line + 1}: cached=${actual} expected=${expected}')
+		}
 		trace_program_executable_miss('the inputs of the program changed')
 		return none
 	}
@@ -2420,8 +2283,25 @@ pub fn header_signature(header string) string {
 
 // file_signature returns a stable content signature for a cache input file.
 pub fn file_signature(path string) string {
-	content := os.read_bytes(path) or { return '' }
-	return hash_bytes(u64(1469598103934665603), content).hex()
+	mut file := os.open(path) or { return '' }
+	defer { file.close() }
+	mut hash := u64(1469598103934665603)
+	mut buffer := []u8{len: 64 * 1024}
+	for {
+		read := file.read(mut buffer) or {
+			if err is os.Eof {
+				break
+			}
+			return ''
+		}
+		if read == 0 {
+			break
+		}
+		for value in buffer[..read] {
+			hash = (hash ^ u64(value)) * u64(1099511628211)
+		}
+	}
+	return hash.hex()
 }
 
 fn sanitize_name(name string) string {
@@ -5566,6 +5446,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 		out.writeln('')
 	}
 	mut seen := map[string]bool{}
+	mut selected_imports := map[string]bool{}
 	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
@@ -5581,6 +5462,12 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 				}
 				key := decl_key(a, node)
 				if key.len > 0 && seen[key] {
+					continue
+				}
+				if node.kind == .import_decl {
+					seen[key] = true
+					out.writeln(header_import_text(a, node, import_paths, mut selected_imports))
+					out.writeln('')
 					continue
 				}
 				attrs := declaration_attrs[int(effective_id)] or { CachedDeclarationAttrs{} }
@@ -5642,10 +5529,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 		if seen[key] {
 			continue
 		}
-		text := import_text(a, node, import_paths)
-		if text.len == 0 {
-			continue
-		}
+		text := header_import_text(a, node, import_paths, mut selected_imports)
 		seen[key] = true
 		out.writeln(text)
 		out.writeln('')
@@ -6173,6 +6057,30 @@ fn cached_embed_file_path_edit(source string, start int, vroot string, source_fi
 	}
 }
 
+// embedded_source_paths lists the resolved `$embed_file` paths in one source
+// file. Callers use it to keep resources that cached declaration bodies omit in
+// the whole-program cache identity.
+pub fn embedded_source_paths(source_file string, vroot string) []string {
+	source := os.read_file(source_file) or { return [] }
+	mut paths := []string{}
+	mut search_from := 0
+	for {
+		marker := source.index_after('$embed_file', search_from) or { break }
+		search_from = marker + '$embed_file'.len
+		edit := cached_embed_file_path_edit(source, marker, vroot, source_file) or { continue }
+		if edit.replacement.len < 3 {
+			continue
+		}
+		escaped_path := edit.replacement[1..edit.replacement.len - 1]
+		path := cached_unescape_v_string(escaped_path)
+		if os.is_file(path) && path !in paths {
+			paths << path
+		}
+		search_from = edit.end
+	}
+	return paths
+}
+
 fn cached_unescape_v_string(value string) string {
 	if !value.contains('\\') {
 		return value
@@ -6690,15 +6598,15 @@ fn generic_call_source_name(a &flat.FlatAst, id flat.NodeId) ?string {
 	node := a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			return node.value
+			return node.value_text()
 		}
 		.selector {
 			if node.children_count == 0 {
 				return none
 			}
 			base := a.child_node(&node, 0)
-			if base.kind == .ident && base.value.len > 0 && node.value.len > 0 {
-				return '${base.value}.${node.value}'
+			if base.kind == .ident && base.value_text().len > 0 && node.value_text().len > 0 {
+				return '${base.value_text()}.${node.value_text()}'
 			}
 		}
 		.index, .paren {
@@ -7142,17 +7050,38 @@ fn cached_vmod_root(source_file string) string {
 }
 
 fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) string {
+	mut names := []string{}
+	for i in 0 .. node.children_count {
+		names << a.child_node(&node, i).value
+	}
+	return import_text_with_names(node, import_paths[node.value] or { node.value }, names)
+}
+
+// header_import_text is import_text for a module header, which joins the imports of
+// all the files of a module in one file. Two files can select the same symbol of
+// a module, which one file cannot do twice: the header selects it once.
+fn header_import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string, mut selected map[string]bool) string {
 	import_path := import_paths[node.value] or { node.value }
+	mut names := []string{}
+	for i in 0 .. node.children_count {
+		name := a.child_node(&node, i).value
+		key := '${import_path}\x00${name}'
+		if selected[key] {
+			continue
+		}
+		selected[key] = true
+		names << name
+	}
+	return import_text_with_names(node, import_path, names)
+}
+
+fn import_text_with_names(node flat.Node, import_path string, names []string) string {
 	mut text := 'import ${import_path}'
 	default_alias := import_path.all_after_last('.')
 	if node.typ != 0 && node.typ_text() != default_alias {
 		text += ' as ${node.typ_text()}'
 	}
-	if node.children_count > 0 {
-		mut names := []string{}
-		for i in 0 .. node.children_count {
-			names << a.child_node(&node, i).value
-		}
+	if names.len > 0 {
 		text += ' { ${names.join(', ')} }'
 	}
 	return text
@@ -7429,11 +7358,11 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 			line += 'volatile '
 		}
 		line += field.value
-		mut field_type := field.typ_text()
-		if field_type.len == 0 {
-			field_type = cached_global_type_name(tc, module_name, field.value)
+		mut field_type := field.typ
+		if field_type == 0 {
+			field_type = cached_global_source_type_id(tc, module_name, field.value)
 		}
-		if field_type.len > 0 {
+		if field_type != 0 {
 			line += ' ${cached_type_source_text(tc, field_type)}'
 		}
 		if field.children_count > 0 {
@@ -7448,29 +7377,32 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 	return out.str()
 }
 
-fn cached_global_type_name(tc &types.TypeChecker, module_name string, name string) string {
+fn cached_global_source_type_id(tc &types.TypeChecker, module_name string, name string) u32 {
 	for candidate in [name, '${module_name}.${name}', '${module_name.all_after_last('.')}.${name}'] {
 		if typ := tc.file_scope.lookup(candidate) {
-			mut type_name := typ.name()
-			if type_name == 'nil' || type_name == 'none' || type_name == 'unknown' {
-				return 'voidptr'
+			source_id := typ.source_type_id()
+			if source_id in [flat.source_type_nil, flat.source_type_none, flat.source_type_unknown] {
+				return flat.source_type_voidptr
 			}
-			if type_name.starts_with('&void[') {
-				type_name = 'voidptr' + type_name['&void'.len..]
+			if flat.source_type_shape(source_id).has(.pointer) {
+				type_name := flat.source_type_name(source_id)
+				if type_name.starts_with('&void[') {
+					return flat.source_type_id('voidptr' + type_name['&void'.len..])
+				}
 			}
-			return type_name
+			return source_id
 		}
 	}
-	return ''
+	return 0
 }
 
-fn cached_type_source_text(tc &types.TypeChecker, type_text string) string {
-	typ := tc.parse_resolution_type(flat.source_type_id(type_text))
+fn cached_type_source_text(tc &types.TypeChecker, source_id u32) string {
+	typ := tc.parse_resolution_type(source_id)
 	if typ is types.ArrayFixed {
 		len_text := if typ.len_expr.len > 0 { typ.len_expr } else { typ.len.str() }
 		return '[${len_text}]${cached_type_source_name(typ.elem_type)}'
 	}
-	return type_text
+	return flat.source_type_name(source_id)
 }
 
 fn cached_type_source_name(typ types.Type) string {
@@ -7567,7 +7499,7 @@ fn type_text(a &flat.FlatAst, node flat.Node, source_is_public bool) string {
 	}
 	mut variants := []string{}
 	for i in 0 .. node.children_count {
-		variants << a.child_node(&node, i).value
+		variants << a.child_node(&node, i).value_text()
 	}
 	return head + variants.join(' | ')
 }
@@ -7633,7 +7565,7 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 	node := a.nodes[int(id)]
 	return match node.kind {
 		.int_literal, .float_literal, .bool_literal, .ident {
-			node.value
+			node.value_text()
 		}
 		.char_literal {
 			'`${escape_v_char(node.value)}`'
@@ -7661,9 +7593,9 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 		}
 		.selector {
 			if node.children_count > 0 {
-				'${expr_text(a, a.child(&node, 0))}.${node.value}'
+				'${expr_text(a, a.child(&node, 0))}.${node.value_text()}'
 			} else {
-				node.value
+				node.value_text()
 			}
 		}
 		.enum_val {
@@ -7677,11 +7609,11 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			call_expr_text(a, node)
 		}
 		.cast_expr, .as_expr {
-			target := if node.typ != 0 { node.typ_text() } else { node.value }
+			target := if node.typ != 0 { node.typ_text() } else { node.value_text() }
 			'${target}(${expr_text(a, a.child(&node, 0))})'
 		}
 		.sizeof_expr {
-			'sizeof(${node.value})'
+			'sizeof(${node.value_text()})'
 		}
 		.typeof_expr {
 			'typeof(${expr_text(a, a.child(&node, 0))})'
@@ -7747,7 +7679,7 @@ fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
 			expr_children_can_serialize(a, node)
 		}
 		.map_init {
-			(node.value.len > 0 || node.typ != 0) && node.children_count % 2 == 0
+			(node.source_value_id() != 0 || node.typ != 0) && node.children_count % 2 == 0
 				&& expr_children_can_serialize(a, node)
 		}
 		.cast_expr, .as_expr {
@@ -7780,13 +7712,13 @@ fn array_init_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	typ := if node.typ != 0 { node.typ_text() } else { node.value }
+	typ := if node.typ != 0 { node.typ_text() } else { node.value_text() }
 	return '${typ}{${values.join(', ')}}'
 }
 
 fn call_expr_text(a &flat.FlatAst, node flat.Node) string {
 	if node.children_count == 0 {
-		return '${node.value}()'
+		return '${node.value_text()}()'
 	}
 	callee := expr_text(a, a.child(&node, 0))
 	mut args := []string{}
@@ -7810,8 +7742,8 @@ fn map_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		values << '${expr_text(a, a.child(&node, i))}: ${expr_text(a, a.child(&node, i + 1))}'
 	}
-	prefix := if node.value.len > 0 {
-		node.value
+	prefix := if node.source_value_id() != 0 {
+		node.value_text()
 	} else if node.typ != 0 {
 		node.typ_text()
 	} else {
@@ -7825,7 +7757,7 @@ fn struct_init_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	return '${node.value}{${values.join(', ')}}'
+	return '${node.value_text()}{${values.join(', ')}}'
 }
 
 fn op_text(op flat.Op) string {

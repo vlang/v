@@ -1976,7 +1976,11 @@ ${build_res.output}'
 
 fn test_appkit_initial_content_rect_is_clamped_to_min_size_source_guard() {
 	source := multiwindow_source_file('appkit_backend.m')
-	assert source.contains('static int v_multiwindow_appkit_max_int(int value, int minimum)')
+	helpers := multiwindow_source_file('appkit_backend.v')
+	header := multiwindow_source_file('appkit_backend_helpers.h')
+	assert helpers.contains("@[export: 'v_multiwindow_appkit_max_int']")
+	assert helpers.contains('fn v_multiwindow_appkit_max_int(value int, minimum int) int')
+	assert header.contains('int v_multiwindow_appkit_max_int(int value, int minimum);')
 	assert source.contains('int content_width = v_multiwindow_appkit_max_int(width, min_width);')
 	assert source.contains('int content_height = v_multiwindow_appkit_max_int(height, min_height);')
 	assert source.contains('NSRect rect = NSMakeRect(0, 0, (CGFloat)content_width, (CGFloat)content_height);')
@@ -2965,15 +2969,15 @@ fn test_win32_clipboard_read_budget_survives_native_terminal_until_core_delivery
 		slot:         0
 		generation:   1
 	}
-	backend.admit_clipboard_request(request, window, voidptr(usize(1)), .clipboard_read, []u16{})!
+	backend.admit_clipboard_request(request, window, voidptr(uint(1)), .clipboard_read, []u16{})!
 	assert backend.clipboard_pending.len == 1
-	assert backend.clipboard_pending_bytes == usize(win32_clipboard_max_pending_bytes)
+	assert backend.clipboard_pending_bytes == uint(win32_clipboard_max_pending_bytes)
 
 	event := backend.finish_clipboard_head(.ready, 'tiny read', '')
 	assert backend.clipboard_pending.len == 0
 	assert event.event.service.clipboard.id == request
 	assert event.event.service.clipboard.status == .ready
-	assert backend.clipboard_pending_bytes == usize('tiny read'.len + 1)
+	assert backend.clipboard_pending_bytes == uint('tiny read'.len + 1)
 	assert backend.clipboard_retained.len == 1
 	assert !backend.clipboard_retained[0].claimed_by_app
 	mismatched := ServiceEvent{
@@ -2988,16 +2992,16 @@ fn test_win32_clipboard_read_budget_survives_native_terminal_until_core_delivery
 	}
 	backend.claim_clipboard_terminal_storage(mismatched)
 	backend.discard_unclaimed_clipboard_terminal_storage(mismatched)
-	assert backend.clipboard_pending_bytes == usize('tiny read'.len + 1)
+	assert backend.clipboard_pending_bytes == uint('tiny read'.len + 1)
 	assert !backend.clipboard_retained[0].claimed_by_app
 
 	backend.claim_clipboard_terminal_storage(event.event.service)
 	assert backend.clipboard_retained.len == 1
 	assert backend.clipboard_retained[0].claimed_by_app
 	backend.purge_clipboard_window(window)
-	assert backend.clipboard_pending_bytes == usize('tiny read'.len + 1)
+	assert backend.clipboard_pending_bytes == uint('tiny read'.len + 1)
 	backend.discard_unclaimed_clipboard_terminal_storage(event.event.service)
-	assert backend.clipboard_pending_bytes == usize('tiny read'.len + 1)
+	assert backend.clipboard_pending_bytes == uint('tiny read'.len + 1)
 	assert backend.clipboard_retained.len == 1
 	backend.release_claimed_clipboard_terminal_storage(event.event.service)
 	assert backend.clipboard_pending_bytes == 0
@@ -3009,10 +3013,10 @@ fn test_win32_clipboard_read_budget_survives_native_terminal_until_core_delivery
 		app_instance: 1
 		serial:       2
 	}
-	backend.admit_clipboard_request(second_request, window, voidptr(usize(1)), .clipboard_read,
+	backend.admit_clipboard_request(second_request, window, voidptr(uint(1)), .clipboard_read,
 		[]u16{})!
 	rejected := backend.finish_clipboard_head(.ready, 'rejected read', '')
-	assert backend.clipboard_pending_bytes == usize('rejected read'.len + 1)
+	assert backend.clipboard_pending_bytes == uint('rejected read'.len + 1)
 	backend.discard_unclaimed_clipboard_terminal_storage(rejected.event.service)
 	assert backend.clipboard_pending_bytes == 0
 	assert backend.clipboard_retained.len == 0

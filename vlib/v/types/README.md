@@ -10,6 +10,21 @@ cached identity. `parse_type_id(source_id)` resolves an interned source spelling
 its scalar cache keeps both the semantic ID and compatibility value across source contexts.
 Source annotations and dynamically resolved call types remain separate.
 
+`TypeChecker.expr_type_reference(node)` follows `expr_type`'s call resolution and cache visibility.
+Dense cache entries retain their canonical references. Sparse cache and function return entries
+receive stable descriptor copies whose nested metadata stays shared. Keep either reference only
+while its owning checker arena remains live; use `clone_owned_type` across arena boundaries.
+
+`TypeChecker.resolve_type_reference(node)` returns `resolve_type`'s result as a canonical
+reference. It observes the same checked-cache visibility and mixed-integer widening rules.
+The reference remains valid while its owning checker arena is live; use `clone_owned_type`
+when retaining the result beyond that arena.
+
+Transform stages register generated return signatures with
+`TypeChecker.register_generated_fn_return_type(name, ret)` and remove them with
+`TypeChecker.unregister_generated_fn_return_type(name)`. Both increment the return-signature
+revision so transform return-name memos reject stale entries, even when the map size is unchanged.
+
 Inside a closure that captures a `@[heap]` struct receiver with `[mut receiver]`,
 assigning the captured receiver to a new variable retains its reference, including when the
 receiver is enclosed in parentheses or is the final value of an `unsafe` block.
@@ -40,6 +55,11 @@ to a particular checker's interner.
 payloads. Promoted fields and their constructor syntax remain available. Descriptor copies share
 these payloads; value equality and semantic hashing inspect their fields. Do not mutate a shared
 payload. Use `clone_owned_type` when it must outlive the arena that owns any part of its graph.
+
+`ScopeBindingOwner.bound_type()` reads the current type of an already resolved binding by value.
+The owner remains valid while its scope is live and has not been reset. Updating a binding keeps
+its identity in normal mode; ownership mode replaces its generation and invalidates the old owner.
+A missing or invalid owner returns `none`. The returned descriptor shares nested type metadata.
 
 `new_type_reference(value)` retains a shallow descriptor copy in stable reference storage.
 Its nested metadata stays borrowed. Use `clone_owned_type(value)` first when that metadata
@@ -151,6 +171,16 @@ inside parentheses or a collapsed struct literal. Bare `nil` still requires an u
 
 Calls inferred inside a comptime sum-type branch use that branch's concrete variant type.
 Explicit generic arguments retain the types written at the call site.
+
+Concrete generic instances report incompatible returned names and fields during checking and
+building, including generic closures and methods. For example, `fn flag[T](value T) bool`
+cannot return an `int` instance's `value`. Returns narrowed by type tests retain their normal
+smartcast behavior.
+
+Concrete generic instances also report incompatible plain call arguments during checking and
+building. For example, passing a concrete `bool` field to a `string` parameter reports the
+argument mismatch at the call. Spread arguments, embedded struct conversions, and values narrowed
+by type tests or comptime field iteration retain their existing lowering and checking behavior.
 
 Compiler integrations can prepare a `LibraryBodyFrontier` after the initial semantic check
 and pass reached declaration IDs to `TypeChecker.check_library_body_frontier_nodes`.

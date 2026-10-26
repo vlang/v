@@ -27,10 +27,16 @@ pub fn (mut b Builder) reuse_as_plain_u8_array() []u8 {
 	return *b
 }
 
-// write_ptr writes `len` bytes provided byteptr to the accumulated buffer
-@[unsafe]
+// write_ptr appends `len` bytes from `ptr` to the accumulated buffer.
+@[inline; unsafe]
 pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
-	if len == 0 {
+	if len <= 0 || ptr == unsafe { nil } {
+		return
+	}
+	if len <= b.cap - b.len && !b.flags.has(.is_slice) {
+		// The source may borrow the builder's buffer, including unused capacity.
+		unsafe { vmemmove(&u8(b.data) + b.len, ptr, len) }
+		b.len += len
 		return
 	}
 	unsafe { b.push_many(ptr, len) }
@@ -138,17 +144,10 @@ pub fn (b &Builder) byte_at(n int) u8 {
 	return unsafe { (&[]u8(b))[n] }
 }
 
-// write appends the string `s` to the buffer
+// write_string appends the string `s` to the buffer.
 @[expand_simple_interpolation; inline]
 pub fn (mut b Builder) write_string(s string) {
-	if s.len == 0 {
-		return
-	}
-	unsafe { b.push_many(s.str, s.len) }
-	// for c in s {
-	// b.buf << c
-	// }
-	// b.buf << []u8(s)  // TODO
+	unsafe { b.write_ptr(s.str, s.len) }
 }
 
 // write_string2 appends the strings `s1` and `s2` to the buffer.

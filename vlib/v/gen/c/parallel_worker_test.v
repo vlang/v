@@ -23,6 +23,51 @@ fn test_taken_builder_text_owns_a_terminated_string() {
 	unsafe { empty.free() }
 }
 
+fn test_forward_decl_lane_bounds_are_strictly_increasing() {
+	mut a := flat.FlatAst.new()
+	mut items := []FlatFnGenItem{cap: 4096}
+	for i in 0 .. 4096 {
+		node_id := a.add_node(flat.Node{
+			kind:           .fn_decl
+			value:          'fn_${i}'
+			children_count: u32(i % 17 + 1)
+		})
+		items << FlatFnGenItem{
+			node_id: node_id
+			c_name:  'fn_${i}'
+		}
+	}
+	bounds := forward_decl_lane_bounds(&a, items)
+	assert bounds.len >= 2
+	assert bounds.len <= 9
+	assert bounds.first() == 0
+	assert bounds.last() == items.len
+	for i in 1 .. bounds.len {
+		assert bounds[i] > bounds[i - 1]
+	}
+}
+
+fn test_forward_decl_lanes_do_not_repeat_boundaries_for_one_expensive_item() {
+	for expensive_index in [0, 2048, 4095] {
+		mut a := flat.FlatAst.new()
+		mut items := []FlatFnGenItem{cap: 4096}
+		for i in 0 .. 4096 {
+			node_id := a.add_node(flat.Node{
+				kind:           .fn_decl
+				children_count: if i == expensive_index { u32(10_000_000) } else { u32(1) }
+			})
+			items << FlatFnGenItem{ node_id: node_id, c_name: 'fn_${i}' }
+		}
+		bounds := forward_decl_lane_bounds(&a, items)
+		assert bounds.first() == 0
+		assert bounds.last() == items.len
+		assert bounds.len <= 9
+		for i in 1 .. bounds.len {
+			assert bounds[i] > bounds[i - 1], '${expensive_index}: ${bounds}'
+		}
+	}
+}
+
 fn test_scoped_cgen_batches_amortize_small_bodies_and_bound_compiler_scratch() {
 	g, mut tc := parallel_worker_test_gen(true)
 	assert g.scoped_cgen_batch_count(0, 0) == 0
@@ -841,4 +886,89 @@ fn test_scoped_c_extern_worker_inherits_header_and_linkage_state() {
 	assert worker.should_emit_c_extern_decl_from_file('helper_fn', linked_file, 'linked')
 	assert worker.should_emit_c_extern_decl_from_file('foo_open', lib_file, 'lib_only')
 	assert !worker.should_emit_c_extern_decl_from_file('wrapped_fn', header_file, 'wrapped')
+}
+
+fn test_c_extern_scan_publication_owns_completed_refs_after_scope_free() {
+	mut g, _ := parallel_worker_test_gen(true)
+	scope := cgen_worker_scope_begin(true)
+	mut worker := g.new_parallel_worker(7)
+	worker.c_extern_refs['C.'.clone() + 'scoped_symbol'] = true
+	worker.c_extern_refs['disabled'.clone()] = false
+	worker.c_extern_refs_ready = true
+	cgen_worker_scope_leave(scope)
+	g.publish_c_extern_type_discoveries(worker)
+	assert g.c_extern_refs_ready
+	assert g.c_extern_refs == {
+		'C.scoped_symbol': true
+		'disabled':        false
+	}
+	// Neither the map backing nor its keys may belong to the scan arena.
+	worker.c_extern_refs['worker_only'] = true
+	worker.c_extern_refs['C.scoped_symbol'] = false
+	cgen_worker_scope_free(scope)
+	assert g.c_extern_refs['C.scoped_symbol']
+	assert 'worker_only' !in g.c_extern_refs
+	for name, _ in g.c_extern_refs {
+		assert name in ['C.scoped_symbol', 'disabled']
+	}
+	fork := g.new_parallel_worker(1)
+	assert fork.c_extern_refs_ready
+	assert fork.c_extern_refs_shared
+	assert fork.c_extern_refs == g.c_extern_refs
+}
+
+fn test_c_extern_scan_publication_only_freezes_complete_new_refs() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut worker := g.new_parallel_worker(7)
+	worker.c_extern_refs['incomplete'] = true
+	g.publish_c_extern_type_discoveries(worker)
+	assert !g.c_extern_refs_ready
+	assert g.c_extern_refs.len == 0
+	g.c_extern_refs['master'] = true
+	g.c_extern_refs_ready = true
+	worker.c_extern_refs_ready = true
+	g.publish_c_extern_type_discoveries(worker)
+	assert g.c_extern_refs == {
+		'master': true
+	}
+}
+
+fn test_scoped_c_extern_preseed_retains_selected_body_refs() {
+	mut g, _ := parallel_worker_test_gen(true)
+	base := g.a.add_node(flat.Node{ kind: .ident, value: 'C' })
+	selector_start := g.a.children.len
+	g.a.children << base
+	selector := g.a.add_node(flat.Node{
+		kind:           .selector
+		value:          'scoped_symbol'
+		children_start: i32(selector_start)
+		children_count: 1
+	})
+	body_start := g.a.children.len
+	g.a.children << selector
+	body := g.a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          'main'
+		children_start: i32(body_start)
+		children_count: 1
+	})
+	g.fn_gen_items = [FlatFnGenItem{ node_id: body, c_name: 'main__main' }]
+	g.preseed_c_extern_fn_ptr_types_scoped()
+	assert g.c_extern_refs_ready
+	assert g.c_extern_refs['C.scoped_symbol']
+	assert g.c_extern_refs['scoped_symbol']
+	assert g.c_extern_referenced_symbols() == g.c_extern_refs
+}
+
+fn test_parallel_workers_preserve_global_shared_storage_presence() {
+	for scoped in [false, true] {
+		mut g, _ := parallel_worker_test_gen(scoped)
+		assert !g.new_parallel_worker(1).global_shared_storage_present
+		g.declare_global_raw_type('app.slot', flat.source_type_id('shared int'))
+		for worker in [g.new_parallel_worker(1), g.new_parallel_tail_worker(2),
+			g.new_parallel_dispatch_worker(3)] {
+			assert worker.global_shared_storage_present
+			assert worker.global_raw_type_texts.type_id('app.slot')? == flat.source_type_id('shared int')
+		}
+	}
 }

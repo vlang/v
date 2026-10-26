@@ -223,7 +223,7 @@ fn cast_file(raw voidptr) &ast.File {
 ')
 	mut saw := false
 	for node in ast.nodes {
-		if node.kind == .cast_expr && node.value == '&&ast.File' {
+		if node.kind == .cast_expr && node.value_text() == '&&ast.File' {
 			saw = true
 		}
 	}
@@ -354,7 +354,7 @@ fn test_array_cast_spans_from_bracket() {
 ')
 	mut spans := []string{}
 	for node in ast.nodes {
-		if node.kind == .cast_expr && node.value.contains('int') {
+		if node.kind == .cast_expr && node.value_text().contains('int') {
 			spans << span_text(src, node)
 		}
 	}
@@ -386,7 +386,7 @@ fn test_dynamic_array_init_spans_from_bracket() {
 ')
 	mut saw := false
 	for node in ast.nodes {
-		if node.kind == .array_init && node.value == 'int' {
+		if node.kind == .array_init && node.value_text() == 'int' {
 			saw = true
 			assert span_text(src, node) == '[]int{len: 3, init: 0}'
 		}
@@ -590,7 +590,7 @@ fn main() {
 	mut spans := []string{}
 	for node in ast.nodes {
 		if (node.kind == .prefix && node.op == .amp)
-			|| (node.kind == .cast_expr && node.value.starts_with('&')) {
+			|| (node.kind == .cast_expr && node.value_text().starts_with('&')) {
 			spans << span_text(src, node)
 		}
 	}
@@ -829,27 +829,27 @@ fn make_zero[T](x ?T) {
 				new_marker_count++
 			}
 			target := ast.child_node(&node, 0)
-			if target.kind == .array_init && target.value == '__v3_comptime_type_array' {
+			if target.kind == .array_init && target.value_text() == '__v3_comptime_type_array' {
 				saw_array_target = true
 				if target.children_count == 1 {
 					elem := ast.child_node(target, 0)
-					if elem.kind == .selector && elem.value == 'payload_type' {
+					if elem.kind == .selector && elem.value_text() == 'payload_type' {
 						saw_accessor_array_target = true
 					}
-					if elem.kind == .array_init && elem.value == '__v3_comptime_type_array' {
+					if elem.kind == .array_init && elem.value_text() == '__v3_comptime_type_array' {
 						saw_nested_array_target = true
 						assert elem.children_count == 1
 						leaf := ast.child_node(elem, 0)
 						assert leaf.kind == .ident
-						assert leaf.value == 'int'
+						assert leaf.value_text() == 'int'
 					}
-					if elem.kind == .ident && elem.value == '?int' {
+					if elem.kind == .ident && elem.value_text() == '?int' {
 						saw_optional_array_target = true
 					}
-					if elem.kind == .ident && elem.value == 'Box[int]' {
+					if elem.kind == .ident && elem.value_text() == 'Box[int]' {
 						saw_generic_array_target = true
 					}
-					if elem.kind == .ident && elem.value == 'Box[string]'
+					if elem.kind == .ident && elem.value_text() == 'Box[string]'
 						&& node.value == '__v3_comptime_new' {
 						saw_generic_new_array_target = true
 					}
@@ -883,11 +883,11 @@ fn main() {
 			continue
 		}
 		target := ast.child_node(&node, 0)
-		if node.value == '__v3_comptime_zero' && target.kind == .ident && target.value == '[2]int' {
+		if node.value == '__v3_comptime_zero' && target.kind == .ident && target.value_text() == '[2]int' {
 			saw_zero = true
 		}
 		if node.value == '__v3_comptime_new' && target.kind == .ident
-			&& target.value == '[3]Box[int]' {
+			&& target.value_text() == '[3]Box[int]' {
 			saw_new = true
 		}
 	}
@@ -918,10 +918,10 @@ fn main() {
 		}
 		target := ast.child_node(&node, 0)
 		if node.value == '__v3_comptime_zero' && target.kind == .ident
-			&& target.value == 'map[string]int' {
+			&& target.value_text() == 'map[string]int' {
 			saw_map = true
 		}
-		if node.value == '__v3_comptime_new' && target.kind == .ident && target.value == 'Box[int]' {
+		if node.value == '__v3_comptime_new' && target.kind == .ident && target.value_text() == 'Box[int]' {
 			saw_generic = true
 		}
 	}

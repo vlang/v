@@ -54,31 +54,31 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 				return at
 			}
 			if module_name := tc.vls_import_symbol_module(id) {
-				return tc.vls_module_member_definition(module_name, node.value)
+				return tc.vls_module_member_definition(module_name, node.value_text())
 			}
 			if at := tc.vls_local_definition(id) {
 				return at
 			}
-			if at := tc.vls_const_definition(node.value) {
+			if at := tc.vls_const_definition(node.value_text()) {
 				return at
 			}
-			if at := tc.vls_global_definition(node.value) {
+			if at := tc.vls_global_definition(node.value_text()) {
 				return at
 			}
-			if at := tc.vls_type_param_definition(id, node.value) {
+			if at := tc.vls_type_param_definition(id, node.value_text()) {
 				return at
 			}
-			if at := tc.vls_type_definition(node.value) {
+			if at := tc.vls_type_definition(node.value_text()) {
 				return at
 			}
 			// A module name before one of its members stands for that member.
 			if member := tc.vls_module_receiver_member(id) {
-				if at := tc.vls_module_member_definition(node.value, member) {
+				if at := tc.vls_module_member_definition(node.value_text(), member) {
 					return at
 				}
 			}
 			// A function named without a call: a callback.
-			return tc.vls_function_definition(tc.qualify_name(node.value))
+			return tc.vls_function_definition(tc.qualify_name(node.value_text()))
 		}
 		.selector {
 			return tc.vls_selector_definition(node)
@@ -88,10 +88,10 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 			return tc.vls_enum_value_definition(vls_unwrap_type(typ), node.value)
 		}
 		.cast_expr, .struct_init, .is_expr, .as_expr {
-			if at := tc.vls_type_param_definition(id, node.value) {
+			if at := tc.vls_type_param_definition(id, node.value_text()) {
 				return at
 			}
-			return tc.vls_type_definition(node.value)
+			return tc.vls_type_definition(node.value_text())
 		}
 		.param, .enum_field, .field_decl, .fn_decl, .const_field, .interface_field {
 			// The name a declaration introduces, which the target spans: also
@@ -101,7 +101,7 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 		}
 		.field_init {
 			owner := tc.vls_field_init_owner(id)?
-			return tc.vls_field_definition(flat.source_type_id(tc.vls_member_owner(owner)?), node.value)
+			return tc.vls_field_definition(tc.vls_member_owner(owner)?, node.value)
 		}
 		else {
 			return none
@@ -349,8 +349,8 @@ fn (tc &TypeChecker) vls_selector_definition(node flat.Node) ?VlsPos {
 		}
 	}
 	receiver_type := tc.vls_expr_type(receiver_id) or { return none }
-	type_name := tc.vls_member_owner(receiver_type) or { return none }
-	if at := tc.vls_field_definition(flat.source_type_id(type_name), node.value) {
+	type_name_id := tc.vls_member_owner(receiver_type) or { return none }
+	if at := tc.vls_field_definition(type_name_id, node.value) {
 		return at
 	}
 	// A method named without a call, as a call of it.
@@ -384,9 +384,9 @@ fn (tc &TypeChecker) vls_field_definition(type_name_id u32, field string) ?VlsPo
 		}
 	}
 	// Two embedded structs that declare it make the name ambiguous: V rejects it.
-	owners := flat.TypeTextList{ ids: tc.embedded_field_candidates(type_name_id, field) }.names()
+	owners := tc.embedded_field_candidates(type_name_id, field)
 	if owners.len == 1 {
-		return tc.vls_field_definition(flat.source_type_id(owners[0]), field)
+		return tc.vls_field_definition(owners[0], field)
 	}
 	return none
 }

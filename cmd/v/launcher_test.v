@@ -628,14 +628,14 @@ fn test_cached_fallback_root_is_preferred_when_installed() {
 	assert os.dir(resolved) == os.read_file(root_file)!.trim_space()
 }
 
-fn test_vls_fallback_installation_preserves_the_protocol() {
+fn test_transparent_fallback_installation_preserves_diagnostics() {
 	$if !windows {
 		base := os.join_path(os.vtmp_dir(), 'vls_fallback_install_${os.getpid()}')
 		os.rmdir_all(base) or {}
 		defer {
 			os.rmdir_all(base) or {}
 		}
-		for mode in ['vls', 'ordinary', 'failed', 'missing'] {
+		for mode in ['vls', 'legacy_fixture', 'ordinary', 'failed', 'missing'] {
 			root := os.join_path(base, mode)
 			bin := os.join_path(root, 'bin')
 			cache := os.join_path(root, 'cache')
@@ -671,8 +671,15 @@ fn test_vls_fallback_installation_preserves_the_protocol() {
 			environment['V1_FALLBACK_TEST_MODE'] = mode
 			environment['V1_FALLBACK_TEST_RELEASE'] = release
 			environment['V1_FALLBACK_TEST_RESPONSE'] = os.join_path(release, 'source.v') + ':10:20'
+			if mode == 'legacy_fixture' {
+				os.write_file(os.join_path(root, 'source.vv'), 'import v.ast\n')!
+				os.write_file(os.join_path(root, 'source.out'), '`old.ast.Type`\n')!
+				environment['V1_FALLBACK_TEST_RESPONSE'] = 'error: cannot use `v.ast.Type`'
+			}
 			args := if mode == 'ordinary' {
 				['-old-compiler', 'source.v']
+			} else if mode == 'legacy_fixture' {
+				['source.vv']
 			} else {
 				['-vls-mode', 'source.v']
 			}
@@ -680,6 +687,9 @@ fn test_vls_fallback_installation_preserves_the_protocol() {
 			if mode == 'vls' {
 				assert result.exit_code == 0, result.output
 				assert result.output.trim_space() == os.join_path(os.real_path(root), 'source.v') + ':10:20', result.output
+			} else if mode == 'legacy_fixture' {
+				assert result.exit_code == 0, result.output
+				assert result.output.trim_space() == 'error: cannot use `old.ast.Type`', result.output
 			} else {
 				assert result.exit_code == if mode == 'ordinary' { 0 } else { 1 }, result.output
 				assert result.output.contains('running `make v1` now'), result.output

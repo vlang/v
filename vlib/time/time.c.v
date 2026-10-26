@@ -19,7 +19,7 @@ fn C.localtime(t &C.time_t) &C.tm
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
-fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize
+fn C.strftime(buf &char, maxsize uint, const_format &char, const_tm &C.tm) uint
 
 // now returns the current local time.
 pub fn now() Time {
@@ -157,7 +157,7 @@ pub fn (t Time) strftime(fmt string) string {
 	}
 	mut buf := [1024]char{}
 	fmt_c := unsafe { &char(strftime_fmt.str) }
-	C.strftime(&buf[0], usize(sizeof(buf)), fmt_c, tm)
+	C.strftime(&buf[0], uint(sizeof(buf)), fmt_c, tm)
 	return unsafe { cstring_to_vstring(&buf[0]) }
 }
 

@@ -160,11 +160,11 @@ fn test_fastc_raw_direct_member_preserves_rejected_cases() {
 			old := tokens[at]
 			tokens[at] = FastcExpressionToken{
 				...old
-				source:          if with_source {
+				source:          fastc_token_source(if with_source {
 					'rendered_piece'
 				} else {
 					''
-				}
+				})
 				is_mut_argument: !with_source
 			}
 			assert g.render_raw_local_direct_member(tokens) == none
@@ -209,8 +209,8 @@ fn test_fastc_raw_direct_member_preserves_contextual_len_and_import_shadows() {
 fn (g &Parser) raw_direct_member29_legacy(tokens []FastcExpressionToken) ?string {
 	if tokens.len == 1 {
 		item := tokens[0]
-		if item.source != '' {
-			return item.source
+		if item.has_source() {
+			return item.source_text()
 		}
 		return match item.tok {
 			.name { g.resolved_expression_name(item.lit, .unknown) }
@@ -289,11 +289,11 @@ fn (g &Parser) raw_direct_member29_legacy(tokens []FastcExpressionToken) ?string
 					skip_until = close
 				}
 			}
-		} else if item.source != '' {
+		} else if item.has_source() {
 			// Synthetic expression atoms (an `or` unwrap, interpolation, anonymous
 			// function, etc.) carry their complete C spelling in `source`. Preserve it
 			// when the atom is nested inside a larger binary or call expression.
-			piece = item.source
+			piece = item.source_text()
 		} else if is_direct_pointer_cast || is_c_pointer_cast {
 			piece = ''
 		} else if item.tok == .name && i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
@@ -303,7 +303,7 @@ fn (g &Parser) raw_direct_member29_legacy(tokens []FastcExpressionToken) ?string
 			} else {
 				fastc_primitive_c_type(item.lit) or { '' }
 			}
-			is_c_cast := i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot && item.lit.len > 0 && 'C.${item.lit}' !in g.functions && fastc_call_has_one_argument(tokens, i + 1) && (item.lit[0].is_capital() || '#Cstruct#${item.lit}' in g.declared_types)
+			is_c_cast := i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot && item.lit.len > 0 && 'C.${item.lit}' !in g.functions && fastc_call_has_one_argument(tokens, i + 1) && (item.lit[0].is_capital() || '#Cstruct#${item.lit}' in g.declared_types || '#Ctypedef#${item.lit}' in g.declared_types)
 			if is_c_cast {
 				cast_type = if '#Cstruct#${item.lit}' in g.declared_types {
 					'struct ${item.lit}'
@@ -359,8 +359,8 @@ fn (g &Parser) raw_direct_member29_legacy(tokens []FastcExpressionToken) ?string
 				fastc_c_number(item.lit) or { return none }
 			}
 		} else if item.tok == .string {
-			if item.source != '' {
-				piece = item.source
+			if item.has_source() {
+				piece = item.source_text()
 			} else {
 				literal := fastc_c_string(item.lit) or { return none }
 				piece = if g.selfhost { '_S(${literal})' } else { literal }

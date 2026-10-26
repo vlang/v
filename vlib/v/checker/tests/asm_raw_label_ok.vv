@@ -1,0 +1,57 @@
+// Labels with `%=`, numeric local labels, exported labels and file-scope templates produce
+// no label warning. Each branch is only emitted on its own architecture, and the function is
+// never inlined so its exported label is defined once.
+@[noinline]
+fn count_down(n u64) u64 {
+	mut len := n
+	$if amd64 {
+		asm amd64 raw {
+			"# comment: not a label\n\t"
+			"testq %[len], %[len]\n\t"
+			"jz .Ldone%=\n\t"
+			".Lloop%=:\n\t"
+			"decq %[len]\n\t"
+			"jnz .Lloop%=\n\t"
+			".Ldone%=:\n\t"
+			"jmp 1f\n\t"
+			"1:\n\t"
+			".globl \"asm_raw_label_ok_exported\"\n\t"
+			"asm_raw_label_ok_exported:"
+			; [len] "+r" (len)
+			;
+			; cc
+		}
+	} $else $if arm64 {
+		// Mach-O treats `.L` names as ordinary symbols, so this branch uses numeric labels.
+		asm arm64 raw {
+			"// comment: not a label\n\t"
+			"cbz %[len], 2f\n\t"
+			"1:\n\t"
+			"subs %[len], %[len], #1\n\t"
+			"b.ne 1b\n\t"
+			"2:\n\t"
+			".global \"asm_raw_label_ok_exported\"\n\t"
+			"asm_raw_label_ok_exported:"
+			; [len] "+r" (len)
+			;
+			; cc
+		}
+	}
+	return len
+}
+
+$if amd64 {
+	asm amd64 raw {
+		"asm_raw_label_ok_file_scope:\n\t"
+		"nop"
+	}
+} $else $if arm64 {
+	asm arm64 raw {
+		"asm_raw_label_ok_file_scope:\n\t"
+		"nop"
+	}
+}
+
+fn main() {
+	println(count_down(3))
+}

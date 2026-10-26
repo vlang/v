@@ -1,7 +1,90 @@
 module transform
 
+import os
 import v.flat
 import v.types
+
+fn test_clone_scoped_worker_node_publishes_every_payload_kind() {
+	$if prealloc {
+		mut a := flat.FlatAst.new()
+		for kind in [flat.NodeKind.call, .debugger_stmt, .enum_decl, .ident, .ident, .ident, .fn_decl,
+			.fn_decl] {
+			a.add_node(flat.Node{ kind: kind })
+		}
+		mut tc := types.TypeChecker.new(&a)
+		mut master := new_transformer(mut a, &tc, map[string]bool{})
+		type_id := flat.source_type_id('string')
+		constraint_id := flat.source_type_id('Named')
+		scope := transform_worker_scope_begin(true)
+		a.nodes[0].set_call_type_args([type_id])
+		a.nodes[1].set_debugger_value_type_ids([type_id])
+		a.nodes[2].set_enum_backing_type_id(type_id)
+		a.nodes[3].set_fn_value_type_id(type_id)
+		a.nodes[4].set_generated_variant_type_id(type_id)
+		a.nodes[5].set_mut_optional_arg_view_type_id(type_id)
+		a.nodes[6].set_generic_params_and_constraint_ids(['T'.clone()], [constraint_id])
+		a.nodes[6].set_call_type_args([type_id])
+		a.nodes[6].set_debugger_value_type_ids([type_id])
+		a.nodes[6].set_enum_backing_type_id(type_id)
+		a.nodes[6].set_fn_value_type_id(type_id)
+		a.nodes[6].set_generated_variant_type_id(type_id)
+		a.nodes[6].set_mut_optional_arg_view_type_id(type_id)
+		a.nodes[7].set_generic_params_and_constraint_ids([]string{}, [constraint_id])
+		transform_worker_scope_leave(scope)
+		for idx in 0 .. a.nodes.len {
+			assert transform_scope_owns(scope, a.nodes[idx].payload_ptr())
+			master.clone_scoped_worker_node(idx, scope)
+			payload := a.nodes[idx].payload_ptr()
+			assert !transform_scope_owns(scope, payload), 'payload ${idx}'
+			assert !transform_scope_owns(scope, payload.generic_params.data)
+			for param in payload.generic_params {
+				assert !transform_scope_owns(scope, param.str)
+			}
+			assert !transform_scope_owns(scope, payload.generic_constraints.ids.data)
+			assert !transform_scope_owns(scope, payload.call_type_args.ids.data)
+			assert !transform_scope_owns(scope, payload.debugger_value_types.ids.data)
+		}
+		transform_worker_scope_free(scope)
+		assert a.nodes[0].call_type_args() == [type_id]
+		assert a.nodes[1].debugger_value_type_ids() == [type_id]
+		assert a.nodes[2].enum_backing_type_id() == type_id
+		assert a.nodes[3].fn_value_type_id() == type_id
+		assert a.nodes[4].generated_variant_type_id() == type_id
+		assert a.nodes[5].mut_optional_arg_view_type_id() == type_id
+		payload := a.nodes[6].payload_ptr()
+		assert payload.generic_params == ['T']
+		assert payload.generic_constraints.ids == [constraint_id]
+		assert payload.call_type_args.ids == [type_id]
+		assert payload.debugger_value_types.ids == [type_id]
+		assert payload.enum_backing_type == type_id
+		assert payload.fn_value_type == type_id
+		assert payload.generated_variant_type == type_id
+		assert payload.mut_optional_arg_view_type == type_id
+		assert a.nodes[7].generic_params().len == 0
+		assert a.nodes[7].generic_constraint_ids() == [constraint_id]
+	}
+}
+
+fn test_clone_scoped_worker_node_publishes_indirect_generic_names() {
+	$if prealloc {
+		mut a := flat.FlatAst.new()
+		a.add_node(flat.Node{ kind: .fn_decl })
+		mut tc := types.TypeChecker.new(&a)
+		mut master := new_transformer(mut a, &tc, map[string]bool{})
+		mut params := ['unscoped']
+		scope := transform_worker_scope_begin(true)
+		params[0] = 'scoped parameter'.clone()
+		transform_worker_scope_leave(scope)
+		a.nodes[0].set_generic_params(params)
+		assert !transform_scope_owns(scope, a.nodes[0].payload_ptr())
+		assert !transform_scope_owns(scope, a.nodes[0].generic_params().data)
+		assert transform_scope_owns(scope, a.nodes[0].generic_params()[0].str)
+		master.clone_scoped_worker_node(0, scope)
+		assert !transform_scope_owns(scope, a.nodes[0].generic_params()[0].str)
+		transform_worker_scope_free(scope)
+		assert a.nodes[0].generic_params() == ['scoped parameter']
+	}
+}
 
 fn test_scoped_text_scan_finds_borrowed_text_in_unscoped_payloads() {
 	$if prealloc {
@@ -161,6 +244,47 @@ fn test_scoped_batch_specialization_names_outlive_scratch_scope() {
 	assert t.a.specialized_fn_files[3] == 'builtin.v'
 }
 
+fn test_monomorph_release_preserves_cross_worker_specialization_contexts() {
+	$if prealloc {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		a.specialized_fn_modules[0] = 'builtin'
+		a.specialized_fn_files[0] = 'builtin.v'
+		mut module_ptrs := [3]voidptr{}
+		mut file_ptrs := [3]voidptr{}
+		for idx in 1 .. 4 {
+			scope := transform_worker_scope_begin(true)
+			module_name := 'worker_${idx}'.clone()
+			file := 'worker_${idx}.v'.clone()
+			assert transform_scope_owns(scope, module_name.str)
+			assert transform_scope_owns(scope, file.str)
+			module_ptrs[idx - 1] = module_name.str
+			file_ptrs[idx - 1] = file.str
+			transform_worker_scope_leave(scope)
+			// A nested declaration can be discovered by one worker and emitted
+			// by another, including the master. Its context is not a node payload.
+			a.specialized_fn_nodes[idx] = true
+			a.specialized_fn_modules[idx] = module_name
+			a.specialized_fn_files[idx] = file
+			t.monomorph_worker_scopes << scope
+		}
+		t.release_monomorph_worker_scopes()
+		assert t.monomorph_worker_scopes.len == 0
+		for idx in 1 .. 4 {
+			// Small arenas may be recycled instead of unmapped immediately.
+			// Check ownership before dereferencing potentially released strings.
+			assert voidptr(a.specialized_fn_modules[idx].str) != module_ptrs[idx - 1]
+			assert voidptr(a.specialized_fn_files[idx].str) != file_ptrs[idx - 1]
+			assert a.specialized_fn_nodes[idx]
+			assert a.specialized_fn_modules[idx] == 'worker_${idx}'
+			assert a.specialized_fn_files[idx] == 'worker_${idx}.v'
+		}
+		assert a.specialized_fn_modules[0] == 'builtin'
+		assert a.specialized_fn_files[0] == 'builtin.v'
+	}
+}
+
 fn test_generic_unresolved_cache_owns_scoped_module() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -220,6 +344,9 @@ fn test_transform_fork_reads_and_merges_source_fn_values() {
 }
 
 fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
+	old_jobs := os.getenv('VJOBS')
+	defer { os.setenv('VJOBS', old_jobs, true) }
+	os.setenv('VJOBS', '2', true)
 	mut a := flat.FlatAst.new()
 	param_id := a.add_node(flat.Node{
 		kind:  .param
@@ -284,19 +411,21 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	t.parallel_monomorphize = false
 	t.scope_parallel_workers = true
 	t.scoped_monomorphize = true
+	// Exhaust direct emission so the drain exercises its scoped batch path.
+	t.direct_monomorph_specs = direct_monomorph_spec_budget
 	t.defer_nested_generic_emissions = true
 	for arg in ['int', 'string'] {
 		t.request_generic_fn_specialization(decl, flat.TypeTextList.from_names([arg]).ids)
 	}
-	mut emitted := map[string]bool{}
+	mut emitted := GenericFnSpecBoolMap{}
 	mut generated := []string{}
 	assert t.drain_pending_generic_fn_specs(map[string]GenericStructDecl{}, map[string]GenericSumDecl{}, mut emitted, mut generated)
 	assert isnil(a.worker_pool)
 	assert t.pending_generic_fn_specs.len == 0
 	for arg in ['int', 'string'] {
 		spec_key := generic_fn_spec_key(decl.key, flat.TypeTextList.from_names([arg]).ids)
-		assert emitted[spec_key]
-		root := t.generic_fn_spec_nodes[spec_key] or { panic('missing ${spec_key}') }
+		assert emitted.contains(spec_key)
+		root := t.generic_fn_spec_nodes.get(spec_key) or { panic('missing ${spec_key.legacy_text()}') }
 		name := transform_qualified_fn_name(decl.module, a.node(root).value)
 		return_type := tc.fn_ret_types[name] or { panic('missing signature ${name}') }
 		assert return_type is types.FnType

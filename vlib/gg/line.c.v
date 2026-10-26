@@ -3,7 +3,6 @@
 module gg
 
 import math
-import sokol.sgl
 
 // draw_line_with_thickness draws a centered line between the points `x,y` and `x2,y2`
 // with the given `thickness` and color `c`.
@@ -20,18 +19,18 @@ pub fn (ctx &Context) draw_line_with_thickness(x f32, y f32, x2 f32, y2 f32, thi
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
 
 	radius_scale := thickness / (2.0 * length)
 	radius_x := -radius_scale * dy
 	radius_y := radius_scale * dx
 
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_triangle_strip()
-	sgl.v2f((x - radius_x) * ctx.scale, (y - radius_y) * ctx.scale)
-	sgl.v2f((x + radius_x) * ctx.scale, (y + radius_y) * ctx.scale)
-	sgl.v2f((x2 - radius_x) * ctx.scale, (y2 - radius_y) * ctx.scale)
-	sgl.v2f((x2 + radius_x) * ctx.scale, (y2 + radius_y) * ctx.scale)
-	sgl.end()
+	ctx.r.c4b(c.r, c.g, c.b, c.a)
+	ctx.r.begin_triangle_strip()
+	ctx.r.v2f((x - radius_x) * ctx.scale, (y - radius_y) * ctx.scale)
+	ctx.r.v2f((x + radius_x) * ctx.scale, (y + radius_y) * ctx.scale)
+	ctx.r.v2f((x2 - radius_x) * ctx.scale, (y2 - radius_y) * ctx.scale)
+	ctx.r.v2f((x2 + radius_x) * ctx.scale, (y2 + radius_y) * ctx.scale)
+	ctx.r.end()
 }

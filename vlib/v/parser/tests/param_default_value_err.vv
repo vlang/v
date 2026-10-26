@@ -1,0 +1,7 @@
+fn f(a int = 2, in int) int {
+	return a
+}
+
+fn main() {
+	println(f(1, 2))
+}

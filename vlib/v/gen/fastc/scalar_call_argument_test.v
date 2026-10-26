@@ -73,7 +73,7 @@ fn test_fastc_scalar_call_argument_leaves_coercions_and_narrowings_to_general_di
 	for token_value in [
 		FastcExpressionToken{ tok: .number, lit: '0', typ: flat.source_type_voidptr },
 		FastcExpressionToken{ tok: .name, lit: 'value', is_mut_argument: true },
-		FastcExpressionToken{ tok: .name, lit: 'value', source: 'lowered_value', typ: flat.source_type_int },
+		FastcExpressionToken{ tok: .name, lit: 'value', source: fastc_token_source('lowered_value'), typ: flat.source_type_int },
 		FastcExpressionToken{ tok: .name, lit: 'value', typ: flat.source_type_u64 },
 	] {
 		assert g.render_selfhost_scalar_call_argument([token_value], flat.source_type_int) == none

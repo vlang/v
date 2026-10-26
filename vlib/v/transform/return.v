@@ -26,10 +26,10 @@ fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node f
 	// Check if the return value is a struct init whose type is a variant
 	child_id := t.a.child(&node, 0)
 	child := t.a.nodes[int(child_id)]
-	if child.kind == .struct_init && child.value.len > 0 {
+	if child.kind == .struct_init && child.source_value_id() != 0 {
 		variants := t.sum_types.type_ids(t.cur_fn_ret_type_text()) or { []u32{} }
 		for v in variants {
-			if flat.source_type_name(v) == child.value {
+			if v == child.source_value_id() {
 				// This is a variant being returned as a sum type.
 				// For now, pass through - C gen handles the wrapping.
 				// TODO: Generate explicit sum type wrapping here.
@@ -201,7 +201,6 @@ fn (mut t Transformer) transform_returned_error(value_id flat.NodeId) flat.NodeI
 }
 
 fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_type_id u32) bool {
-	payload_type := flat.source_type_name(payload_type_id)
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -249,7 +248,8 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 			&& t.implicit_err_binding_active()) {
 		return true
 	}
-	if payload_type_id == u32(0) || payload_type_id == flat.source_type_unknown || payload_type.contains('unknown') {
+	if payload_type_id == u32(0) || payload_type_id == flat.source_type_unknown
+		|| flat.source_type_query(payload_type_id).has(.unknown_fragment) {
 		return true
 	}
 	return !t.resolved_receiver_arg_compatible(expression_id, actual_type, payload_type_id)
@@ -294,27 +294,24 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) u32 {
 	node := t.a.nodes[int(id)]
 	primary_type := match node.kind {
 		.struct_init, .cast_expr, .as_expr {
-			node.value
+			node.source_value_id()
 		}
 		.ident {
-			flat.source_type_name(t.var_type(node.value))
+			t.var_type(node.value)
 		}
 		.call {
-			flat.source_type_name(t.get_call_return_type(id, node))
+			t.get_call_return_type(id, node)
 		}
 		else {
-			''
+			u32(0)
 		}
 	}
-	if typ_source_id := t.return_ierror_type_candidate(flat.source_type_id(primary_type)) {
+	if typ_source_id := t.return_ierror_type_candidate(primary_type) {
 		return typ_source_id
 	}
-	for typ in [node.typ_text(), flat.source_type_name(t.raw_checker_node_type(id)),
-		flat.source_type_name(t.original_expr_type(id)), flat.source_type_name(t.node_type(id))] {
-		if candidate_source_id := t.return_ierror_type_candidate(flat.source_type_id(typ)) {
-			candidate_source_id_2 := candidate_source_id
-
-			return candidate_source_id_2
+	for typ in [node.typ, t.raw_checker_node_type(id), t.original_expr_type(id), t.node_type(id)] {
+		if candidate_source_id := t.return_ierror_type_candidate(typ) {
+			return candidate_source_id
 		}
 	}
 	return u32(0)
@@ -322,8 +319,8 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) u32 {
 
 fn (t &Transformer) return_ierror_type_candidate(typ_id u32) ?u32 {
 	typ_comparison_type_id_2 := typ_id
-	typ := flat.source_type_name(typ_comparison_type_id_2)
-	if typ_id == u32(0) || typ_id == flat.source_type_unknown || typ.contains('unknown') {
+	if typ_id == u32(0) || typ_id == flat.source_type_unknown
+		|| flat.source_type_query(typ_id).has(.unknown_fragment) {
 		return none
 	}
 	if t.is_ierror_type(typ_id) {
@@ -387,9 +384,8 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 }
 
 fn (mut t Transformer) optional_types_match(a_id u32, b_id u32) bool {
-	a := flat.source_type_name(a_id)
-	b := flat.source_type_name(b_id)
-	if !t.is_optional_type_name(a_id) || !t.is_optional_type_name(b_id) || a[0] != b[0] {
+	if !t.is_optional_type_name(a_id) || !t.is_optional_type_name(b_id)
+		|| flat.source_type_shape(a_id).has(.option_type) != flat.source_type_shape(b_id).has(.option_type) {
 		return false
 	}
 	a_base_source_id := t.normalize_type_alias(t.optional_base_type(a_id))
@@ -625,6 +621,14 @@ fn (mut t Transformer) option_payload_conversion_types(value_id flat.NodeId, sou
 		&& !(actual_base is types.ResultType && expected_base is types.ResultType) {
 		return none
 	}
+	actual_payload := t.tc.parse_type(t.optional_base_type(qualified_source))
+	expected_payload := t.tc.parse_type(t.optional_base_type(qualified_target))
+	// Option wrappers use the C payload spelling: ?int and ?i64 share a
+	// representation on 64-bit targets, while fixed-array wrappers remain distinct.
+	if actual_payload.is_integer() && expected_payload.is_integer()
+		&& t.tc.c_type(actual_payload) == t.tc.c_type(expected_payload) {
+		return none
+	}
 	if !t.forwarded_slot_conversion_supported(*actual_type, *expected_type) {
 		return none
 	}
@@ -826,7 +830,7 @@ fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, a
 // forwarded_integer_storage_matches reports whether two integer types share the
 // same C storage (width and signedness), regardless of their spellings.
 fn forwarded_integer_storage_matches(a types.Type, b types.Type) bool {
-	if a.name() == b.name() {
+	if a.source_type_id() == b.source_type_id() {
 		return true
 	}
 	if a is types.Primitive && b is types.Primitive {
@@ -851,7 +855,7 @@ fn forwarded_number_storage_differs(actual types.Type, expected types.Type) bool
 	if actual_base.is_integer() && expected_base.is_integer() {
 		return !forwarded_integer_storage_matches(actual_base, expected_base)
 	}
-	return actual_base.name() != expected_base.name()
+	return actual_base.source_type_id() != expected_base.source_type_id()
 }
 
 // forwarded_array_elems_storage_identical reports whether two array element
@@ -864,7 +868,7 @@ fn forwarded_number_storage_differs(actual types.Type, expected types.Type) bool
 fn forwarded_array_elems_storage_identical(actual_elem types.Type, expected_elem types.Type) bool {
 	actual_base := unalias_type(actual_elem)
 	expected_base := unalias_type(expected_elem)
-	if actual_base.name() == expected_base.name() {
+	if actual_base.source_type_id() == expected_base.source_type_id() {
 		return true
 	}
 	return actual_base.is_integer() && expected_base.is_integer()
@@ -1442,14 +1446,14 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		}
 	}
 	cond_val_id := t.a.child(&branch, cond_idx)
-	variant_name := flat.source_type_name(t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
+	variant_name_id := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
 		return t.build_return_match_chain(match_expr_id, orig_expr_id, branches, idx + 1, ret_typ_id, source_return_id)
-	})
+	}
 	is_start := t.a.children.len
 	t.a.children << match_expr_id
 	is_id := t.a.add_node(flat.Node{
 		kind:           .is_expr
-		value:          variant_name
+		source_value:   variant_name_id
 		typ:            flat.source_type_id('match_exact')
 		children_start: is_start
 		children_count: 1
@@ -1460,17 +1464,17 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) or {
 		SmartcastContext{
 			type_texts:    t.var_type_texts
-			variant_name:  t.var_type_text_id(variant_name)
+			variant_name:  variant_name_id
 			sum_type_name: u32(0)
 		}
 	}
 	subj := t.expr_key(match_expr_id)
-	if subj.len > 0 && sc.sum_type_name_text().len > 0 {
+	if subj.len > 0 && sc.sum_type_name != 0 {
 		t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
 	orig_subj := t.expr_key(orig_expr_id)
-	if orig_subj.len > 0 && orig_subj != subj && sc.sum_type_name_text().len > 0 {
+	if orig_subj.len > 0 && orig_subj != subj && sc.sum_type_name != 0 {
 		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
@@ -1540,6 +1544,7 @@ fn (mut t Transformer) return_or_result_tail_as_return(node flat.Node, source_re
 		children_count: 2
 		pos:            or_node.pos
 		value:          or_node.value
+		source_value:   or_node.source_value
 		typ:            or_node.typ
 	})
 	ret_start := t.a.children.len

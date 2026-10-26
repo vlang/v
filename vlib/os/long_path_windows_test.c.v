@@ -16,10 +16,10 @@ fn test_get_long_path_expands_existing_short_name() {
 	short_buf := [4096]u16{}
 	count := C.GetShortPathNameW(wide, unsafe { &short_buf[0] }, u32(short_buf.len))
 	assert count > 0 && count < u32(short_buf.len)
-	short_path := unsafe { string_from_wide2(&short_buf[0], int(count)) }
-	if !short_path.contains('~') {
+	short_name := unsafe { string_from_wide2(&short_buf[0], int(count)) }
+	if !short_name.contains('~') {
 		// Filesystems with 8.3-name creation disabled cannot exercise expansion.
 		return
 	}
-	assert get_long_path(short_path)! == path
+	assert get_long_path(short_name)! == path
 }

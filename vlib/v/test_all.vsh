@@ -471,13 +471,13 @@ fn restore_env(name string, old_value ?string) {
 }
 
 fn setup_isolated_vtmp() string {
-	path := os.join_path(os.temp_dir(), '${temp_prefix}_vtmp_${os.getpid()}')
+	path := os.join_path(os.vtmp_dir(), '${temp_prefix}_vtmp_${os.getpid()}')
 	if os.exists(path) {
 		os.rmdir_all(path) or { fail('failed to reset isolated VTMP ${path}: ${err}') }
 	}
 	os.mkdir_all(path) or { fail('failed to create isolated VTMP ${path}: ${err}') }
-	// Several unit tests use os.temp_dir() for helper binaries with stable names.
-	// Isolate those paths too, so concurrent V3 test runs cannot overwrite them.
+	// On platforms where os.temp_dir() honors TMPDIR, isolate helper binaries
+	// with stable names too, so concurrent V3 test runs cannot overwrite them.
 	os.setenv('TMPDIR', path, true)
 	os.setenv('VTMP', path, true)
 	return path
@@ -621,7 +621,7 @@ fn native_backend_arch() string {
 }
 
 fn temp_path(cfg Config, name string) string {
-	return os.join_path(os.temp_dir(), '${cfg.temp_prefix}_${name}')
+	return os.join_path(os.vtmp_dir(), '${cfg.temp_prefix}_${name}')
 }
 
 fn absolute_path(path string) string {

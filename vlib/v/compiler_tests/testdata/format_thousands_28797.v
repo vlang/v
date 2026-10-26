@@ -208,8 +208,7 @@ pub type Number = int
 	| u16
 	| u32
 	| u64
-	| isize
-	| usize
+	| uint
 	| f32
 	| f64
 
@@ -217,7 +216,7 @@ pub type Number = int
 // a thousands separator every three digits. With a `Separator`, its `integer`
 // and `decimal` fields configure the output; a string uses that string for
 // grouping and `.` as the decimal separator. It accepts all built-in signed
-// and unsigned integer types, `isize`, `usize`, `f32`, and `f64`.
+// and unsigned integer types, `f32`, and `f64`.
 //
 // Example:
 // assert strconv.format_thousands(1234567, Separator{}) == '1 234 567'

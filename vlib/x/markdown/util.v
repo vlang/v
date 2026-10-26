@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module markdown
 
+import encoding.utf8
 import strings
 
 // unicode_space lists Unicode code points considered whitespace
@@ -75,7 +76,7 @@ fn html_escape(s string) string {
 }
 
 // url_safe_chars contains URL characters that do not need percent-encoding.
-const url_safe_chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~:/?#[]@!$&()*+,;=%'
+const url_safe_chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~:/?#@!$&()*+,;=%'
 
 // url_encode percent-encodes characters in a URL that need encoding,
 // while leaving valid URL characters (including already-encoded sequences) intact.
@@ -107,6 +108,14 @@ fn normalize_label(s string) string {
 		} else {
 			if ch >= `A` && ch <= `Z` {
 				out.write_u8(u8(ch + 32))
+			} else if ch == 0xDF {
+				// Unicode case folding: German sharp s folds to "ss".
+				out.write_string('ss')
+			} else if ch == 0x1E9E {
+				// Capital sharp s folds through lower-case sharp s to "ss".
+				out.write_string('ss')
+			} else if ch >= 0x80 {
+				out.write_string(ch.str().to_lower())
 			} else {
 				out.write_string(ch.str())
 			}
@@ -143,6 +152,61 @@ fn is_ascii_punct(c rune) bool {
 }
 
 const digits = [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`]!
+
+// is_unicode_punct reports whether c is a Unicode punctuation character
+// (general categories P or S), per the CommonMark definition. ASCII is
+// handled directly; the rest uses the standard library tables plus
+// explicit symbol (S) ranges, which the stdlib punct table omits.
+fn is_unicode_punct(c rune) bool {
+	if c <= 0x7f {
+		return is_ascii_punct(c)
+	}
+	if utf8.is_rune_punct(c) {
+		return true
+	}
+	return is_unicode_symbol(c)
+}
+
+// is_unicode_symbol reports whether c is in a Unicode symbol (S) block.
+// Only ranges without any letters, marks or numbers are listed, so that
+// word characters are never misclassified (which would break emphasis).
+fn is_unicode_symbol(c rune) bool {
+	// Currency symbols (Sc).
+	if (c >= 0x00a2 && c <= 0x00a5) || c == 0x058f || c == 0x060b
+		|| (c >= 0x07fe && c <= 0x07ff) || (c >= 0x09f2 && c <= 0x09f3)
+		|| c == 0x09fb || c == 0x0af1 || c == 0x0bf9 || c == 0x0e3f
+		|| c == 0x17db || (c >= 0x20a0 && c <= 0x20cf) || c == 0xfe69
+		|| c == 0xff04 || c == 0xffe0 || c == 0xffe1 || c == 0xffe5
+		|| c == 0xffe6 {
+		return true
+	}
+	// Math symbols (Sm).
+	if c == 0x00ac || c == 0x00b1 || c == 0x00d7 || c == 0x00f7
+		|| c == 0x03f6 || (c >= 0x0606 && c <= 0x0608) || c == 0x2044
+		|| c == 0x2052 || (c >= 0x207a && c <= 0x207e)
+		|| (c >= 0x208a && c <= 0x208e) || (c >= 0x2140 && c <= 0x2144)
+		|| c == 0x214b || (c >= 0x2190 && c <= 0x21ea)
+		|| (c >= 0x2200 && c <= 0x22ff) || (c >= 0x27c0 && c <= 0x27e5)
+		|| (c >= 0x2980 && c <= 0x29ff) || (c >= 0x2a00 && c <= 0x2aff)
+		|| c == 0xfb29 || c == 0xfe62 {
+		return true
+	}
+	// Modifier symbols (Sk): only unambiguous singletons.
+	if c == 0x0374 || c == 0x0375 || c == 0x1fbd
+		|| (c >= 0x1fbf && c <= 0x1fc1) || c == 0xff3e || c == 0xffe3 {
+		return true
+	}
+	// Other symbols (So): common blocks without letters or numbers.
+	if c == 0x00a6 || c == 0x00a9 || c == 0x00ae || c == 0x00b0
+		|| c == 0x00b6 || (c >= 0x2600 && c <= 0x26ff)
+		|| (c >= 0x2700 && c <= 0x27bf) || (c >= 0x2b00 && c <= 0x2bff)
+		|| c == 0xfffd || (c >= 0x1f300 && c <= 0x1f5ff)
+		|| (c >= 0x1f600 && c <= 0x1f64f) || (c >= 0x1f680 && c <= 0x1f6ff)
+		|| (c >= 0x1f900 && c <= 0x1f9ff) {
+		return true
+	}
+	return false
+}
 
 // is_digit returns true if c is an ASCII decimal digit.
 @[inline]

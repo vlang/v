@@ -1,3 +1,10 @@
+vlib/v/checker/tests/orm_multidim_array.vv:5:11: warning: unknown attribute `pimary`. Did you mean `primary`? Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    3 | @[table: users]
+    4 | struct User {
+    5 |     id int @[pimary]
+      |              ~~~~~~
+    6 | }
+    7 |
 vlib/v/checker/tests/orm_multidim_array.vv:12:2: error: ORM: multi-dimension array fields are not supported
    10 |     id    int      @[primary; sql: serial]
    11 |     users []User   @[fkey: id]

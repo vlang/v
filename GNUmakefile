@@ -258,7 +258,9 @@ BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 -lbcrypt || cmd/tools/cc_compilation_failed_windows.sh
+	powershell -NoProfile -ExecutionPolicy Bypass -File "$(VROOT)/cmd/tools/vc_compat_uint.ps1" -Source "$(VC)/$(VCFILE)" -Destination "$(VC)/v_win_compat.c"
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) "$(VC)/v_win_compat.c" $(LDFLAGS) -lws2_32 -lbcrypt || cmd/tools/cc_compilation_failed_windows.sh
+	$(RM) "$(VC)/v_win_compat.c"
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
@@ -285,10 +287,10 @@ ifdef NETBSD
 endif
 	rm -rf v1$(EXE_EXT) v2$(EXE_EXT)
 endif
-	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/detect_tcc.v
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler -gc none run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	@$(VEXE)$(EXE_EXT) -version
-	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run .github/problem-matchers/register_all.vsh
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler -gc none run .github/problem-matchers/register_all.vsh
 
 v1:
 ifdef LEGACY

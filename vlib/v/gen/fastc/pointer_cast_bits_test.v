@@ -28,13 +28,13 @@ struct Holder { pointer &u64 }
 fn C.sentinel_pointer() voidptr
 fn C.pointer_bits(pointer voidptr) u64
 fn pointer_integer(pointer &u64) u64 { return unsafe { u64(pointer) } }
-fn pointer_size(pointer &u64) usize { return unsafe { usize(pointer) } }
+fn pointer_size(pointer &u64) uint { return unsafe { uint(pointer) } }
 fn pointer_alias_integer(pointer WordRef) Address { return unsafe { Address(pointer) } }
 fn pointer_alias_opaque(pointer WordRef) Opaque { return unsafe { Opaque(pointer) } }
 fn native_alias_pointer() BlockRef { return unsafe { BlockRef(C.sentinel_pointer()) } }
 fn returned_pointer() &u64 { return unsafe { &u64(C.sentinel_pointer()) } }
 fn borrowed_scalar[T](mut value T) u64 { return unsafe { u64(value) } }
-fn borrowed_size[T](mut value T) usize { return unsafe { usize(value) } }
+fn borrowed_size[T](mut value T) uint { return unsafe { uint(value) } }
 fn borrowed_opaque[T](mut value T) voidptr { return unsafe { voidptr(value) } }
 fn borrowed_scalar_pointer[T](mut value T) &u8 { return unsafe { &u8(value) } }
 fn borrowed_scalar_value[T](mut value T) u64 { return unsafe { u64(*value) } }
@@ -49,7 +49,7 @@ fn main() {
 	pointer := returned_pointer()
 	expected := C.pointer_bits(C.sentinel_pointer())
 	assert pointer_integer(pointer) == expected
-	assert pointer_size(pointer) == usize(expected)
+	assert pointer_size(pointer) == uint(expected)
 	assert pointer_alias_integer(WordRef(pointer)) == Address(expected)
 	assert C.pointer_bits(pointer_alias_opaque(WordRef(pointer))) == expected
 	assert C.pointer_bits(native_alias_pointer()) == expected
@@ -61,7 +61,7 @@ fn main() {
 	mut value := u64(73)
 	value_address := C.pointer_bits(voidptr(&value))
 	assert borrowed_scalar(mut value) == value_address
-	assert borrowed_size(mut value) == usize(value_address)
+	assert borrowed_size(mut value) == uint(value_address)
 	assert C.pointer_bits(borrowed_opaque(mut value)) == value_address
 	assert C.pointer_bits(borrowed_scalar_pointer(mut value)) == value_address
 	assert borrowed_scalar_value(mut value) == 73

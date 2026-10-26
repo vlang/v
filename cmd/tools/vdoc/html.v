@@ -4,7 +4,7 @@ import os
 import net.urllib
 import encoding.html
 import strings
-import markdown
+import x.markdown
 import document as doc
 
 const css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
@@ -143,13 +143,36 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	}
 }
 
-fn (vd &VDoc) get_repo_file_path_for_links(file_path string) string {
+// links_root returns the folder that the paths in the links to the source files are relative to.
+fn (vd &VDoc) links_root() string {
+	input_path := os.real_path(vd.cfg.input_path)
+	input_dir := if os.is_dir(input_path) { input_path } else { os.dir(input_path) }
+	return vd.repo_root_for_links(input_dir)
+}
+
+// RepoFileLinks keeps the path in the links of each source file, which is the same for all
+// the symbols of the file.
+struct RepoFileLinks {
+	root string
+mut:
+	paths map[string]string
+}
+
+fn (mut l RepoFileLinks) path_of(file_path string) string {
+	if path := l.paths[file_path] {
+		return path
+	}
+	path := repo_file_path_for_links(l.root, file_path)
+	l.paths[file_path] = path
+	return path
+}
+
+// repo_file_path_for_links returns the path of `file_path` in the links to the source files,
+// relative to `base_dir` when the file is inside of it.
+fn repo_file_path_for_links(base_dir string, file_path string) string {
 	if file_path == '' {
 		return ''
 	}
-	input_path := os.real_path(vd.cfg.input_path)
-	input_dir := if os.is_dir(input_path) { input_path } else { os.dir(input_path) }
-	base_dir := vd.repo_root_for_links(input_dir)
 	real_file := os.real_path(file_path)
 	prefix := base_dir.trim_right(os.path_separator) + os.path_separator
 	if real_file.starts_with(prefix) {
@@ -193,9 +216,9 @@ fn (vd &VDoc) repo_root_for_links(input_dir string) string {
 	return root
 }
 
-fn (vd &VDoc) write_content(cn &doc.DocNode, mut hw strings.Builder) {
+fn (vd &VDoc) write_content(cn &doc.DocNode, mut links RepoFileLinks, mut hw strings.Builder) {
 	cfg := vd.cfg
-	file_path_name := vd.get_repo_file_path_for_links(cn.file_path)
+	file_path_name := links.path_of(cn.file_path)
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name, cn.pos.line_nr + 1)
 	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
@@ -203,7 +226,7 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, mut hw strings.Builder) {
 		hw.write_string('\n')
 	}
 	for child in cn.children {
-		child_file_path_name := vd.get_repo_file_path_for_links(child.file_path)
+		child_file_path_name := links.path_of(child.file_path)
 		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name, child.pos.line_nr + 1)
 		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name)
 		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false, cfg.include_examples))
@@ -216,9 +239,12 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	mut symbols_toc := strings.new_builder(200)
 	mut contents := strings.new_builder(200)
 	dcs_contents := d.contents.arr()
+	mut links := RepoFileLinks{
+		root: vd.links_root()
+	}
 	// generate toc first
 	head_md_link_base := if is_module_readme(d.head) {
-		readme_file_path := vd.get_repo_file_path_for_links(d.head.file_path)
+		readme_file_path := links.path_of(d.head.file_path)
 		get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, readme_file_path)
 	} else {
 		''
@@ -228,7 +254,7 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 		write_toc(d.head, mut symbols_toc)
 	}
 	for cn in dcs_contents {
-		vd.write_content(&cn, mut contents)
+		vd.write_content(&cn, mut links, mut contents)
 		write_toc(cn, mut symbols_toc) // write head
 	}
 	if cfg.html_only_contents {
@@ -283,7 +309,6 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 			symbols_toc_str
 		})
 	}
-	result = result.replace('{{ contents }}', contents.str())
 	if cfg.html_no_right {
 		result = result.replace('{{ right_content }}', '')
 	} else {
@@ -307,7 +332,8 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 			'<script src="${vd.assets['doc_js']}"></script>'
 		})
 	}
-	return result
+	// The contents are the biggest part of the page, so the other replacements do not search them.
+	return result.replace('{{ contents }}', contents.str())
 }
 
 fn (vd &VDoc) gen_modules_toc(active_doc string) string {
@@ -496,18 +522,39 @@ fn escape_code(text string) string {
 	return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 }
 
+// new_doc_markdown_renderer preserves the documentation renderer options and V highlighting.
+fn new_doc_markdown_renderer(md_link_base string) markdown.HTMLRenderer {
+	return markdown.HTMLRenderer{
+		opts:             markdown.Options{
+			parser_opts:   markdown.ParserOptions{ auto_heading_id: true }
+			renderer_opts: markdown.RendererOptions{ unsafe_: true }
+		}
+		code_highlighter: fn (lang string, code string) string {
+			if lang.to_lower() != 'v' {
+				return html.escape(code)
+			}
+			return html_highlight(code)
+		}
+		link_base:        md_link_base
+		link_resolver:    fn (base string, url string) string {
+			return resolve_relative_markdown_link(base, url)
+		}
+	}
+}
+
+// render_doc_markdown retains the existing list boundary whitespace in generated docs.
+fn render_doc_markdown(source string, mut renderer markdown.HTMLRenderer) string {
+	return markdown.render(source, mut renderer).trim_space()
+		.replace('</li>\n</ul>', '</li></ul>')
+		.replace('</li>\n</ol>', '</li></ol>')
+}
+
 fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			relative_link_base: md_link_base
-		}
-	}
+	mut renderer := new_doc_markdown_renderer(md_link_base)
 	only_comments_text := dn.merge_comments_without_examples()
-	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer) or {
-		''
-	}
+	md_content := render_doc_markdown(prepare_markdown_for_html(only_comments_text), mut renderer)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
 	mut deprecated_tags := dn.tags.filter(is_deprecated_attribute(it))
@@ -558,13 +605,9 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		for variant in dn.variants {
 			dnw.write_string(declaration_html(variant, true))
 			if has_own_comments(variant, dn) {
-				mut variant_renderer := markdown.HtmlRenderer{
-					transformer: &MdHtmlCodeHighlighter{
-						relative_link_base: md_link_base
-					}
-				}
+				mut variant_renderer := new_doc_markdown_renderer(md_link_base)
 				variant_comments := prepare_markdown_for_html(variant.merge_comments_without_examples())
-				dnw.writeln(markdown.render(variant_comments, mut variant_renderer) or { '' })
+				dnw.writeln(render_doc_markdown(variant_comments, mut variant_renderer))
 			}
 		}
 	}
@@ -784,42 +827,6 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	toc.writeln('</li>')
 }
 
-// highlight_code_languages are the languages of the fenced code blocks that vdoc highlights as
-// V code, like ```v. Code blocks in other languages, like ```sh, are shown as they are.
-const highlight_code_languages = ['v', 'vlang', 'vsh']!
-
-struct MdHtmlCodeHighlighter {
-mut:
-	language           string
-	relative_link_base string
-}
-
-fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name string, value string) string {
-	mut transformed := value
-	if p is markdown.MD_SPANTYPE && p in [.md_span_a, .md_span_img] && name in ['href', 'src'] {
-		transformed = resolve_relative_markdown_link(f.relative_link_base, value)
-	}
-	return markdown.default_html_transformer.transform_attribute(p, name, transformed)
-}
-
-fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
-	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
-		is_v_code := f.language.to_lower() in highlight_code_languages
-		// Reset the language, so that it will not persist between blocks,
-		// and will not be accidentally re-used for the next block, that may be lacking ```language :
-		unsafe {
-			f.language = ''
-		}
-		if !is_v_code {
-			return html.escape(text)
-		}
-		return html_highlight(text)
-	}
-	return text
-}
-
-fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {
-	if key == 'code_language' {
-		f.language = val
-	}
-}
+// MdHtmlCodeHighlighter is no longer used; code highlighting and relative-link
+// resolution are now handled through the code_highlighter / link_resolver
+// callbacks of x.markdown's HTMLRenderer.

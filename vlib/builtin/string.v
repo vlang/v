@@ -1512,7 +1512,7 @@ pub fn (s string) index_(p string) int {
 	if p.len == 0 {
 		return 0
 	}
-	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
+	if p.len > s.len || uint(s.str) <= 0xFFFF || uint(p.str) <= 0xFFFF {
 		return -1
 	}
 	if p.len == 1 {
@@ -1551,18 +1551,7 @@ fn (s string) index_multibyte(p string) int {
 
 @[direct_array_access]
 fn (s string) index_pair(p string) int {
-	first := unsafe { p.str[0] }
-	second := unsafe { p.str[1] }
-	last_start := s.len - 2
-	for i := 0; i <= last_start; i++ {
-		if unsafe { s.str[i] } != first {
-			next := string_index_byte(unsafe { s.str + i + 1 }, last_start - i, first)
-			if next < 0 { return -1 }
-			i += next + 1
-		}
-		if unsafe { s.str[i + 1] } == second { return i }
-	}
-	return -1
+	return string_index_pair(s.str, s.len, unsafe { p.str[0] }, unsafe { p.str[1] })
 }
 
 // Needles up to this length are searched directly; longer ones use KMP, which
@@ -1759,7 +1748,7 @@ pub fn (s string) count(substr string) int {
 // See also: [`string.index_u8`](#string.index_u8) , to get the index of the byte as well.
 @[inline]
 pub fn (s string) contains_u8(x u8) bool {
-	return string_index_byte(s.str, s.len, x) >= 0
+	return string_contains_byte(s.str, s.len, x)
 }
 
 // contains returns `true` if the string contains `substr`.
@@ -1818,7 +1807,7 @@ pub fn (s string) contains_any_substr(substrs []string) bool {
 // starts_with returns `true` if the string starts with `p`.
 @[direct_array_access; inline]
 pub fn (s string) starts_with(p string) bool {
-	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
+	if p.len > s.len || uint(s.str) <= 0xFFFF || uint(p.str) <= 0xFFFF {
 		return false
 	}
 	return string_content_equal(s.str, p.str, p.len)
@@ -1827,7 +1816,7 @@ pub fn (s string) starts_with(p string) bool {
 // ends_with returns `true` if the string ends with `p`.
 @[direct_array_access; inline]
 pub fn (s string) ends_with(p string) bool {
-	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
+	if p.len > s.len || uint(s.str) <= 0xFFFF || uint(p.str) <= 0xFFFF {
 		return false
 	}
 	return string_content_equal(unsafe { s.str + s.len - p.len }, p.str, p.len)
@@ -3404,4 +3393,36 @@ pub fn (mut ri RunesIterator) next() ?rune {
 	r, char_len := utf8_decode_rune(unsafe { &ri.s.str[ri.i] }, ri.s.len - ri.i)
 	ri.i += if char_len > 0 { char_len } else { 1 }
 	return r
+}
+
+// rpad pads right side of the string using the value * times supplied
+@[inline]
+pub fn (s string) rpad(value string, times int) string {
+	if times <= 0 { return s.clone() }
+	return s + value.repeat(times)
+}
+
+// lpad pads left side of the string using the value * times supplied
+@[inline]
+pub fn (s string) lpad(value string, times int) string {
+	if times <= 0 { return s.clone() }
+	return value.repeat(times) + s
+}
+
+// rfill fills the right side of the string with the rune till max_len
+@[inline]
+pub fn (s string) rfill(value rune, max_len int) string {
+	if max_len <= 0 { return s.clone() }
+	len := s.runes().len
+	if len >= max_len { return s }
+	return s + value.str().repeat(max_len - len)
+}
+
+// lfill fills the left side of the string with the rune till max_len
+@[inline]
+pub fn (s string) lfill(value rune, max_len int) string {
+	if max_len <= 0 { return s.clone() }
+	len := s.runes().len
+	if len >= max_len { return s }
+	return value.str().repeat(max_len - len) + s
 }

@@ -131,3 +131,55 @@ fn test_numeric_literal_cast_retains_checked_literal_wrapper_types() {
 	tc.check_cast_expr(cast, *a.node(cast))
 	assert tc.errors.any(it.msg == 'cannot type cast an Option'), tc.errors.str()
 }
+
+// Both canonical payloads and legacy raw overrides must keep the spelling that
+// controls pointer-cast diagnostics, even when semantic targets are equivalent.
+fn test_string_pointer_cast_keeps_source_payload_and_raw_override_diagnostics() {
+	mut a := flat.FlatAst.new()
+	child_id := a.add_node(flat.Node{ kind: .ident, value: 's' })
+	for spelling in ['voidptr', 'byteptr', 'charptr'] {
+		mut tc := TypeChecker.new(&a)
+		// These synthetic nodes have no source positions, so opt in to diagnostics.
+		tc.diagnose_unknown_calls = true
+		target_id := flat.source_type_id(spelling)
+		node := flat.Node{ kind: .cast_expr, source_value: target_id }
+		target := *tc.parse_type(target_id)
+		assert tc.check_cast_from_string(child_id, node, child_id, builtin_string_type, target)
+		expected := 'cannot cast string to `${spelling}`${if spelling == 'voidptr' {
+			''
+		} else {
+			' outside `unsafe`'
+		}}, use ${spelling}(s.str) instead'
+		assert tc.errors.len == 1, tc.errors.str()
+		assert tc.errors[0].msg == expected, tc.errors.str()
+	}
+	mut tc := TypeChecker.new(&a)
+	tc.diagnose_unknown_calls = true
+	node := flat.Node{ kind: .cast_expr, value: 'charptr', source_value: flat.source_type_voidptr }
+	target := *tc.parse_type(flat.source_type_charptr)
+	assert tc.check_cast_from_string(child_id, node, child_id, builtin_string_type, target)
+	assert tc.errors.len == 1, tc.errors.str()
+	assert tc.errors[0].msg == 'cannot cast string to `charptr` outside `unsafe`, use charptr(s.str) instead', tc.errors.str()
+}
+
+fn test_string_pointer_cast_diagnostics_from_parsed_source() {
+	tc := numeric_cast_checker('string_pointers', "module main
+fn main() {
+ s := 'text'
+ _ = voidptr(s)
+ _ = byteptr(s)
+ _ = charptr(s)
+ unsafe {
+  _ = byteptr(s)
+  _ = charptr(s)
+ }
+}
+")
+	assert tc.errors.map(it.msg) == [
+		'cannot cast string to `voidptr`, use voidptr(s.str) instead',
+		'cannot cast string to `byteptr` outside `unsafe`, use byteptr(s.str) instead',
+		'cannot cast string to `charptr` outside `unsafe`, use charptr(s.str) instead',
+		'cannot cast string to `byteptr`, use byteptr(s.str) instead',
+		'cannot cast string to `charptr`, use charptr(s.str) instead',
+	], tc.errors.str()
+}

@@ -9,6 +9,7 @@ import hash
 const source_type_chunk_bits = 10
 const source_type_chunk_size = 1 << source_type_chunk_bits
 const source_type_chunk_count = 16384
+const source_type_read_cache_size = 4096
 
 // Builtin spellings are interned once; hot paths carry their numeric identities.
 pub const source_type_void = source_type_id('void')
@@ -21,6 +22,7 @@ pub const source_type_char = source_type_id('char')
 pub const source_type_rune = source_type_id('rune')
 pub const source_type_isize = source_type_id('isize')
 pub const source_type_usize = source_type_id('usize')
+pub const source_type_uint = source_type_id('uint')
 pub const source_type_voidptr = source_type_id('voidptr')
 pub const source_type_byteptr = source_type_id('byteptr')
 pub const source_type_charptr = source_type_id('charptr')
@@ -42,6 +44,7 @@ struct SourceTypeEntry {
 	hash  u64
 	shape SourceTypeShape
 	id    u32
+	query SourceTypeQuery
 }
 
 // SourceTypeShape records spelling syntax once when a type is interned.
@@ -76,6 +79,8 @@ pub enum SourceTypeShape {
 	bare_generic
 	anonymous_struct
 	generic_c_name
+	context_independent
+	unusable_decl
 }
 
 fn source_type_spelling_shape(text string) SourceTypeShape {
@@ -110,11 +115,13 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	if text.contains('typeof') { shape.set(.typeof_name) }
 	if text.len >= 8 && text.contains('typeof(') { shape.set(.typeof_expr) }
 	if text in ['bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32',
-		'u64', 'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr'] {
+		'u64', 'f32', 'f64', 'rune', 'uint', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr'] {
 		shape.set(.builtin_alias)
 	}
 	if text == 'struct' || text.ends_with('.struct') { shape.set(.anonymous_struct) }
 	if text.contains('_T_') { shape.set(.generic_c_name) }
+	if source_type_spelling_context_independent(text) { shape.set(.context_independent) }
+	if source_type_spelling_unusable_decl(text, shape) { shape.set(.unusable_decl) }
 	mut start := 0
 	mut end := text.len
 	for start < end && source_type_space(text[start]) { start++ }
@@ -125,8 +132,106 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	return shape
 }
 
+// Declaration fallback rejects these provisional spellings before alias resolution.
+// Only ASCII spaces are removed from wrapper names; raw-name checks stay exact.
+fn source_type_spelling_unusable_decl(text string, shape SourceTypeShape) bool {
+	if text in ['unknown', 'array', 'map', 'struct'] || text.contains('unknown')
+		|| shape.has(.typeof_expr) {
+		return true
+	}
+	mut pos := 0
+	for pos < text.len && text[pos] == ` ` {
+		pos++
+	}
+	if pos == text.len {
+		return false
+	}
+	token := match text[pos] {
+		`O` { 'Option' }
+		`_` { '__v_option' }
+		`R` { 'Result' }
+		else { return false }
+	}
+	for c in token {
+		for pos < text.len && text[pos] == ` ` {
+			pos++
+		}
+		if pos == text.len || text[pos] != c {
+			return false
+		}
+		pos++
+	}
+	for pos < text.len && text[pos] == ` ` {
+		pos++
+	}
+	return pos == text.len || text[pos] == `_`
+}
+
 fn source_type_space(c u8) bool {
 	return c == ` ` || c == `\n` || c == `\t` || c == `\v` || c == `\f` || c == `\r`
+}
+
+// Resolution can bypass declaration imports only for builtin leaves and these
+// exact wrappers. Do not trim: callers decide whether padded spellings are valid.
+@[manualfree]
+fn source_type_spelling_context_independent(text string) bool {
+	if text in ['', '!', '?'] {
+		return true
+	}
+	mut start := 0
+	for start < text.len {
+		if text[start] in [`&`, `?`, `!`] {
+			start++
+		} else if text[start] == `[` && start + 1 < text.len && text[start + 1] == `]` {
+			start += 2
+		} else if text[start] == `[` {
+			mut end := start + 1
+			for end < text.len && text[end] >= `0` && text[end] <= `9` {
+				end++
+			}
+			if end == start + 1 || end >= text.len || text[end] != `]` {
+				return false
+			}
+			start = end + 1
+		} else if start + 4 < text.len && text[start] == `m` && text[start + 1] == `a`
+			&& text[start + 2] == `p` && text[start + 3] == `[` {
+			mut end := start + 4
+			mut depth := 1
+			for end < text.len {
+				if text[end] == `[` { depth++ }
+				if text[end] == `]` {
+					depth--
+					if depth == 0 { break }
+				}
+				end++
+			}
+			if end >= text.len {
+				return false
+			}
+			key := unsafe { text.substr_unsafe(start + 4, end) }
+			if !source_type_spelling_context_independent(key) {
+				return false
+			}
+			start = end + 1
+		} else {
+			break
+		}
+	}
+	if text.len - start > 7 {
+		return false
+	}
+	leaf := unsafe { text.substr_unsafe(start, text.len) }
+	// Keep the builtin leaves accepted by types.is_builtin_type_name, excluding
+	// the open container names `map` and `array`, which still require resolution.
+	return match leaf.len {
+		2 { leaf in ['i8', 'u8'] }
+		3 { leaf in ['int', 'i16', 'i32', 'i64', 'u16', 'u32', 'u64', 'f32', 'f64', 'nil'] }
+		4 { leaf in ['bool', 'char', 'i128', 'rune', 'u128', 'uint', 'void', 'none'] }
+		5 { leaf in ['isize', 'usize'] }
+		6 { leaf == 'string' }
+		7 { leaf in ['voidptr', 'charptr', 'byteptr'] }
+		else { false }
+	}
 }
 
 struct SourceTypeTable {
@@ -144,6 +249,7 @@ struct SourceTypeIndex {
 __global g_source_types &SourceTypeTable
 __global g_source_types_lock u32
 __global g_source_type_recent_entries [16384]voidptr
+__global g_source_type_read_entries [source_type_read_cache_size]voidptr
 
 fn source_type_lock() {
 	for {
@@ -195,7 +301,7 @@ fn source_type_index_publish(table &SourceTypeTable, index &SourceTypeIndex) {
 @[inline]
 fn source_type_entry(table &SourceTypeTable, id u32) &SourceTypeEntry {
 	idx := id - 1
-	chunk := payload_ptr_get(voidptr(table), usize(idx >> source_type_chunk_bits))
+	chunk := payload_ptr_get(voidptr(table), uint(idx >> source_type_chunk_bits))
 	// Published IDs address immutable entries in nonmoving chunks.
 	return unsafe { &SourceTypeEntry(chunk) + (idx & (source_type_chunk_size - 1)) }
 }
@@ -320,6 +426,7 @@ fn source_type_id_uncached(text string) u32 {
 	// Spelling classification is independent of the shared table. Keep it out
 	// of the insertion critical section so other writers can publish meanwhile.
 	shape := source_type_spelling_shape(text)
+	query := source_type_spelling_query(text, shape)
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
 	table = source_type_table_load()
@@ -356,15 +463,15 @@ fn source_type_id_uncached(text string) u32 {
 	if chunk_idx >= source_type_chunk_count {
 		panic('too many source type spellings')
 	}
-	mut chunk := payload_ptr_get(voidptr(table), usize(chunk_idx))
+	mut chunk := payload_ptr_get(voidptr(table), uint(chunk_idx))
 	if isnil(chunk) {
 		chunk = node_payload_alloc_zeroed(source_type_chunk_size * sizeof(SourceTypeEntry))
 		if isnil(chunk) {
 			panic('could not allocate a source type chunk')
 		}
-		payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		payload_ptr_set(voidptr(table), uint(chunk_idx), chunk)
 	}
-	bytes := node_payload_alloc_zeroed(usize(text.len) + 1)
+	bytes := node_payload_alloc_zeroed(uint(text.len) + 1)
 	if isnil(bytes) {
 		panic('could not allocate a source type spelling')
 	}
@@ -378,11 +485,39 @@ fn source_type_id_uncached(text string) u32 {
 			hash:  hashed
 			shape: shape
 			id:    id
+			query: query
 		}
 	}
 	C.atomic_store_u32(&table.count, id)
 	unsafe { C.atomic_store_u32(&index.slots[slot], id) }
 	return id
+}
+
+// source_type_read_entry caches immutable process-owned entries by their published ID.
+@[direct_array_access; inline]
+fn source_type_read_entry(id u32) &SourceTypeEntry {
+	slot := int(id & u32(source_type_read_cache_size - 1))
+	cached := $if x32 {
+		unsafe { &SourceTypeEntry(voidptr(C.atomic_load_u32(voidptr(&g_source_type_read_entries[slot])))) }
+	} $else {
+		unsafe { &SourceTypeEntry(voidptr(C.atomic_load_u64(voidptr(&g_source_type_read_entries[slot])))) }
+	}
+	if !isnil(cached) && cached.id == id {
+		return cached
+	}
+	table := source_type_table_load()
+	if isnil(table) || id > C.atomic_load_u32(&table.count) {
+		panic('invalid source type ID')
+	}
+	entry := source_type_entry(table, id)
+	// Only a checked published ID reaches this store. Entries never move or expire,
+	// so a matching ID remains valid across index growth and disposable worker arenas.
+	$if x32 {
+		C.atomic_store_u32(voidptr(&g_source_type_read_entries[slot]), u32(voidptr(entry)))
+	} $else {
+		C.atomic_store_u64(voidptr(&g_source_type_read_entries[slot]), u64(voidptr(entry)))
+	}
+	return entry
 }
 
 // source_type_name resolves a source spelling ID at a text boundary.
@@ -391,20 +526,23 @@ pub fn source_type_name(id u32) string {
 	if id == 0 {
 		return ''
 	}
-	table := source_type_table_load()
-	if isnil(table) || id > C.atomic_load_u32(&table.count) {
-		panic('invalid source type ID')
-	}
-	return source_type_entry(table, id).text
+	return source_type_read_entry(id).text
 }
 
 // source_type_shape returns syntax properties without resolving spelling bytes.
 @[inline]
 pub fn source_type_shape(id u32) SourceTypeShape {
 	if id == 0 { return unsafe { SourceTypeShape(0) } }
+	return source_type_read_entry(id).shape
+}
+
+// source_type_query returns context-free query results without decoding a spelling.
+@[inline]
+pub fn source_type_query(id u32) SourceTypeQuery {
+	if id == 0 { return .complete }
 	table := source_type_table_load()
 	if isnil(table) || id > C.atomic_load_u32(&table.count) {
 		panic('invalid source type ID')
 	}
-	return source_type_entry(table, id).shape
+	return source_type_entry(table, id).query
 }

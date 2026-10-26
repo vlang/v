@@ -12,7 +12,7 @@ $if linux {
 fn C.v_brotli_open(const_name &char) voidptr
 fn C.v_brotli_sym(handle voidptr, const_name &char) voidptr
 fn C.v_brotli_close(handle voidptr) int
-fn C.v_brotli_msan_unpoison(ptr voidptr, len usize)
+fn C.v_brotli_msan_unpoison(ptr voidptr, len uint)
 
 const min_quality = 0
 const max_quality = 11
@@ -25,15 +25,15 @@ const decoder_result_success = 1
 const decoder_result_needs_more_input = 2
 const decoder_result_needs_more_output = 3
 
-type FNEncoderMaxCompressedSize = fn (usize) usize
+type FNEncoderMaxCompressedSize = fn (uint) uint
 
-type FNEncoderCompress = fn (int, int, int, usize, voidptr, &usize, voidptr) int
+type FNEncoderCompress = fn (int, int, int, uint, voidptr, &uint, voidptr) int
 
 type FNDecoderCreateInstance = fn (voidptr, voidptr, voidptr) voidptr
 
 type FNDecoderDestroyInstance = fn (voidptr)
 
-type FNDecoderDecompressStream = fn (voidptr, &usize, &&u8, &usize, &&u8, &usize) int
+type FNDecoderDecompressStream = fn (voidptr, &uint, &&u8, &uint, &&u8, &uint) int
 
 type FNDecoderGetErrorCode = fn (voidptr) int
 
@@ -179,7 +179,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 	max_compressed_size := FNEncoderMaxCompressedSize(library_symbol(enc,
 		'BrotliEncoderMaxCompressedSize', 'encoder')!)
 	encoder_compress := FNEncoderCompress(library_symbol(enc, 'BrotliEncoderCompress', 'encoder')!)
-	dst_capacity := max_compressed_size(usize(data.len))
+	dst_capacity := max_compressed_size(uint(data.len))
 	if dst_capacity == 0 {
 		return error('brotli: input is too large')
 	}
@@ -191,7 +191,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 		}
 	}
 	mut encoded_size := dst_capacity
-	ok := encoder_compress(params.quality, params.lgwin, int(params.mode), usize(data.len),
+	ok := encoder_compress(params.quality, params.lgwin, int(params.mode), uint(data.len),
 		data.data, &encoded_size, dst.data)
 	if ok == 0 {
 		return error('brotli: compression failed')
@@ -235,17 +235,17 @@ pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 	defer {
 		unsafe { chunk.free() }
 	}
-	mut available_in := usize(data.len)
+	mut available_in := uint(data.len)
 	mut next_in := unsafe { &u8(data.data) }
 	for {
-		mut available_out := usize(chunk.len)
+		mut available_out := uint(chunk.len)
 		mut next_out := unsafe { &u8(chunk.data) }
-		mut total_out := usize(0)
+		mut total_out := uint(0)
 		result := decoder_stream(state, &available_in, &next_in, &available_out, &next_out,
 			&total_out)
 		produced := chunk.len - int(available_out)
 		if produced > 0 {
-			C.v_brotli_msan_unpoison(chunk.data, usize(produced))
+			C.v_brotli_msan_unpoison(chunk.data, uint(produced))
 			out << chunk[..produced]
 		}
 		match result {

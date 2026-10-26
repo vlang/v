@@ -167,6 +167,33 @@ fn test_source_type_shapes_and_builtin_ids_share_the_spelling_table() {
 	assert !source_type_shape(source_type_id('pkg.Item')).has(.padded)
 }
 
+fn test_source_type_resolution_shape_preserves_wrappers_and_exact_spelling() {
+	for text in ['int', '?', '!', '&[]u8', '?map[string][]u8', '[]map[int]&string', '[32]u8',
+		'&[2][3]int', 'map[[4]u8][]map[string]bool', 'i128', 'u128', 'uint', 'char', 'nil'] {
+		assert source_type_shape(source_type_id(text)).has(.context_independent)
+	}
+	for text in ['map', 'array', 'map[string]Item', 'map[Key]int', 'map[string]int ', ' int',
+		'[size]int', '[2 + 3]int', '[0x10]int', 'map[string', '[2', '[2]', 'shared int', '...int',
+		'fn () int', 'typeof(value)', 'pkg.int', '&&'] {
+		assert !source_type_shape(source_type_id(text)).has(.context_independent)
+	}
+}
+
+fn test_source_type_declaration_shape_preserves_exact_space_and_typeof_rules() {
+	assert sizeof(SourceTypeShape) == sizeof(u32)
+	assert !source_type_shape(0).has(.unusable_decl)
+	for text in ['unknown', 'array', 'map', 'struct', '?unknown', 'XunknownY', 'Option', 'Option_int',
+		'__v_option', '__v_option_int', 'Result', 'Result_int', ' O ption ', '__v_ option _int',
+		' R esult _int', 'typeof(value)', 'typeof( '] {
+		assert source_type_shape(source_type_id(text)).has(.unusable_decl), text
+	}
+	for text in ['void', 'array ', ' map', 'struct\t', 'ma p', 'unk nown', '\tOption', 'O\tption',
+		'\nResult', 'Option[T]', 'OptionThing', '__v_optionThing', 'Resultant', '?Option', 'typeof(',
+		'typeof (value)', 'TYPEOF(value)'] {
+		assert !source_type_shape(source_type_id(text)).has(.unusable_decl), text
+	}
+}
+
 fn test_binding_value_ids_preserve_present_empty_bindings() {
 	mut bindings := TypeTextBindings{}
 	bindings.set('empty', '')
@@ -275,4 +302,71 @@ fn test_source_type_shape_caches_spelling_only_generic_probes() {
 	}
 	assert source_type_shape(source_type_id('mod__fn_T_int')).has(.generic_c_name)
 	assert !source_type_shape(source_type_id('mod__fn_Tint')).has(.generic_c_name)
+}
+
+fn test_type_text_fork_cache_checks_reused_buffer_bytes() {
+	mut parent := TypeTextTable{}
+	mut bytes := '[]First'.bytes()
+	borrowed := unsafe { tos(bytes.data, bytes.len) }
+	first := parent.intern(borrowed)
+	mut fork := parent.fork()
+	for i, value in '[]Other'.bytes() {
+		bytes[i] = value
+	}
+	second := fork.intern(borrowed)
+	assert second != first
+	assert source_type_name(first) == '[]First'
+	assert source_type_name(second) == '[]Other'
+	assert parent.intern(borrowed) == second
+	for i, value in '[]First'.bytes() {
+		bytes[i] = value
+	}
+	assert parent.intern(borrowed) == first
+	assert fork.intern(borrowed) == first
+}
+
+fn test_type_text_recent_headers_do_not_own_global_spelling_bytes() {
+	mut texts := TypeTextTable{}
+	input := 'type_texts.CachedHeader'.clone()
+	id := texts.intern(input)
+	slot := int((uint(input.str) >> 4 ^ uint(input.len)) & 127)
+	canonical := source_type_name(id)
+	assert texts.recent_texts[slot].str == canonical.str
+	mut fork := texts.fork()
+	assert fork.recent[slot] == id
+	assert fork.recent_texts[slot].str == canonical.str
+	// Dropping either cached header must leave the process-owned bytes intact.
+	mut parent_header := texts.recent_texts[slot]
+	mut fork_header := fork.recent_texts[slot]
+	unsafe {
+		parent_header.free()
+		fork_header.free()
+	}
+	assert parent_header == 'type_texts.CachedHeader'
+	assert fork_header == 'type_texts.CachedHeader'
+	assert source_type_name(id) == 'type_texts.CachedHeader'
+	assert texts.intern(input) == id
+	assert fork.intern(input) == id
+}
+
+fn test_type_text_recent_headers_survive_the_input_arena() {
+	$if prealloc {
+		mut texts := TypeTextTable{}
+		scope := unsafe { prealloc_scope_begin() }
+		input := 'type_texts.DisposableInput'.clone()
+		assert unsafe { prealloc_scope_owns(scope, input.str) }
+		id := texts.intern(input)
+		slot := int((uint(input.str) >> 4 ^ uint(input.len)) & 127)
+		unsafe { prealloc_scope_leave(scope) }
+		assert !unsafe { prealloc_scope_owns(scope, texts.recent_texts[slot].str) }
+		mut fork := texts.fork()
+		assert fork.recent[slot] == id
+		assert !unsafe { prealloc_scope_owns(scope, fork.recent_texts[slot].str) }
+		unsafe { prealloc_scope_free_after(scope) }
+		assert texts.recent_texts[slot] == 'type_texts.DisposableInput'
+		assert fork.recent_texts[slot] == 'type_texts.DisposableInput'
+		assert source_type_name(id) == 'type_texts.DisposableInput'
+		assert texts.intern('type_texts.DisposableInput') == id
+		assert fork.intern('type_texts.DisposableInput') == id
+	}
 }

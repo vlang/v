@@ -434,7 +434,7 @@ fn (mut context Context) drain_build_output(mut output []string) {
 fn (mut context Context) build_first_loop() {
 	run_pos := context.opts.index('run')
 	mut build_opts := context.opts#[..run_pos].clone()
-	after_run := context.opts#[run_pos + 1..]
+	after_run := context.opts#[run_pos + 1..].clone()
 	target := if after_run.len > 0 { after_run[0] } else { '.' }
 	program_args := after_run#[1..]
 	mut app_bin := default_output_path(target)

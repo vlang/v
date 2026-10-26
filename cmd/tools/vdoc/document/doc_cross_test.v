@@ -134,7 +134,8 @@ fn test_declaration_shape_leaves_out_what_does_not_change_a_declaration() {
 	assert without_parameter_names('fn (mut s Server) map[T](f fn (int) int, shared m Map) (int, string)') == 'fn (mut Server) map[T](fn (int) int, shared Map) (int, string)'
 	assert without_parameter_names('fn f(int, string)') == 'fn f(int, string)'
 	assert declaration_shape('union U {\n\ttype int\n}') == declaration_shape('union U {\n\t@type int\n}')
-	assert without_line_comment("url string = 'https://vlang.io' // the site") == "url string = 'https://vlang.io' "
+	// A `//` inside of a string does not start a comment.
+	assert declaration_shape("struct A {\n\turl string = 'https://vlang.io' // the site\n}") == declaration_shape("struct A {\n\turl string = 'https://vlang.io'\n}")
 	assert declaration_shape("struct A {\n\turl string = 'https://a'\n}") != declaration_shape("struct A {\n\turl string = 'https://b'\n}")
 	// An unused parameter is named `_`.
 	assert declaration_shape('fn f(pid int, mut m Map)') == declaration_shape('fn f(_ int, mut _ Map)')

@@ -1014,7 +1014,7 @@ struct FastcFunctionDeferBlock {
 }
 
 struct FastcExpressionToken {
-	source               string
+	source               &FastcTokenSource = unsafe { nil }
 	unsafe_depth         int
 	tok                  token.Token
 	chan_element_type    u32
@@ -1182,8 +1182,10 @@ pub struct GenerationResult {
 pub:
 	c_pieces     []string
 	source_paths []string
-	uses_threads bool
-	c_flags      []string
+	// Only these files need the frontend pass that locates deprecated type spellings.
+	deprecated_integer_paths []string
+	uses_threads             bool
+	c_flags                  []string
 	// units describes how c_pieces split into translation units that the
 	// drivers can compile in parallel (see fastc_write_c_units).
 	units FastcUnitLayout
@@ -1417,8 +1419,12 @@ struct FastcTypeDescriptorMemoEntry {
 
 struct FastcTypeDescriptorMemo {
 mut:
-	semantic_keys [64]FastcTypeDescriptorMemoEntry
-	aliases       [64]FastcTypeDescriptorMemoEntry
+	semantic_keys          [64]FastcTypeDescriptorMemoEntry
+	aliases                [64]FastcTypeDescriptorMemoEntry
+	direct_member_receiver u32
+	direct_member_field    string
+	direct_member_type     u32
+	direct_member_known    bool
 }
 
 struct Parser {
@@ -1438,8 +1444,8 @@ struct Parser {
 	// (see fastc_declared_type_c_names); semantic_type_key resolves through it.
 	declared_type_c_names     flat.TypeTextBindings
 	declared_type_key_by_name flat.TypeTextBindings
-	// Only final self-host file generation opts in: both descriptor maps stay
-	// immutable for this Parser's lifetime, including module/mono switches.
+	// Only final self-host file generation opts in: type names, aliases, kinds,
+	// struct fields and interface fields stay immutable through module/mono switches.
 	type_descriptor_memo &FastcTypeDescriptorMemo = unsafe { nil }
 	// `__vf_`-prefixed generated C names, the only possible collisions for
 	// temporary_namespace candidates (see fastc_reserved_temporary_c_names).
@@ -1727,8 +1733,13 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
+	mut deprecated_integer_paths := []string{}
 	for source_file in sources {
 		source_paths << source_file.path
+		if source_file.header.module_name != 'builtin'
+			&& (source_file.source.contains('isize') || source_file.source.contains('usize')) {
+			deprecated_integer_paths << source_file.path
+		}
 	}
 	// The layout comes back through a parameter: a struct of arrays as a
 	// multi-return component is not carried correctly by the self-hosted
@@ -1739,11 +1750,12 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
-		c_pieces:     c_pieces
-		source_paths: source_paths
-		uses_threads: uses_threads
-		c_flags:      c_flags
-		units:        units
+		c_pieces:                 c_pieces
+		source_paths:             source_paths
+		deprecated_integer_paths: deprecated_integer_paths
+		uses_threads:             uses_threads
+		c_flags:                  c_flags
+		units:                    units
 	}
 }
 
@@ -2152,8 +2164,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		composite_types['Array_char_ptr'] = true
 	}
 	for signature in functions.values() {
-		fastc_register_composite_type(signature.return_type_text(), mut composite_types)
-		for parameter_type in signature.parameter_types_text() {
+		fastc_register_composite_type(signature.return_type, mut composite_types)
+		for parameter_type in signature.parameter_types.ids {
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
@@ -2222,10 +2234,10 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for name, _ in global_output.composite_types {
 		composite_types[name] = true
 	}
-	for constant_type in constant_types.values() {
+	for constant_type in constant_types.ids.values() {
 		fastc_register_composite_type(constant_type, mut composite_types)
 	}
-	for global_type in global_types.values() {
+	for global_type in global_types.ids.values() {
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
 	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls, function_c_names)!
@@ -2438,7 +2450,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		if flat.source_type_name(element_type).contains('__vf_fn_type_') {
 			callback_fixed_array_types.set_id(name, typ_id)
 		} else if fastc_primitive_c_type(flat.source_type_name(element_type)) != none
-			&& flat.source_type_name(element_type) !in ['string', 'array', 'map', 'Option', '__v_result'] {
+			&& element_type !in [flat.source_type_string, fastc_type_array, fastc_type_map,
+				fastc_type_option, fastc_type_result] {
 			scalar_fixed_array_types.set_id(name, typ_id)
 		} else {
 			aggregate_fixed_array_types.set_id(name, typ_id)
@@ -2688,7 +2701,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	} else {
 		FastcNativeSourceContext{}
 	}
-	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context)
+	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context,
+		prefs.vroot)
 	if prefs.target_libc_headers {
 		pieces << fastc_target_c_extern_prototypes_for_context(functions, used_function_names, prefs, native_context)
 	}
@@ -3008,11 +3022,34 @@ fn fastc_c_declaration_has_native_input(path string, inputs []string) bool {
 	return false
 }
 
-fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
-	return fastc_c_extern_prototypes_for_source_inputs(functions, inputs, FastcNativeSourceContext{})
+// fastc_vlib_native_helper_has_input mirrors cgen: vlib's shipped native objects
+// export private facades (`v3_`, `v_runtime_`, ...) whose declaring file may include
+// an unrelated header and need not share the object's stem
+// (builtin_d_gcboehm.c.v links gc_boehm_helpers.o). The declaring vlib file must
+// itself link a native source or object.
+fn fastc_vlib_native_helper_has_input(name string, paths []string, inputs []string, context FastcNativeSourceContext, vroot string) bool {
+	if !(name.starts_with('v3_') || name.starts_with('v_runtime_') || name.starts_with('v_time_')
+		|| name.starts_with('v_builtin_') || name.starts_with('v_set_')
+		|| name.starts_with('v__gc_')) {
+		return false
+	}
+	root := vroot.replace('\\', '/').trim_right('/')
+	if root.len == 0 {
+		return false
+	}
+	vlib := '${root}/vlib/'
+	return paths.any(context.files_linking_native_sources[it]
+		&& it.replace('\\', '/').starts_with(vlib))
+		&& inputs.any((it.ends_with('.c') || it.ends_with('.o'))
+			&& it.replace('\\', '/').starts_with(vlib))
 }
 
-fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext) string {
+fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
+	return fastc_c_extern_prototypes_for_source_inputs(functions, inputs, FastcNativeSourceContext{},
+		'')
+}
+
+fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext, vroot string) string {
 	mut keys := functions.keys().filter(it.starts_with('C.'))
 	keys.sort()
 	mut out := strings.new_builder(128)
@@ -3024,7 +3061,8 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 		name := key.all_after_first('C.')
 		paths := context.declaration_paths[name] or { [signature.path] }
 		if !signature.is_c_extern && !paths.any(!context.files_with_headers[it]
-			&& fastc_c_declaration_has_native_input(it, inputs)) {
+			&& fastc_c_declaration_has_native_input(it, inputs))
+			&& !fastc_vlib_native_helper_has_input(name, paths, inputs, context, vroot) {
 			continue
 		}
 		mut parameters := []string{cap: signature.parameter_types.ids.len + 1}
@@ -3191,16 +3229,26 @@ pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
 // for the C text prepended to each translation unit. The first unit also owns
 // the runtime/startup/main definitions, so balancing only the bodies makes it
 // the slowest TinyCC job. Dynamic programming finds the partition whose
-// largest emitted source is smallest; there are at most 16 groups and a few
-// hundred source files, so this costs much less than writing one unit.
+// largest emitted source is smallest. Monotone costs permit binary search
+// for each split; other inputs retain the original linear search.
 fn fastc_unit_group_starts(unit_sizes []int, groups int, first_overhead int, shared_overhead int) []int {
 	unit_count := unit_sizes.len
 	if groups < 1 || unit_count < groups {
 		return []int{}
 	}
+	// Deleting a final item preserves exact-group monotonicity only when
+	// moving an item right cannot increase its overhead. Other inputs keep
+	// the original linear search, including its max_int sentinel behavior.
+	mut use_binary_search := first_overhead >= shared_overhead && shared_overhead >= 0
 	mut prefix := []int{len: unit_count + 1}
 	for i, size in unit_sizes {
+		if use_binary_search && (size < 0 || size > max_int - prefix[i]) {
+			use_binary_search = false
+		}
 		prefix[i + 1] = prefix[i] + size
+	}
+	if use_binary_search && prefix[unit_count] >= max_int - first_overhead {
+		use_binary_search = false
 	}
 	mut previous := []int{len: unit_count + 1, init: max_int}
 	previous[0] = 0
@@ -3210,17 +3258,63 @@ fn fastc_unit_group_starts(unit_sizes []int, groups int, first_overhead int, sha
 		splits[count] = []int{len: unit_count + 1, init: -1}
 		overhead := if count == 1 { first_overhead } else { shared_overhead }
 		for end in count .. unit_count + 1 {
-			for start in count - 1 .. end {
-				if previous[start] == max_int {
-					continue
+			if !use_binary_search {
+				for start in count - 1 .. end {
+					if previous[start] == max_int {
+						continue
+					}
+					group_size := overhead + prefix[end] - prefix[start]
+					largest := if previous[start] > group_size {
+						previous[start]
+					} else {
+						group_size
+					}
+					if largest < current[end] {
+						current[end] = largest
+						splits[count][end] = start
+					}
 				}
-				group_size := overhead + prefix[end] - prefix[start]
-				largest := if previous[start] > group_size { previous[start] } else { group_size }
-				if largest < current[end] {
-					current[end] = largest
-					splits[count][end] = start
+				continue
+			}
+			// Prefix sizes and the previous row are nondecreasing. The minimum
+			// lies where the previous cost crosses the decreasing final group.
+			mut low := count - 1
+			mut high := end
+			for low < high {
+				middle := low + (high - low) / 2
+				if previous[middle] < overhead + prefix[end] - prefix[middle] {
+					low = middle + 1
+				} else {
+					high = middle
 				}
 			}
+			mut best := max_int
+			if low < end {
+				group_size := overhead + prefix[end] - prefix[low]
+				best = if previous[low] > group_size { previous[low] } else { group_size }
+			}
+			if low > count - 1 {
+				group_size := overhead + prefix[end] - prefix[low - 1]
+				candidate := if previous[low - 1] > group_size {
+					previous[low - 1]
+				} else {
+					group_size
+				}
+				if candidate < best { best = candidate }
+			}
+			// Match the original first-minimum tie rule, including zero-size units.
+			low = count - 1
+			high = end
+			for low < high {
+				middle := low + (high - low) / 2
+				if overhead + prefix[end] - prefix[middle] > best {
+					low = middle + 1
+				} else {
+					high = middle
+				}
+			}
+			current[end] = best
+			splits[count][end] = low
 		}
 		previous = current.clone()
 	}
@@ -3388,7 +3482,7 @@ pub struct FastcFeedingCUnits {
 pub:
 	paths []string
 mut:
-	writers []thread
+	writers []thread bool
 }
 
 // fastc_prestarted_c_units_match reports whether `units` can consume a build
@@ -3949,8 +4043,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				}
 				implemented[receiver_key] = true
 				receiver_type := fastc_c_declared_type_name(receiver_key)
-				expected_receiver := candidate_signature.parameter_types.at(0)
-				receiver_argument := if expected_receiver.ends_with('*') {
+				receiver_argument := if flat.source_type_query(candidate_signature.parameter_types.ids[0]).has(.c_pointer_suffix) {
 					'(${receiver_type} *)value._object'
 				} else {
 					'*(${receiver_type} *)value._object'
@@ -3966,7 +4059,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 					fastc_method_c_name(candidate_signature.module_name, receiver_type, method_name)
 				}
 				call := '${candidate_c_name}(${receiver_argument}${call_arguments})'
-				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type_text() == 'void' {
+				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type == flat.source_type_void {
 					call + '; return;'
 				} else {
 					'return ' + call + ';'
@@ -3983,7 +4076,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 					}
 					embedded_signature := functions[embedded.key]
 					field := '((${struct_type} *)value._object)->${embedded.path}'
-					receiver_argument := if embedded_signature.parameter_types.at(0).ends_with('*') {
+					receiver_argument := if flat.source_type_query(embedded_signature.parameter_types.ids[0]).has(.c_pointer_suffix) {
 						'&(${field})'
 					} else {
 						field
@@ -3999,7 +4092,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 						fastc_method_c_name(embedded_signature.module_name, fastc_c_declared_type_name(embedded.key.all_before_last('.')), method_name)
 					}
 					call := '${embedded_c_name}(${receiver_argument}${call_arguments})'
-					out.writeln('\tcase __v_typeid_${struct_type}: ${if interface_signature.return_type_text() == 'void' {
+					out.writeln('\tcase __v_typeid_${struct_type}: ${if interface_signature.return_type == flat.source_type_void {
 						call + '; return;'
 					} else {
 						'return ' + call + ';'
@@ -4253,7 +4346,7 @@ fn fastc_function_id_table(functions map[string]FastcFunctionSignature, function
 	// Native adapters share their implementation's emitted span. References to
 	// either spelling must retain that span without adding another graph node.
 	for key, signature in functions {
-		if key.starts_with('C.') || signature.return_type_text() != 'MultiReturn'
+		if key.starts_with('C.') || signature.return_type != fastc_type_multi_return
 			|| signature.return_types.ids.len != 2 {
 			continue
 		}
@@ -4570,12 +4663,6 @@ fn (value &FastcExpressionToken) typ_text() string {
 	return flat.source_type_name(value.typ)
 }
 
-// chan_element_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcExpressionToken) chan_element_type_text() string {
-	return flat.source_type_name(value.chan_element_type)
-}
-
 // option_value_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &FastcExpressionToken) option_value_type_text() string {
@@ -4630,24 +4717,6 @@ fn (value &FastcFunctionSignature) option_type_text() string {
 	return flat.source_type_name(value.option_type)
 }
 
-// chan_element_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcLocal) chan_element_type_text() string {
-	return flat.source_type_name(value.chan_element_type)
-}
-
-// fn_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcLocal) fn_option_value_type_text() string {
-	return flat.source_type_name(value.fn_option_value_type)
-}
-
-// fn_return_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcLocal) fn_return_type_text() string {
-	return flat.source_type_name(value.fn_return_type)
-}
-
 // option_value_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &FastcLocal) option_value_type_text() string {
@@ -4658,30 +4727,6 @@ fn (value &FastcLocal) option_value_type_text() string {
 @[inline]
 fn (value &FastcLocal) smartcast_origin_type_text() string {
 	return flat.source_type_name(value.smartcast_origin_type)
-}
-
-// chan_element_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) chan_element_type_text() string {
-	return flat.source_type_name(value.chan_element_type)
-}
-
-// fn_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) fn_option_value_type_text() string {
-	return flat.source_type_name(value.fn_option_value_type)
-}
-
-// fn_return_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) fn_return_type_text() string {
-	return flat.source_type_name(value.fn_return_type)
-}
-
-// generic_argument_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) generic_argument_type_text() string {
-	return flat.source_type_name(value.generic_argument_type)
 }
 
 // option_value_type_text resolves the indexed source type spelling.
@@ -4702,40 +4747,10 @@ fn (value &Parser) last_expression_type_text() string {
 	return flat.source_type_name(value.last_expression_type)
 }
 
-// last_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) last_option_value_type_text() string {
-	return flat.source_type_name(value.last_option_value_type)
-}
-
 // option_return_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &Parser) option_return_type_text() string {
 	return flat.source_type_name(value.option_return_type)
-}
-
-// or_value_expected_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) or_value_expected_type_text() string {
-	return flat.source_type_name(value.or_value_expected_type)
-}
-
-// pending_fn_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) pending_fn_option_value_type_text() string {
-	return flat.source_type_name(value.pending_fn_option_value_type)
-}
-
-// pending_fn_return_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) pending_fn_return_type_text() string {
-	return flat.source_type_name(value.pending_fn_return_type)
-}
-
-// pending_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) pending_option_value_type_text() string {
-	return flat.source_type_name(value.pending_option_value_type)
 }
 
 // parameter_types_text resolves indexed types at a text integration boundary.
@@ -4743,40 +4758,10 @@ fn (value &FastcFunctionSignature) parameter_types_text() []string {
 	return value.parameter_types.names()
 }
 
-// return_types_text resolves indexed types at a text integration boundary.
-fn (value &FastcFunctionSignature) return_types_text() []string {
-	return value.return_types.names()
-}
-
-// fn_parameter_types_text resolves indexed types at a text integration boundary.
-fn (value &FastcStructField) fn_parameter_types_text() []string {
-	return value.fn_parameter_types.names()
-}
-
-// last_multi_return_types_text resolves indexed types at a text integration boundary.
-fn (value &Parser) last_multi_return_types_text() []string {
-	return value.last_multi_return_types.names()
-}
-
-// return_types_text resolves indexed types at a text integration boundary.
-fn (value &Parser) return_types_text() []string {
-	return value.return_types.names()
-}
-
 // current_receiver_text resolves the indexed source type spelling.
 @[inline]
 fn (value &Parser) current_receiver_text() string {
 	return flat.source_type_name(value.current_receiver)
-}
-
-// last_field_receiver_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) last_field_receiver_text() string {
-	return flat.source_type_name(value.last_field_receiver)
-}
-
-fn (smartcast &FastcMemberSmartcast) variants_text() []string {
-	return smartcast.variants.names()
 }
 
 // value_type_text resolves the tested value's indexed type spelling.

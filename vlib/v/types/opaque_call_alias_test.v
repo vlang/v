@@ -18,10 +18,10 @@ fn check_alias_source(name string, source string) TypeChecker {
 }
 
 fn test_voidptr_lookup_with_an_unsafe_boundary_does_not_borrow_its_arguments() {
-	tc := check_alias_source('voidptr', 'struct Queryable { mut: on_query fn (&Queryable, usize) voidptr = unsafe { nil } }
-fn (q &Queryable) query(idx usize) voidptr { return q.on_query(q, idx) }
+	tc := check_alias_source('voidptr', 'struct Queryable { mut: on_query fn (&Queryable, uint) voidptr = unsafe { nil } }
+fn (q &Queryable) query(idx uint) voidptr { return q.on_query(q, idx) }
 struct View { mut: render_inc int }
-fn View.from_context(ctx &Queryable) &View { return unsafe { &View(ctx.query(usize(typeof(View{}).idx))) } }
+fn View.from_context(ctx &Queryable) &View { return unsafe { &View(ctx.query(uint(typeof(View{}).idx))) } }
 fn dev(ctx &Queryable) {
  mut view := View.from_context(ctx)
  view.render_inc++
@@ -118,8 +118,8 @@ fn main() {}
 
 fn test_visible_voidptr_lookup_of_fresh_storage_does_not_borrow_arguments() {
 	tc := check_alias_source('separate_fresh_storage', 'struct View { mut: x int }
-struct Container { key usize }
-fn fresh(container &Container, key usize) voidptr { _ = container; _ = key; return &View{} }
+struct Container { key uint }
+fn fresh(container &Container, key uint) voidptr { _ = container; _ = key; return &View{} }
 fn lookup(container &Container) &View { return fresh(container, container.key) }
 fn dev(container &Container) {
  mut view := lookup(container)
@@ -164,10 +164,10 @@ fn container_lookup_source(fields string) string {
 	return 'struct View { mut: render_inc int }
 struct Queryable {
 ${fields}
- on_query fn (&Queryable, usize) voidptr = unsafe { nil }
+ on_query fn (&Queryable, uint) voidptr = unsafe { nil }
 }
-fn (q &Queryable) query(idx usize) voidptr { return q.on_query(q, idx) }
-fn View.from_context(ctx &Queryable) &View { return ctx.query(usize(typeof(View{}).idx)) }
+fn (q &Queryable) query(idx uint) voidptr { return q.on_query(q, idx) }
+fn View.from_context(ctx &Queryable) &View { return ctx.query(uint(typeof(View{}).idx)) }
 fn dev(ctx &Queryable) {
  mut view := View.from_context(ctx)
  view.render_inc++
@@ -196,8 +196,8 @@ fn test_voidptr_lookup_of_a_type_the_container_holds_borrows_it() {
 
 fn test_voidptr_lookup_through_a_copied_scalar_argument_does_not_borrow_it() {
 	tc := check_alias_source('scalar_lookup', 'struct View { mut: render_inc int }
-fn lookup(idx usize, get fn (usize) voidptr) &View { return get(idx) }
-fn dev(idx usize, get fn (usize) voidptr) {
+fn lookup(idx uint, get fn (uint) voidptr) &View { return get(idx) }
+fn dev(idx uint, get fn (uint) voidptr) {
  mut view := lookup(idx, get)
  view.render_inc = 5
 }
@@ -209,8 +209,8 @@ fn main() {}
 
 fn test_voidptr_lookup_through_a_referenced_scalar_keeps_its_source() {
 	tc := check_alias_source('scalar_lookup_ref', 'struct View { mut: render_inc int }
-fn lookup(idx usize, get fn (&usize) voidptr) &View { return get(idx) }
-fn dev(idx usize, get fn (&usize) voidptr) {
+fn lookup(idx uint, get fn (&uint) voidptr) &View { return get(idx) }
+fn dev(idx uint, get fn (&uint) voidptr) {
  mut view := lookup(idx, get)
  view.render_inc = 5
 }

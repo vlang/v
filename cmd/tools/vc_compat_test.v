@@ -190,3 +190,43 @@ fn test_vc_compat_links_libraries_after_the_streamed_source() ! {
 	ran := os.exec([executable])
 	assert ran.exit_code == 0, ran.output
 }
+
+fn test_vc_compat_bridges_only_snapshots_without_native_uint() ! {
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_uint_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot with spaces.c')
+	output := os.join_path(root, 'filtered.c')
+	// C qualifier metadata already mentioned uint in old snapshots. It does
+	// not mean the compiler recognizes it as a V primitive.
+	legacy := 'u32 flat__source_type_usize;\nu32 types__qualify_source_type_uint;\n_SL(name, "usize", 5);\nconst string casts[] = {(string){"usize", 5, 1}};\nu8* malloc_noscan(ptrdiff_t n);\n_SL(alloc, "u8* malloc_noscan(ptrdiff_t n);", 31);\n_SL(copy, "void* memdup(void* src, ptrdiff_t sz);", 38);\n_SL(align, "void* memdup_align(void* src, ptrdiff_t sz, ptrdiff_t alignment);", 65);\nc__FlatGen__writeln(g, alloc);\nc__FlatGen__writeln(g, copy);\nc__FlatGen__writeln(g, align);\nconst char* embedded = "\\\"usize\\\", 5";\n'
+	bytes := [u8(0xff), u8(0xfe)].bytestr()
+	for declarations in ['', 'u32 flat__source_type_uint;\n'] {
+		original := declarations + legacy + 'const char* binary = "${bytes}";\n'
+		os.write_file(source, original)!
+		mut filtered := ''
+		$if windows {
+			checked := os.exec(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+				os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat_uint.ps1'), '-Source', source,
+				'-Destination', output])
+			assert checked.exit_code == 0, checked.output
+			filtered = os.read_file(output)!
+		} $else {
+			_ = output
+			checked := os.exec(['env', 'LC_ALL=C', 'awk', '-f',
+				os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.awk'), source])
+			assert checked.exit_code == 0, checked.output
+			filtered = checked.output
+		}
+		expected := if declarations == '' {
+			original.replace('"usize", 5', '"uint", 4')
+				.replace('c__FlatGen__writeln(g, alloc);', 'c__FlatGen__writeln(g, string__replace(alloc, (string){(u8*)"ptrdiff_t", 9, 1}, g->int_ct));')
+				.replace('c__FlatGen__writeln(g, copy);', 'c__FlatGen__writeln(g, string__replace(copy, (string){(u8*)"ptrdiff_t", 9, 1}, g->int_ct));')
+				.replace('c__FlatGen__writeln(g, align);', 'c__FlatGen__writeln(g, string__replace(align, (string){(u8*)"ptrdiff_t", 9, 1}, g->int_ct));')
+		} else {
+			original
+		}
+		assert filtered == expected
+		assert os.read_file(source)! == original
+	}
+}

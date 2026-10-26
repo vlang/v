@@ -50,11 +50,11 @@ fn test_fastc_pointer_type_sizeof_and_empty_array_use_c_type_syntax() {
 	c_source := generate('module main
 struct CachedName { value int }
 struct array { len int }
-fn consume(size isize) {}
+fn consume(size int) {}
 fn main() {
 	ar := array{}
-	size := isize(sizeof(&CachedName))
-	consume(isize(3) * isize(sizeof(&CachedName)))
+	size := int(sizeof(&CachedName))
+	consume(int(3) * int(sizeof(&CachedName)))
 	assert sizeof(&CachedName) == sizeof(voidptr)
 	println(1 + sizeof(&CachedName))
 	println(ar.len)
@@ -74,9 +74,9 @@ fn test_fastc_nested_pointer_type_sizeof_executes() {
 		os.rmdir_all(root) or {}
 	}
 	os.write_file(os.join_path(root, 'main.v'), 'struct CachedName { value int }
-fn multiplied_size(size isize) isize { return size }
+fn multiplied_size(size int) int { return size }
 fn main() {
-	assert multiplied_size(isize(3) * isize(sizeof(&CachedName))) == isize(3 * sizeof(voidptr))
+	assert multiplied_size(int(3) * int(sizeof(&CachedName))) == int(3 * sizeof(voidptr))
 	assert sizeof(&CachedName) == sizeof(voidptr)
 	size := 1 + sizeof(&CachedName)
 	assert size == 1 + sizeof(voidptr)

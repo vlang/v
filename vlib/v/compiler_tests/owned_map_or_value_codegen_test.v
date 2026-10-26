@@ -69,9 +69,9 @@ fn byte_copy(entries &map[string][]u8) []u8 {
 
 fn move_indexed() string {
  mut entries := {"found": "moved".to_owned()}
- address := unsafe { usize(entries["found"].str) }
+ address := unsafe { uint(entries["found"].str) }
  item := entries["found"] or { "fallback".to_owned() }
- assert unsafe { usize(item.str) } == address
+ assert unsafe { uint(item.str) } == address
  return item
 }
 
@@ -87,6 +87,49 @@ fn optional_first(entries &map[string]?[]u8) u8 {
 fn byte_fallback() []u8 {
  fallbacks++
  return [u8(9)]
+}
+
+struct Bytes {
+mut:
+ value []u8
+}
+
+fn verify_cleanup_scopes() {
+ before := drops.len
+ {
+  mut values := {"found": [u8(1)]}
+  values["found"] = [u8(2)]
+  assert values["found"][0] == 2
+ }
+ {
+  entry := fresh("after value replacement".repeat(1))
+  assert entry.text == "after value replacement"
+ }
+ assert drops.len == before + 1
+ {
+  mut values := map[[1]string][]u8{}
+  name := ["found".to_owned()]!
+  values[name] = [u8(1)]
+  values[["found".to_owned()]!] = [u8(2)]
+  assert values[["found"]!][0] == 2
+ }
+ {
+  entry := fresh("after key cleanup".repeat(1))
+  assert entry.text == "after key cleanup"
+ }
+ assert drops.len == before + 2
+ {
+  mut values := map[[1]string]Bytes{}
+  values[["found".to_owned()]!].value = [u8(1)]
+  values[["found".to_owned()]!].value = [u8(2)]
+  assert values[["found"]!].value[0] == 2
+ }
+ {
+  entry := fresh("after field cleanup".repeat(1))
+  assert entry.text == "after field cleanup"
+ }
+ assert drops.len == before + 3
+ assert drops.len == next_id
 }
 
 fn main() {
@@ -111,7 +154,7 @@ fn main() {
   assert copied[0].text == "first"
   assert copied[1].text == "second"
   assert copied[2].text == "third"
-  assert unsafe { usize(copied.data) != usize(builder.entries["found"].data) }
+  assert unsafe { uint(copied.data) != uint(builder.entries["found"].data) }
   copied[0].text = "changed".repeat(1)
   assert builder.entries["found"][0].text == "first"
   drop_owned(copied)
@@ -122,7 +165,7 @@ fn main() {
  {
   bytes := {"found": [u8(1), 2, 3]}
   mut copied := byte_copy(&bytes)
-  assert unsafe { usize(copied.data) != usize(bytes["found"].data) }
+  assert unsafe { uint(copied.data) != uint(bytes["found"].data) }
   copied[0] = 4
   assert bytes["found"] == [u8(1), 2, 3]
  }
@@ -149,6 +192,7 @@ fn main() {
   assert absent == [u8(9)]
   assert fallbacks == 3
  }
+ verify_cleanup_scopes()
  println("ok")
 }
 ')!

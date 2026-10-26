@@ -20,19 +20,19 @@ fn test_ownership_generated_result_cleanup_roots_ierror_sentinels() {
 		os.exec([v3_bin, '-ownership', '-d', 'ownership', '-no-parallel', '-macos-v3-compat-c99',
 			'run', source])
 	assert out.exit_code == 0, out.output
-	assert out.output.contains('\nok\n'), out.output
+	assert out.output.trim_space() == 'ok', out.output
 
 	os.write_file(source,
 		"fn main() {\n\t\$if ownership ? {\n\t\tprintln('ownership')\n\t} \$else {\n\t\tprintln('standard')\n\t}\n}\n")!
 	autofree := os.exec([v3_bin, '-ownership', '-autofree', '-d', 'ownership', '-no-parallel',
 		'run', source])
 	assert autofree.exit_code == 0, autofree.output
-	assert autofree.output.contains('\nownership\n'), autofree.output
+	assert autofree.output.trim_space() == 'ownership', autofree.output
 
 	os.write_file(source,
 		"fn make_value() !string {\n\terror('discarded')\n\treturn 'ok'\n}\n\nfn main() {\n\tprintln(make_value() or { panic(err) })\n}\n")!
 	discarded_error :=
 		os.exec([v3_bin, '-ownership', '-autofree', '-d', 'ownership', '-no-parallel', 'run', source])
 	assert discarded_error.exit_code == 0, discarded_error.output
-	assert discarded_error.output.contains('\nok\n'), discarded_error.output
+	assert discarded_error.output.trim_space() == 'ok', discarded_error.output
 }

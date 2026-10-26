@@ -12,6 +12,50 @@ mut:
 	base_args   []string
 }
 
+// FastcNativeCompile holds an independent native compilation in this build.
+pub struct FastcNativeCompile {
+mut:
+	worker thread os.Result
+	object string
+	active bool
+}
+
+// fastc_begin_native_compile compiles one native source while the program's
+// translation units are being compiled. The caller owns the output directory
+// until fastc_finish_native_compile or fastc_discard_native_compile returns.
+pub fn fastc_begin_native_compile(program string, base_args []string, source string, object string) FastcNativeCompile {
+	mut args := base_args.clone()
+	args << ['-c', source, '-o', object]
+	return FastcNativeCompile{
+		worker: spawn fastc_run_command(program, args)
+		object: object
+		active: true
+	}
+}
+
+// fastc_finish_native_compile returns a clean object, or none so the caller can
+// keep its original source operand and diagnostics. It waits at most once.
+pub fn fastc_finish_native_compile(mut compile FastcNativeCompile) ?string {
+	if !compile.active {
+		return none
+	}
+	result := compile.worker.wait()
+	compile.active = false
+	if result.exit_code != 0 || result.output != '' || !os.is_file(compile.object) {
+		os.rm(compile.object) or {}
+		return none
+	}
+	return compile.object
+}
+
+// fastc_discard_native_compile waits before its temporary directory is removed.
+pub fn fastc_discard_native_compile(mut compile FastcNativeCompile) {
+	if compile.active {
+		compile.worker.wait()
+		compile.active = false
+	}
+}
+
 // fastc_prepare_link initializes the in-process TinyCC linker on macOS. A compiler
 // built by TinyCC or the V3 backend uses the executable-based linker instead.
 // `final_args` are supplied here so state-affecting linker options are visible

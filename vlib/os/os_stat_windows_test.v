@@ -36,9 +36,9 @@ fn test_windows_stat_from_find_data() {
 
 	assert link_stat.get_filetype() == .regular
 	assert link_stat.nlink == 1
-	assert link_stat.mode & u32(C.S_IREAD) != 0
-	assert link_stat.mode & u32(C.S_IWRITE) != 0
-	assert link_stat.mode & u32(C.S_IEXEC) != 0
+	assert link_stat.mode & u32(s_irusr) != 0
+	assert link_stat.mode & u32(s_iwusr) != 0
+	assert link_stat.mode & u32(s_ixusr) != 0
 	assert link_stat.size == (u64(1) << 32) | 7
 	assert link_stat.atime == -1
 	assert link_stat.mtime == 0
@@ -46,15 +46,15 @@ fn test_windows_stat_from_find_data() {
 
 	for extension in ['EXE', 'COM', 'BAT', 'CMD'] {
 		executable_stat := windows_stat_from_find_data('dangling.${extension}', find_data)
-		assert executable_stat.mode & u32(C.S_IEXEC) != 0
+		assert executable_stat.mode & u32(s_ixusr) != 0
 	}
 
 	mut read_only_data := find_data
 	read_only_data.dw_file_attributes = u32(C.FILE_ATTRIBUTE_READONLY)
 	read_only_stat := windows_stat_from_find_data('dangling.TXT', read_only_data)
-	assert read_only_stat.mode & u32(C.S_IREAD) != 0
-	assert read_only_stat.mode & u32(C.S_IWRITE) == 0
-	assert read_only_stat.mode & u32(C.S_IEXEC) == 0
+	assert read_only_stat.mode & u32(s_irusr) != 0
+	assert read_only_stat.mode & u32(s_iwusr) == 0
+	assert read_only_stat.mode & u32(s_ixusr) == 0
 }
 
 fn test_windows_get_mode_maps_stat_bits_to_file_mode() {

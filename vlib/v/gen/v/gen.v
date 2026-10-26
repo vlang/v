@@ -1074,11 +1074,12 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.string_interp(id)
 		}
 		.ident {
+			ident_value := n.value_text()
 			if n.typ_text() == '__v3_formatter_raw' {
-				source := g.a.formatter_sources[int(id)] or { n.value }
+				source := g.a.formatter_sources[int(id)] or { ident_value }
 				g.write(source.trim_space())
 			} else {
-				g.write(if g.in_array_init && n.value == 'it' { 'index' } else { n.value })
+				g.write(if g.in_array_init && ident_value == 'it' { 'index' } else { ident_value })
 			}
 		}
 		.nil_literal {
@@ -1100,7 +1101,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			child := g.a.child(n, 0)
 			cn := g.a.node(child)
 			if n.op == .not && cn.kind == .array_literal
-				&& ((n.typ_text().len > 0 && cn.typ_text() == n.typ_text()) || int(child) in g.a.formatter_sources) {
+				&& ((n.typ != 0 && cn.typ == n.typ) || int(child) in g.a.formatter_sources) {
 				g.expr(child)
 			} else if n.op == .not {
 				g.expr(child)
@@ -1175,8 +1176,8 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		.array_init {
 			if n.typ_text().len > 0 {
 				g.write(g.type_text(n.typ_text()))
-			} else if n.value.len > 0 {
-				g.write('[]${g.type_text(n.value)}')
+			} else if n.source_value_id() != 0 {
+				g.write('[]${g.type_text(n.value_text())}')
 			}
 			g.write('{')
 			g.init_fields(g.a.children_of(n))
@@ -1205,21 +1206,21 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.or_expr(id)
 		}
 		.cast_expr {
-			g.write(g.type_text(n.value))
+			g.write(g.type_text(n.value_text()))
 			g.write('(')
 			g.expr(g.a.child(n, 0))
 			g.write(')')
 		}
 		.as_expr {
 			g.expr(g.a.child(n, 0))
-			g.write(' as ${g.type_text(n.value)}')
+			g.write(' as ${g.type_text(n.value_text())}')
 		}
 		.is_expr {
 			if g.smartcast_operand_is_mut(g.a.child(n, 0)) {
 				g.write('mut ')
 			}
 			g.expr(g.a.child(n, 0))
-			g.write(' is ${g.type_text(n.value)}')
+			g.write(' is ${g.type_text(n.value_text())}')
 		}
 		.in_expr {
 			g.expr(g.a.child(n, 0))
@@ -1256,12 +1257,12 @@ fn (mut g Gen) expr(id flat.NodeId) {
 				g.expr(g.a.child(n, 0))
 				g.write(')')
 			} else {
-				g.write('sizeof(${g.type_text(n.value)})')
+				g.write('sizeof(${g.type_text(n.value_text())})')
 			}
 		}
 		.typeof_expr {
-			if n.value.len > 0 {
-				g.write('typeof[${g.type_text(n.value)}]()')
+			if n.source_value_id() != 0 {
+				g.write('typeof[${g.type_text(n.value_text())}]()')
 			} else {
 				g.write('typeof(')
 				g.expr(g.a.child(n, 0))
@@ -1274,7 +1275,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write(')')
 		}
 		.offsetof_expr {
-			g.write('__offsetof(${n.value}, ${n.typ_text()})')
+			g.write('__offsetof(${n.value_text()}, ${n.typ_text()})')
 		}
 		.block {
 			g.block_expr(id)
@@ -1610,7 +1611,7 @@ fn (g &Gen) source_has_comma_before_trailing_comment(end int) bool {
 fn (g &Gen) array_expr_width(id flat.NodeId) int {
 	n := g.a.node(id)
 	if n.kind == .string_literal {
-		return n.value.len
+		return n.value_text().len
 	}
 	if source := g.source_span(n.pos.offset, n.pos.end) {
 		trimmed := source.trim_space()
@@ -1620,7 +1621,7 @@ fn (g &Gen) array_expr_width(id flat.NodeId) int {
 	}
 	if n.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
 		.ident, .enum_val] {
-		return n.value.len
+		return n.value_text().len
 	}
 	return 0
 }
@@ -1647,7 +1648,7 @@ fn (mut g Gen) prefix_expr(id flat.NodeId) {
 			g.write('mut ')
 		}
 		g.expr(g.a.child(cn, 0))
-		g.write(' !is ${cn.value}')
+		g.write(' !is ${cn.value_text()}')
 		return
 	}
 	if n.op == .not && cn.kind == .in_expr {
@@ -1680,12 +1681,12 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		form := n.value.all_after('__v3_formatter_isreftype:')
 		arg := g.a.node(children[1])
 		if form == 'bracket' {
-			g.write('isreftype[${g.type_text(arg.value)}]()')
+			g.write('isreftype[${g.type_text(arg.value_text())}]()')
 			return
 		}
 		g.write('isreftype(')
 		if form == 'type' {
-			g.write(g.type_text(arg.value))
+			g.write(g.type_text(arg.value_text()))
 		} else {
 			g.expr(children[1])
 		}
@@ -2070,7 +2071,7 @@ fn (g &Gen) json_decode_type_arg_is_option(call &flat.Node) bool {
 	type_arg := g.a.child_node(call, 1)
 	type_text := g.json_decode_type_arg_text(call)
 	return type_text.starts_with('?') || type_text.starts_with('!')
-		|| type_arg.value.starts_with('?') || type_arg.value.starts_with('!')
+		|| type_arg.value_text().starts_with('?') || type_arg.value_text().starts_with('!')
 }
 
 // json_decode_type_arg_text is the source of the type argument of a legacy
@@ -2149,7 +2150,7 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 		return
 	}
 	fields := g.a.children_of(n)
-	g.write(g.type_text(n.value))
+	g.write(g.type_text(n.value_text()))
 	if fields.len == 0 {
 		g.write('{')
 		if g.comments_inside(n.pos.offset, n.pos.end) {
@@ -2164,7 +2165,7 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 	first := g.a.node(fields[0])
 	if first.value.len > 0 {
 		if g.source_line(n.pos.offset) == g.source_line(n.pos.end) {
-			compact_chan := n.value.starts_with('chan ')
+			compact_chan := n.value_text().starts_with('chan ')
 			g.write(if compact_chan { '{' } else { '{ ' })
 			for i, fid in fields {
 				f := g.a.node(fid)
@@ -2363,7 +2364,7 @@ fn (mut g Gen) assoc(id flat.NodeId) {
 	children := g.a.children_of(n)
 	if g.source_line(n.pos.offset) == g.source_line(n.pos.end)
 		&& !g.comments_inside(n.pos.offset, n.pos.end) {
-		g.write('${g.type_text(n.value)}{ ...')
+		g.write('${g.type_text(n.value_text())}{ ...')
 		if children.len > 0 {
 			g.expr(children[0])
 		}
@@ -2375,7 +2376,7 @@ fn (mut g Gen) assoc(id flat.NodeId) {
 		g.write(' }')
 		return
 	}
-	g.write(g.type_text(n.value))
+	g.write(g.type_text(n.value_text()))
 	g.writeln('{')
 	g.indent++
 	if children.len > 0 {
@@ -2414,8 +2415,8 @@ fn (mut g Gen) init_fields(ids []flat.NodeId) {
 
 fn (mut g Gen) map_init(id flat.NodeId) {
 	n := g.a.node(id)
-	if n.value.len > 0 {
-		g.write(g.type_text(n.value))
+	if n.source_value_id() != 0 {
+		g.write(g.type_text(n.value_text()))
 	}
 	children := g.a.children_of(n)
 	if children.len == 0 {
@@ -2488,13 +2489,13 @@ fn (g &Gen) map_key_width(id flat.NodeId) int {
 			'.${n.value}'
 		}
 		.int_literal, .float_literal, .bool_literal, .ident {
-			n.value
+			n.value_text()
 		}
 		else {
 			if source := g.source_span(n.pos.offset, n.pos.end) {
 				source.trim_space()
 			} else {
-				n.value
+				n.value_text()
 			}
 		}
 	}
@@ -4129,8 +4130,8 @@ fn (mut g Gen) match_cond(id flat.NodeId) {
 		g.write(g.type_text(n.typ_text()))
 		return
 	}
-	if n.kind == .map_init && n.children_count == 0 && n.value.len > 0 {
-		g.write(g.type_text(n.value))
+	if n.kind == .map_init && n.children_count == 0 && n.source_value_id() != 0 {
+		g.write(g.type_text(n.value_text()))
 		return
 	}
 	g.expr(id)
@@ -4874,7 +4875,7 @@ fn (mut g Gen) sum_type_variants(variants []flat.NodeId) {
 		} else {
 			g.emit_comments_before(variant.pos.offset)
 		}
-		g.write(variant.value)
+		g.write(variant.value_text())
 		g.source_end = int_max(g.source_end, variant.pos.end)
 		g.emit_trailing_comments(variant.pos.end)
 		if i > 0 && multiline {
@@ -4887,7 +4888,7 @@ fn (g &Gen) sum_type_is_multiline(variants []flat.NodeId) bool {
 	mut projected := g.output_line_len() + 3
 	for i, vid in variants {
 		variant := g.a.node(vid)
-		projected += variant.value.len
+		projected += variant.value_text().len
 		if i > 0 {
 			projected += 3
 			previous := g.a.node(variants[i - 1])

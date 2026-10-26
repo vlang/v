@@ -186,7 +186,7 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 		// A concrete voidptr local keeps the existing safe reset support.
 		if tokens.len == 2 && tokens[0].tok == .name {
 			local := g.locals[tokens[0].lit] or { return false }
-			return !g.in_generic_placeholder && g.underlying_alias_type(local.typ) == flat.source_type_voidptr && !g.fn_alias_return_types.contains(local.typ_text()) && local.fn_return_type_text() == ''
+			return !g.in_generic_placeholder && g.underlying_alias_type(local.typ) == flat.source_type_voidptr && !g.fn_alias_return_types.contains(local.typ_text()) && local.fn_return_type == 0
 		}
 		// `receiver.field =`
 		if tokens.len < 4 || tokens.last().tok != .assign {
@@ -593,22 +593,22 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 
 fn (g &Parser) local_is_pointer(name string) bool {
 	local := g.locals[name] or { return false }
-	return local.typ_text().ends_with('*')
+	return flat.source_type_query(local.typ).has(.c_pointer_suffix)
 }
 
 fn (g &Parser) is_enum_type_name(name string) bool {
 	type_key := g.resolve_declared_type_key(name) or { return false }
-	return g.underlying_enum_type_key(type_key) != none
+	return g.underlying_enum_type_key(flat.source_type_id(type_key)) != none
 }
 
-fn (g &Parser) underlying_enum_type_key(type_key string) ?string {
-	if type_key == '' {
+fn (g &Parser) underlying_enum_type_key(type_key u32) ?u32 {
+	if type_key == 0 {
 		return none
 	}
-	resolved_type := g.underlying_alias_type(flat.source_type_id(fastc_c_declared_type_name(type_key)))
+	resolved_type := g.underlying_alias_type(flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(type_key))))
 	resolved_key := g.semantic_type_key(resolved_type)
 	return if g.declared_kinds[flat.source_type_name(resolved_key)] == .enum_ {
-		flat.source_type_name(resolved_key)
+		resolved_key
 	} else {
 		none
 	}
@@ -616,8 +616,12 @@ fn (g &Parser) underlying_enum_type_key(type_key string) ?string {
 
 fn (g &Parser) flag_enum_type_key(c_type u32) ?string {
 	type_key := g.semantic_type_key(c_type)
-	enum_key := g.underlying_enum_type_key(flat.source_type_name(type_key)) or { return none }
-	return if g.enum_flags[enum_key] { enum_key } else { none }
+	enum_key := g.underlying_enum_type_key(type_key) or { return none }
+	return if g.enum_flags[flat.source_type_name(enum_key)] {
+		flat.source_type_name(enum_key)
+	} else {
+		none
+	}
 }
 
 fn (g &Parser) enum_member_owner_type_key(tokens []FastcExpressionToken, owner_index int) ?string {
@@ -633,7 +637,7 @@ fn (g &Parser) enum_member_owner_type_key(tokens []FastcExpressionToken, owner_i
 	} else {
 		type_key = g.resolve_declared_type_key(tokens[owner_index].lit) or { return none }
 	}
-	_ = g.underlying_enum_type_key(type_key) or { return none }
+	_ = g.underlying_enum_type_key(flat.source_type_id(type_key)) or { return none }
 	return type_key
 }
 
@@ -644,13 +648,14 @@ fn (g &Parser) render_enum_alias_member_references(tokens []FastcExpressionToken
 	mut rendered := source
 	for owner_index in 0 .. tokens.len - 2 {
 		type_key := g.enum_member_owner_type_key(tokens, owner_index) or { continue }
-		enum_type_key := g.underlying_enum_type_key(type_key) or { continue }
-		if enum_type_key == type_key {
+		type_key_id := flat.source_type_id(type_key)
+		enum_type_key := g.underlying_enum_type_key(type_key_id) or { continue }
+		if enum_type_key == type_key_id {
 			continue
 		}
 		member := tokens[owner_index + 2].lit
 		alias_symbol := '${fastc_c_declared_type_name(type_key)}__${member}'
-		enum_symbol := '${fastc_c_declared_type_name(enum_type_key)}__${member}'
+		enum_symbol := '${fastc_c_declared_type_name(flat.source_type_name(enum_type_key))}__${member}'
 		rendered = rendered.replace(alias_symbol, enum_symbol)
 	}
 	return rendered
@@ -689,7 +694,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 		is_static_call := g.static_function_key_for_call(tokens, i) != none
 		mut is_method_call := false
 		mut has_method_receiver := false
-		mut receiver_type := ''
+		mut receiver_type := u32(0)
 		// `mod.func()` is a module-qualified call, NOT a method — but only when `mod` is a
 		// bare module reference. `recv.mod.method()` (a FIELD named like an imported module,
 		// e.g. `c.ssl.set_read_timeout()` where `ssl` is both a field and `import net.ssl`)
@@ -698,10 +703,10 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 		name_is_module_ref := i >= 2 && tokens[i - 2].tok == .name && (tokens[i - 2].lit in g.imports || tokens[i - 2].lit == 'C') && (i < 3 || tokens[i - 3].tok != .dot)
 		if !is_static_call && i >= 2 && tokens[i - 1].tok == .dot && !name_is_module_ref {
 			receiver_start := fastc_method_receiver_start(tokens, i - 1)
-			receiver_type = flat.source_type_name(g.infer_expression_type(tokens[receiver_start..i - 1])!)
-			if receiver_type != '' {
+			receiver_type = g.infer_expression_type(tokens[receiver_start..i - 1])!
+			if receiver_type != 0 {
 				has_method_receiver = true
-				function_key, _ = g.resolve_method(flat.source_type_id(receiver_type), name)
+				function_key, _ = g.resolve_method(receiver_type, name)
 				is_method_call = function_key in g.functions
 				if !is_method_call && function_key in g.mono_functions {
 					// An on-demand monomorphized generic method (queued during rendering): its
@@ -801,7 +806,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 					g.validate_mutable_argument_fields(argument, name, argument_index)!
 				}
 			}
-		} else if has_method_receiver && name in ['has', 'set', 'clear'] && call_args.len == 1 && g.flag_enum_type_key(flat.source_type_id(receiver_type)) != none {
+		} else if has_method_receiver && name in ['has', 'set', 'clear'] && call_args.len == 1 && g.flag_enum_type_key(receiver_type) != none {
 			if name in ['set', 'clear'] {
 				receiver_start := fastc_method_receiver_start(tokens, i - 1)
 				g.validate_mutating_method_receiver(tokens[receiver_start..i - 1], name)!
@@ -837,11 +842,11 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 					continue
 				}
 			}
-			if g.selfhost && has_method_receiver && g.struct_member_type(flat.source_type_id(receiver_type), name) != u32(0) {
+			if g.selfhost && has_method_receiver && g.struct_member_type(receiver_type, name) != u32(0) {
 				i = call_end + 1
 				continue
 			}
-			if name == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
+			if name == 'wait' && flat.source_type_name(receiver_type).starts_with(fastc_thread_type_prefix) {
 				// `.wait()` on a spawned thread resolves through the generated
 				// join helper, not the collected function signatures.
 				if call_args.len != 0 {
@@ -855,7 +860,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				continue
 			}
 			if g.selfhost && has_method_receiver {
-				return g.unsupported('unresolved method call `${flat.source_type_name(g.semantic_type_key(flat.source_type_id(receiver_type)))}.${name}` of `${receiver_type}`')
+				return g.unsupported('unresolved method call `${flat.source_type_name(g.semantic_type_key(receiver_type))}.${name}` of `${flat.source_type_name(receiver_type)}`')
 			}
 			if g.selfhost {
 				return g.unsupported('unresolved function call `${name}` tokens `${fastc_expression_tokens_debug(tokens)}`')
@@ -872,7 +877,7 @@ fn (g &Parser) ordinary_print_type_is_supported(typ u32) bool {
 	if underlying_type in [flat.source_type_string, flat.source_type_bool] || fastc_is_integer_type(underlying_type) {
 		return true
 	}
-	return g.underlying_enum_type_key(flat.source_type_name(g.semantic_type_key(normalized_type))) != none
+	return g.underlying_enum_type_key(g.semantic_type_key(normalized_type)) != none
 }
 
 fn fastc_argument_is_marked_mut(argument []FastcExpressionToken) bool {
@@ -901,7 +906,7 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 	if receiver_type_source_id := g.infer_expression_type(receiver) {
 		receiver_type := receiver_type_source_id
 
-		if flat.source_type_name(receiver_type).ends_with('*') {
+		if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 			return
 		}
 	}
@@ -1156,7 +1161,26 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 	}
 }
 
+// struct_direct_member_type caches only finalized file-generation descriptors.
+// Source and synthetic field names outlive this file worker's heap memo.
 fn (g &Parser) struct_direct_member_type(receiver_type_id u32, field_name string) u32 {
+	if isnil(g.type_descriptor_memo) || receiver_type_id == 0 {
+		return g.struct_direct_member_type_uncached(receiver_type_id, field_name)
+	}
+	mut memo := g.type_descriptor_memo
+	if memo.direct_member_known && memo.direct_member_receiver == receiver_type_id
+		&& memo.direct_member_field == field_name {
+		return memo.direct_member_type
+	}
+	resolved := g.struct_direct_member_type_uncached(receiver_type_id, field_name)
+	memo.direct_member_receiver = receiver_type_id
+	memo.direct_member_field = field_name
+	memo.direct_member_type = resolved
+	memo.direct_member_known = true
+	return resolved
+}
+
+fn (g &Parser) struct_direct_member_type_uncached(receiver_type_id u32, field_name string) u32 {
 	if field_name == 'len' && g.is_map_type(receiver_type_id) {
 		return flat.source_type_int
 	}
@@ -1324,7 +1348,7 @@ fn (g &Parser) dot_piece(previous token.Token, previous_lit string, module_separ
 // Returns '' when the field is a direct member or cannot be resolved.
 fn (g &Parser) embedded_dot_piece_for_local(receiver_name string) string {
 	local := g.locals[receiver_name] or { return '' }
-	if local.typ_text() == '' {
+	if local.typ == 0 {
 		return ''
 	}
 	mut look := g.s

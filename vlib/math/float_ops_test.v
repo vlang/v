@@ -41,6 +41,78 @@ fn test_fma_and_floor_mod() {
 	assert floor_mod(1.0, 0.0) != floor_mod(1.0, 0.0)
 }
 
+fn test_floor_div() {
+	// Floored quotient, the counterpart of floor_mod (issue #31082).
+	assert floor_div(-10.0, 7.0) == -2.0
+	assert floor_div(10.0, -7.0) == -2.0
+	assert floor_div(-10.0, -7.0) == 1.0
+	assert floor_div(10.0, 7.0) == 1.0
+	assert floor_div(6.0, 3.0) == 2.0
+	assert floor_div(-6.0, 3.0) == -2.0
+	assert floor_div(5.5, 2.0) == 2.0
+	assert floor_div(-5.5, 2.0) == -3.0
+	// Quotient/remainder invariant: q * y + r == x.
+	for x in [-10.0, -5.5, -1.0, 0.0, 1.0, 5.5, 10.0] {
+		for y in [-7.0, -3.0, -1.5, 1.5, 3.0, 7.0] {
+			q := floor_div(x, y)
+			r := floor_mod(x, y)
+			assert q * y + r == x
+			if y > 0 {
+				assert q * y <= x
+			} else {
+				assert q * y >= x
+			}
+		}
+	}
+	// Zero divisor and NaN propagate as NaN, like floor_mod.
+	assert floor_div(1.0, 0.0) != floor_div(1.0, 0.0)
+	assert is_nan(floor_div(1.0, 0.0))
+	assert is_nan(floor_div(nan(), 1.0))
+	assert is_nan(floor_div(1.0, nan()))
+	// Integer dividends promote to f64, including magnitudes above max i64,
+	// and fractional float divisors work (astronomy/signal-processing case).
+	a := -10
+	assert floor_div(a, 7.0) == -2.0
+	assert floor_mod(a, 7.0) == 4.0
+	assert floor_div(10.0, 2.5) == 4.0
+	assert floor_mod(10.0, 2.5) == 0.0
+	assert floor_div(-10.0, 2.5) == -4.0
+	big := 1e19
+	assert floor_div(big, 7.0) * 7.0 + floor_mod(big, 7.0) == big
+	// Divisors without an exact binary representation, like 0.3, pi and e
+	// (also suggested in the discussion of PR #31083): binary rounding makes
+	// the true quotient shift slightly off an integer boundary, which must
+	// not flip the floored result to the neighbouring integer.
+	y3 := 0.3
+	assert floor_div(1.0, y3) == 3.0 // 1.0 / 0.3 is near 3.33, never near 4.0
+	assert approx(floor_mod(1.0, y3), 0.1)
+	assert floor_div(-1.0, y3) == -4.0 // -3.33 floored toward -inf
+	assert approx(floor_mod(-1.0, y3), 0.2)
+	assert floor_div(pi, y3) == 10.0 // pi / 0.3 is near 10.47
+	assert approx(floor_mod(pi, y3), pi - 3.0)
+	assert floor_div(2.0, pi) == 0.0
+	assert floor_mod(2.0, pi) == 2.0
+	assert floor_div(-2.0, pi) == -1.0
+	assert approx(floor_mod(-2.0, pi), pi - 2.0)
+	assert floor_div(10.0, e) == 3.0 // 10.0 / e is near 3.68
+	assert approx(floor_mod(10.0, e), 10.0 - 3.0 * e)
+	assert floor_div(-10.0, e) == -4.0 // -3.68 floored toward -inf
+	assert approx(floor_mod(-10.0, e), 4.0 * e - 10.0)
+	// The invariant still holds for these divisors, allowing for f64 rounding.
+	for x in [-10.0, -1.0, 1.0, 10.0] {
+		for y in [y3, pi, e] {
+			q := floor_div(x, y)
+			r := floor_mod(x, y)
+			assert approx(q * y + r, x)
+			if y > 0 {
+				assert q * y <= x
+			} else {
+				assert q * y >= x
+			}
+		}
+	}
+}
+
 fn test_angle_conversion() {
 	assert approx(to_degrees(pi), 180.0)
 	assert approx(to_radians(180.0), pi)
@@ -95,7 +167,7 @@ fn test_ieee_remainder_large_quotients_and_zero() {
 fn test_fma_single_rounding_and_finite_overflow_cancellation() {
 	x := 1.0 + exp2(-27.0)
 	y := 1.0 - exp2(-27.0)
-	if @BACKEND == 'c' {
+	$if @BACKEND == 'c' {
 		assert fma(x, y, -1.0) == -exp2(-54.0)
 		assert fma(max_f64, 2.0, -max_f64) == max_f64
 	}

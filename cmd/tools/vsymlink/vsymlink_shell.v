@@ -8,7 +8,9 @@
 // slashes, which Git Bash, MSYS2 and Cygwin all accept, including the `C:/...`
 // drive form. Quote for the target POSIX shell, independently of the host's
 // command-line quoting rules.
-fn shell_shim_content(vexe_path string) string {
-	path := vexe_path.replace('\\', '/').replace("'", '\'"\'"\'')
-	return '#!/bin/sh\nexec \'${path}\' "$@"\n'
+$if windows || test {
+	fn shell_shim_content(vexe_path string) string {
+		path := vexe_path.replace('\\', '/').replace("'", '\'"\'"\'')
+		return '#!/bin/sh\nexec \'${path}\' "$@"\n'
+	}
 }

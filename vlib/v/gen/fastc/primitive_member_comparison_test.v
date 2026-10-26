@@ -161,7 +161,7 @@ fn test_fastc_primitive_member_comparison_guard_keeps_other_types_and_shapes() {
 	}
 	for index in 0 .. 5 {
 		mut tokens := fastc_member_comparison_tokens('g.offset < end')
-		tokens[index] = FastcExpressionToken{ ...tokens[index], source: 'synthetic' }
+		tokens[index] = FastcExpressionToken{ ...tokens[index], source: fastc_token_source('synthetic') }
 		assert !g.plain_primitive_member_comparison_expression(tokens)
 	}
 	mut tokens := fastc_member_comparison_tokens('g.offset < end')

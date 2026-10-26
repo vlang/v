@@ -468,9 +468,9 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	if voidptr(m.hash_fn) == unsafe { nil } {
 		unsafe {
 			p := &u64(m)
-			prev2 := (&u64(usize(m) - usize(16)))[0]
-			prev1 := (&u64(usize(m) - usize(8)))[0]
-			panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
+			prev2 := (&u64(uint(m) - uint(16)))[0]
+			prev1 := (&u64(uint(m) - uint(8)))[0]
+			panic('map.hash_fn is nil map_ptr=${uint(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${uint(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${uint(voidptr(m.hash_fn))}')
 		}
 	}
 	hash := if voidptr(m.hash_fn) == voidptr(map_hash_string) {
@@ -479,7 +479,8 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 		m.hash_fn(pkey)
 	}
 	index := hash & m.even_index
-	meta := ((hash >> m.shift) & hash_mask) | probe_inc
+	// Valid table growth cannot exhaust the 64-bit hash before the u32 index.
+	meta := ((hash >> (m.shift & 63)) & hash_mask) | probe_inc
 	return u32(index), u32(meta)
 }
 

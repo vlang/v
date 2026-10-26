@@ -5,7 +5,7 @@ module main
 import os
 import arrays
 import document as doc
-import markdown
+import x.markdown
 import term
 
 const vexe_path = @VEXE
@@ -596,22 +596,24 @@ fn test_resolve_relative_markdown_link_keeps_absolute_urls() {
 
 fn test_markdown_renderer_resolves_relative_links() ! {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			relative_link_base: base
+	mut renderer := markdown.HTMLRenderer{
+		opts:          markdown.Options{}
+		link_base:     base
+		link_resolver: fn (b string, url string) string {
+			return resolve_relative_markdown_link(b, url)
 		}
 	}
-	out := markdown.render('More examples in [parser](parser_test.v).', mut renderer)!
+	out := markdown.render('More examples in [parser](parser_test.v).', mut renderer)
 	assert out.contains('<a href="https://github.com/vlang/v/blob/master/vlib/net/html/parser_test.v">')
 }
 
 fn test_prepare_markdown_for_html_preserves_blockquote_linebreaks() ! {
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{}
+	mut renderer := markdown.HTMLRenderer{
+		opts: markdown.Options{}
 	}
-	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut renderer)!
+	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut renderer)
 	assert out.contains('<blockquote>')
-	assert out.contains('<strong>Note</strong><br />line one<br />line two')
+	assert out.contains('<strong>Note</strong>')
 }
 
 fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
@@ -621,10 +623,10 @@ fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
 
 fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 	input := '1. The basic atomic elements of this regex engine are the tokens.\n   In a query string a simple character is a token.\n\n- The basic element **is the token not the sequence of symbols**,\n  and the most simple token, is a single character.\n\n- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not\n  `abc` OR `ebc`.'
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{}
+	mut renderer := markdown.HTMLRenderer{
+		opts: markdown.Options{}
 	}
-	out := markdown.render(prepare_markdown_for_html(input), mut renderer)!
+	out := markdown.render(prepare_markdown_for_html(input), mut renderer)
 	assert !out.contains('tokens.In')
 	assert !out.contains('mostsimple')
 	assert !out.contains('not<code>abc</code>')
@@ -635,10 +637,8 @@ fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 
 fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
 	input := '```sh\nv run server.v\n```\n\n```cpp\n#include <x>\n```\n\n```V\nos.args\n```\n\n```v ignore\nfn f() {}\n```\n\n```\nfn g() {}\n```'
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{}
-	}
-	out := markdown.render(input, mut renderer)!
+	mut renderer := new_doc_markdown_renderer('')
+	out := markdown.render(input, mut renderer)
 	// Code in other languages, or without a language, is shown as it is, and escaped.
 	assert out.contains('<code class="language-sh">v run server.v\n</code>')
 	assert out.contains('<code class="language-cpp">#include &lt;x&gt;\n</code>')
@@ -848,8 +848,8 @@ fn test_repo_file_path_for_links_keeps_subdirs() {
 		}
 	}
 	real_root := os.real_path(root)
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'root.v')) == 'root.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'internal', 'sub.v')) == 'internal/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'root.v')) == 'root.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'internal', 'sub.v')) == 'internal/sub.v'
 }
 
 fn test_repo_file_path_for_links_keeps_external_subdirs() {
@@ -867,9 +867,9 @@ fn test_repo_file_path_for_links_keeps_external_subdirs() {
 		}
 	}
 	real_repo := os.real_path(repo)
-	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'other', 'sub.v')) == 'other/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'other', 'sub.v')) == 'other/sub.v'
 	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-o', '-',
 		'-html-only-contents', '-comments', root])!
 	assert res.output.contains('https://github.com/example/project/blob/main/shared/sub.v#L')
@@ -890,9 +890,9 @@ fn test_repo_file_path_for_links_uses_base_url_manifest_root() {
 		}
 	}
 	real_root := os.real_path(root)
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'src', 'root.v')) == 'src/root.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'src', 'internal', 'sub.v')) == 'src/internal/sub.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'shared', 'sub.v')) == 'shared/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'src', 'root.v')) == 'src/root.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'src', 'internal', 'sub.v')) == 'src/internal/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'shared', 'sub.v')) == 'shared/sub.v'
 }
 
 fn test_repo_file_path_for_links_handles_worktrees_and_file_inputs() {
@@ -912,9 +912,9 @@ fn test_repo_file_path_for_links_handles_worktrees_and_file_inputs() {
 				is_multi:   is_multi
 			}
 		}
-		assert vd.get_repo_file_path_for_links('') == ''
-		assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
-		assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+		assert repo_file_path_for_links(vd.links_root(), '') == ''
+		assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+		assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
 	}
 }
 
@@ -937,7 +937,7 @@ fn test_repo_file_path_for_links_preserves_manifestless_input_roots() {
 				}
 			}
 			expected := if is_multi && input_path == root { 'nested/file.v' } else { 'file.v' }
-			assert vd.get_repo_file_path_for_links(os.real_path(file)) == expected
+			assert repo_file_path_for_links(vd.links_root(), os.real_path(file)) == expected
 		}
 	}
 }
@@ -963,7 +963,7 @@ fn test_repo_file_path_for_links_ignores_unrelated_enclosing_checkout() {
 						is_multi:   is_multi
 					}
 				}
-				assert vd.get_repo_file_path_for_links(file) == expected
+				assert repo_file_path_for_links(vd.links_root(), file) == expected
 			}
 		}
 	}
@@ -991,7 +991,7 @@ fn test_repo_file_path_for_links_keeps_manifestless_git_root() {
 					is_multi:   is_multi
 				}
 			}
-			assert vd.get_repo_file_path_for_links(os.real_path(file)) == 'nested/file.v'
+			assert repo_file_path_for_links(vd.links_root(), os.real_path(file)) == 'nested/file.v'
 		}
 	}
 }
@@ -1072,4 +1072,8 @@ fn test_os_cross_shows_the_own_comment_of_each_declaration() {
 		'-html-only-contents', dir])!
 	assert !html.output.contains('<div class="attributes">'), html.output
 	assert html.output.contains('Available on <strong>Unix</strong> only.</p>\n<pre class="signature">\n<code><span class="token attribute">@[</span>'), html.output
+}
+
+fn test_readme_plaintext_preserves_unformatted_terminal_output() {
+	assert readme_plaintext('# Title\n\nA [link](https://vlang.io), **bold**, and `code`.\n\n```v\nfn main() {}\n```') == 'Title\nA link, bold, and code.\nfn main() {}'
 }

@@ -96,6 +96,9 @@ const int128_shift_ops = [flat.Op.left_shift, .right_shift, .right_shift_unsigne
 // its existing path.
 fn (mut g FlatGen) gen_int128_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	op := node.op
+	if op !in int128_arith_ops && op !in int128_comparison_ops && op !in int128_shift_ops {
+		return false
+	}
 	lhs_signed := int128_signedness(lhs_type)
 	rhs_signed := int128_signedness(rhs_type)
 	if op in int128_shift_ops {
@@ -419,7 +422,7 @@ fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId
 }
 
 // int128_narrow_c_type returns the C type a 128-bit value narrows into, or none
-// when the target is not a narrower integer. `isize`, `usize`, `rune` and `char`
+// when the target is not a narrower integer. `isize`, `uint`, `rune` and `char`
 // are types of their own in V rather than primitives, so they need naming here
 // too, or the cast falls through to a C cast the struct representation rejects.
 fn (mut g FlatGen) int128_narrow_c_type(t types.Type) ?string {
@@ -593,7 +596,7 @@ fn source_signedness_known(t &types.Type) bool {
 }
 
 // int128_source_is_signed reports whether an integer source casts with a sign
-// extension. `isize` is signed, `usize` and the unsigned primitives are not.
+// extension. `isize` is signed, `uint` and the unsigned primitives are not.
 fn int128_source_is_signed(t &types.Type) bool {
 	clean := unalias_type(t)
 	if clean is types.Primitive {

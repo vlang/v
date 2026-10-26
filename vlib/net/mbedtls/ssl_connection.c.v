@@ -2,6 +2,7 @@ module mbedtls
 
 import io
 import net
+import os
 import sync
 import time
 
@@ -335,7 +336,7 @@ fn (mut l SSLListener) init() ! {
 	// See the matching client-side logic in SSLConn.init for lifetime notes.
 	if l.config.alpn_protocols.len > 0 {
 		n := l.config.alpn_protocols.len
-		l.alpn_list = unsafe { &&char(C.malloc(isize((n + 1) * int(sizeof(voidptr))))) }
+		l.alpn_list = unsafe { &&char(C.malloc(int((n + 1) * int(sizeof(voidptr))))) }
 		if l.alpn_list == unsafe { nil } {
 			l.shutdown() or {}
 			return error('net.mbedtls SSLListener.init, failed to allocate ALPN list')
@@ -366,7 +367,7 @@ fn (mut l SSLListener) init() ! {
 	}
 }
 
-fn tls_listener_rng(p_rng voidptr, output &u8, output_len usize) int {
+fn tls_listener_rng(p_rng voidptr, output &u8, output_len uint) int {
 	mut listener := unsafe { &SSLListener(p_rng) }
 	listener.rng_mutex.lock()
 	defer {
@@ -380,7 +381,7 @@ fn (mut l SSLListener) init_sni(get_cert_callback fn (mut SSLListener, string) !
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
-	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, mut l] (p_info voidptr, ssl &C.mbedtls_ssl_context, name &u8, lng usize) int {
+	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, mut l] (p_info voidptr, ssl &C.mbedtls_ssl_context, name &u8, lng uint) int {
 		host := unsafe { name.vstring_literal_with_len(int(lng)) }
 		if certs := get_cert_callback(mut l, host) {
 			return C.mbedtls_ssl_set_hs_own_cert(ssl, &certs.client_cert, &certs.client_key)
@@ -417,7 +418,7 @@ fn (mut l SSLListener) accept_tcp_connection() !&SSLConn {
 		opened:       true
 	}
 	ip := [16]u8{}
-	iplen := usize(0)
+	iplen := uint(0)
 
 	ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, &ip, 16, &iplen)
 	if ret != 0 {
@@ -664,6 +665,29 @@ pub fn (s &SSLConn) negotiated_alpn() string {
 	return unsafe { cstring_to_vstring(p) }
 }
 
+const system_ca_files = [
+	'/etc/ssl/certs/ca-certificates.crt', // Debian, Ubuntu, Arch, Gentoo
+	'/etc/pki/tls/certs/ca-bundle.crt', // Fedora, RHEL
+	'/etc/ssl/ca-bundle.pem', // openSUSE
+	'/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem', // CentOS, RHEL 7
+	'/etc/ssl/cert.pem', // Alpine, macOS, OpenBSD, FreeBSD
+	'/usr/local/etc/ssl/cert.pem', // FreeBSD with ca_root_nss
+]
+
+// system_ca_file returns $SSL_CERT_FILE, or the first system CA bundle that exists, or ''.
+fn system_ca_file() string {
+	env_file := os.getenv('SSL_CERT_FILE')
+	if env_file != '' && os.is_file(env_file) {
+		return env_file
+	}
+	for f in system_ca_files {
+		if os.is_file(f) {
+			return f
+		}
+	}
+	return ''
+}
+
 // connect to server using mbedtls
 fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
@@ -697,7 +721,7 @@ fn (mut s SSLConn) init() ! {
 	// is allocated here and freed in shutdown().
 	if s.config.alpn_protocols.len > 0 {
 		n := s.config.alpn_protocols.len
-		s.alpn_list = unsafe { &&char(C.malloc(isize((n + 1) * int(sizeof(voidptr))))) }
+		s.alpn_list = unsafe { &&char(C.malloc(int((n + 1) * int(sizeof(voidptr))))) }
 		if s.alpn_list == unsafe { nil } {
 			return error('net.mbedtls SSLConn.init, failed to allocate ALPN list')
 		}
@@ -713,11 +737,23 @@ fn (mut s SSLConn) init() ! {
 				ret)
 		}
 	}
-	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
+	// validate without verify uses the system trust store, like the OpenSSL backend
+	system_ca := if s.config.validate && s.config.verify == '' { system_ca_file() } else { '' }
+	if s.config.validate && s.config.verify == '' && system_ca == '' {
+		return error('net.mbedtls SSLConn.init, validate is set, but no verify was given and no system CA bundle was found')
+	}
+	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' || system_ca != '' {
 		s.certs = &SSLCerts{}
 		C.mbedtls_x509_crt_init(&s.certs.cacert)
 		C.mbedtls_x509_crt_init(&s.certs.client_cert)
 		C.mbedtls_pk_init(&s.certs.client_key)
+	}
+	if system_ca != '' {
+		ret = C.mbedtls_x509_crt_parse_file(&s.certs.cacert, &char(system_ca.str))
+		if ret < 0 {
+			return error_with_code('net.mbedtls SSLConn.init, failed to load the system CA bundle ${system_ca}, ret: ${ret}',
+				ret)
+		}
 	}
 
 	if s.config.in_memory_verification {
@@ -759,7 +795,9 @@ fn (mut s SSLConn) init() ! {
 
 	if unsafe { s.certs != nil } {
 		C.mbedtls_ssl_conf_ca_chain(&s.conf, &s.certs.cacert, 0)
-		C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+		if s.config.cert != '' || s.config.cert_key != '' {
+			C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+		}
 	}
 
 	if s.config.validate {
