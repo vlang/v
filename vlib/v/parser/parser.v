@@ -8254,7 +8254,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		return p.parse_embed_file_expr()
 	}
 	if p.tok == .name && p.lit == 'vml' {
-		return p.parse_vml_template_expr(dollar_pos)
+		return p.parse_removed_vml_expr(dollar_pos)
 	}
 	if p.tok == .name && p.lit in ['zero', 'new'] {
 		name := p.lit
@@ -8290,6 +8290,26 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.add_val_id(5, '')
+}
+
+// `$vml(path)` used to compile a VML document. VML now belongs to ui2's own
+// generator; report the removal instead of letting the call fall through to the
+// unknown comptime expression, which would silently produce an empty string.
+fn (mut p Parser) parse_removed_vml_expr(dollar_pos int) flat.NodeId {
+	p.next() // skip 'vml'
+	if p.tok == .lpar {
+		p.next()
+		p.skip_defer_result_arguments()
+	}
+	pos := p.span_to(dollar_pos)
+	p.record_diagnostic_span('`\$vml` has been removed; generate V from VML with `ui2 gen` instead',
+		pos.offset, pos.end)
+	return p.add_node(flat.Node{
+		kind:  .ident
+		value: '__v3_removed_vml'
+		typ:   flat.source_type_id('invalid')
+		pos:   pos
+	})
 }
 
 fn (mut p Parser) formatter_comptime_call_starts() bool {
