@@ -10376,6 +10376,29 @@ fn (g &FlatGen) current_param_use_cname(name string) string {
 struct LocalNameExceptions {
 	names            map[string]bool
 	global_name_bits [64]u64
+	// name_bits holds one bit per key of `names`; a clear bit proves a miss.
+	name_bits [local_name_bit_words]u64
+}
+
+const local_name_bit_words = 1024
+
+// local_name_bit returns the `name_bits` slot of `name`.
+@[direct_array_access; inline]
+fn local_name_bit(name string) u32 {
+	mut hash := u32(2166136261)
+	for i in 0 .. name.len {
+		hash = (hash ^ u32(name[i])) * 16777619
+	}
+	return hash & u32(local_name_bit_words * 64 - 1)
+}
+
+@[direct_array_access; inline]
+fn (ex &LocalNameExceptions) has(name string) bool {
+	slot := local_name_bit(name)
+	if ex.name_bits[slot >> 6] & (u64(1) << (slot & 63)) == 0 {
+		return false
+	}
+	return name in ex.names
 }
 
 fn (mut g FlatGen) precompute_local_name_exceptions() {
@@ -10397,9 +10420,15 @@ fn (mut g FlatGen) precompute_local_name_exceptions() {
 		mark_global_name_filter(mut global_name_bits, name)
 		mark_global_name_filter(mut global_name_bits, name.all_after_last('.'))
 	}
+	mut name_bits := [local_name_bit_words]u64{}
+	for name, _ in names {
+		slot := local_name_bit(name)
+		name_bits[slot >> 6] |= u64(1) << (slot & 63)
+	}
 	g.local_name_exceptions = &LocalNameExceptions{
 		names:            names
 		global_name_bits: global_name_bits
+		name_bits:        name_bits
 	}
 }
 
@@ -10440,8 +10469,9 @@ fn (g &FlatGen) ordinary_local_cname(name string, owner types.ScopeBindingOwner)
 	}
 	// Some source names acquire a reserved-word prefix. Check the emitted
 	// spelling too, so a typedef named v_abs still protects a local named abs.
-	if name in g.local_name_exceptions.names
-		|| (cname != name && cname in g.local_name_exceptions.names) {
+	// An unchanged spelling (usually the same buffer) needs no second lookup.
+	if g.local_name_exceptions.has(name) || ((cname.str != name.str || cname.len != name.len)
+		&& g.local_name_exceptions.has(cname)) {
 		return none
 	}
 	return cname
