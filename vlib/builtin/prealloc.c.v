@@ -68,8 +68,11 @@ const prealloc_block_size = 16 * 1024 * 1024
 // size of the first chunk for a scoped prealloc arena. Request-scoped arenas
 // should not force a 16MB libc allocation for every request.
 const prealloc_scope_block_size = 256 * 1024
-// Bound retained scope blocks to 2 MiB per thread, including compiler workers.
-const prealloc_recycle_cache_slots = 8
+// Bound retained scope blocks per thread, including compiler workers. Scopes
+// grow to 1M blocks; a cache that holds only two of them unmaps the rest at
+// every scope end, and the next scope faults the same pages in again.
+const prealloc_recycle_cache_slots = 16
+const prealloc_recycle_cache_max_bytes = 16 * 1024 * 1024
 
 // `malloc` has to return memory suitably aligned for any V value. Keep the
 // default at the common max alignment used by libc malloc on current targets.
@@ -552,7 +555,7 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 							}
 							cache_limit := prealloc_recycle_cache_limit()
 							if cache != 0 && cache.count < cache_limit
-								&& cache.bytes + int(size) <= int(prealloc_scope_block_size) * cache_limit {
+								&& cache.bytes + int(size) <= int(prealloc_recycle_cache_max_bytes) {
 								cache.starts[cache.count] = voidptr(mb.start)
 								cache.sizes[cache.count] = int(size)
 								cache.bytes += int(size)
