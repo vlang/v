@@ -12802,6 +12802,9 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	if action := tc.ownership.borrowed_projection_actions[int(id)] {
 		return action == .clone_value
 	}
+	if tc.ownership_generated_projection_is_borrowed(id) {
+		return true
+	}
 	clean_id := tc.ownership_unwrap_expr(id)
 	if clean_id == id || !tc.valid_node_id(clean_id) {
 		return false
@@ -12809,7 +12812,25 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	if action := tc.ownership.borrowed_projection_actions[int(clean_id)] {
 		return action == .clone_value
 	}
-	return false
+	return tc.ownership_generated_projection_is_borrowed(clean_id)
+}
+
+fn (tc &TypeChecker) ownership_generated_projection_is_borrowed(id flat.NodeId) bool {
+	return !isnil(tc.type_cache) && !isnil(tc.type_cache.borrowed_projection_clone_copies)
+		&& tc.type_cache.borrowed_projection_clone_copies.reads[int(id)]
+}
+
+// note_generated_borrowed_projection_copy preserves a checked clone decision when transform
+// copies an expression. The overlay belongs to this worker, not the shared ownership state.
+pub fn (tc &TypeChecker) note_generated_borrowed_projection_copy(source flat.NodeId, generated flat.NodeId) {
+	if isnil(tc.type_cache) || !tc.ownership_expr_is_borrowed_projection(source) {
+		return
+	}
+	mut cache := tc.type_cache
+	if isnil(cache.borrowed_projection_clone_copies) {
+		cache.borrowed_projection_clone_copies = &BorrowedProjectionCloneCopies{}
+	}
+	cache.borrowed_projection_clone_copies.reads[int(generated)] = true
 }
 
 // ownership_borrowed_projection_action records how a read from retained storage is handled.

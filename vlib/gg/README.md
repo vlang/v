@@ -13,6 +13,10 @@ With `ui_mode: true`, call `context.refresh_ui()` to request a redraw. The C bac
 requests from any thread and preserves requests made while a frame is being drawn. Drawing and
 the trailing frames after a refresh are handled by the frame thread.
 
+Text drawing temporarily selects the font shader and restores the previously selected render
+pipeline afterward, including for translucent text. On Android, resizing or rotating the window
+recomputes `Context.scale` to fit the configured design dimensions to the new framebuffer.
+
 ## Example
 
 ```v cgen

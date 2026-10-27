@@ -488,6 +488,11 @@ mut:
 	values map[u64]u32
 }
 
+struct BorrowedProjectionCloneCopies {
+mut:
+	reads map[int]bool
+}
+
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
@@ -506,20 +511,23 @@ mut:
 	// Generated nodes have no parsed parent slot. Keep validated scan results
 	// private to the worker, just like the other mutable lookup caches.
 	generated_parent_entries map[int]flat.NodeId
-	parse_enabled            bool
-	parse_hits               i64
-	parse_misses             i64
-	c_hits                   i64
-	c_misses                 i64
-	parse_entries            map[u64]ParseTypeCacheEntry
-	parse_context_file       string
-	parse_context_module     string
-	parse_context_generics   []string
-	parse_context_resolution bool
-	parse_context_hash       u64
-	parse_context_valid      bool
-	parse_last_entry         ParseTypeCacheEntry
-	parse_last_valid         bool
+	// Only ownership-enabled transforms allocate this worker-private overlay.
+	// Generated ids must never be read from the shared base cache.
+	borrowed_projection_clone_copies &BorrowedProjectionCloneCopies = unsafe { nil }
+	parse_enabled                    bool
+	parse_hits                       i64
+	parse_misses                     i64
+	c_hits                           i64
+	c_misses                         i64
+	parse_entries                    map[u64]ParseTypeCacheEntry
+	parse_context_file               string
+	parse_context_module             string
+	parse_context_generics           []string
+	parse_context_resolution         bool
+	parse_context_hash               u64
+	parse_context_valid              bool
+	parse_last_entry                 ParseTypeCacheEntry
+	parse_last_valid                 bool
 	// Source IDs are immutable across workers and allocation arenas.
 	parse_value_recent_ids     [type_cache_recent_slots]u32
 	parse_value_recent_context [type_cache_recent_slots]u64
@@ -615,6 +623,7 @@ fn new_type_cache(parse_enabled bool) &TypeCache {
 	unsafe { vmemset(cache, 0, int(sizeof(TypeCache))) }
 	cache.parse_enabled = parse_enabled
 	cache.generated_parent_entries = map[int]flat.NodeId{}
+	cache.borrowed_projection_clone_copies = unsafe { nil }
 	cache.parse_entries = map[u64]ParseTypeCacheEntry{}
 	cache.parse_context_generics = []string{}
 	cache.parse_text_id_context = []u64{}
@@ -2273,6 +2282,7 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 		tc.pre_transform_type_cache = unsafe { nil }
 		mut cache := tc.type_cache
 		cache.base = unsafe { nil }
+		cache.borrowed_projection_clone_copies = unsafe { nil }
 		cache.parse_enabled = parse_enabled
 		cache.checked_fn_name_node = -1
 		cache.checked_fn_name_source = ''

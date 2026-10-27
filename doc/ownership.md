@@ -81,6 +81,7 @@ Map `clear()` and `free()` release owned entries through their stored values, in
 when the map is accessed through a pointer or a generic pointer parameter.
 String map keys retain their cloned storage until the map releases it. Boxed values use the
 selected allocator during ownership cleanup, including VGC.
+Map runtime callbacks release string keys, including nested fixed arrays and aliases, exactly once.
 
 ## Creating owned values
 
@@ -116,9 +117,10 @@ by value are copied so they can outlive the source.
 Reassigning a borrowed view releases its loan without freeing the source bytes.
 
 Dynamic and fixed array `init:` expressions clone borrowed owning projections for each element,
-including projections indexed by `index`. Each element gets independent storage and leaves the
-source usable. Fresh returned values are evaluated once per element without an additional clone;
-a zero-length initializer does not evaluate its expression.
+including projections indexed by `index` and those inside struct or array literals and conditional
+branches. Each element gets independent storage and leaves the source usable. Fresh returned values
+are evaluated once per element without an additional clone; a zero-length initializer does not
+evaluate its expression.
 
 Standard string methods, numeric parsers, path inspection and joining functions, and
 string-builder writes borrow string arguments that cannot escape through the return value.
