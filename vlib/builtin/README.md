@@ -6,8 +6,10 @@ It implements the builtin V types `array`, `string`, `map`.
 `int` and `uint` use the pointer width of the target. The old `isize` and `usize`
 names are deprecated in favor of `int` and `uint`. For signed pointer-width C
 parameters and return values, `C.ptrdiff_t` aliases `int` and preserves the C ABI.
-Generated C defines the target-independent names `__v_int` and `__v_uint` for C code
-in the same translation unit, and keeps the `isize`/`usize` C typedefs.
+Generated C defines the target-independent names `__v_int` and `__v_uint`, and keeps
+the `isize`/`usize` C typedefs, for C code included after the compiler's preamble.
+Use ordinary quoted `#include` or `#insert` directives for headers using these names;
+`#preinclude` and angle-bracket headers are emitted before the names are defined.
 With bounds checking enabled, `first()` and `last()` on an empty dynamic array panic with
 `array.first: array is empty` and `array.last: array is empty`, respectively.
 This also applies when writing through the returned element, such as `cells.last().field = value`.
