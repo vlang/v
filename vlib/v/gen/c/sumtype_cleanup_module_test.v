@@ -56,6 +56,7 @@ static void string__free(string* value) {
  string_frees++; value->str = NULL; value->len = 0;
 }
 static void release_box(void* value) { box_frees++; free(value); }
+static void v_free(void* value) { release_box(value); }
 #define free release_box
 ${helpers}
 #undef free

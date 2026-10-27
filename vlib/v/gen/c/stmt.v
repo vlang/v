@@ -1136,16 +1136,13 @@ fn (g &FlatGen) ownership_free_call(ptr string) string {
 	if 'prealloc' in g.compile_defines {
 		return 'v_free(${ptr});'
 	}
-	if g.detached_spawn_drop {
-		return '__v_thread_free(${ptr});'
-	}
 	if 'vgc' in g.compile_defines {
 		return 'v_free(${ptr});'
 	}
 	if 'gcboehm' in g.compile_defines {
 		return 'v_gc_free(${ptr});'
 	}
-	return 'free(${ptr});'
+	return 'v_free(${ptr});'
 }
 
 // ownership_sum_pointer_free_call matches the V allocation of owned pointer variants.
