@@ -3244,7 +3244,8 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
 			|| (is_concrete_return_error(err) && tc.operand_is_plain(err.node)
-				&& !tc.value_is_type_tested(err.node, fn_idx))
+				&& !tc.value_is_type_tested(err.node, fn_idx)
+				&& tc.locals_have_plain_initializers(err.node, fn_idx, 0))
 			|| (is_concrete_call_arg_error(err) && tc.call_arg_is_judged_in_clone(err, fn_idx))
 			|| (is_concrete_if_guard_error(err.msg) && tc.operand_is_plain(err.node)
 				&& !tc.concrete_guard_options[err.node])
@@ -3323,8 +3324,9 @@ fn is_concrete_operator_error(msg string) bool {
 // operand_is_plain) is reported for an instance: a clone types those with its
 // concrete types, where the result of a call or a literal of a type parameter
 // can still have the type of the open body (`return f()` in a closure, or
-// `return T{}` for a map alias). A `voidptr` in it is a type the clone did not
-// resolve.
+// `return T{}` for a map alias). Returned locals must also have plain
+// initializers (see locals_have_plain_initializers): the clone types a local fn
+// literal as its return type. A `voidptr` is a type the clone did not resolve.
 fn is_concrete_return_error(err TypeError) bool {
 	return err.kind == .return_mismatch && err.msg.starts_with('cannot use `')
 		&& err.msg.ends_with('` in return argument') && !err.msg.contains('`voidptr`')
