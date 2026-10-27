@@ -10631,24 +10631,27 @@ fn (tc &TypeChecker) type_compatible_unequal(actual &Type, expected &Type) bool 
 		return true
 	}
 	if flat.source_type_shape(actual_name_comparison_type_id).has(.dotted)
-		&& flat.source_type_shape(expected_name_comparison_type_id).has(.dotted)
-		&& flat.source_type_syntax(actual_name_comparison_type_id).unqualified == flat.source_type_syntax(expected_name_comparison_type_id).unqualified
-		&& flat.source_type_syntax(actual_name_comparison_type_id).qualified_modifiers == flat.source_type_syntax(expected_name_comparison_type_id).qualified_modifiers {
-		actual_prefix := flat.source_type_name(flat.source_type_syntax(actual_name_comparison_type_id).qualifier)
-		expected_prefix := flat.source_type_name(flat.source_type_syntax(expected_name_comparison_type_id).qualifier)
-		actual_module := tc.resolve_import_alias(actual_prefix) or { actual_prefix }
-		expected_module := tc.resolve_import_alias(expected_prefix) or { expected_prefix }
-		if actual_module == expected_module {
-			return true
-		}
-		if actual_canonical_source_id := tc.canonical_qualified_type_name(actual_name_comparison_type_id) {
-			actual_canonical_comparison_type_id := actual_canonical_source_id
+		&& flat.source_type_shape(expected_name_comparison_type_id).has(.dotted) {
+		actual_syntax := flat.source_type_syntax(actual_name_comparison_type_id)
+		expected_syntax := flat.source_type_syntax(expected_name_comparison_type_id)
+		if actual_syntax.unqualified == expected_syntax.unqualified
+			&& actual_syntax.qualified_modifiers == expected_syntax.qualified_modifiers {
+			actual_prefix := flat.source_type_name(actual_syntax.qualifier)
+			expected_prefix := flat.source_type_name(expected_syntax.qualifier)
+			actual_module := tc.resolve_import_alias(actual_prefix) or { actual_prefix }
+			expected_module := tc.resolve_import_alias(expected_prefix) or { expected_prefix }
+			if actual_module == expected_module {
+				return true
+			}
+			if actual_canonical_source_id := tc.canonical_qualified_type_name(actual_name_comparison_type_id) {
+				actual_canonical_comparison_type_id := actual_canonical_source_id
 
-			if expected_canonical_source_id := tc.canonical_qualified_type_name(expected_name_comparison_type_id) {
-				expected_canonical_comparison_type_id := expected_canonical_source_id
+				if expected_canonical_source_id := tc.canonical_qualified_type_name(expected_name_comparison_type_id) {
+					expected_canonical_comparison_type_id := expected_canonical_source_id
 
-				if actual_canonical_comparison_type_id == expected_canonical_comparison_type_id {
-					return true
+					if actual_canonical_comparison_type_id == expected_canonical_comparison_type_id {
+						return true
+					}
 				}
 			}
 		}
@@ -12232,8 +12235,13 @@ pub fn (tc &TypeChecker) interface_metadata_name(name_id u32) u32 {
 	if name_id == 0 {
 		return name_id
 	}
-	syntax := flat.source_type_syntax(name_id)
-	lookup_id := if syntax.application_valid { syntax.application_base } else { name_id }
+	mut lookup_id := name_id
+	if flat.source_type_shape(name_id).has(.bracketed) {
+		syntax := flat.source_type_syntax(name_id)
+		if syntax.application_valid {
+			lookup_id = syntax.application_base
+		}
+	}
 	lookup := flat.source_type_name(lookup_id)
 	if lookup in tc.interface_names || lookup in tc.interface_abstract_methods
 		|| tc.interface_embeds.contains(lookup) || lookup in tc.interface_fields {
@@ -12260,10 +12268,11 @@ pub fn (tc &TypeChecker) interface_metadata_name(name_id u32) u32 {
 	// array, map, option, pointer or function type the text after the last `.` is
 	// an element or parameter type (`[]bar.MyData` -> `MyData`), which must not
 	// match a same-named interface of another module.
-	if !flat.source_type_syntax(lookup_id).named_type {
+	lookup_syntax := flat.source_type_syntax(lookup_id)
+	if !lookup_syntax.named_type {
 		return lookup_id
 	}
-	short_id := flat.source_type_syntax(lookup_id).unqualified
+	short_id := lookup_syntax.unqualified
 	mut match_id := u32(0)
 	for candidate, _ in tc.interface_names {
 		candidate_id := flat.source_type_id(candidate)
@@ -13115,10 +13124,11 @@ fn implicit_str_builtin_type_names() []u32 {
 }
 
 fn interface_impl_candidate_name(name_id u32) u32 {
-	if flat.source_type_syntax(name_id).builtin_prefix {
-		return flat.source_type_syntax(name_id).builtin_base
+	if !flat.source_type_shape(name_id).has(.dotted) {
+		return name_id
 	}
-	return name_id
+	syntax := flat.source_type_syntax(name_id)
+	return if syntax.builtin_prefix { syntax.builtin_base } else { name_id }
 }
 
 // ierror_impl_names returns source spelling IDs of concrete structs that can be boxed as `IError`.
@@ -15735,15 +15745,18 @@ fn method_type_name(t &Type) u32 {
 }
 
 fn (tc &TypeChecker) sum_base_name(sum_name_id u32) u32 {
-	syntax := flat.source_type_syntax(sum_name_id)
-	if syntax.application_valid { return syntax.application_base }
+	shape := flat.source_type_shape(sum_name_id)
+	if shape.has(.bracketed) {
+		syntax := flat.source_type_syntax(sum_name_id)
+		if syntax.application_valid { return syntax.application_base }
+	}
 	if tc.sum_types.contains(flat.source_type_name(sum_name_id)) { return sum_name_id }
 	qname_id := tc.qualify_type_name(sum_name_id)
 	if tc.sum_types.contains(flat.source_type_name(qname_id)) { return qname_id }
-	if flat.source_type_shape(sum_name_id).has(.dotted) {
+	if shape.has(.dotted) {
 		resolved_id := tc.resolve_imported_type_text(sum_name_id)
 		if tc.sum_types.contains(flat.source_type_name(resolved_id)) { return resolved_id }
-		if unique_id := tc.unique_qualified_type_name(flat.source_type_name(syntax.unqualified)) {
+		if unique_id := tc.unique_qualified_type_name(flat.source_type_name(flat.source_type_syntax(sum_name_id).unqualified)) {
 			if tc.sum_types.contains(flat.source_type_name(unique_id)) { return unique_id }
 		}
 	}
@@ -15759,6 +15772,7 @@ fn (tc &TypeChecker) sum_params_for_base(base_id u32) []string {
 }
 
 fn (tc &TypeChecker) concrete_sum_variant_name(sum_name_id u32, variant_id u32) u32 {
+	if !flat.source_type_shape(sum_name_id).has(.bracketed) { return variant_id }
 	syntax := flat.source_type_syntax(sum_name_id)
 	if !syntax.application_valid { return variant_id }
 	params := tc.sum_params_for_base(syntax.application_base)
@@ -15805,6 +15819,9 @@ fn (tc &TypeChecker) multi_return_type_names_match(a_id u32, b_id u32) bool {
 }
 
 fn (tc &TypeChecker) fixed_array_type_name_matches(a_id u32, b_id u32) bool {
+	if !flat.source_type_shape(a_id).has(.bracketed) || !flat.source_type_shape(b_id).has(.bracketed) {
+		return false
+	}
 	if !flat.source_type_syntax(a_id).checker_fixed_array_may_be || !flat.source_type_syntax(b_id).checker_fixed_array_may_be {
 		return false
 	}

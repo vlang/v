@@ -171,7 +171,7 @@ fn (t &Transformer) local_struct_type_overrides_imported_alias(authority_id u32,
 }
 
 fn map_value_starts_with_fixed_array(typ_id u32) bool {
-	clean := flat.source_type_syntax(typ_id).trimmed
+	clean := transform_trimmed_type_id(typ_id)
 	return flat.source_type_shape(clean).has(.map_type)
 		&& flat.source_type_shape(flat.source_type_syntax(clean).raw_base).has(.leading_bracket)
 }
@@ -601,7 +601,7 @@ fn (t &Transformer) concrete_node_type_name(node flat.Node) u32 {
 
 fn type_text_has_unresolved_generic_placeholder(typ_id u32) bool {
 	if !flat.source_type_query(typ_id).has(.generic_token) { return false }
-	clean := flat.source_type_syntax(typ_id).trimmed
+	clean := transform_trimmed_type_id(typ_id)
 	if clean == 0 { return false }
 	if flat.source_type_query(clean).has(.generic_fn_name) { return true }
 	shape := flat.source_type_shape(clean)
@@ -1314,9 +1314,18 @@ fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 	if type_id == 0 || isnil(t.tc) { return type_id }
 	// Canonical entries are plain builtins or declared dotted names; neither
 	// can contain an inferred witness. Reuse that proof before querying flags.
-	if !isnil(t.alias_cache) && voidptr(t.alias_cache.texts) == voidptr(t.var_type_texts)
-		&& t.alias_cache.canonical_types[int(type_id & 1023)] == type_id {
-		return type_id
+	if !isnil(t.alias_cache) && voidptr(t.alias_cache.texts) == voidptr(t.var_type_texts) {
+		c := t.alias_cache
+		recent_slot := int(type_id & 1023)
+		if c.canonical_types[recent_slot] == type_id { return type_id }
+		// Only witness-free IDs enter this cache. A matching recent entry can
+		// therefore skip the witness query, retaining every context guard.
+		if c.recent_generations[recent_slot] == c.recent_generation
+			&& c.recent_types[recent_slot] == type_id
+			&& same_transform_text(c.module, t.cur_module)
+			&& same_transform_text(c.file, t.cur_file) {
+			return c.recent_results[recent_slot]
+		}
 	}
 	if inferred_type_id(type_id) {
 		resolved := t.resolve_inferred_type_id(type_id)
@@ -1356,6 +1365,11 @@ fn (t &Transformer) normalize_type_alias_cached(type_id u32) u32 {
 		c.recent_results[recent_slot] = result_id
 		c.recent_generations[recent_slot] = c.recent_generation
 		return result_id
+	}
+	// The normal entry point resolves witnesses before reaching this helper.
+	// Its direct callers must not seed scope-dependent witness entries either.
+	if inferred_type_id(type_id) {
+		return t.normalize_type_alias_uncached(type_id)
 	}
 	// Only a miss crosses back to the source/alias spelling resolver.
 	if t.normalize_dotted_canonical_fast(type_id) {

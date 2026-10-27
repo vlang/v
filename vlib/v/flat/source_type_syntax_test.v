@@ -1299,7 +1299,7 @@ fn test_source_type_syntax_lexical_views_publish_only_on_request() {
 fn source_type_syntax_lexical_in_disposable_scope() u32 {
 	$if prealloc {
 		scope := unsafe { prealloc_scope_begin() }
-		id := source_type_id('  LazyLexicalWorker489.fn (T) []U '.clone())
+		id := source_type_id('  LazyLexicalWorker489.ns.fn (T) []U '.clone())
 		syntax := source_type_syntax(id)
 		syntax.symbols()
 		syntax.symbols_first_offsets()
@@ -1308,6 +1308,8 @@ fn source_type_syntax_lexical_in_disposable_scope() u32 {
 		syntax.dotted_parts()
 		syntax.symbol_parts()
 		syntax.symbol_is_name()
+		syntax.qualifier_prefixes()
+		syntax.qualifier_suffixes()
 		unsafe {
 			prealloc_scope_leave(scope)
 			prealloc_scope_free_after(scope)
@@ -1315,7 +1317,7 @@ fn source_type_syntax_lexical_in_disposable_scope() u32 {
 		}
 		return id
 	} $else {
-		id := source_type_id('  LazyLexicalWorker489.fn (T) []U '.clone())
+		id := source_type_id('  LazyLexicalWorker489.ns.fn (T) []U '.clone())
 		syntax := source_type_syntax(id)
 		syntax.symbols()
 		syntax.symbols_first_offsets()
@@ -1324,6 +1326,8 @@ fn source_type_syntax_lexical_in_disposable_scope() u32 {
 		syntax.dotted_parts()
 		syntax.symbol_parts()
 		syntax.symbol_is_name()
+		syntax.qualifier_prefixes()
+		syntax.qualifier_suffixes()
 		return id
 	}
 }
@@ -1343,5 +1347,95 @@ fn test_source_type_syntax_lexical_views_outlive_parallel_workers() {
 		assert syntax.symbol_is_name() == names
 		assert syntax.words() == source_type_syntax_tokens(raw, false)
 		assert syntax.legacy_generic_words() == source_type_syntax_legacy_words(raw)
+		prefixes, suffixes := source_type_syntax_expected_qualifier_parts(raw)
+		assert syntax.qualifier_prefixes() == prefixes
+		assert syntax.qualifier_suffixes() == suffixes
+	}
+}
+
+fn source_type_syntax_expected_qualifier_parts(raw string) ([]u32, []u32) {
+	mut prefixes := []u32{}
+	mut suffixes := []u32{}
+	for i, c in raw {
+		if c == `.` {
+			prefixes << source_type_id(raw[..i])
+			suffixes << source_type_id(raw[i + 1..])
+		}
+	}
+	return prefixes, suffixes
+}
+
+fn test_source_type_syntax_lazy_qualifiers_preserve_every_raw_dot() {
+	for raw in ['', 'Name', '.', '.A', 'A.', '..', 'A..B.', 'pkg.Name', 'pkg.sub.Name', ' pkg.sub.Name ',
+		'fn (pkg.A) []other.B', 'map[C.int]pkg.Name', 'é.pkg.名', 'pkg.JS.sub.C.Type',
+		'pkg.C.sub.JS.Type', '.C.Name', '.JS.Name'] {
+		id := source_type_id(raw)
+		syntax := source_type_syntax(id)
+		prefixes, suffixes := source_type_syntax_expected_qualifier_parts(raw)
+		assert syntax.qualifier_prefixes() == prefixes
+		assert syntax.qualifier_suffixes() == suffixes
+		assert syntax.qualifier_prefixes().data == syntax.qualifier_prefixes().data
+		assert syntax.qualifier_suffixes().data == syntax.qualifier_suffixes().data
+		assert syntax.first_dot_prefix == source_type_id(raw.all_before('.'))
+		assert syntax.first_dot_suffix == source_type_id(raw.all_after('.'))
+		assert syntax.qualifier == source_type_id(raw.all_before_last('.'))
+		assert syntax.unqualified == source_type_id(raw.all_after_last('.'))
+		for i, prefix in prefixes {
+			assert source_type_has_qualified_prefix(id, prefix)
+			assert source_type_qualified_suffix(id, prefix) or { panic('missing qualifier') } == suffixes[i]
+		}
+		assert !source_type_has_qualified_prefix(id, id)
+		assert source_type_qualified_suffix(id, id) == none
+	}
+	zero := SourceTypeSyntax{}
+	assert zero.qualifier_prefixes().len == 0
+	assert zero.qualifier_suffixes().len == 0
+}
+
+fn source_type_syntax_copied_qualifier_parts(id u32) ([]u32, []u32) {
+	copied := *source_type_syntax(id)
+	return copied.qualifier_prefixes(), copied.qualifier_suffixes()
+}
+
+fn test_source_type_syntax_qualifier_scalar_and_singleton_queries_remain_lazy() {
+	id := source_type_id('QualifierLazyFresh701.middle.tail')
+	syntax := source_type_syntax(id)
+	slot := source_type_syntax_lexical_slot(id, .qualifiers)
+	assert isnil(source_type_syntax_lexical_find(slot, id, .qualifiers))
+	assert source_type_has_qualified_prefix(id, syntax.first_dot_prefix)
+	assert source_type_has_qualified_prefix(id, syntax.qualifier)
+	assert source_type_qualified_suffix(id, syntax.first_dot_prefix) or { panic('missing first') } == syntax.first_dot_suffix
+	assert source_type_qualified_suffix(id, syntax.qualifier) or { panic('missing last') } == syntax.unqualified
+	assert isnil(source_type_syntax_lexical_find(slot, id, .qualifiers))
+	prefixes := syntax.qualifier_prefixes()
+	entry := source_type_syntax_lexical_find(slot, id, .qualifiers)
+	assert !isnil(entry)
+	suffixes := syntax.qualifier_suffixes()
+	assert entry == source_type_syntax_lexical_find(slot, id, .qualifiers)
+	assert prefixes.data == syntax.qualifier_prefixes().data
+	assert suffixes.data == syntax.qualifier_suffixes().data
+	for raw in ['QualifierSingletonFresh701.Name', '.QualifierSingletonFresh701',
+		'QualifierSingletonFresh701.'] {
+		single_id := source_type_id(raw)
+		single := source_type_syntax(single_id)
+		single_slot := source_type_syntax_lexical_slot(single_id, .qualifiers)
+		assert single.qualifier_prefixes() == [single.first_dot_prefix]
+		assert single.qualifier_suffixes() == [single.first_dot_suffix]
+		copied_prefixes, copied_suffixes := source_type_syntax_copied_qualifier_parts(single_id)
+		assert copied_prefixes == single.qualifier_prefixes()
+		assert copied_suffixes == single.qualifier_suffixes()
+		prefix_data := if single.first_dot_prefix == 0 {
+			voidptr(&g_source_type_syntax_zero_offset)
+		} else {
+			voidptr(&source_type_read_entry(single.first_dot_prefix).id)
+		}
+		suffix_data := if single.first_dot_suffix == 0 {
+			voidptr(&g_source_type_syntax_zero_offset)
+		} else {
+			voidptr(&source_type_read_entry(single.first_dot_suffix).id)
+		}
+		assert copied_prefixes.data == prefix_data
+		assert copied_suffixes.data == suffix_data
+		assert isnil(source_type_syntax_lexical_find(single_slot, single_id, .qualifiers))
 	}
 }

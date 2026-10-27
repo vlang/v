@@ -50,8 +50,7 @@ pub struct SourceTypeSyntax {
 	postfix_dims_span                   SourceTypeSyntaxSpan
 	function_params_span                SourceTypeSyntaxSpan
 	tuple_components_span               SourceTypeSyntaxSpan
-	qualifier_prefixes_span             SourceTypeSyntaxSpan
-	qualifier_suffixes_span             SourceTypeSyntaxSpan
+	qualifier_count                     u32
 	cgen_app_args_span                  SourceTypeSyntaxSpan
 	cgen_function_params_span           SourceTypeSyntaxSpan
 	checker_function_params_span        SourceTypeSyntaxSpan
@@ -332,6 +331,14 @@ fn source_type_syntax_singleton_ids(value &u32) []u32 {
 	}
 }
 
+// Singleton backing remains process-owned even when the syntax receiver is copied.
+@[inline]
+fn source_type_syntax_scalar_ids(id u32) []u32 {
+	if id == 0 { return source_type_syntax_singleton_ids(&g_source_type_syntax_zero_offset) }
+	entry := source_type_read_entry(id)
+	return source_type_syntax_singleton_ids(&entry.id)
+}
+
 @[inline]
 fn (syntax &SourceTypeSyntax) ids(span SourceTypeSyntaxSpan) []u32 {
 	return unsafe {
@@ -405,16 +412,24 @@ pub fn (syntax &SourceTypeSyntax) tuple_components() []u32 {
 	return syntax.ids(syntax.tuple_components_span)
 }
 
-// qualifier_prefixes returns a process-owned immutable array view.
+// qualifier_prefixes returns raw prefixes before each dot in process-owned storage.
+// A single prefix borrows its immutable source entry; longer views are cached on request.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) qualifier_prefixes() []u32 {
-	return syntax.ids(syntax.qualifier_prefixes_span)
+	if syntax.qualifier_count == 0 { return syntax.ids(SourceTypeSyntaxSpan{}) }
+	if syntax.qualifier_count == 1 { return source_type_syntax_scalar_ids(syntax.first_dot_prefix) }
+	id := unsafe { *&u32(syntax.payload) }
+	return source_type_syntax_lexical_ids(source_type_syntax_lexical(id, .qualifiers), false)
 }
 
-// qualifier_suffixes returns a process-owned immutable array view.
+// qualifier_suffixes returns raw suffixes after each dot in process-owned storage.
+// A single suffix borrows its immutable source entry; longer views are cached on request.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) qualifier_suffixes() []u32 {
-	return syntax.ids(syntax.qualifier_suffixes_span)
+	if syntax.qualifier_count == 0 { return syntax.ids(SourceTypeSyntaxSpan{}) }
+	if syntax.qualifier_count == 1 { return source_type_syntax_scalar_ids(syntax.first_dot_suffix) }
+	id := unsafe { *&u32(syntax.payload) }
+	return source_type_syntax_lexical_ids(source_type_syntax_lexical(id, .qualifiers), true)
 }
 
 // cgen_app_args returns a process-owned immutable array view.
@@ -845,8 +860,7 @@ struct SourceTypeSyntaxParsed {
 	fn_prefix                          bool
 	shared_fragment                    bool
 	pointer_raw_base                   u32
-	qualifier_prefixes                 []u32 = source_type_syntax_empty_ids()
-	qualifier_suffixes                 []u32 = source_type_syntax_empty_ids()
+	qualifier_count                    u32
 	builtin_base                       u32
 	cgen_app_base                      u32
 	cgen_app_args                      []u32 = source_type_syntax_empty_ids()
@@ -1177,6 +1191,7 @@ enum SourceTypeLexicalKind {
 	legacy_words
 	dotted
 	parts
+	qualifiers
 }
 
 struct SourceTypeLexicalEntry {
@@ -1231,6 +1246,14 @@ fn source_type_syntax_lexical_miss(slot int, id u32, kind SourceTypeLexicalKind)
 			for part in raw.split('.') { ids << source_type_syntax_child_id(id, raw, part) }
 		}
 		.parts { ids, names = source_type_syntax_symbol_parts(raw) }
+		.qualifiers {
+			for i, c in raw {
+				if c == `.` {
+					ids << source_type_syntax_child_range_id(id, raw, 0, i)
+					secondary << source_type_syntax_child_range_id(id, raw, i + 1, raw.len)
+				}
+			}
+		}
 	}
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
@@ -1717,8 +1740,6 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 		source_type_syntax_packed_ids_len(parsed.postfix_dims, id) +
 		source_type_syntax_packed_ids_len(parsed.function_params, id) +
 		source_type_syntax_packed_ids_len(parsed.tuple_components, id) +
-		source_type_syntax_packed_ids_len(parsed.qualifier_prefixes, id) +
-		source_type_syntax_packed_ids_len(parsed.qualifier_suffixes, id) +
 		source_type_syntax_packed_ids_len(parsed.cgen_app_args, id) +
 		source_type_syntax_packed_ids_len(parsed.cgen_function_params, id) +
 		source_type_syntax_packed_ids_len(parsed.checker_function_params, id) +
@@ -1822,8 +1843,7 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 				fn_prefix:                           parsed.fn_prefix
 				shared_fragment:                     parsed.shared_fragment
 				pointer_raw_base:                    parsed.pointer_raw_base
-				qualifier_prefixes_span:             source_type_syntax_owned_ids(parsed.qualifier_prefixes, mut payload)
-				qualifier_suffixes_span:             source_type_syntax_owned_ids(parsed.qualifier_suffixes, mut payload)
+				qualifier_count:                     parsed.qualifier_count
 				builtin_base:                        parsed.builtin_base
 				cgen_app_base:                       parsed.cgen_app_base
 				cgen_app_args_span:                  source_type_syntax_owned_ids(parsed.cgen_app_args, mut payload)
@@ -2610,6 +2630,15 @@ fn source_type_syntax_child_range_id(parent u32, raw string, start int, end int)
 	return source_type_id(unsafe { raw.substr_unsafe(start, end) })
 }
 
+// Compute exact raw edge views once; intermediate qualifiers remain lazy.
+fn source_type_syntax_dot_edges(id u32, raw string, first_dot int, last_dot int) (u32, u32, u32, u32) {
+	if first_dot < 0 { return id, id, id, id }
+	first_prefix := source_type_syntax_child_range_id(id, raw, 0, first_dot)
+	first_suffix := source_type_syntax_child_range_id(id, raw, first_dot + 1, raw.len)
+	if first_dot == last_dot { return first_prefix, first_suffix, first_prefix, first_suffix }
+	return first_prefix, first_suffix, source_type_syntax_child_range_id(id, raw, 0, last_dot), source_type_syntax_child_range_id(id, raw, last_dot + 1, raw.len)
+}
+
 fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 	mut simple := raw.len > 0
 	mut qualified := raw.len > 0
@@ -2733,14 +2762,17 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 	for dot_count < raw.len && raw[dot_count] == `.` { dot_count++ }
 	mut raw_pointer_depth := 0
 	for raw_pointer_depth < raw.len && raw[raw_pointer_depth] == `&` { raw_pointer_depth++ }
-	mut qualifier_prefixes := source_type_syntax_empty_ids()
-	mut qualifier_suffixes := source_type_syntax_empty_ids()
+	mut qualifier_count := u32(0)
+	first_dot = -1
+	last_dot = -1
 	for i, c in raw {
 		if c == `.` {
-			qualifier_prefixes << source_type_syntax_child_range_id(id, raw, 0, i)
-			qualifier_suffixes << source_type_syntax_child_range_id(id, raw, i + 1, raw.len)
+			if first_dot < 0 { first_dot = i }
+			last_dot = i
+			qualifier_count++
 		}
 	}
+	first_dot_prefix, first_dot_suffix, qualifier, unqualified := source_type_syntax_dot_edges(id, raw, first_dot, last_dot)
 	mut nested_option_result_marker := -1
 	for i := 0; i + 1 < raw.len; i++ {
 		if raw[i] in [`?`, `!`] && raw[i + 1] in [`?`, `!`] {
@@ -2887,16 +2919,8 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		trimmed:                            clean_id
 		base:                               base
 		args:                               args
-		unqualified:                        if qualifier_suffixes.len == 0 {
-			id
-		} else {
-			qualifier_suffixes.last()
-		}
-		qualifier:                          if qualifier_prefixes.len == 0 {
-			id
-		} else {
-			qualifier_prefixes.last()
-		}
+		unqualified:                        unqualified
+		qualifier:                          qualifier
 		generic_base:                       if bracket < 0 {
 			id
 		} else {
@@ -2971,24 +2995,15 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		}
 		named_type:                         named_type
 		c_qualified:                        raw.starts_with('C.')
-		first_dot_prefix:                   if qualifier_prefixes.len == 0 {
-			id
-		} else {
-			qualifier_prefixes[0]
-		}
-		first_dot_suffix:                   if qualifier_suffixes.len == 0 {
-			id
-		} else {
-			qualifier_suffixes[0]
-		}
+		first_dot_prefix:                   first_dot_prefix
+		first_dot_suffix:                   first_dot_suffix
 		builtin_prefix:                     raw.starts_with('builtin.')
 		main_fragment:                      main_fragment
 		function_prefix:                    raw.starts_with('fn')
 		fn_prefix:                          raw.starts_with('fn')
 		shared_fragment:                    raw.contains('shared ')
 		pointer_raw_base:                   source_type_syntax_child_range_id(id, raw, raw_pointer_depth, raw.len)
-		qualifier_prefixes:                 qualifier_prefixes
-		qualifier_suffixes:                 qualifier_suffixes
+		qualifier_count:                    qualifier_count
 		builtin_base:                       if raw.starts_with('builtin.') {
 			source_type_syntax_child_range_id(id, raw, 8, raw.len)
 		} else {
@@ -3321,16 +3336,14 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 			source_type_syntax_child_id(id, raw, raw.replace(' ', ''))
 		}
 		qualified_name_chars:               named_type && raw.contains('.')
-		field_owner_module:                 if qualifier_prefixes.len == 0 {
+		field_owner_module:                 if qualifier_count == 0 {
 			id
+		} else if raw.contains('.C.') {
+			source_type_syntax_child_id(id, raw, raw.all_before('.C.'))
+		} else if raw.contains('.JS.') {
+			source_type_syntax_child_id(id, raw, raw.all_before('.JS.'))
 		} else {
-			source_type_syntax_child_id(id, raw, if raw.contains('.C.') {
-				raw.all_before('.C.')
-			} else if raw.contains('.JS.') {
-				raw.all_before('.JS.')
-			} else {
-				raw.all_before_last('.')
-			})
+			qualifier
 		}
 		const_name_prefix:                  raw.starts_with('const_')
 		reflection_parts:                   source_type_syntax_reflection_parts(raw)
@@ -3471,33 +3484,23 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	cgen_decl_unusable, cgen_decl_authority := source_type_syntax_cgen_declaration(raw)
 	thread_value_type_valid, thread_value_type := source_type_syntax_thread_value(raw)
 	mut last_underscore := -1
-	mut qualifier_prefixes := source_type_syntax_empty_ids()
-	mut qualifier_suffixes := source_type_syntax_empty_ids()
-	mut field_owner_c := u32(0)
-	mut field_owner_js := u32(0)
+	mut qualifier_count := u32(0)
+	mut field_owner_c := -1
+	mut field_owner_js := -1
 	for i, c in raw {
 		if c == `_` {
 			last_underscore = i
 		} else if c == `.` {
-			prefix := source_type_id(raw[..i])
-			qualifier_prefixes << prefix
-			qualifier_suffixes << source_type_id(raw[i + 1..])
-			if field_owner_c == 0 && raw[i..].starts_with('.C.') { field_owner_c = prefix }
-			if field_owner_js == 0 && raw[i..].starts_with('.JS.') { field_owner_js = prefix }
+			qualifier_count++
+			if field_owner_c < 0 && raw[i..].starts_with('.C.') { field_owner_c = i }
+			if field_owner_js < 0 && raw[i..].starts_with('.JS.') { field_owner_js = i }
 		}
 	}
-	mut unqualified := id
-	mut qualifier := id
-	mut first_dot_prefix := id
-	mut first_dot_suffix := id
+	first_dot_prefix, first_dot_suffix, qualifier, unqualified := source_type_syntax_dot_edges(id, raw, first_dot, last_dot)
 	mut main_base := u32(0)
 	mut builtin_base := u32(0)
 	mut vls_generic_words := source_type_syntax_empty_ids()
 	if qualified {
-		unqualified = qualifier_suffixes[qualifier_suffixes.len - 1]
-		qualifier = qualifier_prefixes[qualifier_prefixes.len - 1]
-		first_dot_prefix = qualifier_prefixes[0]
-		first_dot_suffix = qualifier_suffixes[0]
 		if first_dot == 4 && raw.starts_with('main.') { main_base = first_dot_suffix }
 		if first_dot == 7 && raw.starts_with('builtin.') { builtin_base = first_dot_suffix }
 		if first_dot == 1 && raw[0].is_capital() { vls_generic_words << first_dot_prefix }
@@ -3509,12 +3512,13 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		}
 	}
 	main_fragment := qualified && raw.contains('main.')
-	field_owner_module := if field_owner_c != 0 {
-		field_owner_c
-	} else if field_owner_js != 0 {
-		field_owner_js
-	} else {
+	field_owner_dot := if field_owner_c >= 0 { field_owner_c } else { field_owner_js }
+	field_owner_module := if field_owner_dot < 0 || field_owner_dot == last_dot {
 		qualifier
+	} else if field_owner_dot == first_dot {
+		first_dot_prefix
+	} else {
+		source_type_syntax_child_range_id(id, raw, 0, field_owner_dot)
 	}
 	typ_suffix := qualified && raw.ends_with('.typ')
 	fn_prefix := raw.starts_with('fn')
@@ -3541,8 +3545,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		c_qualified:                    qualified && first_dot == 1 && raw[0] == `C`
 		builtin_prefix:                 builtin_base != 0
 		main_fragment:                  main_fragment
-		qualifier_prefixes:             qualifier_prefixes
-		qualifier_suffixes:             qualifier_suffixes
+		qualifier_count:                qualifier_count
 		canonical_dotted_name:          qualified
 		function_prefix:                fn_prefix
 		fn_prefix:                      fn_prefix
@@ -3810,7 +3813,10 @@ fn source_type_syntax_top_space(text string) (u32, u32, bool) {
 
 // source_type_has_qualified_prefix compares a module prefix using only IDs on hits.
 pub fn source_type_has_qualified_prefix(id u32, prefix u32) bool {
-	for candidate in source_type_syntax(id).qualifier_prefixes() {
+	syntax := source_type_syntax(id)
+	if syntax.qualifier_count == 0 { return false }
+	if prefix == syntax.first_dot_prefix || prefix == syntax.qualifier { return true }
+	for candidate in syntax.qualifier_prefixes() {
 		if candidate == prefix { return true }
 	}
 	return false
@@ -3820,6 +3826,9 @@ pub fn source_type_has_qualified_prefix(id u32, prefix u32) bool {
 // Both matching and the returned spelling use numeric IDs after the first query.
 pub fn source_type_qualified_suffix(id u32, prefix u32) ?u32 {
 	syntax := source_type_syntax(id)
+	if syntax.qualifier_count == 0 { return none }
+	if prefix == syntax.first_dot_prefix { return syntax.first_dot_suffix }
+	if prefix == syntax.qualifier { return syntax.unqualified }
 	for i, candidate in syntax.qualifier_prefixes() {
 		if candidate == prefix { return syntax.qualifier_suffixes()[i] }
 	}

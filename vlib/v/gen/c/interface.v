@@ -314,14 +314,18 @@ fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name s
 // resolve_sum_name resolves a canonical or unqualified sum name without
 // interpreting its first component as a source-file import alias.
 fn (g &FlatGen) resolve_sum_name(sum_name_id u32) u32 {
-	name := flat.source_type_name(sum_name_id)
-	if sum_name_id == 0 || flat.source_type_shape(sum_name_id).has(.wrapped) || flat.source_type_shape(sum_name_id).has(.leading_bracket) || flat.source_type_shape(sum_name_id).has(.map_type) {
+	if sum_name_id == 0 {
+		return sum_name_id
+	}
+	shape := flat.source_type_shape(sum_name_id)
+	if shape.has(.wrapped) || shape.has(.leading_bracket) || shape.has(.map_type) {
 		return sum_name_id
 	}
 	if resolved := g.sum_name_lookup[sum_name_id] {
 		return if resolved != 0 { resolved } else { sum_name_id }
 	}
-	if flat.source_type_shape(sum_name_id).has(.dotted) {
+	if shape.has(.dotted) {
+		name := flat.source_type_name(sum_name_id)
 		if name in g.tc.structs || name in g.tc.interface_names || name in g.tc.enum_names
 			|| g.tc.type_aliases.contains(name) {
 			return sum_name_id

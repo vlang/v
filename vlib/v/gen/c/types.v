@@ -1613,6 +1613,7 @@ fn (g &FlatGen) type_name_is_unbound_generic_decl(name_id u32, params []string, 
 // type_name_contains_generic_placeholder checks the source spelling ID for unresolved generic placeholders.
 fn (g &FlatGen) type_name_contains_generic_placeholder(name_id u32) bool {
 	if g.skip_generics && !g.placeholder_check_forced { return false }
+	if !flat.source_type_query(name_id).has(.generic_token) { return false }
 	for candidate in flat.source_type_syntax(name_id).cgen_placeholder_candidates() {
 		if candidate != cgen_c_namespace_source_type && candidate != cgen_js_namespace_source_type
 			&& !types.is_builtin_type_name_id(candidate)

@@ -11101,7 +11101,7 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) u32 {
 }
 
 fn generic_inference_arg_type_usable(typ_id u32) bool {
-	clean_id := flat.source_type_syntax(typ_id).trimmed
+	clean_id := transform_trimmed_type_id(typ_id)
 	return decl_type_is_usable(clean_id) && clean_id != flat.source_type_void
 }
 

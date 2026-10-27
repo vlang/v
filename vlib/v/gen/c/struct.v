@@ -5138,10 +5138,15 @@ fn (g &FlatGen) name_may_be_type_alias(name string) bool {
 // type_id_may_be_alias checks the cached final source type component.
 @[inline]
 fn (g &FlatGen) type_id_may_be_alias(name_id u32) bool {
-	if isnil(g.type_name_short_index) || flat.source_type_shape(name_id).has(.bracketed) {
-		return true
+	if isnil(g.type_name_short_index) { return true }
+	shape := flat.source_type_shape(name_id)
+	if shape.has(.bracketed) { return true }
+	short_id := if shape.has(.dotted) {
+		flat.source_type_syntax(name_id).unqualified
+	} else {
+		name_id
 	}
-	return flat.source_type_syntax(name_id).unqualified in g.type_name_short_index.alias_shorts
+	return short_id in g.type_name_short_index.alias_shorts
 }
 
 // name_may_reach_enum is false when neither an enum nor a type alias can have
@@ -5154,10 +5159,15 @@ fn (g &FlatGen) name_may_reach_enum(name string) bool {
 // type_id_may_reach_enum checks the cached final source type component.
 @[inline]
 fn (g &FlatGen) type_id_may_reach_enum(name_id u32) bool {
-	if isnil(g.type_name_short_index) || flat.source_type_shape(name_id).has(.bracketed) {
-		return true
+	if isnil(g.type_name_short_index) { return true }
+	shape := flat.source_type_shape(name_id)
+	if shape.has(.bracketed) { return true }
+	short_id := if shape.has(.dotted) {
+		flat.source_type_syntax(name_id).unqualified
+	} else {
+		name_id
 	}
-	return flat.source_type_syntax(name_id).unqualified in g.type_name_short_index.enum_shorts
+	return short_id in g.type_name_short_index.enum_shorts
 }
 
 // ident_may_name_type is false when `name` (as written, or as the checker
@@ -5166,10 +5176,15 @@ fn (g &FlatGen) type_id_may_reach_enum(name_id u32) bool {
 @[inline]
 fn (g &FlatGen) ident_may_name_type(name string) bool {
 	name_id := flat.source_type_id(name)
-	if isnil(g.type_name_short_index) || flat.source_type_shape(name_id).has(.bracketed) {
-		return true
+	if isnil(g.type_name_short_index) { return true }
+	shape := flat.source_type_shape(name_id)
+	if shape.has(.bracketed) { return true }
+	short_id := if shape.has(.dotted) {
+		flat.source_type_syntax(name_id).unqualified
+	} else {
+		name_id
 	}
-	return flat.source_type_syntax(name_id).unqualified in g.type_name_short_index.shorts
+	return short_id in g.type_name_short_index.shorts
 }
 
 // struct_field_list_key identifies a field list by its storage and length.

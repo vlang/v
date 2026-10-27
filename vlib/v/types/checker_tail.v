@@ -12431,7 +12431,11 @@ fn visible_mutation_receiver_type_name(type_id u32) u32 {
 		&& !shape.has(.padded) && !shape.has(.bracketed) {
 		return type_id
 	}
-	mut clean_id := flat.source_type_syntax(type_id).trimmed
+	mut clean_id := if shape.has(.padded) {
+		flat.source_type_syntax(type_id).trimmed
+	} else {
+		type_id
+	}
 	for flat.source_type_shape(clean_id).has(.pointer) {
 		clean_id = trimmed_source_type_id(flat.source_type_syntax(clean_id).raw_base)
 	}
@@ -21446,11 +21450,11 @@ fn (mut tc TypeChecker) generic_expected_expr_fields_compatible(expr_id flat.Nod
 
 // strip_generic_args_id preserves leading array syntax while removing a generic suffix.
 fn strip_generic_args_id(name_id u32) u32 {
-	return if flat.source_type_shape(name_id).has(.leading_bracket) {
-		name_id
-	} else {
-		flat.source_type_syntax(name_id).generic_base
+	shape := flat.source_type_shape(name_id)
+	if !shape.has(.bracketed) || shape.has(.leading_bracket) {
+		return name_id
 	}
+	return flat.source_type_syntax(name_id).generic_base
 }
 
 // is_zero_literal reports whether is zero literal applies in types.
