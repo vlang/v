@@ -193,7 +193,12 @@ jobs:
             tcc="$HOME/tcc-install/bin/tcc"
             "$tcc" -v
             cd ~/vproject
-            make
+            # Bootstrap V with the tcc under test, not the Termux clang the
+            # ANDROID block would otherwise force (V_ANDROID_TCC=1 opts out).
+            # The Makefile only recognises a literal `-cc tcc`, so put the
+            # built tcc first on PATH.
+            export PATH="$HOME/tcc-install/bin:$PATH"
+            V_ANDROID_TCC=1 VFLAGS="-cc tcc" make
             ./v -cc "$tcc" run examples/hello_world.v 2>&1 | tee /logs/hello_world.log
             tar -C "$HOME" -czf /logs/tcc-install-aarch64-termux.tar.gz tcc-install
           '
