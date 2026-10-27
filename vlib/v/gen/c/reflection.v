@@ -10,25 +10,25 @@ const cgen_reflection_int_literal_type = flat.source_type_id('int literal')
 
 // reflection_source_type_key retains normalized reflection source spellings as identities.
 fn reflection_source_type_key(raw_type_id u32, module_name string) u32 {
-	typ := flat.source_type_syntax(raw_type_id).trimmed
+	typ := flat.source_type_syntax(raw_type_id).trimmed()
 	shape := flat.source_type_shape(typ)
 	syntax := flat.source_type_syntax(typ)
 	if kind := reflection_wrapper_composition(shape) {
-		return flat.source_type_composition_one(kind, reflection_source_type_key(syntax.raw_base, module_name))
+		return flat.source_type_composition_one(kind, reflection_source_type_key(syntax.raw_base(), module_name))
 	}
-	if shape.has(.map_type) && syntax.bracket_closed && syntax.raw_base != 0 {
+	if shape.has(.map_type) && syntax.bracket_closed() && syntax.raw_base() != 0 {
 		return flat.source_type_composition_two(.map,
-			reflection_source_type_key(syntax.bracket_raw_inner, module_name),
-			reflection_source_type_key(syntax.raw_base, module_name))
+			reflection_source_type_key(syntax.bracket_raw_inner(), module_name),
+			reflection_source_type_key(syntax.raw_base(), module_name))
 	}
-	if syntax.tuple_like && syntax.reflection_tuple_parts().len > 1 {
+	if syntax.tuple_like() && syntax.reflection_tuple_parts().len > 1 {
 		return flat.source_type_composition(.multi_return,
 			syntax.reflection_tuple_parts().map(reflection_source_type_key(it, module_name)))
 	}
-	if flat.source_type_query(typ).has(.bracket_suffix) && syntax.bracket_closed
-		&& syntax.bracket_suffix == 0 && syntax.generic_base != 0 {
-		mut parts := [reflection_source_type_key(syntax.generic_base, module_name)]
-		for arg in flat.source_type_syntax(syntax.bracket_raw_inner).reflection_parts() {
+	if flat.source_type_query(typ).has(.bracket_suffix) && syntax.bracket_closed()
+		&& syntax.bracket_suffix() == 0 && syntax.generic_base() != 0 {
+		mut parts := [reflection_source_type_key(syntax.generic_base(), module_name)]
+		for arg in flat.source_type_syntax(syntax.bracket_raw_inner()).reflection_parts() {
 			parts << reflection_source_type_key(arg, module_name)
 		}
 		return flat.source_type_composition(.generic, parts)
@@ -235,26 +235,26 @@ fn reflection_attributes_array(raw_attrs []string) string {
 }
 
 fn (g &FlatGen) reflection_field_type_id(raw_type_id u32, module_name string) u64 {
-	mut typ := flat.source_type_syntax(raw_type_id).trimmed
+	mut typ := flat.source_type_syntax(raw_type_id).trimmed()
 	mut flags := u64(0)
 	shape := flat.source_type_shape(typ)
 	if shape.has(.option_type) {
 		flags |= u64(1) << 32
-		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base).trimmed
+		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base()).trimmed()
 	} else if shape.has(.result_type) {
 		flags |= u64(1) << 33
-		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base).trimmed
+		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base()).trimmed()
 	}
 	wrapped_shape := flat.source_type_shape(typ)
 	if wrapped_shape.has(.shared_type) {
 		flags |= u64(1) << 36
-		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base).trimmed
+		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base()).trimmed()
 	} else if wrapped_shape.has(.atomic_type) {
 		flags |= u64(1) << 37
-		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base).trimmed
+		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base()).trimmed()
 	}
 	syntax := flat.source_type_syntax(typ)
-	return u64(g.reflection_type_id(syntax.pointer_base, module_name)) | flags | (u64(syntax.pointer_depth) << 16)
+	return u64(g.reflection_type_id(syntax.pointer_base(), module_name)) | flags | (u64(syntax.pointer_depth()) << 16)
 }
 
 fn (g &FlatGen) reflection_field_type_id_bytes(raw_type string, module_name string) u64 {
@@ -384,7 +384,7 @@ fn (g &FlatGen) reflection_array_info(type_key_id u32) string {
 	mut dims := 0
 	for flat.source_type_shape(elem).has(.array_type) {
 		dims++
-		elem = flat.source_type_syntax(elem).raw_base
+		elem = flat.source_type_syntax(elem).raw_base()
 	}
 	value := '(reflection__Array){.nr_dims = ${dims}, .elem_type = ${g.reflection_field_type_id(elem, '')}}'
 	return '(reflection__TypeInfo){.typ = 2, .reflection__Array = ${value}}'
@@ -392,8 +392,8 @@ fn (g &FlatGen) reflection_array_info(type_key_id u32) string {
 
 fn (g &FlatGen) reflection_map_info(type_key_id u32) string {
 	syntax := flat.source_type_syntax(type_key_id)
-	key := if syntax.bracket_closed { syntax.bracket_raw_inner } else { u32(0) }
-	value_type := if syntax.bracket_closed { syntax.raw_base } else { u32(0) }
+	key := if syntax.bracket_closed() { syntax.bracket_raw_inner() } else { u32(0) }
+	value_type := if syntax.bracket_closed() { syntax.raw_base() } else { u32(0) }
 	value := '(reflection__Map){.key_type = ${g.reflection_field_type_id(key, '')}, .value_type = ${g.reflection_field_type_id(value_type, '')}}'
 	return '(reflection__TypeInfo){.typ = 7, .reflection__Map = ${value}}'
 }
@@ -456,13 +456,13 @@ fn reflection_base_type(raw_type string) string {
 }
 
 fn reflection_base_type_id(raw_type_id u32) u32 {
-	mut typ := flat.source_type_syntax(raw_type_id).trimmed
+	mut typ := flat.source_type_syntax(raw_type_id).trimmed()
 	for {
 		shape := flat.source_type_shape(typ)
 		if shape.has(.option_type) || shape.has(.result_type) || shape.has(.pointer)
 			|| shape.has(.mutable_type) || shape.has(.shared_type) || shape.has(.atomic_type)
 			|| shape.has(.variadic) {
-			typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base).trimmed
+			typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base()).trimmed()
 		} else {
 			return typ
 		}
@@ -473,17 +473,17 @@ fn reflection_collect_composite_type(raw_type_id u32, module_name string, mut co
 	key := reflection_source_type_key(reflection_base_type_id(raw_type_id), module_name)
 	shape := flat.source_type_shape(key)
 	syntax := flat.source_type_syntax(key)
-	if shape.has(.array_type) || shape.has(.map_type) || syntax.tuple_like {
+	if shape.has(.array_type) || shape.has(.map_type) || syntax.tuple_like() {
 		collected[key] = true
 	}
 	if shape.has(.array_type) {
-		reflection_collect_composite_type(syntax.raw_base, '', mut collected)
+		reflection_collect_composite_type(syntax.raw_base(), '', mut collected)
 	} else if shape.has(.map_type) {
-		if syntax.bracket_closed && syntax.raw_base != 0 {
-			reflection_collect_composite_type(syntax.bracket_raw_inner, '', mut collected)
-			reflection_collect_composite_type(syntax.raw_base, '', mut collected)
+		if syntax.bracket_closed() && syntax.raw_base() != 0 {
+			reflection_collect_composite_type(syntax.bracket_raw_inner(), '', mut collected)
+			reflection_collect_composite_type(syntax.raw_base(), '', mut collected)
 		}
-	} else if syntax.tuple_like {
+	} else if syntax.tuple_like() {
 		for part in syntax.reflection_tuple_parts() {
 			reflection_collect_composite_type(part, '', mut collected)
 		}
@@ -662,7 +662,7 @@ fn (mut g FlatGen) gen_reflection_data() {
 		} else if shape.has(.map_type) {
 			g.gen_reflection_type(name_id, '', 25, g.reflection_map_info(name_id), g.reflection_methods(name_id),
 				mut seen_ids)
-		} else if flat.source_type_syntax(name_id).tuple_like {
+		} else if flat.source_type_syntax(name_id).tuple_like() {
 			g.gen_reflection_type(name_id, '', 30, g.reflection_multi_return_info(name_id),
 				g.reflection_methods(name_id), mut seen_ids)
 		}

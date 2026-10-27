@@ -1043,7 +1043,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		// `T**` all the way to `T`, which makes values such as
 		// `*(&&ast.File(ptr))` look by-value and adds a bogus address-of later.
 		return if flat.source_type_query(operand_type).has(.c_pointer_suffix) {
-			flat.source_type_syntax(operand_type).c_pointer_base
+			flat.source_type_syntax(operand_type).c_pointer_base()
 		} else {
 			operand_type
 		}
@@ -1096,7 +1096,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				if g.is_string_layout(base_type)
 					&& g.is_reference_local_base(tokens[start..open_index], base_type) {
 					// Slicing a `mut` string local copies bytes of the string it refers to.
-					return flat.source_type_syntax(base_type).c_pointer_base
+					return flat.source_type_syntax(base_type).c_pointer_base()
 				}
 				return base_type
 			}
@@ -1120,7 +1120,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				return element_type
 			}
 			if flat.source_type_query(base_type).has(.c_pointer_suffix) {
-				return flat.source_type_syntax(base_type).c_pointer_base
+				return flat.source_type_syntax(base_type).c_pointer_base()
 			}
 		}
 	}
@@ -1283,7 +1283,7 @@ fn (g &Parser) indexed_string_type(base_type u32, base_tokens []FastcExpressionT
 			}
 		}
 	}
-	return flat.source_type_syntax(base_type).c_pointer_base
+	return flat.source_type_syntax(base_type).c_pointer_base()
 }
 
 fn (g &Parser) indexed_array_operand_type(tokens []FastcExpressionToken, start int, end int, inferred_type u32) ?u32 {
@@ -1556,7 +1556,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 
 				current_type = element_type
 			} else if flat.source_type_query(current_type).has(.c_pointer_suffix) {
-				current_type = flat.source_type_syntax(current_type).c_pointer_base
+				current_type = flat.source_type_syntax(current_type).c_pointer_base()
 			} else {
 				return none
 			}
@@ -1611,7 +1611,7 @@ fn fastc_matching_delimiter_before(tokens []FastcExpressionToken, open_index int
 // fastc_trim_pointer_type retains the spelling ID when no pointer suffix is present.
 @[inline]
 fn fastc_trim_pointer_type(typ_id u32) u32 {
-	return flat.source_type_syntax(typ_id).c_pointer_raw_base
+	return flat.source_type_syntax(typ_id).c_pointer_raw_base()
 }
 
 fn fastc_with_pointer_depth(typ_id u32, depth int) u32 {
@@ -1666,26 +1666,26 @@ fn (g &Parser) underlying_alias_type(c_type_id u32) u32 {
 fn fastc_underlying_alias_type(c_type_id u32, alias_base_types flat.TypeTextBindings) u32 {
 	// Most descriptors are not aliases. Avoid allocating a cycle guard on that path.
 	first_syntax := flat.source_type_syntax(c_type_id)
-	base0 := first_syntax.c_pointer_raw_base
+	base0 := first_syntax.c_pointer_raw_base()
 	first := alias_base_types.type_id(flat.source_type_name(base0)) or { return c_type_id }
-	mut resolved := fastc_with_pointer_depth(first, first_syntax.c_pointer_depth)
+	mut resolved := fastc_with_pointer_depth(first, first_syntax.c_pointer_depth())
 	// A single alias hop needs no cycle-guard map. Preserve the first
 	// repeated-base result before checking whether another hop exists.
 	second_syntax := flat.source_type_syntax(resolved)
-	base1 := second_syntax.c_pointer_raw_base
+	base1 := second_syntax.c_pointer_raw_base()
 	if base1 == base0 { return resolved }
 	second := alias_base_types.type_id(flat.source_type_name(base1)) or { return resolved }
 	mut seen := map[u32]bool{}
 	seen[base0] = true
 	seen[base1] = true
-	resolved = fastc_with_pointer_depth(second, second_syntax.c_pointer_depth)
+	resolved = fastc_with_pointer_depth(second, second_syntax.c_pointer_depth())
 	for {
 		syntax := flat.source_type_syntax(resolved)
-		base_id := syntax.c_pointer_raw_base
+		base_id := syntax.c_pointer_raw_base()
 		if base_id in seen { return resolved }
 		alias_base := alias_base_types.type_id(flat.source_type_name(base_id)) or { return resolved }
 		seen[base_id] = true
-		resolved = fastc_with_pointer_depth(alias_base, syntax.c_pointer_depth)
+		resolved = fastc_with_pointer_depth(alias_base, syntax.c_pointer_depth())
 	}
 }
 
@@ -1941,15 +1941,15 @@ fn fastc_array_element_type(typ_id u32) ?u32 {
 	base := fastc_trim_pointer_type(typ_id)
 	syntax := flat.source_type_syntax(base)
 	query := flat.source_type_query(base)
-	if query.has(.c_fixed_array_prefix) && syntax.fastc_array_marker {
+	if query.has(.c_fixed_array_prefix) && syntax.fastc_array_marker() {
 		if element := fastc_fixed_array_element_type(base) { return element }
 	}
-	if query.has(.c_array_prefix) && syntax.c_array_payload != 0 {
-		return fastc_decode_ptr_element_type_id(syntax.c_array_payload)
+	if query.has(.c_array_prefix) && syntax.c_array_payload() != 0 {
+		return fastc_decode_ptr_element_type_id(syntax.c_array_payload())
 	}
-	if query.has(.c_fixed_array_prefix) && syntax.c_fixed_array_payload != 0 {
+	if query.has(.c_fixed_array_prefix) && syntax.c_fixed_array_payload() != 0 {
 		if element := fastc_fixed_array_element_type(base) { return element }
-		return fastc_decode_ptr_element_type_id(syntax.c_fixed_array_payload)
+		return fastc_decode_ptr_element_type_id(syntax.c_fixed_array_payload())
 	}
 	return none
 }
@@ -1964,11 +1964,11 @@ fn fastc_decode_ptr_element_type(element string) string {
 fn fastc_decode_ptr_element_type_id(element u32) u32 {
 	mut name := element
 	mut pointers := 0
-	for flat.source_type_syntax(name).c_ptr_name_suffix {
-		name = flat.source_type_syntax(name).c_ptr_name_base
+	for flat.source_type_syntax(name).c_ptr_name_suffix() {
+		name = flat.source_type_syntax(name).c_ptr_name_base()
 		pointers++
 	}
-	name = flat.source_type_syntax(name).c_tagged_type
+	name = flat.source_type_syntax(name).c_tagged_type()
 	for _ in 0 .. pointers {
 		name = flat.source_type_composition_two(.concat, name, flat.source_type_id('*'))
 	}
@@ -1984,7 +1984,7 @@ fn (g &Parser) fixed_array_pointee_element_type(typ_id u32, base_tokens []FastcE
 	if !flat.source_type_query(typ_id).has(.c_pointer_suffix) {
 		return none
 	}
-	pointee := flat.source_type_syntax(typ_id).c_pointer_base
+	pointee := flat.source_type_syntax(typ_id).c_pointer_base()
 	_ := fastc_fixed_array_length_id(g.underlying_alias_type(pointee)) or { return none }
 	if flat.source_type_query(typ_id).has(.c_fixed_array_prefix) && g.fixed_array_uses_raw_storage(base_tokens) {
 		return none

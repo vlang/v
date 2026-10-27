@@ -42,8 +42,8 @@ fn fastc_thread_type_name(value_type string) string {
 fn fastc_thread_value_type_from_name(thread_type_id u32) ?u32 {
 	name_id := fastc_trim_pointer_type(thread_type_id)
 	syntax := flat.source_type_syntax(name_id)
-	if !syntax.thread_value_type_valid { return none }
-	return syntax.thread_value_type
+	if !syntax.thread_value_type_valid() { return none }
+	return syntax.thread_value_type()
 }
 
 fn (g &Parser) fastc_thread_value_type(thread_type_id u32) ?u32 {

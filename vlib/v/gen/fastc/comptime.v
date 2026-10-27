@@ -903,7 +903,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		expected := g.lit.int()
 		g.next()
 		resolved := g.comptime_named_type(name)
-		actual := flat.source_type_syntax(resolved).c_pointer_depth + subject_pointer_depth
+		actual := flat.source_type_syntax(resolved).c_pointer_depth() + subject_pointer_depth
 		return match operator {
 			.eq { actual == expected }
 			.ne { actual != expected }
@@ -939,7 +939,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		}
 		if pointee_type {
 			left_type = (if flat.source_type_query(left_type).has(.c_pointer_suffix) {
-				flat.source_type_syntax(left_type).c_pointer_base
+				flat.source_type_syntax(left_type).c_pointer_base()
 			} else {
 				flat.source_type_void
 			})

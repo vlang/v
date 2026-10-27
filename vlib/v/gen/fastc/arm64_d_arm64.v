@@ -4385,7 +4385,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 		if i == 0 && receiver_name != '' && parameter_is_mut[i] && abi_type == typ && abi_layout.kind == .ptr_t {
 			typ = abi_layout.elem_type
 			if flat.source_type_query(typ_name).has(.c_pointer_suffix) {
-				typ_name = flat.source_type_syntax(typ_name).c_pointer_base
+				typ_name = flat.source_type_syntax(typ_name).c_pointer_base()
 			}
 		}
 		argument := p.program.add_arg(func_id, abi_type, parameter_name)
@@ -4739,7 +4739,7 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		local_layout := p.program.m.type_store.types[local.typ]
 		mut indexed_value_type_name := u32(0)
 		if local_layout.kind == .ptr_t && flat.source_type_shape(local.typ_name).has(.pointer) {
-			indexed_value_type_name = flat.source_type_syntax(local.typ_name).raw_base
+			indexed_value_type_name = flat.source_type_syntax(local.typ_name).raw_base()
 		} else if local_layout.kind == .array_t {
 			indexed_value_type_name = fastc_fixed_array_element_type(local.typ_name) or { u32(0) }
 		} else if local.typ == p.program.array_type {
@@ -4997,7 +4997,7 @@ fn (mut p FastArm64Parser) parse_enum_shorthand(type_name_source_id u32) !FastAr
 	} else {
 		'${p.source_file.header.module_name}.'
 	}
-	short_type_name := flat.source_type_name(flat.source_type_syntax(flat.source_type_syntax(type_name_source_id).unqualified).last_double_underscore_suffix())
+	short_type_name := flat.source_type_name(flat.source_type_syntax(flat.source_type_syntax(type_name_source_id).unqualified()).last_double_underscore_suffix())
 	key := '${module_prefix}${short_type_name}.${field}'
 	mut declaration := p.program.enum_values[key] or {
 		p.program.enum_values['${short_type_name}.${field}'] or { FastArm64ConstantDecl{} }
@@ -6423,7 +6423,7 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.instr1(.load, p.cur_block, layout.elem_type, pointer.id)
 			typ:      layout.elem_type
-			typ_name: flat.source_type_syntax(pointer.typ_name).pointer_raw_base
+			typ_name: flat.source_type_syntax(pointer.typ_name).pointer_raw_base()
 			address:  pointer.id
 		}
 	}
@@ -8304,7 +8304,7 @@ fn (mut p FastArm64Parser) parse_contextual_value_with_precedence(type_name_sour
 
 fn (mut p FastArm64Parser) source_type_id(type_name_source_id u32) ssa.TypeID {
 	type_name := flat.source_type_name(type_name_source_id)
-	if !flat.source_type_shape(type_name_source_id).has(.dotted) && !flat.source_type_syntax(type_name_source_id).contains_doubleunderscore {
+	if !flat.source_type_shape(type_name_source_id).has(.dotted) && !flat.source_type_syntax(type_name_source_id).contains_doubleunderscore() {
 		key := fastc_type_key(p.source_file.header.module_name, type_name)
 		if id := p.program.type_ids[flat.source_type_id(key)] {
 			return id
@@ -9623,7 +9623,7 @@ fn (mut p FastArm64Parser) resolve_method_key(value FastArm64Value, method strin
 	// An array-typed receiver (`[]T`, `&[]T`) takes the builtin array method:
 	// an alias of `[]T` shares the array layout, so its own methods would
 	// otherwise match a plain array receiver by type.
-	if flat.source_type_shape(receiver_syntax.pointer_raw_base).has(.array_type) {
+	if flat.source_type_shape(receiver_syntax.pointer_raw_base()).has(.array_type) {
 		array_key := 'array.${method}'
 		if array_key in p.program.functions {
 			return array_key
@@ -11624,10 +11624,10 @@ fn (mut p FastArm64Parser) emit_array_grow_storage(array_slot ssa.ValueID, grow 
 
 fn fast_arm64_pointer_element_type_name(type_name_id u32) u32 {
 	if flat.source_type_shape(type_name_id).has(.pointer) {
-		return flat.source_type_syntax(type_name_id).raw_base
+		return flat.source_type_syntax(type_name_id).raw_base()
 	}
 	if flat.source_type_query(type_name_id).has(.c_pointer_suffix) {
-		return flat.source_type_syntax(type_name_id).c_pointer_base
+		return flat.source_type_syntax(type_name_id).c_pointer_base()
 	}
 	if type_name_id in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr] {
 		return flat.source_type_u8

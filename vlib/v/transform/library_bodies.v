@@ -141,7 +141,7 @@ fn (mut t Transformer) generic_decl_receiver_is_generic(decl GenericFnDecl) bool
 	mut params := []string{}
 	decl_id := flat.source_type_id(decl.node.value)
 	receiver_id := if flat.source_type_shape(decl_id).has(.dotted) {
-		flat.source_type_syntax(decl_id).qualifier
+		flat.source_type_syntax(decl_id).qualifier()
 	} else {
 		decl_id
 	}
@@ -256,7 +256,7 @@ fn (mut t Transformer) library_type_reaches_program(typ_id u32) bool {
 fn library_type_text(typ_id u32) u32 {
 	text := transform_trimmed_type_id(typ_id)
 	return if flat.source_type_query(text).has(.main_prefix) {
-		flat.source_type_syntax(text).main_base
+		flat.source_type_syntax(text).main_base()
 	} else {
 		text
 	}
@@ -271,34 +271,35 @@ fn (mut t Transformer) library_type_parts(text_id u32) ?[]u32 {
 	if shape.has(.mutable_type) || shape.has(.shared_type) || shape.has(.atomic_type)
 		|| shape.has(.variadic) || shape.has(.pointer) || shape.has(.optional)
 		|| shape.has(.array_type) || shape.has(.channel_type) || shape.has(.thread_type) {
-		return [library_type_text(syntax.raw_base)]
+		return [library_type_text(syntax.raw_base())]
 	}
 	if shape.has(.map_type) {
-		if !syntax.bracket_closed || syntax.bracket_suffix == 0 { return none }
-		return [library_type_text(syntax.bracket_raw_inner), library_type_text(syntax.bracket_suffix)]
+		if !syntax.bracket_closed() || syntax.bracket_suffix() == 0 { return none }
+		return [library_type_text(syntax.bracket_raw_inner()),
+			library_type_text(syntax.bracket_suffix())]
 	}
 	if shape.has(.leading_bracket) {
-		if !syntax.bracket_closed || syntax.bracket_suffix == 0 { return none }
-		return [library_type_text(syntax.bracket_suffix)]
+		if !syntax.bracket_closed() || syntax.bracket_suffix() == 0 { return none }
+		return [library_type_text(syntax.bracket_suffix())]
 	}
 	if shape.has(.function_compact) || shape.has(.function_spaced) {
-		if !syntax.function_closed { return none }
+		if !syntax.function_closed() { return none }
 		mut parts := []u32{cap: syntax.function_params().len + 1}
 		for param in syntax.function_params() {
-			parts << library_type_text(flat.source_type_syntax(param).generic_parameter_payload)
+			parts << library_type_text(flat.source_type_syntax(param).generic_parameter_payload())
 		}
-		if syntax.function_result != 0 { parts << library_type_text(syntax.function_result) }
+		if syntax.function_result() != 0 { parts << library_type_text(syntax.function_result()) }
 		return parts
 	}
-	if syntax.tuple_like {
+	if syntax.tuple_like() {
 		return syntax.tuple_components().map(library_type_text(it))
 	}
 	query := flat.source_type_query(text_id)
 	if query.has(.c_prefix) || query.has(.js_prefix) || types.is_builtin_type_name_id(text_id) {
 		return []u32{}
 	}
-	is_app := syntax.generic_app_valid
-	name_id := if is_app { syntax.generic_app_base } else { text_id }
+	is_app := syntax.generic_app_valid()
+	name_id := if is_app { syntax.generic_app_base() } else { text_id }
 	if name_id in [transform_identity_ierror, transform_identity_builtin_ierror] || t.generic_checker_interface_name_known(name_id)
 		|| name_id in t.library_bodies.receivers {
 		return none

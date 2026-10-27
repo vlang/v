@@ -223,7 +223,7 @@ fn (tc &TypeChecker) inline_asm_intel_operand_width(typ Type) ?int {
 }
 
 fn (tc &TypeChecker) inline_asm_enum_backing_width(name_id u32) int {
-	short_name_id := flat.source_type_syntax(name_id).unqualified
+	short_name_id := flat.source_type_syntax(name_id).unqualified()
 	is_qualified := flat.source_type_shape(name_id).has(.dotted)
 	for index in tc.top_level_idx {
 		decl := tc.a.nodes[index]
@@ -247,7 +247,7 @@ fn (tc &TypeChecker) inline_asm_enum_backing_width(name_id u32) int {
 }
 
 fn (tc &TypeChecker) inline_asm_enum_backing_type(name_id u32) Type {
-	short_name_id := flat.source_type_syntax(name_id).unqualified
+	short_name_id := flat.source_type_syntax(name_id).unqualified()
 	is_qualified := flat.source_type_shape(name_id).has(.dotted)
 	for index in tc.top_level_idx {
 		decl := tc.a.nodes[index]

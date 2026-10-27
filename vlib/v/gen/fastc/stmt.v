@@ -619,7 +619,7 @@ fn (mut g Parser) parse_defer() ! {
 			local := g.locals[name] or { continue }
 			saved_locals[name] = local
 			capture_name := g.temporary_name('defer_capture')
-			if local.typ == 0 || flat.source_type_syntax(local.typ).c_function_pointer_hole {
+			if local.typ == 0 || flat.source_type_syntax(local.typ).c_function_pointer_hole() {
 				continue
 			}
 			capture_type := local.typ_text()
@@ -1299,7 +1299,7 @@ fn (mut g Parser) parse_return() !bool {
 		expression = '${flat.source_type_name(fastc_trim_pointer_type(contextual_return_type))}__${g.last_expression[1].lit}'
 		actual_type = contextual_return_type
 	}
-	if g.selfhost && flat.source_type_syntax(g.return_type).fastc_array_marker && g.fixed_array_uses_raw_storage(g.last_expression) {
+	if g.selfhost && flat.source_type_syntax(g.return_type).fastc_array_marker() && g.fixed_array_uses_raw_storage(g.last_expression) {
 		// A struct-field/global/`__global` fixed array is stored as a raw C array, but the
 		// by-value return type is the `struct { T data[N]; }` wrapper; copy the raw array into
 		// its `.data` so the value can be returned.
@@ -1461,7 +1461,7 @@ fn (g &Parser) interface_value_expression(interface_type_source_id u32, actual_t
 		if actual_type_source_id == interface_type_source_id {
 			return expression
 		}
-		value_type := flat.source_type_syntax(interface_type_source_id).c_pointer_base
+		value_type := flat.source_type_syntax(interface_type_source_id).c_pointer_base()
 		value := g.interface_value_expression(value_type, actual_type_source_id, expression)
 		return '({ ${flat.source_type_name(value_type)} __vf_iface_ref = (${value}); (${interface_type})v_fastc_interface_box(&__vf_iface_ref, sizeof(${flat.source_type_name(value_type)})); })'
 	}

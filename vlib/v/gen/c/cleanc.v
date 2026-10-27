@@ -1166,7 +1166,7 @@ fn (mut cache TypeMetadataTextCache) may_need_array_type_id(id u32) bool {
 	if cache.ids[slot] == id && cache.states[slot] != 0 {
 		return cache.states[slot] == 2
 	}
-	needed := flat.source_type_syntax(id).fixed_typedef_bracket
+	needed := flat.source_type_syntax(id).fixed_typedef_bracket()
 	cache.ids[slot] = id
 	cache.states[slot] = if needed { u8(2) } else { u8(1) }
 	return needed
@@ -2469,7 +2469,7 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 				if node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
 					relevant << node_idx
 				} else if node.value == 'define' {
-					name := flat.source_type_name(flat.source_type_syntax(node.typ).declaration_head)
+					name := flat.source_type_name(flat.source_type_syntax(node.typ).declaration_head())
 					if result.implementation_define.len == 0
 						&& c_define_selects_native_implementation(name) {
 						result.implementation_define = name
@@ -12895,8 +12895,8 @@ fn (g &FlatGen) enum_selector_base_name_uncached(name_id u32) ?u32 {
 	}
 	if flat.source_type_shape(name_id).has(.dotted) {
 		syntax := flat.source_type_syntax(name_id)
-		if module_name := g.import_alias_module(flat.source_type_name(syntax.first_dot_prefix)) {
-			resolved_id := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix)
+		if module_name := g.import_alias_module(flat.source_type_name(syntax.first_dot_prefix())) {
+			resolved_id := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix())
 			resolved := flat.source_type_name(resolved_id)
 			if resolved in g.tc.enum_names || resolved in g.tc.flag_enums {
 				return resolved_id
@@ -13202,7 +13202,7 @@ fn map_str_alias_name(typ &types.Type) string {
 	clean := types.unwrap_pointer(typ)
 	if clean is types.Alias {
 		if clean.base_type is types.Map {
-			return flat.source_type_name(flat.source_type_syntax(clean.source_type_id()).unqualified)
+			return flat.source_type_name(flat.source_type_syntax(clean.source_type_id()).unqualified())
 		}
 	}
 	return ''
@@ -14068,8 +14068,8 @@ fn (mut g FlatGen) gen_sum_constructor_call_with_expected_type(id flat.NodeId, n
 
 fn (g &FlatGen) call_callee_names_sum_base(callee flat.Node, sum_name_id u32) bool {
 	sum_syntax := flat.source_type_syntax(sum_name_id)
-	base_id := if sum_syntax.generic_base != 0 { sum_syntax.generic_base } else { sum_name_id }
-	short_base_id := flat.source_type_syntax(base_id).unqualified
+	base_id := if sum_syntax.generic_base() != 0 { sum_syntax.generic_base() } else { sum_name_id }
+	short_base_id := flat.source_type_syntax(base_id).unqualified()
 	if callee.kind in [.ident, .selector] {
 		callee_id := callee.source_value_id()
 		return callee_id == base_id || callee_id == short_base_id
@@ -14687,17 +14687,17 @@ fn (mut g FlatGen) sizeof_target(value0_id u32) string {
 	// Canonical fixed-array pointer element spellings can reach sizeof as
 	// `Elem[N]*`; C declares an array of pointers as `Elem*[N]`.
 	if flat.source_type_query(value_id).has(.c_pointer_suffix) {
-		parsed_array := g.tc.parse_type(flat.source_type_syntax(value_id).c_pointer_base)
+		parsed_array := g.tc.parse_type(flat.source_type_syntax(value_id).c_pointer_base())
 		if fixed := array_fixed_type(parsed_array) {
 			c_elem, dims := g.fixed_array_decl_parts(fixed)
 			return '${c_elem}*${dims}'
 		}
 	}
 	if flat.source_type_shape(value_id).has(.pointer) {
-		if flat.source_type_shape(flat.source_type_syntax(value_id).pointer_raw_base).has(.leading_bracket) {
+		if flat.source_type_shape(flat.source_type_syntax(value_id).pointer_raw_base()).has(.leading_bracket) {
 			return 'void*'
 		}
-		return '${g.sizeof_target(flat.source_type_syntax(flat.source_type_syntax(value_id).raw_base).trimmed)}*'
+		return '${g.sizeof_target(flat.source_type_syntax(flat.source_type_syntax(value_id).raw_base()).trimmed())}*'
 	}
 	if flat.source_type_shape(value_id).has(.array_type) || value_id == cgen_array_source_type {
 		return 'Array'
@@ -14761,8 +14761,8 @@ fn c_fixed_array_typedef_sizeof_target(value string) ?string {
 
 fn c_fixed_array_typedef_sizeof_target_id(value_id u32) ?string {
 	syntax := flat.source_type_syntax(value_id)
-	if !syntax.c_fixed_typedef_valid { return none }
-	return '${flat.source_type_name(syntax.c_fixed_typedef_element)}[${flat.source_type_name(syntax.c_fixed_typedef_length)}]'
+	if !syntax.c_fixed_typedef_valid() { return none }
+	return '${flat.source_type_name(syntax.c_fixed_typedef_element())}[${flat.source_type_name(syntax.c_fixed_typedef_length())}]'
 }
 
 // sizeof_selector_target spells a `sizeof(a.b.c)` target in C. A step through a
@@ -16184,7 +16184,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					} else if is_sum_literal && field.value != 'typ' {
 						mut variant := u32(0)
 						if flat.source_type_shape(field.typ).has(.pointer) {
-							variant = flat.source_type_syntax(field.typ).raw_base
+							variant = flat.source_type_syntax(field.typ).raw_base()
 						} else if field.typ != 0 {
 							variant = field.typ
 						} else {
@@ -16311,7 +16311,7 @@ fn (mut g FlatGen) fixed_array_len_expr(type_name_id u32, fallback int) string {
 		typ := g.tc.parse_type(type_name_id)
 		if typ is types.ArrayFixed { return g.fixed_array_len_value(typ) }
 	}
-	return g.fixed_array_len_raw(flat.source_type_name(flat.source_type_syntax(type_name_id).fixed_array_query_length), fallback)
+	return g.fixed_array_len_raw(flat.source_type_name(flat.source_type_syntax(type_name_id).fixed_array_query_length()), fallback)
 }
 
 // fixed_array_len_value supports fixed array len value handling for FlatGen.
@@ -17896,12 +17896,12 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				expected := unalias_type(g.expected_expr_type)
 				if expected is types.Enum
 					&& base.source_value_id() in [
-						flat.source_type_syntax(expected.source_type_id()).unqualified,
-						flat.source_type_syntax(g.expected_expr_type.source_type_id()).unqualified,
+						flat.source_type_syntax(expected.source_type_id()).unqualified(),
+						flat.source_type_syntax(g.expected_expr_type.source_type_id()).unqualified(),
 					] {
 					enum_selector_qbase = expected.source_type_id()
 				} else if g.expected_enum != 0
-					&& flat.source_type_syntax(g.expected_enum).unqualified == base.source_value_id() {
+					&& flat.source_type_syntax(g.expected_enum).unqualified() == base.source_value_id() {
 					enum_selector_qbase = g.expected_enum
 				}
 			}
@@ -23767,7 +23767,7 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 	// Sum pointer fields may erase their C storage while projections still need the
 	// exact array typedef. Use the declaration metadata, including unused variants.
 	for name in g.c_sum_decl_names() {
-		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(flat.source_type_id(name)).generic_base)
+		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(flat.source_type_id(name)).generic_base())
 		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
 			typ := g.tc.parse_canonical_type(variant)
 			if fixed_array_type_first_seen(typ, g.tc.cur_module, mut type_seen) {
@@ -23815,12 +23815,12 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		g.tc.cur_module = cur_module
 		// Field declarations use the retained struct/interface metadata above.
 		// Struct-init types use scratch text while fields are transformed.
-		if node.kind !in [.struct_init, .field_decl] && node.typ != 0 && fixed_array_text_first_seen(node.typ, cur_file, cur_module, mut text_seen) && flat.source_type_syntax(node.typ).fixed_typedef_bracket {
+		if node.kind !in [.struct_init, .field_decl] && node.typ != 0 && fixed_array_text_first_seen(node.typ, cur_file, cur_module, mut text_seen) && flat.source_type_syntax(node.typ).fixed_typedef_bracket() {
 			g.collect_fixed_array_typedef_text(node.typ, cur_module, mut needed)
 		}
 		match node.kind {
 			.array_init, .array_literal, .cast_expr, .sizeof_expr, .typeof_expr {
-				if flat.source_type_syntax(node.source_value_id()).fixed_typedef_bracket && fixed_array_text_first_seen(node.source_value_id(), cur_file, cur_module, mut text_seen) {
+				if flat.source_type_syntax(node.source_value_id()).fixed_typedef_bracket() && fixed_array_text_first_seen(node.source_value_id(), cur_file, cur_module, mut text_seen) {
 					g.collect_fixed_array_typedef_text(node.source_value_id(), cur_module, mut needed)
 				}
 			}
@@ -24261,9 +24261,9 @@ fn module_from_qualified_name(name string) string {
 fn module_from_source_type_name(name_id u32) string {
 	syntax := flat.source_type_syntax(name_id)
 	if flat.source_type_shape(name_id).has(.dotted) {
-		return flat.source_type_name(syntax.qualifier)
+		return flat.source_type_name(syntax.qualifier())
 	}
-	if syntax.contains_doubleunderscore {
+	if syntax.contains_doubleunderscore() {
 		return flat.source_type_name(flat.source_type_syntax(syntax.last_double_underscore_prefix()).doubleunderscore_dotted())
 	}
 	return ''
@@ -24359,10 +24359,10 @@ fn (g &FlatGen) fixed_array_type_has_unknown_struct(typ &types.Type) bool {
 }
 
 fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text_id u32, source_module string, mut needed map[string]FixedArrayTypedefInfo) {
-	if !flat.source_type_syntax(type_text_id).fixed_typedef_bracket { return }
-	mut clean := flat.source_type_syntax(type_text_id).trimmed
+	if !flat.source_type_syntax(type_text_id).fixed_typedef_bracket() { return }
+	mut clean := flat.source_type_syntax(type_text_id).trimmed()
 	if clean == 0 { return }
-	if flat.source_type_syntax(clean).void_pointer_postfix {
+	if flat.source_type_syntax(clean).void_pointer_postfix() {
 		if suffix := flat.source_type_capture(clean, cgen_void_pointer_prefix_source_type, 0) {
 			clean = flat.source_type_composition_two(.concat, flat.source_type_voidptr, suffix)
 		}
@@ -24380,24 +24380,24 @@ fn (mut g FlatGen) collect_postfix_fn_fixed_array_typedef_text(clean u32, source
 		return false
 	}
 	syntax := flat.source_type_syntax(clean)
-	if syntax.last_bracket_prefix == 0 || !syntax.last_bracket_span_valid { return false }
-	length := syntax.last_bracket_span_inner
-	if !flat.source_type_syntax(length).decimal { return false }
-	fn_type := g.tc.parse_type(flat.source_type_syntax(syntax.last_bracket_prefix).trimmed)
+	if syntax.last_bracket_prefix() == 0 || !syntax.last_bracket_span_valid() { return false }
+	length := syntax.last_bracket_span_inner()
+	if !flat.source_type_syntax(length).decimal() { return false }
+	fn_type := g.tc.parse_type(flat.source_type_syntax(syntax.last_bracket_prefix()).trimmed())
 	if fn_type !is types.FnType { return false }
 	g.collect_fixed_array_typedef(types.Type(types.ArrayFixed{
 		elem_type: types.new_type_reference(types.Type(fn_type))
-		len:       flat.source_type_syntax(length).decimal_value
+		len:       flat.source_type_syntax(length).decimal_value()
 	}), source_module, mut needed)
 	return true
 }
 
 fn fixed_array_typedef_decimal_len_text(text string) bool {
-	return flat.source_type_syntax(flat.source_type_id(text)).decimal
+	return flat.source_type_syntax(flat.source_type_id(text)).decimal()
 }
 
 fn fixed_array_type_text_may_need_typedef(type_text string) bool {
-	return flat.source_type_syntax(flat.source_type_id(type_text)).fixed_typedef_bracket
+	return flat.source_type_syntax(flat.source_type_id(type_text)).fixed_typedef_bracket()
 }
 
 fn (mut g FlatGen) fixed_array_typedef_has_unresolved_len(typ types.Type) bool {
@@ -26105,14 +26105,14 @@ fn (g &FlatGen) const_call_receiver_type_name(base_id flat.NodeId) u32 {
 		if !flat.source_type_shape(base.typ).has(.pointer) {
 			return base.typ
 		}
-		return flat.source_type_syntax(base.typ).pointer_raw_base
+		return flat.source_type_syntax(base.typ).pointer_raw_base()
 	}
 	if base.kind == .struct_init {
 		value_type := base.source_value_id()
 		if !flat.source_type_shape(value_type).has(.pointer) {
 			return value_type
 		}
-		return flat.source_type_syntax(value_type).pointer_raw_base
+		return flat.source_type_syntax(value_type).pointer_raw_base()
 	}
 	return 0
 }

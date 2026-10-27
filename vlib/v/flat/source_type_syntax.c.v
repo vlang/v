@@ -2,6 +2,7 @@
 module flat
 
 import encoding.hex
+import math.bits
 
 // SourceTypeSyntaxKind describes the outer constructor of an interned spelling.
 // It does not resolve names or distinguish generic arguments from suffix array sizes.
@@ -41,267 +42,1343 @@ struct SourceTypeSyntaxSpan {
 // all_before('[') queries. words use ASCII identifier boundaries; symbols also
 // retain dots. Array accessors return immutable views into process-owned storage;
 // lexical views are created independently only when requested.
-// These components describe spelling syntax, not semantic TypeIds.
+// These components describe spelling syntax, not semantic TypeIds. Flags use two
+// bitsets; absent or identity scalars and array views need no payload slots.
 pub struct SourceTypeSyntax {
-	payload                             voidptr
-	args_span                           SourceTypeSyntaxSpan
-	application_args_span               SourceTypeSyntaxSpan
-	generic_app_args_span               SourceTypeSyntaxSpan
-	postfix_dims_span                   SourceTypeSyntaxSpan
-	function_params_span                SourceTypeSyntaxSpan
-	tuple_components_span               SourceTypeSyntaxSpan
-	qualifier_count                     u32
-	cgen_app_args_span                  SourceTypeSyntaxSpan
-	cgen_function_params_span           SourceTypeSyntaxSpan
-	checker_function_params_span        SourceTypeSyntaxSpan
-	checker_tuple_components_span       SourceTypeSyntaxSpan
-	cgen_raw_app_args_span              SourceTypeSyntaxSpan
-	cgen_parts_span                     SourceTypeSyntaxSpan
-	checker_raw_tuple_components_span   SourceTypeSyntaxSpan
-	bracket_raw_parts_span              SourceTypeSyntaxSpan
-	bracket_generic_parts_span          SourceTypeSyntaxSpan
-	tuple_function_components_span      SourceTypeSyntaxSpan
-	plain_comma_parts_span              SourceTypeSyntaxSpan
-	generic_mentions_span               SourceTypeSyntaxSpan
-	receiver_app_args_span              SourceTypeSyntaxSpan
-	checker_bracket_components_span     SourceTypeSyntaxSpan
-	voidptr_parts_span                  SourceTypeSyntaxSpan
-	inferred_parts_span                 SourceTypeSyntaxSpan
-	inferred_annotations_span           SourceTypeSyntaxSpan
-	inferred_expr_ids_span              SourceTypeSyntaxSpan
-	substitution_function_params_span   SourceTypeSyntaxSpan
-	written_applications_span           SourceTypeSyntaxSpan
-	written_application_offsets_span    SourceTypeSyntaxSpan
-	checker_raw_bracket_components_span SourceTypeSyntaxSpan
-	cgen_placeholder_candidates_span    SourceTypeSyntaxSpan
-	reflection_parts_span               SourceTypeSyntaxSpan
-	reflection_tuple_parts_span         SourceTypeSyntaxSpan
-	receiver_raw_app_args_span          SourceTypeSyntaxSpan
-	vls_generic_words_span              SourceTypeSyntaxSpan
-	eval_tuple_parts_span               SourceTypeSyntaxSpan
-	implicit_tuple_components_span      SourceTypeSyntaxSpan
-	generic_application_heads_span      SourceTypeSyntaxSpan
-	markused_application_heads_span     SourceTypeSyntaxSpan
-	markused_generic_components_span    SourceTypeSyntaxSpan
-	raw_tuple_parse_components_span     SourceTypeSyntaxSpan
-	union_parts_span                    SourceTypeSyntaxSpan
-pub:
-	kind                               SourceTypeSyntaxKind
-	trimmed                            u32
-	base                               u32
-	unqualified                        u32
-	qualifier                          u32
-	generic_base                       u32
-	pointer_base                       u32
-	pointer_depth                      int
-	function_has_result                bool
-	raw_base                           u32
-	main_base                          u32
-	bare_generic                       bool
-	application_base                   u32
-	application_valid                  bool
-	generic_app_base                   u32
-	generic_app_valid                  bool
-	postfix_base                       u32
-	parameter_type                     u32
-	parameter_mut_type                 u32
-	bracket_closed                     bool
-	bracket_base                       u32
-	bracket_inner                      u32
-	bracket_raw_inner                  u32
-	bracket_prefix                     u32
-	function_closed                    bool
-	function_result                    u32
-	tuple_like                         bool
-	function_space_prefix              bool
-	spaced                             bool
-	first_bracket_closed               bool
-	first_bracket_base                 u32
-	last_space_word                    u32
-	named_type                         bool
-	c_qualified                        bool
-	first_dot_prefix                   u32
-	first_dot_suffix                   u32
-	builtin_prefix                     bool
-	main_fragment                      bool
-	function_prefix                    bool
-	fn_prefix                          bool
-	shared_fragment                    bool
-	pointer_raw_base                   u32
-	builtin_base                       u32
-	cgen_app_base                      u32
-	cgen_app_valid                     bool
-	tuple_contains_comma               bool
-	top_space_head                     u32
-	top_space_tail                     u32
-	top_space_valid                    bool
-	typeof_expr_prefix                 bool
-	bracket_suffix                     u32
-	bracket_from                       u32
-	bracket_inner_fixed_length         bool
-	first_bracket_prefix               u32
-	void_pointer_postfix               bool
-	canonical_dotted_name              bool
-	decimal                            bool
-	contains_comma                     bool
-	function_fragment                  bool
-	dots_base                          u32
-	cgen_raw_app_base                  u32
-	cgen_raw_app_valid                 bool
-	generic_parameter_payload          u32
-	legacy_parameter_type              u32
-	legacy_parameter_mut_type          u32
-	first_bracket_length               u32
-	c_pointer_base                     u32
-	c_ptr_name_suffix                  bool
-	c_fn_type_fragment                 bool
-	underscored                        bool
-	source_wrapper_base                u32
-	declaration_head                   u32
-	fn_fragment                        bool
-	compact_fn_spelling                u32
-	first_bracket_raw_inner            u32
-	cgen_generic_placeholder           bool
-	fixed_array_type                   bool
-	typeof_valid                       bool
-	typeof_inner                       u32
-	postfix_index_base                 u32
-	last_bracket_prefix                u32
-	last_bracket_length                u32
-	trailing_bracket_prefix            u32
-	trailing_bracket_closed            bool
-	array_chars_base                   u32
-	lowercase_value_ident              bool
-	typeof_prefix                      bool
-	first_capital                      bool
-	named_variant                      bool
-	named_variant_valid                bool
-	named_variant_owner                u32
-	named_variant_name                 u32
-	main_unlocked                      u32
-	encoded_fixed_length               u32
-	encoded_fixed_base                 u32
-	map_name_prefix                    bool
-	suffix_bracket_length              u32
-	suffix_bracket_valid               bool
-	map_function_fragment              bool
-	bracket_source_inner               u32
-	c_fixed_typedef_element            u32
-	c_fixed_typedef_length             u32
-	c_fixed_typedef_valid              bool
-	fixed_array_query_length           u32
-	last_bracket_span_valid            bool
-	last_bracket_span_inner            u32
-	plain_type_name                    bool
-	generic_app_legacy_suffix          u32
-	wrapper_prefix                     u32
-	wrapper_base                       u32
-	checker_fixed_array_may_be         bool
-	dollar_prefix                      bool
-	define_prefix                      bool
-	define_fragment                    bool
-	paren_prefix                       bool
-	fixed_length                       bool
-	qualified_modifiers                u32
-	plain_alias_target                 bool
-	c_array_payload                    u32
-	c_fixed_array_payload              u32
-	fastc_array_marker                 bool
-	fastc_array_marker_payload         u32
-	c_map_payload                      u32
-	c_ptr_name_base                    u32
-	c_tagged_type                      u32
-	backward_bracket_prefix            u32
-	backward_bracket_closed            bool
-	opening_paren                      bool
-	byte_len                           int
-	receiver_app_valid                 bool
-	receiver_app_base                  u32
-	declaration_parameter_payload      u32
-	declaration_parameter_mut          bool
-	prefix_dimension_tail              u32
-	prefix_dimensions_closed           bool
-	backward_bracket_after_prefix_dims bool
-	backward_bracket_inner             u32
-	option_result_void_prefix          bool
-	nested_option_result_marker        int
-	c_pointer_depth                    int
-	c_pointer_count                    int
-	c_pointer_raw_base                 u32
-	thread_value_prefix                bool
-	thread_value_payload               u32
-	thread_value_type_valid            bool
-	thread_value_type                  u32
-	contains_closing_bracket           bool
-	atomic_val_fragment                bool
-	// inferred_expr_ids stores AST NodeId bit patterns, not source spelling IDs.
-	expr_prefix                       bool
-	expr_id                           int
-	parameter_name                    u32
-	parameter_named                   bool
-	parameter_is_mut                  bool
-	transform_fixed_length            bool
-	receiver_collection_id            u32
-	ampersand_trimmed                 u32
-	contains_doubleunderscore         bool
-	parallel_preseed_fn               bool
-	parallel_preseed_short            u32
-	closing_bracket                   bool
-	constraint_receiver_base          u32
-	result_suffix                     bool
-	cgen_decl_unusable                bool
-	cgen_decl_authority               bool
-	generic_encoded_fragment          bool
-	fn_ptr_encoded_prefix             bool
-	c_result_prefix                   bool
-	c_option_prefix                   bool
-	c_multi_return_prefix             bool
-	c_lower_map_prefix                bool
-	open_generic_receiver_marker      bool
-	space_removed                     u32
-	qualified_name_chars              bool
-	field_owner_module                u32
-	const_name_prefix                 bool
-	pthread_prefix                    bool
-	thread_bracket_prefix             bool
-	fixed_typedef_bracket             bool
-	question_trimmed                  u32
-	c_array_fixed_prefix              bool
-	function_space_result             u32
-	decimal_value                     int
-	integer_value                     int
-	encoded_alnum_dotted              bool
-	internal_symbol_prefix            bool
-	main_at_base                      u32
-	incremental_generic_application   bool
-	system_error_suffix               bool
-	receiver_app_inner                u32
-	fastc_fixed_array_length_valid    bool
-	fastc_fixed_array_length          u32
-	contains_capital                  bool
-	first_bracket_source_inner        u32
-	c_function_pointer_hole           bool
-	channel_fragment                  bool
-	array_receiver_fragment           bool
-	mangled_open_generic_marker       bool
-	array_suffix                      bool
-	empty_function_prefix             bool
-	c_shared_fragment                 bool
-	typ_suffix                        bool
-	typ_suffix_base                   u32
-	checker_parse_function_result     u32
-	checker_parse_function_has_params bool
-	top_level_dot_valid               bool
-	top_level_dot_prefix              u32
-	top_level_dot_suffix              u32
-	parser_fn_decl_valid              bool
-	parser_fn_decl_params             u32
-	parser_fn_decl_result             u32
-	contains_question                 bool
-	contains_union                    bool
-	named_variant_dot_valid           bool
-	named_variant_dot_prefix          u32
-	named_variant_dot_suffix          u32
+	payload            voidptr
+	scalar_present     [2]u64
+	scalar_identity    [2]u64
+	bool_flags         [2]u64
+	span_present       u64
+	span_identity      u64
+	scalar_count       u32
+	scalar_first_count u32
+}
+
+// Scalars store only nonzero values that differ from the owning spelling ID.
+// Full-width slots retain signed int values when new_int uses 64-bit integers.
+// Constant field indices let inlining fold the word and bit selection.
+@[direct_array_access; inline]
+fn (syntax &SourceTypeSyntax) scalar(index int) u64 {
+	word := index >> 6
+	bit := u64(1) << u32(index & 63)
+	if syntax.scalar_identity[word] & bit != 0 {
+		return unsafe { u64(*&u32(syntax.payload)) }
+	}
+	present := syntax.scalar_present[word]
+	if present & bit == 0 { return 0 }
+	offset := bits.ones_count_64(present & (bit - 1)) + if word == 0 {
+		0
+	} else {
+		int(syntax.scalar_first_count)
+	}
+	return unsafe { (&u64(syntax.payload))[1 + offset] }
+}
+
+@[inline]
+fn (syntax &SourceTypeSyntax) span(index int) SourceTypeSyntaxSpan {
+	bit := u64(1) << u32(index)
+	if syntax.span_identity & bit != 0 { return SourceTypeSyntaxSpan{ len: 1 } }
+	if syntax.span_present & bit == 0 { return SourceTypeSyntaxSpan{} }
+	offset := 2 + 2 * int(syntax.scalar_count) + 2 * bits.ones_count_64(syntax.span_present & (bit - 1))
+	// The writer stores these two-u32 records at u32-aligned payload offsets.
+	return unsafe { *&SourceTypeSyntaxSpan(&(&u32(syntax.payload))[offset]) }
+}
+
+// qualifier_count returns the cached qualifier count query.
+@[inline]
+fn (syntax &SourceTypeSyntax) qualifier_count() u32 {
+	return u32(syntax.scalar(0))
+}
+
+// kind returns the cached kind query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) kind() SourceTypeSyntaxKind {
+	return unsafe { SourceTypeSyntaxKind(u32(syntax.scalar(1))) }
+}
+
+// trimmed returns the cached trimmed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) trimmed() u32 {
+	return u32(syntax.scalar(2))
+}
+
+// base returns the cached base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) base() u32 {
+	return u32(syntax.scalar(3))
+}
+
+// unqualified returns the cached unqualified query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) unqualified() u32 {
+	return u32(syntax.scalar(4))
+}
+
+// qualifier returns the cached qualifier query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) qualifier() u32 {
+	return u32(syntax.scalar(5))
+}
+
+// generic_base returns the cached generic base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) generic_base() u32 {
+	return u32(syntax.scalar(6))
+}
+
+// pointer_base returns the cached pointer base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) pointer_base() u32 {
+	return u32(syntax.scalar(7))
+}
+
+// pointer_depth returns the cached pointer depth query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) pointer_depth() int {
+	return int(syntax.scalar(8))
+}
+
+// raw_base returns the cached raw base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) raw_base() u32 {
+	return u32(syntax.scalar(9))
+}
+
+// main_base returns the cached main base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) main_base() u32 {
+	return u32(syntax.scalar(10))
+}
+
+// application_base returns the cached application base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) application_base() u32 {
+	return u32(syntax.scalar(11))
+}
+
+// generic_app_base returns the cached generic app base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) generic_app_base() u32 {
+	return u32(syntax.scalar(12))
+}
+
+// postfix_base returns the cached postfix base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) postfix_base() u32 {
+	return u32(syntax.scalar(13))
+}
+
+// parameter_type returns the cached parameter type query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parameter_type() u32 {
+	return u32(syntax.scalar(14))
+}
+
+// parameter_mut_type returns the cached parameter mut type query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parameter_mut_type() u32 {
+	return u32(syntax.scalar(15))
+}
+
+// bracket_base returns the cached bracket base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_base() u32 {
+	return u32(syntax.scalar(16))
+}
+
+// bracket_inner returns the cached bracket inner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_inner() u32 {
+	return u32(syntax.scalar(17))
+}
+
+// bracket_raw_inner returns the cached bracket raw inner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_raw_inner() u32 {
+	return u32(syntax.scalar(18))
+}
+
+// bracket_prefix returns the cached bracket prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_prefix() u32 {
+	return u32(syntax.scalar(19))
+}
+
+// function_result returns the cached function result query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) function_result() u32 {
+	return u32(syntax.scalar(20))
+}
+
+// first_bracket_base returns the cached first bracket base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) first_bracket_base() u32 {
+	return u32(syntax.scalar(21))
+}
+
+// last_space_word returns the cached last space word query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) last_space_word() u32 {
+	return u32(syntax.scalar(22))
+}
+
+// first_dot_prefix returns the cached first dot prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) first_dot_prefix() u32 {
+	return u32(syntax.scalar(23))
+}
+
+// first_dot_suffix returns the cached first dot suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) first_dot_suffix() u32 {
+	return u32(syntax.scalar(24))
+}
+
+// pointer_raw_base returns the cached pointer raw base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) pointer_raw_base() u32 {
+	return u32(syntax.scalar(25))
+}
+
+// builtin_base returns the cached builtin base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) builtin_base() u32 {
+	return u32(syntax.scalar(26))
+}
+
+// cgen_app_base returns the cached cgen app base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_app_base() u32 {
+	return u32(syntax.scalar(27))
+}
+
+// top_space_head returns the cached top space head query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) top_space_head() u32 {
+	return u32(syntax.scalar(28))
+}
+
+// top_space_tail returns the cached top space tail query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) top_space_tail() u32 {
+	return u32(syntax.scalar(29))
+}
+
+// bracket_suffix returns the cached bracket suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_suffix() u32 {
+	return u32(syntax.scalar(30))
+}
+
+// bracket_from returns the cached bracket from query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_from() u32 {
+	return u32(syntax.scalar(31))
+}
+
+// first_bracket_prefix returns the cached first bracket prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) first_bracket_prefix() u32 {
+	return u32(syntax.scalar(32))
+}
+
+// dots_base returns the cached dots base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) dots_base() u32 {
+	return u32(syntax.scalar(33))
+}
+
+// cgen_raw_app_base returns the cached cgen raw app base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_raw_app_base() u32 {
+	return u32(syntax.scalar(34))
+}
+
+// generic_parameter_payload returns the cached generic parameter payload query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) generic_parameter_payload() u32 {
+	return u32(syntax.scalar(35))
+}
+
+// legacy_parameter_type returns the cached legacy parameter type query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) legacy_parameter_type() u32 {
+	return u32(syntax.scalar(36))
+}
+
+// legacy_parameter_mut_type returns the cached legacy parameter mut type query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) legacy_parameter_mut_type() u32 {
+	return u32(syntax.scalar(37))
+}
+
+// first_bracket_length returns the cached first bracket length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) first_bracket_length() u32 {
+	return u32(syntax.scalar(38))
+}
+
+// c_pointer_base returns the cached c pointer base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_pointer_base() u32 {
+	return u32(syntax.scalar(39))
+}
+
+// source_wrapper_base returns the cached source wrapper base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) source_wrapper_base() u32 {
+	return u32(syntax.scalar(40))
+}
+
+// declaration_head returns the cached declaration head query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) declaration_head() u32 {
+	return u32(syntax.scalar(41))
+}
+
+// compact_fn_spelling returns the cached compact fn spelling query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) compact_fn_spelling() u32 {
+	return u32(syntax.scalar(42))
+}
+
+// first_bracket_raw_inner returns the cached first bracket raw inner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) first_bracket_raw_inner() u32 {
+	return u32(syntax.scalar(43))
+}
+
+// typeof_inner returns the cached typeof inner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) typeof_inner() u32 {
+	return u32(syntax.scalar(44))
+}
+
+// postfix_index_base returns the cached postfix index base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) postfix_index_base() u32 {
+	return u32(syntax.scalar(45))
+}
+
+// last_bracket_prefix returns the cached last bracket prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) last_bracket_prefix() u32 {
+	return u32(syntax.scalar(46))
+}
+
+// last_bracket_length returns the cached last bracket length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) last_bracket_length() u32 {
+	return u32(syntax.scalar(47))
+}
+
+// trailing_bracket_prefix returns the cached trailing bracket prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) trailing_bracket_prefix() u32 {
+	return u32(syntax.scalar(48))
+}
+
+// array_chars_base returns the cached array chars base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) array_chars_base() u32 {
+	return u32(syntax.scalar(49))
+}
+
+// named_variant_owner returns the cached named variant owner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) named_variant_owner() u32 {
+	return u32(syntax.scalar(50))
+}
+
+// named_variant_name returns the cached named variant name query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) named_variant_name() u32 {
+	return u32(syntax.scalar(51))
+}
+
+// main_unlocked returns the cached main unlocked query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) main_unlocked() u32 {
+	return u32(syntax.scalar(52))
+}
+
+// encoded_fixed_length returns the cached encoded fixed length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) encoded_fixed_length() u32 {
+	return u32(syntax.scalar(53))
+}
+
+// encoded_fixed_base returns the cached encoded fixed base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) encoded_fixed_base() u32 {
+	return u32(syntax.scalar(54))
+}
+
+// suffix_bracket_length returns the cached suffix bracket length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) suffix_bracket_length() u32 {
+	return u32(syntax.scalar(55))
+}
+
+// bracket_source_inner returns the cached bracket source inner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_source_inner() u32 {
+	return u32(syntax.scalar(56))
+}
+
+// c_fixed_typedef_element returns the cached c fixed typedef element query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_fixed_typedef_element() u32 {
+	return u32(syntax.scalar(57))
+}
+
+// c_fixed_typedef_length returns the cached c fixed typedef length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_fixed_typedef_length() u32 {
+	return u32(syntax.scalar(58))
+}
+
+// fixed_array_query_length returns the cached fixed array query length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fixed_array_query_length() u32 {
+	return u32(syntax.scalar(59))
+}
+
+// last_bracket_span_inner returns the cached last bracket span inner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) last_bracket_span_inner() u32 {
+	return u32(syntax.scalar(60))
+}
+
+// generic_app_legacy_suffix returns the cached generic app legacy suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) generic_app_legacy_suffix() u32 {
+	return u32(syntax.scalar(61))
+}
+
+// wrapper_prefix returns the cached wrapper prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) wrapper_prefix() u32 {
+	return u32(syntax.scalar(62))
+}
+
+// wrapper_base returns the cached wrapper base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) wrapper_base() u32 {
+	return u32(syntax.scalar(63))
+}
+
+// qualified_modifiers returns the cached qualified modifiers query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) qualified_modifiers() u32 {
+	return u32(syntax.scalar(64))
+}
+
+// c_array_payload returns the cached c array payload query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_array_payload() u32 {
+	return u32(syntax.scalar(65))
+}
+
+// c_fixed_array_payload returns the cached c fixed array payload query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_fixed_array_payload() u32 {
+	return u32(syntax.scalar(66))
+}
+
+// fastc_array_marker_payload returns the cached fastc array marker payload query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fastc_array_marker_payload() u32 {
+	return u32(syntax.scalar(67))
+}
+
+// c_map_payload returns the cached c map payload query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_map_payload() u32 {
+	return u32(syntax.scalar(68))
+}
+
+// c_ptr_name_base returns the cached c ptr name base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_ptr_name_base() u32 {
+	return u32(syntax.scalar(69))
+}
+
+// c_tagged_type returns the cached c tagged type query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_tagged_type() u32 {
+	return u32(syntax.scalar(70))
+}
+
+// backward_bracket_prefix returns the cached backward bracket prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) backward_bracket_prefix() u32 {
+	return u32(syntax.scalar(71))
+}
+
+// byte_len returns the cached byte len query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) byte_len() int {
+	return int(syntax.scalar(72))
+}
+
+// receiver_app_base returns the cached receiver app base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) receiver_app_base() u32 {
+	return u32(syntax.scalar(73))
+}
+
+// declaration_parameter_payload returns the cached declaration parameter payload query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) declaration_parameter_payload() u32 {
+	return u32(syntax.scalar(74))
+}
+
+// prefix_dimension_tail returns the cached prefix dimension tail query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) prefix_dimension_tail() u32 {
+	return u32(syntax.scalar(75))
+}
+
+// backward_bracket_inner returns the cached backward bracket inner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) backward_bracket_inner() u32 {
+	return u32(syntax.scalar(76))
+}
+
+// nested_option_result_marker returns the cached nested option result marker query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) nested_option_result_marker() int {
+	return int(syntax.scalar(77))
+}
+
+// c_pointer_depth returns the cached c pointer depth query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_pointer_depth() int {
+	return int(syntax.scalar(78))
+}
+
+// c_pointer_count returns the cached c pointer count query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_pointer_count() int {
+	return int(syntax.scalar(79))
+}
+
+// c_pointer_raw_base returns the cached c pointer raw base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_pointer_raw_base() u32 {
+	return u32(syntax.scalar(80))
+}
+
+// thread_value_payload returns the cached thread value payload query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) thread_value_payload() u32 {
+	return u32(syntax.scalar(81))
+}
+
+// thread_value_type returns the cached thread value type query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) thread_value_type() u32 {
+	return u32(syntax.scalar(82))
+}
+
+// expr_id returns the cached expr id query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) expr_id() int {
+	return int(syntax.scalar(83))
+}
+
+// parameter_name returns the cached parameter name query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parameter_name() u32 {
+	return u32(syntax.scalar(84))
+}
+
+// receiver_collection_id returns the cached receiver collection id query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) receiver_collection_id() u32 {
+	return u32(syntax.scalar(85))
+}
+
+// ampersand_trimmed returns the cached ampersand trimmed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) ampersand_trimmed() u32 {
+	return u32(syntax.scalar(86))
+}
+
+// parallel_preseed_short returns the cached parallel preseed short query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parallel_preseed_short() u32 {
+	return u32(syntax.scalar(87))
+}
+
+// constraint_receiver_base returns the cached constraint receiver base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) constraint_receiver_base() u32 {
+	return u32(syntax.scalar(88))
+}
+
+// space_removed returns the cached space removed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) space_removed() u32 {
+	return u32(syntax.scalar(89))
+}
+
+// field_owner_module returns the cached field owner module query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) field_owner_module() u32 {
+	return u32(syntax.scalar(90))
+}
+
+// question_trimmed returns the cached question trimmed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) question_trimmed() u32 {
+	return u32(syntax.scalar(91))
+}
+
+// function_space_result returns the cached function space result query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) function_space_result() u32 {
+	return u32(syntax.scalar(92))
+}
+
+// decimal_value returns the cached decimal value query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) decimal_value() int {
+	return int(syntax.scalar(93))
+}
+
+// integer_value returns the cached integer value query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) integer_value() int {
+	return int(syntax.scalar(94))
+}
+
+// main_at_base returns the cached main at base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) main_at_base() u32 {
+	return u32(syntax.scalar(95))
+}
+
+// receiver_app_inner returns the cached receiver app inner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) receiver_app_inner() u32 {
+	return u32(syntax.scalar(96))
+}
+
+// fastc_fixed_array_length returns the cached fastc fixed array length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fastc_fixed_array_length() u32 {
+	return u32(syntax.scalar(97))
+}
+
+// first_bracket_source_inner returns the cached first bracket source inner query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) first_bracket_source_inner() u32 {
+	return u32(syntax.scalar(98))
+}
+
+// typ_suffix_base returns the cached typ suffix base query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) typ_suffix_base() u32 {
+	return u32(syntax.scalar(99))
+}
+
+// checker_parse_function_result returns the cached checker parse function result query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) checker_parse_function_result() u32 {
+	return u32(syntax.scalar(100))
+}
+
+// top_level_dot_prefix returns the cached top level dot prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) top_level_dot_prefix() u32 {
+	return u32(syntax.scalar(101))
+}
+
+// top_level_dot_suffix returns the cached top level dot suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) top_level_dot_suffix() u32 {
+	return u32(syntax.scalar(102))
+}
+
+// parser_fn_decl_params returns the cached parser fn decl params query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parser_fn_decl_params() u32 {
+	return u32(syntax.scalar(103))
+}
+
+// parser_fn_decl_result returns the cached parser fn decl result query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parser_fn_decl_result() u32 {
+	return u32(syntax.scalar(104))
+}
+
+// named_variant_dot_prefix returns the cached named variant dot prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) named_variant_dot_prefix() u32 {
+	return u32(syntax.scalar(105))
+}
+
+// named_variant_dot_suffix returns the cached named variant dot suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) named_variant_dot_suffix() u32 {
+	return u32(syntax.scalar(106))
+}
+
+// function_has_result returns the cached function has result query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) function_has_result() bool {
+	return syntax.bool_flags[0] & (u64(1) << 0) != 0
+}
+
+// bare_generic returns the cached bare generic query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bare_generic() bool {
+	return syntax.bool_flags[0] & (u64(1) << 1) != 0
+}
+
+// application_valid returns the cached application valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) application_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 2) != 0
+}
+
+// generic_app_valid returns the cached generic app valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) generic_app_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 3) != 0
+}
+
+// bracket_closed returns the cached bracket closed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_closed() bool {
+	return syntax.bool_flags[0] & (u64(1) << 4) != 0
+}
+
+// function_closed returns the cached function closed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) function_closed() bool {
+	return syntax.bool_flags[0] & (u64(1) << 5) != 0
+}
+
+// tuple_like returns the cached tuple like query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) tuple_like() bool {
+	return syntax.bool_flags[0] & (u64(1) << 6) != 0
+}
+
+// function_space_prefix returns the cached function space prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) function_space_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 7) != 0
+}
+
+// spaced returns the cached spaced query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) spaced() bool {
+	return syntax.bool_flags[0] & (u64(1) << 8) != 0
+}
+
+// first_bracket_closed returns the cached first bracket closed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) first_bracket_closed() bool {
+	return syntax.bool_flags[0] & (u64(1) << 9) != 0
+}
+
+// named_type returns the cached named type query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) named_type() bool {
+	return syntax.bool_flags[0] & (u64(1) << 10) != 0
+}
+
+// c_qualified returns the cached c qualified query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_qualified() bool {
+	return syntax.bool_flags[0] & (u64(1) << 11) != 0
+}
+
+// builtin_prefix returns the cached builtin prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) builtin_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 12) != 0
+}
+
+// main_fragment returns the cached main fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) main_fragment() bool {
+	return syntax.bool_flags[0] & (u64(1) << 13) != 0
+}
+
+// function_prefix returns the cached function prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) function_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 14) != 0
+}
+
+// fn_prefix returns the cached fn prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fn_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 15) != 0
+}
+
+// shared_fragment returns the cached shared fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) shared_fragment() bool {
+	return syntax.bool_flags[0] & (u64(1) << 16) != 0
+}
+
+// cgen_app_valid returns the cached cgen app valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_app_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 17) != 0
+}
+
+// tuple_contains_comma returns the cached tuple contains comma query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) tuple_contains_comma() bool {
+	return syntax.bool_flags[0] & (u64(1) << 18) != 0
+}
+
+// top_space_valid returns the cached top space valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) top_space_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 19) != 0
+}
+
+// typeof_expr_prefix returns the cached typeof expr prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) typeof_expr_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 20) != 0
+}
+
+// bracket_inner_fixed_length returns the cached bracket inner fixed length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_inner_fixed_length() bool {
+	return syntax.bool_flags[0] & (u64(1) << 21) != 0
+}
+
+// void_pointer_postfix returns the cached void pointer postfix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) void_pointer_postfix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 22) != 0
+}
+
+// canonical_dotted_name returns the cached canonical dotted name query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) canonical_dotted_name() bool {
+	return syntax.bool_flags[0] & (u64(1) << 23) != 0
+}
+
+// decimal returns the cached decimal query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) decimal() bool {
+	return syntax.bool_flags[0] & (u64(1) << 24) != 0
+}
+
+// contains_comma returns the cached contains comma query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) contains_comma() bool {
+	return syntax.bool_flags[0] & (u64(1) << 25) != 0
+}
+
+// function_fragment returns the cached function fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) function_fragment() bool {
+	return syntax.bool_flags[0] & (u64(1) << 26) != 0
+}
+
+// cgen_raw_app_valid returns the cached cgen raw app valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_raw_app_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 27) != 0
+}
+
+// c_ptr_name_suffix returns the cached c ptr name suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_ptr_name_suffix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 28) != 0
+}
+
+// c_fn_type_fragment returns the cached c fn type fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_fn_type_fragment() bool {
+	return syntax.bool_flags[0] & (u64(1) << 29) != 0
+}
+
+// underscored returns the cached underscored query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) underscored() bool {
+	return syntax.bool_flags[0] & (u64(1) << 30) != 0
+}
+
+// fn_fragment returns the cached fn fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fn_fragment() bool {
+	return syntax.bool_flags[0] & (u64(1) << 31) != 0
+}
+
+// cgen_generic_placeholder returns the cached cgen generic placeholder query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_generic_placeholder() bool {
+	return syntax.bool_flags[0] & (u64(1) << 32) != 0
+}
+
+// fixed_array_type returns the cached fixed array type query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fixed_array_type() bool {
+	return syntax.bool_flags[0] & (u64(1) << 33) != 0
+}
+
+// typeof_valid returns the cached typeof valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) typeof_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 34) != 0
+}
+
+// trailing_bracket_closed returns the cached trailing bracket closed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) trailing_bracket_closed() bool {
+	return syntax.bool_flags[0] & (u64(1) << 35) != 0
+}
+
+// lowercase_value_ident returns the cached lowercase value ident query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) lowercase_value_ident() bool {
+	return syntax.bool_flags[0] & (u64(1) << 36) != 0
+}
+
+// typeof_prefix returns the cached typeof prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) typeof_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 37) != 0
+}
+
+// first_capital returns the cached first capital query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) first_capital() bool {
+	return syntax.bool_flags[0] & (u64(1) << 38) != 0
+}
+
+// named_variant returns the cached named variant query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) named_variant() bool {
+	return syntax.bool_flags[0] & (u64(1) << 39) != 0
+}
+
+// named_variant_valid returns the cached named variant valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) named_variant_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 40) != 0
+}
+
+// map_name_prefix returns the cached map name prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) map_name_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 41) != 0
+}
+
+// suffix_bracket_valid returns the cached suffix bracket valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) suffix_bracket_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 42) != 0
+}
+
+// map_function_fragment returns the cached map function fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) map_function_fragment() bool {
+	return syntax.bool_flags[0] & (u64(1) << 43) != 0
+}
+
+// c_fixed_typedef_valid returns the cached c fixed typedef valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_fixed_typedef_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 44) != 0
+}
+
+// last_bracket_span_valid returns the cached last bracket span valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) last_bracket_span_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 45) != 0
+}
+
+// plain_type_name returns the cached plain type name query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) plain_type_name() bool {
+	return syntax.bool_flags[0] & (u64(1) << 46) != 0
+}
+
+// checker_fixed_array_may_be returns the cached checker fixed array may be query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) checker_fixed_array_may_be() bool {
+	return syntax.bool_flags[0] & (u64(1) << 47) != 0
+}
+
+// dollar_prefix returns the cached dollar prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) dollar_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 48) != 0
+}
+
+// define_prefix returns the cached define prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) define_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 49) != 0
+}
+
+// define_fragment returns the cached define fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) define_fragment() bool {
+	return syntax.bool_flags[0] & (u64(1) << 50) != 0
+}
+
+// paren_prefix returns the cached paren prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) paren_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 51) != 0
+}
+
+// fixed_length returns the cached fixed length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fixed_length() bool {
+	return syntax.bool_flags[0] & (u64(1) << 52) != 0
+}
+
+// plain_alias_target returns the cached plain alias target query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) plain_alias_target() bool {
+	return syntax.bool_flags[0] & (u64(1) << 53) != 0
+}
+
+// fastc_array_marker returns the cached fastc array marker query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fastc_array_marker() bool {
+	return syntax.bool_flags[0] & (u64(1) << 54) != 0
+}
+
+// backward_bracket_closed returns the cached backward bracket closed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) backward_bracket_closed() bool {
+	return syntax.bool_flags[0] & (u64(1) << 55) != 0
+}
+
+// opening_paren returns the cached opening paren query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) opening_paren() bool {
+	return syntax.bool_flags[0] & (u64(1) << 56) != 0
+}
+
+// receiver_app_valid returns the cached receiver app valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) receiver_app_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 57) != 0
+}
+
+// declaration_parameter_mut returns the cached declaration parameter mut query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) declaration_parameter_mut() bool {
+	return syntax.bool_flags[0] & (u64(1) << 58) != 0
+}
+
+// prefix_dimensions_closed returns the cached prefix dimensions closed query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) prefix_dimensions_closed() bool {
+	return syntax.bool_flags[0] & (u64(1) << 59) != 0
+}
+
+// backward_bracket_after_prefix_dims returns the cached backward bracket after prefix dims query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) backward_bracket_after_prefix_dims() bool {
+	return syntax.bool_flags[0] & (u64(1) << 60) != 0
+}
+
+// option_result_void_prefix returns the cached option result void prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) option_result_void_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 61) != 0
+}
+
+// thread_value_prefix returns the cached thread value prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) thread_value_prefix() bool {
+	return syntax.bool_flags[0] & (u64(1) << 62) != 0
+}
+
+// thread_value_type_valid returns the cached thread value type valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) thread_value_type_valid() bool {
+	return syntax.bool_flags[0] & (u64(1) << 63) != 0
+}
+
+// contains_closing_bracket returns the cached contains closing bracket query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) contains_closing_bracket() bool {
+	return syntax.bool_flags[1] & (u64(1) << 0) != 0
+}
+
+// atomic_val_fragment returns the cached atomic val fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) atomic_val_fragment() bool {
+	return syntax.bool_flags[1] & (u64(1) << 1) != 0
+}
+
+// expr_prefix returns the cached expr prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) expr_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 2) != 0
+}
+
+// parameter_named returns the cached parameter named query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parameter_named() bool {
+	return syntax.bool_flags[1] & (u64(1) << 3) != 0
+}
+
+// parameter_is_mut returns the cached parameter is mut query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parameter_is_mut() bool {
+	return syntax.bool_flags[1] & (u64(1) << 4) != 0
+}
+
+// transform_fixed_length returns the cached transform fixed length query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) transform_fixed_length() bool {
+	return syntax.bool_flags[1] & (u64(1) << 5) != 0
+}
+
+// contains_doubleunderscore returns the cached contains doubleunderscore query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) contains_doubleunderscore() bool {
+	return syntax.bool_flags[1] & (u64(1) << 6) != 0
+}
+
+// parallel_preseed_fn returns the cached parallel preseed fn query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parallel_preseed_fn() bool {
+	return syntax.bool_flags[1] & (u64(1) << 7) != 0
+}
+
+// closing_bracket returns the cached closing bracket query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) closing_bracket() bool {
+	return syntax.bool_flags[1] & (u64(1) << 8) != 0
+}
+
+// result_suffix returns the cached result suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) result_suffix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 9) != 0
+}
+
+// cgen_decl_unusable returns the cached cgen decl unusable query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_decl_unusable() bool {
+	return syntax.bool_flags[1] & (u64(1) << 10) != 0
+}
+
+// cgen_decl_authority returns the cached cgen decl authority query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_decl_authority() bool {
+	return syntax.bool_flags[1] & (u64(1) << 11) != 0
+}
+
+// generic_encoded_fragment returns the cached generic encoded fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) generic_encoded_fragment() bool {
+	return syntax.bool_flags[1] & (u64(1) << 12) != 0
+}
+
+// fn_ptr_encoded_prefix returns the cached fn ptr encoded prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fn_ptr_encoded_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 13) != 0
+}
+
+// c_result_prefix returns the cached c result prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_result_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 14) != 0
+}
+
+// c_option_prefix returns the cached c option prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_option_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 15) != 0
+}
+
+// c_multi_return_prefix returns the cached c multi return prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_multi_return_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 16) != 0
+}
+
+// c_lower_map_prefix returns the cached c lower map prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_lower_map_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 17) != 0
+}
+
+// open_generic_receiver_marker returns the cached open generic receiver marker query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) open_generic_receiver_marker() bool {
+	return syntax.bool_flags[1] & (u64(1) << 18) != 0
+}
+
+// qualified_name_chars returns the cached qualified name chars query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) qualified_name_chars() bool {
+	return syntax.bool_flags[1] & (u64(1) << 19) != 0
+}
+
+// const_name_prefix returns the cached const name prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) const_name_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 20) != 0
+}
+
+// pthread_prefix returns the cached pthread prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) pthread_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 21) != 0
+}
+
+// thread_bracket_prefix returns the cached thread bracket prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) thread_bracket_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 22) != 0
+}
+
+// fixed_typedef_bracket returns the cached fixed typedef bracket query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fixed_typedef_bracket() bool {
+	return syntax.bool_flags[1] & (u64(1) << 23) != 0
+}
+
+// c_array_fixed_prefix returns the cached c array fixed prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_array_fixed_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 24) != 0
+}
+
+// encoded_alnum_dotted returns the cached encoded alnum dotted query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) encoded_alnum_dotted() bool {
+	return syntax.bool_flags[1] & (u64(1) << 25) != 0
+}
+
+// internal_symbol_prefix returns the cached internal symbol prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) internal_symbol_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 26) != 0
+}
+
+// incremental_generic_application returns the cached incremental generic application query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) incremental_generic_application() bool {
+	return syntax.bool_flags[1] & (u64(1) << 27) != 0
+}
+
+// system_error_suffix returns the cached system error suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) system_error_suffix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 28) != 0
+}
+
+// fastc_fixed_array_length_valid returns the cached fastc fixed array length valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) fastc_fixed_array_length_valid() bool {
+	return syntax.bool_flags[1] & (u64(1) << 29) != 0
+}
+
+// contains_capital returns the cached contains capital query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) contains_capital() bool {
+	return syntax.bool_flags[1] & (u64(1) << 30) != 0
+}
+
+// c_function_pointer_hole returns the cached c function pointer hole query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_function_pointer_hole() bool {
+	return syntax.bool_flags[1] & (u64(1) << 31) != 0
+}
+
+// channel_fragment returns the cached channel fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) channel_fragment() bool {
+	return syntax.bool_flags[1] & (u64(1) << 32) != 0
+}
+
+// array_receiver_fragment returns the cached array receiver fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) array_receiver_fragment() bool {
+	return syntax.bool_flags[1] & (u64(1) << 33) != 0
+}
+
+// mangled_open_generic_marker returns the cached mangled open generic marker query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) mangled_open_generic_marker() bool {
+	return syntax.bool_flags[1] & (u64(1) << 34) != 0
+}
+
+// array_suffix returns the cached array suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) array_suffix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 35) != 0
+}
+
+// empty_function_prefix returns the cached empty function prefix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) empty_function_prefix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 36) != 0
+}
+
+// c_shared_fragment returns the cached c shared fragment query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) c_shared_fragment() bool {
+	return syntax.bool_flags[1] & (u64(1) << 37) != 0
+}
+
+// typ_suffix returns the cached typ suffix query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) typ_suffix() bool {
+	return syntax.bool_flags[1] & (u64(1) << 38) != 0
+}
+
+// checker_parse_function_has_params returns the cached checker parse function has params query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) checker_parse_function_has_params() bool {
+	return syntax.bool_flags[1] & (u64(1) << 39) != 0
+}
+
+// top_level_dot_valid returns the cached top level dot valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) top_level_dot_valid() bool {
+	return syntax.bool_flags[1] & (u64(1) << 40) != 0
+}
+
+// parser_fn_decl_valid returns the cached parser fn decl valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) parser_fn_decl_valid() bool {
+	return syntax.bool_flags[1] & (u64(1) << 41) != 0
+}
+
+// contains_question returns the cached contains question query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) contains_question() bool {
+	return syntax.bool_flags[1] & (u64(1) << 42) != 0
+}
+
+// contains_union returns the cached contains union query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) contains_union() bool {
+	return syntax.bool_flags[1] & (u64(1) << 43) != 0
+}
+
+// named_variant_dot_valid returns the cached named variant dot valid query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) named_variant_dot_valid() bool {
+	return syntax.bool_flags[1] & (u64(1) << 44) != 0
 }
 
 @[inline]
@@ -359,14 +1436,14 @@ fn (syntax &SourceTypeSyntax) ids(span SourceTypeSyntaxSpan) []u32 {
 // args returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) args() []u32 {
-	return syntax.ids(syntax.args_span)
+	return syntax.ids(syntax.span(0))
 }
 
 // symbols returns a lazily cached process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) symbols() []u32 {
 	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
-	if syntax.named_type { return syntax.ids(SourceTypeSyntaxSpan{ len: 1 }) }
+	if syntax.named_type() { return syntax.ids(SourceTypeSyntaxSpan{ len: 1 }) }
 	id := unsafe { *&u32(syntax.payload) }
 	return source_type_syntax_lexical_ids(source_type_syntax_lexical(id, .symbols), false)
 }
@@ -376,7 +1453,7 @@ pub fn (syntax &SourceTypeSyntax) symbols() []u32 {
 pub fn (syntax &SourceTypeSyntax) words() []u32 {
 	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
 	id := unsafe { *&u32(syntax.payload) }
-	if syntax.named_type && syntax.first_dot_prefix == id {
+	if syntax.named_type() && syntax.first_dot_prefix() == id {
 		return syntax.ids(SourceTypeSyntaxSpan{ len: 1 })
 	}
 	return source_type_syntax_lexical_ids(source_type_syntax_lexical(id, .words), false)
@@ -385,39 +1462,41 @@ pub fn (syntax &SourceTypeSyntax) words() []u32 {
 // application_args returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) application_args() []u32 {
-	return syntax.ids(syntax.application_args_span)
+	return syntax.ids(syntax.span(1))
 }
 
 // generic_app_args returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) generic_app_args() []u32 {
-	return syntax.ids(syntax.generic_app_args_span)
+	return syntax.ids(syntax.span(2))
 }
 
 // postfix_dims returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) postfix_dims() []u32 {
-	return syntax.ids(syntax.postfix_dims_span)
+	return syntax.ids(syntax.span(3))
 }
 
 // function_params returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) function_params() []u32 {
-	return syntax.ids(syntax.function_params_span)
+	return syntax.ids(syntax.span(4))
 }
 
 // tuple_components returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) tuple_components() []u32 {
-	return syntax.ids(syntax.tuple_components_span)
+	return syntax.ids(syntax.span(5))
 }
 
 // qualifier_prefixes returns raw prefixes before each dot in process-owned storage.
 // A single prefix borrows its immutable source entry; longer views are cached on request.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) qualifier_prefixes() []u32 {
-	if syntax.qualifier_count == 0 { return syntax.ids(SourceTypeSyntaxSpan{}) }
-	if syntax.qualifier_count == 1 { return source_type_syntax_scalar_ids(syntax.first_dot_prefix) }
+	if syntax.qualifier_count() == 0 { return syntax.ids(SourceTypeSyntaxSpan{}) }
+	if syntax.qualifier_count() == 1 {
+		return source_type_syntax_scalar_ids(syntax.first_dot_prefix())
+	}
 	id := unsafe { *&u32(syntax.payload) }
 	return source_type_syntax_lexical_ids(source_type_syntax_lexical(id, .qualifiers), false)
 }
@@ -426,8 +1505,10 @@ pub fn (syntax &SourceTypeSyntax) qualifier_prefixes() []u32 {
 // A single suffix borrows its immutable source entry; longer views are cached on request.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) qualifier_suffixes() []u32 {
-	if syntax.qualifier_count == 0 { return syntax.ids(SourceTypeSyntaxSpan{}) }
-	if syntax.qualifier_count == 1 { return source_type_syntax_scalar_ids(syntax.first_dot_suffix) }
+	if syntax.qualifier_count() == 0 { return syntax.ids(SourceTypeSyntaxSpan{}) }
+	if syntax.qualifier_count() == 1 {
+		return source_type_syntax_scalar_ids(syntax.first_dot_suffix())
+	}
 	id := unsafe { *&u32(syntax.payload) }
 	return source_type_syntax_lexical_ids(source_type_syntax_lexical(id, .qualifiers), true)
 }
@@ -435,67 +1516,67 @@ pub fn (syntax &SourceTypeSyntax) qualifier_suffixes() []u32 {
 // cgen_app_args returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) cgen_app_args() []u32 {
-	return syntax.ids(syntax.cgen_app_args_span)
+	return syntax.ids(syntax.span(6))
 }
 
 // cgen_function_params returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) cgen_function_params() []u32 {
-	return syntax.ids(syntax.cgen_function_params_span)
+	return syntax.ids(syntax.span(7))
 }
 
 // checker_function_params returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) checker_function_params() []u32 {
-	return syntax.ids(syntax.checker_function_params_span)
+	return syntax.ids(syntax.span(8))
 }
 
 // checker_tuple_components returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) checker_tuple_components() []u32 {
-	return syntax.ids(syntax.checker_tuple_components_span)
+	return syntax.ids(syntax.span(9))
 }
 
 // cgen_raw_app_args returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) cgen_raw_app_args() []u32 {
-	return syntax.ids(syntax.cgen_raw_app_args_span)
+	return syntax.ids(syntax.span(10))
 }
 
 // cgen_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) cgen_parts() []u32 {
-	return syntax.ids(syntax.cgen_parts_span)
+	return syntax.ids(syntax.span(11))
 }
 
 // checker_raw_tuple_components returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) checker_raw_tuple_components() []u32 {
-	return syntax.ids(syntax.checker_raw_tuple_components_span)
+	return syntax.ids(syntax.span(12))
 }
 
 // bracket_raw_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) bracket_raw_parts() []u32 {
-	return syntax.ids(syntax.bracket_raw_parts_span)
+	return syntax.ids(syntax.span(13))
 }
 
 // bracket_generic_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) bracket_generic_parts() []u32 {
-	return syntax.ids(syntax.bracket_generic_parts_span)
+	return syntax.ids(syntax.span(14))
 }
 
 // tuple_function_components returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) tuple_function_components() []u32 {
-	return syntax.ids(syntax.tuple_function_components_span)
+	return syntax.ids(syntax.span(15))
 }
 
 // plain_comma_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) plain_comma_parts() []u32 {
-	return syntax.ids(syntax.plain_comma_parts_span)
+	return syntax.ids(syntax.span(16))
 }
 
 // underscore_prefixes returns a lazily cached process-owned immutable array view.
@@ -510,7 +1591,7 @@ pub fn (syntax &SourceTypeSyntax) underscore_prefixes() []u32 {
 @[inline]
 pub fn (syntax &SourceTypeSyntax) symbol_parts() []u32 {
 	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
-	if syntax.plain_type_name || syntax.canonical_dotted_name {
+	if syntax.plain_type_name() || syntax.canonical_dotted_name() {
 		return syntax.ids(SourceTypeSyntaxSpan{ len: 1 })
 	}
 	id := unsafe { *&u32(syntax.payload) }
@@ -530,7 +1611,7 @@ pub fn (syntax &SourceTypeSyntax) symbol_is_name() []bool {
 pub fn (syntax &SourceTypeSyntax) dotted_parts() []u32 {
 	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
 	id := unsafe { *&u32(syntax.payload) }
-	if syntax.first_dot_prefix == id { return syntax.ids(SourceTypeSyntaxSpan{ len: 1 }) }
+	if syntax.first_dot_prefix() == id { return syntax.ids(SourceTypeSyntaxSpan{ len: 1 }) }
 	return source_type_syntax_lexical_ids(source_type_syntax_lexical(id, .dotted), false)
 }
 
@@ -563,26 +1644,26 @@ pub fn (syntax &SourceTypeSyntax) last_underscore_suffix() u32 {
 // generic_mentions returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) generic_mentions() []u32 {
-	return syntax.ids(syntax.generic_mentions_span)
+	return syntax.ids(syntax.span(17))
 }
 
 // receiver_app_args returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) receiver_app_args() []u32 {
-	return syntax.ids(syntax.receiver_app_args_span)
+	return syntax.ids(syntax.span(18))
 }
 
 // checker_bracket_components returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) checker_bracket_components() []u32 {
-	return syntax.ids(syntax.checker_bracket_components_span)
+	return syntax.ids(syntax.span(19))
 }
 
 // legacy_generic_words returns a lazily cached process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) legacy_generic_words() []u32 {
 	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
-	if syntax.plain_type_name { return syntax.ids(SourceTypeSyntaxSpan{ len: 1 }) }
+	if syntax.plain_type_name() { return syntax.ids(SourceTypeSyntaxSpan{ len: 1 }) }
 	id := unsafe { *&u32(syntax.payload) }
 	return source_type_syntax_lexical_ids(source_type_syntax_lexical(id, .legacy_words), false)
 }
@@ -591,7 +1672,7 @@ pub fn (syntax &SourceTypeSyntax) legacy_generic_words() []u32 {
 @[inline]
 pub fn (syntax &SourceTypeSyntax) symbols_first_offsets() []u32 {
 	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
-	if syntax.named_type {
+	if syntax.named_type() {
 		return source_type_syntax_singleton_ids(&g_source_type_syntax_zero_offset)
 	}
 	id := unsafe { *&u32(syntax.payload) }
@@ -601,38 +1682,38 @@ pub fn (syntax &SourceTypeSyntax) symbols_first_offsets() []u32 {
 // voidptr_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) voidptr_parts() []u32 {
-	return syntax.ids(syntax.voidptr_parts_span)
+	return syntax.ids(syntax.span(20))
 }
 
 // inferred_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) inferred_parts() []u32 {
-	return syntax.ids(syntax.inferred_parts_span)
+	return syntax.ids(syntax.span(21))
 }
 
 // inferred_annotations returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) inferred_annotations() []u32 {
-	return syntax.ids(syntax.inferred_annotations_span)
+	return syntax.ids(syntax.span(22))
 }
 
 // inferred_expr_ids returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) inferred_expr_ids() []u32 {
-	return syntax.ids(syntax.inferred_expr_ids_span)
+	return syntax.ids(syntax.span(23))
 }
 
 // substitution_function_params returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) substitution_function_params() []u32 {
-	return syntax.ids(syntax.substitution_function_params_span)
+	return syntax.ids(syntax.span(24))
 }
 
 // flattened_receiver_parts returns a lazily cached process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) flattened_receiver_parts() []u32 {
 	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
-	if !syntax.underscored { return syntax.ids(SourceTypeSyntaxSpan{ len: 1 }) }
+	if !syntax.underscored() { return syntax.ids(SourceTypeSyntaxSpan{ len: 1 }) }
 	id := unsafe { *&u32(syntax.payload) }
 	return source_type_syntax_flattened_receiver_ids(id)
 }
@@ -659,7 +1740,7 @@ pub fn (syntax &SourceTypeSyntax) last_double_underscore_prefix() u32 {
 		return 0
 	}
 	id := unsafe { *&u32(syntax.payload) }
-	if !syntax.contains_doubleunderscore {
+	if !syntax.contains_doubleunderscore() {
 		return id
 	}
 	return source_type_composition_one(.last_double_underscore_prefix, id)
@@ -673,7 +1754,7 @@ pub fn (syntax &SourceTypeSyntax) last_double_underscore_suffix() u32 {
 		return 0
 	}
 	id := unsafe { *&u32(syntax.payload) }
-	if !syntax.contains_doubleunderscore {
+	if !syntax.contains_doubleunderscore() {
 		return id
 	}
 	return source_type_composition_one(.last_double_underscore_suffix, id)
@@ -687,7 +1768,7 @@ pub fn (syntax &SourceTypeSyntax) doubleunderscore_dotted() u32 {
 		return 0
 	}
 	id := unsafe { *&u32(syntax.payload) }
-	if !syntax.contains_doubleunderscore {
+	if !syntax.contains_doubleunderscore() {
 		return id
 	}
 	return source_type_composition_one(.doubleunderscore_dotted, id)
@@ -701,7 +1782,7 @@ pub fn (syntax &SourceTypeSyntax) ptr_name_base() u32 {
 		return 0
 	}
 	id := unsafe { *&u32(syntax.payload) }
-	if syntax.byte_len <= 3 {
+	if syntax.byte_len() <= 3 {
 		return 0
 	}
 	return source_type_composition_one(.ptr_name_base, id)
@@ -715,7 +1796,7 @@ pub fn (syntax &SourceTypeSyntax) main_removed() u32 {
 		return 0
 	}
 	id := unsafe { *&u32(syntax.payload) }
-	if !syntax.main_fragment {
+	if !syntax.main_fragment() {
 		return id
 	}
 	return source_type_composition_one(.main_removed, id)
@@ -724,91 +1805,91 @@ pub fn (syntax &SourceTypeSyntax) main_removed() u32 {
 // written_applications returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) written_applications() []u32 {
-	return syntax.ids(syntax.written_applications_span)
+	return syntax.ids(syntax.span(25))
 }
 
 // written_application_offsets returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) written_application_offsets() []u32 {
-	return syntax.ids(syntax.written_application_offsets_span)
+	return syntax.ids(syntax.span(26))
 }
 
 // checker_raw_bracket_components returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) checker_raw_bracket_components() []u32 {
-	return syntax.ids(syntax.checker_raw_bracket_components_span)
+	return syntax.ids(syntax.span(27))
 }
 
 // cgen_placeholder_candidates returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) cgen_placeholder_candidates() []u32 {
-	return syntax.ids(syntax.cgen_placeholder_candidates_span)
+	return syntax.ids(syntax.span(28))
 }
 
 // reflection_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) reflection_parts() []u32 {
-	return syntax.ids(syntax.reflection_parts_span)
+	return syntax.ids(syntax.span(29))
 }
 
 // reflection_tuple_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) reflection_tuple_parts() []u32 {
-	return syntax.ids(syntax.reflection_tuple_parts_span)
+	return syntax.ids(syntax.span(30))
 }
 
 // receiver_raw_app_args returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) receiver_raw_app_args() []u32 {
-	return syntax.ids(syntax.receiver_raw_app_args_span)
+	return syntax.ids(syntax.span(31))
 }
 
 // vls_generic_words returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) vls_generic_words() []u32 {
-	return syntax.ids(syntax.vls_generic_words_span)
+	return syntax.ids(syntax.span(32))
 }
 
 // eval_tuple_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) eval_tuple_parts() []u32 {
-	return syntax.ids(syntax.eval_tuple_parts_span)
+	return syntax.ids(syntax.span(33))
 }
 
 // implicit_tuple_components returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) implicit_tuple_components() []u32 {
-	return syntax.ids(syntax.implicit_tuple_components_span)
+	return syntax.ids(syntax.span(34))
 }
 
 // generic_application_heads returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) generic_application_heads() []u32 {
-	return syntax.ids(syntax.generic_application_heads_span)
+	return syntax.ids(syntax.span(35))
 }
 
 // markused_application_heads returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) markused_application_heads() []u32 {
-	return syntax.ids(syntax.markused_application_heads_span)
+	return syntax.ids(syntax.span(36))
 }
 
 // markused_generic_components returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) markused_generic_components() []u32 {
-	return syntax.ids(syntax.markused_generic_components_span)
+	return syntax.ids(syntax.span(37))
 }
 
 // raw_tuple_parse_components returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) raw_tuple_parse_components() []u32 {
-	return syntax.ids(syntax.raw_tuple_parse_components_span)
+	return syntax.ids(syntax.span(38))
 }
 
 // union_parts returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) union_parts() []u32 {
-	return syntax.ids(syntax.union_parts_span)
+	return syntax.ids(syntax.span(39))
 }
 
 struct SourceTypeSyntaxParsed {
@@ -1781,7 +2862,289 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 			source_type_syntax_packed_ids_len(parsed.raw_tuple_parse_components, id) +
 			source_type_syntax_packed_ids_len(parsed.union_parts, id)
 	}
-	payload_bytes := u64(sizeof(SourceTypeSyntaxEntry)) + u64(id_count) * u64(sizeof(u32))
+	mut values := [107]u64{}
+	values[0] = u64(parsed.qualifier_count)
+	values[1] = u64(parsed.kind)
+	values[2] = u64(parsed.trimmed)
+	values[3] = u64(parsed.base)
+	values[4] = u64(parsed.unqualified)
+	values[5] = u64(parsed.qualifier)
+	values[6] = u64(parsed.generic_base)
+	values[7] = u64(parsed.pointer_base)
+	values[8] = u64(parsed.pointer_depth)
+	values[9] = u64(parsed.raw_base)
+	values[10] = u64(parsed.main_base)
+	values[11] = u64(parsed.application_base)
+	values[12] = u64(parsed.generic_app_base)
+	values[13] = u64(parsed.postfix_base)
+	values[14] = u64(parsed.parameter_type)
+	values[15] = u64(parsed.parameter_mut_type)
+	values[16] = u64(parsed.bracket_base)
+	values[17] = u64(parsed.bracket_inner)
+	values[18] = u64(parsed.bracket_raw_inner)
+	values[19] = u64(parsed.bracket_prefix)
+	values[20] = u64(parsed.function_result)
+	values[21] = u64(parsed.first_bracket_base)
+	values[22] = u64(parsed.last_space_word)
+	values[23] = u64(parsed.first_dot_prefix)
+	values[24] = u64(parsed.first_dot_suffix)
+	values[25] = u64(parsed.pointer_raw_base)
+	values[26] = u64(parsed.builtin_base)
+	values[27] = u64(parsed.cgen_app_base)
+	values[28] = u64(parsed.top_space_head)
+	values[29] = u64(parsed.top_space_tail)
+	values[30] = u64(parsed.bracket_suffix)
+	values[31] = u64(parsed.bracket_from)
+	values[32] = u64(parsed.first_bracket_prefix)
+	values[33] = u64(parsed.dots_base)
+	values[34] = u64(parsed.cgen_raw_app_base)
+	values[35] = u64(parsed.generic_parameter_payload)
+	values[36] = u64(parsed.legacy_parameter_type)
+	values[37] = u64(parsed.legacy_parameter_mut_type)
+	values[38] = u64(parsed.first_bracket_length)
+	values[39] = u64(parsed.c_pointer_base)
+	values[40] = u64(parsed.source_wrapper_base)
+	values[41] = u64(parsed.declaration_head)
+	values[42] = u64(parsed.compact_fn_spelling)
+	values[43] = u64(parsed.first_bracket_raw_inner)
+	values[44] = u64(parsed.typeof_inner)
+	values[45] = u64(parsed.postfix_index_base)
+	values[46] = u64(parsed.last_bracket_prefix)
+	values[47] = u64(parsed.last_bracket_length)
+	values[48] = u64(parsed.trailing_bracket_prefix)
+	values[49] = u64(parsed.array_chars_base)
+	values[50] = u64(parsed.named_variant_owner)
+	values[51] = u64(parsed.named_variant_name)
+	values[52] = u64(parsed.main_unlocked)
+	values[53] = u64(parsed.encoded_fixed_length)
+	values[54] = u64(parsed.encoded_fixed_base)
+	values[55] = u64(parsed.suffix_bracket_length)
+	values[56] = u64(parsed.bracket_source_inner)
+	values[57] = u64(parsed.c_fixed_typedef_element)
+	values[58] = u64(parsed.c_fixed_typedef_length)
+	values[59] = u64(parsed.fixed_array_query_length)
+	values[60] = u64(parsed.last_bracket_span_inner)
+	values[61] = u64(parsed.generic_app_legacy_suffix)
+	values[62] = u64(parsed.wrapper_prefix)
+	values[63] = u64(parsed.wrapper_base)
+	values[64] = u64(parsed.qualified_modifiers)
+	values[65] = u64(parsed.c_array_payload)
+	values[66] = u64(parsed.c_fixed_array_payload)
+	values[67] = u64(parsed.fastc_array_marker_payload)
+	values[68] = u64(parsed.c_map_payload)
+	values[69] = u64(parsed.c_ptr_name_base)
+	values[70] = u64(parsed.c_tagged_type)
+	values[71] = u64(parsed.backward_bracket_prefix)
+	values[72] = u64(parsed.byte_len)
+	values[73] = u64(parsed.receiver_app_base)
+	values[74] = u64(parsed.declaration_parameter_payload)
+	values[75] = u64(parsed.prefix_dimension_tail)
+	values[76] = u64(parsed.backward_bracket_inner)
+	values[77] = u64(parsed.nested_option_result_marker)
+	values[78] = u64(parsed.c_pointer_depth)
+	values[79] = u64(parsed.c_pointer_count)
+	values[80] = u64(parsed.c_pointer_raw_base)
+	values[81] = u64(parsed.thread_value_payload)
+	values[82] = u64(parsed.thread_value_type)
+	values[83] = u64(parsed.expr_id)
+	values[84] = u64(parsed.parameter_name)
+	values[85] = u64(parsed.receiver_collection_id)
+	values[86] = u64(parsed.ampersand_trimmed)
+	values[87] = u64(parsed.parallel_preseed_short)
+	values[88] = u64(parsed.constraint_receiver_base)
+	values[89] = u64(parsed.space_removed)
+	values[90] = u64(parsed.field_owner_module)
+	values[91] = u64(parsed.question_trimmed)
+	values[92] = u64(parsed.function_space_result)
+	values[93] = u64(parsed.decimal_value)
+	values[94] = u64(parsed.integer_value)
+	values[95] = u64(parsed.main_at_base)
+	values[96] = u64(parsed.receiver_app_inner)
+	values[97] = u64(parsed.fastc_fixed_array_length)
+	values[98] = u64(parsed.first_bracket_source_inner)
+	values[99] = u64(parsed.typ_suffix_base)
+	values[100] = u64(parsed.checker_parse_function_result)
+	values[101] = u64(parsed.top_level_dot_prefix)
+	values[102] = u64(parsed.top_level_dot_suffix)
+	values[103] = u64(parsed.parser_fn_decl_params)
+	values[104] = u64(parsed.parser_fn_decl_result)
+	values[105] = u64(parsed.named_variant_dot_prefix)
+	values[106] = u64(parsed.named_variant_dot_suffix)
+	mut scalar_present := [2]u64{}
+	mut scalar_identity := [2]u64{}
+	mut scalar_count := 0
+	mut scalar_first_count := 0
+	for index, value in values {
+		if value == 0 { continue }
+		word := index >> 6
+		bit := u64(1) << u32(index & 63)
+		if value == id {
+			scalar_identity[word] |= bit
+		} else {
+			scalar_present[word] |= bit
+			scalar_count++
+			if word == 0 { scalar_first_count++ }
+		}
+	}
+	mut bool_flags := [2]u64{}
+	if parsed.function_has_result { bool_flags[0] |= u64(1) << 0 }
+	if parsed.bare_generic { bool_flags[0] |= u64(1) << 1 }
+	if parsed.application_valid { bool_flags[0] |= u64(1) << 2 }
+	if parsed.generic_app_valid { bool_flags[0] |= u64(1) << 3 }
+	if parsed.bracket_closed { bool_flags[0] |= u64(1) << 4 }
+	if parsed.function_closed { bool_flags[0] |= u64(1) << 5 }
+	if parsed.tuple_like { bool_flags[0] |= u64(1) << 6 }
+	if parsed.function_space_prefix { bool_flags[0] |= u64(1) << 7 }
+	if parsed.spaced { bool_flags[0] |= u64(1) << 8 }
+	if parsed.first_bracket_closed { bool_flags[0] |= u64(1) << 9 }
+	if parsed.named_type { bool_flags[0] |= u64(1) << 10 }
+	if parsed.c_qualified { bool_flags[0] |= u64(1) << 11 }
+	if parsed.builtin_prefix { bool_flags[0] |= u64(1) << 12 }
+	if parsed.main_fragment { bool_flags[0] |= u64(1) << 13 }
+	if parsed.function_prefix { bool_flags[0] |= u64(1) << 14 }
+	if parsed.fn_prefix { bool_flags[0] |= u64(1) << 15 }
+	if parsed.shared_fragment { bool_flags[0] |= u64(1) << 16 }
+	if parsed.cgen_app_valid { bool_flags[0] |= u64(1) << 17 }
+	if parsed.tuple_contains_comma { bool_flags[0] |= u64(1) << 18 }
+	if parsed.top_space_valid { bool_flags[0] |= u64(1) << 19 }
+	if parsed.typeof_expr_prefix { bool_flags[0] |= u64(1) << 20 }
+	if parsed.bracket_inner_fixed_length { bool_flags[0] |= u64(1) << 21 }
+	if parsed.void_pointer_postfix { bool_flags[0] |= u64(1) << 22 }
+	if parsed.canonical_dotted_name { bool_flags[0] |= u64(1) << 23 }
+	if parsed.decimal { bool_flags[0] |= u64(1) << 24 }
+	if parsed.contains_comma { bool_flags[0] |= u64(1) << 25 }
+	if parsed.function_fragment { bool_flags[0] |= u64(1) << 26 }
+	if parsed.cgen_raw_app_valid { bool_flags[0] |= u64(1) << 27 }
+	if parsed.c_ptr_name_suffix { bool_flags[0] |= u64(1) << 28 }
+	if parsed.c_fn_type_fragment { bool_flags[0] |= u64(1) << 29 }
+	if parsed.underscored { bool_flags[0] |= u64(1) << 30 }
+	if parsed.fn_fragment { bool_flags[0] |= u64(1) << 31 }
+	if parsed.cgen_generic_placeholder { bool_flags[0] |= u64(1) << 32 }
+	if parsed.fixed_array_type { bool_flags[0] |= u64(1) << 33 }
+	if parsed.typeof_valid { bool_flags[0] |= u64(1) << 34 }
+	if parsed.trailing_bracket_closed { bool_flags[0] |= u64(1) << 35 }
+	if parsed.lowercase_value_ident { bool_flags[0] |= u64(1) << 36 }
+	if parsed.typeof_prefix { bool_flags[0] |= u64(1) << 37 }
+	if parsed.first_capital { bool_flags[0] |= u64(1) << 38 }
+	if parsed.named_variant { bool_flags[0] |= u64(1) << 39 }
+	if parsed.named_variant_valid { bool_flags[0] |= u64(1) << 40 }
+	if parsed.map_name_prefix { bool_flags[0] |= u64(1) << 41 }
+	if parsed.suffix_bracket_valid { bool_flags[0] |= u64(1) << 42 }
+	if parsed.map_function_fragment { bool_flags[0] |= u64(1) << 43 }
+	if parsed.c_fixed_typedef_valid { bool_flags[0] |= u64(1) << 44 }
+	if parsed.last_bracket_span_valid { bool_flags[0] |= u64(1) << 45 }
+	if parsed.plain_type_name { bool_flags[0] |= u64(1) << 46 }
+	if parsed.checker_fixed_array_may_be { bool_flags[0] |= u64(1) << 47 }
+	if parsed.dollar_prefix { bool_flags[0] |= u64(1) << 48 }
+	if parsed.define_prefix { bool_flags[0] |= u64(1) << 49 }
+	if parsed.define_fragment { bool_flags[0] |= u64(1) << 50 }
+	if parsed.paren_prefix { bool_flags[0] |= u64(1) << 51 }
+	if parsed.fixed_length { bool_flags[0] |= u64(1) << 52 }
+	if parsed.plain_alias_target { bool_flags[0] |= u64(1) << 53 }
+	if parsed.fastc_array_marker { bool_flags[0] |= u64(1) << 54 }
+	if parsed.backward_bracket_closed { bool_flags[0] |= u64(1) << 55 }
+	if parsed.opening_paren { bool_flags[0] |= u64(1) << 56 }
+	if parsed.receiver_app_valid { bool_flags[0] |= u64(1) << 57 }
+	if parsed.declaration_parameter_mut { bool_flags[0] |= u64(1) << 58 }
+	if parsed.prefix_dimensions_closed { bool_flags[0] |= u64(1) << 59 }
+	if parsed.backward_bracket_after_prefix_dims { bool_flags[0] |= u64(1) << 60 }
+	if parsed.option_result_void_prefix { bool_flags[0] |= u64(1) << 61 }
+	if parsed.thread_value_prefix { bool_flags[0] |= u64(1) << 62 }
+	if parsed.thread_value_type_valid { bool_flags[0] |= u64(1) << 63 }
+	if parsed.contains_closing_bracket { bool_flags[1] |= u64(1) << 0 }
+	if parsed.atomic_val_fragment { bool_flags[1] |= u64(1) << 1 }
+	if parsed.expr_prefix { bool_flags[1] |= u64(1) << 2 }
+	if parsed.parameter_named { bool_flags[1] |= u64(1) << 3 }
+	if parsed.parameter_is_mut { bool_flags[1] |= u64(1) << 4 }
+	if parsed.transform_fixed_length { bool_flags[1] |= u64(1) << 5 }
+	if parsed.contains_doubleunderscore { bool_flags[1] |= u64(1) << 6 }
+	if parsed.parallel_preseed_fn { bool_flags[1] |= u64(1) << 7 }
+	if parsed.closing_bracket { bool_flags[1] |= u64(1) << 8 }
+	if parsed.result_suffix { bool_flags[1] |= u64(1) << 9 }
+	if parsed.cgen_decl_unusable { bool_flags[1] |= u64(1) << 10 }
+	if parsed.cgen_decl_authority { bool_flags[1] |= u64(1) << 11 }
+	if parsed.generic_encoded_fragment { bool_flags[1] |= u64(1) << 12 }
+	if parsed.fn_ptr_encoded_prefix { bool_flags[1] |= u64(1) << 13 }
+	if parsed.c_result_prefix { bool_flags[1] |= u64(1) << 14 }
+	if parsed.c_option_prefix { bool_flags[1] |= u64(1) << 15 }
+	if parsed.c_multi_return_prefix { bool_flags[1] |= u64(1) << 16 }
+	if parsed.c_lower_map_prefix { bool_flags[1] |= u64(1) << 17 }
+	if parsed.open_generic_receiver_marker { bool_flags[1] |= u64(1) << 18 }
+	if parsed.qualified_name_chars { bool_flags[1] |= u64(1) << 19 }
+	if parsed.const_name_prefix { bool_flags[1] |= u64(1) << 20 }
+	if parsed.pthread_prefix { bool_flags[1] |= u64(1) << 21 }
+	if parsed.thread_bracket_prefix { bool_flags[1] |= u64(1) << 22 }
+	if parsed.fixed_typedef_bracket { bool_flags[1] |= u64(1) << 23 }
+	if parsed.c_array_fixed_prefix { bool_flags[1] |= u64(1) << 24 }
+	if parsed.encoded_alnum_dotted { bool_flags[1] |= u64(1) << 25 }
+	if parsed.internal_symbol_prefix { bool_flags[1] |= u64(1) << 26 }
+	if parsed.incremental_generic_application { bool_flags[1] |= u64(1) << 27 }
+	if parsed.system_error_suffix { bool_flags[1] |= u64(1) << 28 }
+	if parsed.fastc_fixed_array_length_valid { bool_flags[1] |= u64(1) << 29 }
+	if parsed.contains_capital { bool_flags[1] |= u64(1) << 30 }
+	if parsed.c_function_pointer_hole { bool_flags[1] |= u64(1) << 31 }
+	if parsed.channel_fragment { bool_flags[1] |= u64(1) << 32 }
+	if parsed.array_receiver_fragment { bool_flags[1] |= u64(1) << 33 }
+	if parsed.mangled_open_generic_marker { bool_flags[1] |= u64(1) << 34 }
+	if parsed.array_suffix { bool_flags[1] |= u64(1) << 35 }
+	if parsed.empty_function_prefix { bool_flags[1] |= u64(1) << 36 }
+	if parsed.c_shared_fragment { bool_flags[1] |= u64(1) << 37 }
+	if parsed.typ_suffix { bool_flags[1] |= u64(1) << 38 }
+	if parsed.checker_parse_function_has_params { bool_flags[1] |= u64(1) << 39 }
+	if parsed.top_level_dot_valid { bool_flags[1] |= u64(1) << 40 }
+	if parsed.parser_fn_decl_valid { bool_flags[1] |= u64(1) << 41 }
+	if parsed.contains_question { bool_flags[1] |= u64(1) << 42 }
+	if parsed.contains_union { bool_flags[1] |= u64(1) << 43 }
+	if parsed.named_variant_dot_valid { bool_flags[1] |= u64(1) << 44 }
+	span_count := if parsed.name_packing {
+		source_type_syntax_packed_span_len(parsed.voidptr_parts, id) +
+			source_type_syntax_packed_span_len(parsed.vls_generic_words, id) +
+			source_type_syntax_packed_span_len(parsed.markused_generic_components, id)
+	} else {
+		source_type_syntax_packed_span_len(parsed.args, id) +
+			source_type_syntax_packed_span_len(parsed.application_args, id) +
+			source_type_syntax_packed_span_len(parsed.generic_app_args, id) +
+			source_type_syntax_packed_span_len(parsed.postfix_dims, id) +
+			source_type_syntax_packed_span_len(parsed.function_params, id) +
+			source_type_syntax_packed_span_len(parsed.tuple_components, id) +
+			source_type_syntax_packed_span_len(parsed.cgen_app_args, id) +
+			source_type_syntax_packed_span_len(parsed.cgen_function_params, id) +
+			source_type_syntax_packed_span_len(parsed.checker_function_params, id) +
+			source_type_syntax_packed_span_len(parsed.checker_tuple_components, id) +
+			source_type_syntax_packed_span_len(parsed.cgen_raw_app_args, id) +
+			source_type_syntax_packed_span_len(parsed.cgen_parts, id) +
+			source_type_syntax_packed_span_len(parsed.checker_raw_tuple_components, id) +
+			source_type_syntax_packed_span_len(parsed.bracket_raw_parts, id) +
+			source_type_syntax_packed_span_len(parsed.bracket_generic_parts, id) +
+			source_type_syntax_packed_span_len(parsed.tuple_function_components, id) +
+			source_type_syntax_packed_span_len(parsed.plain_comma_parts, id) +
+			source_type_syntax_packed_span_len(parsed.generic_mentions, id) +
+			source_type_syntax_packed_span_len(parsed.receiver_app_args, id) +
+			source_type_syntax_packed_span_len(parsed.checker_bracket_components, id) +
+			source_type_syntax_packed_span_len(parsed.voidptr_parts, id) +
+			source_type_syntax_packed_span_len(parsed.inferred_parts, id) +
+			source_type_syntax_packed_span_len(parsed.inferred_annotations, id) +
+			source_type_syntax_packed_span_len(parsed.inferred_expr_ids, id) +
+			source_type_syntax_packed_span_len(parsed.substitution_function_params, id) +
+			source_type_syntax_packed_span_len(parsed.written_applications, id) +
+			source_type_syntax_packed_span_len(parsed.written_application_offsets, id) +
+			source_type_syntax_packed_span_len(parsed.checker_raw_bracket_components, id) +
+			source_type_syntax_packed_span_len(parsed.cgen_placeholder_candidates, id) +
+			source_type_syntax_packed_span_len(parsed.reflection_parts, id) +
+			source_type_syntax_packed_span_len(parsed.reflection_tuple_parts, id) +
+			source_type_syntax_packed_span_len(parsed.receiver_raw_app_args, id) +
+			source_type_syntax_packed_span_len(parsed.vls_generic_words, id) +
+			source_type_syntax_packed_span_len(parsed.eval_tuple_parts, id) +
+			source_type_syntax_packed_span_len(parsed.implicit_tuple_components, id) +
+			source_type_syntax_packed_span_len(parsed.generic_application_heads, id) +
+			source_type_syntax_packed_span_len(parsed.markused_application_heads, id) +
+			source_type_syntax_packed_span_len(parsed.markused_generic_components, id) +
+			source_type_syntax_packed_span_len(parsed.raw_tuple_parse_components, id) +
+			source_type_syntax_packed_span_len(parsed.union_parts, id)
+	}
+	payload_bytes := u64(sizeof(SourceTypeSyntaxEntry)) +
+		(u64(id_count) + 1 + 2 * u64(span_count)) * u64(sizeof(u32)) +
+		u64(scalar_count) * u64(sizeof(u64))
 	if payload_bytes > u64(0x7fffffff) {
 		panic('source type syntax components exceed the allocation limit')
 	}
@@ -1792,337 +3155,110 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	}
 	mut payload := SourceTypeSyntaxPayload{
 		identity_id: id
-		id_offset:   1
+		id_offset:   2 + 2 * scalar_count + 2 * span_count
 		ids:         unsafe { voidptr(&u8(entry) + sizeof(SourceTypeSyntaxEntry)) }
 	}
 	unsafe { *&u32(payload.ids) = id }
+	mut scalar_offset := 1
+	for value in values {
+		if value == 0 || value == id { continue }
+		// The 80-byte header and 8-byte owner prefix align writer-owned u64 slots.
+		unsafe { (&u64(payload.ids))[scalar_offset] = value }
+		scalar_offset++
+	}
+
 	// Records and slices belong to the process, independently of parser workers
 	// and preallocated arenas. The release store publishes them only when complete.
-	unsafe {
-		*entry = SourceTypeSyntaxEntry{
-			syntax: SourceTypeSyntax{
-				payload:                            payload.ids
-				kind:                               parsed.kind
-				trimmed:                            parsed.trimmed
-				base:                               parsed.base
-				unqualified:                        parsed.unqualified
-				qualifier:                          parsed.qualifier
-				generic_base:                       parsed.generic_base
-				pointer_base:                       parsed.pointer_base
-				pointer_depth:                      parsed.pointer_depth
-				function_has_result:                parsed.function_has_result
-				raw_base:                           parsed.raw_base
-				main_base:                          parsed.main_base
-				bare_generic:                       parsed.bare_generic
-				application_base:                   parsed.application_base
-				application_valid:                  parsed.application_valid
-				generic_app_base:                   parsed.generic_app_base
-				generic_app_valid:                  parsed.generic_app_valid
-				postfix_base:                       parsed.postfix_base
-				parameter_type:                     parsed.parameter_type
-				parameter_mut_type:                 parsed.parameter_mut_type
-				bracket_closed:                     parsed.bracket_closed
-				bracket_base:                       parsed.bracket_base
-				bracket_inner:                      parsed.bracket_inner
-				bracket_raw_inner:                  parsed.bracket_raw_inner
-				bracket_prefix:                     parsed.bracket_prefix
-				function_closed:                    parsed.function_closed
-				function_result:                    parsed.function_result
-				tuple_like:                         parsed.tuple_like
-				function_space_prefix:              parsed.function_space_prefix
-				spaced:                             parsed.spaced
-				first_bracket_closed:               parsed.first_bracket_closed
-				first_bracket_base:                 parsed.first_bracket_base
-				last_space_word:                    parsed.last_space_word
-				named_type:                         parsed.named_type
-				c_qualified:                        parsed.c_qualified
-				first_dot_prefix:                   parsed.first_dot_prefix
-				first_dot_suffix:                   parsed.first_dot_suffix
-				builtin_prefix:                     parsed.builtin_prefix
-				main_fragment:                      parsed.main_fragment
-				function_prefix:                    parsed.function_prefix
-				fn_prefix:                          parsed.fn_prefix
-				shared_fragment:                    parsed.shared_fragment
-				pointer_raw_base:                   parsed.pointer_raw_base
-				qualifier_count:                    parsed.qualifier_count
-				builtin_base:                       parsed.builtin_base
-				cgen_app_base:                      parsed.cgen_app_base
-				cgen_app_valid:                     parsed.cgen_app_valid
-				tuple_contains_comma:               parsed.tuple_contains_comma
-				top_space_head:                     parsed.top_space_head
-				top_space_tail:                     parsed.top_space_tail
-				top_space_valid:                    parsed.top_space_valid
-				typeof_expr_prefix:                 parsed.typeof_expr_prefix
-				bracket_suffix:                     parsed.bracket_suffix
-				bracket_from:                       parsed.bracket_from
-				bracket_inner_fixed_length:         parsed.bracket_inner_fixed_length
-				first_bracket_prefix:               parsed.first_bracket_prefix
-				void_pointer_postfix:               parsed.void_pointer_postfix
-				canonical_dotted_name:              parsed.canonical_dotted_name
-				decimal:                            parsed.decimal
-				contains_comma:                     parsed.contains_comma
-				function_fragment:                  parsed.function_fragment
-				dots_base:                          parsed.dots_base
-				cgen_raw_app_base:                  parsed.cgen_raw_app_base
-				cgen_raw_app_valid:                 parsed.cgen_raw_app_valid
-				generic_parameter_payload:          parsed.generic_parameter_payload
-				legacy_parameter_type:              parsed.legacy_parameter_type
-				legacy_parameter_mut_type:          parsed.legacy_parameter_mut_type
-				first_bracket_length:               parsed.first_bracket_length
-				c_pointer_base:                     parsed.c_pointer_base
-				c_ptr_name_suffix:                  parsed.c_ptr_name_suffix
-				c_fn_type_fragment:                 parsed.c_fn_type_fragment
-				underscored:                        parsed.underscored
-				source_wrapper_base:                parsed.source_wrapper_base
-				declaration_head:                   parsed.declaration_head
-				fn_fragment:                        parsed.fn_fragment
-				compact_fn_spelling:                parsed.compact_fn_spelling
-				first_bracket_raw_inner:            parsed.first_bracket_raw_inner
-				cgen_generic_placeholder:           parsed.cgen_generic_placeholder
-				fixed_array_type:                   parsed.fixed_array_type
-				typeof_valid:                       parsed.typeof_valid
-				typeof_inner:                       parsed.typeof_inner
-				postfix_index_base:                 parsed.postfix_index_base
-				last_bracket_prefix:                parsed.last_bracket_prefix
-				last_bracket_length:                parsed.last_bracket_length
-				trailing_bracket_prefix:            parsed.trailing_bracket_prefix
-				trailing_bracket_closed:            parsed.trailing_bracket_closed
-				array_chars_base:                   parsed.array_chars_base
-				lowercase_value_ident:              parsed.lowercase_value_ident
-				typeof_prefix:                      parsed.typeof_prefix
-				first_capital:                      parsed.first_capital
-				named_variant:                      parsed.named_variant
-				named_variant_valid:                parsed.named_variant_valid
-				named_variant_owner:                parsed.named_variant_owner
-				named_variant_name:                 parsed.named_variant_name
-				main_unlocked:                      parsed.main_unlocked
-				encoded_fixed_length:               parsed.encoded_fixed_length
-				encoded_fixed_base:                 parsed.encoded_fixed_base
-				map_name_prefix:                    parsed.map_name_prefix
-				suffix_bracket_length:              parsed.suffix_bracket_length
-				suffix_bracket_valid:               parsed.suffix_bracket_valid
-				map_function_fragment:              parsed.map_function_fragment
-				bracket_source_inner:               parsed.bracket_source_inner
-				c_fixed_typedef_element:            parsed.c_fixed_typedef_element
-				c_fixed_typedef_length:             parsed.c_fixed_typedef_length
-				c_fixed_typedef_valid:              parsed.c_fixed_typedef_valid
-				fixed_array_query_length:           parsed.fixed_array_query_length
-				last_bracket_span_valid:            parsed.last_bracket_span_valid
-				last_bracket_span_inner:            parsed.last_bracket_span_inner
-				plain_type_name:                    parsed.plain_type_name
-				generic_app_legacy_suffix:          parsed.generic_app_legacy_suffix
-				wrapper_prefix:                     parsed.wrapper_prefix
-				wrapper_base:                       parsed.wrapper_base
-				checker_fixed_array_may_be:         parsed.checker_fixed_array_may_be
-				dollar_prefix:                      parsed.dollar_prefix
-				define_prefix:                      parsed.define_prefix
-				define_fragment:                    parsed.define_fragment
-				paren_prefix:                       parsed.paren_prefix
-				fixed_length:                       parsed.fixed_length
-				qualified_modifiers:                parsed.qualified_modifiers
-				plain_alias_target:                 parsed.plain_alias_target
-				c_array_payload:                    parsed.c_array_payload
-				c_fixed_array_payload:              parsed.c_fixed_array_payload
-				fastc_array_marker:                 parsed.fastc_array_marker
-				fastc_array_marker_payload:         parsed.fastc_array_marker_payload
-				c_map_payload:                      parsed.c_map_payload
-				c_ptr_name_base:                    parsed.c_ptr_name_base
-				c_tagged_type:                      parsed.c_tagged_type
-				backward_bracket_prefix:            parsed.backward_bracket_prefix
-				backward_bracket_closed:            parsed.backward_bracket_closed
-				opening_paren:                      parsed.opening_paren
-				byte_len:                           parsed.byte_len
-				receiver_app_valid:                 parsed.receiver_app_valid
-				receiver_app_base:                  parsed.receiver_app_base
-				declaration_parameter_payload:      parsed.declaration_parameter_payload
-				declaration_parameter_mut:          parsed.declaration_parameter_mut
-				prefix_dimension_tail:              parsed.prefix_dimension_tail
-				prefix_dimensions_closed:           parsed.prefix_dimensions_closed
-				backward_bracket_after_prefix_dims: parsed.backward_bracket_after_prefix_dims
-				backward_bracket_inner:             parsed.backward_bracket_inner
-				option_result_void_prefix:          parsed.option_result_void_prefix
-				nested_option_result_marker:        parsed.nested_option_result_marker
-				c_pointer_depth:                    parsed.c_pointer_depth
-				c_pointer_count:                    parsed.c_pointer_count
-				c_pointer_raw_base:                 parsed.c_pointer_raw_base
-				thread_value_prefix:                parsed.thread_value_prefix
-				thread_value_payload:               parsed.thread_value_payload
-				thread_value_type_valid:            parsed.thread_value_type_valid
-				thread_value_type:                  parsed.thread_value_type
-				contains_closing_bracket:           parsed.contains_closing_bracket
-				atomic_val_fragment:                parsed.atomic_val_fragment
-				expr_prefix:                        parsed.expr_prefix
-				expr_id:                            parsed.expr_id
-				parameter_name:                     parsed.parameter_name
-				parameter_named:                    parsed.parameter_named
-				parameter_is_mut:                   parsed.parameter_is_mut
-				transform_fixed_length:             parsed.transform_fixed_length
-				receiver_collection_id:             parsed.receiver_collection_id
-				ampersand_trimmed:                  parsed.ampersand_trimmed
-				contains_doubleunderscore:          parsed.contains_doubleunderscore
-				parallel_preseed_fn:                parsed.parallel_preseed_fn
-				parallel_preseed_short:             parsed.parallel_preseed_short
-				closing_bracket:                    parsed.closing_bracket
-				constraint_receiver_base:           parsed.constraint_receiver_base
-				result_suffix:                      parsed.result_suffix
-				cgen_decl_unusable:                 parsed.cgen_decl_unusable
-				cgen_decl_authority:                parsed.cgen_decl_authority
-				generic_encoded_fragment:           parsed.generic_encoded_fragment
-				fn_ptr_encoded_prefix:              parsed.fn_ptr_encoded_prefix
-				c_result_prefix:                    parsed.c_result_prefix
-				c_option_prefix:                    parsed.c_option_prefix
-				c_multi_return_prefix:              parsed.c_multi_return_prefix
-				c_lower_map_prefix:                 parsed.c_lower_map_prefix
-				open_generic_receiver_marker:       parsed.open_generic_receiver_marker
-				space_removed:                      parsed.space_removed
-				qualified_name_chars:               parsed.qualified_name_chars
-				field_owner_module:                 parsed.field_owner_module
-				const_name_prefix:                  parsed.const_name_prefix
-				pthread_prefix:                     parsed.pthread_prefix
-				thread_bracket_prefix:              parsed.thread_bracket_prefix
-				fixed_typedef_bracket:              parsed.fixed_typedef_bracket
-				question_trimmed:                   parsed.question_trimmed
-				c_array_fixed_prefix:               parsed.c_array_fixed_prefix
-				function_space_result:              parsed.function_space_result
-				decimal_value:                      parsed.decimal_value
-				integer_value:                      parsed.integer_value
-				encoded_alnum_dotted:               parsed.encoded_alnum_dotted
-				internal_symbol_prefix:             parsed.internal_symbol_prefix
-				main_at_base:                       parsed.main_at_base
-				incremental_generic_application:    parsed.incremental_generic_application
-				system_error_suffix:                parsed.system_error_suffix
-				receiver_app_inner:                 parsed.receiver_app_inner
-				fastc_fixed_array_length_valid:     parsed.fastc_fixed_array_length_valid
-				fastc_fixed_array_length:           parsed.fastc_fixed_array_length
-				contains_capital:                   parsed.contains_capital
-				first_bracket_source_inner:         parsed.first_bracket_source_inner
-				c_function_pointer_hole:            parsed.c_function_pointer_hole
-				channel_fragment:                   parsed.channel_fragment
-				array_receiver_fragment:            parsed.array_receiver_fragment
-				mangled_open_generic_marker:        parsed.mangled_open_generic_marker
-				array_suffix:                       parsed.array_suffix
-				empty_function_prefix:              parsed.empty_function_prefix
-				c_shared_fragment:                  parsed.c_shared_fragment
-				typ_suffix:                         parsed.typ_suffix
-				typ_suffix_base:                    parsed.typ_suffix_base
-				checker_parse_function_result:      parsed.checker_parse_function_result
-				checker_parse_function_has_params:  parsed.checker_parse_function_has_params
-				top_level_dot_valid:                parsed.top_level_dot_valid
-				top_level_dot_prefix:               parsed.top_level_dot_prefix
-				top_level_dot_suffix:               parsed.top_level_dot_suffix
-				parser_fn_decl_valid:               parsed.parser_fn_decl_valid
-				parser_fn_decl_params:              parsed.parser_fn_decl_params
-				parser_fn_decl_result:              parsed.parser_fn_decl_result
-				contains_question:                  parsed.contains_question
-				contains_union:                     parsed.contains_union
-				named_variant_dot_valid:            parsed.named_variant_dot_valid
-				named_variant_dot_prefix:           parsed.named_variant_dot_prefix
-				named_variant_dot_suffix:           parsed.named_variant_dot_suffix
-			}
-		}
-	}
+	mut spans := [40]SourceTypeSyntaxSpan{}
+
 	// The strict name constructor proves that thirty views are empty. Their
 	// zeroed span fields need no generic length/copy work; identity views use slot 0.
 	if parsed.name_packing {
 		identity_span := SourceTypeSyntaxSpan{ len: 1 }
-		source_type_syntax_store_span(&entry.syntax.cgen_parts_span, identity_span)
-		source_type_syntax_store_span(&entry.syntax.plain_comma_parts_span, identity_span)
-		source_type_syntax_store_span(&entry.syntax.inferred_parts_span, identity_span)
-		source_type_syntax_store_span(&entry.syntax.reflection_parts_span, identity_span)
-		source_type_syntax_store_span(&entry.syntax.union_parts_span, identity_span)
+		spans[11] = identity_span
+		spans[16] = identity_span
+		spans[21] = identity_span
+		spans[29] = identity_span
+		spans[39] = identity_span
 		if parsed.generic_mentions.len != 0 {
-			source_type_syntax_store_span(&entry.syntax.generic_mentions_span, identity_span)
+			spans[17] = identity_span
 		}
 		if parsed.cgen_placeholder_candidates.len != 0 {
-			source_type_syntax_store_span(&entry.syntax.cgen_placeholder_candidates_span, identity_span)
+			spans[28] = identity_span
 		}
-		source_type_syntax_store_span(&entry.syntax.voidptr_parts_span,
-			source_type_syntax_owned_ids(parsed.voidptr_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.vls_generic_words_span,
-			source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload))
-		source_type_syntax_store_span(&entry.syntax.markused_generic_components_span,
-			source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload))
+		spans[20] = source_type_syntax_owned_ids(parsed.voidptr_parts, mut payload)
+		spans[32] = source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload)
+		spans[37] = source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload)
 	} else {
-		source_type_syntax_store_span(&entry.syntax.args_span,
-			source_type_syntax_owned_ids(parsed.args, mut payload))
-		source_type_syntax_store_span(&entry.syntax.application_args_span,
-			source_type_syntax_owned_ids(parsed.application_args, mut payload))
-		source_type_syntax_store_span(&entry.syntax.generic_app_args_span,
-			source_type_syntax_owned_ids(parsed.generic_app_args, mut payload))
-		source_type_syntax_store_span(&entry.syntax.postfix_dims_span,
-			source_type_syntax_owned_ids(parsed.postfix_dims, mut payload))
-		source_type_syntax_store_span(&entry.syntax.function_params_span,
-			source_type_syntax_owned_ids(parsed.function_params, mut payload))
-		source_type_syntax_store_span(&entry.syntax.tuple_components_span,
-			source_type_syntax_owned_ids(parsed.tuple_components, mut payload))
-		source_type_syntax_store_span(&entry.syntax.cgen_app_args_span,
-			source_type_syntax_owned_ids(parsed.cgen_app_args, mut payload))
-		source_type_syntax_store_span(&entry.syntax.cgen_function_params_span,
-			source_type_syntax_owned_ids(parsed.cgen_function_params, mut payload))
-		source_type_syntax_store_span(&entry.syntax.checker_function_params_span,
-			source_type_syntax_owned_ids(parsed.checker_function_params, mut payload))
-		source_type_syntax_store_span(&entry.syntax.checker_tuple_components_span,
-			source_type_syntax_owned_ids(parsed.checker_tuple_components, mut payload))
-		source_type_syntax_store_span(&entry.syntax.cgen_raw_app_args_span,
-			source_type_syntax_owned_ids(parsed.cgen_raw_app_args, mut payload))
-		source_type_syntax_store_span(&entry.syntax.cgen_parts_span,
-			source_type_syntax_owned_ids(parsed.cgen_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.checker_raw_tuple_components_span,
-			source_type_syntax_owned_ids(parsed.checker_raw_tuple_components, mut payload))
-		source_type_syntax_store_span(&entry.syntax.bracket_raw_parts_span,
-			source_type_syntax_owned_ids(parsed.bracket_raw_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.bracket_generic_parts_span,
-			source_type_syntax_owned_ids(parsed.bracket_generic_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.tuple_function_components_span,
-			source_type_syntax_owned_ids(parsed.tuple_function_components, mut payload))
-		source_type_syntax_store_span(&entry.syntax.plain_comma_parts_span,
-			source_type_syntax_owned_ids(parsed.plain_comma_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.generic_mentions_span,
-			source_type_syntax_owned_ids(parsed.generic_mentions, mut payload))
-		source_type_syntax_store_span(&entry.syntax.receiver_app_args_span,
-			source_type_syntax_owned_ids(parsed.receiver_app_args, mut payload))
-		source_type_syntax_store_span(&entry.syntax.checker_bracket_components_span,
-			source_type_syntax_owned_ids(parsed.checker_bracket_components, mut payload))
-		source_type_syntax_store_span(&entry.syntax.voidptr_parts_span,
-			source_type_syntax_owned_ids(parsed.voidptr_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.inferred_parts_span,
-			source_type_syntax_owned_ids(parsed.inferred_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.inferred_annotations_span,
-			source_type_syntax_owned_ids(parsed.inferred_annotations, mut payload))
-		source_type_syntax_store_span(&entry.syntax.inferred_expr_ids_span,
-			source_type_syntax_owned_ids(parsed.inferred_expr_ids, mut payload))
-		source_type_syntax_store_span(&entry.syntax.substitution_function_params_span,
-			source_type_syntax_owned_ids(parsed.substitution_function_params, mut payload))
-		source_type_syntax_store_span(&entry.syntax.written_applications_span,
-			source_type_syntax_owned_ids(parsed.written_applications, mut payload))
-		source_type_syntax_store_span(&entry.syntax.written_application_offsets_span,
-			source_type_syntax_owned_ids(parsed.written_application_offsets, mut payload))
-		source_type_syntax_store_span(&entry.syntax.checker_raw_bracket_components_span,
-			source_type_syntax_owned_ids(parsed.checker_raw_bracket_components, mut payload))
-		source_type_syntax_store_span(&entry.syntax.cgen_placeholder_candidates_span,
-			source_type_syntax_owned_ids(parsed.cgen_placeholder_candidates, mut payload))
-		source_type_syntax_store_span(&entry.syntax.reflection_parts_span,
-			source_type_syntax_owned_ids(parsed.reflection_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.reflection_tuple_parts_span,
-			source_type_syntax_owned_ids(parsed.reflection_tuple_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.receiver_raw_app_args_span,
-			source_type_syntax_owned_ids(parsed.receiver_raw_app_args, mut payload))
-		source_type_syntax_store_span(&entry.syntax.vls_generic_words_span,
-			source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload))
-		source_type_syntax_store_span(&entry.syntax.eval_tuple_parts_span,
-			source_type_syntax_owned_ids(parsed.eval_tuple_parts, mut payload))
-		source_type_syntax_store_span(&entry.syntax.implicit_tuple_components_span,
-			source_type_syntax_owned_ids(parsed.implicit_tuple_components, mut payload))
-		source_type_syntax_store_span(&entry.syntax.generic_application_heads_span,
-			source_type_syntax_owned_ids(parsed.generic_application_heads, mut payload))
-		source_type_syntax_store_span(&entry.syntax.markused_application_heads_span,
-			source_type_syntax_owned_ids(parsed.markused_application_heads, mut payload))
-		source_type_syntax_store_span(&entry.syntax.markused_generic_components_span,
-			source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload))
-		source_type_syntax_store_span(&entry.syntax.raw_tuple_parse_components_span,
-			source_type_syntax_owned_ids(parsed.raw_tuple_parse_components, mut payload))
-		source_type_syntax_store_span(&entry.syntax.union_parts_span,
-			source_type_syntax_owned_ids(parsed.union_parts, mut payload))
+		spans[0] = source_type_syntax_owned_ids(parsed.args, mut payload)
+		spans[1] = source_type_syntax_owned_ids(parsed.application_args, mut payload)
+		spans[2] = source_type_syntax_owned_ids(parsed.generic_app_args, mut payload)
+		spans[3] = source_type_syntax_owned_ids(parsed.postfix_dims, mut payload)
+		spans[4] = source_type_syntax_owned_ids(parsed.function_params, mut payload)
+		spans[5] = source_type_syntax_owned_ids(parsed.tuple_components, mut payload)
+		spans[6] = source_type_syntax_owned_ids(parsed.cgen_app_args, mut payload)
+		spans[7] = source_type_syntax_owned_ids(parsed.cgen_function_params, mut payload)
+		spans[8] = source_type_syntax_owned_ids(parsed.checker_function_params, mut payload)
+		spans[9] = source_type_syntax_owned_ids(parsed.checker_tuple_components, mut payload)
+		spans[10] = source_type_syntax_owned_ids(parsed.cgen_raw_app_args, mut payload)
+		spans[11] = source_type_syntax_owned_ids(parsed.cgen_parts, mut payload)
+		spans[12] = source_type_syntax_owned_ids(parsed.checker_raw_tuple_components, mut payload)
+		spans[13] = source_type_syntax_owned_ids(parsed.bracket_raw_parts, mut payload)
+		spans[14] = source_type_syntax_owned_ids(parsed.bracket_generic_parts, mut payload)
+		spans[15] = source_type_syntax_owned_ids(parsed.tuple_function_components, mut payload)
+		spans[16] = source_type_syntax_owned_ids(parsed.plain_comma_parts, mut payload)
+		spans[17] = source_type_syntax_owned_ids(parsed.generic_mentions, mut payload)
+		spans[18] = source_type_syntax_owned_ids(parsed.receiver_app_args, mut payload)
+		spans[19] = source_type_syntax_owned_ids(parsed.checker_bracket_components, mut payload)
+		spans[20] = source_type_syntax_owned_ids(parsed.voidptr_parts, mut payload)
+		spans[21] = source_type_syntax_owned_ids(parsed.inferred_parts, mut payload)
+		spans[22] = source_type_syntax_owned_ids(parsed.inferred_annotations, mut payload)
+		spans[23] = source_type_syntax_owned_ids(parsed.inferred_expr_ids, mut payload)
+		spans[24] = source_type_syntax_owned_ids(parsed.substitution_function_params, mut payload)
+		spans[25] = source_type_syntax_owned_ids(parsed.written_applications, mut payload)
+		spans[26] = source_type_syntax_owned_ids(parsed.written_application_offsets, mut payload)
+		spans[27] = source_type_syntax_owned_ids(parsed.checker_raw_bracket_components, mut payload)
+		spans[28] = source_type_syntax_owned_ids(parsed.cgen_placeholder_candidates, mut payload)
+		spans[29] = source_type_syntax_owned_ids(parsed.reflection_parts, mut payload)
+		spans[30] = source_type_syntax_owned_ids(parsed.reflection_tuple_parts, mut payload)
+		spans[31] = source_type_syntax_owned_ids(parsed.receiver_raw_app_args, mut payload)
+		spans[32] = source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload)
+		spans[33] = source_type_syntax_owned_ids(parsed.eval_tuple_parts, mut payload)
+		spans[34] = source_type_syntax_owned_ids(parsed.implicit_tuple_components, mut payload)
+		spans[35] = source_type_syntax_owned_ids(parsed.generic_application_heads, mut payload)
+		spans[36] = source_type_syntax_owned_ids(parsed.markused_application_heads, mut payload)
+		spans[37] = source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload)
+		spans[38] = source_type_syntax_owned_ids(parsed.raw_tuple_parse_components, mut payload)
+		spans[39] = source_type_syntax_owned_ids(parsed.union_parts, mut payload)
+	}
+	mut span_present := u64(0)
+	mut span_identity := u64(0)
+	mut span_offset := 2 + 2 * scalar_count
+	for index, span in spans {
+		if span.len == 0 { continue }
+		bit := u64(1) << u32(index)
+		if span.offset == 0 && span.len == 1 {
+			span_identity |= bit
+			continue
+		}
+		span_present |= bit
+		// Metadata and ID arrays occupy disjoint regions of this unpublished payload.
+		unsafe { *&SourceTypeSyntaxSpan(&(&u32(payload.ids))[span_offset]) = span }
+		span_offset += 2
+	}
+	unsafe {
+		*entry = SourceTypeSyntaxEntry{
+			syntax: SourceTypeSyntax{
+				payload:            payload.ids
+				scalar_present:     scalar_present
+				scalar_identity:    scalar_identity
+				bool_flags:         bool_flags
+				span_present:       span_present
+				span_identity:      span_identity
+				scalar_count:       u32(scalar_count)
+				scalar_first_count: u32(scalar_first_count)
+			}
+		}
 	}
 	source_type_syntax_publish(id, entry)
 	return &entry.syntax
@@ -2135,11 +3271,9 @@ mut:
 	id_offset int
 }
 
-// Only the owning writer calls this while constructing an unpublished entry.
 @[inline]
-fn source_type_syntax_store_span(target voidptr, span SourceTypeSyntaxSpan) {
-	// These process-owned fields are initialized before the release publication.
-	unsafe { *&SourceTypeSyntaxSpan(target) = span }
+fn source_type_syntax_packed_span_len(ids []u32, identity_id u32) int {
+	return if ids.len == 0 || (ids.len == 1 && ids[0] == identity_id) { 0 } else { 1 }
 }
 
 @[inline]
@@ -3924,8 +5058,8 @@ fn source_type_syntax_top_space(text string) (u32, u32, bool) {
 // source_type_has_qualified_prefix compares a module prefix using only IDs on hits.
 pub fn source_type_has_qualified_prefix(id u32, prefix u32) bool {
 	syntax := source_type_syntax(id)
-	if syntax.qualifier_count == 0 { return false }
-	if prefix == syntax.first_dot_prefix || prefix == syntax.qualifier { return true }
+	if syntax.qualifier_count() == 0 { return false }
+	if prefix == syntax.first_dot_prefix() || prefix == syntax.qualifier() { return true }
 	for candidate in syntax.qualifier_prefixes() {
 		if candidate == prefix { return true }
 	}
@@ -3936,9 +5070,9 @@ pub fn source_type_has_qualified_prefix(id u32, prefix u32) bool {
 // Both matching and the returned spelling use numeric IDs after the first query.
 pub fn source_type_qualified_suffix(id u32, prefix u32) ?u32 {
 	syntax := source_type_syntax(id)
-	if syntax.qualifier_count == 0 { return none }
-	if prefix == syntax.first_dot_prefix { return syntax.first_dot_suffix }
-	if prefix == syntax.qualifier { return syntax.unqualified }
+	if syntax.qualifier_count() == 0 { return none }
+	if prefix == syntax.first_dot_prefix() { return syntax.first_dot_suffix() }
+	if prefix == syntax.qualifier() { return syntax.unqualified() }
 	for i, candidate in syntax.qualifier_prefixes() {
 		if candidate == prefix { return syntax.qualifier_suffixes()[i] }
 	}

@@ -100,7 +100,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				}
 				shape := '${cur_module.len}:${cur_module}:${shape_parts.join(',')}'
 				if semantic_name_id := inferred_by_shape[shape] {
-					t.a.nodes[idx].set_value_text(flat.source_type_name(flat.source_type_syntax(semantic_name_id).unqualified))
+					t.a.nodes[idx].set_value_text(flat.source_type_name(flat.source_type_syntax(semantic_name_id).unqualified()))
 					t.a.nodes[idx].typ = semantic_name_id
 					t.mark_scoped_owned_base_node(idx)
 					t.tc.register_synth_type(flat.NodeId(idx), types.Struct{

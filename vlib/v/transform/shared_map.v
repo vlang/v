@@ -463,7 +463,7 @@ fn (t &Transformer) promoted_field_raw_type(struct_type_id u32, field_name strin
 	}
 	for field in info.fields {
 		if field.is_embedded {
-			if typ_source_id := t.promoted_field_raw_type(flat.source_type_syntax(field.typ).pointer_raw_base, field_name, depth + 1) {
+			if typ_source_id := t.promoted_field_raw_type(flat.source_type_syntax(field.typ).pointer_raw_base(), field_name, depth + 1) {
 				return typ_source_id
 			}
 		}
@@ -476,8 +476,8 @@ fn (t &Transformer) is_shared_map_type_text(typ_id u32) bool {
 	if !flat.source_type_shape(clean).has(.shared_type) {
 		return false
 	}
-	payload := transform_trimmed_type_id(flat.source_type_syntax(clean).raw_base)
-	base := flat.source_type_syntax(payload).pointer_raw_base
+	payload := transform_trimmed_type_id(flat.source_type_syntax(clean).raw_base())
+	base := flat.source_type_syntax(payload).pointer_raw_base()
 	return flat.source_type_shape(base).has(.map_type)
 		|| flat.source_type_shape(t.normalize_type_alias(base)).has(.map_type)
 }

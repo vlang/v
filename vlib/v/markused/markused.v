@@ -2680,8 +2680,8 @@ fn markused_fn_has_receiver_param(a &flat.FlatAst, node flat.Node) bool {
 	if first.kind != .param || first.typ == 0 {
 		return false
 	}
-	receiver := flat.source_type_syntax(flat.source_type_syntax(node.source_value_id()).qualifier).unqualified
-	param_type := flat.source_type_syntax(flat.source_type_syntax(first.typ).pointer_raw_base).unqualified
+	receiver := flat.source_type_syntax(flat.source_type_syntax(node.source_value_id()).qualifier()).unqualified()
+	param_type := flat.source_type_syntax(flat.source_type_syntax(first.typ).pointer_raw_base()).unqualified()
 	return receiver == param_type
 }
 
@@ -2690,7 +2690,7 @@ fn markused_fn_receiver_type_is_context(a &flat.FlatAst, node flat.Node) bool {
 		return false
 	}
 	first := a.child_node(&node, 0)
-	return flat.source_type_syntax(flat.source_type_syntax(first.typ).pointer_raw_base).unqualified == flat.source_type_id('Context')
+	return flat.source_type_syntax(flat.source_type_syntax(first.typ).pointer_raw_base()).unqualified() == flat.source_type_id('Context')
 }
 
 fn markused_type_name_known_in_module(tc &types.TypeChecker, module_name string, typ u32) bool {
@@ -3824,7 +3824,7 @@ fn markused_type_stringifies_channel_uncached(typ types.Type, cur_module string,
 			if markused_type_has_custom_str(typ.source_type_id(), cur_module, tc) {
 				return false
 			}
-			if flat.source_type_syntax(typ.source_type_id()).channel_fragment {
+			if flat.source_type_syntax(typ.source_type_id()).channel_fragment() {
 				return true
 			}
 			for field in markused_struct_fields(typ.source_type_id(), tc) {
@@ -3914,7 +3914,7 @@ fn markused_struct_fields(name_id u32, tc &types.TypeChecker) []types.StructFiel
 		candidates << qualified
 	}
 	if flat.source_type_shape(name_id).has(.dotted) {
-		short_name := flat.source_type_syntax(name_id).unqualified
+		short_name := flat.source_type_syntax(name_id).unqualified()
 		if short_name !in candidates {
 			candidates << short_name
 		}
@@ -3934,7 +3934,7 @@ fn markused_sum_variants(name_id u32, tc &types.TypeChecker) []u32 {
 		candidates << qualified
 	}
 	if flat.source_type_shape(name_id).has(.dotted) {
-		short_name := flat.source_type_syntax(name_id).unqualified
+		short_name := flat.source_type_syntax(name_id).unqualified()
 		if short_name !in candidates {
 			candidates << short_name
 		}
@@ -4054,7 +4054,7 @@ fn markused_auto_str_field_is_skipped(type_name_id u32, field_name string, skipp
 	if !flat.source_type_shape(lookup).has(.dotted) {
 		return false
 	}
-	short := flat.source_type_syntax(lookup).unqualified
+	short := flat.source_type_syntax(lookup).unqualified()
 	if short != lookup {
 		if entry := skipped[short] {
 			return entry.fields[field_name]
@@ -4193,7 +4193,7 @@ fn enqueue_interface_str_methods(iface_name_id u32, tc &types.TypeChecker, mut u
 		if lowered != method {
 			enqueue(lowered, mut used, mut queue)
 		}
-		short := '${flat.source_type_name(flat.source_type_syntax(impl).unqualified)}.str'
+		short := '${flat.source_type_name(flat.source_type_syntax(impl).unqualified())}.str'
 		if short != method {
 			enqueue(short, mut used, mut queue)
 		}
@@ -4550,8 +4550,8 @@ fn markused_generic_app_parts(typ_id u32) (u32, []u32, bool) {
 		return u32(0), []u32{}, false
 	}
 	syntax := flat.source_type_syntax(clean)
-	if !syntax.bracket_closed { return u32(0), []u32{}, false }
-	return syntax.generic_base, syntax.bracket_generic_parts(), true
+	if !syntax.bracket_closed() { return u32(0), []u32{}, false }
+	return syntax.generic_base(), syntax.bracket_generic_parts(), true
 }
 
 @[direct_array_access]
@@ -4621,7 +4621,7 @@ fn (c &CallCollector) type_text_uses_generics_depth(typ_id u32, cur_module strin
 	for head in syntax.markused_application_heads() {
 		if c.generic_type_base_is_known(head, cur_module, imports) { return true }
 	}
-	if !syntax.contains_capital { return false }
+	if !syntax.contains_capital() { return false }
 	clean := markused_trimmed_source_type(markused_unwrapped_source_type(typ_id))
 	if target := c.generic_alias_target(clean, cur_module, imports) {
 		return c.type_text_uses_generics_depth(markused_trimmed_source_type(target), cur_module, imports, depth + 1)
@@ -4783,8 +4783,8 @@ fn (c &CallCollector) struct_decl_info_with_imports(name_id u32, cur_module stri
 	if info := c.struct_decl_info(name_id, cur_module) { return info }
 	if !flat.source_type_shape(name_id).has(.dotted) { return none }
 	syntax := flat.source_type_syntax(name_id)
-	if module_name := imports[flat.source_type_name(syntax.first_dot_prefix)] {
-		resolved := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix)
+	if module_name := imports[flat.source_type_name(syntax.first_dot_prefix())] {
+		resolved := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix())
 		return c.struct_decl_info(resolved, module_name)
 	}
 	return none
@@ -4800,8 +4800,8 @@ fn (c &CallCollector) generic_type_base_is_known(base_id u32, cur_module string,
 		return qualified in c.tc.struct_generic_params || qualified in c.tc.sum_generic_params
 	}
 	syntax := flat.source_type_syntax(base_id)
-	if module_name := imports[flat.source_type_name(syntax.first_dot_prefix)] {
-		resolved := flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix))
+	if module_name := imports[flat.source_type_name(syntax.first_dot_prefix())] {
+		resolved := flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix()))
 		return resolved in c.tc.struct_generic_params || resolved in c.tc.sum_generic_params
 	}
 	return false
@@ -4813,8 +4813,8 @@ fn (c &CallCollector) generic_alias_target(name_id u32, cur_module string, impor
 		return c.tc.type_aliases.type_id(flat.source_type_name(markused_qualify_source_type(cur_module, name_id)))
 	}
 	syntax := flat.source_type_syntax(name_id)
-	if module_name := imports[flat.source_type_name(syntax.first_dot_prefix)] {
-		resolved := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix)
+	if module_name := imports[flat.source_type_name(syntax.first_dot_prefix())] {
+		resolved := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix())
 		return c.tc.type_aliases.type_id(flat.source_type_name(resolved))
 	}
 	return none
@@ -4887,7 +4887,7 @@ fn (c &CallCollector) generic_receiver_method_name_is_known(name string) bool {
 	if name !in c.tc.fn_ret_types && !c.tc.fn_ret_type_texts.contains(name) {
 		return false
 	}
-	receiver := flat.source_type_syntax(flat.source_type_id(name)).qualifier
+	receiver := flat.source_type_syntax(flat.source_type_id(name)).qualifier()
 	_, args, is_generic := markused_generic_app_parts(receiver)
 	return is_generic && flat.source_type_query(receiver).has(.bracket_suffix) && args.len > 0
 }
@@ -5177,11 +5177,11 @@ fn markused_membership_container_type(tc &types.TypeChecker, typ types.Type) u32
 	for {
 		shape := flat.source_type_shape(clean_id)
 		if shape.has(.shared_type) {
-			clean_id = markused_trimmed_source_type(flat.source_type_syntax(clean_id).raw_base)
+			clean_id = markused_trimmed_source_type(flat.source_type_syntax(clean_id).raw_base())
 			continue
 		}
 		if shape.has(.pointer) {
-			clean_id = markused_trimmed_source_type(flat.source_type_syntax(clean_id).raw_base)
+			clean_id = markused_trimmed_source_type(flat.source_type_syntax(clean_id).raw_base())
 			continue
 		}
 		if alias_id := tc.type_aliases.type_id(flat.source_type_name(clean_id)) {
@@ -5217,7 +5217,7 @@ fn markused_qualify_source_type(mod string, name_id u32) u32 {
 fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, u32) {
 	mut receiver_struct := u32(0)
 	if node.value.contains('.') {
-		receiver_struct = flat.source_type_syntax(node.source_value_id()).qualifier
+		receiver_struct = flat.source_type_syntax(node.source_value_id()).qualifier()
 	}
 	for pi in 0 .. node.children_count {
 		pc := a.child_node(node, pi)
@@ -5225,8 +5225,8 @@ fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, u32) {
 			if receiver_struct != 0 {
 				return pc.value, receiver_struct
 			}
-			clean_type := flat.source_type_syntax(pc.typ).pointer_raw_base
-			if pc.value.len > 0 && flat.source_type_syntax(clean_type).first_capital {
+			clean_type := flat.source_type_syntax(pc.typ).pointer_raw_base()
+			if pc.value.len > 0 && flat.source_type_syntax(clean_type).first_capital() {
 				return pc.value, if flat.source_type_shape(pc.typ).has(.pointer) {
 					clean_type
 				} else {
@@ -6586,8 +6586,8 @@ fn (mut state LocalNameState) restore(mark int) {
 fn markused_resolve_imported_source_type(typ_id u32, imports map[string]string) u32 {
 	if !flat.source_type_shape(typ_id).has(.dotted) { return typ_id }
 	syntax := flat.source_type_syntax(typ_id)
-	if module_name := imports[flat.source_type_name(syntax.qualifier)] {
-		return flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.unqualified)
+	if module_name := imports[flat.source_type_name(syntax.qualifier())] {
+		return flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.unqualified())
 	}
 	return typ_id
 }
@@ -6729,7 +6729,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 				rhs_id := c.a.child(child, 1)
 				tuple := c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, name_state.names, pre_types)
 				tuple_syntax := flat.source_type_syntax(tuple)
-				if tuple_syntax.tuple_like { parts = tuple_syntax.tuple_components() }
+				if tuple_syntax.tuple_like() { parts = tuple_syntax.tuple_components() }
 			}
 			for j in 0 .. lhs_count {
 				lhs_idx := if j < rhs_count { j * 2 } else { rhs_count + j }
@@ -6869,7 +6869,7 @@ fn (c &CallCollector) contextual_alias_type_name(type_text_id u32, cur_module st
 	for i, wrapper in [flat.SourceTypeShape.mutable_type, .shared_type, .atomic_type, .variadic,
 		.array_type, .pointer, .option_type, .result_type] {
 		if shape.has(wrapper) {
-			inner := c.contextual_alias_type_name(flat.source_type_syntax(clean).raw_base, cur_module, imports) or { return none }
+			inner := c.contextual_alias_type_name(flat.source_type_syntax(clean).raw_base(), cur_module, imports) or { return none }
 			kind := [flat.SourceTypeComposition.mutable_parameter, .shared_type, .atomic_type,
 				.variadic_parameter, .array, .pointer, .option, .result][i]
 			return flat.source_type_composition_one(kind, inner)
@@ -7630,7 +7630,7 @@ fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern_id u3
 	arg := c.a.node(arg_id)
 	if flat.source_type_shape(pattern_id).has(.variadic) && arg.kind == .prefix && arg.value == '...'
 		&& arg.children_count > 0 {
-		c.infer_alias_generic_argument(fn_name, flat.source_type_composition_one(.array, flat.source_type_syntax(pattern_id).raw_base), c.a.child(arg, 0),
+		c.infer_alias_generic_argument(fn_name, flat.source_type_composition_one(.array, flat.source_type_syntax(pattern_id).raw_base()), c.a.child(arg, 0),
 			generic_params, cur_module, imports, local_values, local_types, mut inferred)
 		return
 	}
@@ -7869,11 +7869,11 @@ fn markused_infer_alias_generic_type_inner(param_id u32, actual types.Type, gene
 	if clean == 0 { return }
 	shape := flat.source_type_shape(clean)
 	if shape.has(.mutable_type) || shape.has(.shared_type) || shape.has(.variadic) {
-		markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base, actual, generic_params, mut inferred)
+		markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base(), actual, generic_params, mut inferred)
 		return
 	}
 	if shape.has(.pointer) {
-		child := flat.source_type_syntax(clean).raw_base
+		child := flat.source_type_syntax(clean).raw_base()
 		if actual is types.Pointer {
 			markused_infer_alias_generic_type_inner(child, actual.base_type, generic_params, mut inferred)
 		} else {
@@ -7884,29 +7884,29 @@ fn markused_infer_alias_generic_type_inner(param_id u32, actual types.Type, gene
 	if shape.has(.array_type) {
 		actual_clean := types.unalias_type(types.unwrap_pointer(types.unalias_type(actual)))
 		if actual_clean is types.Array {
-			markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base, actual_clean.elem_type, generic_params, mut inferred)
+			markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base(), actual_clean.elem_type, generic_params, mut inferred)
 		} else if actual_clean is types.ArrayFixed {
-			markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base, actual_clean.elem_type, generic_params, mut inferred)
+			markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base(), actual_clean.elem_type, generic_params, mut inferred)
 		}
 		return
 	}
 	if shape.has(.leading_bracket) {
 		syntax := flat.source_type_syntax(clean)
 		actual_clean := types.unalias_type(types.unwrap_pointer(types.unalias_type(actual)))
-		if syntax.bracket_closed && actual_clean is types.ArrayFixed {
-			markused_infer_alias_generic_type_inner(syntax.bracket_suffix, actual_clean.elem_type, generic_params, mut inferred)
+		if syntax.bracket_closed() && actual_clean is types.ArrayFixed {
+			markused_infer_alias_generic_type_inner(syntax.bracket_suffix(), actual_clean.elem_type, generic_params, mut inferred)
 		}
 		return
 	}
 	if shape.has(.channel_type) {
 		actual_clean := types.unalias_type(types.unwrap_pointer(types.unalias_type(actual)))
 		if actual_clean is types.Channel {
-			markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base, actual_clean.elem_type, generic_params, mut inferred)
+			markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base(), actual_clean.elem_type, generic_params, mut inferred)
 		}
 		return
 	}
 	if shape.has(.option_type) {
-		child := flat.source_type_syntax(clean).raw_base
+		child := flat.source_type_syntax(clean).raw_base()
 		if actual is types.OptionType {
 			markused_infer_alias_generic_type_inner(child, actual.base_type, generic_params, mut inferred)
 		} else {
@@ -7916,16 +7916,16 @@ fn markused_infer_alias_generic_type_inner(param_id u32, actual types.Type, gene
 	}
 	if shape.has(.result_type) {
 		if actual is types.ResultType {
-			markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base, actual.base_type, generic_params, mut inferred)
+			markused_infer_alias_generic_type_inner(flat.source_type_syntax(clean).raw_base(), actual.base_type, generic_params, mut inferred)
 		}
 		return
 	}
 	if shape.has(.map_type) {
 		syntax := flat.source_type_syntax(clean)
 		actual_clean := types.unalias_type(types.unwrap_pointer(types.unalias_type(actual)))
-		if syntax.bracket_closed && actual_clean is types.Map {
-			markused_infer_alias_generic_type_inner(syntax.bracket_raw_inner, actual_clean.key_type, generic_params, mut inferred)
-			markused_infer_alias_generic_type_inner(syntax.bracket_suffix, actual_clean.value_type, generic_params, mut inferred)
+		if syntax.bracket_closed() && actual_clean is types.Map {
+			markused_infer_alias_generic_type_inner(syntax.bracket_raw_inner(), actual_clean.key_type, generic_params, mut inferred)
+			markused_infer_alias_generic_type_inner(syntax.bracket_suffix(), actual_clean.value_type, generic_params, mut inferred)
 		}
 		return
 	}
@@ -7956,15 +7956,15 @@ fn markused_infer_generic_type_inner(pattern_id u32, actual_id u32, generic_para
 	for wrapper in [flat.SourceTypeShape.mutable_type, .shared_type, .atomic_type, .variadic,
 		.array_type, .channel_type, .thread_type, .option_type, .result_type, .pointer] {
 		if shape.has(wrapper) {
-			child := flat.source_type_syntax(clean).raw_base
+			child := flat.source_type_syntax(clean).raw_base()
 			if value_shape.has(wrapper) {
-				markused_infer_generic_type_inner(child, flat.source_type_syntax(value).raw_base, generic_params, mut inferred)
+				markused_infer_generic_type_inner(child, flat.source_type_syntax(value).raw_base(), generic_params, mut inferred)
 			} else if wrapper in [.option_type, .variadic, .mutable_type, .shared_type, .atomic_type] {
 				markused_infer_generic_type_inner(child, value, generic_params, mut inferred)
 			} else if wrapper == .array_type && value_shape.has(.leading_bracket) {
 				syntax := flat.source_type_syntax(value)
-				if syntax.bracket_closed {
-					markused_infer_generic_type_inner(child, syntax.bracket_suffix, generic_params, mut inferred)
+				if syntax.bracket_closed() {
+					markused_infer_generic_type_inner(child, syntax.bracket_suffix(), generic_params, mut inferred)
 				}
 			}
 			return
@@ -7973,24 +7973,24 @@ fn markused_infer_generic_type_inner(pattern_id u32, actual_id u32, generic_para
 	if shape.has(.map_type) && value_shape.has(.map_type) {
 		pattern := flat.source_type_syntax(clean)
 		actual := flat.source_type_syntax(value)
-		if pattern.bracket_closed && actual.bracket_closed {
-			markused_infer_generic_type_inner(pattern.bracket_raw_inner, actual.bracket_raw_inner, generic_params, mut inferred)
-			markused_infer_generic_type_inner(pattern.bracket_suffix, actual.bracket_suffix, generic_params, mut inferred)
+		if pattern.bracket_closed() && actual.bracket_closed() {
+			markused_infer_generic_type_inner(pattern.bracket_raw_inner(), actual.bracket_raw_inner(), generic_params, mut inferred)
+			markused_infer_generic_type_inner(pattern.bracket_suffix(), actual.bracket_suffix(), generic_params, mut inferred)
 		}
 		return
 	}
 	if shape.has(.leading_bracket) && value_shape.has(.leading_bracket) {
 		pattern := flat.source_type_syntax(clean)
 		actual := flat.source_type_syntax(value)
-		if pattern.bracket_closed && actual.bracket_closed && pattern.bracket_raw_inner == actual.bracket_raw_inner {
-			markused_infer_generic_type_inner(pattern.bracket_suffix, actual.bracket_suffix, generic_params, mut inferred)
+		if pattern.bracket_closed() && actual.bracket_closed() && pattern.bracket_raw_inner() == actual.bracket_raw_inner() {
+			markused_infer_generic_type_inner(pattern.bracket_suffix(), actual.bracket_suffix(), generic_params, mut inferred)
 		}
 		return
 	}
 	pattern_base, pattern_args, pattern_generic := markused_generic_app_parts(clean)
 	actual_base, actual_args, actual_generic := markused_generic_app_parts(value)
 	if pattern_generic && actual_generic && pattern_args.len == actual_args.len
-		&& flat.source_type_syntax(pattern_base).unqualified == flat.source_type_syntax(actual_base).unqualified {
+		&& flat.source_type_syntax(pattern_base).unqualified() == flat.source_type_syntax(actual_base).unqualified() {
 		for i, part in pattern_args {
 			markused_infer_generic_type_inner(part, actual_args[i], generic_params, mut inferred)
 		}
@@ -8057,13 +8057,13 @@ fn markused_substitute_alias_generics(type_id u32, inferred flat.TypeTextBinding
 		if shape.has(wrapper) {
 			kind := [flat.SourceTypeComposition.pointer, .mutable_parameter, .array,
 				.variadic_parameter, .option, .result][i]
-			return flat.source_type_composition_one(kind, markused_substitute_alias_generics(flat.source_type_syntax(clean).raw_base, inferred))
+			return flat.source_type_composition_one(kind, markused_substitute_alias_generics(flat.source_type_syntax(clean).raw_base(), inferred))
 		}
 	}
 	if shape.has(.map_type) {
 		syntax := flat.source_type_syntax(clean)
-		if syntax.bracket_closed {
-			return flat.source_type_composition_two(.map, markused_substitute_alias_generics(syntax.bracket_raw_inner, inferred), markused_substitute_alias_generics(syntax.bracket_suffix, inferred))
+		if syntax.bracket_closed() {
+			return flat.source_type_composition_two(.map, markused_substitute_alias_generics(syntax.bracket_raw_inner(), inferred), markused_substitute_alias_generics(syntax.bracket_suffix(), inferred))
 		}
 	}
 	return clean
@@ -8509,7 +8509,7 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 
 		specialized := c.tc.specialize_generic_factory_return(return_text_source_id, info.name, container_type_source_id, []u32{})
 		if flat.source_type_shape(specialized).has(.option_type) {
-			local_types.set_id(value_var, flat.source_type_syntax(specialized).raw_base)
+			local_types.set_id(value_var, flat.source_type_syntax(specialized).raw_base())
 			return
 		}
 		if info.return_type is types.OptionType {
@@ -8539,7 +8539,7 @@ fn (c &CallCollector) top_level_for_in_key_type_name(container_id flat.NodeId, c
 		local_types, true))
 	if flat.source_type_shape(type_name_id).has(.map_type) {
 		syntax := flat.source_type_syntax(type_name_id)
-		if syntax.bracket_closed { return syntax.bracket_raw_inner }
+		if syntax.bracket_closed() { return syntax.bracket_raw_inner() }
 	}
 	container := types.unwrap_pointer(c.tc.parse_canonical_type(type_name_id))
 	if container is types.Map {
@@ -8555,10 +8555,12 @@ fn (c &CallCollector) top_level_for_in_elem_type_name(container_id flat.NodeId, 
 	}
 	if type_name_id == flat.source_type_string { return flat.source_type_u8 }
 	shape := flat.source_type_shape(type_name_id)
-	if shape.has(.array_type) { return flat.source_type_syntax(type_name_id).raw_base }
+	if shape.has(.array_type) { return flat.source_type_syntax(type_name_id).raw_base() }
 	if shape.has(.map_type) || shape.has(.leading_bracket) {
 		syntax := flat.source_type_syntax(type_name_id)
-		if syntax.bracket_closed && syntax.bracket_suffix != 0 { return syntax.bracket_suffix }
+		if syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			return syntax.bracket_suffix()
+		}
 	}
 	ct := types.unwrap_pointer(c.tc.parse_canonical_type(type_name_id))
 	if ct is types.Array {
@@ -8780,7 +8782,7 @@ fn (c &CallCollector) generic_factory_return_type_text(candidate string, cur_mod
 				cur_module)
 			if unwrap_optional_result {
 				if flat.source_type_shape(return_type).has(.optional) {
-					return_type = flat.source_type_syntax(return_type).raw_base
+					return_type = flat.source_type_syntax(return_type).raw_base()
 				}
 			}
 		}
@@ -9123,9 +9125,9 @@ fn (c &CallCollector) receiver_is_generic_struct_application(receiver_id u32, cu
 	if !shape.has(.bracketed) || shape.has(.leading_bracket) || !flat.source_type_query(clean).has(.bracket_suffix) {
 		return false
 	}
-	base := flat.source_type_syntax(clean).generic_base
+	base := flat.source_type_syntax(clean).generic_base()
 	if flat.source_type_name(base) in c.tc.struct_generic_params { return true }
-	short_base := flat.source_type_syntax(base).unqualified
+	short_base := flat.source_type_syntax(base).unqualified()
 	if short_base != base && flat.source_type_name(short_base) in c.tc.struct_generic_params {
 		return true
 	}
@@ -9203,7 +9205,7 @@ fn markused_alias_base_matches_type(tc &types.TypeChecker, alias_type types.Alia
 	base := types.unwrap_pointer(alias_type.base_type)
 	clean := types.unwrap_pointer(typ)
 	if base.source_type_id() == clean.source_type_id()
-		|| flat.source_type_syntax(base.source_type_id()).unqualified == flat.source_type_syntax(clean.source_type_id()).unqualified {
+		|| flat.source_type_syntax(base.source_type_id()).unqualified() == flat.source_type_syntax(clean.source_type_id()).unqualified() {
 		return true
 	}
 	return tc.c_type(base) == tc.c_type(clean)
@@ -9331,9 +9333,9 @@ fn (c &CallCollector) struct_lookup_name(type_name_id u32, cur_module string) u3
 	if flat.source_type_shape(type_name_id).has(.dotted) {
 		if type_name in c.struct_decls { return type_name_id }
 		syntax := flat.source_type_syntax(type_name_id)
-		type_mod := flat.source_type_name(syntax.qualifier)
-		if info := c.struct_decls[flat.source_type_name(syntax.unqualified)] {
-			if info.module == type_mod { return syntax.unqualified }
+		type_mod := flat.source_type_name(syntax.qualifier())
+		if info := c.struct_decls[flat.source_type_name(syntax.unqualified())] {
+			if info.module == type_mod { return syntax.unqualified() }
 		}
 		if info := c.struct_decls[type_name] {
 			if info.module == type_mod { return type_name_id }
@@ -9776,7 +9778,7 @@ fn (c &CallCollector) collect_sum_variant_receiver_methods(base_id flat.NodeId, 
 fn (c &CallCollector) collect_sum_variant_receiver_methods_for_type_name(type_name_id u32, method string, cur_module string, mut calls []string) bool {
 	mut clean_id := markused_clean_receiver_type_name(type_name_id)
 	for flat.source_type_shape(clean_id).has(.optional) {
-		clean_id = markused_trimmed_source_type(flat.source_type_syntax(clean_id).raw_base)
+		clean_id = markused_trimmed_source_type(flat.source_type_syntax(clean_id).raw_base())
 	}
 	mut sum_names := [clean_id]
 	qualified := markused_qualify_source_type(cur_module, clean_id)
@@ -10089,7 +10091,7 @@ fn markused_clean_receiver_type_name(type_id u32) u32 {
 		if !shape.has(.pointer) && !shape.has(.mutable_type) && !shape.has(.shared_type) {
 			return clean
 		}
-		clean = markused_trimmed_source_type(flat.source_type_syntax(clean).raw_base)
+		clean = markused_trimmed_source_type(flat.source_type_syntax(clean).raw_base())
 	}
 }
 
@@ -10106,18 +10108,18 @@ fn markused_push_receiver_candidate(mut candidates []string, candidate string) {
 fn markused_array_receiver_method_candidates(receiver_type_id u32, method string, cur_module string) []string {
 	mut clean := markused_trimmed_source_type(receiver_type_id)
 	for flat.source_type_shape(clean).has(.pointer) {
-		clean = markused_trimmed_source_type(flat.source_type_syntax(clean).raw_base)
+		clean = markused_trimmed_source_type(flat.source_type_syntax(clean).raw_base())
 	}
 	mut candidates := []string{}
 	markused_push_receiver_candidate(mut candidates, '${flat.source_type_name(clean)}.${method}')
 	if !flat.source_type_shape(clean).has(.array_type) { return candidates }
-	elem := flat.source_type_syntax(clean).raw_base
+	elem := flat.source_type_syntax(clean).raw_base()
 	if elem == 0 { return candidates }
 	elem_syntax := flat.source_type_syntax(elem)
-	short_elem := flat.source_type_name(elem_syntax.unqualified)
+	short_elem := flat.source_type_name(elem_syntax.unqualified())
 	markused_push_receiver_candidate(mut candidates, '[]${short_elem}.${method}')
 	if flat.source_type_shape(elem).has(.dotted) {
-		markused_push_receiver_candidate(mut candidates, '${flat.source_type_name(elem_syntax.qualifier)}.[]${short_elem}.${method}')
+		markused_push_receiver_candidate(mut candidates, '${flat.source_type_name(elem_syntax.qualifier())}.[]${short_elem}.${method}')
 	} else if markused_can_prefix_collection_receiver(cur_module) {
 		markused_push_receiver_candidate(mut candidates, '${cur_module}.[]${short_elem}.${method}')
 	}
@@ -10190,8 +10192,8 @@ fn markused_receiver_type_text_source_fixed_spelling(type_id u32) u32 {
 		return clean
 	}
 	syntax := flat.source_type_syntax(clean)
-	if syntax.postfix_base == 0 || syntax.postfix_dims().len == 0 { return clean }
-	mut source := syntax.postfix_base
+	if syntax.postfix_base() == 0 || syntax.postfix_dims().len == 0 { return clean }
+	mut source := syntax.postfix_base()
 	for i := syntax.postfix_dims().len; i > 0; i-- {
 		source = flat.source_type_composition_two(.fixed_array, syntax.postfix_dims()[i - 1], source)
 	}
@@ -10208,33 +10210,33 @@ fn markused_receiver_type_short_spelling_inner(type_id u32) u32 {
 	clean := markused_trimmed_source_type(type_id)
 	shape := flat.source_type_shape(clean)
 	if shape.has(.array_type) {
-		return flat.source_type_composition_one(.array, markused_receiver_type_short_spelling_inner(flat.source_type_syntax(clean).raw_base))
+		return flat.source_type_composition_one(.array, markused_receiver_type_short_spelling_inner(flat.source_type_syntax(clean).raw_base()))
 	}
 	if shape.has(.leading_bracket) {
 		syntax := flat.source_type_syntax(clean)
-		if syntax.bracket_closed {
-			return flat.source_type_composition_two(.concat, syntax.bracket_prefix, markused_receiver_type_short_spelling_inner(syntax.bracket_suffix))
+		if syntax.bracket_closed() {
+			return flat.source_type_composition_two(.concat, syntax.bracket_prefix(), markused_receiver_type_short_spelling_inner(syntax.bracket_suffix()))
 		}
 	}
 	if shape.has(.map_type) {
 		syntax := flat.source_type_syntax(clean)
-		if syntax.bracket_closed {
-			return flat.source_type_composition_two(.map, markused_receiver_type_short_spelling_inner(syntax.bracket_raw_inner), markused_receiver_type_short_spelling_inner(syntax.bracket_suffix))
+		if syntax.bracket_closed() {
+			return flat.source_type_composition_two(.map, markused_receiver_type_short_spelling_inner(syntax.bracket_raw_inner()), markused_receiver_type_short_spelling_inner(syntax.bracket_suffix()))
 		}
 	}
-	return if shape.has(.dotted) { flat.source_type_syntax(clean).unqualified } else { clean }
+	return if shape.has(.dotted) { flat.source_type_syntax(clean).unqualified() } else { clean }
 }
 
 fn markused_receiver_type_text_module_names(type_id u32) []string {
 	clean := markused_trimmed_source_type(type_id)
 	shape := flat.source_type_shape(clean)
 	if shape.has(.array_type) {
-		return markused_receiver_type_text_module_names(flat.source_type_syntax(clean).raw_base)
+		return markused_receiver_type_text_module_names(flat.source_type_syntax(clean).raw_base())
 	}
 	if shape.has(.leading_bracket) {
 		syntax := flat.source_type_syntax(clean)
-		if syntax.bracket_closed {
-			return markused_receiver_type_text_module_names(syntax.bracket_suffix)
+		if syntax.bracket_closed() {
+			return markused_receiver_type_text_module_names(syntax.bracket_suffix())
 		}
 	}
 	mut names := []string{}
@@ -10251,7 +10253,7 @@ fn markused_receiver_type_text_module_names(type_id u32) []string {
 		return markused_receiver_type_text_module_names(markused_fixed_array_elem_type(clean))
 	}
 	if shape.has(.dotted) {
-		markused_push_receiver_candidate(mut names, flat.source_type_name(flat.source_type_syntax(clean).qualifier))
+		markused_push_receiver_candidate(mut names, flat.source_type_name(flat.source_type_syntax(clean).qualifier()))
 	}
 	return names
 }
@@ -10261,7 +10263,7 @@ fn markused_clean_map_type(receiver_id u32) u32 {
 	for {
 		shape := flat.source_type_shape(clean)
 		if !shape.has(.shared_type) && !shape.has(.pointer) { return clean }
-		clean = markused_trimmed_source_type(flat.source_type_syntax(clean).raw_base)
+		clean = markused_trimmed_source_type(flat.source_type_syntax(clean).raw_base())
 	}
 }
 
@@ -10270,35 +10272,35 @@ fn markused_type_is_fixed_array(type_id u32) bool {
 	shape := flat.source_type_shape(clean)
 	if clean == 0 || shape.has(.array_type) || shape.has(.map_type) { return false }
 	syntax := flat.source_type_syntax(clean)
-	if shape.has(.leading_bracket) { return syntax.bracket_closed }
+	if shape.has(.leading_bracket) { return syntax.bracket_closed() }
 	if !shape.has(.bracketed) || !flat.source_type_query(clean).has(.bracket_suffix) {
 		return false
 	}
-	return syntax.first_bracket_length != 0 && !flat.source_type_syntax(syntax.first_bracket_length).contains_comma
+	return syntax.first_bracket_length() != 0 && !flat.source_type_syntax(syntax.first_bracket_length()).contains_comma()
 }
 
 fn markused_fixed_array_elem_type(type_id u32) u32 {
 	syntax := flat.source_type_syntax(type_id)
-	if flat.source_type_shape(type_id).has(.leading_bracket) { return syntax.bracket_suffix }
-	return syntax.generic_base
+	if flat.source_type_shape(type_id).has(.leading_bracket) { return syntax.bracket_suffix() }
+	return syntax.generic_base()
 }
 
 fn markused_map_key_type(type_id u32) u32 {
 	if !flat.source_type_shape(type_id).has(.map_type) { return u32(0) }
-	return flat.source_type_syntax(type_id).bracket_source_inner
+	return flat.source_type_syntax(type_id).bracket_source_inner()
 }
 
 fn markused_map_value_type(type_id u32) u32 {
 	if !flat.source_type_shape(type_id).has(.map_type) { return u32(0) }
-	return flat.source_type_syntax(type_id).bracket_suffix
+	return flat.source_type_syntax(type_id).bracket_suffix()
 }
 
 fn markused_unqualified_receiver_type_name(type_id u32) u32 {
 	syntax := flat.source_type_syntax(type_id)
-	if !flat.source_type_shape(type_id).has(.map_type) { return syntax.unqualified }
-	if !syntax.first_bracket_closed { return type_id }
-	key := flat.source_type_syntax(syntax.first_bracket_raw_inner).unqualified
-	value := flat.source_type_syntax(syntax.first_bracket_base).unqualified
+	if !flat.source_type_shape(type_id).has(.map_type) { return syntax.unqualified() }
+	if !syntax.first_bracket_closed() { return type_id }
+	key := flat.source_type_syntax(syntax.first_bracket_raw_inner()).unqualified()
+	value := flat.source_type_syntax(syntax.first_bracket_base()).unqualified()
 	return flat.source_type_composition_two(.map, key, value)
 }
 
@@ -10668,13 +10670,13 @@ mut:
 // markused_trimmed_source_type preserves already-trimmed source spelling identities.
 fn markused_trimmed_source_type(type_id u32) u32 {
 	if !flat.source_type_shape(type_id).has(.padded) { return type_id }
-	return flat.source_type_syntax(type_id).trimmed
+	return flat.source_type_syntax(type_id).trimmed()
 }
 
 // markused_unwrapped_source_type removes the leading reference/optional spelling syntax.
 fn markused_unwrapped_source_type(type_id u32) u32 {
 	if !flat.source_type_shape(type_id).has(.wrapped) { return type_id }
-	return flat.source_type_syntax(type_id).source_wrapper_base
+	return flat.source_type_syntax(type_id).source_wrapper_base()
 }
 
 // value_type_in_source resolves a value's semantic type in its source context.
@@ -10834,13 +10836,13 @@ fn array_init_element_type_text(node &flat.Node) u32 {
 	// Strip the literal's outer dimension once; further dynamic dimensions are containers.
 	if node.typ != 0 && flat.source_type_shape(typ).has(.leading_bracket) {
 		syntax := flat.source_type_syntax(typ)
-		if !syntax.bracket_closed { return u32(0) }
-		typ = syntax.bracket_suffix
+		if !syntax.bracket_closed() { return u32(0) }
+		typ = syntax.bracket_suffix()
 	}
 	for flat.source_type_shape(typ).has(.leading_bracket) && !flat.source_type_shape(typ).has(.array_type) {
 		syntax := flat.source_type_syntax(typ)
-		if !syntax.bracket_closed { return u32(0) }
-		typ = syntax.bracket_suffix
+		if !syntax.bracket_closed() { return u32(0) }
+		typ = syntax.bracket_suffix()
 	}
 	return typ
 }

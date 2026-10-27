@@ -374,7 +374,7 @@ fn (t &Transformer) comptime_array_elem_type(id flat.NodeId) u32 {
 	if !flat.source_type_shape(declared).has(.array_type) {
 		return 0
 	}
-	return flat.source_type_syntax(declared).raw_base
+	return flat.source_type_syntax(declared).raw_base()
 }
 
 // comptime_scalar_array_elements folds every element of an array expression, or

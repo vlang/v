@@ -1510,17 +1510,17 @@ fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name_id u32) ?Owne
 	}
 	mut clean_id := type_name_id
 	if flat.source_type_shape(type_name_id).has(.pointer) {
-		clean_id = flat.source_type_syntax(type_name_id).pointer_raw_base
+		clean_id = flat.source_type_syntax(type_name_id).pointer_raw_base()
 	}
 	shape := flat.source_type_shape(clean_id)
-	if shape.has(.option_type) && flat.source_type_syntax(clean_id).byte_len > 1 {
+	if shape.has(.option_type) && flat.source_type_syntax(clean_id).byte_len() > 1 {
 		return OwnershipDropTarget{
 			type_name: clean_id
 		}
 	}
 	// A result owns both its successful payload and its failed IError. Preserve the
 	// complete result type so code generation can destroy whichever branch is active.
-	if shape.has(.result_type) && flat.source_type_syntax(clean_id).byte_len > 1 {
+	if shape.has(.result_type) && flat.source_type_syntax(clean_id).byte_len() > 1 {
 		return OwnershipDropTarget{
 			type_name: clean_id
 		}
@@ -1907,7 +1907,7 @@ fn (tc &TypeChecker) ownership_ierror_has_compatible_clone_method(typ Type) bool
 	if actual_id == expected_id {
 		return true
 	}
-	return flat.source_type_syntax(actual_id).unqualified == flat.source_type_syntax(expected_id).unqualified
+	return flat.source_type_syntax(actual_id).unqualified() == flat.source_type_syntax(expected_id).unqualified()
 }
 
 fn (tc &TypeChecker) ownership_type_has_explicit_drop(type_name_id u32) bool {
@@ -1915,7 +1915,7 @@ fn (tc &TypeChecker) ownership_type_has_explicit_drop(type_name_id u32) bool {
 	for {
 		shape := flat.source_type_shape(clean_id)
 		if !shape.has(.pointer) && !shape.has(.option_type) { break }
-		clean_id = flat.source_type_syntax(clean_id).raw_base
+		clean_id = flat.source_type_syntax(clean_id).raw_base()
 	}
 	return clean_id in tc.ownership.drop_structs
 		|| ownership_generic_base_type_name(clean_id) in tc.ownership.drop_structs
@@ -1975,7 +1975,7 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []u32
 					names << name_id
 				}
 				syntax := flat.source_type_syntax(name_id)
-				if syntax.application_valid && flat.source_type_syntax(syntax.application_base).unqualified == ownership_source_arc {
+				if syntax.application_valid() && flat.source_type_syntax(syntax.application_base()).unqualified() == ownership_source_arc {
 					for arg in syntax.application_args() {
 						tc.ownership_collect_drop_type_names(tc.parse_type(arg), mut names, mut seen, first_only)
 					}
@@ -2251,7 +2251,7 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 	for qname, impls_id in tc.struct_implements.ids {
 		qname_id := flat.source_type_id(qname)
 		for iface_id in impls_id {
-			short := flat.source_type_syntax(iface_id).unqualified
+			short := flat.source_type_syntax(iface_id).unqualified()
 			match short {
 				ownership_source_owned {
 					st.owned_structs[qname_id] = true
@@ -2762,7 +2762,7 @@ fn (mut tc TypeChecker) ownership_collect_fn_signature(node flat.Node) {
 	if recv.kind != .param || recv.typ == 0 || flat.source_type_shape(recv.typ).has(.pointer) || recv.op == .amp {
 		return
 	}
-	short_type := flat.source_type_name(flat.source_type_syntax(recv.typ).unqualified)
+	short_type := flat.source_type_name(flat.source_type_syntax(recv.typ).unqualified())
 	method_name := node.value.all_after_last('.')
 	tc.ownership_state().value_receiver_methods['${short_type}.${method_name}'] = true
 	tc.ownership_state().value_receiver_methods['${recv.typ_text()}.${method_name}'] = true
@@ -13690,7 +13690,7 @@ fn ownership_generic_base_type_name(name_id u32) u32 {
 	if !shape.has(.bracketed) || shape.has(.leading_bracket) {
 		return name_id
 	}
-	return flat.source_type_syntax(name_id).generic_base
+	return flat.source_type_syntax(name_id).generic_base()
 }
 
 fn ownership_marker_name_candidates(name_id u32) []u32 {
@@ -13923,11 +13923,11 @@ fn (tc &TypeChecker) ownership_match_covers_all_sum_variants(node flat.Node) boo
 		for j in 0 .. n_conds {
 			cond := tc.a.child_node(branch, j)
 			pattern_id := tc.match_type_pattern(cond) or { continue }
-			pattern_short := flat.source_type_syntax(pattern_id).unqualified
+			pattern_short := flat.source_type_syntax(pattern_id).unqualified()
 			qpattern_id := tc.qualify_type_name(pattern_id)
 			for variant_id in variants {
 				if variant_id == pattern_id || variant_id == qpattern_id
-					|| flat.source_type_syntax(variant_id).unqualified == pattern_short {
+					|| flat.source_type_syntax(variant_id).unqualified() == pattern_short {
 					covered[variant_id] = true
 				}
 			}

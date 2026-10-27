@@ -195,7 +195,7 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 		w.type_cache.parse_enabled = false
 		w.fn_context.generic_params = []string{}
 		return_type := if !flat.source_type_shape(node.typ).has(.option_type) {
-			flat.source_type_syntax(node.typ).question_trimmed
+			flat.source_type_syntax(node.typ).question_trimmed()
 		} else {
 			node.typ
 		}
@@ -895,7 +895,7 @@ fn type_param_occurrence_reason(types flat.TypeTextListBindings, texts map[strin
 		missing := options.filter(it !in taken)
 		what := if missing.len > 0 && missing.len < taken.len {
 			if missing.len == 1 {
-				'not `${flat.source_type_name(flat.source_type_syntax(missing[0]).unqualified)}`'
+				'not `${flat.source_type_name(flat.source_type_syntax(missing[0]).unqualified())}`'
 			} else {
 				'none of ${type_names_text(missing, 'and')}'
 			}
@@ -912,7 +912,7 @@ fn type_param_occurrence_reason(types flat.TypeTextListBindings, texts map[strin
 fn type_names_text(names []u32, word string) string {
 	mut shown := []string{}
 	for name in names#[..3] {
-		shown << '`${flat.source_type_name(flat.source_type_syntax(name).unqualified)}`'
+		shown << '`${flat.source_type_name(flat.source_type_syntax(name).unqualified())}`'
 	}
 	if names.len > 3 {
 		return '${shown.join(', ')} ${word} ${names.len - 3} more'

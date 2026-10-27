@@ -490,7 +490,7 @@ pub fn generic_base_type_id(name_id u32) u32 {
 	if !shape.has(.bracketed) || shape.has(.leading_bracket) {
 		return name_id
 	}
-	return flat.source_type_syntax(name_id).generic_base
+	return flat.source_type_syntax(name_id).generic_base()
 }
 
 // is_pointer reports whether is pointer applies in types.

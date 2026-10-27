@@ -1831,10 +1831,10 @@ fn fastc_fixed_array_length(typ string) ?string {
 
 fn fastc_fixed_array_length_id(typ_id u32) ?string {
 	syntax := flat.source_type_syntax(typ_id)
-	if !syntax.fastc_fixed_array_length_valid {
+	if !syntax.fastc_fixed_array_length_valid() {
 		return none
 	}
-	return flat.source_type_name(syntax.fastc_fixed_array_length)
+	return flat.source_type_name(syntax.fastc_fixed_array_length())
 }
 
 fn fastc_fixed_length_expression(tokens []FastcExpressionToken, start int, minimum_precedence int, module_name string, imports map[string]string, declared_types map[string]bool) !(string, int) {
@@ -1913,10 +1913,10 @@ fn fastc_fixed_length_atom(tokens []FastcExpressionToken, start int, module_name
 fn fastc_fixed_array_element_type(typ_id u32) ?u32 {
 	base := fastc_trim_pointer_type(typ_id)
 	syntax := flat.source_type_syntax(base)
-	if !flat.source_type_query(base).has(.c_fixed_array_prefix) || !syntax.fastc_array_marker {
+	if !flat.source_type_query(base).has(.c_fixed_array_prefix) || !syntax.fastc_array_marker() {
 		return none
 	}
-	return fastc_decode_ptr_element_type_id(syntax.fastc_array_marker_payload)
+	return fastc_decode_ptr_element_type_id(syntax.fastc_array_marker_payload())
 }
 
 fn fastc_decimal_integer_value(source string) ?int {
@@ -2062,7 +2062,7 @@ fn fastc_map_c_type_id(key_type u32, value_type u32) u32 {
 fn fastc_map_key_value_types(typ_id u32) ?(u32, u32) {
 	base := fastc_trim_pointer_type(typ_id)
 	if !flat.source_type_query(base).has(.c_map_prefix) { return none }
-	syntax := flat.source_type_syntax(flat.source_type_syntax(base).c_map_payload)
+	syntax := flat.source_type_syntax(flat.source_type_syntax(base).c_map_payload())
 	// Retain the scalar-key priority and complete encoded composite value.
 	for key in ['string', 'rune', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
 		'f32', 'f64', 'char', 'uint', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr', 'bool'] {
@@ -2079,7 +2079,7 @@ fn fastc_map_key_value_types(typ_id u32) ?(u32, u32) {
 fn fastc_declared_map_key_value_types(typ_id u32, declared_kinds map[string]FastcDeclaredTypeKind) ?(u32, u32) {
 	base := fastc_trim_pointer_type(typ_id)
 	if !flat.source_type_query(base).has(.c_map_prefix) { return none }
-	syntax := flat.source_type_syntax(flat.source_type_syntax(base).c_map_payload)
+	syntax := flat.source_type_syntax(flat.source_type_syntax(base).c_map_payload())
 	mut matched_key := u32(0)
 	mut matched_index := -1
 	for type_key, kind in declared_kinds {
@@ -2106,8 +2106,8 @@ fn fastc_decode_map_value_type_id(encoded u32) u32 {
 	syntax := flat.source_type_syntax(encoded)
 	query := flat.source_type_query(encoded)
 	// A nested composite owns the `_ptr` suffix of its encoded element.
-	if syntax.c_ptr_name_suffix && !query.has(.c_array_prefix) && !query.has(.c_map_prefix) && !query.has(.c_fixed_array_prefix) {
-		return flat.source_type_composition_two(.concat, syntax.c_ptr_name_base, flat.source_type_id('*'))
+	if syntax.c_ptr_name_suffix() && !query.has(.c_array_prefix) && !query.has(.c_map_prefix) && !query.has(.c_fixed_array_prefix) {
+		return flat.source_type_composition_two(.concat, syntax.c_ptr_name_base(), flat.source_type_id('*'))
 	}
 	return encoded
 }

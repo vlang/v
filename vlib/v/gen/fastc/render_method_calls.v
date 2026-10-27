@@ -894,7 +894,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			effective_is_pointer = false
 		}
 		receiver_argument := if flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && !effective_is_pointer {
-			g.value_address_expression(flat.source_type_syntax(signature.parameter_types.ids[0]).c_pointer_raw_base, effective_receiver_source,
+			g.value_address_expression(flat.source_type_syntax(signature.parameter_types.ids[0]).c_pointer_raw_base(), effective_receiver_source,
 				receiver_tokens)
 		} else if !flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && effective_is_pointer {
 			'*(${effective_receiver_source})'

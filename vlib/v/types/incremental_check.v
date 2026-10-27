@@ -1053,7 +1053,7 @@ fn (tc &TypeChecker) incremental_touches_generics(f IncrementalFunction, generic
 			return true
 		}
 		if flat.source_type_shape(node.typ).has(.bracketed)
-			&& flat.source_type_syntax(node.typ).incremental_generic_application {
+			&& flat.source_type_syntax(node.typ).incremental_generic_application() {
 			return true
 		}
 		id := flat.NodeId(idx)

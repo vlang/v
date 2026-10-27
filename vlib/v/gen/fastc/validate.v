@@ -941,7 +941,7 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 		receiver_type := g.infer_expression_type(receiver[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, receiver[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable && item.unsafe_depth == 0 {
-			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified)
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified())
 			return g.unsupported('mutating method `${method_name}` receiver field `${type_name}.${field.name}` is not `pub mut` in imported module `${field.module_name}`')
 		}
 	}
@@ -968,7 +968,7 @@ fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken,
 		receiver_type := g.infer_expression_type(argument[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, argument[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable {
-			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified)
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified())
 			return g.unsupported('mutable argument field `${type_name}.${field.name}` to function `${function_name}` parameter ${argument_index + 1} is not `pub mut` in imported module `${field.module_name}`')
 		}
 	}
@@ -1154,7 +1154,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 		// `mut`; the specialization therefore needs the same privilege as its private
 		// field access above.
 		if !field.is_mutable && item.unsafe_depth == 0 && !can_mutate_root && !g.in_mono_drain {
-			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified)
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified())
 			return g.unsupported('mutation of immutable field `${type_name}.${field.name}`')
 		}
 	}
@@ -1401,7 +1401,7 @@ fn (g &Parser) validate_expression_field_visibility(tokens []FastcExpressionToke
 		}
 		field := g.struct_field_metadata(receiver_type, tokens[i + 1].lit) or { continue }
 		if !g.struct_field_is_visible(field) {
-			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified)
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified())
 			return g.unsupported('private field `${type_name}.${field.name}` from imported module `${field.module_name}`')
 		}
 	}
@@ -1453,13 +1453,13 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 		field_name := tokens[index].lit
 		has_field = true
 		if field_name in initialized_fields {
-			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type)).unqualified)
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type)).unqualified())
 			return g.unsupported('duplicate field `${type_name}.${field_name}` in struct literal')
 		}
 		field := g.struct_field_metadata(c_type, field_name) or { return }
 		initialized_fields[field_name] = true
 		if !g.struct_field_is_visible(field) {
-			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type)).unqualified)
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type)).unqualified())
 			return g.unsupported('private field `${type_name}.${field.name}` from imported module `${field.module_name}`')
 		}
 		index++
@@ -1514,7 +1514,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	if !has_update {
 		for field in g.struct_field_info[layout_type] {
 			if field.is_required && field.name !in initialized_fields {
-				type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type)).unqualified)
+				type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type)).unqualified())
 				return g.unsupported('field `${type_name}.${field.name}` must be initialized')
 			}
 		}
@@ -1530,7 +1530,7 @@ fn (g &Parser) validate_fixed_array_struct_field_length(c_type_source_id u32, fi
 	} else {
 		value_tokens.len
 	}
-	type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type_source_id)).unqualified)
+	type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type_source_id)).unqualified())
 	if array_end < 2 || value_tokens[0].tok != .lsbr || value_tokens[array_end - 1].tok != .rsbr {
 		return
 	}

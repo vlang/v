@@ -42,12 +42,12 @@ fn (g &FlatGen) sum_type_index(sum_name_id u32, variant_id u32) int {
 			if !suffix_ambiguous && suffix_match != 0 {
 				resolved_sum = suffix_match
 			} else if suffix_match == 0 {
-				short_sum := flat.source_type_syntax(resolved_sum).unqualified
+				short_sum := flat.source_type_syntax(resolved_sum).unqualified()
 				mut short_match := u32(0)
 				mut ambiguous := false
 				for key, _ in g.tc.sum_types.ids {
 					key_id := flat.source_type_id(key)
-					if key_id == short_sum || flat.source_type_syntax(key_id).unqualified == short_sum {
+					if key_id == short_sum || flat.source_type_syntax(key_id).unqualified() == short_sum {
 						if short_match != 0 && short_match != key_id {
 							ambiguous = true
 							break
@@ -77,7 +77,7 @@ fn (g &FlatGen) sum_type_index_resolved(sum_name_id u32, variant_id u32) int {
 	}
 	mut found := 0
 	for i, candidate in variants {
-		if flat.source_type_syntax(candidate).unqualified == variant_id
+		if flat.source_type_syntax(candidate).unqualified() == variant_id
 			|| short_module_type_ids_equal(candidate, variant_id) {
 			if found != 0 {
 				return 0
@@ -300,7 +300,7 @@ fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name s
 				continue
 			}
 			seen[concrete_id] = true
-			if '${flat.source_type_name(flat.source_type_syntax(concrete_id).unqualified)}.${method}' == short_name {
+			if '${flat.source_type_name(flat.source_type_syntax(concrete_id).unqualified())}.${method}' == short_name {
 				matches++
 				if matches > 1 {
 					return false
@@ -330,7 +330,7 @@ fn (g &FlatGen) resolve_sum_name(sum_name_id u32) u32 {
 			|| g.tc.type_aliases.contains(name) {
 			return sum_name_id
 		}
-		if resolved := g.sum_name_lookup[flat.source_type_syntax(sum_name_id).unqualified] {
+		if resolved := g.sum_name_lookup[flat.source_type_syntax(sum_name_id).unqualified()] {
 			return if resolved != 0 { resolved } else { sum_name_id }
 		}
 	}
@@ -358,7 +358,7 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 	g.sum_variant_lookup = map[u32]map[u32]u32{}
 	for name, variants in g.tc.sum_types.ids {
 		name_id := flat.source_type_id(name)
-		short_id := flat.source_type_syntax(name_id).unqualified
+		short_id := flat.source_type_syntax(name_id).unqualified()
 		if short_id != 0 && !g.tc.sum_types.contains(flat.source_type_name(short_id)) {
 			g.sum_name_lookup[short_id] = if short_id in g.sum_name_lookup {
 				u32(0)
@@ -371,7 +371,7 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 			lookup[variant] = variant
 		}
 		for variant in variants {
-			variant_short_id := flat.source_type_syntax(variant).unqualified
+			variant_short_id := flat.source_type_syntax(variant).unqualified()
 			if variant_short_id == 0 {
 				continue
 			}
@@ -396,7 +396,7 @@ fn (g &FlatGen) resolve_variant(sum_name_id u32, variant_id u32) u32 {
 		if resolved := lookup[variant_id] {
 			return if resolved != 0 { resolved } else { variant_id }
 		}
-		if flat.source_type_syntax(variant_id).contains_doubleunderscore && !flat.source_type_shape(variant_id).has(.dotted) {
+		if flat.source_type_syntax(variant_id).contains_doubleunderscore() && !flat.source_type_shape(variant_id).has(.dotted) {
 			normalized := flat.source_type_syntax(variant_id).doubleunderscore_dotted()
 			if resolved := lookup[normalized] {
 				return if resolved != 0 { resolved } else { normalized }
@@ -442,8 +442,8 @@ fn (mut g FlatGen) collect_interface_impls() {
 		// `[` covers both dynamic (`[]T`) and fixed (`[N]T`) arrays.
 		is_container := flat.source_type_shape(concrete_id).has(.leading_bracket) || flat.source_type_shape(concrete_id).has(.map_type)
 		syntax := flat.source_type_syntax(concrete_id)
-		concrete_base := flat.source_type_name(syntax.cgen_raw_app_base)
-		concrete_is_generic := syntax.cgen_raw_app_valid
+		concrete_base := flat.source_type_name(syntax.cgen_raw_app_base())
+		concrete_is_generic := syntax.cgen_raw_app_valid()
 		is_materializable_generic := concrete_is_generic
 			&& (concrete_base in g.tc.structs || g.tc.type_aliases.contains(concrete_base) || g.tc.qualify_name(concrete_base) in g.tc.structs
 				|| g.tc.qualify_name(concrete_base) in g.tc.type_aliases.ids)
@@ -605,25 +605,25 @@ fn (mut g FlatGen) register_specialized_interface_applications() {
 }
 
 fn (g &FlatGen) collect_specialized_interface_application_text(type_text_id u32, mut applications map[u32]u32) {
-	mut clean_id := flat.source_type_syntax(type_text_id).trimmed
+	mut clean_id := flat.source_type_syntax(type_text_id).trimmed()
 	if clean_id == 0 { return }
 	for {
 		shape := flat.source_type_shape(clean_id)
 		if !shape.has(.pointer) && !shape.has(.optional) { break }
-		clean_id = flat.source_type_syntax(flat.source_type_syntax(clean_id).raw_base).trimmed
+		clean_id = flat.source_type_syntax(flat.source_type_syntax(clean_id).raw_base()).trimmed()
 	}
 	shape := flat.source_type_shape(clean_id)
 	syntax := flat.source_type_syntax(clean_id)
 	if shape.has(.mutable_type) || shape.has(.variadic) || shape.has(.array_type) {
-		g.collect_specialized_interface_application_text(syntax.raw_base, mut applications)
+		g.collect_specialized_interface_application_text(syntax.raw_base(), mut applications)
 		return
 	}
-	if !syntax.cgen_raw_app_valid { return }
+	if !syntax.cgen_raw_app_valid() { return }
 	for arg_id in syntax.cgen_raw_app_args() {
 		g.collect_specialized_interface_application_text(arg_id, mut applications)
 		if codegen_generic_arg_is_unresolved(arg_id) { return }
 	}
-	base_id := syntax.cgen_raw_app_base
+	base_id := syntax.cgen_raw_app_base()
 	resolved_base_id := if flat.source_type_name(base_id) in g.interfaces {
 		base_id
 	} else {
@@ -633,7 +633,7 @@ fn (g &FlatGen) collect_specialized_interface_application_text(type_text_id u32,
 	application_id := if resolved_base_id == base_id {
 		clean_id
 	} else {
-		flat.source_type_composition_two(.concat, resolved_base_id, syntax.bracket_from)
+		flat.source_type_composition_two(.concat, resolved_base_id, syntax.bracket_from())
 	}
 	applications[application_id] = resolved_base_id
 }
@@ -643,8 +643,8 @@ fn (g &FlatGen) collect_specialized_interface_application(typ types.Type, mut ap
 		types.Interface {
 			typ_id := typ.source_type_id()
 			syntax := flat.source_type_syntax(typ_id)
-			if syntax.cgen_raw_app_valid && !g.type_contains_generic_placeholder(typ) {
-				base_id := syntax.cgen_raw_app_base
+			if syntax.cgen_raw_app_valid() && !g.type_contains_generic_placeholder(typ) {
+				base_id := syntax.cgen_raw_app_base()
 				resolved_base_id := if flat.source_type_name(base_id) in g.interfaces {
 					base_id
 				} else {
@@ -654,7 +654,7 @@ fn (g &FlatGen) collect_specialized_interface_application(typ types.Type, mut ap
 					application_id := if resolved_base_id == base_id {
 						typ_id
 					} else {
-						flat.source_type_composition_two(.concat, resolved_base_id, syntax.bracket_from)
+						flat.source_type_composition_two(.concat, resolved_base_id, syntax.bracket_from())
 					}
 					applications[application_id] = resolved_base_id
 				}
@@ -688,7 +688,7 @@ fn (g &FlatGen) collect_specialized_interface_application(typ types.Type, mut ap
 
 fn (g &FlatGen) interface_dispatch_return_type(iface_name_id u32, decl_key string, concrete_key string) types.Type {
 	decl_type := g.tc.fn_ret_types[decl_key] or { types.Type(types.void_) }
-	if flat.source_type_syntax(iface_name_id).cgen_raw_app_valid {
+	if flat.source_type_syntax(iface_name_id).cgen_raw_app_valid() {
 		_, specialized_ret := g.tc.specialized_interface_method_signature(iface_name_id, decl_key)
 		return specialized_ret
 	}
@@ -704,7 +704,7 @@ fn (g &FlatGen) interface_dispatch_return_type(iface_name_id u32, decl_key strin
 fn (g &FlatGen) interface_dispatch_param_types(iface_name_id u32, decl_key string, concrete_key string) []types.Type {
 	iface_name := flat.source_type_name(iface_name_id)
 	decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
-	is_specialized := flat.source_type_syntax(iface_name_id).cgen_raw_app_valid
+	is_specialized := flat.source_type_syntax(iface_name_id).cgen_raw_app_valid()
 	if is_specialized {
 		specialized_params, _ := g.tc.specialized_interface_method_signature(iface_name_id, decl_key)
 		return specialized_params
@@ -764,7 +764,7 @@ fn (g &FlatGen) iface_type_id(iface_id u32, concrete_id u32) int {
 
 // iface_type_id_for_pattern resolves a pattern source spelling to its runtime dispatch ID.
 fn (g &FlatGen) iface_type_id_for_pattern(iface_id u32, pattern_id u32) int {
-	pattern_short_id := flat.source_type_syntax(pattern_id).unqualified
+	pattern_short_id := flat.source_type_syntax(pattern_id).unqualified()
 	pattern_key_id := if flat.source_type_shape(pattern_id).has(.dotted)
 		&& types.is_builtin_type_name_id(pattern_short_id) {
 		pattern_short_id
@@ -787,7 +787,7 @@ fn (g &FlatGen) iface_type_id_for_pattern(iface_id u32, pattern_id u32) int {
 	}
 	mut found := 0
 	for concrete_id in g.iface_impls[iface_id] or { []u32{} } {
-		if flat.source_type_syntax(concrete_id).unqualified != pattern_key_id {
+		if flat.source_type_syntax(concrete_id).unqualified() != pattern_key_id {
 			continue
 		}
 		cid := g.iface_type_id(iface_id, concrete_id)
@@ -1205,8 +1205,8 @@ fn (g &FlatGen) iface_type_id_for_concrete(iface_id u32, concrete types.Type) in
 			return id
 		}
 	}
-	if flat.source_type_query(concrete_name_id).has(.main_prefix) || flat.source_type_syntax(concrete_name_id).builtin_prefix {
-		id = g.iface_type_id(iface_id, flat.source_type_syntax(concrete_name_id).unqualified)
+	if flat.source_type_query(concrete_name_id).has(.main_prefix) || flat.source_type_syntax(concrete_name_id).builtin_prefix() {
+		id = g.iface_type_id(iface_id, flat.source_type_syntax(concrete_name_id).unqualified())
 		if id != 0 {
 			return id
 		}
@@ -1273,8 +1273,8 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	actual_base := unalias_type(actual_clean)
 	actual_name_id := actual_base.source_type_id()
 	if actual_base is types.Interface || actual_name_id == iface.source_type_id()
-		|| (flat.source_type_query(actual_name_id).has(.main_prefix) && flat.source_type_syntax(actual_name_id).main_base == iface.source_type_id())
-		|| (flat.source_type_query(iface.source_type_id()).has(.main_prefix) && flat.source_type_syntax(iface.source_type_id()).main_base == actual_name_id)
+		|| (flat.source_type_query(actual_name_id).has(.main_prefix) && flat.source_type_syntax(actual_name_id).main_base() == iface.source_type_id())
+		|| (flat.source_type_query(iface.source_type_id()).has(.main_prefix) && flat.source_type_syntax(iface.source_type_id()).main_base() == actual_name_id)
 		|| g.interface_unknown_qualified_name_matches(actual_name_id, iface.source_type_id()) {
 		return false
 	}
@@ -1427,7 +1427,7 @@ fn (g &FlatGen) interface_unknown_qualified_name_matches(actual_name_id u32, ifa
 	actual_name := flat.source_type_name(actual_name_id)
 	iface_name := flat.source_type_name(iface_name_id)
 	if !flat.source_type_shape(actual_name_id).has(.dotted)
-		|| flat.source_type_syntax(actual_name_id).unqualified != flat.source_type_syntax(iface_name_id).unqualified {
+		|| flat.source_type_syntax(actual_name_id).unqualified() != flat.source_type_syntax(iface_name_id).unqualified() {
 		return false
 	}
 	actual_known := actual_name in g.tc.structs || actual_name in g.tc.interface_names
@@ -1442,7 +1442,7 @@ fn (g &FlatGen) interface_unknown_qualified_name_matches(actual_name_id u32, ifa
 // is_interface_type_name reports whether is interface type name applies in c.
 fn (g &FlatGen) is_interface_type_name(name_id u32) bool {
 	syntax := flat.source_type_syntax(name_id)
-	clean_id := if syntax.cgen_raw_app_valid { syntax.cgen_raw_app_base } else { name_id }
+	clean_id := if syntax.cgen_raw_app_valid() { syntax.cgen_raw_app_base() } else { name_id }
 	clean := flat.source_type_name(clean_id)
 	return clean in g.interfaces || g.tc.qualify_name(clean) in g.interfaces
 }
@@ -1659,13 +1659,13 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name_id u32, method string)
 		if g.used_interface_dispatch_key(alias_name) {
 			return true
 		}
-		short_alias_name := '${flat.source_type_name(flat.source_type_syntax(alias_id).unqualified)}.${method}'
+		short_alias_name := '${flat.source_type_name(flat.source_type_syntax(alias_id).unqualified())}.${method}'
 		if short_alias_name != alias_name && g.interface_dispatch_short_name_allowed(alias_id)
 			&& g.used_interface_dispatch_key(short_alias_name) {
 			return true
 		}
 	}
-	short_name := '${flat.source_type_name(flat.source_type_syntax(iface_name_id).unqualified)}.${method}'
+	short_name := '${flat.source_type_name(flat.source_type_syntax(iface_name_id).unqualified())}.${method}'
 	return short_name != name && g.interface_dispatch_short_name_allowed(iface_name_id)
 		&& g.used_interface_dispatch_key(short_name)
 }
@@ -2198,7 +2198,7 @@ fn (g &FlatGen) interface_boxed_type_collected_for_dispatch(iface_name_id u32, c
 	concrete := flat.source_type_name(concrete_id)
 	if g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, concrete_id)]
 		|| g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, flat.source_type_id(c_name(concrete)))]
-		|| g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, flat.source_type_syntax(concrete_id).unqualified)] {
+		|| g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, flat.source_type_syntax(concrete_id).unqualified())] {
 		return true
 	}
 	for candidate in [concrete, g.tc.qualify_name(concrete)] {
@@ -2206,7 +2206,7 @@ fn (g &FlatGen) interface_boxed_type_collected_for_dispatch(iface_name_id u32, c
 			target := flat.source_type_name(target_id)
 			if g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, target_id)]
 				|| g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, flat.source_type_id(c_name(target)))]
-				|| g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, flat.source_type_syntax(target_id).unqualified)] {
+				|| g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, flat.source_type_syntax(target_id).unqualified())] {
 				return true
 			}
 		}
@@ -2286,17 +2286,17 @@ fn interface_boxing_candidates_in(a &flat.FlatAst, ids []i32, start int, end int
 fn (g &FlatGen) interface_semantic_application_candidates(iface_name_id u32, _concrete_name_id u32) []u32 {
 	mut result := [iface_name_id]
 	iface_syntax := flat.source_type_syntax(iface_name_id)
-	base := if iface_syntax.cgen_raw_app_valid {
-		iface_syntax.cgen_raw_app_base
+	base := if iface_syntax.cgen_raw_app_valid() {
+		iface_syntax.cgen_raw_app_base()
 	} else {
 		iface_name_id
 	}
-	base_short := flat.source_type_syntax(base).unqualified
+	base_short := flat.source_type_syntax(base).unqualified()
 	for candidate, _ in g.interfaces {
 		candidate_id := flat.source_type_id(candidate)
 		candidate_syntax := flat.source_type_syntax(candidate_id)
-		if !candidate_syntax.cgen_raw_app_valid
-			|| flat.source_type_syntax(candidate_syntax.cgen_raw_app_base).unqualified != base_short {
+		if !candidate_syntax.cgen_raw_app_valid()
+			|| flat.source_type_syntax(candidate_syntax.cgen_raw_app_base()).unqualified() != base_short {
 			continue
 		}
 		if candidate_id !in result {
@@ -2329,7 +2329,7 @@ fn (mut g FlatGen) mark_interface_boxed_type_for_dispatch(iface_name_id u32, con
 	concrete_name := flat.source_type_name(concrete_name_id)
 	g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, concrete_name_id)] = true
 	g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, flat.source_type_id(c_name(concrete_name)))] = true
-	g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, flat.source_type_syntax(concrete_name_id).unqualified)] = true
+	g.interface_boxed_types[interface_dispatch_boxed_type_key(iface_name_id, flat.source_type_syntax(concrete_name_id).unqualified())] = true
 }
 
 fn (g &FlatGen) interface_dispatch_can_use_implicit_str(method string, ret_ct string, sig_params []types.Type) bool {
@@ -2412,7 +2412,7 @@ fn short_module_type_ids_equal(a_id u32, b_id u32) bool {
 			return false
 		}
 		if a.symbol_is_name()[i] {
-			if flat.source_type_syntax(part).unqualified != flat.source_type_syntax(b.symbol_parts()[i]).unqualified {
+			if flat.source_type_syntax(part).unqualified() != flat.source_type_syntax(b.symbol_parts()[i]).unqualified() {
 				return false
 			}
 		} else if part != b.symbol_parts()[i] {

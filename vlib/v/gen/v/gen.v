@@ -4397,7 +4397,7 @@ fn (mut g Gen) params(parent_id flat.NodeId, ids []flat.NodeId) {
 fn (g &Gen) param_type(p &flat.Node) string {
 	mut t := p.typ
 	if p.is_mut && p.op != .amp && flat.source_type_shape(t).has(.pointer) {
-		t = flat.source_type_syntax(t).raw_base
+		t = flat.source_type_syntax(t).raw_base()
 	}
 	return flat.source_type_name(t)
 }
@@ -4405,7 +4405,7 @@ fn (g &Gen) param_type(p &flat.Node) string {
 fn (g &Gen) receiver_type(rn &flat.Node) string {
 	mut t := rn.typ
 	if rn.is_mut && flat.source_type_shape(t).has(.pointer) {
-		t = flat.source_type_syntax(t).raw_base
+		t = flat.source_type_syntax(t).raw_base()
 	}
 	return flat.source_type_name(t)
 }

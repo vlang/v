@@ -1664,7 +1664,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 				} else {
 					type_kind := if node.children_count > 0 {
 						'sum type'
-					} else if flat.source_type_syntax(node.typ).fn_prefix {
+					} else if flat.source_type_syntax(node.typ).fn_prefix() {
 						'fn type'
 					} else {
 						'type alias'
@@ -3830,8 +3830,8 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	}
 	tc.cur_scope = tc.file_scope
 	return_syntax := flat.source_type_syntax(node.typ)
-	checked_return_type := if return_syntax.question_trimmed != node.typ && !flat.source_type_shape(node.typ).has(.option_type) {
-		return_syntax.question_trimmed
+	checked_return_type := if return_syntax.question_trimmed() != node.typ && !flat.source_type_shape(node.typ).has(.option_type) {
+		return_syntax.question_trimmed()
 	} else {
 		node.typ
 	}
@@ -3861,7 +3861,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	if !fast_valid_build && module_name != 'builtin' && node.value.ends_with('.map')
 		&& node.children_count > 0 {
 		receiver := tc.a.child_node(&node, 0)
-		if receiver.kind == .param && flat.source_type_shape(flat.source_type_syntax(receiver.typ).pointer_raw_base).has(.array_type) {
+		if receiver.kind == .param && flat.source_type_shape(flat.source_type_syntax(receiver.typ).pointer_raw_base()).has(.array_type) {
 			tc.record_error_at(.call_arg_mismatch, 'method overrides built-in array method', flat.NodeId(fn_idx), tc.fn_declaration_diagnostic_pos(node))
 		}
 	}
@@ -3883,7 +3883,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 				if param.is_mut {
 					implicit_mut_reference := param.op != .amp && flat.source_type_shape(param.typ).has(.pointer)
 					diagnostic_type_id := if implicit_mut_reference {
-						flat.source_type_syntax(param.typ).raw_base
+						flat.source_type_syntax(param.typ).raw_base()
 					} else {
 						param.typ
 					}
@@ -4055,7 +4055,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	raw_return_type_id := trimmed_source_type_id(node.typ)
 	raw_return_shape := flat.source_type_shape(raw_return_type_id)
 	raw_return_syntax := flat.source_type_syntax(raw_return_type_id)
-	raw_return_payload_shape := flat.source_type_shape(raw_return_syntax.raw_base)
+	raw_return_payload_shape := flat.source_type_shape(raw_return_syntax.raw_base())
 	if (raw_return_shape.has(.result_type) && raw_return_payload_shape.has(.option_type))
 		|| (raw_return_shape.has(.option_type) && raw_return_payload_shape.has(.result_type)) {
 		tc.record_error_at(.return_mismatch, 'the type must be Option or Result', id, tc.nested_option_result_marker_pos(node))
@@ -4063,8 +4063,8 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if raw_return_type_id == checker_option_void_source_type {
 		tc.record_error_at(.return_mismatch, 'use `?` instead of `?void`', id, tc.option_void_payload_diagnostic_pos(node))
 	}
-	if raw_return_syntax.question_trimmed != raw_return_type_id && !raw_return_shape.has(.option_type) {
-		tc.record_error_at(.return_mismatch, 'wrong syntax, it must be ?${flat.source_type_name(raw_return_syntax.question_trimmed)}, not ${flat.source_type_name(raw_return_type_id)}', id, tc.suffix_option_return_type_diagnostic_pos(node))
+	if raw_return_syntax.question_trimmed() != raw_return_type_id && !raw_return_shape.has(.option_type) {
+		tc.record_error_at(.return_mismatch, 'wrong syntax, it must be ?${flat.source_type_name(raw_return_syntax.question_trimmed())}, not ${flat.source_type_name(raw_return_type_id)}', id, tc.suffix_option_return_type_diagnostic_pos(node))
 	}
 	signature_return_type := unalias_type(tc.parse_type(node.typ))
 	if signature_return_type is MultiReturn {
@@ -4084,7 +4084,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				&& node.value.all_after_last('.') in tc.interface_abstract_method_names(receiver_type.source_type_id()) {
 				tc.record_error_at(.duplicate_decl, 'interface `${receiver_type.name()}` cannot implement its own interface method `${node.value.all_after_last('.')}`', id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type is OptionType || flat.source_type_syntax(receiver.typ).contains_question
+			if receiver_type is OptionType || flat.source_type_syntax(receiver.typ).contains_question()
 				|| receiver_name.starts_with('?') {
 				tc.record_error_at(.call_arg_mismatch, 'option types cannot have methods', id, tc.fn_option_receiver_diagnostic_pos(node, receiver.value))
 			}
@@ -4096,7 +4096,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		}
 	}
 	if raw_return_shape.has(.result_type) {
-		alias_name := flat.source_type_name(raw_return_syntax.raw_base)
+		alias_name := flat.source_type_name(raw_return_syntax.raw_base())
 		alias_target_shape := flat.source_type_shape(tc.type_aliases.type_id(alias_name) or {
 			tc.type_aliases.type_id(tc.qualify_name(alias_name)) or { u32(0) }
 		})
@@ -4230,15 +4230,15 @@ fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
 }
 
 fn (tc &TypeChecker) source_module_declares_type(type_name_id u32) bool {
-	qualified_base := flat.source_type_syntax(type_name_id).generic_base
+	qualified_base := flat.source_type_syntax(type_name_id).generic_base()
 	base_syntax := flat.source_type_syntax(qualified_base)
 	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
 	if flat.source_type_shape(qualified_base).has(.dotted) {
-		if base_syntax.qualifier != flat.source_type_id(current_module) {
+		if base_syntax.qualifier() != flat.source_type_id(current_module) {
 			return false
 		}
 	}
-	base_name := flat.source_type_name(base_syntax.unqualified)
+	base_name := flat.source_type_name(base_syntax.unqualified())
 	// Ownership is indexed by module, independently of the method's source file.
 	decl_name := qualify_decl_name_in_module(base_name, current_module)
 	if declaration := tc.declaration_visibility[decl_name] {
@@ -4391,9 +4391,9 @@ fn param_source_type_is_option(source_id u32) bool {
 	}
 	mut clean := trimmed_source_type_id(source_id)
 	if flat.source_type_shape(clean).has(.mutable_type) {
-		clean = trimmed_source_type_id(flat.source_type_syntax(clean).raw_base)
+		clean = trimmed_source_type_id(flat.source_type_syntax(clean).raw_base())
 	}
-	return flat.source_type_shape(flat.source_type_syntax(clean).pointer_raw_base).has(.option_type)
+	return flat.source_type_shape(flat.source_type_syntax(clean).pointer_raw_base()).has(.option_type)
 }
 
 // guard_binds_mut_param_payload reports whether `cond_id` is `mut v := a` with `a` one of

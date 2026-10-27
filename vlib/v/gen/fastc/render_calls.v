@@ -213,7 +213,7 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 fn (g &Parser) typeof_display_name(typ_id u32) string {
 	typ := flat.source_type_name(typ_id)
 	if flat.source_type_query(typ_id).has(.c_pointer_suffix) {
-		return '&' + g.typeof_display_name(flat.source_type_syntax(typ_id).c_pointer_base)
+		return '&' + g.typeof_display_name(flat.source_type_syntax(typ_id).c_pointer_base())
 	}
 	if typ_id == fastc_type_integer_literal || typ_id == fastc_type_negative_integer_literal {
 		return 'int literal'
@@ -246,11 +246,11 @@ fn (g &Parser) typeof_display_name(typ_id u32) string {
 	if key in g.declared_types {
 		syntax := flat.source_type_syntax(key_id)
 		if syntax.dotted_parts().len <= 1 { return key }
-		name := flat.source_type_name(syntax.unqualified)
-		if syntax.qualifier in [flat.source_type_id('main'), flat.source_type_id('builtin')] {
+		name := flat.source_type_name(syntax.unqualified())
+		if syntax.qualifier() in [flat.source_type_id('main'), flat.source_type_id('builtin')] {
 			return name
 		}
-		return flat.source_type_name(flat.source_type_syntax(syntax.qualifier).unqualified) + '.' + name
+		return flat.source_type_name(flat.source_type_syntax(syntax.qualifier()).unqualified()) + '.' + name
 	}
 	return typ
 }
@@ -507,7 +507,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		if operand.len == 1 && operand[0].tok == .name {
 			if local := g.locals[operand[0].lit] {
 				if local.is_reference && flat.source_type_query(local.typ).has(.c_pointer_suffix) {
-					value_type := flat.source_type_syntax(local.typ).c_pointer_base
+					value_type := flat.source_type_syntax(local.typ).c_pointer_base()
 					if fastc_is_integer_type(g.underlying_alias_type(value_type)) {
 						// Concrete mutable scalar parameters are a FastC extension;
 						// integer conversions retain their existing value semantics.

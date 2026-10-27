@@ -178,7 +178,7 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 		if value_tokens.len == 1 && value_tokens[0].tok == .name {
 			if local := g.locals[value_tokens[0].lit] {
 				if local.is_reference && flat.source_type_query(actual).has(.c_pointer_suffix) {
-					return flat.source_type_syntax(actual).c_pointer_base
+					return flat.source_type_syntax(actual).c_pointer_base()
 				}
 			}
 		}
@@ -243,7 +243,7 @@ fn (mut g Parser) queue_mono_method(receiver_type u32, method string, concrete u
 		base_key := '${flat.source_type_name(g.semantic_type_key(receiver_type))}.${method}'
 		base := g.functions[base_key] or { FastcFunctionSignature{} }
 		parameter_types := g.mono_parameter_types(source, concrete, base)
-		return_source_id := flat.source_type_syntax(source.return_type_source).trimmed
+		return_source_id := flat.source_type_syntax(source.return_type_source).trimmed()
 		mut return_type := base.return_type
 		mut return_types := base.return_types.ids.clone()
 		mut option_type := base.option_type
@@ -433,7 +433,7 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete u32) ?string
 	if mono_key !in g.mono_functions {
 		base := g.functions[function_key] or { return none }
 		parameter_types := g.mono_parameter_types(source, concrete, base)
-		return_source_id := flat.source_type_syntax(source.return_type_source).trimmed
+		return_source_id := flat.source_type_syntax(source.return_type_source).trimmed()
 		mut return_type := base.return_type
 		mut return_types := base.return_types.ids.clone()
 		mut option_type := base.option_type
@@ -513,13 +513,13 @@ fn fastc_infer_generic_type_from_parameter(erased_id u32, actual_id u32) u32 {
 		return u32(0)
 	}
 	erased := flat.source_type_syntax(erased_id)
-	if erased.c_pointer_raw_base == flat.source_type_id('voidptr') {
+	if erased.c_pointer_raw_base() == flat.source_type_id('voidptr') {
 		mut concrete := actual_id
-		if flat.source_type_syntax(actual_id).c_pointer_depth < erased.c_pointer_depth {
+		if flat.source_type_syntax(actual_id).c_pointer_depth() < erased.c_pointer_depth() {
 			return u32(0)
 		}
-		for _ in 0 .. erased.c_pointer_depth {
-			concrete = flat.source_type_syntax(concrete).c_pointer_base
+		for _ in 0 .. erased.c_pointer_depth() {
+			concrete = flat.source_type_syntax(concrete).c_pointer_base()
 		}
 		return concrete
 	}
@@ -535,8 +535,8 @@ fn fastc_infer_generic_type_from_parameter(erased_id u32, actual_id u32) u32 {
 	suffix := flat.source_type_composition(.concat, suffix_parts)
 	mut concrete := flat.source_type_capture(actual_id, prefix, suffix) or { return u32(0) }
 	mut pointers := 0
-	for flat.source_type_syntax(concrete).c_ptr_name_suffix {
-		concrete = flat.source_type_syntax(concrete).c_ptr_name_base
+	for flat.source_type_syntax(concrete).c_ptr_name_suffix() {
+		concrete = flat.source_type_syntax(concrete).c_ptr_name_base()
 		pointers++
 	}
 	mut parts := [concrete]
@@ -551,9 +551,9 @@ fn fastc_specialized_generic_result_type(erased_id u32, concrete_id u32) u32 {
 	if erased_id == 0 { return erased_id }
 	erased := flat.source_type_syntax(erased_id)
 	if erased.voidptr_parts().len < 2 { return erased_id }
-	if erased.c_pointer_raw_base == flat.source_type_id('voidptr') {
+	if erased.c_pointer_raw_base() == flat.source_type_id('voidptr') {
 		mut parts := [concrete_id]
-		for _ in 0 .. erased.c_pointer_depth { parts << flat.source_type_id('*') }
+		for _ in 0 .. erased.c_pointer_depth() { parts << flat.source_type_id('*') }
 		return flat.source_type_composition(.concat, parts)
 	}
 	concrete_part := flat.source_type_composition_one(.fastc_composite_part, concrete_id)
@@ -1043,8 +1043,8 @@ fn fastc_type_param_substitutions(type_param string, concrete string) map[string
 			// On-demand inference uses C type names. Reparse pointer arguments
 			// with V's prefix spelling instead of inserting a C `T*` token pair.
 			syntax := flat.source_type_syntax(concrete_type)
-			mut v_type := syntax.c_pointer_raw_base
-			for _ in 0 .. syntax.c_pointer_depth {
+			mut v_type := syntax.c_pointer_raw_base()
+			for _ in 0 .. syntax.c_pointer_depth() {
 				v_type = flat.source_type_composition_one(.pointer, v_type)
 			}
 			substitutions[flat.source_type_name(name)] = flat.source_type_name(v_type)
@@ -2102,7 +2102,7 @@ fn fastc_is_concrete_type_arg_id(name_id u32) bool {
 		return true
 	}
 	syntax := flat.source_type_syntax(name_id)
-	return syntax.byte_len > 1 && syntax.first_capital
+	return syntax.byte_len() > 1 && syntax.first_capital()
 }
 
 // fastc_scan_generic_struct_instances records each `S[Concrete]` reference to a

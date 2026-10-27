@@ -307,7 +307,7 @@ fn (mut g Parser) add_local_closure_cleanup(name string) {
 fn (g &Parser) capture_type_source(typ_id u32) ?string {
 	typ := flat.source_type_name(typ_id)
 	if flat.source_type_query(typ_id).has(.c_pointer_suffix) {
-		return '&' + g.capture_type_source(flat.source_type_syntax(typ_id).c_pointer_base)?
+		return '&' + g.capture_type_source(flat.source_type_syntax(typ_id).c_pointer_base())?
 	}
 	if flat.source_type_query(typ_id).has(.c_array_prefix) {
 		element := g.array_element_type(typ_id)?
@@ -327,9 +327,9 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 	if flat.source_type_name(key) !in g.declared_types {
 		return none
 	}
-	module_name := flat.source_type_name(flat.source_type_syntax(key).qualifier)
-	name := flat.source_type_name(flat.source_type_syntax(key).unqualified)
-	if module_name == g.module_name || flat.source_type_syntax(key).qualifier == fastc_capture_builtin_module_source_type {
+	module_name := flat.source_type_name(flat.source_type_syntax(key).qualifier())
+	name := flat.source_type_name(flat.source_type_syntax(key).unqualified())
+	if module_name == g.module_name || flat.source_type_syntax(key).qualifier() == fastc_capture_builtin_module_source_type {
 		return name
 	}
 	for alias, imported_module in g.imports {

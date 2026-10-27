@@ -1694,12 +1694,12 @@ fn fastc_output_c_type(t string) string {
 // fastc_output_c_type_id maps semantic spellings to their physical C type identities.
 fn fastc_output_c_type_id(type_id u32) u32 {
 	syntax := flat.source_type_syntax(type_id)
-	base := syntax.c_pointer_raw_base
+	base := syntax.c_pointer_raw_base()
 	if base == flat.source_type_uint {
-		return fastc_with_pointer_depth(flat.source_type_usize, syntax.c_pointer_depth)
+		return fastc_with_pointer_depth(flat.source_type_usize, syntax.c_pointer_depth())
 	}
 	if base == flat.source_type_int {
-		return fastc_with_pointer_depth(flat.source_type_id(fastc_platform_int_c_type), syntax.c_pointer_depth)
+		return fastc_with_pointer_depth(flat.source_type_id(fastc_platform_int_c_type), syntax.c_pointer_depth())
 	}
 	return type_id
 }

@@ -6515,8 +6515,8 @@ fn type_has_generic_receiver_args(tc &types.TypeChecker, type_id u32) bool {
 	if !flat.source_type_shape(type_id).has(.bracketed) {
 		return false
 	}
-	base := flat.source_type_syntax(type_id).generic_base
-	short_base := flat.source_type_syntax(base).unqualified
+	base := flat.source_type_syntax(type_id).generic_base()
+	short_base := flat.source_type_syntax(base).unqualified()
 	// Declaration tables retain textual keys; structural selection stays numeric.
 	return flat.source_type_name(base) in tc.struct_generic_params
 		|| flat.source_type_name(short_base) in tc.struct_generic_params
@@ -6545,7 +6545,7 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		// IntNumber = Number[int]` operand resolves to the alias name (no `[`), which
 		// would otherwise hide the generic receiver base.
 		operand_id := types.unalias_type(tc.resolve_type(a.child(&node, 0))).source_type_id()
-		operand_type := flat.source_type_syntax(operand_id).source_wrapper_base
+		operand_type := flat.source_type_syntax(operand_id).source_wrapper_base()
 		if type_has_generic_receiver_args(tc, operand_type) {
 			return true
 		}
@@ -6565,7 +6565,7 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 				if !shape.has(.pointer) && !shape.has(.option_type) {
 					break
 				}
-				receiver_type = flat.source_type_syntax(receiver_type).raw_base
+				receiver_type = flat.source_type_syntax(receiver_type).raw_base()
 			}
 			if type_has_generic_receiver_args(tc, receiver_type) {
 				return true
@@ -6781,11 +6781,11 @@ fn fn_decl_has_generic_receiver(a &flat.FlatAst, node flat.Node) bool {
 	receiver_type := clean_receiver_type(receiver.typ)
 	declared_receiver := flat.source_type_id(node.value.all_before_last('.'))
 	if receiver_type != declared_receiver
-		&& flat.source_type_syntax(receiver_type).unqualified != flat.source_type_syntax(declared_receiver).unqualified {
+		&& flat.source_type_syntax(receiver_type).unqualified() != flat.source_type_syntax(declared_receiver).unqualified() {
 		return false
 	}
 	return flat.source_type_shape(receiver_type).has(.bracketed)
-		&& flat.source_type_syntax(receiver_type).contains_closing_bracket
+		&& flat.source_type_syntax(receiver_type).contains_closing_bracket()
 }
 
 fn file_module_name(a &flat.FlatAst, file_node flat.Node) string {
@@ -7127,17 +7127,17 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		receiver_type := flat.source_type_id(name.all_before_last('.'))
 		first_type := clean_receiver_type(params[0].typ)
 		if first_type == receiver_type
-			|| flat.source_type_syntax(first_type).unqualified == flat.source_type_syntax(receiver_type).unqualified {
+			|| flat.source_type_syntax(first_type).unqualified() == flat.source_type_syntax(receiver_type).unqualified() {
 			receiver := params[0]
 			receiver_name := if receiver.value.len > 0 { receiver.value } else { 'it' }
 			mut receiver_decl_type := receiver.typ
 			mut receiver_prefix := ''
 			if receiver.is_mut {
 				receiver_prefix = 'mut '
-				receiver_decl_type = flat.source_type_syntax(flat.source_type_syntax(receiver_decl_type).pointer_raw_base).trimmed
+				receiver_decl_type = flat.source_type_syntax(flat.source_type_syntax(receiver_decl_type).pointer_raw_base()).trimmed()
 			} else if flat.source_type_shape(receiver_decl_type).has(.shared_type) {
 				receiver_prefix = 'shared '
-				receiver_decl_type = flat.source_type_syntax(flat.source_type_syntax(receiver_decl_type).raw_base).trimmed
+				receiver_decl_type = flat.source_type_syntax(flat.source_type_syntax(receiver_decl_type).raw_base()).trimmed()
 			}
 			head = '${visibility}fn (${receiver_prefix}${receiver_name} ${flat.source_type_name(receiver_decl_type)}) ${name.all_after_last('.')}'
 			param_start = 1
@@ -7163,7 +7163,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 			}
 		} else if flat.source_type_shape(ptype).has(.pointer) && p.is_mut {
 			prefix = 'mut '
-			ptype = flat.source_type_syntax(flat.source_type_syntax(ptype).raw_base).trimmed
+			ptype = flat.source_type_syntax(flat.source_type_syntax(ptype).raw_base()).trimmed()
 		}
 		ptexts << '${prefix}${pname} ${flat.source_type_name(ptype)}'
 	}
@@ -7258,9 +7258,9 @@ fn fn_is_noreturn(a &flat.FlatAst, module_name string, name string) bool {
 }
 
 fn clean_receiver_type(value u32) u32 {
-	mut typ := flat.source_type_syntax(value).pointer_base
+	mut typ := flat.source_type_syntax(value).pointer_base()
 	if flat.source_type_shape(typ).has(.shared_type) {
-		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base).trimmed
+		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base()).trimmed()
 	}
 	return typ
 }
@@ -7399,8 +7399,8 @@ fn cached_global_source_type_id(tc &types.TypeChecker, module_name string, name 
 			if flat.source_type_shape(source_id).has(.pointer)
 				&& flat.source_type_shape(source_id).has(.bracketed) {
 				syntax := flat.source_type_syntax(source_id)
-				if syntax.generic_base == source_type_void_pointer_head {
-					return flat.source_type_composition_two(.concat, flat.source_type_voidptr, syntax.bracket_from)
+				if syntax.generic_base() == source_type_void_pointer_head {
+					return flat.source_type_composition_two(.concat, flat.source_type_voidptr, syntax.bracket_from())
 				}
 			}
 			return source_id
@@ -7557,7 +7557,7 @@ fn interface_field_text(a &flat.FlatAst, field &flat.Node) string {
 						param_type = flat.source_type_composition_one(.pointer, param_type)
 					}
 				} else if flat.source_type_shape(param_type).has(.pointer) {
-					param_type = flat.source_type_syntax(flat.source_type_syntax(param_type).raw_base).trimmed
+					param_type = flat.source_type_syntax(flat.source_type_syntax(param_type).raw_base()).trimmed()
 				}
 			}
 			params << '${prefix}arg${pi} ${flat.source_type_name(param_type)}'

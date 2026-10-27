@@ -138,8 +138,8 @@ fn (mut t Transformer) is_generic_struct(name_id u32) bool {
 		return false
 	}
 	syntax := flat.source_type_syntax(name_id)
-	if syntax.generic_app_valid {
-		return flat.source_type_name(syntax.generic_app_base) in t.structs
+	if syntax.generic_app_valid() {
+		return flat.source_type_name(syntax.generic_app_base()) in t.structs
 	}
 	if info := t.lookup_struct_info(name_id) {
 		return flat.source_type_shape(info.name).has(.bracketed)
@@ -750,8 +750,8 @@ fn (t &Transformer) generic_method_value_declaring_receiver(receiver_type_id u32
 					field.typ
 				})
 				syntax := flat.source_type_syntax(field_type)
-				pending << if syntax.generic_app_valid {
-					flat.source_type_composition_two(.concat, t.normalize_type_in_module(syntax.generic_app_base, info.module), syntax.generic_app_legacy_suffix)
+				pending << if syntax.generic_app_valid() {
+					flat.source_type_composition_two(.concat, t.normalize_type_in_module(syntax.generic_app_base(), info.module), syntax.generic_app_legacy_suffix())
 				} else {
 					t.normalize_type_in_module(field_type, info.module)
 				}
@@ -772,15 +772,15 @@ fn (mut t Transformer) generic_method_decl_of(receiver_type_id u32, method strin
 	unaliased_id := types.unalias_type(t.tc.parse_type(clean_id)).source_type_id()
 	unaliased_syntax := flat.source_type_syntax(unaliased_id)
 	names := [
-		if clean_syntax.generic_app_valid { clean_syntax.generic_app_base } else { clean_id },
-		if unaliased_syntax.generic_app_valid {
-			unaliased_syntax.generic_app_base
+		if clean_syntax.generic_app_valid() { clean_syntax.generic_app_base() } else { clean_id },
+		if unaliased_syntax.generic_app_valid() {
+			unaliased_syntax.generic_app_base()
 		} else {
 			unaliased_id
 		},
 	]
 	for name_id in names {
-		for candidate_id in [name_id, flat.source_type_syntax(name_id).unqualified] {
+		for candidate_id in [name_id, flat.source_type_syntax(name_id).unqualified()] {
 			key := '${flat.source_type_name(candidate_id)}.${method}'
 			if decl := decls[key] { return decl }
 		}
@@ -868,27 +868,27 @@ fn (mut t Transformer) explicit_generic_arg_is_known_type_id(arg_id u32, module_
 	shape := flat.source_type_shape(clean_id)
 	syntax := flat.source_type_syntax(clean_id)
 	if shape.has(.pointer) || shape.has(.optional) || shape.has(.result_type) || shape.has(.array_type) {
-		return t.explicit_generic_arg_is_known_type_id(syntax.raw_base, module_name)
+		return t.explicit_generic_arg_is_known_type_id(syntax.raw_base(), module_name)
 	}
 	if shape.has(.map_type) {
-		return syntax.bracket_closed && syntax.raw_base != 0
-			&& t.explicit_generic_arg_is_known_type_id(syntax.bracket_raw_inner, module_name)
-			&& t.explicit_generic_arg_is_known_type_id(syntax.raw_base, module_name)
+		return syntax.bracket_closed() && syntax.raw_base() != 0
+			&& t.explicit_generic_arg_is_known_type_id(syntax.bracket_raw_inner(), module_name)
+			&& t.explicit_generic_arg_is_known_type_id(syntax.raw_base(), module_name)
 	}
 	if shape.has(.leading_bracket) {
-		return syntax.bracket_closed && syntax.raw_base != 0
-			&& t.explicit_generic_arg_is_known_type_id(syntax.raw_base, module_name)
+		return syntax.bracket_closed() && syntax.raw_base() != 0
+			&& t.explicit_generic_arg_is_known_type_id(syntax.raw_base(), module_name)
 	}
-	if syntax.function_space_prefix || shape.has(.function_compact) { return true }
-	if syntax.tuple_like {
+	if syntax.function_space_prefix() || shape.has(.function_compact) { return true }
+	if syntax.tuple_like() {
 		if syntax.tuple_components().len == 0 { return false }
 		for part_id in syntax.tuple_components() {
 			if !t.explicit_generic_arg_is_known_type_id(part_id, module_name) { return false }
 		}
 		return true
 	}
-	if syntax.generic_app_valid {
-		if !t.explicit_generic_arg_is_known_type_id(syntax.generic_app_base, module_name) {
+	if syntax.generic_app_valid() {
+		if !t.explicit_generic_arg_is_known_type_id(syntax.generic_app_base(), module_name) {
 			return false
 		}
 		for nested_arg_id in syntax.generic_app_args() {
@@ -896,7 +896,7 @@ fn (mut t Transformer) explicit_generic_arg_is_known_type_id(arg_id u32, module_
 		}
 		return true
 	}
-	return syntax.c_qualified || (shape.has(.dotted) && syntax.first_dot_prefix == flat.source_type_id('JS'))
+	return syntax.c_qualified() || (shape.has(.dotted) && syntax.first_dot_prefix() == flat.source_type_id('JS'))
 		|| t.concrete_type_name_known(flat.source_type_name(clean_id), module_name)
 }
 
@@ -1173,7 +1173,7 @@ fn (mut t Transformer) seed_generic_specialization_args(decls map[string]Generic
 		decl := decls[base] or { continue }
 		syntax := flat.source_type_syntax(spec_id)
 		args := syntax.generic_app_args()
-		ok := syntax.generic_app_valid
+		ok := syntax.generic_app_valid()
 		if ok && args.len > 0 {
 			t.record_generic_specialization_args_in_module(base, decl.module, args)
 		}
@@ -1507,7 +1507,7 @@ fn (t &Transformer) lowered_generic_struct_operator_uses_for_specs(specs map[u32
 		base := flat.source_type_name(base_id)
 		syntax := flat.source_type_syntax(spec_id)
 		args := syntax.generic_app_args()
-		ok := syntax.generic_app_valid
+		ok := syntax.generic_app_valid()
 		if !ok || args.len == 0 {
 			continue
 		}
@@ -1740,7 +1740,7 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[u32]u32, decl
 		base := flat.source_type_name(base_id)
 		syntax := flat.source_type_syntax(spec_id)
 		args := syntax.generic_app_args()
-		ok := syntax.generic_app_valid
+		ok := syntax.generic_app_valid()
 		if !ok || args.len == 0 {
 			continue
 		}
@@ -1811,8 +1811,8 @@ fn (t &Transformer) fixture_should_expand_regular_generic_methods(args_ids []u32
 		return false
 	}
 	for raw_arg_source_id in args_ids {
-		arg_id := flat.source_type_syntax(flat.source_type_syntax(raw_arg_source_id).source_wrapper_base).array_chars_base
-		for candidate_id in [arg_id, flat.source_type_syntax(arg_id).unqualified] {
+		arg_id := flat.source_type_syntax(flat.source_type_syntax(raw_arg_source_id).source_wrapper_base()).array_chars_base()
+		for candidate_id in [arg_id, flat.source_type_syntax(arg_id).unqualified()] {
 			if file := t.tc.struct_files[flat.source_type_name(candidate_id)] {
 				if file in t.tc.diagnostic_files {
 					return true
@@ -1973,13 +1973,13 @@ fn (t &Transformer) interface_dispatch_method_used(iface_name_id u32, method str
 		if t.used_interface_dispatch_key(alias_name) {
 			return true
 		}
-		short_alias_name := '${flat.source_type_name(flat.source_type_syntax(alias_id).unqualified)}.${method}'
+		short_alias_name := '${flat.source_type_name(flat.source_type_syntax(alias_id).unqualified())}.${method}'
 		if short_alias_name != alias_name && t.interface_dispatch_short_name_allowed(alias_id)
 			&& t.used_interface_dispatch_key(short_alias_name) {
 			return true
 		}
 	}
-	short_name := '${flat.source_type_name(flat.source_type_syntax(iface_name_id).unqualified)}.${method}'
+	short_name := '${flat.source_type_name(flat.source_type_syntax(iface_name_id).unqualified())}.${method}'
 	return short_name != name && t.interface_dispatch_short_name_allowed(iface_name_id)
 		&& t.used_interface_dispatch_key(short_name)
 }
@@ -2013,7 +2013,7 @@ fn (t &Transformer) interface_boxed_type_marked(iface_name_id u32, concrete_type
 	iface_syntax := flat.source_type_syntax(iface_name_id)
 	concrete_type := flat.source_type_name(concrete_type_id)
 	mut iface_names := [iface_name_id]
-	short_name := iface_syntax.unqualified
+	short_name := iface_syntax.unqualified()
 	if short_name != iface_name_id {
 		iface_names << short_name
 	}
@@ -2028,10 +2028,10 @@ fn (t &Transformer) interface_boxed_type_marked(iface_name_id u32, concrete_type
 			return true
 		}
 	}
-	iface_is_specialized := iface_syntax.generic_app_valid
+	iface_is_specialized := iface_syntax.generic_app_valid()
 	if !iface_is_specialized {
 		concrete_base := if flat.source_type_shape(concrete_type_id).has(.bracketed) {
-			transform_trimmed_type_id(flat.source_type_syntax(concrete_type_id).generic_base)
+			transform_trimmed_type_id(flat.source_type_syntax(concrete_type_id).generic_base())
 		} else {
 			u32(0)
 		}
@@ -2050,9 +2050,9 @@ fn (t &Transformer) interface_boxed_type_marked(iface_name_id u32, concrete_type
 				continue
 			}
 			boxed_syntax := flat.source_type_syntax(boxed_iface)
-			boxed_is_specialized := boxed_syntax.generic_app_valid
+			boxed_is_specialized := boxed_syntax.generic_app_valid()
 			if boxed_is_specialized
-				&& flat.source_type_syntax(boxed_syntax.generic_app_base).unqualified == iface_syntax.unqualified
+				&& flat.source_type_syntax(boxed_syntax.generic_app_base()).unqualified() == iface_syntax.unqualified()
 				&& (boxed_concrete == concrete_type_id || boxed_concrete == concrete_c_name
 					|| (concrete_base != 0 && (boxed_concrete == concrete_base
 						|| boxed_concrete == concrete_base_c_name))) {
@@ -2065,7 +2065,7 @@ fn (t &Transformer) interface_boxed_type_marked(iface_name_id u32, concrete_type
 	// base name `Foo` (see mark_interface_boxed_type), because the concrete
 	// instantiations are materialised after the scan has frozen.
 	if flat.source_type_shape(concrete_type_id).has(.bracketed) {
-		base := transform_trimmed_type_id(flat.source_type_syntax(concrete_type_id).generic_base)
+		base := transform_trimmed_type_id(flat.source_type_syntax(concrete_type_id).generic_base())
 		if base != 0 {
 			base_c_name := flat.source_type_id(c_name(flat.source_type_name(base)))
 			for iface in iface_names {
@@ -2081,7 +2081,7 @@ fn (t &Transformer) interface_boxed_type_marked(iface_name_id u32, concrete_type
 		for iface in iface_names {
 			if t.interface_boxed_type_key_marked(interface_boxed_type_key(iface, target))
 				|| t.interface_boxed_type_key_marked(interface_boxed_type_key(iface, flat.source_type_id(c_name(flat.source_type_name(target)))))
-				|| t.interface_boxed_type_key_marked(interface_boxed_type_key(iface, flat.source_type_syntax(target).unqualified)) {
+				|| t.interface_boxed_type_key_marked(interface_boxed_type_key(iface, flat.source_type_syntax(target).unqualified())) {
 				return true
 			}
 		}
@@ -2097,13 +2097,13 @@ fn (t &Transformer) interface_boxed_semantic_candidates(iface_name_id u32, concr
 	iface_syntax := flat.source_type_syntax(iface_name_id)
 	concrete_type := flat.source_type_name(concrete_type_id)
 	mut candidates := [iface_name_id]
-	iface_is_specialized := iface_syntax.generic_app_valid
+	iface_is_specialized := iface_syntax.generic_app_valid()
 	if iface_is_specialized {
 		return candidates
 	}
 	concrete_c_name := flat.source_type_id(c_name(concrete_type))
 	concrete_base := if flat.source_type_shape(concrete_type_id).has(.bracketed) {
-		transform_trimmed_type_id(flat.source_type_syntax(concrete_type_id).generic_base)
+		transform_trimmed_type_id(flat.source_type_syntax(concrete_type_id).generic_base())
 	} else {
 		u32(0)
 	}
@@ -2122,8 +2122,8 @@ fn (t &Transformer) interface_boxed_semantic_candidates(iface_name_id u32, concr
 			continue
 		}
 		boxed_syntax := flat.source_type_syntax(boxed_iface)
-		boxed_is_specialized := boxed_syntax.generic_app_valid
-		if !boxed_is_specialized || flat.source_type_syntax(boxed_syntax.generic_app_base).unqualified != iface_syntax.unqualified {
+		boxed_is_specialized := boxed_syntax.generic_app_valid()
+		if !boxed_is_specialized || flat.source_type_syntax(boxed_syntax.generic_app_base()).unqualified() != iface_syntax.unqualified() {
 			continue
 		}
 		if boxed_concrete == concrete_type_id || boxed_concrete == concrete_c_name
@@ -2335,7 +2335,7 @@ fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
 				continue
 			}
 			concrete_type := if flat.source_type_shape(field.typ).has(.pointer) {
-				flat.source_type_syntax(field.typ).raw_base
+				flat.source_type_syntax(field.typ).raw_base()
 			} else {
 				field.typ
 			}
@@ -2358,7 +2358,7 @@ fn (mut t Transformer) collect_lowered_interface_boxed_types_range(start int, en
 				continue
 			}
 			concrete_type := if flat.source_type_shape(field.typ).has(.pointer) {
-				flat.source_type_syntax(field.typ).raw_base
+				flat.source_type_syntax(field.typ).raw_base()
 			} else {
 				field.typ
 			}
@@ -2912,10 +2912,10 @@ fn (t &Transformer) interface_box_type_text_maybe_uncached(raw_type_id u32) bool
 	shape := flat.source_type_shape(clean_id)
 	syntax := flat.source_type_syntax(clean_id)
 	if shape.has(.optional) {
-		if syntax.raw_base == 0 { return false }
+		if syntax.raw_base() == 0 { return false }
 		return t.interface_box_type_text_maybe(t.optional_base_type(clean_id))
 	}
-	if syntax.tuple_like && syntax.tuple_contains_comma {
+	if syntax.tuple_like() && syntax.tuple_contains_comma() {
 		for part_id in syntax.tuple_components() {
 			if t.interface_box_type_text_maybe(part_id) { return true }
 		}
@@ -3200,7 +3200,7 @@ fn (mut t Transformer) mark_interface_boxed_type(iface_name_id u32, concrete_typ
 		// Recording the base lets `interface_boxed_type_marked` recognise any of
 		// those instantiations as boxed.
 		if flat.source_type_shape(concrete_type_id).has(.bracketed) {
-			base := transform_trimmed_type_id(flat.source_type_syntax(concrete_type_id).generic_base)
+			base := transform_trimmed_type_id(flat.source_type_syntax(concrete_type_id).generic_base())
 			if base != 0 {
 				t.mark_interface_boxed_type_key(interface_boxed_type_key(iface, base))
 				t.mark_interface_boxed_type_key(interface_boxed_type_key(iface, flat.source_type_id(c_name(flat.source_type_name(base)))))
@@ -3347,7 +3347,7 @@ fn (mut t Transformer) expand_generic_materialization_specs(decls map[string]Gen
 			decl := decls[base] or { continue }
 			syntax := flat.source_type_syntax(spec_id)
 			args := syntax.generic_app_args()
-			ok := syntax.generic_app_valid
+			ok := syntax.generic_app_valid()
 			if !ok {
 				continue
 			}
@@ -3366,7 +3366,7 @@ fn (mut t Transformer) expand_generic_materialization_specs(decls map[string]Gen
 			decl := sum_decls[flat.source_type_name(context.base)] or { continue }
 			syntax := flat.source_type_syntax(spec)
 			args := syntax.generic_app_args()
-			ok := syntax.generic_app_valid
+			ok := syntax.generic_app_valid()
 			if !ok {
 				continue
 			}
@@ -3536,13 +3536,13 @@ fn type_text_has_unqualified_generic_arg(typ_id u32) bool {
 	shape := flat.source_type_shape(text_id)
 	syntax := flat.source_type_syntax(text_id)
 	if shape.has(.map_type) {
-		if !syntax.bracket_closed { return false }
-		return type_text_has_unqualified_generic_arg(syntax.bracket_raw_inner)
-			|| type_text_has_unqualified_generic_arg(syntax.raw_base)
+		if !syntax.bracket_closed() { return false }
+		return type_text_has_unqualified_generic_arg(syntax.bracket_raw_inner())
+			|| type_text_has_unqualified_generic_arg(syntax.raw_base())
 	}
 	if shape.has(.leading_bracket) {
-		if !syntax.bracket_closed || syntax.raw_base == 0 { return false }
-		return type_text_has_unqualified_generic_arg(syntax.raw_base)
+		if !syntax.bracket_closed() || syntax.raw_base() == 0 { return false }
+		return type_text_has_unqualified_generic_arg(syntax.raw_base())
 	}
 	if !shape.has(.bracketed) { return false }
 	for arg_id in syntax.bracket_generic_parts() {
@@ -3551,12 +3551,12 @@ fn type_text_has_unqualified_generic_arg(typ_id u32) bool {
 		if type_text_has_unqualified_generic_arg(clean_id) { return true }
 		payload_id := strip_type_modifier_prefixes_id(clean_id)
 		payload := flat.source_type_syntax(payload_id)
-		if payload.generic_app_valid
-			&& flat.source_type_syntax(payload.generic_app_base).plain_type_name
-			&& !types.is_builtin_type_name_id(payload.generic_app_base) {
+		if payload.generic_app_valid()
+			&& flat.source_type_syntax(payload.generic_app_base()).plain_type_name()
+			&& !types.is_builtin_type_name_id(payload.generic_app_base()) {
 			return true
 		}
-		if !payload.plain_type_name || types.is_builtin_type_name_id(payload_id) { continue }
+		if !payload.plain_type_name() || types.is_builtin_type_name_id(payload_id) { continue }
 		return true
 	}
 	return false
@@ -3570,13 +3570,13 @@ fn strip_type_modifier_prefixes_id(typ_id u32) u32 {
 		if shape.has(.pointer) || shape.has(.optional) || shape.has(.result_type)
 			|| shape.has(.variadic) || shape.has(.mutable_type) || shape.has(.channel_type)
 			|| shape.has(.array_type) {
-			text_id = transform_trimmed_type_id(flat.source_type_syntax(text_id).raw_base)
+			text_id = transform_trimmed_type_id(flat.source_type_syntax(text_id).raw_base())
 			continue
 		}
 		if shape.has(.leading_bracket) {
 			syntax := flat.source_type_syntax(text_id)
-			if syntax.bracket_closed && syntax.raw_base != 0 {
-				text_id = transform_trimmed_type_id(syntax.raw_base)
+			if syntax.bracket_closed() && syntax.raw_base() != 0 {
+				text_id = transform_trimmed_type_id(syntax.raw_base())
 				continue
 			}
 		}
@@ -3678,7 +3678,7 @@ fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]Gener
 @[direct_array_access]
 fn type_text_has_bracket_or_underscore(typ_id u32) bool {
 	return flat.source_type_shape(typ_id).has(.bracketed)
-		|| flat.source_type_syntax(typ_id).underscored
+		|| flat.source_type_syntax(typ_id).underscored()
 }
 
 // comma_list_has_item reports whether `item` is one of the comma-separated
@@ -3792,7 +3792,7 @@ fn (mut t Transformer) collect_generic_struct_specs_from_sql_expr(value string, 
 fn (mut t Transformer) collect_generic_struct_spec_from_type(typ_id u32, module_name string, file_name string, decls map[string]GenericStructDecl, mut specs map[u32]u32) {
 	if typ_id == 0 { return }
 	if !flat.source_type_shape(typ_id).has(.bracketed)
-		&& !flat.source_type_syntax(typ_id).underscored {
+		&& !flat.source_type_syntax(typ_id).underscored() {
 		return
 	}
 	clean_id := transform_trimmed_type_id(typ_id)
@@ -3801,26 +3801,26 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ_id u32, module_
 	syntax := flat.source_type_syntax(clean_id)
 	if shape.has(.pointer) || shape.has(.mutable_type) || shape.has(.optional)
 		|| shape.has(.variadic) || shape.has(.array_type) || shape.has(.channel_type) {
-		t.collect_generic_struct_spec_from_type(syntax.raw_base, module_name, file_name, decls, mut specs)
+		t.collect_generic_struct_spec_from_type(syntax.raw_base(), module_name, file_name, decls, mut specs)
 		return
 	}
 	if shape.has(.map_type) {
-		if syntax.bracket_closed {
-			t.collect_generic_struct_spec_from_type(syntax.bracket_raw_inner, module_name, file_name, decls, mut specs)
-			t.collect_generic_struct_spec_from_type(syntax.raw_base, module_name, file_name, decls, mut specs)
+		if syntax.bracket_closed() {
+			t.collect_generic_struct_spec_from_type(syntax.bracket_raw_inner(), module_name, file_name, decls, mut specs)
+			t.collect_generic_struct_spec_from_type(syntax.raw_base(), module_name, file_name, decls, mut specs)
 		}
 		return
 	}
 	if shape.has(.leading_bracket) {
-		if syntax.bracket_closed {
-			t.collect_generic_struct_spec_from_type(syntax.raw_base, module_name, file_name, decls, mut specs)
+		if syntax.bracket_closed() {
+			t.collect_generic_struct_spec_from_type(syntax.raw_base(), module_name, file_name, decls, mut specs)
 		}
 		return
 	}
 	if !shape.has(.bracketed) {
 		// A flattened concrete generic name always includes the separator before
 		// its type suffix. Ordinary scalar and qualified names cannot be specs.
-		if !syntax.underscored { return }
+		if !syntax.underscored() { return }
 		args_source_ids := t.recorded_type_specialization_args(clean_id) or { return }
 		spec_base := t.generic_struct_spec_base_from_flattened_type(clean_id, args_source_ids, module_name, file_name, decls) or { return }
 		scoped_args_source_ids := t.generic_struct_args_in_scope(args_source_ids, module_name, file_name)
@@ -3833,8 +3833,8 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ_id u32, module_
 		t.record_generic_specialization_args_in_module(spec_base, spec_module, scoped_args_source_ids)
 		return
 	}
-	if !syntax.generic_app_valid { return }
-	base_id := syntax.generic_app_base
+	if !syntax.generic_app_valid() { return }
+	base_id := syntax.generic_app_base()
 	args_source_ids := t.canonical_generic_specialization_args(syntax.generic_app_args())
 	for arg_source_id in args_source_ids {
 		t.collect_generic_struct_spec_from_type(arg_source_id, module_name, file_name, decls, mut specs)
@@ -3846,7 +3846,7 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ_id u32, module_
 		params := t.tc.type_alias_generic_params[alias_name] or { []string{} }
 		if params.len == args_source_ids.len {
 			alias_module := if flat.source_type_shape(alias_name_id).has(.dotted) {
-				flat.source_type_name(flat.source_type_syntax(alias_name_id).qualifier)
+				flat.source_type_name(flat.source_type_syntax(alias_name_id).qualifier())
 			} else {
 				module_name
 			}
@@ -3951,23 +3951,23 @@ fn (mut t Transformer) collect_generic_sum_spec_from_type(typ_id u32, module_nam
 	syntax := flat.source_type_syntax(clean_id)
 	if shape.has(.pointer) || shape.has(.mutable_type) || shape.has(.optional)
 		|| shape.has(.variadic) || shape.has(.array_type) || shape.has(.channel_type) {
-		t.collect_generic_sum_spec_from_type(syntax.raw_base, module_name, file_name, decls, mut specs)
+		t.collect_generic_sum_spec_from_type(syntax.raw_base(), module_name, file_name, decls, mut specs)
 		return
 	}
 	if shape.has(.map_type) {
-		if syntax.bracket_closed {
-			t.collect_generic_sum_spec_from_type(syntax.bracket_raw_inner, module_name, file_name, decls, mut specs)
-			t.collect_generic_sum_spec_from_type(syntax.raw_base, module_name, file_name, decls, mut specs)
+		if syntax.bracket_closed() {
+			t.collect_generic_sum_spec_from_type(syntax.bracket_raw_inner(), module_name, file_name, decls, mut specs)
+			t.collect_generic_sum_spec_from_type(syntax.raw_base(), module_name, file_name, decls, mut specs)
 		}
 		return
 	}
 	if shape.has(.leading_bracket) {
-		if syntax.bracket_closed {
-			t.collect_generic_sum_spec_from_type(syntax.raw_base, module_name, file_name, decls, mut specs)
+		if syntax.bracket_closed() {
+			t.collect_generic_sum_spec_from_type(syntax.raw_base(), module_name, file_name, decls, mut specs)
 		}
 		return
 	}
-	if !shape.has(.bracketed) || !syntax.generic_app_valid { return }
+	if !shape.has(.bracketed) || !syntax.generic_app_valid() { return }
 	for arg in syntax.generic_app_args() {
 		t.collect_generic_sum_spec_from_type(arg, module_name, file_name, decls, mut specs)
 	}
@@ -3976,7 +3976,7 @@ fn (mut t Transformer) collect_generic_sum_spec_from_type(typ_id u32, module_nam
 	// (`maybe.Maybe[Token]` for `import iam { Token }` next to another imported `Token`)
 	// then names no type, and keying a specialization with it would emit a bogus one.
 	if file_name == '' && t.generic_args_name_unknown_type(syntax.generic_app_args()) { return }
-	spec_base := t.generic_sum_spec_base_name(syntax.generic_app_base, module_name, file_name, decls) or { return }
+	spec_base := t.generic_sum_spec_base_name(syntax.generic_app_base(), module_name, file_name, decls) or { return }
 	spec_name := t.generic_sum_spec_name_in_scope(flat.source_type_id(spec_base), syntax.generic_app_args(), module_name, file_name)
 	specs[spec_name] = GenericSpecContext{
 		base:   flat.source_type_id(spec_base)
@@ -3991,9 +3991,9 @@ fn (t &Transformer) generic_struct_spec_base_name(base_id u32, module_name strin
 		return base
 	}
 	syntax := flat.source_type_syntax(base_id)
-	if syntax.first_dot_prefix == flat.source_type_id('main') && flat.source_type_shape(base_id).has(.dotted)
-		&& !flat.source_type_shape(syntax.first_dot_suffix).has(.dotted) {
-		main_base := flat.source_type_name(syntax.first_dot_suffix)
+	if syntax.first_dot_prefix() == flat.source_type_id('main') && flat.source_type_shape(base_id).has(.dotted)
+		&& !flat.source_type_shape(syntax.first_dot_suffix()).has(.dotted) {
+		main_base := flat.source_type_name(syntax.first_dot_suffix())
 		if main_base in decls {
 			return main_base
 		}
@@ -4012,7 +4012,7 @@ fn (t &Transformer) generic_struct_spec_base_name(base_id u32, module_name strin
 	}
 	mut found := ''
 	for key, _ in decls {
-		if flat.source_type_syntax(flat.source_type_id(key)).unqualified == base_id {
+		if flat.source_type_syntax(flat.source_type_id(key)).unqualified() == base_id {
 			if found != '' && found != key {
 				return none
 			}
@@ -4031,9 +4031,9 @@ fn (t &Transformer) generic_sum_spec_base_name(base_id u32, module_name string, 
 		return base
 	}
 	syntax := flat.source_type_syntax(base_id)
-	if syntax.first_dot_prefix == flat.source_type_id('main') && flat.source_type_shape(base_id).has(.dotted)
-		&& !flat.source_type_shape(syntax.first_dot_suffix).has(.dotted) {
-		main_base := flat.source_type_name(syntax.first_dot_suffix)
+	if syntax.first_dot_prefix() == flat.source_type_id('main') && flat.source_type_shape(base_id).has(.dotted)
+		&& !flat.source_type_shape(syntax.first_dot_suffix()).has(.dotted) {
+		main_base := flat.source_type_name(syntax.first_dot_suffix())
 		if main_base in decls {
 			return main_base
 		}
@@ -4052,7 +4052,7 @@ fn (t &Transformer) generic_sum_spec_base_name(base_id u32, module_name string, 
 	}
 	mut found := ''
 	for key, _ in decls {
-		if flat.source_type_syntax(flat.source_type_id(key)).unqualified == base_id {
+		if flat.source_type_syntax(flat.source_type_id(key)).unqualified() == base_id {
 			if found != '' && found != key {
 				return none
 			}
@@ -4126,7 +4126,7 @@ fn (t &Transformer) generic_args_name_unknown_type(args_ids []u32) bool {
 		name_id := transform_trimmed_type_id(arg_id)
 		shape := flat.source_type_shape(name_id)
 		if name_id == 0 || shape.has(.dotted) || shape.has(.bracketed)
-			|| !flat.source_type_syntax(name_id).first_capital {
+			|| !flat.source_type_syntax(name_id).first_capital() {
 			continue
 		}
 		name := flat.source_type_name(name_id)
@@ -4207,7 +4207,7 @@ fn (t &Transformer) selective_import_generic_sum_base(base_id u32, file_name str
 
 fn (mut t Transformer) materialize_generic_sum_spec(spec_id u32, decl GenericSumDecl, context GenericSpecContext) {
 	syntax := flat.source_type_syntax(spec_id)
-	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 {
+	if !syntax.generic_app_valid() || syntax.generic_app_args().len == 0 {
 		return
 	}
 	spec_name := flat.source_type_name(spec_id)
@@ -4262,12 +4262,12 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_id u32, decl GenericSum
 
 fn (mut t Transformer) materialize_generic_struct_spec(spec_id u32, decl GenericStructDecl) {
 	syntax := flat.source_type_syntax(spec_id)
-	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 {
+	if !syntax.generic_app_valid() || syntax.generic_app_args().len == 0 {
 		return
 	}
 	spec_name := flat.source_type_name(spec_id)
 	args_ids := syntax.generic_app_args()
-	t.record_generic_specialization_args_in_module(flat.source_type_name(syntax.generic_app_base), decl.module, args_ids)
+	t.record_generic_specialization_args_in_module(flat.source_type_name(syntax.generic_app_base()), decl.module, args_ids)
 	old_module := t.cur_module
 	old_file := t.cur_file
 	old_tc_module := t.tc.cur_module
@@ -4979,15 +4979,15 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args_i
 		}
 		mut param_raw_id := param_child.typ
 		if flat.source_type_shape(param_raw_id).has(.mutable_type) {
-			param_raw_id = flat.source_type_syntax(param_raw_id).raw_base
+			param_raw_id = flat.source_type_syntax(param_raw_id).raw_base()
 		}
 		if flat.source_type_shape(param_raw_id).has(.variadic) {
-			param_raw_id = flat.source_type_composition_one(.array, flat.source_type_syntax(param_raw_id).raw_base)
+			param_raw_id = flat.source_type_composition_one(.array, flat.source_type_syntax(param_raw_id).raw_base())
 		}
 		// `mut val T` params use `&T` internally; retain explicit pointer params.
 		if param_child.is_mut && param_child.op != .amp
 			&& flat.source_type_shape(param_raw_id).has(.pointer) {
-			param_raw_id = flat.source_type_syntax(param_raw_id).raw_base
+			param_raw_id = flat.source_type_syntax(param_raw_id).raw_base()
 		}
 		param_substituted_source_id := t.subst_type(param_raw_id, concrete_args_source_ids)
 
@@ -5316,13 +5316,13 @@ fn (mut t Transformer) seed_generated_fn_body_context(root flat.NodeId) {
 		}
 		child_type_shape := flat.source_type_shape(child.typ)
 		raw_source_typ := (if child_type_shape.has(.variadic) {
-			flat.source_type_composition_one(.array, flat.source_type_syntax(child.typ).raw_base)
+			flat.source_type_composition_one(.array, flat.source_type_syntax(child.typ).raw_base())
 		} else {
 			child.typ
 		})
 		raw_typ := if child.typ != 0 {
 			if child_type_shape.has(.variadic) {
-				elem_typ := flat.source_type_syntax(child.typ).raw_base
+				elem_typ := flat.source_type_syntax(child.typ).raw_base()
 				normalized_elem_typ := t.normalize_type_alias(elem_typ)
 				if normalized_elem_typ == elem_typ {
 					raw_source_typ
@@ -5537,8 +5537,8 @@ fn (mut t Transformer) generated_call_name_for_used(id flat.NodeId, node flat.No
 		fn_node := t.a.nodes[int(fn_id)]
 		if fn_node.kind == .selector && fn_node.value_text().len > 0 && fn_node.children_count > 0 {
 			base_id := t.a.child(&fn_node, 0)
-			base_type_id := flat.source_type_syntax(t.node_type(base_id)).pointer_raw_base
-			if flat.source_type_syntax(base_type_id).generic_app_valid {
+			base_type_id := flat.source_type_syntax(t.node_type(base_id)).pointer_raw_base()
+			if flat.source_type_syntax(base_type_id).generic_app_valid() {
 				return '${flat.source_type_name(base_type_id)}.${fn_node.value_text()}'
 			}
 		}
@@ -5573,8 +5573,8 @@ fn (mut t Transformer) generated_call_name_for_used(id flat.NodeId, node flat.No
 		if method_name.len > 0 {
 			return method_name
 		}
-		base_type_id := flat.source_type_syntax(t.node_type(base_id)).pointer_raw_base
-		if flat.source_type_syntax(base_type_id).generic_app_valid {
+		base_type_id := flat.source_type_syntax(t.node_type(base_id)).pointer_raw_base()
+		if flat.source_type_syntax(base_type_id).generic_app_valid() {
 			return '${flat.source_type_name(base_type_id)}.${fn_node.value_text()}'
 		}
 	}
@@ -5589,7 +5589,7 @@ fn (t &Transformer) generated_call_matches_selector_receiver(call_name string, n
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return true
 	}
-	receiver_name_id := flat.source_type_syntax(flat.source_type_id(call_name)).qualifier
+	receiver_name_id := flat.source_type_syntax(flat.source_type_id(call_name)).qualifier()
 	if receiver_name_id == 0 {
 		return true
 	}
@@ -5604,7 +5604,7 @@ fn (t &Transformer) generated_call_matches_selector_receiver(call_name string, n
 		&& t.cur_module != 'builtin' && receiver_name_id == flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base_type_source_id_4) {
 		return true
 	}
-	if flat.source_type_syntax(receiver_name_id).unqualified != flat.source_type_syntax(base_type_source_id_4).unqualified {
+	if flat.source_type_syntax(receiver_name_id).unqualified() != flat.source_type_syntax(base_type_source_id_4).unqualified() {
 		return true
 	}
 	return false
@@ -5894,8 +5894,8 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ_i
 	qualified_source_id := t.qualify_specialized_signature_type_text(locked, decl)
 	qualified_syntax := flat.source_type_syntax(qualified_source_id)
 	if !isnil(t.tc) {
-		alias_base_id := qualified_syntax.generic_app_base
-		if qualified_syntax.generic_app_valid && (t.tc.type_aliases.contains(flat.source_type_name(alias_base_id))
+		alias_base_id := qualified_syntax.generic_app_base()
+		if qualified_syntax.generic_app_valid() && (t.tc.type_aliases.contains(flat.source_type_name(alias_base_id))
 			|| flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(decl.module), alias_base_id)) in t.tc.type_aliases.ids) {
 			expanded_source_id := t.normalize_type_in_module(qualified_source_id, decl.module)
 			expanded_shape := flat.source_type_shape(expanded_source_id)
@@ -5912,7 +5912,7 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ_i
 	// `Context`, which the decl module then rebinds to its own homonym, giving the callback
 	// the wrong ABI. Return the locked/qualified spelling directly, as the scalar `direct`
 	// branch above already does for a locked scalar.
-	if locked != substituted && qualified_syntax.main_fragment {
+	if locked != substituted && qualified_syntax.main_fragment() {
 		return qualified_source_id
 	}
 	qualified_shape := flat.source_type_shape(transform_trimmed_type_id(qualified_source_id))
@@ -5974,7 +5974,7 @@ fn (t &Transformer) specialized_direct_generic_type_text(typ_id u32, args_ids []
 	} else {
 		return none
 	}
-	inner := t.specialized_direct_generic_type_text(flat.source_type_syntax(clean_id).raw_base, args_ids, params) or { return none }
+	inner := t.specialized_direct_generic_type_text(flat.source_type_syntax(clean_id).raw_base(), args_ids, params) or { return none }
 	inner_shape := flat.source_type_shape(inner)
 	if (kind == .option && inner_shape.has(.option_type))
 		|| (kind == .result && inner_shape.has(.result_type)) {
@@ -6031,46 +6031,46 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ_id u32, decl Gen
 		} else {
 			flat.SourceTypeComposition.array
 		}
-		return flat.source_type_composition_one(kind, t.qualify_specialized_signature_type_text(syntax.raw_base, decl))
+		return flat.source_type_composition_one(kind, t.qualify_specialized_signature_type_text(syntax.raw_base(), decl))
 	}
 	if shape.has(.function_compact) || shape.has(.function_spaced) {
-		if !syntax.function_closed { return clean_id }
+		if !syntax.function_closed() { return clean_id }
 		mut parts := []u32{cap: syntax.function_params().len + 1}
 		for param in syntax.function_params() {
-			parts << t.qualify_specialized_signature_type_text(flat.source_type_syntax(param).legacy_parameter_mut_type, decl)
+			parts << t.qualify_specialized_signature_type_text(flat.source_type_syntax(param).legacy_parameter_mut_type(), decl)
 		}
-		qualified_ret := t.qualify_specialized_signature_type_text(syntax.function_result, decl)
+		qualified_ret := t.qualify_specialized_signature_type_text(syntax.function_result(), decl)
 		if qualified_ret != 0 {
 			parts << qualified_ret
 			return flat.source_type_composition(.function_type_spaced, parts)
 		}
 		return flat.source_type_composition(.void_function_type_spaced, parts)
 	}
-	if shape.has(.map_type) && syntax.bracket_closed {
-		key := t.qualify_specialized_signature_type_text(syntax.bracket_raw_inner, decl)
-		value := t.qualify_specialized_signature_type_text(syntax.raw_base, decl)
+	if shape.has(.map_type) && syntax.bracket_closed() {
+		key := t.qualify_specialized_signature_type_text(syntax.bracket_raw_inner(), decl)
+		value := t.qualify_specialized_signature_type_text(syntax.raw_base(), decl)
 		return flat.source_type_composition_two(.map, key, value)
 	}
-	if shape.has(.leading_bracket) && syntax.bracket_closed {
-		return flat.source_type_composition_two(.concat, syntax.bracket_prefix, t.qualify_specialized_signature_type_text(syntax.raw_base, decl))
+	if shape.has(.leading_bracket) && syntax.bracket_closed() {
+		return flat.source_type_composition_two(.concat, syntax.bracket_prefix(), t.qualify_specialized_signature_type_text(syntax.raw_base(), decl))
 	}
 	if fixed := t.canonical_suffix_fixed_array_arg_id(clean_id) {
 		return t.qualify_specialized_signature_type_text(fixed, decl)
 	}
-	if syntax.tuple_like && syntax.tuple_contains_comma {
+	if syntax.tuple_like() && syntax.tuple_contains_comma() {
 		mut parts := []u32{cap: syntax.tuple_components().len}
 		for part in syntax.tuple_components() {
 			parts << t.qualify_specialized_signature_type_text(part, decl)
 		}
 		return flat.source_type_composition(.multi_return, parts)
 	}
-	if syntax.generic_base != clean_id && syntax.generic_base != 0 && syntax.bracket_closed {
+	if syntax.generic_base() != clean_id && syntax.generic_base() != 0 && syntax.bracket_closed() {
 		mut parts := []u32{cap: syntax.bracket_generic_parts().len + 1}
-		parts << t.qualify_specialized_signature_type_text(syntax.generic_base, decl)
+		parts << t.qualify_specialized_signature_type_text(syntax.generic_base(), decl)
 		for part in syntax.bracket_generic_parts() {
 			parts << t.qualify_specialized_signature_type_text(part, decl)
 		}
-		return flat.source_type_composition_two(.concat, flat.source_type_composition(.generic, parts), syntax.bracket_suffix)
+		return flat.source_type_composition_two(.concat, flat.source_type_composition(.generic, parts), syntax.bracket_suffix())
 	}
 	if shape.has(.dotted) || types.is_builtin_type_name_id(clean_id)
 		|| clean_id in [flat.source_type_void, flat.source_type_none, flat.source_type_nil,
@@ -6257,8 +6257,8 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []i
 		if node.kind == .or_expr && node.children_count > 0 {
 			child := t.a.child_node(&node, 0)
 			if child.kind == .call && flat.source_type_shape(child.typ).has(.optional)
-				&& flat.source_type_syntax(child.typ).raw_base != 0 {
-				base_type := flat.source_type_syntax(child.typ).raw_base
+				&& flat.source_type_syntax(child.typ).raw_base() != 0 {
+				base_type := flat.source_type_syntax(child.typ).raw_base()
 				if base_type != 0 && !t.generic_arg_is_unresolved(base_type) {
 					if node.typ != base_type {
 						t.set_node_typ(i, base_type)
@@ -6334,7 +6334,7 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []i
 // concrete_fn_alias_call_return_type.
 fn (t &Transformer) fn_ret_type_is_generic_app(name string) bool {
 	ret := t.tc.fn_ret_types[name] or { return false }
-	return flat.source_type_syntax(ret.source_type_id()).generic_app_valid
+	return flat.source_type_syntax(ret.source_type_id()).generic_app_valid()
 }
 
 fn (mut t Transformer) concrete_fn_alias_call_return_type(id int, node flat.Node) ?u32 {
@@ -6348,7 +6348,7 @@ fn (mut t Transformer) concrete_fn_alias_call_return_type(id int, node flat.Node
 	ret := t.tc.fn_ret_types[callee.value_text()] or { return none }
 	ret_source_id := ret.source_type_id()
 	ret_syntax := flat.source_type_syntax(ret_source_id)
-	if !ret_syntax.generic_app_valid {
+	if !ret_syntax.generic_app_valid() {
 		return none
 	}
 	// Most call identifiers are ordinary functions. Avoid the contextual scope
@@ -6357,7 +6357,7 @@ fn (mut t Transformer) concrete_fn_alias_call_return_type(id int, node flat.Node
 		return none
 	}
 	module_name := t.node_module_or(id, t.cur_module)
-	if !t.generic_arg_is_alias_name_id(ret_syntax.generic_app_base, module_name) {
+	if !t.generic_arg_is_alias_name_id(ret_syntax.generic_app_base(), module_name) {
 		return none
 	}
 	old_module := t.cur_module
@@ -6909,7 +6909,7 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 		if child.is_mut && child.op == .amp && flat.source_type_shape(inferred_arg_type).has(.pointer) {
 			// The explicit `mut p &T` marker addresses the caller's pointer slot;
 			// it is ABI indirection, not part of T's inferred source type.
-			inferred_arg_type = flat.source_type_syntax(inferred_arg_type).raw_base
+			inferred_arg_type = flat.source_type_syntax(inferred_arg_type).raw_base()
 		}
 		if is_recv_param && t.call_is_selector_form(node)
 			&& t.generic_receiver_needs_decl_type_fallback(child.typ, inferred_arg_type) {
@@ -6926,7 +6926,7 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 		if (child.is_mut || flat.source_type_shape(child.typ).has(.mutable_type)) && flat.source_type_shape(inferred_arg_type).has(.pointer) {
 			// A mutable parameter's leading pointer is its storage ABI, whether the
 			// generic placeholder is direct (`T`) or nested (`Container[T]`).
-			inferred_arg_type = flat.source_type_syntax(inferred_arg_type).raw_base
+			inferred_arg_type = flat.source_type_syntax(inferred_arg_type).raw_base()
 		}
 		arg_type := generic_arg_type_for_param(inference_param_type, inferred_arg_type)
 		if arg_type != 0 {
@@ -6977,7 +6977,7 @@ fn generic_param_text_is_variadic(param_type_id u32) bool {
 fn generic_variadic_elem_param_text(param_type_id u32) u32 {
 	clean := transform_trimmed_type_id(param_type_id)
 	if flat.source_type_shape(clean).has(.variadic) {
-		return transform_trimmed_type_id(flat.source_type_syntax(clean).raw_base)
+		return transform_trimmed_type_id(flat.source_type_syntax(clean).raw_base())
 	}
 	return clean
 }
@@ -7056,10 +7056,10 @@ fn (mut t Transformer) infer_generic_field_init_type_arg(param_type_id u32, fiel
 	}
 	param_syntax := flat.source_type_syntax(struct_param_type)
 	param_args := param_syntax.generic_app_args()
-	if !param_syntax.generic_app_valid || param_args.len == 0 {
+	if !param_syntax.generic_app_valid() || param_args.len == 0 {
 		return
 	}
-	info := t.lookup_struct_info(param_syntax.generic_app_base) or { return }
+	info := t.lookup_struct_info(param_syntax.generic_app_base()) or { return }
 	mut field_type := u32(0)
 	for struct_field in info.fields {
 		if struct_field.name == field.value_text() {
@@ -7072,7 +7072,7 @@ fn (mut t Transformer) infer_generic_field_init_type_arg(param_type_id u32, fiel
 	}
 	// Rebase the struct's own generic parameter names onto the applied args so
 	// e.g. `[]A` (from `struct Params[A]`) becomes `[]T` for `...Params[T]`.
-	struct_params := t.struct_generic_params_for_base(param_syntax.generic_app_base)
+	struct_params := t.struct_generic_params_for_base(param_syntax.generic_app_base())
 	if struct_params.len > 0 && flat.TypeTextList.from_names(struct_params).ids != param_args {
 		field_type = substitute_generic_type_text_with_params(field_type, param_args, struct_params)
 	}
@@ -7212,7 +7212,7 @@ fn mutable_fn_value_param_type_text(param flat.Node, slot_type_id u32) u32 {
 		return slot_type_id
 	}
 	value_type_id := if flat.source_type_shape(slot_type_id).has(.pointer) {
-		flat.source_type_syntax(slot_type_id).raw_base
+		flat.source_type_syntax(slot_type_id).raw_base()
 	} else {
 		slot_type_id
 	}
@@ -7296,13 +7296,13 @@ fn (mut t Transformer) specialize_generic_fn_value_arg(arg_id flat.NodeId, expec
 	}
 	mut expected_source_id := t.trimmed_type_id(expected_type_id)
 	if flat.source_type_shape(expected_source_id).has(.variadic) {
-		expected_source_id = t.trimmed_type_id(flat.source_type_syntax(expected_source_id).raw_base)
+		expected_source_id = t.trimmed_type_id(flat.source_type_syntax(expected_source_id).raw_base())
 	}
 	if flat.source_type_shape(expected_source_id).has(.array_type)
-		&& flat.source_type_syntax(flat.source_type_syntax(expected_source_id).raw_base).fn_prefix {
-		expected_source_id = flat.source_type_syntax(expected_source_id).raw_base
+		&& flat.source_type_syntax(flat.source_type_syntax(expected_source_id).raw_base()).fn_prefix() {
+		expected_source_id = flat.source_type_syntax(expected_source_id).raw_base()
 	}
-	if !flat.source_type_syntax(expected_source_id).fn_prefix {
+	if !flat.source_type_syntax(expected_source_id).fn_prefix() {
 		return none
 	}
 	name := if !isnil(t.tc) {
@@ -7385,7 +7385,7 @@ fn (mut t Transformer) retype_lowered_array_literal_temp(arg_id flat.NodeId, nam
 	if !flat.source_type_shape(array_type_id).has(.array_type) {
 		return false
 	}
-	elem_type_id := flat.source_type_syntax(array_type_id).raw_base
+	elem_type_id := flat.source_type_syntax(array_type_id).raw_base()
 	// Compiler temporary names restart in every function. Find the declaration
 	// immediately preceding this lowered literal result instead of rewriting every
 	// declaration with the same spelling across the compilation.
@@ -7561,7 +7561,7 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 
 				mut expected_type := t.trimmed_type_id(param_types_source_ids[0])
 				if flat.source_type_shape(expected_type).has(.mutable_type) {
-					expected_type = t.trimmed_type_id(flat.source_type_syntax(expected_type).raw_base)
+					expected_type = t.trimmed_type_id(flat.source_type_syntax(expected_type).raw_base())
 				}
 				expected_type = t.trimmed_type_id(t.trim_all_pointer_type(expected_type))
 				if expected_type != 0 {
@@ -8066,19 +8066,19 @@ fn (t &Transformer) generic_args_name_specialized_functions(args_ids []u32) bool
 		for flat.source_type_shape(clean).has(.pointer)
 			|| flat.source_type_shape(clean).has(.option_type)
 			|| flat.source_type_shape(clean).has(.result_type) {
-			clean = t.trimmed_type_id(flat.source_type_syntax(clean).raw_base)
+			clean = t.trimmed_type_id(flat.source_type_syntax(clean).raw_base())
 		}
 		for flat.source_type_shape(clean).has(.array_type) {
-			clean = t.trimmed_type_id(flat.source_type_syntax(clean).raw_base)
+			clean = t.trimmed_type_id(flat.source_type_syntax(clean).raw_base())
 		}
 		if t.generic_callee_is_specialization(flat.source_type_name(clean)) {
 			return true
 		}
-		if flat.source_type_syntax(clean).generic_encoded_fragment && !t.type_name_is_declared_id(clean) {
+		if flat.source_type_syntax(clean).generic_encoded_fragment() && !t.type_name_is_declared_id(clean) {
 			return true
 		}
 		syntax := flat.source_type_syntax(clean)
-		if syntax.generic_app_valid && t.generic_args_name_specialized_functions(syntax.generic_app_args()) {
+		if syntax.generic_app_valid() && t.generic_args_name_specialized_functions(syntax.generic_app_args()) {
 			return true
 		}
 	}
@@ -8121,7 +8121,7 @@ fn (t &Transformer) exact_generic_specialization_args_from_callee(name string) ?
 	receiver := name.all_before_last('.')
 	syntax := flat.source_type_syntax(flat.source_type_id(receiver))
 	args := syntax.generic_app_args()
-	if !syntax.generic_app_valid || args.len == 0 || t.generic_args_have_placeholders(args) {
+	if !syntax.generic_app_valid() || args.len == 0 || t.generic_args_have_placeholders(args) {
 		return none
 	}
 	return t.canonical_generic_specialization_args(args).clone()
@@ -8219,7 +8219,7 @@ fn (mut t Transformer) infer_generic_call_args_from_raw_node_types(decl GenericF
 			// argument prefix or its cloned value identifier. Infer from the
 			// language-level value by removing exactly that storage pointer; a
 			// pointer-valued `T` still retains its own leading `&`.
-			raw_arg_type = flat.source_type_syntax(raw_arg_type).raw_base
+			raw_arg_type = flat.source_type_syntax(raw_arg_type).raw_base()
 		}
 		raw_type := generic_arg_type_for_param(inference_param_type, raw_arg_type)
 		if raw_type != 0 {
@@ -8585,8 +8585,8 @@ fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node fla
 			}
 		}
 		base_syntax := flat.source_type_syntax(base_type)
-		if base_syntax.generic_app_valid {
-			key := t.generic_receiver_decl_key(flat.source_type_name(base_syntax.generic_app_base), callee.value_text(), decls)
+		if base_syntax.generic_app_valid() {
+			key := t.generic_receiver_decl_key(flat.source_type_name(base_syntax.generic_app_base()), callee.value_text(), decls)
 			if decl := decls[key] {
 				if !t.generic_call_arg_count_matches_decl(node, decl) {
 					return none
@@ -8626,7 +8626,7 @@ fn generic_receiver_match_base(type_id u32) u32 {
 		return type_id
 	}
 	syntax := flat.source_type_syntax(type_id)
-	return if syntax.generic_app_valid { syntax.generic_app_base } else { type_id }
+	return if syntax.generic_app_valid() { syntax.generic_app_base() } else { type_id }
 }
 
 fn (t &Transformer) generic_receiver_decl_matches_type(base_type_id u32, decl GenericFnDecl, module_name string) bool {
@@ -8663,7 +8663,7 @@ fn (t &Transformer) generic_receiver_decl_matches_type(base_type_id u32, decl Ge
 				call_receivers << root
 			}
 			if flat.source_type_shape(root).has(.dotted) {
-				short := flat.source_type_syntax(root).unqualified
+				short := flat.source_type_syntax(root).unqualified()
 				if short != 0 && short !in call_receivers {
 					call_receivers << short
 				}
@@ -8683,7 +8683,7 @@ fn (t &Transformer) generic_receiver_decl_matches_type(base_type_id u32, decl Ge
 				decl_receivers << root
 			}
 			if flat.source_type_shape(root).has(.dotted) {
-				short := flat.source_type_syntax(root).unqualified
+				short := flat.source_type_syntax(root).unqualified()
 				if short != 0 && short !in decl_receivers {
 					decl_receivers << short
 				}
@@ -8904,8 +8904,8 @@ fn generic_flat_receiver_matches(receiver string, decl_receiver string, module_n
 	decl_receiver_id := flat.source_type_id(decl_receiver)
 	mut receiver_roots := [decl_receiver_id]
 	decl_syntax := flat.source_type_syntax(decl_receiver_id)
-	if decl_syntax.generic_app_valid && decl_syntax.generic_app_base != 0 {
-		receiver_roots << decl_syntax.generic_app_base
+	if decl_syntax.generic_app_valid() && decl_syntax.generic_app_base() != 0 {
+		receiver_roots << decl_syntax.generic_app_base()
 	}
 	for root in receiver_roots {
 		if root == 0 || root in bases {
@@ -8922,9 +8922,9 @@ fn generic_flat_receiver_matches(receiver string, decl_receiver string, module_n
 		}
 		if flat.source_type_shape(root).has(.dotted) {
 			syntax := flat.source_type_syntax(root)
-			short_receiver := syntax.unqualified
+			short_receiver := syntax.unqualified()
 			bases << short_receiver
-			bases << flat.source_type_composition_two(.qualified, syntax.qualifier, short_receiver)
+			bases << flat.source_type_composition_two(.qualified, syntax.qualifier(), short_receiver)
 		}
 	}
 	for base_id in bases {
@@ -9051,14 +9051,14 @@ fn (t &Transformer) resolved_generic_decl_matches_callee_receiver(callee flat.No
 fn (t &Transformer) generic_decl_matches_embedded_receiver(base_type_id u32, decl GenericFnDecl, module_name string, mut seen map[u32]bool) bool {
 	mut lookup_type := t.trimmed_type_id(t.trim_all_pointer_type(t.trimmed_type_id(base_type_id)))
 	if flat.source_type_shape(lookup_type).has(.mutable_type) {
-		lookup_type = t.trimmed_type_id(flat.source_type_syntax(lookup_type).raw_base)
+		lookup_type = t.trimmed_type_id(flat.source_type_syntax(lookup_type).raw_base())
 	}
 	if lookup_type in seen {
 		return false
 	}
 	seen[lookup_type] = true
 	if lookup_type !in t.embedded_fields && flat.source_type_shape(lookup_type).has(.dotted) {
-		short_type := flat.source_type_syntax(lookup_type).unqualified
+		short_type := flat.source_type_syntax(lookup_type).unqualified()
 		if short_type in t.embedded_fields {
 			lookup_type = short_type
 		}
@@ -9451,7 +9451,7 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	} else {
 		u32(0)
 	}
-	expected_value := flat.source_type_syntax(expected_return).source_wrapper_base
+	expected_value := flat.source_type_syntax(expected_return).source_wrapper_base()
 	// An interface target converts the result after the call. Its concrete
 	// arguments decide T before that target may fill any missing parameters.
 	interface_context := t.is_interface_type(expected_value)
@@ -9503,7 +9503,7 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		if child.is_mut && child.op == .amp && flat.source_type_shape(inferred_arg_type).has(.pointer) {
 			// The explicit `mut p &T` marker addresses the caller's pointer slot;
 			// it is ABI indirection, not part of T's inferred source type.
-			inferred_arg_type = flat.source_type_syntax(inferred_arg_type).raw_base
+			inferred_arg_type = flat.source_type_syntax(inferred_arg_type).raw_base()
 		}
 		if is_recv_param && t.call_is_selector_form(node)
 			&& t.generic_receiver_needs_decl_type_fallback(child.typ, inferred_arg_type) {
@@ -9563,7 +9563,7 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 			// carrying that `&`, unlike a plain `mut ident` whose value node already
 			// dropped it — strip it so `[]T` matches `[]Cell`, not `&[]Cell`. Mirrors
 			// infer_generic_call_args_from_params.
-			inferred_arg_type = flat.source_type_syntax(inferred_arg_type).raw_base
+			inferred_arg_type = flat.source_type_syntax(inferred_arg_type).raw_base()
 		}
 		arg_type := generic_arg_type_for_param(inference_param_type, inferred_arg_type)
 		if arg_type != 0 && !defer_numeric_literal {
@@ -9651,7 +9651,7 @@ fn (t &Transformer) declared_generic_receiver_param_names(node flat.Node, module
 	if t.fn_decl_receiver_is_open_generic(node, module_name) {
 		receiver := owner_name_view(node.value_text())
 		syntax := flat.source_type_syntax(flat.source_type_id(receiver))
-		base := syntax.generic_app_base
+		base := syntax.generic_app_base()
 		args := syntax.generic_app_args()
 		mut candidates := [base]
 		if !flat.source_type_shape(base).has(.dotted) && module_name !in ['', 'main', 'builtin'] {
@@ -9699,10 +9699,10 @@ fn (mut t Transformer) infer_generic_struct_init_args(param_type_id u32, arg_id 
 		return
 	}
 	param_syntax := flat.source_type_syntax(t.trimmed_type_id(param_type_id))
-	if !param_syntax.generic_app_valid || param_syntax.generic_app_args().len == 0 {
+	if !param_syntax.generic_app_valid() || param_syntax.generic_app_args().len == 0 {
 		return
 	}
-	info := t.lookup_struct_info(param_syntax.generic_app_base) or { return }
+	info := t.lookup_struct_info(param_syntax.generic_app_base()) or { return }
 	for i in 0 .. arg.children_count {
 		field := t.a.child_node(&arg, i)
 		if field.kind != .field_init || field.children_count == 0 {
@@ -9751,19 +9751,19 @@ fn (mut t Transformer) infer_generic_short_struct_init_args(param_type_id u32, a
 		if flat.source_type_shape(struct_param_type).has(.pointer_chain) {
 			return
 		}
-		struct_param_type = flat.source_type_syntax(struct_param_type).raw_base
+		struct_param_type = flat.source_type_syntax(struct_param_type).raw_base()
 	}
 	param_syntax := flat.source_type_syntax(struct_param_type)
 	param_args := param_syntax.generic_app_args()
-	if !param_syntax.generic_app_valid || param_args.len == 0 {
+	if !param_syntax.generic_app_valid() || param_args.len == 0 {
 		return
 	}
-	info := t.lookup_struct_info(param_syntax.generic_app_base) or { return }
+	info := t.lookup_struct_info(param_syntax.generic_app_base()) or { return }
 	// The struct declares its fields in its own generic parameter names
 	// (`struct Params[A] { a []A }`) while the call must infer the function's
 	// parameters (`fn f[T](p Params[T])`). Rebase the field types onto the
 	// applied args so `[]A` becomes `[]T` before inference.
-	struct_params := t.struct_generic_params_for_base(param_syntax.generic_app_base)
+	struct_params := t.struct_generic_params_for_base(param_syntax.generic_app_base())
 	mut field_idx := 0
 	for i in 0 .. int(node.children_count) {
 		field := t.a.child_node(&node, i)
@@ -9810,7 +9810,7 @@ fn (t &Transformer) struct_generic_params_for_base(base u32) []string {
 	if params := t.tc.struct_generic_params[flat.source_type_name(base)] {
 		return params
 	}
-	short := flat.source_type_syntax(base).unqualified
+	short := flat.source_type_syntax(base).unqualified()
 	if params := t.tc.struct_generic_params[flat.source_type_name(short)] {
 		return params
 	}
@@ -9824,9 +9824,9 @@ fn (mut t Transformer) infer_generic_sum_variant_args(param_type_id u32, arg_typ
 		return
 	}
 	param_syntax := flat.source_type_syntax(param)
-	param_base := param_syntax.generic_app_base
+	param_base := param_syntax.generic_app_base()
 	param_args := param_syntax.generic_app_args()
-	if !param_syntax.generic_app_valid || param_args.len == 0 {
+	if !param_syntax.generic_app_valid() || param_args.len == 0 {
 		return
 	}
 	variants := t.concrete_sum_variants_for_candidate(param)
@@ -9851,7 +9851,7 @@ fn (mut t Transformer) infer_generic_sum_variant_args(param_type_id u32, arg_typ
 		}
 	}
 	arg_is_sum_base := arg == param_base
-		|| flat.source_type_syntax(arg).unqualified == flat.source_type_syntax(param_base).unqualified
+		|| flat.source_type_syntax(arg).unqualified() == flat.source_type_syntax(param_base).unqualified()
 		|| t.resolve_sum_name(arg) == t.resolve_sum_name(param_base)
 	for variant in variants {
 		if !flat.source_type_query(t.trimmed_type_id(variant)).has(.generic_fn_name) || arg_is_sum_base {
@@ -9887,7 +9887,7 @@ fn (mut t Transformer) infer_generic_sum_literal_args(param_type_id u32, arg_id 
 		return
 	}
 	param_syntax := flat.source_type_syntax(param)
-	if !param_syntax.generic_app_valid || param_syntax.generic_app_args().len == 0 {
+	if !param_syntax.generic_app_valid() || param_syntax.generic_app_args().len == 0 {
 		return
 	}
 	variants := t.concrete_sum_variants_for_candidate(param)
@@ -10002,7 +10002,7 @@ fn (t &Transformer) current_specialization_has_generic_arg(arg_id u32) bool {
 		return false
 	}
 	receiver_syntax := flat.source_type_syntax(receiver_source_id)
-	if receiver_syntax.generic_app_valid {
+	if receiver_syntax.generic_app_valid() {
 		for current_arg in receiver_syntax.generic_app_args() {
 			if t.trimmed_type_id(current_arg) == clean_id {
 				return true
@@ -10024,22 +10024,22 @@ fn generic_type_container_components(type_id u32) []u32 {
 	shape := flat.source_type_shape(clean)
 	syntax := flat.source_type_syntax(clean)
 	if _ := generic_type_wrapper_composition(shape) {
-		return [transform_trimmed_type_id(syntax.raw_base)]
+		return [transform_trimmed_type_id(syntax.raw_base())]
 	}
 	if shape.has(.map_type) {
-		if syntax.bracket_closed && syntax.bracket_suffix != 0 {
-			return [syntax.bracket_inner, syntax.bracket_base]
+		if syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			return [syntax.bracket_inner(), syntax.bracket_base()]
 		}
 	} else if shape.has(.leading_bracket) {
-		if syntax.bracket_closed && syntax.bracket_suffix != 0 {
-			return [syntax.bracket_base]
+		if syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			return [syntax.bracket_base()]
 		}
-	} else if syntax.tuple_like && syntax.tuple_contains_comma {
+	} else if syntax.tuple_like() && syntax.tuple_contains_comma() {
 		return syntax.tuple_components()
 	} else if shape.has(.function_compact) || shape.has(.function_spaced) {
-		if syntax.function_closed {
+		if syntax.function_closed() {
 			mut components := syntax.function_params().clone()
-			components << syntax.function_result
+			components << syntax.function_result()
 			return components
 		}
 	}
@@ -10053,7 +10053,7 @@ fn generic_provenance_app_parts(type_id u32) (u32, []u32, bool) {
 		return 0, []u32{}, false
 	}
 	syntax := flat.source_type_syntax(type_id)
-	return syntax.generic_app_base, syntax.generic_app_args(), syntax.generic_app_valid
+	return syntax.generic_app_base(), syntax.generic_app_args(), syntax.generic_app_valid()
 }
 
 // SpecializationMainTypeClosure retains caller provenance for an ordered source-ID sequence.
@@ -10093,47 +10093,47 @@ fn (t &Transformer) collect_caller_main_type_names(typ_id u32, mut types_in_scop
 		return
 	}
 	if flat.source_type_query(clean).has(.main_prefix) && !t.ident_is_import_alias('main') {
-		clean = flat.source_type_syntax(clean).main_base
+		clean = flat.source_type_syntax(clean).main_base()
 	}
 	shape := flat.source_type_shape(clean)
 	syntax := flat.source_type_syntax(clean)
 	if _ := generic_type_wrapper_composition(shape) {
-		t.collect_caller_main_type_names(syntax.raw_base, mut types_in_scope)
+		t.collect_caller_main_type_names(syntax.raw_base(), mut types_in_scope)
 		return
 	}
 	if shape.has(.function_compact) || shape.has(.function_spaced) {
-		if syntax.function_closed {
+		if syntax.function_closed() {
 			for param in syntax.function_params() {
 				t.collect_caller_main_type_names(param, mut types_in_scope)
 			}
-			t.collect_caller_main_type_names(syntax.function_result, mut types_in_scope)
+			t.collect_caller_main_type_names(syntax.function_result(), mut types_in_scope)
 		}
 		return
 	}
 	if shape.has(.map_type) {
-		if syntax.bracket_closed && syntax.bracket_suffix != 0 {
-			t.collect_caller_main_type_names(syntax.bracket_raw_inner, mut types_in_scope)
-			t.collect_caller_main_type_names(syntax.bracket_suffix, mut types_in_scope)
+		if syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			t.collect_caller_main_type_names(syntax.bracket_raw_inner(), mut types_in_scope)
+			t.collect_caller_main_type_names(syntax.bracket_suffix(), mut types_in_scope)
 		}
 		return
 	}
 	if shape.has(.leading_bracket) {
-		if syntax.bracket_closed && syntax.bracket_suffix != 0 {
-			t.collect_caller_main_type_names(syntax.bracket_suffix, mut types_in_scope)
+		if syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			t.collect_caller_main_type_names(syntax.bracket_suffix(), mut types_in_scope)
 		}
 		return
 	}
-	if syntax.tuple_like && syntax.tuple_contains_comma {
+	if syntax.tuple_like() && syntax.tuple_contains_comma() {
 		for part in syntax.tuple_components() {
 			t.collect_caller_main_type_names(part, mut types_in_scope)
 		}
 		return
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		for generic_arg in syntax.generic_app_args() {
 			t.collect_caller_main_type_names(generic_arg, mut types_in_scope)
 		}
-		clean = syntax.generic_app_base
+		clean = syntax.generic_app_base()
 	}
 	if !flat.source_type_shape(clean).has(.dotted) && t.type_name_is_declared_id(clean) {
 		types_in_scope[clean] = true
@@ -10153,7 +10153,7 @@ fn (t &Transformer) collect_specialization_main_types(typ_id u32, mut types_in_s
 	// while building the provenance closure so nested substitutions can recognize
 	// the same type by its normal bare spelling in an imported generic body.
 	if flat.source_type_query(clean).has(.main_prefix) && !t.ident_is_import_alias('main') {
-		clean = flat.source_type_syntax(clean).main_base
+		clean = flat.source_type_syntax(clean).main_base()
 	}
 	components := generic_type_container_components(clean)
 	if components.len > 0 {
@@ -10163,14 +10163,14 @@ fn (t &Transformer) collect_specialization_main_types(typ_id u32, mut types_in_s
 		return
 	}
 	syntax := flat.source_type_syntax(clean)
-	is_generic := syntax.generic_app_valid
+	is_generic := syntax.generic_app_valid()
 	generic_args := syntax.generic_app_args()
 	if is_generic {
 		for generic_arg in generic_args {
 			t.collect_specialization_main_types(generic_arg, mut types_in_scope, mut seen)
 		}
 	}
-	struct_name_id := if is_generic { syntax.generic_app_base } else { clean }
+	struct_name_id := if is_generic { syntax.generic_app_base() } else { clean }
 	if flat.source_type_shape(struct_name_id).has(.dotted) {
 		return
 	}
@@ -10279,7 +10279,7 @@ fn (mut t Transformer) build_generic_alias_name_index() {
 		for alias, _ in t.tc.type_aliases.ids {
 			alias_id := flat.source_type_id(alias)
 			names[alias_id] = true
-			names[flat.source_type_syntax(alias_id).unqualified] = true
+			names[flat.source_type_syntax(alias_id).unqualified()] = true
 			exact[alias_id] = true
 			authority[alias_id] = true
 		}
@@ -10287,10 +10287,10 @@ fn (mut t Transformer) build_generic_alias_name_index() {
 			name_id := flat.source_type_id(name)
 			concrete[name_id] = true
 			checker_structs[name_id] = true
-			checker_struct_short[flat.source_type_syntax(name_id).unqualified] = true
+			checker_struct_short[flat.source_type_syntax(name_id).unqualified()] = true
 			base_id := comptime_generic_type_base(name_id)
 			if base_id != 0 {
-				checker_struct_short[flat.source_type_syntax(base_id).unqualified] = true
+				checker_struct_short[flat.source_type_syntax(base_id).unqualified()] = true
 			}
 		}
 		for name, _ in t.tc.sum_types.ids {
@@ -10411,10 +10411,10 @@ fn (t &Transformer) refresh_checker_struct_type_name_index() &GenericTypeNameInd
 			for name, _ in t.tc.structs {
 				name_id := flat.source_type_id(name)
 				names[name_id] = true
-				short_names[flat.source_type_syntax(name_id).unqualified] = true
+				short_names[flat.source_type_syntax(name_id).unqualified()] = true
 				base_id := comptime_generic_type_base(name_id)
 				if base_id != 0 {
-					short_names[flat.source_type_syntax(base_id).unqualified] = true
+					short_names[flat.source_type_syntax(base_id).unqualified()] = true
 				}
 			}
 		}
@@ -10559,7 +10559,7 @@ fn (t &Transformer) generic_arg_is_alias_name_id(arg_id u32, module_name string)
 	if clean_id == 0 || isnil(t.tc) { return false }
 	if t.generic_exact_alias_name_known(clean_id) { return true }
 	if flat.source_type_query(clean_id).has(.main_prefix)
-		&& t.generic_exact_alias_name_known(flat.source_type_syntax(clean_id).main_base) {
+		&& t.generic_exact_alias_name_known(flat.source_type_syntax(clean_id).main_base()) {
 		return true
 	}
 	if !flat.source_type_shape(clean_id).has(.dotted) {
@@ -10593,17 +10593,17 @@ fn (t &Transformer) generic_type_text_contains_alias(typ_id u32, module_name str
 	shape := flat.source_type_shape(clean_id)
 	if shape.has(.pointer) || shape.has(.mutable_type) || shape.has(.optional)
 		|| shape.has(.variadic) || shape.has(.array_type) {
-		return t.generic_type_text_contains_alias(syntax.raw_base, module_name)
+		return t.generic_type_text_contains_alias(syntax.raw_base(), module_name)
 	}
-	if shape.has(.map_type) && syntax.bracket_closed {
-		return t.generic_type_text_contains_alias(syntax.bracket_inner, module_name)
-			|| t.generic_type_text_contains_alias(syntax.bracket_base, module_name)
+	if shape.has(.map_type) && syntax.bracket_closed() {
+		return t.generic_type_text_contains_alias(syntax.bracket_inner(), module_name)
+			|| t.generic_type_text_contains_alias(syntax.bracket_base(), module_name)
 	}
-	if shape.has(.leading_bracket) && syntax.bracket_closed {
-		return t.generic_type_text_contains_alias(syntax.bracket_base, module_name)
+	if shape.has(.leading_bracket) && syntax.bracket_closed() {
+		return t.generic_type_text_contains_alias(syntax.bracket_base(), module_name)
 	}
-	if syntax.generic_app_valid {
-		if t.generic_arg_is_alias_name_id(syntax.generic_app_base, module_name) { return true }
+	if syntax.generic_app_valid() {
+		if t.generic_arg_is_alias_name_id(syntax.generic_app_base(), module_name) { return true }
 		for arg_id in syntax.generic_app_args() {
 			if t.generic_type_text_contains_alias(arg_id, module_name) { return true }
 		}
@@ -10621,16 +10621,16 @@ fn (t &Transformer) generic_type_text_contains_fixed_array_alias(typ_id u32, mod
 	shape := flat.source_type_shape(clean_id)
 	if shape.has(.pointer) || shape.has(.mutable_type) || shape.has(.optional)
 		|| shape.has(.variadic) || shape.has(.array_type) {
-		return t.generic_type_text_contains_fixed_array_alias(syntax.raw_base, module_name)
+		return t.generic_type_text_contains_fixed_array_alias(syntax.raw_base(), module_name)
 	}
-	if shape.has(.map_type) && syntax.bracket_closed {
-		return t.generic_type_text_contains_fixed_array_alias(syntax.bracket_inner, module_name)
-			|| t.generic_type_text_contains_fixed_array_alias(syntax.bracket_base, module_name)
+	if shape.has(.map_type) && syntax.bracket_closed() {
+		return t.generic_type_text_contains_fixed_array_alias(syntax.bracket_inner(), module_name)
+			|| t.generic_type_text_contains_fixed_array_alias(syntax.bracket_base(), module_name)
 	}
-	if shape.has(.leading_bracket) && syntax.bracket_closed {
-		return t.generic_type_text_contains_fixed_array_alias(syntax.bracket_base, module_name)
+	if shape.has(.leading_bracket) && syntax.bracket_closed() {
+		return t.generic_type_text_contains_fixed_array_alias(syntax.bracket_base(), module_name)
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		for arg_id in syntax.generic_app_args() {
 			if t.generic_type_text_contains_fixed_array_alias(arg_id, module_name) { return true }
 		}
@@ -10666,21 +10666,21 @@ fn (t &Transformer) qualify_generic_arg_for_decl_module(arg_id u32, module_name 
 			flat.SourceTypeComposition.array
 		}
 		return flat.source_type_composition_one(kind,
-			t.qualify_generic_arg_for_decl_module(flat.source_type_syntax(clean_id).raw_base, module_name))
+			t.qualify_generic_arg_for_decl_module(flat.source_type_syntax(clean_id).raw_base(), module_name))
 	}
 	if shape.has(.map_type) {
 		syntax := flat.source_type_syntax(clean_id)
-		if syntax.bracket_closed {
+		if syntax.bracket_closed() {
 			return flat.source_type_composition_two(.map,
-				t.qualify_generic_arg_for_decl_module(syntax.bracket_raw_inner, module_name),
-				t.qualify_generic_arg_for_decl_module(syntax.raw_base, module_name))
+				t.qualify_generic_arg_for_decl_module(syntax.bracket_raw_inner(), module_name),
+				t.qualify_generic_arg_for_decl_module(syntax.raw_base(), module_name))
 		}
 	}
 	if shape.has(.leading_bracket) {
 		syntax := flat.source_type_syntax(clean_id)
-		if syntax.bracket_closed {
-			return flat.source_type_composition_two(.fixed_array, syntax.bracket_raw_inner,
-				t.qualify_generic_arg_for_decl_module(syntax.raw_base, module_name))
+		if syntax.bracket_closed() {
+			return flat.source_type_composition_two(.fixed_array, syntax.bracket_raw_inner(),
+				t.qualify_generic_arg_for_decl_module(syntax.raw_base(), module_name))
 		}
 	}
 	if shape.has(.dotted) || types.is_builtin_type_name_id(clean_id) { return clean_id }
@@ -10868,7 +10868,7 @@ fn (t &Transformer) generic_qualified_alias_name(name_id u32, module_name string
 	mut found := u32(0)
 	for alias, _ in t.tc.type_aliases.ids {
 		alias_id := flat.source_type_id(alias)
-		if flat.source_type_syntax(alias_id).unqualified != clean_id { continue }
+		if flat.source_type_syntax(alias_id).unqualified() != clean_id { continue }
 		if found != 0 && found != alias_id { return clean_id }
 		found = alias_id
 	}
@@ -10890,7 +10890,7 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) u32 {
 		// parser metadata. Generic inference still sees their semantic V type.
 		return flat.source_type_string
 	}
-	if node.kind == .field_init && flat.source_type_query(flat.source_type_syntax(node.typ).unqualified).has(.anon_struct_prefix) {
+	if node.kind == .field_init && flat.source_type_query(flat.source_type_syntax(node.typ).unqualified()).has(.anon_struct_prefix) {
 		return t.normalize_type_in_module(node.typ, t.node_module_or(int(id), t.cur_module))
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
@@ -11120,17 +11120,17 @@ fn (t &Transformer) generic_inference_argument_type(typ_id u32, module_name stri
 fn (t &Transformer) generic_receiver_decl_inference_type(param_type_id u32, decl_type_id u32, module_name string) u32 {
 	mut param := t.trimmed_type_id(param_type_id)
 	for flat.source_type_shape(param).has(.pointer) || flat.source_type_shape(param).has(.mutable_type) {
-		param = t.trimmed_type_id(flat.source_type_syntax(param).raw_base)
+		param = t.trimmed_type_id(flat.source_type_syntax(param).raw_base())
 	}
 	mut declared := t.trimmed_type_id(decl_type_id)
 	for flat.source_type_shape(declared).has(.pointer) || flat.source_type_shape(declared).has(.mutable_type) {
-		declared = t.trimmed_type_id(flat.source_type_syntax(declared).raw_base)
+		declared = t.trimmed_type_id(flat.source_type_syntax(declared).raw_base())
 	}
 	p := flat.source_type_syntax(param)
 	d := flat.source_type_syntax(declared)
-	if p.generic_app_valid && d.generic_app_valid
-		&& flat.source_type_syntax(p.generic_app_base).unqualified == flat.source_type_syntax(d.generic_app_base).unqualified
-		&& t.generic_arg_is_alias_name_id(d.generic_app_base, module_name) {
+	if p.generic_app_valid() && d.generic_app_valid()
+		&& flat.source_type_syntax(p.generic_app_base()).unqualified() == flat.source_type_syntax(d.generic_app_base()).unqualified()
+		&& t.generic_arg_is_alias_name_id(d.generic_app_base(), module_name) {
 		return t.generic_inference_argument_type(decl_type_id, module_name)
 	}
 	return t.generic_inference_alias_target(decl_type_id, module_name)
@@ -11198,7 +11198,7 @@ fn (t &Transformer) direct_generic_inference_alias_target(typ_id u32, module_nam
 		mut unique_target := u32(0)
 		for name, target_id in t.tc.type_aliases.ids {
 			name_id := flat.source_type_id(name)
-			if name_id != typ_id && flat.source_type_syntax(name_id).unqualified != typ_id {
+			if name_id != typ_id && flat.source_type_syntax(name_id).unqualified() != typ_id {
 				continue
 			}
 			if unique_target != 0 && unique_target != target_id { return none }
@@ -11289,7 +11289,7 @@ fn (t &Transformer) local_decl_type_at(name string, idx int) ?u32 {
 		}
 		if raw_type != 0 {
 			syntax := flat.source_type_syntax(t.trimmed_type_id(raw_type))
-			if syntax.generic_app_valid && t.generic_arg_is_alias_name_id(syntax.generic_app_base, t.cur_module) {
+			if syntax.generic_app_valid() && t.generic_arg_is_alias_name_id(syntax.generic_app_base(), t.cur_module) {
 				return raw_type
 			}
 		}
@@ -11464,12 +11464,12 @@ fn (t &Transformer) local_decl_type_before_pos(name string, before flat.Node) ?u
 }
 
 fn (mut t Transformer) infer_generic_receiver_suffix_args(param_type_id u32, arg_type_id u32, mut inferred map[string]u32) {
-	param := flat.source_type_syntax(t.trimmed_type_id(param_type_id)).pointer_raw_base
-	arg := flat.source_type_syntax(t.trimmed_type_id(arg_type_id)).pointer_raw_base
+	param := flat.source_type_syntax(t.trimmed_type_id(param_type_id)).pointer_raw_base()
+	arg := flat.source_type_syntax(t.trimmed_type_id(arg_type_id)).pointer_raw_base()
 	syntax := flat.source_type_syntax(param)
-	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 || arg == 0 { return }
+	if !syntax.generic_app_valid() || syntax.generic_app_args().len == 0 || arg == 0 { return }
 	param_args := syntax.generic_app_args()
-	base := syntax.generic_app_base
+	base := syntax.generic_app_base()
 	if args_source_ids := t.recorded_type_specialization_args(arg) {
 		t.infer_generic_receiver_recorded_args(param_args, args_source_ids, mut inferred)
 		return
@@ -11480,8 +11480,8 @@ fn (mut t Transformer) infer_generic_receiver_suffix_args(param_type_id u32, arg
 		if suffix != 0 { break }
 	}
 	if suffix == 0 {
-		short := flat.source_type_syntax(base).unqualified
-		arg_short := flat.source_type_syntax(arg).unqualified
+		short := flat.source_type_syntax(base).unqualified()
+		arg_short := flat.source_type_syntax(arg).unqualified()
 		for candidate in [arg, arg_short, t.source_c_name_id(arg), t.source_c_name_id(arg_short)] {
 			for prefix in [short, t.source_c_name_id(short)] {
 				suffix = generic_receiver_suffix_after(candidate, prefix)
@@ -11544,23 +11544,23 @@ fn (t &Transformer) infer_generic_receiver_recorded_args(param_args []u32, args_
 }
 
 fn (t &Transformer) infer_generic_embedded_receiver_args(param_type_id u32, arg_type_id u32, mut inferred map[string]u32) {
-	param := flat.source_type_syntax(t.trimmed_type_id(param_type_id)).pointer_raw_base
+	param := flat.source_type_syntax(t.trimmed_type_id(param_type_id)).pointer_raw_base()
 	syntax := flat.source_type_syntax(param)
-	if !syntax.generic_app_valid || syntax.generic_app_base == 0 { return }
-	base := syntax.generic_app_base
-	mut receiver_type := flat.source_type_syntax(t.trimmed_type_id(arg_type_id)).pointer_raw_base
+	if !syntax.generic_app_valid() || syntax.generic_app_base() == 0 { return }
+	base := syntax.generic_app_base()
+	mut receiver_type := flat.source_type_syntax(t.trimmed_type_id(arg_type_id)).pointer_raw_base()
 	receiver_syntax := flat.source_type_syntax(receiver_type)
-	if receiver_syntax.generic_app_valid { receiver_type = receiver_syntax.generic_app_base }
+	if receiver_syntax.generic_app_valid() { receiver_type = receiver_syntax.generic_app_base() }
 	// The declaration maps remain keyed by source names.
 	info := t.structs[flat.source_type_name(receiver_type)] or {
-		t.structs[flat.source_type_name(flat.source_type_syntax(receiver_type).unqualified)] or { return }
+		t.structs[flat.source_type_name(flat.source_type_syntax(receiver_type).unqualified())] or { return }
 	}
 	for field in info.fields {
-		field_type := flat.source_type_syntax(t.trimmed_type_id(field.typ)).pointer_raw_base
+		field_type := flat.source_type_syntax(t.trimmed_type_id(field.typ)).pointer_raw_base()
 		field_syntax := flat.source_type_syntax(field_type)
-		if !field_syntax.generic_app_valid { continue }
-		field_base := field_syntax.generic_app_base
-		if field_base == base || flat.source_type_syntax(field_base).unqualified == flat.source_type_syntax(base).unqualified {
+		if !field_syntax.generic_app_valid() { continue }
+		field_base := field_syntax.generic_app_base()
+		if field_base == base || flat.source_type_syntax(field_base).unqualified() == flat.source_type_syntax(base).unqualified() {
 			infer_generic_type_args(param, field_type, mut inferred)
 			return
 		}
@@ -11584,8 +11584,8 @@ fn (t &Transformer) generic_call_receiver_id(node flat.Node) ?flat.NodeId {
 }
 
 fn infer_generic_type_args(param_type_id u32, arg_type_id u32, mut inferred map[string]u32) {
-	param := flat.source_type_syntax(param_type_id).trimmed
-	arg := flat.source_type_syntax(arg_type_id).trimmed
+	param := flat.source_type_syntax(param_type_id).trimmed()
+	arg := flat.source_type_syntax(arg_type_id).trimmed()
 	if param == 0 || arg == 0 || arg in [flat.source_type_unknown, flat.source_type_generic] {
 		return
 	}
@@ -11596,7 +11596,7 @@ fn infer_generic_type_args(param_type_id u32, arg_type_id u32, mut inferred map[
 	if p_shape.has(.variadic) {
 		// Variadic parameters denote packed arrays at this point.
 		if a_shape.has(.array_type) {
-			infer_generic_type_args(p.raw_base, a.raw_base, mut inferred)
+			infer_generic_type_args(p.raw_base(), a.raw_base(), mut inferred)
 		}
 		return
 	}
@@ -11607,53 +11607,53 @@ fn infer_generic_type_args(param_type_id u32, arg_type_id u32, mut inferred map[
 		return
 	}
 	if p_shape.has(.pointer) {
-		inner := if a_shape.has(.pointer) { a.raw_base } else { arg }
-		infer_generic_type_args(p.raw_base, inner, mut inferred)
+		inner := if a_shape.has(.pointer) { a.raw_base() } else { arg }
+		infer_generic_type_args(p.raw_base(), inner, mut inferred)
 		return
 	}
 	if p_shape.has(.mutable_type) {
-		infer_generic_type_args(p.raw_base, a.pointer_raw_base, mut inferred)
+		infer_generic_type_args(p.raw_base(), a.pointer_raw_base(), mut inferred)
 		return
 	}
 	if p_shape.has(.thread_type) {
 		if a_shape.has(.thread_type) {
-			infer_generic_type_args(p.raw_base, a.raw_base, mut inferred)
+			infer_generic_type_args(p.raw_base(), a.raw_base(), mut inferred)
 		}
 		return
 	}
 	if p_shape.has(.array_type) && a_shape.has(.array_type) {
-		infer_generic_type_args(p.raw_base, a.raw_base, mut inferred)
+		infer_generic_type_args(p.raw_base(), a.raw_base(), mut inferred)
 		return
 	}
 	if p_shape.has(.channel_type) {
 		if a_shape.has(.channel_type) {
-			infer_generic_type_args(p.raw_base, a.raw_base, mut inferred)
+			infer_generic_type_args(p.raw_base(), a.raw_base(), mut inferred)
 		}
 		return
 	}
 	if p_shape.has(.leading_bracket) && a_shape.has(.leading_bracket) {
-		if p.bracket_closed && a.bracket_closed {
-			infer_generic_type_args(p.bracket_base, a.bracket_base, mut inferred)
+		if p.bracket_closed() && a.bracket_closed() {
+			infer_generic_type_args(p.bracket_base(), a.bracket_base(), mut inferred)
 		}
 		return
 	}
-	if p_shape.has(.leading_bracket) && a.closing_bracket && a_shape.has(.bracketed) {
+	if p_shape.has(.leading_bracket) && a.closing_bracket() && a_shape.has(.bracketed) {
 		if fixed_array_length_id(param) == fixed_array_length_id(arg) {
 			infer_generic_type_args(fixed_array_elem_type(param), fixed_array_elem_type(arg), mut inferred)
 		}
 		return
 	}
 	if p_shape.has(.option_type) {
-		inner := if a_shape.has(.option_type) { a.raw_base } else { arg }
-		infer_generic_type_args(p.raw_base, inner, mut inferred)
+		inner := if a_shape.has(.option_type) { a.raw_base() } else { arg }
+		infer_generic_type_args(p.raw_base(), inner, mut inferred)
 		return
 	}
 	if p_shape.has(.result_type) {
-		inner := if a_shape.has(.result_type) { a.raw_base } else { arg }
-		infer_generic_type_args(p.raw_base, inner, mut inferred)
+		inner := if a_shape.has(.result_type) { a.raw_base() } else { arg }
+		infer_generic_type_args(p.raw_base(), inner, mut inferred)
 		return
 	}
-	if p.tuple_like && a.tuple_like && p.contains_comma && a.contains_comma {
+	if p.tuple_like() && a.tuple_like() && p.contains_comma() && a.contains_comma() {
 		if p.tuple_components().len == a.tuple_components().len {
 			for i, part in p.tuple_components() {
 				infer_generic_type_args(part, a.tuple_components()[i], mut inferred)
@@ -11661,19 +11661,19 @@ fn infer_generic_type_args(param_type_id u32, arg_type_id u32, mut inferred map[
 		}
 		return
 	}
-	if p.function_prefix && a.function_prefix {
+	if p.function_prefix() && a.function_prefix() {
 		infer_generic_fn_type_args(param, arg, mut inferred)
 		return
 	}
 	if p_shape.has(.map_type) && a_shape.has(.map_type) {
-		if p.bracket_closed && a.bracket_closed {
-			infer_generic_type_args(p.bracket_raw_inner, a.bracket_raw_inner, mut inferred)
-			infer_generic_type_args(p.bracket_base, a.bracket_base, mut inferred)
+		if p.bracket_closed() && a.bracket_closed() {
+			infer_generic_type_args(p.bracket_raw_inner(), a.bracket_raw_inner(), mut inferred)
+			infer_generic_type_args(p.bracket_base(), a.bracket_base(), mut inferred)
 		}
 		return
 	}
-	if p.generic_app_valid && a.generic_app_valid
-		&& flat.source_type_syntax(p.generic_app_base).unqualified == flat.source_type_syntax(a.generic_app_base).unqualified {
+	if p.generic_app_valid() && a.generic_app_valid()
+		&& flat.source_type_syntax(p.generic_app_base()).unqualified() == flat.source_type_syntax(a.generic_app_base()).unqualified() {
 		for i, p_arg in p.generic_app_args() {
 			if i < a.generic_app_args().len {
 				infer_generic_type_args(p_arg, a.generic_app_args()[i], mut inferred)
@@ -11689,14 +11689,14 @@ fn infer_generic_type_args_bytes(param_type string, arg_type string, mut inferre
 fn infer_generic_fn_type_args(param_id u32, arg_id u32, mut inferred map[string]u32) {
 	p := flat.source_type_syntax(param_id)
 	a := flat.source_type_syntax(arg_id)
-	if !p.function_closed || !a.function_closed { return }
+	if !p.function_closed() || !a.function_closed() { return }
 	for i, p_param in p.function_params() {
 		if i >= a.function_params().len { break }
-		infer_generic_type_args(flat.source_type_syntax(p_param).generic_parameter_payload,
-			flat.source_type_syntax(a.function_params()[i]).generic_parameter_payload, mut inferred)
+		infer_generic_type_args(flat.source_type_syntax(p_param).generic_parameter_payload(),
+			flat.source_type_syntax(a.function_params()[i]).generic_parameter_payload(), mut inferred)
 	}
-	if p.function_result != 0 && a.function_result != 0 {
-		infer_generic_type_args(p.function_result, a.function_result, mut inferred)
+	if p.function_result() != 0 && a.function_result() != 0 {
+		infer_generic_type_args(p.function_result(), a.function_result(), mut inferred)
 	}
 }
 
@@ -12000,7 +12000,7 @@ fn (mut t Transformer) generic_clone_child_return_context(node flat.Node, child_
 
 fn (t &Transformer) variadic_parameter_base_type(type_id u32) u32 {
 	if !flat.source_type_shape(type_id).has(.variadic) { return type_id }
-	return flat.source_type_syntax(type_id).raw_base
+	return flat.source_type_syntax(type_id).raw_base()
 }
 
 fn (mut t Transformer) generic_clone_argument_type(id flat.NodeId, args_ids []u32) u32 {
@@ -12124,7 +12124,7 @@ fn (mut t Transformer) generic_clone_child_is_return_value(node flat.Node, child
 	if return_context_id != 0 && node.kind in [.prefix, .infix] {
 		mut expected := t.generic_inference_expected_type(return_context_id)
 		for flat.source_type_shape(expected).has(.option_type) || flat.source_type_shape(expected).has(.result_type) {
-			expected = t.trimmed_type_id(flat.source_type_syntax(expected).raw_base)
+			expected = t.trimmed_type_id(flat.source_type_syntax(expected).raw_base())
 		}
 		result_type := unalias_type(t.tc.parse_resolution_type(expected))
 		if node.kind == .prefix {
@@ -12417,7 +12417,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		// idents makes the later generic-call scan emit duplicate `&T`
 		// specializations instead of reusing the value-type specialization. An
 		// explicit `mut p &T` has a scoped `&T` rvalue type and must retain it.
-		cloned_typ = flat.source_type_syntax(cloned_typ).raw_base
+		cloned_typ = flat.source_type_syntax(cloned_typ).raw_base()
 	}
 	if node.kind == .struct_init && node.value_text() == '__v_option'
 		&& t.is_optional_type_name(t.cur_fn_ret_type) {
@@ -12431,7 +12431,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		} else {
 			array_substituted
 		}
-		array_value := if flat.source_type_syntax(array_locked).main_fragment {
+		array_value := if flat.source_type_syntax(array_locked).main_fragment() {
 			array_locked
 		} else {
 			t.resolve_substituted_type_text(array_locked)
@@ -12472,7 +12472,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			// inside json2) is left untouched — it is bare-keyed but not a lock target.
 			struct_value = t.lock_colliding_main_substitution_type_text(struct_source, struct_value_pre, t.cur_module, t.active_generic_params)
 		}
-		if flat.source_type_syntax(struct_value).main_fragment {
+		if flat.source_type_syntax(struct_value).main_fragment() {
 			// Keep the explicit `main.` lock as the literal's type: parsing it back to
 			// its bare program name here would let codegen rebase it into the callee
 			// module (the very collision the lock prevents). The lock may be nested inside
@@ -12533,7 +12533,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			t.node_type(children[0])
 		}
 		if node.op == .mul && flat.source_type_shape(child_type).has(.pointer) {
-			cloned_typ = flat.source_type_syntax(child_type).raw_base
+			cloned_typ = flat.source_type_syntax(child_type).raw_base()
 		} else if node.op == .amp && child_type != 0 {
 			cloned_typ = flat.source_type_composition_one(.pointer, child_type)
 		}
@@ -12591,7 +12591,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 				t.set_node_typ(int(children[0]), cloned_typ)
 			}
 			if lhs_typ != 0 && !t.generic_arg_is_unresolved(lhs_typ) {
-				normalized_lhs_typ := (if flat.source_type_syntax(lhs_typ).main_fragment {
+				normalized_lhs_typ := (if flat.source_type_syntax(lhs_typ).main_fragment() {
 					lhs_typ
 				} else {
 					t.normalize_type_alias(lhs_typ)
@@ -12702,10 +12702,10 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		}
 		if flat.source_type_shape(type_source_id).has(.bracketed) {
 			syntax := flat.source_type_syntax(type_source_id)
-			if syntax.generic_app_valid {
+			if syntax.generic_app_valid() {
 				callee_id := children[0]
 				mut callee := t.a.nodes[int(callee_id)]
-				if callee.kind in [.ident, .selector] && flat.source_type_id(callee.value_text()) == flat.source_type_syntax(syntax.generic_app_base).unqualified {
+				if callee.kind in [.ident, .selector] && flat.source_type_id(callee.value_text()) == flat.source_type_syntax(syntax.generic_app_base()).unqualified() {
 					t.set_node_source_value(int(callee_id), t.subst_type(type_source_id, args_ids))
 				}
 			}
@@ -12852,7 +12852,7 @@ fn (t &Transformer) generic_clone_decl_alias_type(id flat.NodeId) u32 {
 	if node.kind == .prefix && node.op == .mul && node.children_count == 1 {
 		pointer := t.generic_clone_decl_alias_type(t.a.child(&node, 0))
 		if flat.source_type_shape(pointer).has(.pointer) {
-			return flat.source_type_syntax(pointer).raw_base
+			return flat.source_type_syntax(pointer).raw_base()
 		}
 	}
 	if node.kind == .index && node.value != 'range' && node.children_count > 0
@@ -12871,7 +12871,7 @@ fn (t &Transformer) generic_clone_decl_alias_type(id flat.NodeId) u32 {
 	if node.kind == .or_expr && node.children_count > 0 {
 		wrapped := t.generic_clone_decl_alias_type(t.a.child(&node, 0))
 		if flat.source_type_shape(wrapped).has(.optional) {
-			return flat.source_type_syntax(wrapped).raw_base
+			return flat.source_type_syntax(wrapped).raw_base()
 		}
 	}
 	if raw_source_id := t.raw_var_type_for_expr(id) {
@@ -13144,7 +13144,7 @@ fn (mut t Transformer) record_generic_typeof_none_smartcast(cond flat.Node, args
 	mut expr_type := t.generic_typeof_operand_type(opt_id, args_ids)
 	if !t.is_optional_type_name(expr_type) && flat.source_type_shape(expr_type).has(.pointer) {
 		// a `mut x ?T` parameter is stored indirectly
-		expr_type = flat.source_type_syntax(expr_type).raw_base
+		expr_type = flat.source_type_syntax(expr_type).raw_base()
 	}
 	if !t.is_optional_type_name(expr_type) {
 		return
@@ -13261,12 +13261,12 @@ fn (mut t Transformer) generic_comptime_type_member(raw_id u32, member string) ?
 	match member {
 		'payload_type' {
 			if shape.has(.optional) {
-				return t.trimmed_type_id(flat.source_type_syntax(clean).raw_base)
+				return t.trimmed_type_id(flat.source_type_syntax(clean).raw_base())
 			}
 		}
 		'pointee_type' {
 			pointee := if shape.has(.optional) {
-				t.trimmed_type_id(flat.source_type_syntax(clean).raw_base)
+				t.trimmed_type_id(flat.source_type_syntax(clean).raw_base())
 			} else {
 				clean
 			}
@@ -13359,7 +13359,7 @@ fn generic_type_name_display(typ string) string {
 }
 
 fn type_text_without_main_locks(type_id u32) u32 {
-	return flat.source_type_syntax(type_id).main_unlocked
+	return flat.source_type_syntax(type_id).main_unlocked()
 }
 
 fn type_text_without_main_locks_bytes(typ string) string {
@@ -13496,7 +13496,7 @@ fn (mut t Transformer) unwrap_cloned_if_guard_binding(cond_id flat.NodeId) {
 	if payload == 0 || payload == flat.source_type_void || t.generic_arg_is_unresolved(payload) {
 		return
 	}
-	normalized := if flat.source_type_syntax(payload).main_fragment {
+	normalized := if flat.source_type_syntax(payload).main_fragment() {
 		payload
 	} else {
 		t.normalize_type_alias(payload)
@@ -13694,14 +13694,14 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 				&& !flat.source_type_shape(child.typ).has(.pointer) && !flat.source_type_shape(child.typ).has(.mutable_type) {
 				// A by-value receiver auto-dereferences the captured pointer. Infer
 				// its inner arguments from `Box[int]`, rather than `&Box[int]`.
-				raw_arg_type = flat.source_type_syntax(raw_arg_type).raw_base
+				raw_arg_type = flat.source_type_syntax(raw_arg_type).raw_base()
 			}
 			if (child.is_mut || flat.source_type_shape(child.typ).has(.mutable_type)) && flat.source_type_shape(raw_arg_type).has(.pointer)
 				&& !is_forwarded_mut_value {
 				// An ordinary pointer local passed to `mut T` has V's source-level
 				// auto-dereferenced value semantics. A forwarded `mut T` parameter is
 				// already represented by its semantic type and must keep a genuine `&T`.
-				raw_arg_type = flat.source_type_syntax(raw_arg_type).raw_base
+				raw_arg_type = flat.source_type_syntax(raw_arg_type).raw_base()
 			}
 			if !flat.source_type_query(inference_param_type).has(.generic_fn_name) {
 				// Preserve aliases nested in a concrete generic receiver. Resolving
@@ -13731,17 +13731,17 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 				mut return_inferred := map[string]u32{}
 				mut expected_return := t.generic_inference_expected_type(return_context_id)
 				for flat.source_type_shape(expected_return).has(.option_type) || flat.source_type_shape(expected_return).has(.result_type) {
-					expected_return = t.trimmed_type_id(flat.source_type_syntax(expected_return).raw_base)
+					expected_return = t.trimmed_type_id(flat.source_type_syntax(expected_return).raw_base())
 				}
 				declared_raw := t.trimmed_type_id(decl.node.typ)
 				mut declared_return := declared_raw
 				for flat.source_type_shape(declared_return).has(.optional) {
-					declared_return = t.trimmed_type_id(flat.source_type_syntax(declared_return).raw_base)
+					declared_return = t.trimmed_type_id(flat.source_type_syntax(declared_return).raw_base())
 				}
 				// An enclosing tuple result cannot infer a scalar method's receiver.
 				// A scalar contextual result may infer method-level parameters, but a
 				// receiver parameter must come from the actual receiver type.
-				if !flat.source_type_syntax(expected_return).paren_prefix || flat.source_type_syntax(declared_return).paren_prefix {
+				if !flat.source_type_syntax(expected_return).paren_prefix() || flat.source_type_syntax(declared_return).paren_prefix() {
 					inference_return := if flat.source_type_shape(declared_raw).has(.result_type) {
 						flat.source_type_composition_one(.result, expected_return)
 					} else if flat.source_type_shape(declared_raw).has(.option_type) {
@@ -13813,9 +13813,9 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 
 			mut expected_type := t.trimmed_type_id(param_types_source_ids[0])
 			if flat.source_type_shape(expected_type).has(.mutable_type) {
-				expected_type = t.trimmed_type_id(flat.source_type_syntax(expected_type).raw_base)
+				expected_type = t.trimmed_type_id(flat.source_type_syntax(expected_type).raw_base())
 			}
-			expected_type = t.trimmed_type_id(flat.source_type_syntax(expected_type).pointer_raw_base)
+			expected_type = t.trimmed_type_id(flat.source_type_syntax(expected_type).pointer_raw_base())
 			if expected_type != 0 {
 				if embedded := t.embedded_receiver_base_for_type(receiver, base_type_source_id,
 					expected_type)
@@ -14044,11 +14044,11 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 				&& t.mut_value_ident_nodes[int(clone_arg_id)]
 			if is_recv_param && flat.source_type_shape(arg_type).has(.pointer) && !flat.source_type_shape(child.typ).has(.pointer)
 				&& !flat.source_type_shape(child.typ).has(.mutable_type) {
-				arg_type = flat.source_type_syntax(arg_type).raw_base
+				arg_type = flat.source_type_syntax(arg_type).raw_base()
 			}
 			if (child.is_mut || flat.source_type_shape(child.typ).has(.mutable_type)) && flat.source_type_shape(arg_type).has(.pointer)
 				&& !is_forwarded_mut_value {
-				arg_type = flat.source_type_syntax(arg_type).raw_base
+				arg_type = flat.source_type_syntax(arg_type).raw_base()
 			}
 			if !flat.source_type_query(inference_param_type).has(.generic_fn_name) {
 				arg_type = t.generic_inference_alias_target(arg_type, t.cur_module)
@@ -14353,12 +14353,12 @@ fn (t &Transformer) fn_decl_receiver_is_open_generic(node flat.Node, module_name
 	if !flat.source_type_shape(value_id).has(.dotted) || isnil(t.tc) {
 		return false
 	}
-	receiver := flat.source_type_syntax(value_id).qualifier
+	receiver := flat.source_type_syntax(value_id).qualifier()
 	syntax := flat.source_type_syntax(receiver)
-	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 {
+	if !syntax.generic_app_valid() || syntax.generic_app_args().len == 0 {
 		return false
 	}
-	base := syntax.generic_app_base
+	base := syntax.generic_app_base()
 	mut candidates := [base]
 	if !flat.source_type_shape(base).has(.dotted) && module_name != '' && module_name !in [
 		'main',
@@ -14466,7 +14466,7 @@ fn (mut t Transformer) type_text_has_generic_placeholder(typ_id u32, module_name
 	if !input_query.has(.generic_token) && !input_query.has(.generic_word) { return false }
 	input_shape := flat.source_type_shape(typ_id)
 	clean_id := if input_shape.has(.padded) {
-		flat.source_type_syntax(typ_id).trimmed
+		flat.source_type_syntax(typ_id).trimmed()
 	} else {
 		typ_id
 	}
@@ -14480,20 +14480,20 @@ fn (mut t Transformer) type_text_has_generic_placeholder(typ_id u32, module_name
 	syntax := flat.source_type_syntax(clean_id)
 	if shape.has(.pointer) || shape.has(.mutable_type) || shape.has(.optional)
 		|| shape.has(.variadic) || shape.has(.array_type) {
-		return t.type_text_has_generic_placeholder(syntax.raw_base, module_name)
+		return t.type_text_has_generic_placeholder(syntax.raw_base(), module_name)
 	}
 	if shape.has(.map_type) {
-		if syntax.bracket_closed {
-			return t.type_text_has_generic_placeholder(syntax.bracket_raw_inner, module_name)
-				|| t.type_text_has_generic_placeholder(syntax.bracket_suffix, module_name)
+		if syntax.bracket_closed() {
+			return t.type_text_has_generic_placeholder(syntax.bracket_raw_inner(), module_name)
+				|| t.type_text_has_generic_placeholder(syntax.bracket_suffix(), module_name)
 		}
 	}
 	if shape.has(.leading_bracket) {
-		if syntax.bracket_closed {
-			return t.type_text_has_generic_placeholder(syntax.bracket_suffix, module_name)
+		if syntax.bracket_closed() {
+			return t.type_text_has_generic_placeholder(syntax.bracket_suffix(), module_name)
 		}
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		for arg in syntax.generic_app_args() {
 			if t.type_text_has_generic_placeholder(arg, module_name) { return true }
 		}
@@ -14541,8 +14541,8 @@ fn generic_fn_receiver_application_is_structured(value string) bool {
 	if !flat.source_type_shape(value_id).has(.dotted) {
 		return false
 	}
-	syntax := flat.source_type_syntax(flat.source_type_syntax(value_id).qualifier)
-	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 {
+	syntax := flat.source_type_syntax(flat.source_type_syntax(value_id).qualifier())
+	if !syntax.generic_app_valid() || syntax.generic_app_args().len == 0 {
 		return false
 	}
 	for arg in syntax.generic_app_args() {
@@ -14556,8 +14556,8 @@ fn generic_fn_receiver_application_is_structured(value string) bool {
 fn generic_fn_decl_base_value(value string) string {
 	if receiver, method := flat.decode_static_type_method_name(value) {
 		syntax := flat.source_type_syntax(flat.source_type_id(receiver))
-		if syntax.generic_app_valid {
-			return flat.encode_static_type_method_name(flat.source_type_name(syntax.generic_app_base), method)
+		if syntax.generic_app_valid() {
+			return flat.encode_static_type_method_name(flat.source_type_name(syntax.generic_app_base()), method)
 		}
 		return value
 	}
@@ -14566,9 +14566,9 @@ fn generic_fn_decl_base_value(value string) string {
 		return value
 	}
 	value_syntax := flat.source_type_syntax(value_id)
-	syntax := flat.source_type_syntax(value_syntax.qualifier)
-	if syntax.generic_app_valid {
-		return flat.source_type_name(flat.source_type_composition_two(.qualified, syntax.generic_app_base, value_syntax.unqualified))
+	syntax := flat.source_type_syntax(value_syntax.qualifier())
+	if syntax.generic_app_valid() {
+		return flat.source_type_name(flat.source_type_composition_two(.qualified, syntax.generic_app_base(), value_syntax.unqualified()))
 	}
 	return value
 }
@@ -14581,7 +14581,7 @@ fn (t &Transformer) generic_decl_is_receiver_method(node flat.Node) bool {
 	for {
 		shape := flat.source_type_shape(first_type)
 		if shape.has(.mutable_type) || shape.has(.shared_type) || shape.has(.atomic_type) || shape.has(.pointer) {
-			first_type = t.trimmed_type_id(flat.source_type_syntax(first_type).raw_base)
+			first_type = t.trimmed_type_id(flat.source_type_syntax(first_type).raw_base())
 		} else {
 			break
 		}
@@ -14710,7 +14710,7 @@ fn (mut t Transformer) collect_generic_param_names_from_type_id(typ_id u32, modu
 	shape := flat.source_type_shape(clean_id)
 	if shape.has(.pointer) || shape.has(.mutable_type) || shape.has(.optional)
 		|| shape.has(.variadic) || shape.has(.array_type) {
-		t.collect_generic_param_names_from_type_id(flat.source_type_syntax(clean_id).raw_base, module_name, mut names)
+		t.collect_generic_param_names_from_type_id(flat.source_type_syntax(clean_id).raw_base(), module_name, mut names)
 		return
 	}
 	if flat.source_type_query(clean_id).has(.generic_fn_name) && !t.concrete_type_name_known_id(clean_id, module_name) {
@@ -14721,19 +14721,19 @@ fn (mut t Transformer) collect_generic_param_names_from_type_id(typ_id u32, modu
 	}
 	syntax := flat.source_type_syntax(clean_id)
 	if shape.has(.map_type) {
-		if syntax.bracket_closed {
-			t.collect_generic_param_names_from_type_id(syntax.bracket_raw_inner, module_name, mut names)
-			t.collect_generic_param_names_from_type_id(syntax.bracket_suffix, module_name, mut names)
+		if syntax.bracket_closed() {
+			t.collect_generic_param_names_from_type_id(syntax.bracket_raw_inner(), module_name, mut names)
+			t.collect_generic_param_names_from_type_id(syntax.bracket_suffix(), module_name, mut names)
 		}
 		return
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		for arg in syntax.generic_app_args() {
 			t.collect_generic_param_names_from_type_id(arg, module_name, mut names)
 		}
 		return
 	}
-	if syntax.bracket_closed && syntax.bracket_prefix != 0 {
+	if syntax.bracket_closed() && syntax.bracket_prefix() != 0 {
 		for arg in syntax.bracket_generic_parts() {
 			t.collect_generic_param_names_from_type_id(arg, module_name, mut names)
 		}
@@ -14830,7 +14830,7 @@ fn normalize_generic_arg_id(arg_id u32, module_name string) u32 {
 	shape := flat.source_type_shape(clean_id)
 	if shape.has(.pointer) || shape.has(.array_type) || shape.has(.optional) {
 		syntax := flat.source_type_syntax(clean_id)
-		base := normalize_generic_arg_id(syntax.raw_base, module_name)
+		base := normalize_generic_arg_id(syntax.raw_base(), module_name)
 		kind := if shape.has(.pointer) {
 			flat.SourceTypeComposition.pointer
 		} else if shape.has(.array_type) {
@@ -14844,10 +14844,10 @@ fn normalize_generic_arg_id(arg_id u32, module_name string) u32 {
 	}
 	if shape.has(.map_type) {
 		syntax := flat.source_type_syntax(clean_id)
-		if syntax.bracket_closed {
+		if syntax.bracket_closed() {
 			return flat.source_type_composition(.map, [
-				normalize_generic_arg_id(syntax.bracket_raw_inner, module_name),
-				normalize_generic_arg_id(syntax.raw_base, module_name),
+				normalize_generic_arg_id(syntax.bracket_raw_inner(), module_name),
+				normalize_generic_arg_id(syntax.raw_base(), module_name),
 			])
 		}
 	}
@@ -14862,12 +14862,12 @@ fn substitute_generic_fixed_array_type_text(clean string, args_ids []u32, params
 fn substitute_generic_fixed_array_type_id(clean u32, args_ids []u32, params []string) ?u32 {
 	shape := flat.source_type_shape(clean)
 	syntax := flat.source_type_syntax(clean)
-	if shape.has(.array_type) || shape.has(.map_type) || shape.has(.leading_bracket) || !syntax.suffix_bracket_valid {
+	if shape.has(.array_type) || shape.has(.map_type) || shape.has(.leading_bracket) || !syntax.suffix_bracket_valid() {
 		return none
 	}
-	length := syntax.suffix_bracket_length
-	if !flat.source_type_syntax(length).transform_fixed_length { return none }
-	elem := transform_trimmed_type_id(syntax.last_bracket_prefix)
+	length := syntax.suffix_bracket_length()
+	if !flat.source_type_syntax(length).transform_fixed_length() { return none }
+	elem := transform_trimmed_type_id(syntax.last_bracket_prefix())
 	if elem == 0 { return none }
 	elem_sub := substitute_generic_type_text_with_params(elem, args_ids, params)
 	// Lengths are source expressions; substitute their identifier tokens at that boundary.
@@ -15029,27 +15029,27 @@ fn substitute_generic_type_id_inner(typ_id u32, args_ids []u32, params []string,
 		// The positional source-value adapter historically leaves channel, thread and
 		// atomic payloads intact; declared-parameter substitution descends into them.
 		if declared || (!shape.has(.atomic_type) && !shape.has(.channel_type) && !shape.has(.thread_type)) {
-			inner := substitute_generic_type_id_inner(syntax.raw_base, args_ids, params, declared)
+			inner := substitute_generic_type_id_inner(syntax.raw_base(), args_ids, params, declared)
 			if declared && ((shape.has(.option_type) && flat.source_type_shape(inner).has(.option_type)) || (shape.has(.result_type) && flat.source_type_shape(inner).has(.result_type))) {
 				return inner
 			}
 			return flat.source_type_composition_one(kind, inner)
 		}
 	}
-	if shape.has(.map_type) && syntax.bracket_closed {
-		return flat.source_type_composition_two(.map, substitute_generic_type_id_inner(syntax.bracket_raw_inner, args_ids, params, declared), substitute_generic_type_id_inner(syntax.bracket_suffix, args_ids, params, declared))
+	if shape.has(.map_type) && syntax.bracket_closed() {
+		return flat.source_type_composition_two(.map, substitute_generic_type_id_inner(syntax.bracket_raw_inner(), args_ids, params, declared), substitute_generic_type_id_inner(syntax.bracket_suffix(), args_ids, params, declared))
 	}
-	if shape.has(.leading_bracket) && syntax.bracket_closed {
+	if shape.has(.leading_bracket) && syntax.bracket_closed() {
 		// The interior is an expression, rather than a type spelling.
-		length := flat.source_type_id(substitute_generic_expr_text_with_params(flat.source_type_name(syntax.bracket_raw_inner), args_ids, if declared {
+		length := flat.source_type_id(substitute_generic_expr_text_with_params(flat.source_type_name(syntax.bracket_raw_inner()), args_ids, if declared {
 			params
 		} else {
 			[]string{}
 		}))
-		elem := substitute_generic_type_id_inner(syntax.bracket_suffix, args_ids, params, declared)
+		elem := substitute_generic_type_id_inner(syntax.bracket_suffix(), args_ids, params, declared)
 		return flat.source_type_composition_two(.fixed_array, length, elem)
 	}
-	if syntax.tuple_like && syntax.contains_comma {
+	if syntax.tuple_like() && syntax.contains_comma() {
 		mut parts := []u32{cap: syntax.tuple_components().len}
 		for part in syntax.tuple_components() {
 			parts << substitute_generic_type_id_inner(part, args_ids, params, declared)
@@ -15061,9 +15061,9 @@ fn substitute_generic_type_id_inner(typ_id u32, args_ids []u32, params []string,
 	if declared && (shape.has(.function_compact) || shape.has(.function_spaced)) {
 		if substituted := subst_generic_fn_type_id(clean, args_ids, params) { return substituted }
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		mut parts := []u32{cap: syntax.generic_app_args().len + 1}
-		parts << syntax.generic_app_base
+		parts << syntax.generic_app_base()
 		for arg in syntax.generic_app_args() {
 			parts << substitute_generic_type_id_inner(arg, args_ids, params, declared)
 		}
@@ -15082,13 +15082,13 @@ fn subst_generic_fn_type_text(clean string, args_ids []u32, params []string) ?st
 
 fn subst_generic_fn_type_id(clean u32, args_ids []u32, params []string) ?u32 {
 	syntax := flat.source_type_syntax(clean)
-	if !syntax.function_closed { return none }
+	if !syntax.function_closed() { return none }
 	mut parts := []u32{cap: syntax.substitution_function_params().len + 1}
 	for param in syntax.substitution_function_params() {
 		parts << subst_generic_fn_type_param_id(param, args_ids, params)
 	}
-	if syntax.function_result != 0 {
-		parts << substitute_generic_type_text_with_params(syntax.function_result, args_ids, params)
+	if syntax.function_result() != 0 {
+		parts << substitute_generic_type_text_with_params(syntax.function_result(), args_ids, params)
 		return flat.source_type_composition(.function_type, parts)
 	}
 	return flat.source_type_composition(.void_function_type, parts)
@@ -15100,13 +15100,13 @@ fn subst_generic_fn_type_param_text(param string, args_ids []u32, params []strin
 
 fn subst_generic_fn_type_param_id(param_id u32, args_ids []u32, params []string) u32 {
 	syntax := flat.source_type_syntax(param_id)
-	sub := substitute_generic_type_text_with_params(syntax.generic_parameter_payload, args_ids, params)
-	mut result := if syntax.parameter_named {
-		flat.source_type_composition_two(.named_parameter, syntax.parameter_name, sub)
+	sub := substitute_generic_type_text_with_params(syntax.generic_parameter_payload(), args_ids, params)
+	mut result := if syntax.parameter_named() {
+		flat.source_type_composition_two(.named_parameter, syntax.parameter_name(), sub)
 	} else {
 		sub
 	}
-	if syntax.parameter_is_mut && sub != 0 {
+	if syntax.parameter_is_mut() && sub != 0 {
 		result = flat.source_type_composition_one(.mutable_parameter, result)
 	}
 	return result
@@ -15211,7 +15211,7 @@ fn (mut t Transformer) subst_node_value(node flat.Node, args_ids []u32) string {
 			}
 			if flat.source_type_shape(node.typ).has(.bracketed) {
 				syntax := flat.source_type_syntax(node.typ)
-				if syntax.generic_app_valid && flat.source_type_id(node.value_text()) == flat.source_type_syntax(syntax.generic_app_base).unqualified {
+				if syntax.generic_app_valid() && flat.source_type_id(node.value_text()) == flat.source_type_syntax(syntax.generic_app_base()).unqualified() {
 					return flat.source_type_name(t.subst_type(node.typ, args_ids))
 				}
 			}
@@ -15308,36 +15308,36 @@ fn (t &Transformer) qualify_generic_alias_cast_type_text(typ_id u32) u32 {
 	shape := flat.source_type_shape(clean)
 	syntax := flat.source_type_syntax(clean)
 	if kind := generic_type_wrapper_composition(shape) {
-		return flat.source_type_composition_one(kind, t.qualify_generic_alias_cast_type_text(syntax.raw_base))
+		return flat.source_type_composition_one(kind, t.qualify_generic_alias_cast_type_text(syntax.raw_base()))
 	}
-	if shape.has(.map_type) && syntax.bracket_closed && syntax.bracket_suffix != 0 {
-		return flat.source_type_composition_two(.map, t.qualify_generic_alias_cast_type_text(syntax.bracket_raw_inner), t.qualify_generic_alias_cast_type_text(syntax.bracket_suffix))
+	if shape.has(.map_type) && syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+		return flat.source_type_composition_two(.map, t.qualify_generic_alias_cast_type_text(syntax.bracket_raw_inner()), t.qualify_generic_alias_cast_type_text(syntax.bracket_suffix()))
 	}
-	if shape.has(.leading_bracket) && syntax.bracket_closed && syntax.bracket_raw_inner != 0 && syntax.bracket_suffix != 0 {
-		return flat.source_type_composition_two(.concat, syntax.bracket_prefix, t.qualify_generic_alias_cast_type_text(syntax.bracket_suffix))
+	if shape.has(.leading_bracket) && syntax.bracket_closed() && syntax.bracket_raw_inner() != 0 && syntax.bracket_suffix() != 0 {
+		return flat.source_type_composition_two(.concat, syntax.bracket_prefix(), t.qualify_generic_alias_cast_type_text(syntax.bracket_suffix()))
 	}
-	if (shape.has(.function_compact) || shape.has(.function_spaced)) && syntax.function_closed {
+	if (shape.has(.function_compact) || shape.has(.function_spaced)) && syntax.function_closed() {
 		mut parts := []u32{cap: syntax.function_params().len + 1}
 		for param in syntax.function_params() {
-			parts << t.qualify_generic_alias_cast_type_text(flat.source_type_syntax(param).legacy_parameter_mut_type)
+			parts << t.qualify_generic_alias_cast_type_text(flat.source_type_syntax(param).legacy_parameter_mut_type())
 		}
-		ret := t.qualify_generic_alias_cast_type_text(syntax.function_result)
+		ret := t.qualify_generic_alias_cast_type_text(syntax.function_result())
 		if ret != 0 {
 			parts << ret
 			return flat.source_type_composition(.function_type_spaced, parts)
 		}
 		return flat.source_type_composition(.void_function_type_spaced, parts)
 	}
-	if syntax.tuple_like && syntax.contains_comma {
+	if syntax.tuple_like() && syntax.contains_comma() {
 		mut parts := []u32{cap: syntax.tuple_components().len}
 		for part in syntax.tuple_components() {
 			parts << t.qualify_generic_alias_cast_type_text(part)
 		}
 		return flat.source_type_composition(.multi_return, parts)
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		mut parts := []u32{cap: syntax.generic_app_args().len + 1}
-		parts << t.qualify_generic_alias_cast_type_text(syntax.generic_app_base)
+		parts << t.qualify_generic_alias_cast_type_text(syntax.generic_app_base())
 		for arg in syntax.generic_app_args() {
 			parts << t.qualify_generic_alias_cast_type_text(arg)
 		}
@@ -15368,38 +15368,38 @@ fn (t &Transformer) resolve_substituted_type_text(typ_id u32) u32 {
 		} else {
 			flat.SourceTypeComposition.atomic_type
 		}
-		return flat.source_type_composition_one(kind, t.resolve_substituted_type_text(syntax.raw_base))
+		return flat.source_type_composition_one(kind, t.resolve_substituted_type_text(syntax.raw_base()))
 	}
 	if flat.source_type_query(clean).has(.main_prefix) && !t.ident_is_import_alias('main') {
-		bare := syntax.main_base
+		bare := syntax.main_base()
 		if !flat.source_type_shape(bare).has(.dotted) && t.type_name_is_declared_id(bare) {
 			return clean
 		}
 	}
 	if t.substituted_type_belongs_to_main_generic(clean) { return clean }
 	if kind := generic_type_wrapper_composition(shape) {
-		return flat.source_type_composition_one(kind, t.resolve_substituted_type_text(syntax.raw_base))
+		return flat.source_type_composition_one(kind, t.resolve_substituted_type_text(syntax.raw_base()))
 	}
 	// Resolve component types independently to preserve caller-module provenance.
-	if shape.has(.map_type) && syntax.bracket_closed && syntax.bracket_suffix != 0 {
-		return flat.source_type_composition_two(.map, t.resolve_substituted_type_text(syntax.bracket_raw_inner), t.resolve_substituted_type_text(syntax.bracket_suffix))
+	if shape.has(.map_type) && syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+		return flat.source_type_composition_two(.map, t.resolve_substituted_type_text(syntax.bracket_raw_inner()), t.resolve_substituted_type_text(syntax.bracket_suffix()))
 	}
-	if shape.has(.leading_bracket) && syntax.bracket_closed && syntax.bracket_raw_inner != 0 && syntax.bracket_suffix != 0 {
-		return flat.source_type_composition_two(.concat, syntax.bracket_prefix, t.resolve_substituted_type_text(syntax.bracket_suffix))
+	if shape.has(.leading_bracket) && syntax.bracket_closed() && syntax.bracket_raw_inner() != 0 && syntax.bracket_suffix() != 0 {
+		return flat.source_type_composition_two(.concat, syntax.bracket_prefix(), t.resolve_substituted_type_text(syntax.bracket_suffix()))
 	}
-	if (shape.has(.function_compact) || shape.has(.function_spaced)) && syntax.function_closed {
+	if (shape.has(.function_compact) || shape.has(.function_spaced)) && syntax.function_closed() {
 		mut parts := []u32{cap: syntax.function_params().len + 1}
 		for param in syntax.function_params() { parts << t.resolve_substituted_type_text(param) }
-		ret := t.resolve_substituted_type_text(syntax.function_result)
+		ret := t.resolve_substituted_type_text(syntax.function_result())
 		if ret != 0 {
 			parts << ret
 			return flat.source_type_composition(.function_type_spaced, parts)
 		}
 		return flat.source_type_composition(.void_function_type_spaced, parts)
 	}
-	base := syntax.generic_app_base
+	base := syntax.generic_app_base()
 	args := syntax.generic_app_args()
-	if syntax.generic_app_valid && args.len > 0 && !flat.source_type_shape(base).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
+	if syntax.generic_app_valid() && args.len > 0 && !flat.source_type_shape(base).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
 		'main',
 		'builtin',
 	] {
@@ -15415,8 +15415,8 @@ fn (t &Transformer) resolve_substituted_type_text(typ_id u32) u32 {
 	parsed := t.tc.parse_resolution_type(clean)
 	if parsed is types.Unknown { return typ_id }
 	resolved := parsed.source_type_id()
-	if syntax.generic_app_valid && args.len > 0 {
-		resolved_base := flat.source_type_syntax(resolved).generic_base
+	if syntax.generic_app_valid() && args.len > 0 {
+		resolved_base := flat.source_type_syntax(resolved).generic_base()
 		if resolved_base != 0 && (resolved_base != base || flat.source_type_shape(base).has(.dotted)) {
 			mut parts := []u32{cap: args.len + 1}
 			parts << resolved_base
@@ -15443,50 +15443,50 @@ fn (t &Transformer) lock_colliding_main_substitution_type_text(original_id u32, 
 	source_syntax := flat.source_type_syntax(source)
 	concrete_syntax := flat.source_type_syntax(concrete)
 	if source_shape.has(.mutable_type) && concrete_shape.has(.pointer) {
-		return flat.source_type_composition_one(.pointer, t.lock_colliding_main_substitution_type_text(source_syntax.raw_base, concrete_syntax.raw_base, module_name, generic_params))
+		return flat.source_type_composition_one(.pointer, t.lock_colliding_main_substitution_type_text(source_syntax.raw_base(), concrete_syntax.raw_base(), module_name, generic_params))
 	}
 	if source_kind := generic_type_wrapper_composition(source_shape) {
 		if concrete_kind := generic_type_wrapper_composition(concrete_shape) {
 			if source_kind == concrete_kind {
-				return flat.source_type_composition_one(source_kind, t.lock_colliding_main_substitution_type_text(source_syntax.raw_base, concrete_syntax.raw_base, module_name, generic_params))
+				return flat.source_type_composition_one(source_kind, t.lock_colliding_main_substitution_type_text(source_syntax.raw_base(), concrete_syntax.raw_base(), module_name, generic_params))
 			}
 		}
 	}
-	if (source_shape.has(.function_compact) || source_shape.has(.function_spaced)) && (concrete_shape.has(.function_compact) || concrete_shape.has(.function_spaced)) && source_syntax.function_closed && concrete_syntax.function_closed && source_syntax.function_params().len == concrete_syntax.function_params().len {
+	if (source_shape.has(.function_compact) || source_shape.has(.function_spaced)) && (concrete_shape.has(.function_compact) || concrete_shape.has(.function_spaced)) && source_syntax.function_closed() && concrete_syntax.function_closed() && source_syntax.function_params().len == concrete_syntax.function_params().len {
 		mut parts := []u32{cap: concrete_syntax.function_params().len + 1}
 		for i, concrete_param in concrete_syntax.function_params() {
 			source_param := transform_trimmed_type_id(source_syntax.function_params()[i])
 			// Both payloads are declared spellings. A mut prefix is restored separately;
 			// an instantiated leading pointer belongs to the generic argument itself.
-			locked := t.lock_colliding_main_substitution_type_text(flat.source_type_syntax(source_param).generic_parameter_payload, flat.source_type_syntax(concrete_param).generic_parameter_payload, module_name, generic_params)
+			locked := t.lock_colliding_main_substitution_type_text(flat.source_type_syntax(source_param).generic_parameter_payload(), flat.source_type_syntax(concrete_param).generic_parameter_payload(), module_name, generic_params)
 			parts << if flat.source_type_shape(source_param).has(.mutable_type) {
 				flat.source_type_composition_one(.mutable_parameter, locked)
 			} else {
 				locked
 			}
 		}
-		ret := t.lock_colliding_main_substitution_type_text(source_syntax.function_result, concrete_syntax.function_result, module_name, generic_params)
+		ret := t.lock_colliding_main_substitution_type_text(source_syntax.function_result(), concrete_syntax.function_result(), module_name, generic_params)
 		if ret != 0 {
 			parts << ret
 			return flat.source_type_composition(.function_type_spaced, parts)
 		}
 		return flat.source_type_composition(.void_function_type_spaced, parts)
 	}
-	if source_syntax.tuple_like && source_syntax.contains_comma && concrete_syntax.tuple_like && concrete_syntax.contains_comma && source_syntax.tuple_components().len == concrete_syntax.tuple_components().len {
+	if source_syntax.tuple_like() && source_syntax.contains_comma() && concrete_syntax.tuple_like() && concrete_syntax.contains_comma() && source_syntax.tuple_components().len == concrete_syntax.tuple_components().len {
 		mut parts := []u32{cap: concrete_syntax.tuple_components().len}
 		for i, part in concrete_syntax.tuple_components() {
 			parts << t.lock_colliding_main_substitution_type_text(source_syntax.tuple_components()[i], part, module_name, generic_params)
 		}
 		return flat.source_type_composition(.multi_return, parts)
 	}
-	if source_shape.has(.map_type) && concrete_shape.has(.map_type) && source_syntax.bracket_closed && concrete_syntax.bracket_closed && source_syntax.bracket_suffix != 0 && concrete_syntax.bracket_suffix != 0 {
-		return flat.source_type_composition_two(.map, t.lock_colliding_main_substitution_type_text(source_syntax.bracket_raw_inner, concrete_syntax.bracket_raw_inner, module_name, generic_params), t.lock_colliding_main_substitution_type_text(source_syntax.bracket_suffix, concrete_syntax.bracket_suffix, module_name, generic_params))
+	if source_shape.has(.map_type) && concrete_shape.has(.map_type) && source_syntax.bracket_closed() && concrete_syntax.bracket_closed() && source_syntax.bracket_suffix() != 0 && concrete_syntax.bracket_suffix() != 0 {
+		return flat.source_type_composition_two(.map, t.lock_colliding_main_substitution_type_text(source_syntax.bracket_raw_inner(), concrete_syntax.bracket_raw_inner(), module_name, generic_params), t.lock_colliding_main_substitution_type_text(source_syntax.bracket_suffix(), concrete_syntax.bracket_suffix(), module_name, generic_params))
 	}
-	if source_shape.has(.leading_bracket) && concrete_shape.has(.leading_bracket) && source_syntax.bracket_closed && concrete_syntax.bracket_closed && source_syntax.bracket_raw_inner != 0 && concrete_syntax.bracket_raw_inner != 0 && source_syntax.bracket_suffix != 0 && concrete_syntax.bracket_suffix != 0 {
-		elem := t.lock_colliding_main_substitution_type_text(source_syntax.bracket_suffix, concrete_syntax.bracket_suffix, module_name, generic_params)
-		return flat.source_type_composition_two(.concat, concrete_syntax.bracket_prefix, elem)
+	if source_shape.has(.leading_bracket) && concrete_shape.has(.leading_bracket) && source_syntax.bracket_closed() && concrete_syntax.bracket_closed() && source_syntax.bracket_raw_inner() != 0 && concrete_syntax.bracket_raw_inner() != 0 && source_syntax.bracket_suffix() != 0 && concrete_syntax.bracket_suffix() != 0 {
+		elem := t.lock_colliding_main_substitution_type_text(source_syntax.bracket_suffix(), concrete_syntax.bracket_suffix(), module_name, generic_params)
+		return flat.source_type_composition_two(.concat, concrete_syntax.bracket_prefix(), elem)
 	}
-	if source_syntax.generic_app_valid && concrete_syntax.generic_app_valid && source_syntax.generic_app_base == concrete_syntax.generic_app_base && source_syntax.generic_app_args().len == concrete_syntax.generic_app_args().len {
+	if source_syntax.generic_app_valid() && concrete_syntax.generic_app_valid() && source_syntax.generic_app_base() == concrete_syntax.generic_app_base() && source_syntax.generic_app_args().len == concrete_syntax.generic_app_args().len {
 		mut parts := []u32{cap: concrete_syntax.generic_app_args().len + 1}
 		mut args_locked := false
 		for i, arg in concrete_syntax.generic_app_args() {
@@ -15497,9 +15497,9 @@ fn (t &Transformer) lock_colliding_main_substitution_type_text(original_id u32, 
 		// Locked arguments force semantic parsing without the declaration context;
 		// qualify a declaration-owned generic base along with those arguments.
 		base := if args_locked {
-			t.qualify_decl_module_generic_base_id(concrete_syntax.generic_app_base, module_name)
+			t.qualify_decl_module_generic_base_id(concrete_syntax.generic_app_base(), module_name)
 		} else {
-			concrete_syntax.generic_app_base
+			concrete_syntax.generic_app_base()
 		}
 		parts.prepend(base)
 		return flat.source_type_composition(.generic, parts)
@@ -15543,11 +15543,11 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ_id u32, module_nam
 	shape := flat.source_type_shape(clean)
 	syntax := flat.source_type_syntax(clean)
 	if kind := generic_type_wrapper_composition(shape) {
-		return flat.source_type_composition_one(kind, t.lock_colliding_main_generic_type_text(syntax.raw_base, module_name))
+		return flat.source_type_composition_one(kind, t.lock_colliding_main_generic_type_text(syntax.raw_base(), module_name))
 	}
 	// A function hides lockable parameter and return types. Keep its exact spelling
 	// when none of its components changes.
-	if (shape.has(.function_compact) || shape.has(.function_spaced)) && syntax.function_closed {
+	if (shape.has(.function_compact) || shape.has(.function_spaced)) && syntax.function_closed() {
 		mut changed := false
 		mut parts := []u32{cap: syntax.function_params().len + 1}
 		for param in syntax.function_params() {
@@ -15555,8 +15555,8 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ_id u32, module_nam
 			if locked != transform_trimmed_type_id(param) { changed = true }
 			parts << locked
 		}
-		ret := t.lock_colliding_main_generic_type_text(syntax.function_result, module_name)
-		if ret != syntax.function_result { changed = true }
+		ret := t.lock_colliding_main_generic_type_text(syntax.function_result(), module_name)
+		if ret != syntax.function_result() { changed = true }
 		if !changed { return clean }
 		if ret != 0 {
 			parts << ret
@@ -15564,7 +15564,7 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ_id u32, module_nam
 		}
 		return flat.source_type_composition(.void_function_type_spaced, parts)
 	}
-	if syntax.tuple_like && syntax.contains_comma {
+	if syntax.tuple_like() && syntax.contains_comma() {
 		mut parts := []u32{cap: syntax.tuple_components().len}
 		for part in syntax.tuple_components() {
 			parts << t.lock_colliding_main_generic_type_text(part, module_name)
@@ -15573,17 +15573,17 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ_id u32, module_nam
 	}
 	// Descend through composites before handling simple qualified names, preserving
 	// provenance for a bare main type nested beside qualified components.
-	if shape.has(.map_type) && syntax.bracket_closed && syntax.bracket_suffix != 0 {
-		return flat.source_type_composition_two(.map, t.lock_colliding_main_generic_type_text(syntax.bracket_raw_inner, module_name), t.lock_colliding_main_generic_type_text(syntax.bracket_suffix, module_name))
+	if shape.has(.map_type) && syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+		return flat.source_type_composition_two(.map, t.lock_colliding_main_generic_type_text(syntax.bracket_raw_inner(), module_name), t.lock_colliding_main_generic_type_text(syntax.bracket_suffix(), module_name))
 	}
-	if shape.has(.leading_bracket) && syntax.bracket_closed && syntax.bracket_raw_inner != 0 && syntax.bracket_suffix != 0 {
-		return flat.source_type_composition_two(.concat, syntax.bracket_prefix, t.lock_colliding_main_generic_type_text(syntax.bracket_suffix, module_name))
+	if shape.has(.leading_bracket) && syntax.bracket_closed() && syntax.bracket_raw_inner() != 0 && syntax.bracket_suffix() != 0 {
+		return flat.source_type_composition_two(.concat, syntax.bracket_prefix(), t.lock_colliding_main_generic_type_text(syntax.bracket_suffix(), module_name))
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		mut changed := false
 		mut parts := []u32{cap: syntax.generic_app_args().len + 1}
-		locked_base := t.lock_colliding_main_generic_type_text(syntax.generic_app_base, module_name)
-		if locked_base != transform_trimmed_type_id(syntax.generic_app_base) { changed = true }
+		locked_base := t.lock_colliding_main_generic_type_text(syntax.generic_app_base(), module_name)
+		if locked_base != transform_trimmed_type_id(syntax.generic_app_base()) { changed = true }
 		parts << locked_base
 		for arg in syntax.generic_app_args() {
 			locked := t.lock_colliding_main_generic_type_text(arg, module_name)
@@ -15677,9 +15677,9 @@ fn (t &Transformer) type_short_name_has_non_main_owner(name_id u32) bool {
 		owner_id := if info.module.len > 0 {
 			flat.source_type_id(info.module)
 		} else {
-			syntax.qualifier
+			syntax.qualifier()
 		}
-		if flat.source_type_shape(candidate_id).has(.dotted) && syntax.unqualified == name_id && owner_id !in [
+		if flat.source_type_shape(candidate_id).has(.dotted) && syntax.unqualified() == name_id && owner_id !in [
 			u32(0),
 			generic_main_module_id,
 			flat.source_type_id('builtin'),
@@ -15690,7 +15690,7 @@ fn (t &Transformer) type_short_name_has_non_main_owner(name_id u32) bool {
 	for candidate, _ in t.sum_types.ids {
 		candidate_id := flat.source_type_id(candidate)
 		syntax := flat.source_type_syntax(candidate_id)
-		if flat.source_type_shape(candidate_id).has(.dotted) && syntax.unqualified == name_id && syntax.qualifier !in [
+		if flat.source_type_shape(candidate_id).has(.dotted) && syntax.unqualified() == name_id && syntax.qualifier() !in [
 			u32(0),
 			generic_main_module_id,
 			flat.source_type_id('builtin'),
@@ -15701,7 +15701,7 @@ fn (t &Transformer) type_short_name_has_non_main_owner(name_id u32) bool {
 	for candidate, _ in t.enum_types {
 		candidate_id := flat.source_type_id(candidate)
 		syntax := flat.source_type_syntax(candidate_id)
-		if flat.source_type_shape(candidate_id).has(.dotted) && syntax.unqualified == name_id && syntax.qualifier !in [
+		if flat.source_type_shape(candidate_id).has(.dotted) && syntax.unqualified() == name_id && syntax.qualifier() !in [
 			u32(0),
 			generic_main_module_id,
 			flat.source_type_id('builtin'),
@@ -15722,9 +15722,9 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ_id u32) bool {
 		return false
 	}
 	syntax := flat.source_type_syntax(clean)
-	base := syntax.generic_app_base
+	base := syntax.generic_app_base()
 	args := syntax.generic_app_args()
-	local_base := if syntax.generic_app_valid { base } else { clean }
+	local_base := if syntax.generic_app_valid() { base } else { clean }
 	if !isnil(t.tc) && !flat.source_type_shape(local_base).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
 		'main',
 		'builtin',
@@ -15737,7 +15737,7 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ_id u32) bool {
 			return false
 		}
 	}
-	if syntax.generic_app_valid && flat.source_type_shape(base).has(.dotted) {
+	if syntax.generic_app_valid() && flat.source_type_shape(base).has(.dotted) {
 		for arg in args {
 			if t.substituted_type_belongs_to_main_generic(arg) && t.current_specialization_has_generic_arg(arg) {
 				return true
@@ -15748,7 +15748,7 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ_id u32) bool {
 		key := flat.source_type_name(clean)
 		if key in t.structs || t.sum_types.contains(key) || key in t.enum_types { return true }
 	}
-	if !syntax.generic_app_valid || flat.source_type_shape(base).has(.dotted) || isnil(t.tc) {
+	if !syntax.generic_app_valid() || flat.source_type_shape(base).has(.dotted) || isnil(t.tc) {
 		return false
 	}
 	key := flat.source_type_name(base)
@@ -15927,31 +15927,31 @@ fn (t &Transformer) subst_comptime_runtime_type_metadata(cond string, args_ids [
 }
 
 fn generic_arg_type_for_param(param_type_id u32, arg_type_id u32) u32 {
-	mut actual := flat.source_type_syntax(arg_type_id).trimmed
-	param := flat.source_type_syntax(param_type_id).trimmed
+	mut actual := flat.source_type_syntax(arg_type_id).trimmed()
+	param := flat.source_type_syntax(param_type_id).trimmed()
 	if flat.source_type_shape(actual).has(.shared_type) && !flat.source_type_shape(param).has(.shared_type) {
-		actual = flat.source_type_syntax(flat.source_type_syntax(actual).raw_base).trimmed
+		actual = flat.source_type_syntax(flat.source_type_syntax(actual).raw_base()).trimmed()
 	}
 	if flat.source_type_shape(actual).has(.atomic_type) && !flat.source_type_shape(param).has(.atomic_type) {
-		actual = flat.source_type_syntax(flat.source_type_syntax(actual).raw_base).trimmed
+		actual = flat.source_type_syntax(flat.source_type_syntax(actual).raw_base()).trimmed()
 	}
 	return actual
 }
 
 fn generic_inference_param_type(param &flat.Node) u32 {
-	mut clean := flat.source_type_syntax(param.typ).trimmed
+	mut clean := flat.source_type_syntax(param.typ).trimmed()
 	for flat.source_type_shape(clean).has(.shared_type) || flat.source_type_shape(clean).has(.atomic_type) {
-		clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base).trimmed
+		clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base()).trimmed()
 	}
 	// `mut value T` is represented as `&T` for storage, so that synthetic
 	// pointer must not become part of T. An explicitly declared `value &T`
 	// keeps its pointer: inferring it from an `&int` argument must bind T to
 	// `int`, not `&int`.
 	if param.is_mut && param.op != .amp && flat.source_type_shape(clean).has(.pointer) {
-		return flat.source_type_syntax(clean).raw_base
+		return flat.source_type_syntax(clean).raw_base()
 	}
 	if flat.source_type_shape(clean).has(.mutable_type) {
-		return flat.source_type_syntax(flat.source_type_syntax(clean).raw_base).trimmed
+		return flat.source_type_syntax(flat.source_type_syntax(clean).raw_base()).trimmed()
 	}
 	return clean
 }
@@ -15964,20 +15964,20 @@ fn (t &Transformer) generic_inference_expected_type(typ_id u32) u32 {
 }
 
 fn generic_type_indirections(typ_id u32) int {
-	mut clean := flat.source_type_syntax(typ_id).trimmed
+	mut clean := flat.source_type_syntax(typ_id).trimmed()
 	// An option or result wrapper is not itself a level of indirection, but it does
 	// not hide the pointer inside it either: `?&Tag` reports one, the same as the
 	// `$for field` metadata does. Without this a `$if T.indirections != 0` branch is
 	// never taken for an option-of-pointer generic argument.
 	for flat.source_type_shape(clean).has(.optional) {
-		clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base).trimmed
+		clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base()).trimmed()
 	}
 	mut count := 0
 	if flat.source_type_shape(clean).has(.shared_type) {
 		count++
-		clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base).trimmed
+		clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base()).trimmed()
 	}
-	return count + flat.source_type_syntax(clean).pointer_depth
+	return count + flat.source_type_syntax(clean).pointer_depth()
 }
 
 fn (t &Transformer) subst_comptime_type_operand(raw string, args_ids []u32) string {
@@ -16049,7 +16049,7 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args_ids []u32) stri
 		base := clean[..clean.len - payload_suffix.len]
 		substituted := t.comptime_normalize_type_alias_chain(t.resolve_substituted_type_text(t.subst_type(flat.source_type_id(base), args_ids)))
 		if flat.source_type_shape(substituted).has(.optional) {
-			payload := flat.source_type_syntax(flat.source_type_syntax(substituted).raw_base).trimmed
+			payload := flat.source_type_syntax(flat.source_type_syntax(substituted).raw_base()).trimmed()
 			return t.type_index(payload, t.cur_module).str()
 		}
 		return '0'
@@ -16189,16 +16189,16 @@ fn specialized_generic_fn_value(value string, args_ids []u32) string {
 	value_id := flat.source_type_id(value)
 	if flat.source_type_shape(value_id).has(.dotted) {
 		value_syntax := flat.source_type_syntax(value_id)
-		syntax := flat.source_type_syntax(value_syntax.qualifier)
-		receiver := if syntax.generic_app_valid {
-			syntax.generic_app_base
+		syntax := flat.source_type_syntax(value_syntax.qualifier())
+		receiver := if syntax.generic_app_valid() {
+			syntax.generic_app_base()
 		} else {
-			value_syntax.qualifier
+			value_syntax.qualifier()
 		}
 		mut parts := [receiver]
 		for arg in args_ids { parts << generic_type_arg_short_id(arg) }
 		return flat.source_type_name(flat.source_type_composition_two(.qualified,
-			flat.source_type_composition(.generic, parts), value_syntax.unqualified))
+			flat.source_type_composition(.generic, parts), value_syntax.unqualified()))
 	}
 	// Free-function specializations need the canonical module-qualified type
 	// arguments in their identity. Using only the last type component made
@@ -16222,18 +16222,18 @@ fn generic_type_arg_short_id(type_arg u32) u32 {
 	shape := flat.source_type_shape(clean)
 	syntax := flat.source_type_syntax(clean)
 	if shape.has(.function_compact) || shape.has(.function_spaced) {
-		if syntax.function_closed {
+		if syntax.function_closed() {
 			mut normalized_params := []u32{cap: syntax.function_params().len + 1}
 			for param in syntax.function_params() {
-				mut payload := flat.source_type_syntax(param).generic_parameter_payload
+				mut payload := flat.source_type_syntax(param).generic_parameter_payload()
 				if flat.source_type_shape(param).has(.mutable_type) && !flat.source_type_shape(payload).has(.pointer) {
 					payload = flat.source_type_composition_one(.pointer, payload)
 				}
 				normalized_params << payload
 			}
 			mut normalized := u32(0)
-			if syntax.function_result != 0 {
-				normalized_params << syntax.function_result
+			if syntax.function_result() != 0 {
+				normalized_params << syntax.function_result()
 				normalized = flat.source_type_composition(.function_type_spaced, normalized_params)
 			} else {
 				normalized = flat.source_type_composition(.void_function_type_spaced, normalized_params)
@@ -16244,16 +16244,16 @@ fn generic_type_arg_short_id(type_arg u32) u32 {
 	}
 	if shape.has(.array_type) {
 		return flat.source_type_composition(.concat, [flat.source_type_id('Array_'),
-			generic_type_arg_short_id(syntax.raw_base)])
+			generic_type_arg_short_id(syntax.raw_base())])
 	}
 	if shape.has(.pointer) {
 		return flat.source_type_composition(.concat, [flat.source_type_id('ptr_'),
-			generic_type_arg_short_id(syntax.raw_base)])
+			generic_type_arg_short_id(syntax.raw_base())])
 	}
-	if shape.has(.map_type) && syntax.bracket_closed && syntax.bracket_suffix != 0 {
+	if shape.has(.map_type) && syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
 		return flat.source_type_composition(.concat, [flat.source_type_id('Map_'),
-			generic_type_arg_short_id(syntax.bracket_raw_inner), flat.source_type_id('_'),
-			generic_type_arg_short_id(syntax.bracket_suffix)])
+			generic_type_arg_short_id(syntax.bracket_raw_inner()), flat.source_type_id('_'),
+			generic_type_arg_short_id(syntax.bracket_suffix())])
 	}
 	if shape.has(.optional) {
 		prefix := if shape.has(.option_type) {
@@ -16262,16 +16262,16 @@ fn generic_type_arg_short_id(type_arg u32) u32 {
 			flat.source_type_id('Result_')
 		}
 		return flat.source_type_composition(.concat, [prefix,
-			generic_type_arg_short_id(syntax.raw_base)])
+			generic_type_arg_short_id(syntax.raw_base())])
 	}
 	if fixed := generic_fixed_array_type_arg_short_id(clean) { return fixed }
 	// Compound types must retain qualified members when rendered as C fragments.
-	if syntax.opening_paren || syntax.spaced {
+	if syntax.opening_paren() || syntax.spaced() {
 		return flat.source_type_id(sanitize_full_type_name_fragment(flat.source_type_name(clean)))
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		mut parts := []u32{cap: syntax.generic_app_args().len * 2 + 1}
-		parts << generic_type_arg_short_id(syntax.generic_app_base)
+		parts << generic_type_arg_short_id(syntax.generic_app_base())
 		for arg in syntax.generic_app_args() {
 			parts << flat.source_type_id('_')
 			parts << generic_type_arg_short_id(arg)
@@ -16289,11 +16289,11 @@ fn generic_fixed_array_type_arg_short_id(type_arg u32) ?u32 {
 	clean := transform_trimmed_type_id(type_arg)
 	if !flat.source_type_shape(clean).has(.leading_bracket) { return none }
 	syntax := flat.source_type_syntax(clean)
-	if !syntax.first_bracket_closed || syntax.first_bracket_raw_inner == 0 || syntax.first_bracket_base == 0 {
+	if !syntax.first_bracket_closed() || syntax.first_bracket_raw_inner() == 0 || syntax.first_bracket_base() == 0 {
 		return none
 	}
-	length := syntax.first_bracket_length
-	element := transform_trimmed_type_id(syntax.first_bracket_base)
+	length := syntax.first_bracket_length()
+	element := transform_trimmed_type_id(syntax.first_bracket_base())
 	if length == 0 || element == 0 { return none }
 	return flat.source_type_composition(.concat, [generic_type_arg_short_id(element),
 		flat.source_type_id('_'), length])
@@ -16484,14 +16484,14 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 	syntax := flat.source_type_syntax(clean_id)
 	// main.Type is a temporary disambiguation lock in imported generic bodies.
 	// Specialization keys use the program module's normal bare spelling.
-	if !t.ident_is_import_alias('main') && syntax.main_unlocked != clean_id {
-		return t.canonical_generic_specialization_arg(syntax.main_unlocked)
+	if !t.ident_is_import_alias('main') && syntax.main_unlocked() != clean_id {
+		return t.canonical_generic_specialization_arg(syntax.main_unlocked())
 	}
 	// Recover materialized aggregate spellings before forming specialization keys.
 	if source := t.generic_specialized_source_type_name(clean_id) {
 		if source != clean_id { return t.canonical_generic_specialization_arg(source) }
 	}
-	if syntax.map_name_prefix {
+	if syntax.map_name_prefix() {
 		// This input is an emitted C symbol and is decoded at that boundary.
 		if source := t.source_composite_type_from_c_name(flat.source_type_name(clean_id)) {
 			return t.canonical_generic_specialization_arg(source)
@@ -16525,15 +16525,15 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 	}
 	if wrapped {
 		return flat.source_type_composition_one(wrapper,
-			t.canonical_generic_specialization_arg(syntax.raw_base))
+			t.canonical_generic_specialization_arg(syntax.raw_base()))
 	}
 	// A lowered fixed-array symbol such as _3int can reach another inference pass.
-	if syntax.encoded_fixed_base != 0 && !t.type_name_is_declared_id(clean_id) {
-		encoded_elem := syntax.encoded_fixed_base
+	if syntax.encoded_fixed_base() != 0 && !t.type_name_is_declared_id(clean_id) {
+		encoded_elem := syntax.encoded_fixed_base()
 		canonical_elem := t.canonical_generic_specialization_arg(encoded_elem)
 		if canonical_elem != encoded_elem || types.is_builtin_type_name_id(encoded_elem)
 			|| t.type_name_is_declared_id(encoded_elem) {
-			candidate := flat.source_type_composition_two(.fixed_array, syntax.encoded_fixed_length, canonical_elem)
+			candidate := flat.source_type_composition_two(.fixed_array, syntax.encoded_fixed_length(), canonical_elem)
 			if flat.source_type_id(c_name(flat.source_type_name(candidate))) == clean_id {
 				return candidate
 			}
@@ -16541,11 +16541,11 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 	}
 	// Restore shortened Elem_len symbols while preserving real same-named types.
 	if fixed := t.canonical_short_fixed_array_arg_id(clean_id) { return fixed }
-	if shape.has(.leading_bracket) && syntax.bracket_closed
-		&& syntax.bracket_raw_inner != 0 && syntax.bracket_suffix != 0 {
-		len_id := t.trimmed_type_id(syntax.bracket_raw_inner)
-		elem_id := t.trimmed_type_id(syntax.bracket_suffix)
-		if !flat.source_type_syntax(len_id).decimal && t.generic_type_base_requires_args(elem_id) {
+	if shape.has(.leading_bracket) && syntax.bracket_closed()
+		&& syntax.bracket_raw_inner() != 0 && syntax.bracket_suffix() != 0 {
+		len_id := t.trimmed_type_id(syntax.bracket_raw_inner())
+		elem_id := t.trimmed_type_id(syntax.bracket_suffix())
+		if !flat.source_type_syntax(len_id).decimal() && t.generic_type_base_requires_args(elem_id) {
 			return flat.source_type_composition(.generic, [
 				t.canonical_generic_specialization_arg(elem_id),
 				t.canonical_generic_specialization_arg(len_id),
@@ -16559,24 +16559,24 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 			}
 		}
 		return flat.source_type_composition_two(.fixed_array, clean_len,
-			t.canonical_generic_specialization_arg(syntax.bracket_suffix))
+			t.canonical_generic_specialization_arg(syntax.bracket_suffix()))
 	}
 	if fixed := t.canonical_suffix_fixed_array_arg_id(clean_id) { return fixed }
-	if syntax.underscored && flat.source_type_syntax(syntax.last_underscore_suffix()).decimal
+	if syntax.underscored() && flat.source_type_syntax(syntax.last_underscore_suffix()).decimal()
 		&& !t.type_name_is_declared_id(clean_id) {
 		// Short symbol spellings are decoded at their emitted-name boundary.
 		if fixed := t.generic_fixed_array_type_arg_from_short_suffix_id(clean_id) {
 			return fixed
 		}
 	}
-	if shape.has(.map_type) && syntax.bracket_closed && syntax.bracket_suffix != 0 {
+	if shape.has(.map_type) && syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
 		return flat.source_type_composition_two(.map,
-			t.canonical_generic_specialization_arg(syntax.bracket_raw_inner),
-			t.canonical_generic_specialization_arg(syntax.bracket_suffix))
+			t.canonical_generic_specialization_arg(syntax.bracket_raw_inner()),
+			t.canonical_generic_specialization_arg(syntax.bracket_suffix()))
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		mut parts := []u32{cap: syntax.generic_app_args().len + 1}
-		parts << syntax.generic_app_base
+		parts << syntax.generic_app_base()
 		for nested in syntax.generic_app_args() {
 			parts << t.canonical_generic_specialization_arg(nested)
 		}
@@ -16593,16 +16593,16 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 	if shape.has(.dotted) && t.generic_resolved_concrete_name_known(clean_id) { return clean_id }
 	if shape.has(.dotted) {
 		// Import declarations are keyed by module names, resolved at this boundary.
-		alias := flat.source_type_name(syntax.first_dot_prefix)
+		alias := flat.source_type_name(syntax.first_dot_prefix())
 		resolved_mod := t.import_alias_module(alias)
 		if resolved_mod != alias && resolved_mod.len > 0 {
-			resolved := flat.source_type_composition_two(.qualified, flat.source_type_id(resolved_mod), syntax.first_dot_suffix)
+			resolved := flat.source_type_composition_two(.qualified, flat.source_type_id(resolved_mod), syntax.first_dot_suffix())
 			normalized := t.normalize_type_alias(resolved)
 			if normalized != resolved { return t.canonical_generic_specialization_arg(normalized) }
 			return resolved
 		}
 		if !t.type_name_is_declared_id(clean_id) {
-			if qualified := t.qualified_types.type_id(flat.source_type_name(syntax.unqualified)) {
+			if qualified := t.qualified_types.type_id(flat.source_type_name(syntax.unqualified())) {
 				return qualified
 			}
 		}
@@ -16620,8 +16620,8 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 fn (t &Transformer) generic_fixed_array_type_arg_from_short_suffix_id(suffix_id u32) ?u32 {
 	clean := t.trimmed_type_id(suffix_id)
 	syntax := flat.source_type_syntax(clean)
-	if !syntax.underscored || syntax.last_underscore_prefix() == 0
-		|| !flat.source_type_syntax(syntax.last_underscore_suffix()).decimal {
+	if !syntax.underscored() || syntax.last_underscore_prefix() == 0
+		|| !flat.source_type_syntax(syntax.last_underscore_suffix()).decimal() {
 		return none
 	}
 	elem := t.generic_type_arg_from_suffix_with_containers_id(syntax.last_underscore_prefix())
@@ -16641,7 +16641,7 @@ fn (t &Transformer) generic_type_base_requires_args(typ_id u32) bool {
 	if clean_id == 0 || flat.source_type_shape(clean_id).has(.bracketed) || isnil(t.tc) {
 		return false
 	}
-	short_id := flat.source_type_syntax(clean_id).unqualified
+	short_id := flat.source_type_syntax(clean_id).unqualified()
 	count := t.generic_parameter_type_name_count()
 	if t.generic_type_indexes_ready && t.generic_parameter_type_index_count == count {
 		return t.generic_parameter_type_names[clean_id] || t.generic_parameter_type_names[short_id]
@@ -16716,15 +16716,15 @@ fn source_composite_type_candidate(encoded string, raw_id u32) ?u32 {
 	if shape.has(.mutable_type) || shape.has(.shared_type) || shape.has(.atomic_type)
 		|| shape.has(.variadic) || shape.has(.array_type) || shape.has(.optional)
 		|| shape.has(.pointer) || shape.has(.channel_type) {
-		return source_composite_type_candidate(encoded, flat.source_type_syntax(clean_id).raw_base)
+		return source_composite_type_candidate(encoded, flat.source_type_syntax(clean_id).raw_base())
 	}
 	if shape.has(.map_type) {
 		syntax := flat.source_type_syntax(clean_id)
-		if syntax.bracket_closed && syntax.bracket_suffix != 0 {
-			if source := source_composite_type_candidate(encoded, syntax.bracket_raw_inner) {
+		if syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			if source := source_composite_type_candidate(encoded, syntax.bracket_raw_inner()) {
 				return source
 			}
-			return source_composite_type_candidate(encoded, syntax.bracket_suffix)
+			return source_composite_type_candidate(encoded, syntax.bracket_suffix())
 		}
 	}
 	return none
@@ -16737,14 +16737,14 @@ fn (t &Transformer) canonical_suffix_fixed_array_arg(arg string) ?string {
 fn (t &Transformer) canonical_suffix_fixed_array_arg_id(arg_id u32) ?u32 {
 	clean_id := t.trimmed_type_id(arg_id)
 	syntax := flat.source_type_syntax(clean_id)
-	if !syntax.suffix_bracket_valid { return none }
-	elem_id := t.trimmed_type_id(syntax.last_bracket_prefix)
-	len_id := syntax.suffix_bracket_length
+	if !syntax.suffix_bracket_valid() { return none }
+	elem_id := t.trimmed_type_id(syntax.last_bracket_prefix())
+	len_id := syntax.suffix_bracket_length()
 	if elem_id == 0 || len_id == 0 { return none }
 	len_syntax := flat.source_type_syntax(len_id)
-	if types.is_builtin_type_name_id(len_id) || len_syntax.contains_comma { return none }
+	if types.is_builtin_type_name_id(len_id) || len_syntax.contains_comma() { return none }
 	mut clean_len := len_id
-	mut len_resolved := len_syntax.decimal
+	mut len_resolved := len_syntax.decimal()
 	if !len_resolved && !isnil(t.tc) {
 		// Constant expressions are parsed at their source expression boundary.
 		if value := t.tc.const_int_value(flat.source_type_name(len_id), []string{}) {
@@ -16752,7 +16752,7 @@ fn (t &Transformer) canonical_suffix_fixed_array_arg_id(arg_id u32) ?u32 {
 			len_resolved = true
 		}
 	}
-	if !len_resolved && syntax.generic_app_valid && !types.is_builtin_type_name_id(elem_id) {
+	if !len_resolved && syntax.generic_app_valid() && !types.is_builtin_type_name_id(elem_id) {
 		return none
 	}
 	return flat.source_type_composition_two(.fixed_array, clean_len,
@@ -16767,11 +16767,11 @@ fn (t &Transformer) canonical_short_fixed_array_arg_id(arg_id u32) ?u32 {
 	clean_id := t.trimmed_type_id(arg_id)
 	if clean_id == 0 || t.type_name_is_declared_id(clean_id) { return none }
 	syntax := flat.source_type_syntax(clean_id)
-	if !syntax.underscored || syntax.last_underscore_prefix() == 0 || syntax.last_underscore_suffix() == 0 {
+	if !syntax.underscored() || syntax.last_underscore_prefix() == 0 || syntax.last_underscore_suffix() == 0 {
 		return none
 	}
 	len_id := syntax.last_underscore_suffix()
-	if !flat.source_type_syntax(len_id).decimal { return none }
+	if !flat.source_type_syntax(len_id).decimal() { return none }
 	encoded_elem := syntax.last_underscore_prefix()
 	canonical_elem := t.canonical_generic_specialization_arg(encoded_elem)
 	if canonical_elem == encoded_elem && !types.is_builtin_type_name_id(encoded_elem)
@@ -16990,34 +16990,34 @@ fn inferred_anonymous_struct_placeholder_id(typ_id u32) bool {
 	clean_id := transform_trimmed_type_id(typ_id)
 	shape := flat.source_type_shape(clean_id)
 	if shape.has(.array_type) || shape.has(.pointer) || shape.has(.optional) {
-		return inferred_anonymous_struct_placeholder_id(flat.source_type_syntax(clean_id).raw_base)
+		return inferred_anonymous_struct_placeholder_id(flat.source_type_syntax(clean_id).raw_base())
 	}
 	if shape.has(.map_type) {
 		syntax := flat.source_type_syntax(clean_id)
-		if syntax.bracket_closed {
-			return inferred_anonymous_struct_placeholder_id(syntax.bracket_raw_inner)
-				|| inferred_anonymous_struct_placeholder_id(syntax.raw_base)
+		if syntax.bracket_closed() {
+			return inferred_anonymous_struct_placeholder_id(syntax.bracket_raw_inner())
+				|| inferred_anonymous_struct_placeholder_id(syntax.raw_base())
 		}
 	}
 	if shape.has(.leading_bracket) {
 		syntax := flat.source_type_syntax(clean_id)
-		if syntax.bracket_closed {
-			return inferred_anonymous_struct_placeholder_id(syntax.raw_base)
+		if syntax.bracket_closed() {
+			return inferred_anonymous_struct_placeholder_id(syntax.raw_base())
 		}
 	}
 	if !shape.has(.dotted) { return clean_id == generic_anonymous_struct_type_id }
-	return flat.source_type_syntax(clean_id).unqualified == generic_anonymous_struct_type_id
+	return flat.source_type_syntax(clean_id).unqualified() == generic_anonymous_struct_type_id
 }
 
 fn (t &Transformer) generic_arg_is_unresolved_uncached(arg_id u32) bool {
 	clean_id := t.trimmed_type_id(arg_id)
 	if clean_id == 0 { return true }
 	syntax := flat.source_type_syntax(clean_id)
-	if syntax.unqualified in [flat.source_type_unknown, flat.source_type_void,
+	if syntax.unqualified() in [flat.source_type_unknown, flat.source_type_void,
 		flat.source_type_generic, generic_anonymous_struct_type_id] {
 		return true
 	}
-	if syntax.tuple_like {
+	if syntax.tuple_like() {
 		// Tuple checks use the function-parameter splitter, which skips empty parts.
 		if syntax.tuple_function_components().len == 0 { return true }
 		for item in syntax.tuple_function_components() {
@@ -17028,29 +17028,29 @@ fn (t &Transformer) generic_arg_is_unresolved_uncached(arg_id u32) bool {
 	shape := flat.source_type_shape(clean_id)
 	if shape.has(.pointer) || shape.has(.optional) || shape.has(.variadic)
 		|| shape.has(.array_type) {
-		return t.generic_arg_is_unresolved(syntax.raw_base)
+		return t.generic_arg_is_unresolved(syntax.raw_base())
 	}
-	if shape.has(.leading_bracket) && syntax.bracket_closed {
-		return t.generic_arg_is_unresolved(syntax.raw_base)
+	if shape.has(.leading_bracket) && syntax.bracket_closed() {
+		return t.generic_arg_is_unresolved(syntax.raw_base())
 	}
-	if shape.has(.map_type) && syntax.bracket_closed {
-		return t.generic_arg_is_unresolved(syntax.bracket_raw_inner)
-			|| t.generic_arg_is_unresolved(syntax.raw_base)
+	if shape.has(.map_type) && syntax.bracket_closed() {
+		return t.generic_arg_is_unresolved(syntax.bracket_raw_inner())
+			|| t.generic_arg_is_unresolved(syntax.raw_base())
 	}
 	if flat.source_type_query(clean_id).has(.generic_fn_name) {
 		// Nominal names retain the declaration identity after stripping wrappers.
 		return !t.is_known_concrete_type_name_id(clean_id)
 	}
 	if shape.has(.function_compact) || shape.has(.function_spaced) {
-		if !syntax.function_closed { return true }
+		if !syntax.function_closed() { return true }
 		for param_id in syntax.function_params() {
-			if t.generic_arg_is_unresolved(flat.source_type_syntax(param_id).generic_parameter_payload) {
+			if t.generic_arg_is_unresolved(flat.source_type_syntax(param_id).generic_parameter_payload()) {
 				return true
 			}
 		}
-		return syntax.function_result != 0 && t.generic_arg_is_unresolved(syntax.function_result)
+		return syntax.function_result() != 0 && t.generic_arg_is_unresolved(syntax.function_result())
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		for nested_id in syntax.generic_app_args() {
 			if t.generic_arg_is_unresolved(nested_id) { return true }
 		}
@@ -17092,7 +17092,7 @@ fn (t &Transformer) is_known_main_struct_type_name_id(name_id u32) bool {
 	if !flat.source_type_query(name_id).has(.main_prefix) || t.ident_is_import_alias('main') {
 		return false
 	}
-	bare_id := flat.source_type_syntax(name_id).main_base
+	bare_id := flat.source_type_syntax(name_id).main_base()
 	if t.generic_type_indexes_ready
 		&& t.generic_alias_index_authority_count == t.generic_type_authority_name_count() {
 		return t.generic_main_struct_names[bare_id]

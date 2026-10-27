@@ -82,8 +82,8 @@ fn (tc &TypeChecker) struct_allocation_layout(name_id u32,
 		return .aligned | .scanned
 	}
 	syntax := flat.source_type_syntax(name_id)
-	key := flat.source_type_name(if syntax.application_valid {
-		syntax.application_base
+	key := flat.source_type_name(if syntax.application_valid() {
+		syntax.application_base()
 	} else {
 		name_id
 	})

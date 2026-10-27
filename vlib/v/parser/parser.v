@@ -1991,7 +1991,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type_id u3
 		// The declaration records `name_pos` as its position, the same as
 		// `fn_decl_body` does, so a skipped body of it is keyed on it too.
 		p.cur_fn_offset = name_pos
-		p.cur_struct = flat.source_type_name(flat.source_type_syntax(method_receiver_type_id(receiver_type_id)).unqualified)
+		p.cur_struct = flat.source_type_name(flat.source_type_syntax(method_receiver_type_id(receiver_type_id)).unqualified())
 		p.cur_method_is_static = false
 		p.defer_depth = 0
 		p.defer_result_allowed = false
@@ -2227,7 +2227,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 	p.cur_fn_offset = name_pos
 	// `@STRUCT` inside a method expands to the receiver's (dereferenced) type name.
 	p.cur_struct = if is_method {
-		flat.source_type_name(flat.source_type_syntax(method_receiver_type_id(receiver_type_id)).unqualified)
+		flat.source_type_name(flat.source_type_syntax(method_receiver_type_id(receiver_type_id)).unqualified())
 	} else {
 		''
 	}
@@ -2336,9 +2336,9 @@ fn (mut p Parser) validate_fn_return_type(first string, start int) string {
 fn veb_context_binding_name(a &flat.FlatAst, param_ids []flat.NodeId, ret_type_id u32) string {
 	mut ret_type := ret_type_id
 	for flat.source_type_shape(ret_type).has(.optional) {
-		ret_type = flat.source_type_syntax(ret_type).raw_base
+		ret_type = flat.source_type_syntax(ret_type).raw_base()
 	}
-	if flat.source_type_syntax(ret_type).unqualified != flat.source_type_id('Result') {
+	if flat.source_type_syntax(ret_type).unqualified() != flat.source_type_id('Result') {
 		return ''
 	}
 	for id in param_ids {
@@ -2346,7 +2346,7 @@ fn veb_context_binding_name(a &flat.FlatAst, param_ids []flat.NodeId, ret_type_i
 		if param.kind != .param {
 			continue
 		}
-		if flat.source_type_syntax(method_receiver_type_id(param.typ)).unqualified == flat.source_type_id('Context') {
+		if flat.source_type_syntax(method_receiver_type_id(param.typ)).unqualified() == flat.source_type_id('Context') {
 			return param.value
 		}
 	}
@@ -2370,16 +2370,16 @@ fn method_receiver_type_name(receiver_type string) string {
 
 fn method_receiver_type_id(receiver_type u32) u32 {
 	mut clean := if flat.source_type_shape(receiver_type).has(.padded) {
-		flat.source_type_syntax(receiver_type).trimmed
+		flat.source_type_syntax(receiver_type).trimmed()
 	} else {
 		receiver_type
 	}
 	for {
 		shape := flat.source_type_shape(clean)
 		if shape.has(.pointer) || shape.has(.shared_type) {
-			clean = flat.source_type_syntax(clean).raw_base
+			clean = flat.source_type_syntax(clean).raw_base()
 			if flat.source_type_shape(clean).has(.padded) {
-				clean = flat.source_type_syntax(clean).trimmed
+				clean = flat.source_type_syntax(clean).trimmed()
 			}
 			continue
 		}
@@ -3640,13 +3640,13 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	is_sum_type := p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe))
 	if !p.prefs.is_fmt && flat.source_type_shape(first_type_id).has(.function_compact) && !is_sum_type {
 		first_type_syntax := flat.source_type_syntax(first_type_id)
-		if first_type_syntax.parser_fn_decl_valid {
+		if first_type_syntax.parser_fn_decl_valid() {
 			name_id := flat.source_type_id(name)
-			if flat.source_type_contains_word(first_type_syntax.parser_fn_decl_params, name_id) {
+			if flat.source_type_contains_word(first_type_syntax.parser_fn_decl_params(), name_id) {
 				pos := p.s.src.index_after(name, type_start) or { type_start }
 				p.record_diagnostic_span('`${name}` cannot be a parameter as it references the fntype',
 					pos, pos + name.len)
-			} else if flat.source_type_contains_word(first_type_syntax.parser_fn_decl_result, name_id) {
+			} else if flat.source_type_contains_word(first_type_syntax.parser_fn_decl_result(), name_id) {
 				pos := p.s.src.index_after(name, type_start) or { type_start }
 				p.record_diagnostic_span('`${name}` cannot be a return type as it references the fntype',
 					pos, pos + name.len)
@@ -3817,7 +3817,7 @@ fn (mut p Parser) is_lowercase_type_name(name string) bool {
 }
 
 fn (mut p Parser) is_lowercase_type_id(name u32) bool {
-	if name == 0 || flat.source_type_syntax(name).first_capital
+	if name == 0 || flat.source_type_syntax(name).first_capital()
 		|| flat.source_type_shape(name).has(.dotted) || is_builtin_type_id(name)
 		|| p.is_local_binding(flat.source_type_name(name)) {
 		return false
@@ -4386,7 +4386,7 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_
 }
 
 fn (mut p Parser) validate_struct_embed(field_type_id u32, start int, end int, placement_ok bool, attr_start int, mut embedded_types map[u32]bool, mut embedded_names map[string]u32) {
-	short_name := flat.source_type_name(flat.source_type_syntax(field_type_id).unqualified)
+	short_name := flat.source_type_name(flat.source_type_syntax(field_type_id).unqualified())
 	line, _ := p.s.current_file().find_line_and_column(clamp_source_offset(start, p.s.src.len))
 	has_prior_line_diagnostic := p.diagnostics.any(it.file == p.cur_file && it.line == line)
 	// A malformed field can leave type fragments for recovery. Do not report those
@@ -10236,7 +10236,7 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 	if p.tok == .lsbr && p.peek() == .rsbr {
 		typ := p.parse_type_name()
 		elem_type := if flat.source_type_shape(typ).has(.array_type) {
-			flat.source_type_syntax(typ).raw_base
+			flat.source_type_syntax(typ).raw_base()
 		} else {
 			typ
 		}
@@ -10357,9 +10357,9 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 
 fn (mut p Parser) match_type_pattern_node(type_name_id u32) flat.NodeId {
 	syntax := flat.source_type_syntax(type_name_id)
-	if syntax.top_level_dot_valid {
-		base := flat.source_type_name(syntax.top_level_dot_prefix)
-		name := flat.source_type_name(syntax.top_level_dot_suffix)
+	if syntax.top_level_dot_valid() {
+		base := flat.source_type_name(syntax.top_level_dot_prefix())
+		name := flat.source_type_name(syntax.top_level_dot_suffix())
 		base_id := p.add_val(.ident, base)
 		start := p.add_child(base_id)
 		return p.add_node(flat.Node{
@@ -10382,7 +10382,7 @@ fn (mut p Parser) match_branch_cast_follows(type_name_id u32) bool {
 	if _ := p.named_variant_pattern_type(type_name_id) {
 		return false
 	}
-	module_name := flat.source_type_name(syntax.first_dot_prefix)
+	module_name := flat.source_type_name(syntax.first_dot_prefix())
 	return module_name in p.imported_module_names && !p.is_local_binding(module_name)
 }
 
@@ -11754,7 +11754,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			lhs_node := p.a.nodes[int(lhs)]
 			if lhs_node.kind in [.ident, .selector, .index] {
 				type_id := p.resolve_local_type_id(p.type_expr_name(lhs))
-				if type_name_can_init_id(type_id) && !p.is_local_binding(flat.source_type_name(flat.source_type_syntax(type_id).first_dot_prefix))
+				if type_name_can_init_id(type_id) && !p.is_local_binding(flat.source_type_name(flat.source_type_syntax(type_id).first_dot_prefix()))
 					&& (lhs_node.kind != .index || p.generic_type_target_has_static_path(lhs)) {
 					p.next()
 					lhs = p.struct_init(type_id)
@@ -11788,13 +11788,13 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			if lhs_node.kind == .selector && lhs_node.value.len > 0 {
 				full_name_id := p.type_expr_name(lhs)
 				full_syntax := flat.source_type_syntax(full_name_id)
-				is_c_struct := full_syntax.c_qualified
+				is_c_struct := full_syntax.c_qualified()
 					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
 				// Generated modules may import types whose names start in lower case.
 				is_unknown_qualified_struct := (p.in_struct_init_value > 0 || p.is_generated)
-					&& p.imported_module_names[flat.source_type_name(full_syntax.first_dot_prefix)]
+					&& p.imported_module_names[flat.source_type_name(full_syntax.first_dot_prefix())]
 					&& p.current_lcbr_looks_struct_init()
-				is_v_struct := !full_syntax.c_qualified
+				is_v_struct := !full_syntax.c_qualified()
 					&& (type_name_can_init_id(full_name_id) || is_unknown_qualified_struct)
 				if is_c_struct || is_v_struct {
 					lhs = p.struct_init(full_name_id)
@@ -11875,8 +11875,8 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			// A static import path followed by type arguments and `{` is a type literal;
 			// local values and container expressions retain their indexing interpretation.
 			is_imported_type := base_syntax.qualifier_prefixes().len == 1
-				&& p.imported_module_names[flat.source_type_name(base_syntax.first_dot_prefix)]
-				&& !p.is_local_binding(flat.source_type_name(base_syntax.first_dot_prefix))
+				&& p.imported_module_names[flat.source_type_name(base_syntax.first_dot_prefix())]
+				&& !p.is_local_binding(flat.source_type_name(base_syntax.first_dot_prefix()))
 			if !p.in_for_container && (type_name_can_init_id(base_type_id)
 				|| p.is_generated_type_id(base_type_id) || is_imported_type)
 				&& p.current_generic_struct_init_suffix_followed_by_lcbr() {
@@ -13462,7 +13462,7 @@ fn (mut p Parser) prefix_expr(stop_at_struct_field bool) flat.NodeId {
 					})
 				}
 				if p.tok == .lcbr && flat.source_type_shape(base_type).has(.array_type) {
-					inner := p.array_init_after_element_type(flat.source_type_syntax(base_type).raw_base, arr_start)
+					inner := p.array_init_after_element_type(flat.source_type_syntax(base_type).raw_base(), arr_start)
 					return p.a.add_node(flat.Node{
 						kind:           .prefix
 						op:             .amp
@@ -14700,7 +14700,7 @@ fn (p &Parser) type_expr_name(id flat.NodeId) u32 {
 
 fn generic_type_name_can_init_id(type_name u32) bool {
 	return flat.source_type_shape(type_name).has(.bracketed)
-		&& type_name_can_init_id(flat.source_type_syntax(type_name).generic_base)
+		&& type_name_can_init_id(flat.source_type_syntax(type_name).generic_base())
 }
 
 fn type_name_can_init(type_name string) bool {
@@ -14709,16 +14709,16 @@ fn type_name_can_init(type_name string) bool {
 
 fn type_name_can_init_id(type_name u32) bool {
 	base := if flat.source_type_shape(type_name).has(.bracketed) {
-		flat.source_type_syntax(type_name).generic_base
+		flat.source_type_syntax(type_name).generic_base()
 	} else {
 		type_name
 	}
 	short := if flat.source_type_shape(base).has(.dotted) {
-		flat.source_type_syntax(base).unqualified
+		flat.source_type_syntax(base).unqualified()
 	} else {
 		base
 	}
-	return flat.source_type_syntax(short).first_capital
+	return flat.source_type_syntax(short).first_capital()
 }
 
 // struct_init_name_start returns the source offset where the type expression in front of the
@@ -15083,7 +15083,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:         .array_init
 			source_value: elem_type
-			typ:          (if flat.source_type_syntax(elem_type).typeof_prefix {
+			typ:          (if flat.source_type_syntax(elem_type).typeof_prefix() {
 				u32(0)
 			} else {
 				flat.source_type_composition_one(.array, elem_type)
@@ -15530,7 +15530,7 @@ fn (mut p Parser) array_init_after_element_type(elem_type_id u32, start int) fla
 	return p.a.add_node(flat.Node{
 		kind:           .array_init
 		source_value:   elem_type_id
-		typ:            (if flat.source_type_syntax(elem_type_id).typeof_prefix {
+		typ:            (if flat.source_type_syntax(elem_type_id).typeof_prefix() {
 			u32(0)
 		} else {
 			flat.source_type_composition_one(.array, elem_type_id)
@@ -17214,13 +17214,13 @@ fn (p &Parser) current_lcbr_is_attached() bool {
 }
 
 fn (p &Parser) select_condition_has_qualified_struct_type(lhs flat.NodeId) bool {
-	base := flat.source_type_syntax(p.type_expr_name(lhs)).generic_base
+	base := flat.source_type_syntax(p.type_expr_name(lhs)).generic_base()
 	if !flat.source_type_shape(base).has(.dotted) {
 		return false
 	}
 	syntax := flat.source_type_syntax(base)
-	return p.imported_module_names[flat.source_type_name(syntax.first_dot_prefix)]
-		&& flat.source_type_syntax(syntax.unqualified).first_capital
+	return p.imported_module_names[flat.source_type_name(syntax.first_dot_prefix())]
+		&& flat.source_type_syntax(syntax.unqualified()).first_capital()
 }
 
 fn (mut p Parser) current_generic_suffix_args_followed_by_lcbr() ?[]string {
@@ -18674,7 +18674,7 @@ fn (p &Parser) resolve_local_type_id(name_id u32) u32 {
 		return name_id
 	}
 	syntax := flat.source_type_syntax(name_id)
-	base := syntax.generic_base
+	base := syntax.generic_base()
 	if flat.source_type_shape(base).has(.dotted) {
 		return name_id
 	}
@@ -18687,7 +18687,7 @@ fn (p &Parser) resolve_local_type_id(name_id u32) u32 {
 			if mapped == base {
 				return name_id
 			}
-			return flat.source_type_composition_two(.concat, mapped, syntax.bracket_from)
+			return flat.source_type_composition_two(.concat, mapped, syntax.bracket_from())
 		}
 	}
 	return name_id

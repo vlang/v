@@ -21,7 +21,7 @@ pub fn named_variant_pattern_binding(a &flat.FlatAst, cond &flat.Node) ?flat.Nod
 // named_variant_payload_type returns the payload type of a concrete hidden
 // variant struct, or none for a payload-less variant.
 pub fn (tc &TypeChecker) named_variant_payload_type(variant_type_id u32) ?Type {
-	if !flat.source_type_syntax(variant_type_id).named_variant {
+	if !flat.source_type_syntax(variant_type_id).named_variant() {
 		return none
 	}
 	return tc.struct_field_type(variant_type_id, flat.named_variant_payload_field)
@@ -44,10 +44,10 @@ fn (mut tc TypeChecker) declare_named_variant_binding(subject_type Type, branch 
 		subject_type.source_type_id()
 	} else if subject_type is Struct {
 		variant_syntax := flat.source_type_syntax(subject_type.source_type_id())
-		if !variant_syntax.named_variant_valid {
+		if !variant_syntax.named_variant_valid() {
 			return
 		}
-		variant_syntax.named_variant_owner
+		variant_syntax.named_variant_owner()
 	} else {
 		return
 	}
@@ -86,10 +86,10 @@ fn (tc &TypeChecker) named_variant_diagnostic(msg string, node flat.NodeId) stri
 	}
 	parent := tc.a.node(parent_id)
 	if parent.kind != .struct_init
-		|| !flat.source_type_syntax(parent.source_value_id()).named_variant {
+		|| !flat.source_type_syntax(parent.source_value_id()).named_variant() {
 		return msg
 	}
-	variant := flat.named_variant_display_name(flat.source_type_name(flat.source_type_syntax(parent.source_value_id()).unqualified))
+	variant := flat.named_variant_display_name(flat.source_type_name(flat.source_type_syntax(parent.source_value_id()).unqualified()))
 	return 'invalid payload for `${variant}`: ${msg[named_variant_payload_field_prefix.len..]}'
 }
 
@@ -100,18 +100,18 @@ fn (tc &TypeChecker) named_sum_variant_names(sum_name_id u32) []string {
 	mut names := []string{cap: variants.len}
 	for variant in variants {
 		syntax := flat.source_type_syntax(variant)
-		if !syntax.named_variant_valid {
+		if !syntax.named_variant_valid() {
 			return []string{}
 		}
-		names << flat.source_type_name(syntax.named_variant_name)
+		names << flat.source_type_name(syntax.named_variant_name())
 	}
 	return names
 }
 
 fn named_variant_init_display(variant_id u32) string {
 	syntax := flat.source_type_syntax(variant_id)
-	owner_name := flat.source_type_syntax(syntax.named_variant_owner).unqualified
-	return '${flat.source_type_name(owner_name)}.${flat.source_type_name(syntax.named_variant_name)}'
+	owner_name := flat.source_type_syntax(syntax.named_variant_owner()).unqualified()
+	return '${flat.source_type_name(owner_name)}.${flat.source_type_name(syntax.named_variant_name())}'
 }
 
 // check_named_variant_init checks a lowered variant constructor,
@@ -120,7 +120,7 @@ fn named_variant_init_display(variant_id u32) string {
 fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node) bool {
 	variant_id := node.source_value_id()
 	variant_syntax := flat.source_type_syntax(variant_id)
-	if !variant_syntax.named_variant_valid {
+	if !variant_syntax.named_variant_valid() {
 		return true
 	}
 	variant_type := tc.parse_type(variant_id)
@@ -128,14 +128,14 @@ fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node)
 	if variant_type !is Struct
 		|| (flat.source_type_name(base_id) !in tc.structs
 			&& flat.source_type_name(tc.qualify_type_name(base_id)) !in tc.structs) {
-		sum_type := tc.parse_type(variant_syntax.named_variant_owner)
+		sum_type := tc.parse_type(variant_syntax.named_variant_owner())
 		names := if sum_type is SumType && sum_type.source_type_id() != 0 {
 			tc.named_sum_variant_names(sum_type.source_type_id())
 		} else {
 			[]string{}
 		}
-		sum_text := flat.source_type_name(variant_syntax.named_variant_owner)
-		variant := flat.source_type_name(variant_syntax.named_variant_name)
+		sum_text := flat.source_type_name(variant_syntax.named_variant_owner())
+		variant := flat.source_type_name(variant_syntax.named_variant_name())
 		display := named_variant_init_display(variant_id)
 		message := if names.len > 0 {
 			'`${sum_text}` has no variant `${variant}`; its variants are: ${names.map('`${it}`').join(', ')}'
@@ -181,6 +181,6 @@ fn (tc &TypeChecker) named_variant_init_was_reported(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.node(id)
-	return node.kind == .struct_init && flat.source_type_syntax(node.source_value_id()).named_variant
+	return node.kind == .struct_init && flat.source_type_syntax(node.source_value_id()).named_variant()
 		&& tc.errors.any(it.node == id)
 }

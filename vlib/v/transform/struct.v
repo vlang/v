@@ -190,7 +190,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				// Apply that existing conversion before validation, without allowing a
 				// pointer to another numeric (or nonnumeric) type to bypass the check.
 				if flat.source_type_shape(actual).has(.pointer)
-					&& t.normalize_type_alias(flat.source_type_syntax(actual).raw_base) == t.normalize_type_alias(field_type) {
+					&& t.normalize_type_alias(flat.source_type_syntax(actual).raw_base()) == t.normalize_type_alias(field_type) {
 					new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
 					actual = t.specialized_expr_type_name(new_val)
 				}
@@ -810,10 +810,10 @@ fn (mut t Transformer) generic_struct_init_value_type(id flat.NodeId) u32 {
 fn (mut t Transformer) specialize_struct_default_expr(struct_type_id u32, default_id flat.NodeId) flat.NodeId {
 	syntax := flat.source_type_syntax(struct_type_id)
 	args := syntax.generic_app_args()
-	if !syntax.generic_app_valid || args.len == 0 {
+	if !syntax.generic_app_valid() || args.len == 0 {
 		return default_id
 	}
-	params := t.generic_struct_param_names_for_base_id(syntax.generic_app_base)
+	params := t.generic_struct_param_names_for_base_id(syntax.generic_app_base())
 	if params.len == 0 || params.len != args.len {
 		return default_id
 	}
@@ -854,7 +854,7 @@ fn (t &Transformer) nested_generic_defaults_need_lowering(type_name_id u32, mut 
 	syntax := flat.source_type_syntax(normalized_source_id)
 	for field in info.fields {
 		if int(field.default_expr) >= 0 {
-			if syntax.generic_app_valid && syntax.generic_app_args().len > 0 { return true }
+			if syntax.generic_app_valid() && syntax.generic_app_args().len > 0 { return true }
 			continue
 		}
 		field_type_source_id := t.lookup_struct_field_type(normalized_source_id, field.name) or { field.typ }
@@ -887,7 +887,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 	mut missing_defaults := map[string]flat.NodeId{}
 	resolved_node_type_source_id := t.normalize_type_alias(node.source_value_id())
 	syntax := flat.source_type_syntax(resolved_node_type_source_id)
-	mut lower_generic_defaults := syntax.generic_app_valid && syntax.generic_app_args().len > 0
+	mut lower_generic_defaults := syntax.generic_app_valid() && syntax.generic_app_args().len > 0
 	for field in info.fields {
 		if field.name in provided { continue }
 		if int(field.default_expr) >= 0 {
@@ -1060,10 +1060,10 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 	// bare concrete generic argument is not rebased into a callee module with a
 	// same-named type). Resolve it against the exact bare table key so it keeps its
 	// own identity instead of being requalified into the active module.
-	main_shape := flat.source_type_shape(name_syntax.main_base)
+	main_shape := flat.source_type_shape(name_syntax.main_base())
 	if flat.source_type_query(name_id).has(.main_prefix) && !main_shape.has(.dotted)
 		&& !main_shape.has(.bracketed) {
-		bare := flat.source_type_name(name_syntax.main_base)
+		bare := flat.source_type_name(name_syntax.main_base())
 		// The bare table is first-wins across modules, so it can hold an imported
 		// homonym: the explicit `main.` lock may only accept program-module entries.
 		if info := t.structs[bare] {
@@ -1081,18 +1081,18 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 	// type alias (`import iam { Alias }`, `type Alias = Real`).
 	mut scoped_name := name_id
 	if t.cur_file.len > 0 {
-		lookup_id := if name_syntax.generic_app_valid {
-			name_syntax.generic_app_base
+		lookup_id := if name_syntax.generic_app_valid() {
+			name_syntax.generic_app_base()
 		} else {
 			name_id
 		}
 		if !flat.source_type_shape(lookup_id).has(.dotted) {
 			if resolved_source_id := t.selective_import_type_name_for_file(t.cur_file, lookup_id) {
-				if name_syntax.generic_app_valid {
+				if name_syntax.generic_app_valid() {
 					// Keep the arguments; the generic branch below specializes the
 					// resolved base with them.
 					scoped_name = flat.source_type_composition_two(.concat, resolved_source_id,
-						name_syntax.generic_app_legacy_suffix)
+						name_syntax.generic_app_legacy_suffix())
 				} else {
 					if info := t.lookup_struct_info_direct(resolved_source_id) {
 						return info
@@ -1117,9 +1117,9 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 	}
 	syntax := flat.source_type_syntax(scoped_name)
 	args := syntax.generic_app_args()
-	if syntax.generic_app_valid {
-		if base_info := t.lookup_struct_info_direct(syntax.generic_app_base) {
-			params := t.generic_struct_param_names_for_base_id(syntax.generic_app_base)
+	if syntax.generic_app_valid() {
+		if base_info := t.lookup_struct_info_direct(syntax.generic_app_base()) {
+			params := t.generic_struct_param_names_for_base_id(syntax.generic_app_base())
 			if params.len == args.len && params.len > 0 {
 				mut fields := []FieldInfo{cap: base_info.fields.len}
 				for field in base_info.fields {
@@ -1222,11 +1222,11 @@ fn (t &Transformer) checker_struct_lookup_name(name_id u32) u32 {
 	if name in t.tc.structs { return name_id }
 	if flat.source_type_shape(name_id).has(.dotted) {
 		syntax := flat.source_type_syntax(name_id)
-		short_name := flat.source_type_name(syntax.unqualified)
-		module_name := flat.source_type_name(syntax.qualifier)
+		short_name := flat.source_type_name(syntax.unqualified())
+		module_name := flat.source_type_name(syntax.qualifier())
 		short_module := t.tc.struct_modules[short_name] or { '' }
 		if short_name in t.tc.structs && short_module == module_name {
-			return syntax.unqualified
+			return syntax.unqualified()
 		}
 		return 0
 	}
@@ -1263,7 +1263,7 @@ fn (t &Transformer) unique_qualified_struct_for_short(name_id u32) ?u32 {
 		sname_id := flat.source_type_id(sname)
 		shape := flat.source_type_shape(sname_id)
 		if !shape.has(.dotted) || shape.has(.bracketed)
-			|| flat.source_type_syntax(sname_id).unqualified != name_id {
+			|| flat.source_type_syntax(sname_id).unqualified() != name_id {
 			continue
 		}
 		if found != 0 && found != sname_id {
@@ -1293,7 +1293,7 @@ fn (t &Transformer) lookup_checker_struct_info(name_id u32) ?StructInfo {
 		}
 	}
 	return StructInfo{
-		name:   flat.source_type_syntax(lookup_id).unqualified
+		name:   flat.source_type_syntax(lookup_id).unqualified()
 		module: t.tc.struct_modules[lookup_name] or { '' }
 		fields: fields
 	}
@@ -1302,16 +1302,16 @@ fn (t &Transformer) lookup_checker_struct_info(name_id u32) ?StructInfo {
 // struct_info_matches_qualifier reports whether `info` can be the struct that the
 // qualified `name` (`mod.Type`, or an import alias of `mod`) refers to.
 fn (t &Transformer) struct_info_matches_qualifier(info StructInfo, name_id u32) bool {
-	qualifier := flat.source_type_syntax(name_id).qualifier
+	qualifier := flat.source_type_syntax(name_id).qualifier()
 	if info.module.len == 0 || info.module == 'main' {
 		return qualifier == flat.source_type_id('main')
 	}
 	module_id := flat.source_type_id(info.module)
-	if qualifier == module_id || qualifier == flat.source_type_syntax(module_id).unqualified {
+	if qualifier == module_id || qualifier == flat.source_type_syntax(module_id).unqualified() {
 		return true
 	}
 	if imported_source_id := t.resolve_imported_type_name(name_id) {
-		return flat.source_type_syntax(imported_source_id).qualifier == module_id
+		return flat.source_type_syntax(imported_source_id).qualifier() == module_id
 	}
 	return false
 }
@@ -1322,18 +1322,18 @@ fn (t &Transformer) resolve_imported_type_name(name_id u32) ?u32 {
 		return none
 	}
 	syntax := flat.source_type_syntax(name_id)
-	if syntax.first_dot_prefix == 0 { return none }
-	alias := flat.source_type_name(syntax.first_dot_prefix)
+	if syntax.first_dot_prefix() == 0 { return none }
+	alias := flat.source_type_name(syntax.first_dot_prefix())
 	if mod := t.file_import_module(t.cur_file, alias) {
 		if mod != alias {
 			return flat.source_type_composition_two(.qualified, flat.source_type_id(mod),
-				syntax.first_dot_suffix)
+				syntax.first_dot_suffix())
 		}
 	}
 	if mod := t.tc.imports[alias] {
 		if mod != alias {
 			return flat.source_type_composition_two(.qualified, flat.source_type_id(mod),
-				syntax.first_dot_suffix)
+				syntax.first_dot_suffix())
 		}
 	}
 	return none
@@ -1374,7 +1374,7 @@ fn (t &Transformer) lookup_struct_info_direct(name_id u32) ?StructInfo {
 		return info
 	}
 	if flat.source_type_shape(name_id).has(.dotted) {
-		short_name := flat.source_type_name(flat.source_type_syntax(name_id).unqualified)
+		short_name := flat.source_type_name(flat.source_type_syntax(name_id).unqualified())
 		if info := t.structs[short_name] {
 			// The bare table is first-wins across modules: its entry may be another
 			// module's homonym, which must not answer for this qualified name.
@@ -1395,7 +1395,7 @@ fn (t &Transformer) lookup_struct_info_direct(name_id u32) ?StructInfo {
 		for qualified, info in t.structs {
 			qualified_id := flat.source_type_id(qualified)
 			if flat.source_type_shape(qualified_id).has(.dotted)
-				&& flat.source_type_syntax(qualified_id).unqualified == name_id {
+				&& flat.source_type_syntax(qualified_id).unqualified() == name_id {
 				matches << info
 			}
 		}
@@ -1443,16 +1443,16 @@ fn (t &Transformer) embedded_field_for_direct_selector(info StructInfo, field_na
 }
 
 fn embedded_selector_matches(field_name u32, embedded_name u32) bool {
-	clean := flat.source_type_syntax(transform_trimmed_type_id(embedded_name)).pointer_raw_base
+	clean := flat.source_type_syntax(transform_trimmed_type_id(embedded_name)).pointer_raw_base()
 	if clean == 0 {
 		return false
 	}
 	syntax := flat.source_type_syntax(clean)
-	if clean == field_name || syntax.unqualified == field_name {
+	if clean == field_name || syntax.unqualified() == field_name {
 		return true
 	}
-	return syntax.generic_app_valid && (syntax.generic_app_base == field_name
-		|| flat.source_type_syntax(syntax.generic_app_base).unqualified == field_name)
+	return syntax.generic_app_valid() && (syntax.generic_app_base() == field_name
+		|| flat.source_type_syntax(syntax.generic_app_base()).unqualified() == field_name)
 }
 
 // is_embedded_field reports whether is embedded field applies in transform.
@@ -1488,7 +1488,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 	mut assoc_type := node.source_value_id()
 	if checked_type_source_id := t.checker_expr_type_name(id) {
 		checked_type_source_id_2 := checked_type_source_id
-		if assoc_type == 0 || flat.source_type_syntax(checked_type_source_id_2).unqualified == flat.source_type_syntax(assoc_type).unqualified {
+		if assoc_type == 0 || flat.source_type_syntax(checked_type_source_id_2).unqualified() == flat.source_type_syntax(assoc_type).unqualified() {
 			assoc_type = checked_type_source_id_2
 		}
 	}
@@ -1672,7 +1672,7 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 
 // struct_field_sum_type supports struct field sum type handling for Transformer.
 fn (t &Transformer) struct_field_sum_type(field_type_id u32, owner_module string) u32 {
-	if flat.source_type_syntax(field_type_id).contains_union {
+	if flat.source_type_syntax(field_type_id).contains_union() {
 		if sum_name_source_id := t.sum_type_for_union_text(field_type_id, owner_module) {
 			return sum_name_source_id
 		}
@@ -1708,7 +1708,7 @@ fn (t &Transformer) sum_type_for_union_text(field_type_id u32, owner_module stri
 		sum_variants := sum_variants_id
 		sum_name_id := flat.source_type_id(sum_name)
 		if owner_module != '' && flat.source_type_shape(sum_name_id).has(.dotted)
-			&& flat.source_type_syntax(sum_name_id).qualifier != flat.source_type_id(owner_module) {
+			&& flat.source_type_syntax(sum_name_id).qualifier() != flat.source_type_id(owner_module) {
 			continue
 		}
 		if sum_variants.len != variants.len {

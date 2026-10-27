@@ -2450,7 +2450,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut callback_fixed_array_types := flat.TypeTextBindings{}
 	for name, typ_id in fixed_array_types.ids {
 		element_type := fastc_fixed_array_element_type(typ_id) or { continue }
-		if flat.source_type_syntax(element_type).c_fn_type_fragment {
+		if flat.source_type_syntax(element_type).c_fn_type_fragment() {
 			callback_fixed_array_types.set_id(name, typ_id)
 		} else if fastc_primitive_c_type_id(element_type) != none
 			&& element_type !in [flat.source_type_string, fastc_type_array, fastc_type_map,

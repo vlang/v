@@ -240,7 +240,7 @@ fn (mut g Parser) render_asm_operand(operand FastcAsmOperand) !FastcAsmRenderedO
 			if local.is_reference {
 				expression = '(*(${expression}))'
 				if flat.source_type_query(typ).has(.c_pointer_suffix) {
-					typ = flat.source_type_syntax(typ).c_pointer_base
+					typ = flat.source_type_syntax(typ).c_pointer_base()
 				}
 			}
 		}

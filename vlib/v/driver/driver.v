@@ -19995,9 +19995,9 @@ fn v3_split_type_names(list string) []u32 {
 // declaring_module returns the module that declares the type `name`, as the type
 // checker names modules (`json2` for `x.json2`), or `?` when nothing says so.
 fn (scopes &V3InterfaceScopes) declaring_module(name_id u32) string {
-	base := flat.source_type_syntax(name_id).generic_base
+	base := flat.source_type_syntax(name_id).generic_base()
 	if flat.source_type_shape(base).has(.dotted) {
-		return flat.source_type_name(flat.source_type_syntax(base).qualifier)
+		return flat.source_type_name(flat.source_type_syntax(base).qualifier())
 	}
 	return scopes.modules[flat.source_type_name(name_id)] or { '?' }
 }
@@ -21656,7 +21656,7 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 
 fn wasm_type_without_main_prefix(type_id u32) u32 {
 	return if flat.source_type_query(type_id).has(.main_prefix) {
-		flat.source_type_syntax(type_id).main_base
+		flat.source_type_syntax(type_id).main_base()
 	} else {
 		type_id
 	}
@@ -21779,13 +21779,13 @@ fn wasm_supported_array_elem(type_id u32) bool {
 // with a depth bound, because a self-referential type through a pointer field
 // would otherwise loop the walk for ever.
 fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
-	name_id := flat.source_type_syntax(type_id).main_at_base
+	name_id := flat.source_type_syntax(type_id).main_at_base()
 	// Option types (`?T`) lower in the wasm backend when their payload does:
 	// gen.v handles types.OptionType and the SSA backend lowers the leading
 	// `ok` plus payload. Walk the payload instead of looking the option up in
 	// tc.structs, where it is not registered as a regular struct.
 	if flat.source_type_shape(name_id).has(.option_type) {
-		inner := flat.source_type_syntax(name_id).raw_base
+		inner := flat.source_type_syntax(name_id).raw_base()
 		if inner == 0 { return false }
 		if flat.source_type_shape(inner).has(.array_type) {
 			return wasm_supported_array_elem(inner)
@@ -21808,7 +21808,7 @@ fn wasm_struct_fields_supported(tc &types.TypeChecker, type_id u32, depth int) b
 	if depth > 8 {
 		return false
 	}
-	name_id := flat.source_type_syntax(type_id).main_at_base
+	name_id := flat.source_type_syntax(type_id).main_at_base()
 	if name_id == 0 {
 		return false
 	}
@@ -23924,19 +23924,19 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 					}
 					if shape.has(.leading_bracket) {
 						syntax := flat.source_type_syntax(base_type_source_id_3)
-						if syntax.first_bracket_closed && syntax.first_bracket_base != 0 {
-							return flat.source_type_composition_one(.array, syntax.first_bracket_base)
+						if syntax.first_bracket_closed() && syntax.first_bracket_base() != 0 {
+							return flat.source_type_composition_one(.array, syntax.first_bracket_base())
 						}
 					}
 					return u32(0)
 				}
 				if shape.has(.array_type) {
-					return flat.source_type_syntax(base_type_source_id_3).raw_base
+					return flat.source_type_syntax(base_type_source_id_3).raw_base()
 				}
 				if shape.has(.leading_bracket) {
 					syntax := flat.source_type_syntax(base_type_source_id_3)
-					if syntax.first_bracket_closed && syntax.first_bracket_base != 0 {
-						return syntax.first_bracket_base
+					if syntax.first_bracket_closed() && syntax.first_bracket_base() != 0 {
+						return syntax.first_bracket_base()
 					}
 				}
 				if base_type_source_id_3 == flat.source_type_string {
@@ -24033,7 +24033,7 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings flat.Typ
 	}
 	if base_type_source_id_4 != 0 {
 		method_id := callee.source_value_id()
-		short_base := flat.source_type_syntax(base_type_source_id_4).unqualified
+		short_base := flat.source_type_syntax(base_type_source_id_4).unqualified()
 		for key_id in [
 			flat.source_type_composition_two(.qualified, base_type_source_id_4, method_id),
 			flat.source_type_composition_two(.qualified, short_base, method_id),
@@ -24111,7 +24111,7 @@ fn implicit_normalize_type(raw_id u32, index ImplicitFieldScanIndex) u32 {
 		mut changed := false
 		for prefix in implicit_type_prefixes {
 			if flat.source_type_shape(typ_id).has(prefix) {
-				typ_id = implicit_trimmed_type_id(flat.source_type_syntax(typ_id).raw_base)
+				typ_id = implicit_trimmed_type_id(flat.source_type_syntax(typ_id).raw_base())
 				changed = true
 			}
 		}
@@ -24131,7 +24131,7 @@ fn implicit_normalize_type(raw_id u32, index ImplicitFieldScanIndex) u32 {
 @[inline]
 fn implicit_trimmed_type_id(id u32) u32 {
 	return if flat.source_type_shape(id).has(.padded) {
-		flat.source_type_syntax(id).trimmed
+		flat.source_type_syntax(id).trimmed()
 	} else {
 		id
 	}

@@ -17,7 +17,7 @@ fn (g &Parser) render_fixed_array_layout_argument(tokens []FastcExpressionToken,
 	actual_layout := g.underlying_alias_type(actual_type)
 	if expected_layout == actual_layout
 		|| !flat.source_type_query(actual_layout).has(.c_fixed_array_prefix)
-		|| flat.source_type_syntax(expected_layout).c_pointer_count != flat.source_type_syntax(actual_layout).c_pointer_count {
+		|| flat.source_type_syntax(expected_layout).c_pointer_count() != flat.source_type_syntax(actual_layout).c_pointer_count() {
 		return none
 	}
 	mut expected_element := fastc_trim_pointer_type(expected_layout)
@@ -410,7 +410,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	// the value it names, so `word[i]` indexes that value, not the pointer as a C array.
 	mut is_reference_base := g.is_reference_local_base(base_tokens, base_type)
 	if is_reference_base {
-		pointee := flat.source_type_syntax(base_type).c_pointer_base
+		pointee := flat.source_type_syntax(base_type).c_pointer_base()
 		pointee_layout := g.underlying_alias_type(pointee)
 		if flat.source_type_query(pointee_layout).has(.c_map_prefix) {
 			// A map entry is not an array element; the map renderers read and update it.
@@ -557,7 +557,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	element_type := if is_array_pointer {
 		g.array_element_type(base_type) or { return none }
 	} else if flat.source_type_query(base_type).has(.c_pointer_suffix) {
-		flat.source_type_syntax(base_type).c_pointer_base
+		flat.source_type_syntax(base_type).c_pointer_base()
 	} else if base_layout_type == flat.source_type_string {
 		flat.source_type_u8
 	} else {
@@ -897,7 +897,7 @@ fn (g &Parser) render_membership_candidate_with_raw(tokens []FastcExpressionToke
 		&& g.expression_uses_member_smartcast(tokens) {
 		actual := fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { u32(0) })
 		if flat.source_type_query(actual).has(.c_pointer_suffix)
-			&& flat.source_type_syntax(actual).c_pointer_base == expected_type_source_id {
+			&& flat.source_type_syntax(actual).c_pointer_base() == expected_type_source_id {
 			return fastc_narrowed_variant_value(rendered, expected_type_source_id)
 		}
 	}
@@ -1495,7 +1495,7 @@ fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_typ
 fn fastc_collect_referenced_fixed_array_type(type_id u32, mut fixed_array_types flat.TypeTextBindings) {
 	for name_id in flat.source_type_syntax(type_id).words() {
 		if flat.source_type_query(name_id).has(.c_fixed_array_prefix)
-			&& flat.source_type_syntax(name_id).fastc_array_marker
+			&& flat.source_type_syntax(name_id).fastc_array_marker()
 			&& !fixed_array_types.contains(flat.source_type_name(name_id)) {
 			fastc_register_fixed_array_type(name_id, mut fixed_array_types)
 		}

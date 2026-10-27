@@ -393,7 +393,7 @@ fn (mut g Parser) fastc_pointer_str_name(pointer_c_type_id u32) ?string {
 	if !flat.source_type_query(pointer_c_type_id).has(.c_pointer_suffix) {
 		return none
 	}
-	pointee_id := flat.source_type_syntax(flat.source_type_syntax(pointer_c_type_id).c_pointer_base).trimmed
+	pointee_id := flat.source_type_syntax(flat.source_type_syntax(pointer_c_type_id).c_pointer_base()).trimmed()
 	if pointee_id == 0 || flat.source_type_query(pointee_id).has(.c_pointer_suffix) || pointee_id in [
 		flat.source_type_id('void'),
 		flat.source_type_id('voidptr'),
@@ -460,7 +460,7 @@ fn (mut g Parser) fastc_reference_str_expression(value string, value_type_id u32
 		|| g.expression_uses_member_smartcast(value_tokens) {
 		return none
 	}
-	pointee_id := flat.source_type_syntax(flat.source_type_syntax(value_type_id).c_pointer_base).trimmed
+	pointee_id := flat.source_type_syntax(flat.source_type_syntax(value_type_id).c_pointer_base()).trimmed()
 	if fastc_primitive_c_type_id(pointee_id) != none {
 		return none
 	}

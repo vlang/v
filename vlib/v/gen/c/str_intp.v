@@ -181,8 +181,8 @@ fn parse_string_interp_format(format string) StringInterpFormat {
 
 fn string_interp_type_name(typ &types.Type) u32 {
 	name_id := typ.source_type_id()
-	if flat.source_type_syntax(name_id).builtin_prefix {
-		return flat.source_type_syntax(name_id).unqualified
+	if flat.source_type_syntax(name_id).builtin_prefix() {
+		return flat.source_type_syntax(name_id).unqualified()
 	}
 	return name_id
 }

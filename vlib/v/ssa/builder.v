@@ -855,10 +855,10 @@ fn qualify_type_ref_name(name_id u32, module_name string) u32 {
 	syntax := flat.source_type_syntax(name_id)
 	if shape.has(.function_compact) || shape.has(.function_spaced) { return name_id }
 	if shape.has(.pointer) {
-		return flat.source_type_composition_one(.pointer, qualify_type_ref_name(syntax.raw_base, module_name))
+		return flat.source_type_composition_one(.pointer, qualify_type_ref_name(syntax.raw_base(), module_name))
 	}
-	if syntax.raw_base != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
-		inner := qualify_type_ref_name(syntax.raw_base, module_name)
+	if syntax.raw_base() != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
+		inner := qualify_type_ref_name(syntax.raw_base(), module_name)
 		return flat.source_type_composition_one(if shape.has(.result_type) {
 			.result
 		} else {
@@ -866,16 +866,16 @@ fn qualify_type_ref_name(name_id u32, module_name string) u32 {
 		}, inner)
 	}
 	if shape.has(.array_type) {
-		return flat.source_type_composition_one(.array, qualify_type_ref_name(syntax.raw_base, module_name))
+		return flat.source_type_composition_one(.array, qualify_type_ref_name(syntax.raw_base(), module_name))
 	}
-	if shape.has(.leading_bracket) && syntax.first_bracket_base != 0 {
-		return flat.source_type_composition_two(.concat, syntax.first_bracket_prefix,
-			qualify_type_ref_name(syntax.first_bracket_base, module_name))
+	if shape.has(.leading_bracket) && syntax.first_bracket_base() != 0 {
+		return flat.source_type_composition_two(.concat, syntax.first_bracket_prefix(),
+			qualify_type_ref_name(syntax.first_bracket_base(), module_name))
 	}
 	if shape.has(.bracketed) && flat.source_type_query(name_id).has(.bracket_suffix)
-		&& syntax.generic_base != 0 {
+		&& syntax.generic_base() != 0 {
 		return flat.source_type_composition_two(.concat,
-			qualify_type_ref_name(syntax.generic_base, module_name), syntax.bracket_from)
+			qualify_type_ref_name(syntax.generic_base(), module_name), syntax.bracket_from())
 	}
 	if shape.has(.map_type) {
 		key, value := map_type_parts(name_id)
@@ -7673,7 +7673,7 @@ fn (mut b Builder) bind_loop_var(name string, typ TypeID, typ_name_id u32) Value
 // ssa_pointer_base_source_type retains unchanged spelling identities.
 fn ssa_pointer_base_source_type(type_id u32) u32 {
 	if !flat.source_type_shape(type_id).has(.pointer) { return type_id }
-	return flat.source_type_syntax(type_id).pointer_raw_base
+	return flat.source_type_syntax(type_id).pointer_raw_base()
 }
 
 // for_in_container_type_name supports for in container type name handling for Builder.
@@ -7706,9 +7706,9 @@ fn (b &Builder) for_in_array_elem_type_name(container_id flat.NodeId, container_
 	clean_id := ssa_pointer_base_source_type(container_type_id)
 	shape := flat.source_type_shape(clean_id)
 	syntax := flat.source_type_syntax(clean_id)
-	if shape.has(.array_type) { return syntax.raw_base }
-	if shape.has(.leading_bracket) && syntax.first_bracket_base != 0 {
-		return syntax.first_bracket_base
+	if shape.has(.array_type) { return syntax.raw_base() }
+	if shape.has(.leading_bracket) && syntax.first_bracket_base() != 0 {
+		return syntax.first_bracket_base()
 	}
 	if clean_id == flat.source_type_string {
 		return flat.source_type_u8
@@ -9321,7 +9321,7 @@ fn (b &Builder) enum_field_value_for_type(type_name_id u32, member string, as_fl
 	member_keys := enum_member_lookup_keys(raw_member)
 	mut names := []string{}
 	names << resolved_enum_name
-	short_type := flat.source_type_syntax(resolved_enum_id).first_dot_suffix
+	short_type := flat.source_type_syntax(resolved_enum_id).first_dot_suffix()
 	if short_type != resolved_enum_id {
 		names << flat.source_type_name(short_type)
 	}
@@ -9354,7 +9354,7 @@ fn (b &Builder) is_flag_enum_type_name(type_name_id u32) bool {
 	clean_id := ssa_pointer_base_source_type(type_name_id)
 	clean := flat.source_type_name(clean_id)
 	if clean in b.flag_enum_types { return true }
-	short_name := flat.source_type_name(flat.source_type_syntax(clean_id).first_dot_suffix)
+	short_name := flat.source_type_name(flat.source_type_syntax(clean_id).first_dot_suffix())
 	if short_name in b.flag_enum_types { return true }
 	if b.tc != unsafe { nil } {
 		if clean in b.tc.flag_enums || short_name in b.tc.flag_enums { return true }
@@ -9370,7 +9370,7 @@ fn (b &Builder) is_flag_enum_type_name(type_name_id u32) bool {
 fn (b &Builder) checker_has_flag_enum(type_name_id u32) bool {
 	if b.tc == unsafe { nil } { return false }
 	if flat.source_type_name(type_name_id) in b.tc.flag_enums { return true }
-	return flat.source_type_name(flat.source_type_syntax(type_name_id).first_dot_suffix) in b.tc.flag_enums
+	return flat.source_type_name(flat.source_type_syntax(type_name_id).first_dot_suffix()) in b.tc.flag_enums
 }
 
 // build_enum_val_with_type builds enum val with type data for ssa.
@@ -9470,7 +9470,7 @@ fn (mut b Builder) build_array_literal(id flat.NodeId, node flat.Node) ValueID {
 	// which all use the element type, and elements read back shifted.
 	arr_type_id := b.checked_expr_type_name(id)
 	if flat.source_type_shape(arr_type_id).has(.array_type)
-		&& flat.source_type_syntax(arr_type_id).raw_base != 0 {
+		&& flat.source_type_syntax(arr_type_id).raw_base() != 0 {
 		elem_type = b.resolve_type(indexed_elem_type_name(arr_type_id))
 	}
 	elem_size := b.m.type_size(elem_type)
@@ -9507,10 +9507,10 @@ fn (mut b Builder) build_array_init(node flat.Node) ValueID {
 	mut init_val := ValueID(0)
 	if flat.source_type_shape(elem_type_id).has(.leading_bracket) {
 		syntax := flat.source_type_syntax(elem_type_id)
-		len_val = b.fixed_array_len_value(flat.source_type_name(syntax.first_bracket_source_inner))
+		len_val = b.fixed_array_len_value(flat.source_type_name(syntax.first_bracket_source_inner()))
 		cap_val = len_val
-		elem_type_id = if syntax.first_bracket_closed {
-			syntax.first_bracket_base
+		elem_type_id = if syntax.first_bracket_closed() {
+			syntax.first_bracket_base()
 		} else {
 			elem_type_id
 		}
@@ -9708,20 +9708,20 @@ fn (b &Builder) is_fixed_array_type_name(type_name_id u32) bool {
 	shape := flat.source_type_shape(type_name_id)
 	syntax := flat.source_type_syntax(type_name_id)
 	if shape.has(.leading_bracket) {
-		return syntax.first_bracket_raw_inner != 0 && syntax.first_bracket_base != 0
+		return syntax.first_bracket_raw_inner() != 0 && syntax.first_bracket_base() != 0
 	}
 	return shape.has(.bracketed) && flat.source_type_query(type_name_id).has(.bracket_suffix)
-		&& syntax.generic_base != 0
+		&& syntax.generic_base() != 0
 }
 
 fn (b &Builder) fixed_array_elem_type_name(type_name_id u32) u32 {
 	shape := flat.source_type_shape(type_name_id)
 	syntax := flat.source_type_syntax(type_name_id)
 	if shape.has(.leading_bracket) {
-		if syntax.first_bracket_base != 0 { return syntax.first_bracket_base }
+		if syntax.first_bracket_base() != 0 { return syntax.first_bracket_base() }
 	} else if shape.has(.bracketed) && flat.source_type_query(type_name_id).has(.bracket_suffix)
-		&& syntax.generic_base != 0 {
-		return syntax.generic_base
+		&& syntax.generic_base() != 0 {
+		return syntax.generic_base()
 	}
 	return flat.source_type_u8
 }
@@ -9729,9 +9729,9 @@ fn (b &Builder) fixed_array_elem_type_name(type_name_id u32) u32 {
 fn (b &Builder) fixed_array_len_text(type_name_id u32) string {
 	syntax := flat.source_type_syntax(type_name_id)
 	raw_len_id := if flat.source_type_shape(type_name_id).has(.leading_bracket) {
-		syntax.first_bracket_raw_inner
+		syntax.first_bracket_raw_inner()
 	} else {
-		syntax.receiver_app_inner
+		syntax.receiver_app_inner()
 	}
 	raw_len := flat.source_type_name(raw_len_id)
 	if raw_len.len == 0 {
@@ -10673,7 +10673,7 @@ fn (b &Builder) find_sum_variant(sum_name_id u32, type_name_id u32) ?u32 {
 	for variant_id in variants {
 		if ssa_raw_pointer_depth(variant_id) != pointers { continue }
 		variant_base := ssa_pointer_base_source_type(variant_id)
-		if flat.source_type_syntax(variant_base).unqualified != base { continue }
+		if flat.source_type_syntax(variant_base).unqualified() != base { continue }
 		if found != 0 { return none }
 		found = variant_id
 	}
@@ -11224,7 +11224,7 @@ fn (mut b Builder) build_thread_wait(id flat.NodeId, node flat.Node, thread_id f
 	b.check_thread_status(status)
 	thread_type_id := ssa_pointer_base_source_type(b.receiver_type_name(thread_id))
 	ret_type := if flat.source_type_shape(thread_type_id).has(.thread_type) {
-		b.resolve_type(flat.source_type_syntax(thread_type_id).raw_base)
+		b.resolve_type(flat.source_type_syntax(thread_type_id).raw_base())
 	} else if thread_type_id == ssa_thread_source_type {
 		b.void_type
 	} else {
@@ -11309,8 +11309,8 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			}
 			dotted_type := flat.source_type_syntax(receiver_type).doubleunderscore_dotted()
 			receiver_syntax := flat.source_type_syntax(dotted_type)
-			primitive_type := if receiver_syntax.builtin_prefix {
-				receiver_syntax.builtin_base
+			primitive_type := if receiver_syntax.builtin_prefix() {
+				receiver_syntax.builtin_base()
 			} else {
 				dotted_type
 			}
@@ -11880,7 +11880,7 @@ fn (mut b Builder) map_array_elem_size_arg(id flat.NodeId, node flat.Node) ?Valu
 	if !flat.source_type_shape(typ_name).has(.array_type) {
 		return none
 	}
-	elem_type := b.resolve_type(flat.source_type_syntax(typ_name).raw_base)
+	elem_type := b.resolve_type(flat.source_type_syntax(typ_name).raw_base())
 	elem_size := b.m.type_size(elem_type)
 	actual_size := if elem_size > 0 { elem_size } else { 1 }
 	return b.m.get_or_add_const(b.i64_type, actual_size.str())
@@ -12231,7 +12231,7 @@ fn (mut b Builder) build_array_repeat_call(base_id flat.NodeId, count_id flat.No
 fn (mut b Builder) array_receiver_elem_type(base_id flat.NodeId) TypeID {
 	base_name := b.receiver_type_name(base_id)
 	if flat.source_type_shape(base_name).has(.array_type) {
-		return b.resolve_type(flat.source_type_syntax(base_name).raw_base)
+		return b.resolve_type(flat.source_type_syntax(base_name).raw_base())
 	}
 	return b.i64_type
 }
@@ -12244,7 +12244,7 @@ fn (mut b Builder) array_method_elem_type(id flat.NodeId, base_id flat.NodeId) T
 	}
 	base_name := b.receiver_type_name(base_id)
 	if flat.source_type_shape(base_name).has(.array_type) {
-		return b.resolve_type(flat.source_type_syntax(base_name).raw_base)
+		return b.resolve_type(flat.source_type_syntax(base_name).raw_base())
 	}
 	return b.i64_type
 }
@@ -12319,7 +12319,7 @@ fn (b &Builder) typed_receiver_method_name(base_id flat.NodeId, method string) ?
 	mut candidates := []string{}
 	candidates << '${receiver_name}.${method}'
 	candidates << '${receiver_name.replace('.', '__')}__${method}'
-	short_id := flat.source_type_syntax(receiver_id).unqualified
+	short_id := flat.source_type_syntax(receiver_id).unqualified()
 	if short_id != receiver_id {
 		short_name := flat.source_type_name(short_id)
 		candidates << '${short_name}.${method}'
@@ -12365,7 +12365,7 @@ fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id
 fn (b &Builder) is_function_value_expr(id flat.NodeId) bool {
 	mut typ := b.checked_expr_type_name(id)
 	if flat.source_type_shape(typ).has(.padded) {
-		typ = flat.source_type_syntax(typ).trimmed
+		typ = flat.source_type_syntax(typ).trimmed()
 	}
 	return b.is_function_type_name(typ)
 }
@@ -12757,8 +12757,8 @@ fn map_type_parts(map_type_id u32) (u32, u32) {
 	clean := ssa_pointer_base_source_type(map_type_id)
 	if !flat.source_type_shape(clean).has(.map_type) { return 0, 0 }
 	syntax := flat.source_type_syntax(clean)
-	if !syntax.bracket_closed { return 0, 0 }
-	return syntax.bracket_raw_inner, syntax.raw_base
+	if !syntax.bracket_closed() { return 0, 0 }
+	return syntax.bracket_raw_inner(), syntax.raw_base()
 }
 
 fn ssa_raw_pointer_depth(type_id u32) int {
@@ -12766,7 +12766,7 @@ fn ssa_raw_pointer_depth(type_id u32) int {
 	mut depth := 0
 	for flat.source_type_shape(current).has(.pointer) {
 		depth++
-		current = flat.source_type_syntax(current).raw_base
+		current = flat.source_type_syntax(current).raw_base()
 	}
 	return depth
 }
@@ -12775,9 +12775,9 @@ fn indexed_elem_type_name(container_type_id u32) u32 {
 	clean := ssa_pointer_base_source_type(container_type_id)
 	shape := flat.source_type_shape(clean)
 	syntax := flat.source_type_syntax(clean)
-	if shape.has(.array_type) { return syntax.raw_base }
-	if shape.has(.leading_bracket) && syntax.first_bracket_base != 0 {
-		return syntax.first_bracket_base
+	if shape.has(.array_type) { return syntax.raw_base() }
+	if shape.has(.leading_bracket) && syntax.first_bracket_base() != 0 {
+		return syntax.first_bracket_base()
 	}
 	if shape.has(.map_type) {
 		_, value := map_type_parts(clean)
@@ -13615,7 +13615,7 @@ fn (b &Builder) fixed_array_expr_type_name(id flat.NodeId) ?u32 {
 	// still contains inline elements rather than pointers to those elements.
 	mut type_name := b.checked_expr_type_name(id)
 	if flat.source_type_shape(type_name).has(.pointer) {
-		type_name = flat.source_type_syntax(type_name).raw_base
+		type_name = flat.source_type_syntax(type_name).raw_base()
 	}
 	if b.is_fixed_array_type_name(type_name) {
 		return type_name
@@ -13704,7 +13704,7 @@ fn (mut b Builder) index_elem_type(id flat.NodeId, node flat.Node) TypeID {
 fn (mut b Builder) build_struct_init(node flat.Node) ValueID {
 	type_id := node.source_value_id()
 	type_shape := flat.source_type_shape(type_id)
-	if flat.source_type_syntax(type_id).raw_base != 0
+	if flat.source_type_syntax(type_id).raw_base() != 0
 		&& (type_shape.has(.option_type) || type_shape.has(.result_type)) {
 		// Transformed optional literals may be their type's first use. Register
 		// the wrapper before short-name lookup can select its payload struct.
@@ -13864,7 +13864,7 @@ fn (mut b Builder) default_field_value(struct_name_id u32, field_name string, ze
 	if value := b.declared_field_default_value(struct_name_id, field_name) {
 		return value
 	}
-	if flat.source_type_syntax(struct_name_id).system_error_suffix {
+	if flat.source_type_syntax(struct_name_id).system_error_suffix() {
 		if field_name == 'msg' {
 			return b.m.add_value(.string_literal, b.str_type, '', 0)
 		}
@@ -13875,7 +13875,7 @@ fn (mut b Builder) default_field_value(struct_name_id u32, field_name string, ze
 	field_type_source_id_5 := b.field_type_name(struct_name_id, field_name)
 	field_shape := flat.source_type_shape(field_type_source_id_5)
 	if field_shape.has(.array_type) {
-		elem_type := b.resolve_type(flat.source_type_syntax(field_type_source_id_5).raw_base)
+		elem_type := b.resolve_type(flat.source_type_syntax(field_type_source_id_5).raw_base())
 		elem_size := b.m.type_size(elem_type)
 		elem_size_const := b.m.get_or_add_const(b.i64_type, '${elem_size}')
 		if fn_id := b.runtime_fn_lookup('array_new') {
@@ -13928,7 +13928,7 @@ fn (b &Builder) registered_field_type(struct_name_id u32, field_name string) ?u3
 	if typ_source_id := b.struct_field_types.type_id(name + '.' + field_name) {
 		return typ_source_id
 	}
-	short_name := flat.source_type_name(flat.source_type_syntax(owner_id).first_dot_suffix)
+	short_name := flat.source_type_name(flat.source_type_syntax(owner_id).first_dot_suffix())
 	if typ_source_id := b.struct_field_types.type_id(short_name + '.' + field_name) {
 		return typ_source_id
 	}
@@ -13941,7 +13941,7 @@ fn (b &Builder) field_type_name(struct_name_id u32, field_name string) u32 {
 
 // struct_literal_type resolves a layout and its source owner in declaration lookup order.
 fn (b &Builder) struct_literal_type(name_id u32) (TypeID, u32) {
-	short_id := flat.source_type_syntax(name_id).first_dot_suffix
+	short_id := flat.source_type_syntax(name_id).first_dot_suffix()
 	if !flat.source_type_shape(name_id).has(.dotted) && b.cur_module.len > 0
 		&& b.cur_module !in ['main', 'builtin'] {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), short_id)
@@ -14127,11 +14127,11 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	if name_id == ssa_thread_source_type || shape.has(.thread_type) {
 		return b.u64_type
 	}
-	if syntax.raw_base != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
-		return b.option_type_id(syntax.raw_base, shape.has(.result_type))
+	if syntax.raw_base() != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
+		return b.option_type_id(syntax.raw_base(), shape.has(.result_type))
 	}
 	if shape.has(.pointer) {
-		return b.m.type_store.get_ptr(b.resolve_type(syntax.raw_base))
+		return b.m.type_store.get_ptr(b.resolve_type(syntax.raw_base()))
 	}
 	clean_name := normalize_primitive_type_id(name_id)
 	if clean_name != name_id { return b.resolve_type(clean_name) }
@@ -14178,11 +14178,11 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 			return typ
 		}
 	}
-	short_name := flat.source_type_name(syntax.first_dot_suffix)
+	short_name := flat.source_type_name(syntax.first_dot_suffix())
 	if !shape.has(.dotted) && b.cur_module.len > 0 && b.cur_module != 'main'
 		&& b.cur_module != 'builtin' {
 		qualified_name := flat.source_type_name(flat.source_type_composition_two(.qualified,
-			flat.source_type_id(b.cur_module), syntax.first_dot_suffix))
+			flat.source_type_id(b.cur_module), syntax.first_dot_suffix()))
 		if qualified_name in b.enum_types {
 			return b.i32_type
 		}
@@ -14266,7 +14266,7 @@ fn normalize_primitive_type_name(name string) string {
 }
 
 fn normalize_primitive_type_id(name u32) u32 {
-	short := flat.source_type_syntax(name).first_dot_suffix
+	short := flat.source_type_syntax(name).first_dot_suffix()
 	return if short in [flat.source_type_int, flat.source_type_i8, flat.source_type_char,
 		flat.source_type_i16, flat.source_type_i32, flat.source_type_rune, flat.source_type_i64,
 		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
@@ -14327,8 +14327,8 @@ fn (b &Builder) option_payload_type_name(id flat.NodeId) u32 {
 	name := b.checked_expr_type_name(id)
 	shape := flat.source_type_shape(name)
 	syntax := flat.source_type_syntax(name)
-	if syntax.raw_base != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
-		return syntax.raw_base
+	if syntax.raw_base() != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
+		return syntax.raw_base()
 	}
 	return name
 }
@@ -14354,7 +14354,7 @@ fn (b &Builder) is_option_type(typ_id TypeID) bool {
 fn (b &Builder) is_enum_type_name(name_id u32) bool {
 	if name_id == 0 { return false }
 	if flat.source_type_name(name_id) in b.enum_types { return true }
-	return flat.source_type_name(flat.source_type_syntax(name_id).first_dot_suffix) in b.enum_types
+	return flat.source_type_name(flat.source_type_syntax(name_id).first_dot_suffix()) in b.enum_types
 }
 
 fn (b &Builder) enum_autostr_fn_name(type_name_id u32) ?string {
@@ -14365,7 +14365,7 @@ fn (b &Builder) enum_autostr_fn_name(type_name_id u32) ?string {
 		&& b.cur_module !in ['main', 'builtin'] {
 		candidates << flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), clean)
 	}
-	candidates << flat.source_type_syntax(clean).unqualified
+	candidates << flat.source_type_syntax(clean).unqualified()
 	for candidate in candidates {
 		if !b.is_enum_type_name(candidate) { continue }
 		fn_name := '${ssa_c_name(flat.source_type_name(candidate))}__autostr'
@@ -14378,11 +14378,11 @@ fn (b &Builder) enum_autostr_fn_name(type_name_id u32) ?string {
 fn (mut b Builder) resolve_type_in_module(name_id u32, module_name string) TypeID {
 	shape := flat.source_type_shape(name_id)
 	syntax := flat.source_type_syntax(name_id)
-	if syntax.raw_base != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
-		return b.option_type_id(syntax.raw_base, shape.has(.result_type))
+	if syntax.raw_base() != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
+		return b.option_type_id(syntax.raw_base(), shape.has(.result_type))
 	}
 	if shape.has(.pointer) {
-		inner := b.resolve_type_in_module(syntax.raw_base, module_name)
+		inner := b.resolve_type_in_module(syntax.raw_base(), module_name)
 		return b.m.type_store.get_ptr(inner)
 	}
 	if !shape.has(.dotted) && module_name.len > 0 && module_name !in ['main', 'builtin'] {
@@ -14403,7 +14403,7 @@ fn (mut b Builder) resolve_type_in_module(name_id u32, module_name string) TypeI
 fn (mut b Builder) resolve_c_decl_type(name_id u32) TypeID {
 	if flat.source_type_shape(name_id).has(.variadic) { return b.m.type_store.get_ptr(b.i8_type) }
 	if flat.source_type_query(name_id).has(.c_prefix) {
-		return b.resolve_type(flat.source_type_syntax(name_id).first_dot_suffix)
+		return b.resolve_type(flat.source_type_syntax(name_id).first_dot_suffix())
 	}
 	return b.resolve_type(name_id)
 }

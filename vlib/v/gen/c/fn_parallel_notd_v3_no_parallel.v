@@ -1349,7 +1349,7 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 	if fused {
 		if g.prep_alias_short_names.len == 0 {
 			for name, _ in g.tc.type_aliases.ids {
-				g.prep_alias_short_names[flat.source_type_syntax(flat.source_type_id(name)).unqualified] = true
+				g.prep_alias_short_names[flat.source_type_syntax(flat.source_type_id(name)).unqualified()] = true
 			}
 		}
 		prep_g = voidptr(g)
@@ -2968,8 +2968,8 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 fn parallel_type_text_may_preseed(g &FlatGen, typ_id u32) bool {
 	if typ_id == 0 { return false }
 	syntax := flat.source_type_syntax(typ_id)
-	return syntax.parallel_preseed_fn || (syntax.parallel_preseed_short != 0
-		&& syntax.parallel_preseed_short in g.prep_alias_short_names)
+	return syntax.parallel_preseed_fn() || (syntax.parallel_preseed_short() != 0
+		&& syntax.parallel_preseed_short() in g.prep_alias_short_names)
 }
 
 // par_cgen_prep_enabled gates the parallel fused item prep, so a single binary
@@ -3012,7 +3012,7 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ_id u32) bool {
 		return false
 	}
 	clean_id := g.parallel_base_type_text(typ_id)
-	if flat.source_type_syntax(clean_id).function_fragment {
+	if flat.source_type_syntax(clean_id).function_fragment() {
 		return true
 	}
 	clean := flat.source_type_name(clean_id)
@@ -3025,12 +3025,12 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ_id u32) bool {
 
 // parallel_base_type_text supports parallel base type text handling for FlatGen.
 fn (g &FlatGen) parallel_base_type_text(typ_id u32) u32 {
-	mut clean := flat.source_type_syntax(typ_id).trimmed
+	mut clean := flat.source_type_syntax(typ_id).trimmed()
 	for clean != 0 {
 		shape := flat.source_type_shape(clean)
 		if shape.has(.shared_type) || shape.has(.pointer) || shape.has(.option_type)
 			|| shape.has(.result_type) || shape.has(.variadic) || shape.has(.array_type) {
-			clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base).trimmed
+			clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base()).trimmed()
 		} else {
 			break
 		}

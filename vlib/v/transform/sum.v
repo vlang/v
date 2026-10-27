@@ -8,7 +8,7 @@ import v.types
 @[inline]
 fn transform_without_pointer_prefix(typ u32) u32 {
 	return if flat.source_type_shape(typ).has(.pointer) {
-		flat.source_type_syntax(typ).raw_base
+		flat.source_type_syntax(typ).raw_base()
 	} else {
 		typ
 	}
@@ -40,7 +40,7 @@ fn (t &Transformer) trim_pointer_type(typ_id u32) u32 {
 	if !isnil(t.alias_cache) {
 		if base := t.alias_cache.pointer_bases[typ_id] { return base }
 	}
-	base := flat.source_type_syntax(typ_id).raw_base
+	base := flat.source_type_syntax(typ_id).raw_base()
 	if !isnil(t.alias_cache) {
 		mut cache := t.alias_cache
 		cache.pointer_bases[typ_id] = base
@@ -126,21 +126,21 @@ fn (t &Transformer) resolve_variant(sum_name_id u32, variant_id u32) u32 {
 		return resolved_variant_source_id
 	}
 	if flat.source_type_shape(resolved_sum_source_id).has(.dotted) {
-		return flat.source_type_composition_two(.qualified, flat.source_type_syntax(resolved_sum_source_id).qualifier, variant_id)
+		return flat.source_type_composition_two(.qualified, flat.source_type_syntax(resolved_sum_source_id).qualifier(), variant_id)
 	}
 	if flat.source_type_shape(sum_name_id).has(.dotted) {
-		return flat.source_type_composition_two(.qualified, flat.source_type_syntax(sum_name_id).qualifier, variant_id)
+		return flat.source_type_composition_two(.qualified, flat.source_type_syntax(sum_name_id).qualifier(), variant_id)
 	}
 	return variant_id
 }
 
 fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name_id u32, variant_id u32) ?u32 {
 	syntax := flat.source_type_syntax(sum_name_id)
-	if !syntax.generic_app_valid {
+	if !syntax.generic_app_valid() {
 		return none
 	}
 	args := syntax.generic_app_args()
-	params := t.sum_generic_params_for_base_id(syntax.generic_app_base)
+	params := t.sum_generic_params_for_base_id(syntax.generic_app_base())
 	if params.len == args.len {
 		concrete_pattern := substitute_generic_type_text_with_params(variant_id, args, params)
 		for concrete_variant_source_id in t.concrete_sum_variants_for_candidate(sum_name_id) {
@@ -155,7 +155,7 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name_id u32, variant
 	}
 	variant_syntax := flat.source_type_syntax(variant_id)
 	variant_args := variant_syntax.generic_app_args()
-	if variant_syntax.generic_app_valid && variant_args.len == args.len
+	if variant_syntax.generic_app_valid() && variant_args.len == args.len
 		&& t.generic_variant_args_are_open(variant_args) {
 		concrete_pattern := substitute_generic_type_text_with_params(variant_id, args, flat.TypeTextList{ ids: variant_args }.names())
 		for concrete_variant_source_id_2 in t.concrete_sum_variants_for_candidate(sum_name_id) {
@@ -242,8 +242,8 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 		return sum_name_id
 	}
 	syntax := flat.source_type_syntax(sum_name_id)
-	if syntax.generic_app_valid {
-		generic_base_id := syntax.generic_app_base
+	if syntax.generic_app_valid() {
+		generic_base_id := syntax.generic_app_base()
 		concrete_sum := t.resolve_concrete_generic_sum_name(sum_name_id, generic_base_id, syntax.generic_app_args())
 		if concrete_sum != 0 {
 			return concrete_sum
@@ -290,7 +290,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 		if !suffix_ambiguous && suffix_match != 0 {
 			return suffix_match
 		}
-		short_sum_id := syntax.unqualified
+		short_sum_id := syntax.unqualified()
 		short_sum := flat.source_type_name(short_sum_id)
 		if t.sum_types.contains(short_sum) {
 			return short_sum_id
@@ -307,7 +307,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 		mut found := u32(0)
 		for key, _ in t.sum_types.ids {
 			if flat.source_type_shape(flat.source_type_id(key)).has(.dotted)
-				&& flat.source_type_syntax(flat.source_type_id(key)).unqualified == sum_name_id {
+				&& flat.source_type_syntax(flat.source_type_id(key)).unqualified() == sum_name_id {
 				key_id := flat.source_type_id(key)
 				if found != 0 && found != key_id {
 					found = 0
@@ -325,7 +325,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 			return sum_name_id
 		}
 		if has_dot {
-			short_sum_id := syntax.unqualified
+			short_sum_id := syntax.unqualified()
 			short_sum := flat.source_type_name(short_sum_id)
 			if t.tc.sum_types.contains(short_sum) {
 				return short_sum_id
@@ -342,7 +342,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 			mut found := u32(0)
 			for key, _ in t.tc.sum_types.ids {
 				if flat.source_type_shape(flat.source_type_id(key)).has(.dotted)
-					&& flat.source_type_syntax(flat.source_type_id(key)).unqualified == sum_name_id {
+					&& flat.source_type_syntax(flat.source_type_id(key)).unqualified() == sum_name_id {
 					key_id := flat.source_type_id(key)
 					if found != 0 && found != key_id {
 						found = 0
@@ -360,7 +360,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 }
 
 fn (t &Transformer) resolve_sum_name_from_c_name(sum_name_id u32) ?u32 {
-	if flat.source_type_shape(sum_name_id).has(.bracketed) || !flat.source_type_syntax(sum_name_id).underscored {
+	if flat.source_type_shape(sum_name_id).has(.bracketed) || !flat.source_type_syntax(sum_name_id).underscored() {
 		return none
 	}
 	for key, _ in t.sum_types.ids {
@@ -420,7 +420,7 @@ fn (t &Transformer) find_sum_type_with_short_name(short_name_id u32) u32 {
 	mut found := u32(0)
 	for key, _ in t.sum_types.ids {
 		if flat.source_type_shape(flat.source_type_id(key)).has(.dotted)
-			&& flat.source_type_syntax(flat.source_type_id(key)).unqualified == short_name_id {
+			&& flat.source_type_syntax(flat.source_type_id(key)).unqualified() == short_name_id {
 			key_id := flat.source_type_id(key)
 			if found != 0 && found != key_id {
 				return 0
@@ -431,7 +431,7 @@ fn (t &Transformer) find_sum_type_with_short_name(short_name_id u32) u32 {
 	if !isnil(t.tc) {
 		for key, _ in t.tc.sum_types.ids {
 			if flat.source_type_shape(flat.source_type_id(key)).has(.dotted)
-				&& flat.source_type_syntax(flat.source_type_id(key)).unqualified == short_name_id {
+				&& flat.source_type_syntax(flat.source_type_id(key)).unqualified() == short_name_id {
 				key_id := flat.source_type_id(key)
 				if found != 0 && found != key_id {
 					return 0
@@ -449,8 +449,8 @@ fn (t &Transformer) sum_subject_type_candidates(subject_type_id u32) []u32 {
 	mut candidates := []u32{}
 	mut seen := map[u32]bool{}
 	syntax := flat.source_type_syntax(clean_id)
-	if syntax.generic_app_valid {
-		base := syntax.generic_app_base
+	if syntax.generic_app_valid() {
+		base := syntax.generic_app_base()
 		args := syntax.generic_app_args()
 		scoped_args := t.sum_subject_type_args_in_scope(args)
 		plain := transform_sum_generic_type(base, args)
@@ -495,31 +495,31 @@ fn (t &Transformer) sum_subject_type_arg_in_scope(arg_id u32) u32 {
 	shape := flat.source_type_shape(clean)
 	syntax := flat.source_type_syntax(clean)
 	if shape.has(.pointer) || shape.has(.mutable_type) {
-		return flat.source_type_composition_one(.pointer, t.sum_subject_type_arg_in_scope(syntax.raw_base))
+		return flat.source_type_composition_one(.pointer, t.sum_subject_type_arg_in_scope(syntax.raw_base()))
 	}
 	if shape.has(.option_type) {
-		return flat.source_type_composition_one(.option, t.sum_subject_type_arg_in_scope(syntax.raw_base))
+		return flat.source_type_composition_one(.option, t.sum_subject_type_arg_in_scope(syntax.raw_base()))
 	}
 	if shape.has(.result_type) {
-		return flat.source_type_composition_one(.result, t.sum_subject_type_arg_in_scope(syntax.raw_base))
+		return flat.source_type_composition_one(.result, t.sum_subject_type_arg_in_scope(syntax.raw_base()))
 	}
 	if shape.has(.variadic) {
-		return flat.source_type_composition_one(.variadic_parameter, t.sum_subject_type_arg_in_scope(syntax.raw_base))
+		return flat.source_type_composition_one(.variadic_parameter, t.sum_subject_type_arg_in_scope(syntax.raw_base()))
 	}
 	if shape.has(.array_type) {
-		return flat.source_type_composition_one(.array, t.sum_subject_type_arg_in_scope(syntax.raw_base))
+		return flat.source_type_composition_one(.array, t.sum_subject_type_arg_in_scope(syntax.raw_base()))
 	}
-	if shape.has(.map_type) && syntax.bracket_closed {
-		key := t.sum_subject_type_arg_in_scope(syntax.bracket_raw_inner)
-		value := t.sum_subject_type_arg_in_scope(syntax.raw_base)
+	if shape.has(.map_type) && syntax.bracket_closed() {
+		key := t.sum_subject_type_arg_in_scope(syntax.bracket_raw_inner())
+		value := t.sum_subject_type_arg_in_scope(syntax.raw_base())
 		return flat.source_type_composition_two(.map, key, value)
 	}
-	if shape.has(.leading_bracket) && syntax.bracket_closed {
-		return flat.source_type_composition_two(.concat, syntax.bracket_prefix, t.sum_subject_type_arg_in_scope(syntax.raw_base))
+	if shape.has(.leading_bracket) && syntax.bracket_closed() {
+		return flat.source_type_composition_two(.concat, syntax.bracket_prefix(), t.sum_subject_type_arg_in_scope(syntax.raw_base()))
 	}
-	if syntax.generic_app_valid {
+	if syntax.generic_app_valid() {
 		mut args := []u32{cap: syntax.generic_app_args().len + 1}
-		args << t.sum_subject_type_arg_base_in_scope(syntax.generic_app_base)
+		args << t.sum_subject_type_arg_base_in_scope(syntax.generic_app_base())
 		for nested in syntax.generic_app_args() { args << t.sum_subject_type_arg_in_scope(nested) }
 		return flat.source_type_composition(.generic, args)
 	}
@@ -611,8 +611,8 @@ fn (t &Transformer) sum_variant_type_accepts_value_type(variant_type_id u32, val
 		return true
 	}
 	if flat.source_type_shape(clean_variant_type).has(.array_type) && flat.source_type_shape(clean_value_type).has(.array_type) {
-		clean_variant_type = flat.source_type_syntax(clean_variant_type).raw_base
-		clean_value_type = flat.source_type_syntax(clean_value_type).raw_base
+		clean_variant_type = flat.source_type_syntax(clean_variant_type).raw_base()
+		clean_value_type = flat.source_type_syntax(clean_value_type).raw_base()
 		// Keep module-qualified recursive sum element types distinct. `[]a.Any`
 		// and `[]b.Any` are not interchangeable merely because both elements have
 		// the short name `Any`; only accept them when the target sum really accepts
@@ -643,7 +643,7 @@ fn (t &Transformer) interface_variant_type(variant_id u32) u32 {
 	}
 	for name, _ in t.structs {
 		candidate := flat.source_type_id(name)
-		if flat.source_type_shape(candidate).has(.dotted) && flat.source_type_syntax(candidate).unqualified == variant_id {
+		if flat.source_type_shape(candidate).has(.dotted) && flat.source_type_syntax(candidate).unqualified() == variant_id {
 			return candidate
 		}
 	}
@@ -656,7 +656,7 @@ fn (t &Transformer) smartcast_target_type(sc SmartcastContext) u32 {
 		return sc.variant_name
 	}
 	if flat.source_type_shape(sc.variant_name).has(.pointer) {
-		return flat.source_type_composition_one(.pointer, t.resolve_variant(sc.sum_type_name, flat.source_type_syntax(sc.variant_name).raw_base))
+		return flat.source_type_composition_one(.pointer, t.resolve_variant(sc.sum_type_name, flat.source_type_syntax(sc.variant_name).raw_base()))
 	}
 	if t.is_interface_type_name(sc.sum_type_name) {
 		return t.interface_variant_type(sc.variant_name)
@@ -713,10 +713,10 @@ fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name_id u32) []u32 {
 	name := flat.source_type_name(sum_name_id)
 	syntax := flat.source_type_syntax(sum_name_id)
 	args := syntax.generic_app_args()
-	is_generic := syntax.generic_app_valid
+	is_generic := syntax.generic_app_valid()
 	if variants := t.sum_types.type_ids(name) {
 		if is_generic {
-			params := t.sum_generic_params_for_base_id(syntax.generic_app_base)
+			params := t.sum_generic_params_for_base_id(syntax.generic_app_base())
 			if params.len == args.len && params.len > 0 {
 				return substitute_sum_variant_list(variants, args, params)
 			}
@@ -726,7 +726,7 @@ fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name_id u32) []u32 {
 	if !isnil(t.tc) {
 		if variants := t.tc.sum_types.type_ids(name) {
 			if is_generic {
-				params := t.sum_generic_params_for_base_id(syntax.generic_app_base)
+				params := t.sum_generic_params_for_base_id(syntax.generic_app_base())
 				if params.len == args.len && params.len > 0 {
 					return substitute_sum_variant_list(variants, args, params)
 				}
@@ -735,7 +735,7 @@ fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name_id u32) []u32 {
 		}
 	}
 	if !is_generic { return []u32{} }
-	for candidate in t.sum_subject_type_candidates(syntax.generic_app_base) {
+	for candidate in t.sum_subject_type_candidates(syntax.generic_app_base()) {
 		candidate_name := flat.source_type_name(candidate)
 		params := t.sum_generic_params_for_base_id(candidate)
 		if params.len == 0 || params.len != args.len { continue }
@@ -758,7 +758,7 @@ fn (t &Transformer) sum_generic_params_for_base(base string) []string {
 fn (t &Transformer) sum_generic_params_for_base_id(base u32) []string {
 	if isnil(t.tc) { return []string{} }
 	if params := t.tc.sum_generic_params[flat.source_type_name(base)] { return params }
-	short := flat.source_type_syntax(base).unqualified
+	short := flat.source_type_syntax(base).unqualified()
 	if params := t.tc.sum_generic_params[flat.source_type_name(short)] { return params }
 	return []string{}
 }
@@ -1052,7 +1052,7 @@ fn (t &Transformer) specialized_is_pattern_known(pattern_id u32) bool {
 		if types.is_builtin_type_name_id(candidate) || t.interface_pattern_candidate_known(candidate) {
 			return true
 		}
-		clean := flat.source_type_syntax(candidate).trimmed
+		clean := flat.source_type_syntax(candidate).trimmed()
 		shape := flat.source_type_shape(clean)
 		if shape.has(.array_type) || shape.has(.map_type) || shape.has(.leading_bracket)
 			|| shape.has(.function_spaced) || shape.has(.function_compact) {
@@ -1085,7 +1085,7 @@ fn (t &Transformer) interface_impl_type_id(iface_name_id u32, concrete_name_id u
 		for impl_iface_id in iface_candidates {
 			impl_index := t.interface_impl_indexes[impl_iface_id] or { continue }
 			for impl_name_id in impl_index.names.ids {
-				if flat.source_type_syntax(impl_name_id).unqualified == flat.source_type_syntax(concrete_id).unqualified {
+				if flat.source_type_syntax(impl_name_id).unqualified() == flat.source_type_syntax(concrete_id).unqualified() {
 					return impl_index.ids[impl_name_id]
 				}
 			}
@@ -1126,7 +1126,7 @@ fn (t &Transformer) interface_impl_type_id(iface_name_id u32, concrete_name_id u
 				t.tc.interface_type_ids(impl_iface_id)
 			}
 			for impl_name_id in impl_names {
-				if flat.source_type_syntax(impl_name_id).unqualified == flat.source_type_syntax(concrete_id).unqualified {
+				if flat.source_type_syntax(impl_name_id).unqualified() == flat.source_type_syntax(concrete_id).unqualified() {
 					return type_ids[impl_name_id]
 				}
 			}
@@ -1171,8 +1171,8 @@ fn (t &Transformer) interface_container_cast_type_id(iface_name_id u32, target_n
 fn (t &Transformer) interface_impl_type_id_iface_candidates(iface_id u32) []u32 {
 	mut candidates := []u32{}
 	syntax := flat.source_type_syntax(iface_id)
-	short := syntax.unqualified
-	if short != iface_id && (flat.source_type_query(iface_id).has(.main_prefix) || syntax.builtin_prefix) {
+	short := syntax.unqualified()
+	if short != iface_id && (flat.source_type_query(iface_id).has(.main_prefix) || syntax.builtin_prefix()) {
 		candidates << short
 	}
 	candidates << iface_id
@@ -1266,14 +1266,14 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 		if typ is types.ArrayFixed { return typ.source_type_id() }
 	}
 	if interface_concrete_primitive_type(name_id) { return name_id }
-	if syntax.builtin_prefix && interface_concrete_primitive_type(syntax.builtin_base) {
-		return syntax.builtin_base
+	if syntax.builtin_prefix() && interface_concrete_primitive_type(syntax.builtin_base()) {
+		return syntax.builtin_base()
 	}
-	if shape.has(.dotted) && interface_concrete_primitive_type(syntax.unqualified) {
-		return syntax.unqualified
+	if shape.has(.dotted) && interface_concrete_primitive_type(syntax.unqualified()) {
+		return syntax.unqualified()
 	}
-	if syntax.generic_app_valid && !t.generic_arg_is_unresolved(name_id) {
-		base := syntax.generic_app_base
+	if syntax.generic_app_valid() && !t.generic_arg_is_unresolved(name_id) {
+		base := syntax.generic_app_base()
 		base_name := flat.source_type_name(base)
 		if base_name in t.tc.structs || t.tc.type_aliases.contains(base_name) { return name_id }
 		if !flat.source_type_shape(base).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
@@ -1283,7 +1283,7 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 			qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base)
 			qualified_name := flat.source_type_name(qualified)
 			if qualified_name in t.tc.structs || t.tc.type_aliases.contains(qualified_name) {
-				return flat.source_type_composition_two(.concat, qualified, syntax.generic_app_legacy_suffix)
+				return flat.source_type_composition_two(.concat, qualified, syntax.generic_app_legacy_suffix())
 			}
 		}
 	}
@@ -1309,11 +1309,11 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 	}
 	for struct_name, _ in t.tc.structs {
 		candidate := flat.source_type_id(struct_name)
-		if flat.source_type_syntax(candidate).unqualified == name_id { return candidate }
+		if flat.source_type_syntax(candidate).unqualified() == name_id { return candidate }
 	}
 	for alias_name, _ in t.tc.type_aliases.ids {
 		candidate := flat.source_type_id(alias_name)
-		if flat.source_type_syntax(candidate).unqualified == name_id { return candidate }
+		if flat.source_type_syntax(candidate).unqualified() == name_id { return candidate }
 	}
 	return none
 }
@@ -1327,14 +1327,14 @@ fn interface_concrete_primitive_type(id u32) bool {
 }
 
 fn (t &Transformer) function_alias_impl_name(name_id u32) ?u32 {
-	clean := flat.source_type_syntax(name_id).trimmed
+	clean := flat.source_type_syntax(name_id).trimmed()
 	shape := flat.source_type_shape(clean)
 	if !shape.has(.function_compact) && !shape.has(.function_spaced) { return none }
 	mut aliases := t.tc.type_aliases.keys()
 	aliases.sort()
 	for alias in aliases {
 		target := t.tc.type_aliases.type_id(alias) or { continue }
-		if flat.source_type_syntax(target).trimmed == clean { return flat.source_type_id(alias) }
+		if flat.source_type_syntax(target).trimmed() == clean { return flat.source_type_id(alias) }
 	}
 	return none
 }
@@ -1620,8 +1620,8 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		contexts := t.smartcasts_for(sc_key)
 		mut matched_contexts := []SmartcastContext{}
 		for i, sc in contexts {
-			sc_variant := flat.source_type_syntax(sc.variant_name).unqualified
-			target_variant := flat.source_type_syntax(node.source_value_id()).unqualified
+			sc_variant := flat.source_type_syntax(sc.variant_name).unqualified()
+			target_variant := flat.source_type_syntax(node.source_value_id()).unqualified()
 			if sc_variant == target_variant {
 				end := i + 1
 				matched_contexts = contexts[..end].clone()
@@ -1852,8 +1852,8 @@ fn (mut t Transformer) fixed_array_sum_literal_expr(expr_id flat.NodeId, expr fl
 		}
 		length_id := fixed_array_length_id(fixed_type_source_id_2)
 		length_syntax := flat.source_type_syntax(length_id)
-		fixed_len := if length_syntax.decimal {
-			length_syntax.decimal_value
+		fixed_len := if length_syntax.decimal() {
+			length_syntax.decimal_value()
 		} else if !isnil(t.tc) {
 			t.tc.const_int_value_in_module(flat.source_type_name(length_id), t.cur_module, []string{}) or { continue }
 		} else {
@@ -2112,7 +2112,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		clean_variant = ptr_base
 	}
 	encoded_base := flat.source_type_syntax(variant_source).ptr_name_base()
-	if encoded_base != 0 && flat.source_type_syntax(encoded_base).contains_doubleunderscore {
+	if encoded_base != 0 && flat.source_type_syntax(encoded_base).contains_doubleunderscore() {
 		clean_variant = flat.source_type_syntax(encoded_base).doubleunderscore_dotted()
 	}
 
@@ -2367,7 +2367,7 @@ fn (t &Transformer) trimmed_type_id(id u32) u32 {
 
 fn transform_trimmed_type_id(id u32) u32 {
 	if !flat.source_type_shape(id).has(.padded) { return id }
-	return flat.source_type_syntax(id).trimmed
+	return flat.source_type_syntax(id).trimmed()
 }
 
 fn (t &Transformer) unshared_type_id(id u32) u32 {
@@ -2375,7 +2375,7 @@ fn (t &Transformer) unshared_type_id(id u32) u32 {
 	if !isnil(t.alias_cache) {
 		if base := t.alias_cache.shared_bases[id] { return base }
 	}
-	base := flat.source_type_syntax(flat.source_type_syntax(id).raw_base).trimmed
+	base := flat.source_type_syntax(flat.source_type_syntax(id).raw_base()).trimmed()
 	if !isnil(t.alias_cache) {
 		mut cache := t.alias_cache
 		cache.shared_bases[id] = base
@@ -2388,7 +2388,7 @@ fn (t &Transformer) variadic_array_type_id(id u32) u32 {
 	if !isnil(t.alias_cache) {
 		if array := t.alias_cache.variadic_arrays[id] { return array }
 	}
-	elem := flat.source_type_syntax(flat.source_type_syntax(id).raw_base).trimmed
+	elem := flat.source_type_syntax(flat.source_type_syntax(id).raw_base()).trimmed()
 	array := flat.source_type_composition_one(.array, elem)
 	if !isnil(t.alias_cache) {
 		mut cache := t.alias_cache

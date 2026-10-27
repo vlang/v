@@ -2189,7 +2189,7 @@ fn (g &Parser) expected_enum_shorthand_expression() ?string {
 	if !g.selfhost || g.last_expression_type != u32(0) || g.last_expression.len != 2 || g.last_expression[0].tok != .dot || g.last_expression[1].tok != .name || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.return_type))] != .enum_ {
 		return none
 	}
-	return '${flat.source_type_name(flat.source_type_syntax(g.return_type).c_pointer_raw_base)}__${g.last_expression[1].lit}'
+	return '${flat.source_type_name(flat.source_type_syntax(g.return_type).c_pointer_raw_base())}__${g.last_expression[1].lit}'
 }
 
 // boxed_type_text resolves the indexed source type spelling.

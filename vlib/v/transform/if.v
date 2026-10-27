@@ -914,7 +914,7 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 	mut actual_result_type := result_type_id
 	branch_type_source_id := t.if_expr_branch_result_type(node)
 	borrowed_result := flat.source_type_shape(result_type_id).has(.pointer)
-		&& t.normalize_type_alias(flat.source_type_syntax(result_type_id).raw_base) == t.normalize_type_alias(branch_type_source_id)
+		&& t.normalize_type_alias(flat.source_type_syntax(result_type_id).raw_base()) == t.normalize_type_alias(branch_type_source_id)
 	if borrowed_result || t.if_expr_branch_overrides_sum_target(branch_type_source_id, result_type_id) {
 		actual_result_type = branch_type_source_id
 	} else if actual_result_type == flat.source_type_int && branch_type_source_id != u32(0) && branch_type_source_id != flat.source_type_int
@@ -951,8 +951,8 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 fn (t &Transformer) if_expr_branch_overrides_sum_target(branch_type_id u32, target_type_id u32) bool {
 	if branch_type_id == 0 || target_type_id == 0 { return false }
 	if flat.source_type_shape(branch_type_id).has(.array_type) {
-		branch_elem := flat.source_type_syntax(branch_type_id).raw_base
-		if flat.source_type_syntax(target_type_id).unqualified == flat.source_type_syntax(branch_elem).unqualified {
+		branch_elem := flat.source_type_syntax(branch_type_id).raw_base()
+		if flat.source_type_syntax(target_type_id).unqualified() == flat.source_type_syntax(branch_elem).unqualified() {
 			return true
 		}
 	}
@@ -1084,8 +1084,8 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ_id u32, stale_typ_i
 	stale_shape := flat.source_type_shape(stale_typ_id)
 	branch_shape := flat.source_type_shape(branch_typ_id)
 	if stale_shape.has(.pointer) && branch_shape.has(.pointer) {
-		stale_inner := flat.source_type_syntax(stale_typ_id).raw_base
-		branch_inner := flat.source_type_syntax(branch_typ_id).raw_base
+		stale_inner := flat.source_type_syntax(stale_typ_id).raw_base()
+		branch_inner := flat.source_type_syntax(branch_typ_id).raw_base()
 		if stale_inner in [flat.source_type_int, flat.source_type_void, flat.source_type_unknown]
 			&& branch_inner !in [flat.source_type_int, flat.source_type_void, flat.source_type_unknown] {
 			return true
@@ -1316,7 +1316,7 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 				return flat.source_type_composition_one(.pointer, child_type_source_id)
 			}
 			if node.op == .mul && flat.source_type_shape(child_type_source_id).has(.pointer) {
-				return flat.source_type_syntax(child_type_source_id).raw_base
+				return flat.source_type_syntax(child_type_source_id).raw_base()
 			}
 			if node.op == .not {
 				return flat.source_type_bool
@@ -1354,7 +1354,7 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 				return base_type
 			}
 			if flat.source_type_shape(base_type).has(.array_type) {
-				return flat.source_type_syntax(base_type).raw_base
+				return flat.source_type_syntax(base_type).raw_base()
 			}
 			return t.node_type(id)
 		}
@@ -1403,11 +1403,11 @@ fn (t &Transformer) merge_if_expr_types(current_id u32, next_id u32) u32 {
 		return next_id
 	}
 	if current_shape.has(.array_type) && !next_shape.has(.array_type)
-		&& flat.source_type_syntax(current_id).raw_base == next_id {
+		&& flat.source_type_syntax(current_id).raw_base() == next_id {
 		return current_id
 	}
 	if next_shape.has(.array_type) && !current_shape.has(.array_type)
-		&& flat.source_type_syntax(next_id).raw_base == current_id {
+		&& flat.source_type_syntax(next_id).raw_base() == current_id {
 		return next_id
 	}
 	if t.is_optional_type_name(current_id) && !t.is_optional_type_name(next_id) {

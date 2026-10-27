@@ -63,7 +63,7 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 	tc.vls_enter_file(int(node.pos.id))
 	tc.cur_scope = tc.file_scope
 	return_type := if !flat.source_type_shape(node.typ).has(.option_type) {
-		flat.source_type_syntax(node.typ).question_trimmed
+		flat.source_type_syntax(node.typ).question_trimmed()
 	} else {
 		node.typ
 	}
@@ -148,7 +148,7 @@ fn (tc &TypeChecker) vls_calls_generic(id flat.NodeId, node flat.Node) bool {
 	if (tc.fn_generic_params[target] or { []string{} }).len > 0 {
 		return true
 	}
-	return flat.source_type_syntax(flat.source_type_syntax(flat.source_type_id(target)).qualifier).application_valid
+	return flat.source_type_syntax(flat.source_type_syntax(flat.source_type_id(target)).qualifier()).application_valid()
 }
 
 // vls_open_type_holds reports whether `typ`, the type that the check of a
@@ -239,11 +239,11 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 	target := tc.vls_call_target(id, callee_id)?
 	fn_params := tc.fn_generic_params[target] or { []string{} }
 	mut names := fn_params.clone()
-	receiver := flat.source_type_syntax(flat.source_type_syntax(flat.source_type_id(target)).qualifier)
-	if receiver.application_valid {
+	receiver := flat.source_type_syntax(flat.source_type_syntax(flat.source_type_id(target)).qualifier())
+	if receiver.application_valid() {
 		for param in receiver.application_args() {
 			param_id := trimmed_source_type_id(param)
-			if flat.source_type_syntax(param_id).bare_generic {
+			if flat.source_type_syntax(param_id).bare_generic() {
 				name := flat.source_type_name(param_id)
 				if name !in names { names << name }
 			}
@@ -260,7 +260,7 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 		for k, text_source_id in tc.generic_call_type_arg_names(*callee) {
 			if k < fn_params.len {
 				clean_id := trimmed_source_type_id(text_source_id)
-				bound[fn_params[k]] = if flat.source_type_syntax(clean_id).bare_generic {
+				bound[fn_params[k]] = if flat.source_type_syntax(clean_id).bare_generic() {
 					unknown_type('generic placeholder `${flat.source_type_name(clean_id)}`')
 				} else {
 					*tc.parse_type(text_source_id)
@@ -317,13 +317,13 @@ fn (tc &TypeChecker) vls_bind_type_params(text_id u32, actual Type, names []stri
 	shape := flat.source_type_shape(clean)
 	syntax := flat.source_type_syntax(clean)
 	if shape.has(.mutable_type) || shape.has(.shared_type) || shape.has(.pointer) {
-		tc.vls_bind_type_params(syntax.raw_base, unwrap_pointer(actual), names, mut bound)
+		tc.vls_bind_type_params(syntax.raw_base(), unwrap_pointer(actual), names, mut bound)
 		return
 	}
 	held := unalias_type(actual)
 	if shape.has(.variadic) {
 		elem := if held is Array { *held.elem_type } else { actual }
-		tc.vls_bind_type_params(syntax.raw_base, elem, names, mut bound)
+		tc.vls_bind_type_params(syntax.raw_base(), elem, names, mut bound)
 		return
 	}
 	if shape.has(.optional) {
@@ -332,40 +332,40 @@ fn (tc &TypeChecker) vls_bind_type_params(text_id u32, actual Type, names []stri
 			ResultType { held.base_type }
 			else { held }
 		}
-		tc.vls_bind_type_params(syntax.raw_base, base, names, mut bound)
+		tc.vls_bind_type_params(syntax.raw_base(), base, names, mut bound)
 		return
 	}
 	if shape.has(.array_type) {
 		if held is Array {
-			tc.vls_bind_type_params(syntax.raw_base, held.elem_type, names, mut bound)
+			tc.vls_bind_type_params(syntax.raw_base(), held.elem_type, names, mut bound)
 		}
 		return
 	}
 	if shape.has(.leading_bracket) {
-		if held is ArrayFixed && syntax.bracket_closed && syntax.bracket_suffix != 0 {
-			tc.vls_bind_type_params(syntax.bracket_suffix, held.elem_type, names, mut bound)
+		if held is ArrayFixed && syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			tc.vls_bind_type_params(syntax.bracket_suffix(), held.elem_type, names, mut bound)
 		}
 		return
 	}
 	if shape.has(.map_type) {
-		if held is Map && syntax.bracket_closed && syntax.bracket_suffix != 0 {
-			tc.vls_bind_type_params(syntax.bracket_raw_inner, held.key_type, names, mut bound)
-			tc.vls_bind_type_params(syntax.bracket_suffix, held.value_type, names, mut bound)
+		if held is Map && syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			tc.vls_bind_type_params(syntax.bracket_raw_inner(), held.key_type, names, mut bound)
+			tc.vls_bind_type_params(syntax.bracket_suffix(), held.value_type, names, mut bound)
 		}
 		return
 	}
 	// `Box[T]` against `Box[A]`: each type argument against the actual's.
-	if !syntax.application_valid {
+	if !syntax.application_valid() {
 		return
 	}
 	actual_syntax := flat.source_type_syntax(held.source_type_id())
-	if !actual_syntax.application_valid || actual_syntax.application_args().len != syntax.application_args().len
-		|| flat.source_type_syntax(actual_syntax.application_base).unqualified != flat.source_type_syntax(syntax.application_base).unqualified {
+	if !actual_syntax.application_valid() || actual_syntax.application_args().len != syntax.application_args().len
+		|| flat.source_type_syntax(actual_syntax.application_base()).unqualified() != flat.source_type_syntax(syntax.application_base()).unqualified() {
 		return
 	}
 	for i, arg in syntax.application_args() {
 		arg_id := trimmed_source_type_id(actual_syntax.application_args()[i])
-		arg_type := if flat.source_type_syntax(arg_id).bare_generic {
+		arg_type := if flat.source_type_syntax(arg_id).bare_generic() {
 			unknown_type('generic placeholder `${flat.source_type_name(arg_id)}`')
 		} else {
 			*tc.parse_type(arg_id)

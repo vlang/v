@@ -220,7 +220,7 @@ fn (mut s NoAllocScan) walk_function(decl NoAllocFunction, chain []string, ancho
 		child := s.tc.a.child_node(node, i)
 		if child.kind == .param {
 			parameters[child.value] = child.typ
-			if child.is_mut && flat.source_type_shape(flat.source_type_syntax(child.typ).pointer_raw_base).has(.array_type) {
+			if child.is_mut && flat.source_type_shape(flat.source_type_syntax(child.typ).pointer_raw_base()).has(.array_type) {
 				mutable_arrays[child.value] = true
 			}
 		}
@@ -360,7 +360,7 @@ fn (s &NoAllocScan) type_name(id flat.NodeId, parameters map[string]u32) u32 {
 			if !flat.source_type_shape(child_type).has(.pointer) {
 				return child_type
 			}
-			return flat.source_type_syntax(child_type).raw_base
+			return flat.source_type_syntax(child_type).raw_base()
 		}
 		return child_type
 	}

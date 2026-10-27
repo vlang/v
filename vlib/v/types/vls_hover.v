@@ -91,7 +91,7 @@ fn (tc &TypeChecker) vls_field_init_owner(id flat.NodeId) ?Type {
 		// The checker keeps no type for a struct literal: it is the one it names.
 		return tc.expr_type(parent_id) or {
 			*tc.parse_type(if flat.source_type_shape(parent.source_value_id()).has(.bracketed) {
-				flat.source_type_syntax(parent.source_value_id()).generic_base
+				flat.source_type_syntax(parent.source_value_id()).generic_base()
 			} else {
 				parent.source_value_id()
 			})
@@ -216,8 +216,8 @@ fn (tc &TypeChecker) vls_method_target(receiver_id flat.NodeId, method string) ?
 fn (tc &TypeChecker) vls_interface_decl(name_id u32) ?flat.Node {
 	syntax := flat.source_type_syntax(name_id)
 	mut keys := [name_id]
-	if syntax.application_valid {
-		keys << syntax.application_base
+	if syntax.application_valid() {
+		keys << syntax.application_base()
 	}
 	for key in keys {
 		index := tc.first_type_declaration_ids[flat.source_type_name(key)] or { continue }
@@ -639,7 +639,7 @@ fn (tc &TypeChecker) vls_constraint_known(decl flat.Node, constraint GenericCons
 	}
 	file := tc.a.source_files[int(decl.pos.id)] or { return false }
 	decl_module := tc.file_modules[file.name] or { tc.cur_module }
-	return tc.type_name_known_in_scope_id(flat.source_type_syntax(constraint.name).generic_base, file.name, decl_module)
+	return tc.type_name_known_in_scope_id(flat.source_type_syntax(constraint.name).generic_base(), file.name, decl_module)
 }
 
 // vls_constraint_single_type is the one type that `constraint` leaves, when it
@@ -1248,18 +1248,18 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	// field of `Box`, with its type parameters bound to them. A type parameter
 	// given stays one, for its constraint.
 	syntax := flat.source_type_syntax(type_name_id)
-	if !syntax.application_valid {
+	if !syntax.application_valid() {
 		return none
 	}
-	declared := tc.vls_declared_field_type(syntax.application_base, name)?
-	decl := tc.generic_type_decl(syntax.application_base) or { return declared }
+	declared := tc.vls_declared_field_type(syntax.application_base(), name)?
+	decl := tc.generic_type_decl(syntax.application_base()) or { return declared }
 	params := decl.generic_params().map(it.trim_space())
 	if params.len != syntax.application_args().len {
 		return declared
 	}
 	mut values := []Type{cap: syntax.application_args().len}
 	for arg in syntax.application_args() {
-		values << if flat.source_type_syntax(arg).bare_generic {
+		values << if flat.source_type_syntax(arg).bare_generic() {
 			unknown_type('generic placeholder `${flat.source_type_name(arg)}`')
 		} else {
 			*tc.parse_type(arg)
@@ -1604,7 +1604,7 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 	decl := tc.vls_interface_decl(interface_id)?
 	syntax := flat.source_type_syntax(interface_id)
 	type_params := decl.generic_params().map(it.trim_space())
-	if syntax.application_valid && type_params.len == syntax.application_args().len {
+	if syntax.application_valid() && type_params.len == syntax.application_args().len {
 		member := tc.vls_interface_member(interface_id, method)?
 		type_args := syntax.application_args().map(trimmed_source_type_id(it))
 		mut params := []string{}

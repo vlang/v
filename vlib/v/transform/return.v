@@ -778,11 +778,11 @@ fn forwarded_return_type_is_unresolved(typ types.Type) bool {
 	base := unalias_type(typ)
 	name := base.source_type_id()
 	clean := if flat.source_type_shape(name).has(.padded) {
-		flat.source_type_syntax(name).trimmed
+		flat.source_type_syntax(name).trimmed()
 	} else {
 		name
 	}
-	if flat.source_type_syntax(clean).unqualified == flat.source_type_unknown
+	if flat.source_type_syntax(clean).unqualified() == flat.source_type_unknown
 		|| is_generic_placeholder_type_id(clean) {
 		return true
 	}

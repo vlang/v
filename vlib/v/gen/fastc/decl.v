@@ -1358,7 +1358,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				if element_type_source_id := fastc_array_element_type(container_type) {
 					element_type := element_type_source_id
 
-					element_sizeof := if flat.source_type_syntax(element_type).c_ptr_name_suffix {
+					element_sizeof := if flat.source_type_syntax(element_type).c_ptr_name_suffix() {
 						'voidptr'
 					} else {
 						flat.source_type_name(element_type)
@@ -3272,7 +3272,7 @@ fn fastc_type_key_matches_module(key string, module_name string, name string) bo
 }
 
 fn fastc_semantic_declared_type_key(c_type u32, declared_type_c_names flat.TypeTextBindings) u32 {
-	base := flat.source_type_syntax(c_type).c_pointer_raw_base
+	base := flat.source_type_syntax(c_type).c_pointer_raw_base()
 	// Resolve through the precomputed C-spelling index (first key per spelling
 	// wins, matching the previous insertion-ordered first-match scan). The old
 	// scan re-rendered every declared type's C name per query — an allocation
@@ -3718,7 +3718,7 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		fastc_register_composite_type(base, mut composite_types)
 		// C.int retains its native width instead of V's platform-width int.
 		alias_base_types.set_id(c_name, if is_c_type && fastc_trim_pointer_type(base) == flat.source_type_int {
-			fastc_with_pointer_depth(flat.source_type_i32, flat.source_type_syntax(base).c_pointer_depth)
+			fastc_with_pointer_depth(flat.source_type_i32, flat.source_type_syntax(base).c_pointer_depth())
 		} else {
 			base
 		})
@@ -3738,7 +3738,7 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 			alias_field_info = struct_field_info[layout_type].clone()
 		}
 		if flat.source_type_query(base).has(.c_array_prefix) {
-			alias_fields.set_id('__fastc_element_type', flat.source_type_syntax(base).c_array_payload)
+			alias_fields.set_id('__fastc_element_type', flat.source_type_syntax(base).c_array_payload())
 		}
 		if alias_fields.ids.len > 0 {
 			struct_fields[c_name] = alias_fields.clone()

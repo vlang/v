@@ -409,10 +409,10 @@ fn (mut p Parser) named_variant_init(sum_id u32, variant string, payload flat.No
 	fields_start := p.add_children(fields)
 	// `Opt[int]` and `Some` name the variant struct `Opt@variant@Some[int]`.
 	sum_syntax := flat.source_type_syntax(sum_id)
-	hidden_id := if sum_syntax.generic_base != 0 {
-		flat.source_type_composition(.concat, [sum_syntax.generic_base,
+	hidden_id := if sum_syntax.generic_base() != 0 {
+		flat.source_type_composition(.concat, [sum_syntax.generic_base(),
 			flat.source_type_id(flat.named_variant_marker), flat.source_type_id(variant),
-			sum_syntax.bracket_from])
+			sum_syntax.bracket_from()])
 	} else {
 		flat.source_type_composition(.concat, [sum_id, flat.source_type_id(flat.named_variant_marker),
 			flat.source_type_id(variant)])
@@ -439,23 +439,23 @@ fn (mut p Parser) named_variant_pattern_type(type_name_id u32) ?u32 {
 	}
 	// Dots inside generic arguments belong to their payload types, not the variant.
 	syntax := flat.source_type_syntax(type_name_id)
-	if !syntax.named_variant_dot_valid {
+	if !syntax.named_variant_dot_valid() {
 		return none
 	}
-	variant_id := syntax.named_variant_dot_suffix
+	variant_id := syntax.named_variant_dot_suffix()
 	variant_syntax := flat.source_type_syntax(variant_id)
-	if !variant_syntax.first_capital || !variant_syntax.plain_type_name {
+	if !variant_syntax.first_capital() || !variant_syntax.plain_type_name() {
 		return none
 	}
-	owner_syntax := flat.source_type_syntax(syntax.named_variant_dot_prefix)
-	base_id := owner_syntax.generic_base
+	owner_syntax := flat.source_type_syntax(syntax.named_variant_dot_prefix())
+	base_id := owner_syntax.generic_base()
 	parts := flat.source_type_syntax(base_id).dotted_parts()
 	if (parts.len == 1 && p.is_named_variant_owner_name(flat.source_type_name(parts[0])))
 		|| (parts.len == 2 && flat.source_type_name(parts[0]) in p.imported_module_names
 			&& !p.is_local_binding(flat.source_type_name(parts[0]))
 			&& p.is_imported_named_variant_owner_name(flat.source_type_name(parts[0]), flat.source_type_name(parts[1]))) {
 		return flat.source_type_composition(.concat, [base_id,
-			flat.source_type_id(flat.named_variant_marker), variant_id, owner_syntax.bracket_from])
+			flat.source_type_id(flat.named_variant_marker), variant_id, owner_syntax.bracket_from()])
 	}
 	return none
 }
@@ -554,15 +554,15 @@ fn (mut p Parser) named_variant_match_pattern(type_name_id u32, start int) ?flat
 		}
 	}
 	hidden_syntax := flat.source_type_syntax(hidden_id)
-	if hidden_syntax.top_level_dot_valid {
-		base_id := p.add_val(.ident, flat.source_type_name(hidden_syntax.top_level_dot_prefix))
+	if hidden_syntax.top_level_dot_valid() {
+		base_id := p.add_val(.ident, flat.source_type_name(hidden_syntax.top_level_dot_prefix()))
 		mut children := [base_id]
 		if int(binding) >= 0 {
 			children << binding
 		}
 		return p.add_node(flat.Node{
 			kind:           .selector
-			value:          flat.source_type_name(hidden_syntax.top_level_dot_suffix)
+			value:          flat.source_type_name(hidden_syntax.top_level_dot_suffix())
 			children_start: p.add_children(children)
 			children_count: flat.child_count(children.len)
 			pos:            p.span_to(start)

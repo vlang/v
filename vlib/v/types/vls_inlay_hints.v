@@ -323,7 +323,7 @@ fn (tc &TypeChecker) vls_struct_init_hints(id flat.NodeId, node flat.Node, sourc
 	// The checker keeps no type for a struct literal: it is the one it names.
 	typ := tc.expr_type(id) or {
 		*tc.parse_type(if flat.source_type_shape(node.source_value_id()).has(.bracketed) {
-			flat.source_type_syntax(node.source_value_id()).generic_base
+			flat.source_type_syntax(node.source_value_id()).generic_base()
 		} else {
 			node.source_value_id()
 		})
@@ -360,7 +360,7 @@ fn (tc &TypeChecker) vls_struct_fields(typ Type) ?[]StructField {
 	name_id := base.source_type_id()
 	name := flat.source_type_name(name_id)
 	return tc.structs[name] or {
-		base_name := flat.source_type_name(flat.source_type_syntax(name_id).generic_base)
+		base_name := flat.source_type_name(flat.source_type_syntax(name_id).generic_base())
 		tc.structs[base_name] or { return none }
 	}
 }

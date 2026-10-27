@@ -968,7 +968,7 @@ fn (g &Parser) print_value_string_expression(value string, value_type u32, value
 		if g.is_reference_local_base(value_tokens, value_type)
 			|| g.expression_uses_member_smartcast(value_tokens) {
 			return g.print_value_string_expression('(*(${value}))',
-				flat.source_type_syntax(type_name_id).c_pointer_base, value_tokens)
+				flat.source_type_syntax(type_name_id).c_pointer_base(), value_tokens)
 		}
 		return w.fastc_reference_str_expression(value, type_name_id, value_tokens)
 	}
@@ -1381,7 +1381,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 			}
 		}
 	}
-	if g.selfhost && operator == .assign && flat.source_type_syntax(left_type).fastc_array_marker
+	if g.selfhost && operator == .assign && flat.source_type_syntax(left_type).fastc_array_marker()
 		&& g.fixed_array_uses_raw_storage(left_tokens) {
 		// `s.arr = [N]T{}` zeroes a raw-storage fixed array; the empty `[N]T{}` literal is not
 		// lowered to a value, so memset rather than memcpy from an unrendered right-hand side.
@@ -1433,7 +1433,7 @@ fn (g &Parser) assigned_narrowed_member(tokens []FastcExpressionToken) ?FastcRen
 	if flat.source_type_query(smartcast.subject_type).has(.c_pointer_suffix) {
 		return FastcRenderedExpression{
 			source: '(*${smartcast.subject_source})'
-			typ:    flat.source_type_syntax(smartcast.subject_type).c_pointer_base
+			typ:    flat.source_type_syntax(smartcast.subject_type).c_pointer_base()
 		}
 	}
 	return FastcRenderedExpression{
@@ -1546,7 +1546,7 @@ fn (g &Parser) checked_integer_operand_type(tokens []FastcExpressionToken, infer
 	if value_tokens.len == 1 && value_tokens[0].tok == .name {
 		if local := g.locals[value_tokens[0].lit] {
 			if local.is_reference && flat.source_type_query(local.typ).has(.c_pointer_suffix) {
-				value_type := flat.source_type_syntax(local.typ).c_pointer_base
+				value_type := flat.source_type_syntax(local.typ).c_pointer_base()
 				if g.checked_integer_operation_type(value_type) != '' {
 					return value_type
 				}
@@ -2381,7 +2381,7 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 				inner := g.render_call_argument_expression(tokens[1..], inner_type) or { return none }
 				return FastcRenderedExpression{
 					source: '*(${inner})'
-					typ:    flat.source_type_syntax(inner_type).c_pointer_base
+					typ:    flat.source_type_syntax(inner_type).c_pointer_base()
 				}
 			}
 		}
@@ -4198,7 +4198,7 @@ fn (g &Parser) narrowed_subject_value_type(tokens []FastcExpressionToken) ?u32 {
 		if local.option_value_type != u32(0) { return none }
 	}
 	if smartcast.value_type != u32(0) { return smartcast.value_type }
-	return flat.source_type_syntax(smartcast.typ).c_pointer_base
+	return flat.source_type_syntax(smartcast.typ).c_pointer_base()
 }
 
 // fastc_narrowed_variant_value reads the value of a narrowed variant from its variant pointer.
@@ -4725,7 +4725,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			}
 		}
 		inner_expected_type := if flat.source_type_query(expected_type_source_id).has(.c_pointer_suffix) {
-			flat.source_type_syntax(expected_type_source_id).c_pointer_base
+			flat.source_type_syntax(expected_type_source_id).c_pointer_base()
 		} else {
 			expected_type_source_id
 		}
@@ -4856,7 +4856,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 					return raw
 				}
 				value_type := if flat.source_type_query(storage_type).has(.c_pointer_suffix) {
-					flat.source_type_syntax(storage_type).c_pointer_base
+					flat.source_type_syntax(storage_type).c_pointer_base()
 				} else {
 					storage_type
 				}
@@ -6792,7 +6792,7 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 						return none
 					}
 					source = '(${source})[${index_source}]'
-					current_type = flat.source_type_syntax(pointer_type).c_pointer_base
+					current_type = flat.source_type_syntax(pointer_type).c_pointer_base()
 					member_path += '[]'
 					i = close + 1
 					continue
@@ -7018,7 +7018,7 @@ fn (value &FastcMapAssignmentWrap) value_type_text() string {
 // (`type Handler = fn (voidptr)`), which C holds as a function pointer.
 fn (g &Parser) is_function_value_type(typ u32) bool {
 	shape := flat.source_type_shape(typ)
-	if flat.source_type_syntax(typ).function_space_prefix || shape.has(.function_compact) {
+	if flat.source_type_syntax(typ).function_space_prefix() || shape.has(.function_compact) {
 		return true
 	}
 	type_name := flat.source_type_name(typ)

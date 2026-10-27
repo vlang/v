@@ -403,7 +403,7 @@ fn (mut g Parser) try_read_atomic_member_expression(stops []token.Token, allow_m
 	base_type := fastc_trim_pointer_type(local.typ)
 	base_name := flat.source_type_name(base_type)
 	is_pointer := flat.source_type_query(local.typ).has(.c_pointer_suffix)
-	if flat.source_type_syntax(local.typ).c_pointer_depth > 1 || (local.is_reference && !is_pointer)
+	if flat.source_type_syntax(local.typ).c_pointer_depth() > 1 || (local.is_reference && !is_pointer)
 		|| base_type in [fastc_type_option, fastc_type_result] || flat.source_type_query(base_type).has(.c_fixed_array_prefix)
 		|| flat.source_type_query(base_type).has(.c_map_prefix) || base_name in g.sum_types
 		|| g.alias_base_types.type_id(base_name) != none {
@@ -478,7 +478,7 @@ fn (g &Parser) atomic_member_value_type_is_plain(typ u32) bool {
 		return true
 	}
 	base := fastc_trim_pointer_type(typ)
-	if flat.source_type_syntax(typ).c_pointer_depth != 1 { return false }
+	if flat.source_type_syntax(typ).c_pointer_depth() != 1 { return false }
 	return fastc_simple_call_scalar_type(base) || g.is_plain_aggregate_value_type(base)
 }
 
@@ -3773,7 +3773,7 @@ fn (g &Parser) prefix_starts_mutation_statement() bool {
 
 fn fastc_runtime_c_type_id(typ_id u32) u32 {
 	syntax := flat.source_type_syntax(typ_id)
-	base := syntax.c_pointer_raw_base
+	base := syntax.c_pointer_raw_base()
 	query := flat.source_type_query(base)
 	runtime_type := if query.has(.c_map_prefix) {
 		fastc_type_map
@@ -3782,7 +3782,7 @@ fn fastc_runtime_c_type_id(typ_id u32) u32 {
 	} else {
 		base
 	}
-	return fastc_with_pointer_depth(runtime_type, syntax.c_pointer_depth)
+	return fastc_with_pointer_depth(runtime_type, syntax.c_pointer_depth())
 }
 
 fn (mut g Parser) read_inferred_map_literal() !string {
@@ -5566,7 +5566,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 	} else {
 		tokens.len
 	}
-	if array_end == 2 && tokens[0].tok == .lsbr && tokens[1].tok == .rsbr && flat.source_type_query(flat.source_type_syntax(g.expected_expression_type).c_pointer_raw_base).has(.c_array_prefix) {
+	if array_end == 2 && tokens[0].tok == .lsbr && tokens[1].tok == .rsbr && flat.source_type_query(flat.source_type_syntax(g.expected_expression_type).c_pointer_raw_base()).has(.c_array_prefix) {
 		// A dynamic empty array needs a real header carrying `element_size`, otherwise a later
 		// `<<` push copies `len * 0` bytes into a NULL buffer and silently drops the elements.
 		array_type := fastc_trim_pointer_type(g.expected_expression_type)
