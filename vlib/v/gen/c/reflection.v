@@ -21,14 +21,14 @@ fn reflection_source_type_key(raw_type_id u32, module_name string) u32 {
 			reflection_source_type_key(syntax.bracket_raw_inner, module_name),
 			reflection_source_type_key(syntax.raw_base, module_name))
 	}
-	if syntax.tuple_like && syntax.reflection_tuple_parts.len > 1 {
+	if syntax.tuple_like && syntax.reflection_tuple_parts().len > 1 {
 		return flat.source_type_composition(.multi_return,
-			syntax.reflection_tuple_parts.map(reflection_source_type_key(it, module_name)))
+			syntax.reflection_tuple_parts().map(reflection_source_type_key(it, module_name)))
 	}
 	if flat.source_type_query(typ).has(.bracket_suffix) && syntax.bracket_closed
 		&& syntax.bracket_suffix == 0 && syntax.generic_base != 0 {
 		mut parts := [reflection_source_type_key(syntax.generic_base, module_name)]
-		for arg in flat.source_type_syntax(syntax.bracket_raw_inner).reflection_parts {
+		for arg in flat.source_type_syntax(syntax.bracket_raw_inner).reflection_parts() {
 			parts << reflection_source_type_key(arg, module_name)
 		}
 		return flat.source_type_composition(.generic, parts)
@@ -71,7 +71,7 @@ fn (g &FlatGen) has_runtime_reflection() bool {
 }
 
 fn reflection_split_types(text string) []string {
-	return flat.source_type_syntax(flat.source_type_id(text)).reflection_parts.map(flat.source_type_name(it))
+	return flat.source_type_syntax(flat.source_type_id(text)).reflection_parts().map(flat.source_type_name(it))
 }
 
 fn reflection_type_key(raw_type string, module_name string) string {
@@ -399,7 +399,7 @@ fn (g &FlatGen) reflection_map_info(type_key_id u32) string {
 }
 
 fn (g &FlatGen) reflection_multi_return_info(type_key_id u32) string {
-	values := flat.source_type_syntax(type_key_id).reflection_tuple_parts
+	values := flat.source_type_syntax(type_key_id).reflection_tuple_parts()
 	value := '(reflection__MultiReturn){.types = ${g.reflection_type_array(values, '')}}'
 	return '(reflection__TypeInfo){.typ = 8, .reflection__MultiReturn = ${value}}'
 }
@@ -484,7 +484,7 @@ fn reflection_collect_composite_type(raw_type_id u32, module_name string, mut co
 			reflection_collect_composite_type(syntax.raw_base, '', mut collected)
 		}
 	} else if syntax.tuple_like {
-		for part in syntax.reflection_tuple_parts {
+		for part in syntax.reflection_tuple_parts() {
 			reflection_collect_composite_type(part, '', mut collected)
 		}
 	}

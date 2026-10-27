@@ -211,7 +211,7 @@ fn vls_open_type_holds(typ &Type, params map[string]bool) bool {
 // vls_type_params_hold reports whether every bare type parameter named by the
 // source type is one of `params`.
 fn vls_type_params_hold(type_id u32, params map[string]bool) bool {
-	for word in flat.source_type_syntax(type_id).vls_generic_words {
+	for word in flat.source_type_syntax(type_id).vls_generic_words() {
 		mut found := false
 		for name, _ in params {
 			if word == flat.source_type_id(name) {
@@ -241,7 +241,7 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 	mut names := fn_params.clone()
 	receiver := flat.source_type_syntax(flat.source_type_syntax(flat.source_type_id(target)).qualifier)
 	if receiver.application_valid {
-		for param in receiver.application_args {
+		for param in receiver.application_args() {
 			param_id := trimmed_source_type_id(param)
 			if flat.source_type_syntax(param_id).bare_generic {
 				name := flat.source_type_name(param_id)
@@ -359,12 +359,12 @@ fn (tc &TypeChecker) vls_bind_type_params(text_id u32, actual Type, names []stri
 		return
 	}
 	actual_syntax := flat.source_type_syntax(held.source_type_id())
-	if !actual_syntax.application_valid || actual_syntax.application_args.len != syntax.application_args.len
+	if !actual_syntax.application_valid || actual_syntax.application_args().len != syntax.application_args().len
 		|| flat.source_type_syntax(actual_syntax.application_base).unqualified != flat.source_type_syntax(syntax.application_base).unqualified {
 		return
 	}
-	for i, arg in syntax.application_args {
-		arg_id := trimmed_source_type_id(actual_syntax.application_args[i])
+	for i, arg in syntax.application_args() {
+		arg_id := trimmed_source_type_id(actual_syntax.application_args()[i])
 		arg_type := if flat.source_type_syntax(arg_id).bare_generic {
 			unknown_type('generic placeholder `${flat.source_type_name(arg_id)}`')
 		} else {

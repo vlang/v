@@ -163,7 +163,7 @@ fn (t &Transformer) comptime_for_value_source_type(raw_id u32) ?u32 {
 	if clean_id == 0 {
 		return none
 	}
-	parts := flat.source_type_syntax(clean_id).dotted_parts
+	parts := flat.source_type_syntax(clean_id).dotted_parts()
 	if parts.len == 0 {
 		return none
 	}
@@ -1138,7 +1138,7 @@ fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
 			return params
 		}
 		if wanted_syntax.function_closed {
-			if !comptime_params_match_signature(params, node.typ, wanted_syntax.function_params, wanted_syntax.function_result) {
+			if !comptime_params_match_signature(params, node.typ, wanted_syntax.function_params(), wanted_syntax.function_result) {
 				continue
 			}
 			if file_name != t.cur_file {
@@ -1481,7 +1481,7 @@ fn (t &Transformer) comptime_method_source_type(raw_id u32) u32 {
 	if current_args_ids := t.recorded_generic_specialization_args(t.cur_fn_name) {
 		for arg_id in current_args_ids {
 			syntax := flat.source_type_syntax(comptime_method_receiver_type(arg_id))
-			if syntax.generic_app_valid && generic_specialized_type_matches_flat_name(clean_id, flat.source_type_name(syntax.generic_app_base), syntax.generic_app_args) {
+			if syntax.generic_app_valid && generic_specialized_type_matches_flat_name(clean_id, flat.source_type_name(syntax.generic_app_base), syntax.generic_app_args()) {
 				return arg_id
 			}
 		}
@@ -1574,8 +1574,7 @@ fn (t &Transformer) generic_checker_struct_name_known(name_id u32) bool {
 	if t.generic_type_indexes_ready && t.generic_checker_struct_index_count == t.tc.structs.len {
 		return t.generic_checker_struct_names[name_id]
 	}
-	for name, _ in t.tc.structs { if flat.source_type_id(name) == name_id { return true } }
-	return false
+	return t.refresh_checker_struct_type_name_index().struct_names[name_id]
 }
 
 fn (t &Transformer) comptime_method_requested_module(raw_id u32) string {
@@ -1604,7 +1603,7 @@ fn (t &Transformer) comptime_method_requested_module(raw_id u32) string {
 
 fn (t &Transformer) comptime_method_receiver_generic_args(receiver_id u32, requested_id u32, normalized_id u32) ([]u32, []string) {
 	receiver := flat.source_type_syntax(comptime_method_receiver_type(receiver_id))
-	if !receiver.generic_app_valid || receiver.generic_app_args.len == 0 {
+	if !receiver.generic_app_valid || receiver.generic_app_args().len == 0 {
 		return []u32{}, []string{}
 	}
 	mut candidates := [requested_id, normalized_id]
@@ -1615,10 +1614,10 @@ fn (t &Transformer) comptime_method_receiver_generic_args(receiver_id u32, reque
 	}
 	for candidate_id in candidates {
 		syntax := flat.source_type_syntax(comptime_method_receiver_type(candidate_id))
-		if syntax.generic_app_valid && syntax.generic_app_args.len == receiver.generic_app_args.len {
-			if !t.generic_args_have_placeholders(syntax.generic_app_args) {
+		if syntax.generic_app_valid && syntax.generic_app_args().len == receiver.generic_app_args().len {
+			if !t.generic_args_have_placeholders(syntax.generic_app_args()) {
 				// These are declaration parameter identifiers consumed by substitution.
-				return syntax.generic_app_args, flat.TypeTextList{ ids: receiver.generic_app_args }.names()
+				return syntax.generic_app_args(), flat.TypeTextList{ ids: receiver.generic_app_args() }.names()
 			}
 		}
 	}
@@ -4175,9 +4174,9 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type_id u32, decl_mod
 		syntax := flat.source_type_syntax(decl_name)
 		module_id := flat.source_type_id(decl_module)
 		mut found_module := false
-		for i, prefix in syntax.qualifier_prefixes {
+		for i, prefix in syntax.qualifier_prefixes() {
 			if prefix == module_id {
-				short_name = syntax.qualifier_suffixes[i]
+				short_name = syntax.qualifier_suffixes()[i]
 				found_module = true
 				break
 			}
@@ -4185,9 +4184,9 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type_id u32, decl_mod
 		if !found_module {
 			// Module declarations supply the serialized C name prefix here.
 			encoded_module_prefix := flat.source_type_id(c_name(decl_module) + '_')
-			for i, prefix in syntax.underscore_prefixes {
+			for i, prefix in syntax.underscore_prefixes() {
 				if prefix == encoded_module_prefix {
-					short_name = syntax.underscore_suffixes[i]
+					short_name = syntax.underscore_suffixes()[i]
 					break
 				}
 			}
@@ -4236,7 +4235,7 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type_id u32, decl_mod
 		// matching an already interned type uses its cached separator positions.
 		for prefix in [node.source_value_id(), qualified, flat.source_type_id(c_name(node.value)),
 			flat.source_type_id(c_name(flat.source_type_name(qualified)))] {
-			if prefix == 0 || prefix !in flat.source_type_syntax(lookup_name).underscore_prefixes {
+			if prefix == 0 || prefix !in flat.source_type_syntax(lookup_name).underscore_prefixes() {
 				continue
 			}
 			if decl_module == '' {
@@ -4390,24 +4389,24 @@ fn (t &Transformer) comptime_field_type_id_key(typ_id u32, decl_module string) u
 		return flat.source_type_composition_two(.fixed_array, syntax.bracket_raw_inner,
 			t.comptime_field_type_id_key(syntax.raw_base, decl_module))
 	}
-	if t.is_fixed_array_type(core_id) && syntax.postfix_base != 0 && syntax.postfix_dims.len > 0 {
+	if t.is_fixed_array_type(core_id) && syntax.postfix_base != 0 && syntax.postfix_dims().len > 0 {
 		mut out_id := t.comptime_field_type_id_key(syntax.postfix_base, decl_module)
-		for dim_id in syntax.postfix_dims {
+		for dim_id in syntax.postfix_dims() {
 			out_id = flat.source_type_composition_two(.fixed_array_suffix, dim_id, out_id)
 		}
 		return out_id
 	}
-	if syntax.tuple_like && syntax.tuple_components.len > 1 {
-		mut parts := []u32{cap: syntax.tuple_components.len}
-		for part_id in syntax.tuple_components {
+	if syntax.tuple_like && syntax.tuple_components().len > 1 {
+		mut parts := []u32{cap: syntax.tuple_components().len}
+		for part_id in syntax.tuple_components() {
 			parts << t.comptime_field_type_id_key(part_id, decl_module)
 		}
 		return flat.source_type_composition(.multi_return, parts)
 	}
 	if shape.has(.function_compact) || shape.has(.function_spaced) {
 		if !syntax.function_closed { return core_id }
-		mut parts := []u32{cap: syntax.function_params.len + 1}
-		for param_id in syntax.function_params {
+		mut parts := []u32{cap: syntax.function_params().len + 1}
+		for param_id in syntax.function_params() {
 			parts << t.comptime_field_type_id_key(param_id, decl_module)
 		}
 		qualified_ret_id := t.comptime_field_type_id_key(syntax.function_result, decl_module)
@@ -4418,9 +4417,9 @@ fn (t &Transformer) comptime_field_type_id_key(typ_id u32, decl_module string) u
 		return flat.source_type_composition(.void_function_type, parts)
 	}
 	if syntax.generic_app_valid {
-		mut parts := []u32{cap: syntax.generic_app_args.len + 1}
+		mut parts := []u32{cap: syntax.generic_app_args().len + 1}
 		parts << t.comptime_field_type_id_key(syntax.generic_app_base, decl_module)
-		for arg_id in syntax.generic_app_args {
+		for arg_id in syntax.generic_app_args() {
 			parts << t.comptime_field_type_id_key(arg_id, decl_module)
 		}
 		return flat.source_type_composition(.generic, parts)

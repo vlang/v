@@ -31,7 +31,7 @@ fn (g &FlatGen) sum_type_index(sum_name_id u32, variant_id u32) int {
 			mut suffix_ambiguous := false
 			for key, _ in g.tc.sum_types.ids {
 				key_id := flat.source_type_id(key)
-				if resolved_sum in flat.source_type_syntax(key_id).qualifier_suffixes {
+				if resolved_sum in flat.source_type_syntax(key_id).qualifier_suffixes() {
 					if suffix_match != 0 && suffix_match != key_id {
 						suffix_ambiguous = true
 						break
@@ -615,7 +615,7 @@ fn (g &FlatGen) collect_specialized_interface_application_text(type_text_id u32,
 		return
 	}
 	if !syntax.cgen_raw_app_valid { return }
-	for arg_id in syntax.cgen_raw_app_args {
+	for arg_id in syntax.cgen_raw_app_args() {
 		g.collect_specialized_interface_application_text(arg_id, mut applications)
 		if codegen_generic_arg_is_unresolved(arg_id) { return }
 	}
@@ -2400,18 +2400,18 @@ fn (g &FlatGen) interface_concrete_type(concrete_id u32) types.Type {
 fn short_module_type_ids_equal(a_id u32, b_id u32) bool {
 	a := flat.source_type_syntax(a_id)
 	b := flat.source_type_syntax(b_id)
-	if a.symbol_parts.len != b.symbol_parts.len {
+	if a.symbol_parts().len != b.symbol_parts().len {
 		return false
 	}
-	for i, part in a.symbol_parts {
-		if a.symbol_is_name[i] != b.symbol_is_name[i] {
+	for i, part in a.symbol_parts() {
+		if a.symbol_is_name()[i] != b.symbol_is_name()[i] {
 			return false
 		}
-		if a.symbol_is_name[i] {
-			if flat.source_type_syntax(part).unqualified != flat.source_type_syntax(b.symbol_parts[i]).unqualified {
+		if a.symbol_is_name()[i] {
+			if flat.source_type_syntax(part).unqualified != flat.source_type_syntax(b.symbol_parts()[i]).unqualified {
 				return false
 			}
-		} else if part != b.symbol_parts[i] {
+		} else if part != b.symbol_parts()[i] {
 			return false
 		}
 	}

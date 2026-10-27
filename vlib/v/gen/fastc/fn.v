@@ -62,7 +62,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 // retain its specialized body.
 fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMethodSource) bool {
 	normalized_path := src.path.replace('\\', '/')
-	return req.concrete == flat.source_type_voidptr && src.name == 'check_element_type_valid' && (src.receiver_type == flat.source_type_id('json2__Decoder') || flat.source_type_id('_json2__Decoder') in flat.source_type_syntax(src.receiver_type).underscore_suffixes) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
+	return req.concrete == flat.source_type_voidptr && src.name == 'check_element_type_valid' && (src.receiver_type == flat.source_type_id('json2__Decoder') || flat.source_type_id('_json2__Decoder') in flat.source_type_syntax(src.receiver_type).underscore_suffixes()) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
 }
 
 // reset_lookup_memos discards the per-file name lookup memos. They are keyed

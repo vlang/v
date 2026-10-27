@@ -1254,11 +1254,11 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	declared := tc.vls_declared_field_type(syntax.application_base, name)?
 	decl := tc.generic_type_decl(syntax.application_base) or { return declared }
 	params := decl.generic_params().map(it.trim_space())
-	if params.len != syntax.application_args.len {
+	if params.len != syntax.application_args().len {
 		return declared
 	}
-	mut values := []Type{cap: syntax.application_args.len}
-	for arg in syntax.application_args {
+	mut values := []Type{cap: syntax.application_args().len}
+	for arg in syntax.application_args() {
 		values << if flat.source_type_syntax(arg).bare_generic {
 			unknown_type('generic placeholder `${flat.source_type_name(arg)}`')
 		} else {
@@ -1604,9 +1604,9 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 	decl := tc.vls_interface_decl(interface_id)?
 	syntax := flat.source_type_syntax(interface_id)
 	type_params := decl.generic_params().map(it.trim_space())
-	if syntax.application_valid && type_params.len == syntax.application_args.len {
+	if syntax.application_valid && type_params.len == syntax.application_args().len {
 		member := tc.vls_interface_member(interface_id, method)?
-		type_args := syntax.application_args.map(trimmed_source_type_id(it))
+		type_args := syntax.application_args().map(trimmed_source_type_id(it))
 		mut params := []string{}
 		mut names := []string{}
 		mut types := []Type{}

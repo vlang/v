@@ -2067,9 +2067,9 @@ fn fastc_map_key_value_types(typ_id u32) ?(u32, u32) {
 	for key in ['string', 'rune', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
 		'f32', 'f64', 'char', 'uint', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr', 'bool'] {
 		key_id := flat.source_type_id(key)
-		for index, prefix in syntax.underscore_prefixes {
+		for index, prefix in syntax.underscore_prefixes() {
 			if prefix == key_id {
-				return key_id, fastc_decode_map_value_type_id(syntax.underscore_suffixes[index])
+				return key_id, fastc_decode_map_value_type_id(syntax.underscore_suffixes()[index])
 			}
 		}
 	}
@@ -2087,7 +2087,7 @@ fn fastc_declared_map_key_value_types(typ_id u32, declared_kinds map[string]Fast
 		c_type := fastc_c_declared_type_name(type_key)
 		prefix := flat.source_type_syntax(flat.source_type_id(c_type)).fastc_composite_part
 		// Later underscore boundaries are longer prefixes, preserving the longest match.
-		for index, candidate in syntax.underscore_prefixes {
+		for index, candidate in syntax.underscore_prefixes() {
 			if candidate == prefix && index > matched_index {
 				matched_key = flat.source_type_id(c_type)
 				matched_index = index
@@ -2095,7 +2095,7 @@ fn fastc_declared_map_key_value_types(typ_id u32, declared_kinds map[string]Fast
 		}
 	}
 	if matched_key == 0 { return none }
-	return matched_key, fastc_decode_map_value_type_id(syntax.underscore_suffixes[matched_index])
+	return matched_key, fastc_decode_map_value_type_id(syntax.underscore_suffixes()[matched_index])
 }
 
 fn fastc_decode_map_value_type(encoded string) string {

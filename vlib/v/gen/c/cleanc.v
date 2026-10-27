@@ -27,12 +27,14 @@ const cgen_float_literal_source_type = flat.source_type_id('float_literal')
 const cgen_i128_source_type = flat.source_type_id('i128')
 const cgen_int_literal_source_type = flat.source_type_id('int_literal')
 const cgen_map_source_type = flat.source_type_id('map')
+const cgen_raw_prefix_source_type = flat.source_type_id('raw:')
 const cgen_thread_source_type = flat.source_type_id('thread')
 const cgen_thread_array_source_type = flat.source_type_id('thread[]')
 const cgen_u128_source_type = flat.source_type_id('u128')
 const cgen_uint_source_type = flat.source_type_id('uint')
 const cgen_veb_context_source_type = flat.source_type_id('veb.Context')
 const cgen_veb_result_source_type = flat.source_type_id('veb.Result')
+const cgen_void_pointer_prefix_source_type = flat.source_type_id('&void')
 // portable_uint_c_type is the unsigned counterpart of `types.portable_int_c_type`.
 const portable_uint_c_type = '__v_uint'
 
@@ -14697,7 +14699,7 @@ fn (mut g FlatGen) sizeof_target(value0_id u32) string {
 		}
 		return '${g.sizeof_target(flat.source_type_syntax(flat.source_type_syntax(value_id).raw_base).trimmed)}*'
 	}
-	if flat.source_type_shape(value_id).has(.array_type) || value_id == flat.source_type_id('array') {
+	if flat.source_type_shape(value_id).has(.array_type) || value_id == cgen_array_source_type {
 		return 'Array'
 	}
 	if fixed_target := c_fixed_array_typedef_sizeof_target_id(value_id) {
@@ -14732,7 +14734,7 @@ fn (mut g FlatGen) sizeof_target(value0_id u32) string {
 	// selector expression (`bf.p`). Resolve visible values before interpreting the
 	// spelling as a type; parse_type accepts both shapes and cannot disambiguate them.
 	if flat.source_type_shape(value_id).has(.dotted) {
-		part_ids := flat.source_type_syntax(value_id).dotted_parts
+		part_ids := flat.source_type_syntax(value_id).dotted_parts()
 		parts := part_ids.map(flat.source_type_name(it))
 		if parts.len > 1 {
 			if g.cur_scope_has_local_name(parts[0]) {
@@ -16182,7 +16184,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					} else if is_sum_literal && field.value != 'typ' {
 						mut variant := u32(0)
 						if flat.source_type_shape(field.typ).has(.pointer) {
-							variant = flat.source_type_id(field.typ_text()[1..])
+							variant = flat.source_type_syntax(field.typ).raw_base
 						} else if field.typ != 0 {
 							variant = field.typ
 						} else {
@@ -17002,7 +17004,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			}
 		}
 		.string_literal {
-			if (flat.source_type_capture(node.typ, flat.source_type_id('raw:'), 0) != none) && unalias_type(g.expected_expr_type) is types.Pointer {
+			if (flat.source_type_capture(node.typ, cgen_raw_prefix_source_type, 0) != none) && unalias_type(g.expected_expr_type) is types.Pointer {
 				// vfmt keeps `r'...'.str` as a raw literal. In a compatible
 				// pointer context emit its backing bytes, not the string header.
 				g.write('"')
@@ -24361,7 +24363,7 @@ fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text_id u32, source_mod
 	mut clean := flat.source_type_syntax(type_text_id).trimmed
 	if clean == 0 { return }
 	if flat.source_type_syntax(clean).void_pointer_postfix {
-		if suffix := flat.source_type_capture(clean, flat.source_type_id('&void'), 0) {
+		if suffix := flat.source_type_capture(clean, cgen_void_pointer_prefix_source_type, 0) {
 			clean = flat.source_type_composition_two(.concat, flat.source_type_voidptr, suffix)
 		}
 	}

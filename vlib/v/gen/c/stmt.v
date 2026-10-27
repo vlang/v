@@ -7643,7 +7643,7 @@ fn (g &FlatGen) array_abi_types_match(a &types.Type, b &types.Type) bool {
 fn generated_array_type_name(name_id u32) bool {
 	clean := flat.source_type_syntax(name_id).unqualified
 	return flat.source_type_query(clean).has(.c_array_prefix)
-		&& flat.source_type_id('Array_fixed') !in flat.source_type_syntax(clean).underscore_prefixes
+		&& flat.source_type_id('Array_fixed') !in flat.source_type_syntax(clean).underscore_prefixes()
 }
 
 fn (g &FlatGen) map_abi_types_match(a &types.Type, b &types.Type) bool {

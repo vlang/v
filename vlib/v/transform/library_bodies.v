@@ -283,15 +283,15 @@ fn (mut t Transformer) library_type_parts(text_id u32) ?[]u32 {
 	}
 	if shape.has(.function_compact) || shape.has(.function_spaced) {
 		if !syntax.function_closed { return none }
-		mut parts := []u32{cap: syntax.function_params.len + 1}
-		for param in syntax.function_params {
+		mut parts := []u32{cap: syntax.function_params().len + 1}
+		for param in syntax.function_params() {
 			parts << library_type_text(flat.source_type_syntax(param).generic_parameter_payload)
 		}
 		if syntax.function_result != 0 { parts << library_type_text(syntax.function_result) }
 		return parts
 	}
 	if syntax.tuple_like {
-		return syntax.tuple_components.map(library_type_text(it))
+		return syntax.tuple_components().map(library_type_text(it))
 	}
 	query := flat.source_type_query(text_id)
 	if query.has(.c_prefix) || query.has(.js_prefix) || types.is_builtin_type_name_id(text_id) {
@@ -312,14 +312,14 @@ fn (mut t Transformer) library_type_parts(text_id u32) ?[]u32 {
 		// holds of the program comes in through its type arguments.
 		file := t.tc.struct_files[name] or { return none }
 		if file in t.tc.diagnostic_files { return none }
-		for arg in syntax.generic_app_args { parts << library_type_text(arg) }
+		for arg in syntax.generic_app_args() { parts << library_type_text(arg) }
 	}
 	if fields := t.tc.structs[text] {
 		for field in fields { parts << library_type_text(field.typ.source_type_id()) }
 	} else if is_app {
 		fields := t.tc.structs[name] or { return none }
 		params := t.tc.struct_generic_params[name] or { []string{} }
-		args_ids := syntax.generic_app_args
+		args_ids := syntax.generic_app_args()
 		for field in fields {
 			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.source_type_id(),
 				args_ids, params))

@@ -325,33 +325,34 @@ mut:
 	autolock_depth                         int
 	shared_map_read_locks                  map[int]flat.NodeId // reads of `shared` maps -> the map they read-lock, see try_autolock_shared_map_read
 	shared_map_read_ids                    []int
-	shared_map_reads_stmt                  flat.NodeId              = -1
-	alias_cache                            &AliasCache              = unsafe { nil }
-	sum_cache                              &AliasCache              = unsafe { nil }
-	module_type_cache                      &ModuleTypeCache         = unsafe { nil }
-	struct_guess_cache                     &AliasCache              = unsafe { nil }
-	generic_unresolved_cache               &GenericUnresolvedCache  = unsafe { nil }
-	spec_args_misses                       &SpecArgsMissCache       = unsafe { nil }
-	generic_spec_decode_cache              &TypeLookupCache         = unsafe { nil }
-	struct_field_type_cache                &FieldTypeCache          = unsafe { nil }
-	variant_short_name_cache               &AliasCache              = unsafe { nil }
-	selector_type_cache                    &SelectorTypeCache       = unsafe { nil }
-	resolved_call_return_cache             &ResolvedCallReturnCache = unsafe { nil }
-	fn_return_name_cache                   &FnReturnNameCache       = unsafe { nil }
-	variant_match_cache                    &VariantMatchCache       = unsafe { nil }
-	interface_type_cache                   &ContextLookupCache      = unsafe { nil }
-	alias_equivalent_names_cache           &EquivalentNamesCache    = unsafe { nil }
-	enum_expected_cache                    &EnumExpectedCache       = unsafe { nil }
-	type_alias_name_cache                  &ContextBoolLookupCache  = unsafe { nil }
-	raw_return_alias_cache                 &ContextBoolLookupCache  = unsafe { nil }
-	interface_box_param_cache              &SourceTypeBoolCache     = unsafe { nil }
-	alias_receiver_method_cache            &LookupCache             = unsafe { nil }
-	receiver_method_cache                  &ReceiverMethodCache     = unsafe { nil }
-	promote_text_cache                     &PromoteTextCache        = unsafe { nil }
-	call_variadic_cache                    &BoolLookupCache         = unsafe { nil }
-	str_alias_cache                        &StrAliasCache           = unsafe { nil }
-	file_import_cache                      &util.KeyRecentCache     = unsafe { nil }
-	file_import_name_filter                &FileImportNameFilter    = unsafe { nil }
+	shared_map_reads_stmt                  flat.NodeId                = -1
+	alias_cache                            &AliasCache                = unsafe { nil }
+	sum_cache                              &AliasCache                = unsafe { nil }
+	module_type_cache                      &ModuleTypeCache           = unsafe { nil }
+	struct_guess_cache                     &AliasCache                = unsafe { nil }
+	generic_unresolved_cache               &GenericUnresolvedCache    = unsafe { nil }
+	spec_args_misses                       &SpecArgsMissCache         = unsafe { nil }
+	generic_spec_decode_cache              &TypeLookupCache           = unsafe { nil }
+	struct_field_type_cache                &FieldTypeCache            = unsafe { nil }
+	variant_short_name_cache               &AliasCache                = unsafe { nil }
+	selector_type_cache                    &SelectorTypeCache         = unsafe { nil }
+	resolved_call_return_cache             &ResolvedCallReturnCache   = unsafe { nil }
+	fn_return_name_cache                   &FnReturnNameCache         = unsafe { nil }
+	variant_match_cache                    &VariantMatchCache         = unsafe { nil }
+	interface_type_cache                   &ContextLookupCache        = unsafe { nil }
+	alias_equivalent_names_cache           &EquivalentNamesCache      = unsafe { nil }
+	enum_expected_cache                    &EnumExpectedCache         = unsafe { nil }
+	type_alias_name_cache                  &ContextBoolLookupCache    = unsafe { nil }
+	raw_return_alias_cache                 &ContextBoolLookupCache    = unsafe { nil }
+	interface_box_param_cache              &SourceTypeBoolCache       = unsafe { nil }
+	alias_receiver_method_cache            &LookupCache               = unsafe { nil }
+	receiver_method_cache                  &ReceiverMethodCache       = unsafe { nil }
+	promote_text_cache                     &PromoteTextCache          = unsafe { nil }
+	call_variadic_cache                    &BoolLookupCache           = unsafe { nil }
+	str_alias_cache                        &StrAliasCache             = unsafe { nil }
+	file_import_cache                      &util.KeyRecentCache       = unsafe { nil }
+	file_import_name_filter                &FileImportNameFilter      = unsafe { nil }
+	generic_type_name_index_cache          &GenericTypeNameIndexCache = &GenericTypeNameIndexCache{}
 	generic_alias_names                    map[u32]bool
 	generic_exact_alias_names              map[u32]bool
 	generic_concrete_type_names            map[u32]bool
@@ -1533,6 +1534,14 @@ pub fn prepare_selfhost_transform(a &flat.FlatAst, tc &types.TypeChecker, enable
 	return prepared
 }
 
+fn (mut t Transformer) replace_prepared_type_checker(tc &types.TypeChecker) {
+	type_indexes := t.tc.runtime_type_indexes.clone()
+	t.tc = unsafe { tc }
+	t.tc.runtime_type_indexes = type_indexes
+	// The replacement can have different declarations at the same cardinality.
+	t.build_generic_alias_name_index()
+}
+
 // transform_prepared_selfhost_owned completes a self-host transform whose
 // immutable indexes were prepared concurrently with markused.
 pub fn transform_prepared_selfhost_owned(mut prepared PreparedSelfhostTransform, mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
@@ -1541,9 +1550,7 @@ pub fn transform_prepared_selfhost_owned(mut prepared PreparedSelfhostTransform,
 	}
 	mut t := &prepared.transformer
 	t.a = unsafe { &a }
-	type_indexes := t.tc.runtime_type_indexes.clone()
-	t.tc = unsafe { tc }
-	t.tc.runtime_type_indexes = type_indexes
+	t.replace_prepared_type_checker(tc)
 	t.used_fns = used_fns.clone()
 	configure_transformer(mut t, true, true, true, true, true, stage_scope)
 	if t.materialize_inferred_anonymous_structs() {
@@ -2544,18 +2551,19 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 	// the non-default fields (the AST/type-checker views and the pointer-backed
 	// lookup caches, which would otherwise be nil) need explicit values.
 	return Transformer{
-		a:                           a
-		tc:                          unsafe { tc }
-		memo_expansion_node_types:   os.getenv('V3_NO_NODE_TYPE_MEMO') == ''
-		no_checked_numeric_infix:    os.getenv('V3_NO_CHECKED_NUMERIC_INFIX') != ''
-		has_spawn_expr:              tc.threads_condition_value()
-		used_fns:                    used_fns.clone()
-		interface_box_param_cache:   &SourceTypeBoolCache{}
-		alias_receiver_method_cache: &LookupCache{}
-		call_variadic_cache:         &BoolLookupCache{}
-		str_alias_cache:             &StrAliasCache{}
-		file_import_cache:           &util.KeyRecentCache{}
-		encoded_type_suffix_cache:   &EncodedTypeSuffixCache{}
+		a:                             a
+		tc:                            unsafe { tc }
+		memo_expansion_node_types:     os.getenv('V3_NO_NODE_TYPE_MEMO') == ''
+		no_checked_numeric_infix:      os.getenv('V3_NO_CHECKED_NUMERIC_INFIX') != ''
+		has_spawn_expr:                tc.threads_condition_value()
+		used_fns:                      used_fns.clone()
+		interface_box_param_cache:     &SourceTypeBoolCache{}
+		alias_receiver_method_cache:   &LookupCache{}
+		call_variadic_cache:           &BoolLookupCache{}
+		str_alias_cache:               &StrAliasCache{}
+		file_import_cache:             &util.KeyRecentCache{}
+		encoded_type_suffix_cache:     &EncodedTypeSuffixCache{}
+		generic_type_name_index_cache: &GenericTypeNameIndexCache{}
 	}
 }
 
@@ -2679,6 +2687,7 @@ fn local_method_fn_name_needs_module_prefix(name string) bool {
 }
 
 fn (mut t Transformer) prepare() {
+	t.invalidate_generic_type_name_indexes()
 	t.prepare_file_import_name_filter()
 	// Optional experimental override of the autostr nesting cap; see
 	// max_stringify_nesting_depth. Left in place as a runtime knob for tuning the
@@ -4500,9 +4509,9 @@ fn (t &Transformer) normalize_sum_variant_type(typ_id u32, mod string, generic_p
 			t.normalize_sum_variant_type(syntax.bracket_base, mod, generic_params))
 	}
 	if syntax.generic_base != 0 && syntax.bracket_closed {
-		mut parts := []u32{cap: syntax.bracket_generic_parts.len + 1}
+		mut parts := []u32{cap: syntax.bracket_generic_parts().len + 1}
 		parts << t.normalize_sum_variant_type(syntax.generic_base, mod, generic_params)
-		for arg in syntax.bracket_generic_parts {
+		for arg in syntax.bracket_generic_parts() {
 			parts << t.normalize_sum_variant_type(arg, mod, generic_params)
 		}
 		application := flat.source_type_composition(.generic, parts)
@@ -5591,6 +5600,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		source_c_name_ids:                      t.source_c_name_ids.clone()
 		source_sum_field_name_ids:              t.source_sum_field_name_ids.clone()
 		encoded_type_suffix_cache:              &EncodedTypeSuffixCache{}
+		generic_type_name_index_cache:          &GenericTypeNameIndexCache{}
 		generic_parameter_type_names:           t.generic_parameter_type_names
 		generic_parameter_type_index_count:     t.generic_parameter_type_index_count
 		generic_enum_index_count:               t.generic_enum_index_count
@@ -10187,10 +10197,10 @@ fn (t &Transformer) checker_method_value_type_name(id flat.NodeId) u32 {
 // with `b Box[int]`, when no call asks for it. It reports whether it asked.
 fn (mut t Transformer) request_instance_method_value(receiver_id u32, method string) bool {
 	syntax := flat.source_type_syntax(t.trim_pointer_type(receiver_id))
-	if !syntax.generic_app_valid || syntax.generic_app_args.len == 0 {
+	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 {
 		return false
 	}
-	arg_ids := syntax.generic_app_args
+	arg_ids := syntax.generic_app_args()
 	if t.generic_args_have_placeholders(arg_ids) {
 		return false
 	}
@@ -11444,7 +11454,7 @@ fn (mut t Transformer) escape_value_contains_fixed_array(typ types.Type, mut see
 			}
 			for field in fields {
 				field_type := if is_generic {
-					t.escape_concrete_inline_field_type(base, field.name, syntax.generic_app_args, params) or { field.typ }
+					t.escape_concrete_inline_field_type(base, field.name, syntax.generic_app_args(), params) or { field.typ }
 				} else {
 					field.typ
 				}
@@ -11485,9 +11495,9 @@ fn (t &Transformer) escape_concrete_inline_field_type(base string, field_name st
 			param_ids := flat.TypeTextList.from_names(params).ids
 			syntax := flat.source_type_syntax(field.typ)
 			mut qualified := u32(0)
-			for index, part in syntax.symbol_parts {
+			for index, part in syntax.symbol_parts() {
 				mut name := part
-				if syntax.symbol_is_name[index] && name !in param_ids {
+				if syntax.symbol_is_name()[index] && name !in param_ids {
 					if flat.source_type_shape(name).has(.dotted) {
 						name_syntax := flat.source_type_syntax(name)
 						alias := flat.source_type_name(name_syntax.first_dot_prefix)
@@ -14594,7 +14604,7 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 			if flat.source_type_shape(typ.source_type_id()).has(.bracketed) {
 				if _ := t.tc.resolve_generic_struct_method(typ.source_type_id(), method) {
 					t.mark_fn_used_name('${typ.name()}.${method}')
-					if module_name.len > 0 && flat.source_type_id(module_name) !in flat.source_type_syntax(typ.source_type_id()).qualifier_prefixes {
+					if module_name.len > 0 && flat.source_type_id(module_name) !in flat.source_type_syntax(typ.source_type_id()).qualifier_prefixes() {
 						t.mark_fn_used_name('${module_name}.${typ.name()}.${method}')
 					}
 					return
@@ -20121,7 +20131,7 @@ fn (t &Transformer) concrete_generic_type_refines(current_id u32, refined_id u32
 		return false
 	}
 	syntax := flat.source_type_syntax(refined_id)
-	if !syntax.generic_app_valid || syntax.generic_app_args.len == 0 || t.generic_args_have_placeholders(syntax.generic_app_args) {
+	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 || t.generic_args_have_placeholders(syntax.generic_app_args()) {
 		return false
 	}
 	clean_current_comparison_type_id := t.trim_pointer_type(t.normalize_type_alias(current_id))
@@ -22641,6 +22651,11 @@ fn (t &Transformer) comptime_struct_type_known(raw_id u32) bool {
 	}
 	base_id := comptime_generic_type_base(clean_id)
 	prepared := t.generic_type_indexes_ready && t.generic_checker_struct_index_count == t.tc.structs.len
+	cache := if prepared {
+		t.generic_type_name_index_cache
+	} else {
+		t.refresh_checker_struct_type_name_index()
+	}
 	for candidate_id in [clean_id, base_id] {
 		if candidate_id == 0 { continue }
 		short_id := flat.source_type_syntax(candidate_id).unqualified
@@ -22650,17 +22665,7 @@ fn (t &Transformer) comptime_struct_type_known(raw_id u32) bool {
 			}
 			continue
 		}
-		// Early collection and tests can add declarations after preparation.
-		for name, _ in t.tc.structs {
-			name_id := flat.source_type_id(name)
-			if name_id == candidate_id || flat.source_type_syntax(name_id).unqualified == short_id {
-				return true
-			}
-			name_base := comptime_generic_type_base(name_id)
-			if name_base != 0 && flat.source_type_syntax(name_base).unqualified == short_id {
-				return true
-			}
-		}
+		if cache.struct_names[candidate_id] || cache.struct_short_names[short_id] { return true }
 	}
 	return false
 }
@@ -25434,7 +25439,7 @@ fn (mut t Transformer) ensure_stringify_generic_instances_for_type(typ_id u32) {
 	}
 	if !syntax.generic_app_valid { return }
 	base := syntax.generic_app_base
-	args := syntax.generic_app_args
+	args := syntax.generic_app_args()
 	clean := flat.source_type_name(clean_id)
 	for arg in args {
 		t.ensure_stringify_generic_instances_for_type(arg)
@@ -25498,7 +25503,7 @@ fn struct_info_uses_generic_params(info StructInfo, params []string) bool {
 
 fn type_text_uses_any_generic_param(typ_id u32, params []string) bool {
 	// Generic declaration parameters are identifiers; use their cached token IDs.
-	words := flat.source_type_syntax(typ_id).words
+	words := flat.source_type_syntax(typ_id).words()
 	for param in params {
 		if param.len > 0 && flat.source_type_id(param) in words { return true }
 	}
@@ -25509,7 +25514,7 @@ fn (t &Transformer) generic_struct_info_for_stringify(typ_id u32) ?StructInfo {
 	clean_id := t.trim_all_pointer_type(transform_trimmed_type_id(typ_id))
 	syntax := flat.source_type_syntax(clean_id)
 	base := syntax.generic_app_base
-	if !syntax.generic_app_valid || syntax.generic_app_args.len == 0 {
+	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 {
 		return none
 	}
 	base_info := t.lookup_struct_info_direct(base) or { return none }
@@ -25517,7 +25522,7 @@ fn (t &Transformer) generic_struct_info_for_stringify(typ_id u32) ?StructInfo {
 		return none
 	}
 	params := t.generic_struct_params_for_stringify(base)
-	args := syntax.generic_app_args
+	args := syntax.generic_app_args()
 	mut fields := []FieldInfo{cap: base_info.fields.len}
 	for field in base_info.fields {
 		field_typ := (if params.len > 0 {
@@ -25581,7 +25586,7 @@ fn (t &Transformer) stringify_type_has_generic_placeholder(typ_id u32) bool {
 		return syntax.bracket_closed && t.stringify_type_has_generic_placeholder(syntax.bracket_base)
 	}
 	if syntax.generic_app_valid {
-		for arg in syntax.generic_app_args {
+		for arg in syntax.generic_app_args() {
 			if t.stringify_type_has_generic_placeholder(arg) { return true }
 		}
 	}
@@ -25605,7 +25610,7 @@ fn stringify_type_has_generic_placeholder(typ_id u32) bool {
 		return syntax.bracket_closed && stringify_type_has_generic_placeholder(syntax.bracket_base)
 	}
 	if syntax.generic_app_valid {
-		for arg in syntax.generic_app_args {
+		for arg in syntax.generic_app_args() {
 			if stringify_type_has_generic_placeholder(arg) { return true }
 		}
 	}
@@ -29822,12 +29827,12 @@ fn (t &Transformer) concrete_variant_matches_generic_pattern(concrete_id u32, pa
 		|| t.variant_short_name(pattern_cname) == t.variant_short_name(concrete_id) {
 		return true
 	}
-	if !t.generic_variant_args_are_open(pattern.generic_app_args) {
+	if !t.generic_variant_args_are_open(pattern.generic_app_args()) {
 		return false
 	}
 	base_short := t.variant_short_name(pattern.generic_app_base)
 	concrete_short := t.variant_short_name(concrete_id)
-	return base_short in flat.source_type_syntax(concrete_short).underscore_prefixes
+	return base_short in flat.source_type_syntax(concrete_short).underscore_prefixes()
 }
 
 fn (t &Transformer) variant_names_match(a_id u32, b_id u32) bool {
@@ -29916,8 +29921,8 @@ fn (t &Transformer) variant_names_match_uncached(a_id u32, b_id u32) bool {
 	if a.generic_app_valid || b.generic_app_valid {
 		a_match_base := if a.generic_app_valid { a.generic_app_base } else { a_id }
 		b_match_base := if b.generic_app_valid { b.generic_app_base } else { b_id }
-		if a.generic_app_valid && b.generic_app_valid && !t.generic_variant_args_are_open(a.generic_app_args)
-			&& !t.generic_variant_args_are_open(b.generic_app_args) {
+		if a.generic_app_valid && b.generic_app_valid && !t.generic_variant_args_are_open(a.generic_app_args())
+			&& !t.generic_variant_args_are_open(b.generic_app_args()) {
 			return false
 		}
 		return t.variant_short_name(a_match_base) == t.variant_short_name(b_match_base)
@@ -29981,9 +29986,9 @@ fn variant_short_name_id(name_id u32) u32 {
 			variant_short_name_id(syntax.first_bracket_base))
 	}
 	if syntax.generic_app_valid {
-		mut parts := []u32{cap: syntax.generic_app_args.len + 1}
+		mut parts := []u32{cap: syntax.generic_app_args().len + 1}
 		parts << variant_short_name_id(syntax.generic_app_base)
-		for arg in syntax.generic_app_args { parts << variant_short_name_id(arg) }
+		for arg in syntax.generic_app_args() { parts << variant_short_name_id(arg) }
 		return flat.source_type_composition(.generic, parts)
 	}
 	return syntax.unqualified

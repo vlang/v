@@ -2069,7 +2069,7 @@ fn (t &Transformer) generic_struct_operator_return_type_by_name(struct_type_id u
 	} else {
 		return none
 	}
-	substituted := substitute_generic_type_text_with_params(ret, syntax.generic_app_args, params)
+	substituted := substitute_generic_type_text_with_params(ret, syntax.generic_app_args(), params)
 	return_syntax := flat.source_type_syntax(substituted)
 	rbase := return_syntax.generic_app_base
 	base_syntax := flat.source_type_syntax(base)
@@ -5138,8 +5138,8 @@ fn (t &Transformer) is_postfix_fixed_array_type(type_id u32) bool {
 		return false
 	}
 	syntax := flat.source_type_syntax(type_id)
-	length_id := if syntax.postfix_dims.len > 0 {
-		syntax.postfix_dims[0]
+	length_id := if syntax.postfix_dims().len > 0 {
+		syntax.postfix_dims()[0]
 	} else {
 		syntax.first_bracket_length
 	}
@@ -5196,8 +5196,8 @@ fn fixed_array_len(type_id u32) int {
 
 fn fixed_array_length_id(type_id u32) u32 {
 	syntax := flat.source_type_syntax(type_id)
-	if !flat.source_type_shape(type_id).has(.leading_bracket) && syntax.postfix_dims.len > 0 {
-		return syntax.postfix_dims[0]
+	if !flat.source_type_shape(type_id).has(.leading_bracket) && syntax.postfix_dims().len > 0 {
+		return syntax.postfix_dims()[0]
 	}
 	return syntax.first_bracket_length
 }
@@ -5213,12 +5213,12 @@ fn fixed_array_elem_type(type_id u32) u32 {
 	if flat.source_type_shape(type_id).has(.leading_bracket) {
 		return if syntax.first_bracket_closed { syntax.first_bracket_base } else { type_id }
 	}
-	if syntax.postfix_dims.len == 0 {
+	if syntax.postfix_dims().len == 0 {
 		return syntax.generic_base
 	}
 	mut out := syntax.postfix_base
-	for i := syntax.postfix_dims.len - 1; i > 0; i-- {
-		out = flat.source_type_composition_two(.fixed_array_suffix, syntax.postfix_dims[i], out)
+	for i := syntax.postfix_dims().len - 1; i > 0; i-- {
+		out = flat.source_type_composition_two(.fixed_array_suffix, syntax.postfix_dims()[i], out)
 	}
 	return out
 }

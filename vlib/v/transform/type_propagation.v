@@ -620,7 +620,7 @@ fn type_text_has_unresolved_generic_placeholder(typ_id u32) bool {
 	if !flat.source_type_query(clean).has(.generic_token) { return false }
 	if !shape.has(.bracketed) { return true }
 	if syntax.generic_app_valid {
-		for arg in syntax.generic_app_args {
+		for arg in syntax.generic_app_args() {
 			if type_text_has_unresolved_generic_placeholder(arg) { return true }
 		}
 	}
@@ -1222,7 +1222,7 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ_id u32, own
 		if allow_owner_substitution && owner.generic_app_valid && owner.generic_app_base != 0 {
 			params := t.generic_struct_param_names_for_base_id(owner.generic_app_base)
 			// Array lengths are source expressions; their substitution edits expression text.
-			length = flat.source_type_id(substitute_generic_expr_text_with_params(flat.source_type_name(length), owner.generic_app_args, params))
+			length = flat.source_type_id(substitute_generic_expr_text_with_params(flat.source_type_name(length), owner.generic_app_args(), params))
 		}
 		return flat.source_type_composition_two(.fixed_array, length, t.normalize_field_type_with_owner_substitution(syntax.first_bracket_base, owner_type_id, allow_owner_substitution))
 	}
@@ -1230,8 +1230,8 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ_id u32, own
 		params := t.generic_struct_param_names_for_base_id(owner.generic_app_base)
 		// Arguments belong to the instantiation site, rather than the module
 		// declaring the generic field. Qualify them before owner substitution.
-		mut qualified_args := []u32{cap: owner.generic_app_args.len}
-		for arg in owner.generic_app_args {
+		mut qualified_args := []u32{cap: owner.generic_app_args().len}
+		for arg in owner.generic_app_args() {
 			qualified_args << t.qualify_generic_arg_for_decl_module(arg, t.cur_module)
 		}
 		substituted := if params.len > 0 {
@@ -1249,9 +1249,9 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ_id u32, own
 			qbase := flat.source_type_composition_two(.qualified, owner.field_owner_module, field_base)
 			if t.type_authority_has(flat.source_type_name(qbase)) { field_base = qbase }
 		}
-		mut parts := []u32{cap: syntax.generic_app_args.len + 1}
+		mut parts := []u32{cap: syntax.generic_app_args().len + 1}
 		parts << field_base
-		for arg in syntax.generic_app_args {
+		for arg in syntax.generic_app_args() {
 			parts << t.normalize_field_type_with_owner_substitution(arg, owner_type_id, allow_owner_substitution)
 		}
 		return t.normalize_type_alias(flat.source_type_composition(.generic, parts))
@@ -1549,7 +1549,7 @@ fn (t &Transformer) type_aliases_with_short_name(short string) []TypeAliasEntry 
 
 fn (t &Transformer) expand_generic_type_alias(typ_id u32) ?u32 {
 	syntax := flat.source_type_syntax(typ_id)
-	if !syntax.generic_app_valid || syntax.generic_app_args.len == 0 { return none }
+	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 { return none }
 	base := syntax.generic_app_base
 	mut candidates := [base]
 	if imported := t.resolve_imported_type_name(base) {
@@ -1567,8 +1567,8 @@ fn (t &Transformer) expand_generic_type_alias(typ_id u32) ?u32 {
 		name := flat.source_type_name(candidate)
 		target := t.tc.type_aliases.type_id(name) or { continue }
 		params := t.tc.type_alias_generic_params[name] or { continue }
-		if params.len != syntax.generic_app_args.len { continue }
-		expanded := substitute_generic_type_text_with_params(target, syntax.generic_app_args, params)
+		if params.len != syntax.generic_app_args().len { continue }
+		expanded := substitute_generic_type_text_with_params(target, syntax.generic_app_args(), params)
 		if flat.source_type_shape(candidate).has(.dotted) {
 			// Alias targets are written in the alias declaration's module.
 			// Qualify a bare target there before normalizing it at the use site.
@@ -1700,8 +1700,8 @@ fn (t &Transformer) normalize_type_in_module_uncached(type_id u32, mod string) u
 		if !syntax.function_closed {
 			return clean_id
 		}
-		mut parts := []u32{cap: syntax.function_params.len + 1}
-		for param in syntax.function_params {
+		mut parts := []u32{cap: syntax.function_params().len + 1}
+		for param in syntax.function_params() {
 			parts << t.normalize_type_in_module(flat.source_type_syntax(param).legacy_parameter_mut_type, mod)
 		}
 		normalized_ret := t.normalize_type_in_module(syntax.function_result, mod)
@@ -1727,9 +1727,9 @@ fn (t &Transformer) normalize_type_in_module_uncached(type_id u32, mod string) u
 				return t.normalize_type_alias(expanded_source_id)
 			}
 		}
-		mut parts := []u32{cap: syntax.generic_app_args.len + 1}
+		mut parts := []u32{cap: syntax.generic_app_args().len + 1}
 		parts << t.normalize_type_in_module(syntax.generic_app_base, mod)
-		for arg in syntax.generic_app_args {
+		for arg in syntax.generic_app_args() {
 			parts << t.normalize_type_in_module(arg, mod)
 		}
 		return flat.source_type_composition(.generic, parts)

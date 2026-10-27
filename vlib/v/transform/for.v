@@ -1002,9 +1002,9 @@ fn (t &Transformer) iterator_for_in_info(iter_type_id u32) ?IteratorForInInfo {
 		method_syntax := flat.source_type_syntax(flat.source_type_id(info.name))
 		receiver := flat.source_type_syntax(method_syntax.qualifier)
 		mut concrete_receiver := clean
-		if receiver.generic_app_valid && syntax.generic_app_args.len > 0 {
+		if receiver.generic_app_valid && syntax.generic_app_args().len > 0 {
 			mut parts := [receiver.generic_app_base]
-			parts << syntax.generic_app_args
+			parts << syntax.generic_app_args()
 			concrete_receiver = flat.source_type_composition(.generic, parts)
 		}
 		next_method = flat.source_type_name(flat.source_type_composition_two(.qualified, concrete_receiver, method_syntax.unqualified))

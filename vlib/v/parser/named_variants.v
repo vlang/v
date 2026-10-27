@@ -264,7 +264,7 @@ fn (mut p Parser) named_variant_owner(lhs flat.NodeId, variant string) ?u32 {
 		text := p.s.src[start..end]
 		bracket := text.index_u8(`[`)
 		if bracket > 0 && text.ends_with(']') {
-			return flat.source_type_id(flat.source_type_name(base_name_id) + text[bracket..])
+			return flat.source_type_composition_two(.concat, base_name_id, flat.source_type_id(text[bracket..]))
 		}
 	}
 	return none
@@ -449,7 +449,7 @@ fn (mut p Parser) named_variant_pattern_type(type_name_id u32) ?u32 {
 	}
 	owner_syntax := flat.source_type_syntax(syntax.named_variant_dot_prefix)
 	base_id := owner_syntax.generic_base
-	parts := flat.source_type_syntax(base_id).dotted_parts
+	parts := flat.source_type_syntax(base_id).dotted_parts()
 	if (parts.len == 1 && p.is_named_variant_owner_name(flat.source_type_name(parts[0])))
 		|| (parts.len == 2 && flat.source_type_name(parts[0]) in p.imported_module_names
 			&& !p.is_local_binding(flat.source_type_name(parts[0]))

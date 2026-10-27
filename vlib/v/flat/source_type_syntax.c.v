@@ -26,6 +26,11 @@ pub enum SourceTypeSyntaxKind {
 	invalid
 }
 
+struct SourceTypeSyntaxSpan {
+	offset u32
+	len    u32
+}
+
 // SourceTypeSyntax exposes immutable numeric components of a source spelling.
 // Wrappers have a base; maps have a value base and one key argument; fixed arrays
 // have an element base and their exact length spelling as the argument. Functions
@@ -34,18 +39,69 @@ pub enum SourceTypeSyntaxKind {
 // except fixed array lengths, which retain their exact interior bytes.
 // unqualified and generic_base preserve the raw all_after_last('.') and
 // all_before('[') queries. words use ASCII identifier boundaries; symbols also
-// retain dots. These components describe spelling syntax, not semantic TypeIds.
+// retain dots. Array accessors return immutable views into process-owned storage.
+// These components describe spelling syntax, not semantic TypeIds.
 pub struct SourceTypeSyntax {
+	payload                             voidptr
+	args_span                           SourceTypeSyntaxSpan
+	symbols_span                        SourceTypeSyntaxSpan
+	words_span                          SourceTypeSyntaxSpan
+	application_args_span               SourceTypeSyntaxSpan
+	generic_app_args_span               SourceTypeSyntaxSpan
+	postfix_dims_span                   SourceTypeSyntaxSpan
+	function_params_span                SourceTypeSyntaxSpan
+	tuple_components_span               SourceTypeSyntaxSpan
+	qualifier_prefixes_span             SourceTypeSyntaxSpan
+	qualifier_suffixes_span             SourceTypeSyntaxSpan
+	cgen_app_args_span                  SourceTypeSyntaxSpan
+	cgen_function_params_span           SourceTypeSyntaxSpan
+	checker_function_params_span        SourceTypeSyntaxSpan
+	checker_tuple_components_span       SourceTypeSyntaxSpan
+	cgen_raw_app_args_span              SourceTypeSyntaxSpan
+	cgen_parts_span                     SourceTypeSyntaxSpan
+	checker_raw_tuple_components_span   SourceTypeSyntaxSpan
+	bracket_raw_parts_span              SourceTypeSyntaxSpan
+	bracket_generic_parts_span          SourceTypeSyntaxSpan
+	tuple_function_components_span      SourceTypeSyntaxSpan
+	plain_comma_parts_span              SourceTypeSyntaxSpan
+	underscore_prefixes_span            SourceTypeSyntaxSpan
+	symbol_parts_span                   SourceTypeSyntaxSpan
+	symbol_is_name_span                 SourceTypeSyntaxSpan
+	dotted_parts_span                   SourceTypeSyntaxSpan
+	underscore_suffixes_span            SourceTypeSyntaxSpan
+	generic_mentions_span               SourceTypeSyntaxSpan
+	receiver_app_args_span              SourceTypeSyntaxSpan
+	checker_bracket_components_span     SourceTypeSyntaxSpan
+	legacy_generic_words_span           SourceTypeSyntaxSpan
+	symbols_first_offsets_span          SourceTypeSyntaxSpan
+	voidptr_parts_span                  SourceTypeSyntaxSpan
+	inferred_parts_span                 SourceTypeSyntaxSpan
+	inferred_annotations_span           SourceTypeSyntaxSpan
+	inferred_expr_ids_span              SourceTypeSyntaxSpan
+	substitution_function_params_span   SourceTypeSyntaxSpan
+	flattened_receiver_parts_span       SourceTypeSyntaxSpan
+	written_applications_span           SourceTypeSyntaxSpan
+	written_application_offsets_span    SourceTypeSyntaxSpan
+	checker_raw_bracket_components_span SourceTypeSyntaxSpan
+	cgen_placeholder_candidates_span    SourceTypeSyntaxSpan
+	reflection_parts_span               SourceTypeSyntaxSpan
+	reflection_tuple_parts_span         SourceTypeSyntaxSpan
+	receiver_raw_app_args_span          SourceTypeSyntaxSpan
+	vls_generic_words_span              SourceTypeSyntaxSpan
+	eval_tuple_parts_span               SourceTypeSyntaxSpan
+	implicit_tuple_components_span      SourceTypeSyntaxSpan
+	generic_application_heads_span      SourceTypeSyntaxSpan
+	markused_application_heads_span     SourceTypeSyntaxSpan
+	markused_generic_components_span    SourceTypeSyntaxSpan
+	raw_tuple_parse_components_span     SourceTypeSyntaxSpan
+	union_parts_span                    SourceTypeSyntaxSpan
 pub:
 	kind                               SourceTypeSyntaxKind
 	trimmed                            u32
 	base                               u32
-	args                               []u32
 	unqualified                        u32
 	qualifier                          u32
 	generic_base                       u32
-	symbols                            []u32
-	words                              []u32
 	pointer_base                       u32
 	pointer_depth                      int
 	function_has_result                bool
@@ -53,13 +109,10 @@ pub:
 	main_base                          u32
 	bare_generic                       bool
 	application_base                   u32
-	application_args                   []u32
 	application_valid                  bool
 	generic_app_base                   u32
-	generic_app_args                   []u32
 	generic_app_valid                  bool
 	postfix_base                       u32
-	postfix_dims                       []u32
 	parameter_type                     u32
 	parameter_mut_type                 u32
 	bracket_closed                     bool
@@ -68,9 +121,7 @@ pub:
 	bracket_raw_inner                  u32
 	bracket_prefix                     u32
 	function_closed                    bool
-	function_params                    []u32
 	function_result                    u32
-	tuple_components                   []u32
 	tuple_like                         bool
 	function_space_prefix              bool
 	spaced                             bool
@@ -87,15 +138,9 @@ pub:
 	fn_prefix                          bool
 	shared_fragment                    bool
 	pointer_raw_base                   u32
-	qualifier_prefixes                 []u32
-	qualifier_suffixes                 []u32
 	builtin_base                       u32
 	cgen_app_base                      u32
-	cgen_app_args                      []u32
 	cgen_app_valid                     bool
-	cgen_function_params               []u32
-	checker_function_params            []u32
-	checker_tuple_components           []u32
 	tuple_contains_comma               bool
 	top_space_head                     u32
 	top_space_tail                     u32
@@ -112,28 +157,20 @@ pub:
 	function_fragment                  bool
 	dots_base                          u32
 	cgen_raw_app_base                  u32
-	cgen_raw_app_args                  []u32
 	cgen_raw_app_valid                 bool
-	cgen_parts                         []u32
 	generic_parameter_payload          u32
 	legacy_parameter_type              u32
 	legacy_parameter_mut_type          u32
 	first_bracket_length               u32
-	checker_raw_tuple_components       []u32
-	bracket_raw_parts                  []u32
-	bracket_generic_parts              []u32
-	tuple_function_components          []u32
 	c_pointer_base                     u32
 	c_ptr_name_suffix                  bool
 	c_fn_type_fragment                 bool
 	underscored                        bool
-	plain_comma_parts                  []u32
 	source_wrapper_base                u32
 	declaration_head                   u32
 	fn_fragment                        bool
 	compact_fn_spelling                u32
 	first_bracket_raw_inner            u32
-	underscore_prefixes                []u32
 	cgen_generic_placeholder           bool
 	fixed_array_type                   bool
 	typeof_valid                       bool
@@ -161,9 +198,6 @@ pub:
 	suffix_bracket_valid               bool
 	map_function_fragment              bool
 	bracket_source_inner               u32
-	symbol_parts                       []u32
-	symbol_is_name                     []bool
-	dotted_parts                       []u32
 	c_fixed_typedef_element            u32
 	c_fixed_typedef_length             u32
 	c_fixed_typedef_valid              bool
@@ -188,19 +222,14 @@ pub:
 	fastc_array_marker                 bool
 	fastc_array_marker_payload         u32
 	c_map_payload                      u32
-	underscore_suffixes                []u32
 	c_ptr_name_base                    u32
 	c_tagged_type                      u32
 	backward_bracket_prefix            u32
 	backward_bracket_closed            bool
-	generic_mentions                   []u32
 	opening_paren                      bool
 	byte_len                           int
 	receiver_app_valid                 bool
 	receiver_app_base                  u32
-	receiver_app_args                  []u32
-	checker_bracket_components         []u32
-	legacy_generic_words               []u32
 	declaration_parameter_payload      u32
 	declaration_parameter_mut          bool
 	prefix_dimension_tail              u32
@@ -209,59 +238,49 @@ pub:
 	backward_bracket_inner             u32
 	option_result_void_prefix          bool
 	nested_option_result_marker        int
-	symbols_first_offsets              []u32
 	c_pointer_depth                    int
+	c_pointer_count                    int
 	c_pointer_raw_base                 u32
-	voidptr_parts                      []u32
 	thread_value_prefix                bool
 	thread_value_payload               u32
 	thread_value_type_valid            bool
 	thread_value_type                  u32
 	contains_closing_bracket           bool
 	atomic_val_fragment                bool
-	inferred_parts                     []u32
-	inferred_annotations               []u32
 	// inferred_expr_ids stores AST NodeId bit patterns, not source spelling IDs.
-	inferred_expr_ids                 []u32
 	expr_prefix                       bool
 	expr_id                           int
-	substitution_function_params      []u32
 	parameter_name                    u32
 	parameter_named                   bool
 	parameter_is_mut                  bool
 	transform_fixed_length            bool
 	receiver_collection_id            u32
 	ampersand_trimmed                 u32
-	flattened_receiver_parts          []u32
 	last_double_underscore_suffix     u32
 	contains_doubleunderscore         bool
 	parallel_preseed_fn               bool
 	parallel_preseed_short            u32
 	closing_bracket                   bool
 	constraint_receiver_base          u32
-	written_applications              []u32
-	written_application_offsets       []u32
-	checker_raw_bracket_components    []u32
-	cgen_placeholder_candidates       []u32
 	result_suffix                     bool
 	cgen_decl_unusable                bool
 	cgen_decl_authority               bool
 	generic_encoded_fragment          bool
 	fn_ptr_encoded_prefix             bool
+	c_result_prefix                   bool
+	c_option_prefix                   bool
+	c_multi_return_prefix             bool
+	c_lower_map_prefix                bool
 	open_generic_receiver_marker      bool
 	space_removed                     u32
 	qualified_name_chars              bool
 	field_owner_module                u32
 	const_name_prefix                 bool
-	reflection_parts                  []u32
-	reflection_tuple_parts            []u32
 	pthread_prefix                    bool
 	thread_bracket_prefix             bool
 	fixed_typedef_bracket             bool
-	receiver_raw_app_args             []u32
 	question_trimmed                  u32
 	c_array_fixed_prefix              bool
-	vls_generic_words                 []u32
 	function_space_result             u32
 	doubleunderscore_dotted           u32
 	decimal_value                     int
@@ -271,17 +290,12 @@ pub:
 	internal_symbol_prefix            bool
 	main_at_base                      u32
 	last_double_underscore_prefix     u32
-	eval_tuple_parts                  []u32
-	implicit_tuple_components         []u32
-	generic_application_heads         []u32
 	incremental_generic_application   bool
 	system_error_suffix               bool
 	receiver_app_inner                u32
 	fastc_fixed_array_length_valid    bool
 	fastc_fixed_array_length          u32
-	markused_application_heads        []u32
 	contains_capital                  bool
-	markused_generic_components       []u32
 	first_bracket_source_inner        u32
 	mut_chars_base                    u32
 	c_function_pointer_hole           bool
@@ -293,7 +307,6 @@ pub:
 	c_shared_fragment                 bool
 	typ_suffix                        bool
 	typ_suffix_base                   u32
-	raw_tuple_parse_components        []u32
 	checker_parse_function_result     u32
 	checker_parse_function_has_params bool
 	top_level_dot_valid               bool
@@ -305,7 +318,642 @@ pub:
 	fastc_composite_part              u32
 	contains_question                 bool
 	contains_union                    bool
-	union_parts                       []u32
+	named_variant_dot_valid           bool
+	named_variant_dot_prefix          u32
+	named_variant_dot_suffix          u32
+}
+
+@[inline]
+fn source_type_syntax_empty_ids() []u32 {
+	return unsafe { array{ element_size: sizeof(u32), flags: .managed } }
+}
+
+@[inline]
+fn source_type_syntax_empty_bools() []bool {
+	return unsafe { array{ element_size: sizeof(bool), flags: .managed } }
+}
+
+@[inline]
+fn (syntax &SourceTypeSyntax) ids(span SourceTypeSyntaxSpan) []u32 {
+	return unsafe {
+		array{
+			data:         if span.len == 0 {
+				nil
+			} else {
+				voidptr(&u8(syntax.payload) + span.offset)
+			}
+			len:          int(span.len)
+			cap:          int(span.len)
+			element_size: sizeof(u32)
+			flags:        .nogrow | .nofree
+		}
+	}
+}
+
+@[inline]
+fn (syntax &SourceTypeSyntax) bools(span SourceTypeSyntaxSpan) []bool {
+	return unsafe {
+		array{
+			data:         if span.len == 0 {
+				nil
+			} else {
+				voidptr(&u8(syntax.payload) + span.offset)
+			}
+			len:          int(span.len)
+			cap:          int(span.len)
+			element_size: sizeof(bool)
+			flags:        .nogrow | .nofree
+		}
+	}
+}
+
+// args returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) args() []u32 {
+	return syntax.ids(syntax.args_span)
+}
+
+// symbols returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) symbols() []u32 {
+	return syntax.ids(syntax.symbols_span)
+}
+
+// words returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) words() []u32 {
+	return syntax.ids(syntax.words_span)
+}
+
+// application_args returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) application_args() []u32 {
+	return syntax.ids(syntax.application_args_span)
+}
+
+// generic_app_args returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) generic_app_args() []u32 {
+	return syntax.ids(syntax.generic_app_args_span)
+}
+
+// postfix_dims returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) postfix_dims() []u32 {
+	return syntax.ids(syntax.postfix_dims_span)
+}
+
+// function_params returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) function_params() []u32 {
+	return syntax.ids(syntax.function_params_span)
+}
+
+// tuple_components returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) tuple_components() []u32 {
+	return syntax.ids(syntax.tuple_components_span)
+}
+
+// qualifier_prefixes returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) qualifier_prefixes() []u32 {
+	return syntax.ids(syntax.qualifier_prefixes_span)
+}
+
+// qualifier_suffixes returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) qualifier_suffixes() []u32 {
+	return syntax.ids(syntax.qualifier_suffixes_span)
+}
+
+// cgen_app_args returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_app_args() []u32 {
+	return syntax.ids(syntax.cgen_app_args_span)
+}
+
+// cgen_function_params returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_function_params() []u32 {
+	return syntax.ids(syntax.cgen_function_params_span)
+}
+
+// checker_function_params returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) checker_function_params() []u32 {
+	return syntax.ids(syntax.checker_function_params_span)
+}
+
+// checker_tuple_components returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) checker_tuple_components() []u32 {
+	return syntax.ids(syntax.checker_tuple_components_span)
+}
+
+// cgen_raw_app_args returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_raw_app_args() []u32 {
+	return syntax.ids(syntax.cgen_raw_app_args_span)
+}
+
+// cgen_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_parts() []u32 {
+	return syntax.ids(syntax.cgen_parts_span)
+}
+
+// checker_raw_tuple_components returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) checker_raw_tuple_components() []u32 {
+	return syntax.ids(syntax.checker_raw_tuple_components_span)
+}
+
+// bracket_raw_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_raw_parts() []u32 {
+	return syntax.ids(syntax.bracket_raw_parts_span)
+}
+
+// bracket_generic_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) bracket_generic_parts() []u32 {
+	return syntax.ids(syntax.bracket_generic_parts_span)
+}
+
+// tuple_function_components returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) tuple_function_components() []u32 {
+	return syntax.ids(syntax.tuple_function_components_span)
+}
+
+// plain_comma_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) plain_comma_parts() []u32 {
+	return syntax.ids(syntax.plain_comma_parts_span)
+}
+
+// underscore_prefixes returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) underscore_prefixes() []u32 {
+	return syntax.ids(syntax.underscore_prefixes_span)
+}
+
+// symbol_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) symbol_parts() []u32 {
+	return syntax.ids(syntax.symbol_parts_span)
+}
+
+// symbol_is_name returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) symbol_is_name() []bool {
+	return syntax.bools(syntax.symbol_is_name_span)
+}
+
+// dotted_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) dotted_parts() []u32 {
+	return syntax.ids(syntax.dotted_parts_span)
+}
+
+// underscore_suffixes returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) underscore_suffixes() []u32 {
+	return syntax.ids(syntax.underscore_suffixes_span)
+}
+
+// generic_mentions returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) generic_mentions() []u32 {
+	return syntax.ids(syntax.generic_mentions_span)
+}
+
+// receiver_app_args returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) receiver_app_args() []u32 {
+	return syntax.ids(syntax.receiver_app_args_span)
+}
+
+// checker_bracket_components returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) checker_bracket_components() []u32 {
+	return syntax.ids(syntax.checker_bracket_components_span)
+}
+
+// legacy_generic_words returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) legacy_generic_words() []u32 {
+	return syntax.ids(syntax.legacy_generic_words_span)
+}
+
+// symbols_first_offsets returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) symbols_first_offsets() []u32 {
+	return syntax.ids(syntax.symbols_first_offsets_span)
+}
+
+// voidptr_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) voidptr_parts() []u32 {
+	return syntax.ids(syntax.voidptr_parts_span)
+}
+
+// inferred_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) inferred_parts() []u32 {
+	return syntax.ids(syntax.inferred_parts_span)
+}
+
+// inferred_annotations returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) inferred_annotations() []u32 {
+	return syntax.ids(syntax.inferred_annotations_span)
+}
+
+// inferred_expr_ids returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) inferred_expr_ids() []u32 {
+	return syntax.ids(syntax.inferred_expr_ids_span)
+}
+
+// substitution_function_params returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) substitution_function_params() []u32 {
+	return syntax.ids(syntax.substitution_function_params_span)
+}
+
+// flattened_receiver_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) flattened_receiver_parts() []u32 {
+	return syntax.ids(syntax.flattened_receiver_parts_span)
+}
+
+// written_applications returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) written_applications() []u32 {
+	return syntax.ids(syntax.written_applications_span)
+}
+
+// written_application_offsets returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) written_application_offsets() []u32 {
+	return syntax.ids(syntax.written_application_offsets_span)
+}
+
+// checker_raw_bracket_components returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) checker_raw_bracket_components() []u32 {
+	return syntax.ids(syntax.checker_raw_bracket_components_span)
+}
+
+// cgen_placeholder_candidates returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) cgen_placeholder_candidates() []u32 {
+	return syntax.ids(syntax.cgen_placeholder_candidates_span)
+}
+
+// reflection_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) reflection_parts() []u32 {
+	return syntax.ids(syntax.reflection_parts_span)
+}
+
+// reflection_tuple_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) reflection_tuple_parts() []u32 {
+	return syntax.ids(syntax.reflection_tuple_parts_span)
+}
+
+// receiver_raw_app_args returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) receiver_raw_app_args() []u32 {
+	return syntax.ids(syntax.receiver_raw_app_args_span)
+}
+
+// vls_generic_words returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) vls_generic_words() []u32 {
+	return syntax.ids(syntax.vls_generic_words_span)
+}
+
+// eval_tuple_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) eval_tuple_parts() []u32 {
+	return syntax.ids(syntax.eval_tuple_parts_span)
+}
+
+// implicit_tuple_components returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) implicit_tuple_components() []u32 {
+	return syntax.ids(syntax.implicit_tuple_components_span)
+}
+
+// generic_application_heads returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) generic_application_heads() []u32 {
+	return syntax.ids(syntax.generic_application_heads_span)
+}
+
+// markused_application_heads returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) markused_application_heads() []u32 {
+	return syntax.ids(syntax.markused_application_heads_span)
+}
+
+// markused_generic_components returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) markused_generic_components() []u32 {
+	return syntax.ids(syntax.markused_generic_components_span)
+}
+
+// raw_tuple_parse_components returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) raw_tuple_parse_components() []u32 {
+	return syntax.ids(syntax.raw_tuple_parse_components_span)
+}
+
+// union_parts returns a process-owned immutable array view.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) union_parts() []u32 {
+	return syntax.ids(syntax.union_parts_span)
+}
+
+struct SourceTypeSyntaxParsed {
+	kind                               SourceTypeSyntaxKind
+	trimmed                            u32
+	base                               u32
+	args                               []u32 = source_type_syntax_empty_ids()
+	unqualified                        u32
+	qualifier                          u32
+	generic_base                       u32
+	symbols                            []u32 = source_type_syntax_empty_ids()
+	words                              []u32 = source_type_syntax_empty_ids()
+	pointer_base                       u32
+	pointer_depth                      int
+	function_has_result                bool
+	raw_base                           u32
+	main_base                          u32
+	bare_generic                       bool
+	application_base                   u32
+	application_args                   []u32 = source_type_syntax_empty_ids()
+	application_valid                  bool
+	generic_app_base                   u32
+	generic_app_args                   []u32 = source_type_syntax_empty_ids()
+	generic_app_valid                  bool
+	postfix_base                       u32
+	postfix_dims                       []u32 = source_type_syntax_empty_ids()
+	parameter_type                     u32
+	parameter_mut_type                 u32
+	bracket_closed                     bool
+	bracket_base                       u32
+	bracket_inner                      u32
+	bracket_raw_inner                  u32
+	bracket_prefix                     u32
+	function_closed                    bool
+	function_params                    []u32 = source_type_syntax_empty_ids()
+	function_result                    u32
+	tuple_components                   []u32 = source_type_syntax_empty_ids()
+	tuple_like                         bool
+	function_space_prefix              bool
+	spaced                             bool
+	first_bracket_closed               bool
+	first_bracket_base                 u32
+	last_space_word                    u32
+	named_type                         bool
+	c_qualified                        bool
+	first_dot_prefix                   u32
+	first_dot_suffix                   u32
+	builtin_prefix                     bool
+	main_fragment                      bool
+	function_prefix                    bool
+	fn_prefix                          bool
+	shared_fragment                    bool
+	pointer_raw_base                   u32
+	qualifier_prefixes                 []u32 = source_type_syntax_empty_ids()
+	qualifier_suffixes                 []u32 = source_type_syntax_empty_ids()
+	builtin_base                       u32
+	cgen_app_base                      u32
+	cgen_app_args                      []u32 = source_type_syntax_empty_ids()
+	cgen_app_valid                     bool
+	cgen_function_params               []u32 = source_type_syntax_empty_ids()
+	checker_function_params            []u32 = source_type_syntax_empty_ids()
+	checker_tuple_components           []u32 = source_type_syntax_empty_ids()
+	tuple_contains_comma               bool
+	top_space_head                     u32
+	top_space_tail                     u32
+	top_space_valid                    bool
+	typeof_expr_prefix                 bool
+	bracket_suffix                     u32
+	bracket_from                       u32
+	bracket_inner_fixed_length         bool
+	first_bracket_prefix               u32
+	void_pointer_postfix               bool
+	canonical_dotted_name              bool
+	decimal                            bool
+	contains_comma                     bool
+	function_fragment                  bool
+	dots_base                          u32
+	cgen_raw_app_base                  u32
+	cgen_raw_app_args                  []u32 = source_type_syntax_empty_ids()
+	cgen_raw_app_valid                 bool
+	cgen_parts                         []u32 = source_type_syntax_empty_ids()
+	generic_parameter_payload          u32
+	legacy_parameter_type              u32
+	legacy_parameter_mut_type          u32
+	first_bracket_length               u32
+	checker_raw_tuple_components       []u32 = source_type_syntax_empty_ids()
+	bracket_raw_parts                  []u32 = source_type_syntax_empty_ids()
+	bracket_generic_parts              []u32 = source_type_syntax_empty_ids()
+	tuple_function_components          []u32 = source_type_syntax_empty_ids()
+	c_pointer_base                     u32
+	c_ptr_name_suffix                  bool
+	c_fn_type_fragment                 bool
+	underscored                        bool
+	plain_comma_parts                  []u32 = source_type_syntax_empty_ids()
+	source_wrapper_base                u32
+	declaration_head                   u32
+	fn_fragment                        bool
+	compact_fn_spelling                u32
+	first_bracket_raw_inner            u32
+	underscore_prefixes                []u32 = source_type_syntax_empty_ids()
+	cgen_generic_placeholder           bool
+	fixed_array_type                   bool
+	typeof_valid                       bool
+	typeof_inner                       u32
+	postfix_index_base                 u32
+	last_bracket_prefix                u32
+	last_bracket_length                u32
+	trailing_bracket_prefix            u32
+	trailing_bracket_closed            bool
+	array_chars_base                   u32
+	lowercase_value_ident              bool
+	typeof_prefix                      bool
+	first_capital                      bool
+	named_variant                      bool
+	named_variant_valid                bool
+	named_variant_owner                u32
+	named_variant_name                 u32
+	main_unlocked                      u32
+	encoded_fixed_length               u32
+	encoded_fixed_base                 u32
+	last_underscore_prefix             u32
+	last_underscore_suffix             u32
+	map_name_prefix                    bool
+	suffix_bracket_length              u32
+	suffix_bracket_valid               bool
+	map_function_fragment              bool
+	bracket_source_inner               u32
+	symbol_parts                       []u32  = source_type_syntax_empty_ids()
+	symbol_is_name                     []bool = source_type_syntax_empty_bools()
+	dotted_parts                       []u32  = source_type_syntax_empty_ids()
+	c_fixed_typedef_element            u32
+	c_fixed_typedef_length             u32
+	c_fixed_typedef_valid              bool
+	fixed_array_query_length           u32
+	last_bracket_span_valid            bool
+	last_bracket_span_inner            u32
+	plain_type_name                    bool
+	generic_app_legacy_suffix          u32
+	wrapper_prefix                     u32
+	wrapper_base                       u32
+	checker_fixed_array_may_be         bool
+	dollar_prefix                      bool
+	define_prefix                      bool
+	define_fragment                    bool
+	paren_prefix                       bool
+	fixed_length                       bool
+	qualified_modifiers                u32
+	plain_alias_target                 bool
+	main_removed                       u32
+	c_array_payload                    u32
+	c_fixed_array_payload              u32
+	fastc_array_marker                 bool
+	fastc_array_marker_payload         u32
+	c_map_payload                      u32
+	underscore_suffixes                []u32 = source_type_syntax_empty_ids()
+	c_ptr_name_base                    u32
+	c_tagged_type                      u32
+	backward_bracket_prefix            u32
+	backward_bracket_closed            bool
+	generic_mentions                   []u32 = source_type_syntax_empty_ids()
+	opening_paren                      bool
+	byte_len                           int
+	receiver_app_valid                 bool
+	receiver_app_base                  u32
+	receiver_app_args                  []u32 = source_type_syntax_empty_ids()
+	checker_bracket_components         []u32 = source_type_syntax_empty_ids()
+	legacy_generic_words               []u32 = source_type_syntax_empty_ids()
+	declaration_parameter_payload      u32
+	declaration_parameter_mut          bool
+	prefix_dimension_tail              u32
+	prefix_dimensions_closed           bool
+	backward_bracket_after_prefix_dims bool
+	backward_bracket_inner             u32
+	option_result_void_prefix          bool
+	nested_option_result_marker        int
+	symbols_first_offsets              []u32 = source_type_syntax_empty_ids()
+	c_pointer_depth                    int
+	c_pointer_count                    int
+	c_pointer_raw_base                 u32
+	voidptr_parts                      []u32 = source_type_syntax_empty_ids()
+	thread_value_prefix                bool
+	thread_value_payload               u32
+	thread_value_type_valid            bool
+	thread_value_type                  u32
+	contains_closing_bracket           bool
+	atomic_val_fragment                bool
+	inferred_parts                     []u32 = source_type_syntax_empty_ids()
+	inferred_annotations               []u32 = source_type_syntax_empty_ids()
+	// inferred_expr_ids stores AST NodeId bit patterns, not source spelling IDs.
+	inferred_expr_ids                 []u32 = source_type_syntax_empty_ids()
+	expr_prefix                       bool
+	expr_id                           int
+	substitution_function_params      []u32 = source_type_syntax_empty_ids()
+	parameter_name                    u32
+	parameter_named                   bool
+	parameter_is_mut                  bool
+	transform_fixed_length            bool
+	receiver_collection_id            u32
+	ampersand_trimmed                 u32
+	flattened_receiver_parts          []u32 = source_type_syntax_empty_ids()
+	last_double_underscore_suffix     u32
+	contains_doubleunderscore         bool
+	parallel_preseed_fn               bool
+	parallel_preseed_short            u32
+	closing_bracket                   bool
+	constraint_receiver_base          u32
+	written_applications              []u32 = source_type_syntax_empty_ids()
+	written_application_offsets       []u32 = source_type_syntax_empty_ids()
+	checker_raw_bracket_components    []u32 = source_type_syntax_empty_ids()
+	cgen_placeholder_candidates       []u32 = source_type_syntax_empty_ids()
+	result_suffix                     bool
+	cgen_decl_unusable                bool
+	cgen_decl_authority               bool
+	generic_encoded_fragment          bool
+	fn_ptr_encoded_prefix             bool
+	c_result_prefix                   bool
+	c_option_prefix                   bool
+	c_multi_return_prefix             bool
+	c_lower_map_prefix                bool
+	open_generic_receiver_marker      bool
+	space_removed                     u32
+	qualified_name_chars              bool
+	field_owner_module                u32
+	const_name_prefix                 bool
+	reflection_parts                  []u32 = source_type_syntax_empty_ids()
+	reflection_tuple_parts            []u32 = source_type_syntax_empty_ids()
+	pthread_prefix                    bool
+	thread_bracket_prefix             bool
+	fixed_typedef_bracket             bool
+	receiver_raw_app_args             []u32 = source_type_syntax_empty_ids()
+	question_trimmed                  u32
+	c_array_fixed_prefix              bool
+	vls_generic_words                 []u32 = source_type_syntax_empty_ids()
+	function_space_result             u32
+	doubleunderscore_dotted           u32
+	decimal_value                     int
+	integer_value                     int
+	ptr_name_base                     u32
+	encoded_alnum_dotted              bool
+	internal_symbol_prefix            bool
+	main_at_base                      u32
+	last_double_underscore_prefix     u32
+	eval_tuple_parts                  []u32 = source_type_syntax_empty_ids()
+	implicit_tuple_components         []u32 = source_type_syntax_empty_ids()
+	generic_application_heads         []u32 = source_type_syntax_empty_ids()
+	incremental_generic_application   bool
+	system_error_suffix               bool
+	receiver_app_inner                u32
+	fastc_fixed_array_length_valid    bool
+	fastc_fixed_array_length          u32
+	markused_application_heads        []u32 = source_type_syntax_empty_ids()
+	contains_capital                  bool
+	markused_generic_components       []u32 = source_type_syntax_empty_ids()
+	first_bracket_source_inner        u32
+	mut_chars_base                    u32
+	c_function_pointer_hole           bool
+	channel_fragment                  bool
+	array_receiver_fragment           bool
+	mangled_open_generic_marker       bool
+	array_suffix                      bool
+	empty_function_prefix             bool
+	c_shared_fragment                 bool
+	typ_suffix                        bool
+	typ_suffix_base                   u32
+	raw_tuple_parse_components        []u32 = source_type_syntax_empty_ids()
+	checker_parse_function_result     u32
+	checker_parse_function_has_params bool
+	top_level_dot_valid               bool
+	top_level_dot_prefix              u32
+	top_level_dot_suffix              u32
+	parser_fn_decl_valid              bool
+	parser_fn_decl_params             u32
+	parser_fn_decl_result             u32
+	fastc_composite_part              u32
+	contains_question                 bool
+	contains_union                    bool
+	union_parts                       []u32 = source_type_syntax_empty_ids()
 	named_variant_dot_valid           bool
 	named_variant_dot_prefix          u32
 	named_variant_dot_suffix          u32
@@ -662,17 +1310,22 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 		source_type_syntax_packed_ids_len(parsed.markused_generic_components, id) +
 		source_type_syntax_packed_ids_len(parsed.raw_tuple_parse_components, id) +
 		source_type_syntax_packed_ids_len(parsed.union_parts, id)
-	payload_size := sizeof(SourceTypeSyntaxEntry) + uint(id_count) * sizeof(u32) +
-		uint(parsed.symbol_is_name.len) * sizeof(bool)
+	payload_bytes := u64(sizeof(SourceTypeSyntaxEntry)) + u64(id_count) * u64(sizeof(u32)) +
+		u64(parsed.symbol_is_name.len) * u64(sizeof(bool))
+	if payload_bytes > u64(0x7fffffff) {
+		panic('source type syntax components exceed the allocation limit')
+	}
+	payload_size := uint(payload_bytes)
 	mut entry := unsafe { &SourceTypeSyntaxEntry(node_payload_alloc_zeroed(payload_size)) }
 	if isnil(entry) {
 		panic('could not allocate source type syntax')
 	}
 	mut payload := SourceTypeSyntaxPayload{
-		identity_id: id
-		id_offset:   1
-		ids:         unsafe { voidptr(&u8(entry) + sizeof(SourceTypeSyntaxEntry)) }
-		bools:       unsafe { voidptr(&u8(entry) + sizeof(SourceTypeSyntaxEntry) + uint(id_count) * sizeof(u32)) }
+		identity_id:      id
+		id_offset:        1
+		ids:              unsafe { voidptr(&u8(entry) + sizeof(SourceTypeSyntaxEntry)) }
+		bools:            unsafe { voidptr(&u8(entry) + sizeof(SourceTypeSyntaxEntry) + uint(id_count) * sizeof(u32)) }
+		bool_base_offset: u32(uint(id_count) * sizeof(u32))
 	}
 	unsafe { *&u32(payload.ids) = id }
 	// Records and slices belong to the process, independently of parser workers
@@ -681,277 +1334,283 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 		*entry = SourceTypeSyntaxEntry{
 			id:     id
 			syntax: SourceTypeSyntax{
-				kind:                               parsed.kind
-				trimmed:                            parsed.trimmed
-				base:                               parsed.base
-				args:                               source_type_syntax_owned_ids(parsed.args, mut payload)
-				unqualified:                        parsed.unqualified
-				qualifier:                          parsed.qualifier
-				generic_base:                       parsed.generic_base
-				symbols:                            source_type_syntax_owned_ids(parsed.symbols, mut payload)
-				words:                              source_type_syntax_owned_ids(parsed.words, mut payload)
-				pointer_base:                       parsed.pointer_base
-				pointer_depth:                      parsed.pointer_depth
-				function_has_result:                parsed.function_has_result
-				raw_base:                           parsed.raw_base
-				main_base:                          parsed.main_base
-				bare_generic:                       parsed.bare_generic
-				application_base:                   parsed.application_base
-				application_args:                   source_type_syntax_owned_ids(parsed.application_args, mut payload)
-				application_valid:                  parsed.application_valid
-				generic_app_base:                   parsed.generic_app_base
-				generic_app_args:                   source_type_syntax_owned_ids(parsed.generic_app_args, mut payload)
-				generic_app_valid:                  parsed.generic_app_valid
-				postfix_base:                       parsed.postfix_base
-				postfix_dims:                       source_type_syntax_owned_ids(parsed.postfix_dims, mut payload)
-				parameter_type:                     parsed.parameter_type
-				parameter_mut_type:                 parsed.parameter_mut_type
-				bracket_closed:                     parsed.bracket_closed
-				bracket_base:                       parsed.bracket_base
-				bracket_inner:                      parsed.bracket_inner
-				bracket_raw_inner:                  parsed.bracket_raw_inner
-				bracket_prefix:                     parsed.bracket_prefix
-				function_closed:                    parsed.function_closed
-				function_params:                    source_type_syntax_owned_ids(parsed.function_params, mut payload)
-				function_result:                    parsed.function_result
-				tuple_components:                   source_type_syntax_owned_ids(parsed.tuple_components, mut payload)
-				tuple_like:                         parsed.tuple_like
-				function_space_prefix:              parsed.function_space_prefix
-				spaced:                             parsed.spaced
-				first_bracket_closed:               parsed.first_bracket_closed
-				first_bracket_base:                 parsed.first_bracket_base
-				last_space_word:                    parsed.last_space_word
-				named_type:                         parsed.named_type
-				c_qualified:                        parsed.c_qualified
-				first_dot_prefix:                   parsed.first_dot_prefix
-				first_dot_suffix:                   parsed.first_dot_suffix
-				builtin_prefix:                     parsed.builtin_prefix
-				main_fragment:                      parsed.main_fragment
-				function_prefix:                    parsed.function_prefix
-				fn_prefix:                          parsed.fn_prefix
-				shared_fragment:                    parsed.shared_fragment
-				pointer_raw_base:                   parsed.pointer_raw_base
-				qualifier_prefixes:                 source_type_syntax_owned_ids(parsed.qualifier_prefixes, mut payload)
-				qualifier_suffixes:                 source_type_syntax_owned_ids(parsed.qualifier_suffixes, mut payload)
-				builtin_base:                       parsed.builtin_base
-				cgen_app_base:                      parsed.cgen_app_base
-				cgen_app_args:                      source_type_syntax_owned_ids(parsed.cgen_app_args, mut payload)
-				cgen_app_valid:                     parsed.cgen_app_valid
-				cgen_function_params:               source_type_syntax_owned_ids(parsed.cgen_function_params, mut payload)
-				checker_function_params:            source_type_syntax_owned_ids(parsed.checker_function_params, mut payload)
-				checker_tuple_components:           source_type_syntax_owned_ids(parsed.checker_tuple_components, mut payload)
-				tuple_contains_comma:               parsed.tuple_contains_comma
-				top_space_head:                     parsed.top_space_head
-				top_space_tail:                     parsed.top_space_tail
-				top_space_valid:                    parsed.top_space_valid
-				typeof_expr_prefix:                 parsed.typeof_expr_prefix
-				bracket_suffix:                     parsed.bracket_suffix
-				bracket_from:                       parsed.bracket_from
-				bracket_inner_fixed_length:         parsed.bracket_inner_fixed_length
-				first_bracket_prefix:               parsed.first_bracket_prefix
-				void_pointer_postfix:               parsed.void_pointer_postfix
-				canonical_dotted_name:              parsed.canonical_dotted_name
-				decimal:                            parsed.decimal
-				contains_comma:                     parsed.contains_comma
-				function_fragment:                  parsed.function_fragment
-				dots_base:                          parsed.dots_base
-				cgen_raw_app_base:                  parsed.cgen_raw_app_base
-				cgen_raw_app_args:                  source_type_syntax_owned_ids(parsed.cgen_raw_app_args, mut payload)
-				cgen_raw_app_valid:                 parsed.cgen_raw_app_valid
-				cgen_parts:                         source_type_syntax_owned_ids(parsed.cgen_parts, mut payload)
-				generic_parameter_payload:          parsed.generic_parameter_payload
-				legacy_parameter_type:              parsed.legacy_parameter_type
-				legacy_parameter_mut_type:          parsed.legacy_parameter_mut_type
-				first_bracket_length:               parsed.first_bracket_length
-				checker_raw_tuple_components:       source_type_syntax_owned_ids(parsed.checker_raw_tuple_components, mut payload)
-				bracket_raw_parts:                  source_type_syntax_owned_ids(parsed.bracket_raw_parts, mut payload)
-				bracket_generic_parts:              source_type_syntax_owned_ids(parsed.bracket_generic_parts, mut payload)
-				tuple_function_components:          source_type_syntax_owned_ids(parsed.tuple_function_components, mut payload)
-				c_pointer_base:                     parsed.c_pointer_base
-				c_ptr_name_suffix:                  parsed.c_ptr_name_suffix
-				c_fn_type_fragment:                 parsed.c_fn_type_fragment
-				underscored:                        parsed.underscored
-				plain_comma_parts:                  source_type_syntax_owned_ids(parsed.plain_comma_parts, mut payload)
-				source_wrapper_base:                parsed.source_wrapper_base
-				declaration_head:                   parsed.declaration_head
-				fn_fragment:                        parsed.fn_fragment
-				compact_fn_spelling:                parsed.compact_fn_spelling
-				first_bracket_raw_inner:            parsed.first_bracket_raw_inner
-				underscore_prefixes:                source_type_syntax_owned_ids(parsed.underscore_prefixes, mut payload)
-				cgen_generic_placeholder:           parsed.cgen_generic_placeholder
-				fixed_array_type:                   parsed.fixed_array_type
-				typeof_valid:                       parsed.typeof_valid
-				typeof_inner:                       parsed.typeof_inner
-				postfix_index_base:                 parsed.postfix_index_base
-				last_bracket_prefix:                parsed.last_bracket_prefix
-				last_bracket_length:                parsed.last_bracket_length
-				trailing_bracket_prefix:            parsed.trailing_bracket_prefix
-				trailing_bracket_closed:            parsed.trailing_bracket_closed
-				array_chars_base:                   parsed.array_chars_base
-				lowercase_value_ident:              parsed.lowercase_value_ident
-				typeof_prefix:                      parsed.typeof_prefix
-				first_capital:                      parsed.first_capital
-				named_variant:                      parsed.named_variant
-				named_variant_valid:                parsed.named_variant_valid
-				named_variant_owner:                parsed.named_variant_owner
-				named_variant_name:                 parsed.named_variant_name
-				main_unlocked:                      parsed.main_unlocked
-				encoded_fixed_length:               parsed.encoded_fixed_length
-				encoded_fixed_base:                 parsed.encoded_fixed_base
-				last_underscore_prefix:             parsed.last_underscore_prefix
-				last_underscore_suffix:             parsed.last_underscore_suffix
-				map_name_prefix:                    parsed.map_name_prefix
-				suffix_bracket_length:              parsed.suffix_bracket_length
-				suffix_bracket_valid:               parsed.suffix_bracket_valid
-				map_function_fragment:              parsed.map_function_fragment
-				bracket_source_inner:               parsed.bracket_source_inner
-				symbol_parts:                       source_type_syntax_owned_ids(parsed.symbol_parts, mut payload)
-				symbol_is_name:                     source_type_syntax_owned_bools(parsed.symbol_is_name, mut payload)
-				dotted_parts:                       source_type_syntax_owned_ids(parsed.dotted_parts, mut payload)
-				c_fixed_typedef_element:            parsed.c_fixed_typedef_element
-				c_fixed_typedef_length:             parsed.c_fixed_typedef_length
-				c_fixed_typedef_valid:              parsed.c_fixed_typedef_valid
-				fixed_array_query_length:           parsed.fixed_array_query_length
-				last_bracket_span_valid:            parsed.last_bracket_span_valid
-				last_bracket_span_inner:            parsed.last_bracket_span_inner
-				plain_type_name:                    parsed.plain_type_name
-				generic_app_legacy_suffix:          parsed.generic_app_legacy_suffix
-				wrapper_prefix:                     parsed.wrapper_prefix
-				wrapper_base:                       parsed.wrapper_base
-				checker_fixed_array_may_be:         parsed.checker_fixed_array_may_be
-				dollar_prefix:                      parsed.dollar_prefix
-				define_prefix:                      parsed.define_prefix
-				define_fragment:                    parsed.define_fragment
-				paren_prefix:                       parsed.paren_prefix
-				fixed_length:                       parsed.fixed_length
-				qualified_modifiers:                parsed.qualified_modifiers
-				plain_alias_target:                 parsed.plain_alias_target
-				main_removed:                       parsed.main_removed
-				c_array_payload:                    parsed.c_array_payload
-				c_fixed_array_payload:              parsed.c_fixed_array_payload
-				fastc_array_marker:                 parsed.fastc_array_marker
-				fastc_array_marker_payload:         parsed.fastc_array_marker_payload
-				c_map_payload:                      parsed.c_map_payload
-				underscore_suffixes:                source_type_syntax_owned_ids(parsed.underscore_suffixes, mut payload)
-				c_ptr_name_base:                    parsed.c_ptr_name_base
-				c_tagged_type:                      parsed.c_tagged_type
-				backward_bracket_prefix:            parsed.backward_bracket_prefix
-				backward_bracket_closed:            parsed.backward_bracket_closed
-				generic_mentions:                   source_type_syntax_owned_ids(parsed.generic_mentions, mut payload)
-				opening_paren:                      parsed.opening_paren
-				byte_len:                           parsed.byte_len
-				receiver_app_valid:                 parsed.receiver_app_valid
-				receiver_app_base:                  parsed.receiver_app_base
-				receiver_app_args:                  source_type_syntax_owned_ids(parsed.receiver_app_args, mut payload)
-				checker_bracket_components:         source_type_syntax_owned_ids(parsed.checker_bracket_components, mut payload)
-				legacy_generic_words:               source_type_syntax_owned_ids(parsed.legacy_generic_words, mut payload)
-				declaration_parameter_payload:      parsed.declaration_parameter_payload
-				declaration_parameter_mut:          parsed.declaration_parameter_mut
-				prefix_dimension_tail:              parsed.prefix_dimension_tail
-				prefix_dimensions_closed:           parsed.prefix_dimensions_closed
-				backward_bracket_after_prefix_dims: parsed.backward_bracket_after_prefix_dims
-				backward_bracket_inner:             parsed.backward_bracket_inner
-				option_result_void_prefix:          parsed.option_result_void_prefix
-				nested_option_result_marker:        parsed.nested_option_result_marker
-				symbols_first_offsets:              source_type_syntax_owned_ids(parsed.symbols_first_offsets, mut payload)
-				c_pointer_depth:                    parsed.c_pointer_depth
-				c_pointer_raw_base:                 parsed.c_pointer_raw_base
-				voidptr_parts:                      source_type_syntax_owned_ids(parsed.voidptr_parts, mut payload)
-				thread_value_prefix:                parsed.thread_value_prefix
-				thread_value_payload:               parsed.thread_value_payload
-				thread_value_type_valid:            parsed.thread_value_type_valid
-				thread_value_type:                  parsed.thread_value_type
-				contains_closing_bracket:           parsed.contains_closing_bracket
-				atomic_val_fragment:                parsed.atomic_val_fragment
-				inferred_parts:                     source_type_syntax_owned_ids(parsed.inferred_parts, mut payload)
-				inferred_annotations:               source_type_syntax_owned_ids(parsed.inferred_annotations, mut payload)
-				inferred_expr_ids:                  source_type_syntax_owned_ids(parsed.inferred_expr_ids, mut payload)
-				expr_prefix:                        parsed.expr_prefix
-				expr_id:                            parsed.expr_id
-				substitution_function_params:       source_type_syntax_owned_ids(parsed.substitution_function_params, mut payload)
-				parameter_name:                     parsed.parameter_name
-				parameter_named:                    parsed.parameter_named
-				parameter_is_mut:                   parsed.parameter_is_mut
-				transform_fixed_length:             parsed.transform_fixed_length
-				receiver_collection_id:             parsed.receiver_collection_id
-				ampersand_trimmed:                  parsed.ampersand_trimmed
-				flattened_receiver_parts:           source_type_syntax_owned_ids(parsed.flattened_receiver_parts, mut payload)
-				last_double_underscore_suffix:      parsed.last_double_underscore_suffix
-				contains_doubleunderscore:          parsed.contains_doubleunderscore
-				parallel_preseed_fn:                parsed.parallel_preseed_fn
-				parallel_preseed_short:             parsed.parallel_preseed_short
-				closing_bracket:                    parsed.closing_bracket
-				constraint_receiver_base:           parsed.constraint_receiver_base
-				written_applications:               source_type_syntax_owned_ids(parsed.written_applications, mut payload)
-				written_application_offsets:        source_type_syntax_owned_ids(parsed.written_application_offsets, mut payload)
-				checker_raw_bracket_components:     source_type_syntax_owned_ids(parsed.checker_raw_bracket_components, mut payload)
-				cgen_placeholder_candidates:        source_type_syntax_owned_ids(parsed.cgen_placeholder_candidates, mut payload)
-				result_suffix:                      parsed.result_suffix
-				cgen_decl_unusable:                 parsed.cgen_decl_unusable
-				cgen_decl_authority:                parsed.cgen_decl_authority
-				generic_encoded_fragment:           parsed.generic_encoded_fragment
-				fn_ptr_encoded_prefix:              parsed.fn_ptr_encoded_prefix
-				open_generic_receiver_marker:       parsed.open_generic_receiver_marker
-				space_removed:                      parsed.space_removed
-				qualified_name_chars:               parsed.qualified_name_chars
-				field_owner_module:                 parsed.field_owner_module
-				const_name_prefix:                  parsed.const_name_prefix
-				reflection_parts:                   source_type_syntax_owned_ids(parsed.reflection_parts, mut payload)
-				reflection_tuple_parts:             source_type_syntax_owned_ids(parsed.reflection_tuple_parts, mut payload)
-				pthread_prefix:                     parsed.pthread_prefix
-				thread_bracket_prefix:              parsed.thread_bracket_prefix
-				fixed_typedef_bracket:              parsed.fixed_typedef_bracket
-				receiver_raw_app_args:              source_type_syntax_owned_ids(parsed.receiver_raw_app_args, mut payload)
-				question_trimmed:                   parsed.question_trimmed
-				c_array_fixed_prefix:               parsed.c_array_fixed_prefix
-				vls_generic_words:                  source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload)
-				function_space_result:              parsed.function_space_result
-				doubleunderscore_dotted:            parsed.doubleunderscore_dotted
-				decimal_value:                      parsed.decimal_value
-				integer_value:                      parsed.integer_value
-				ptr_name_base:                      parsed.ptr_name_base
-				encoded_alnum_dotted:               parsed.encoded_alnum_dotted
-				internal_symbol_prefix:             parsed.internal_symbol_prefix
-				main_at_base:                       parsed.main_at_base
-				last_double_underscore_prefix:      parsed.last_double_underscore_prefix
-				eval_tuple_parts:                   source_type_syntax_owned_ids(parsed.eval_tuple_parts, mut payload)
-				implicit_tuple_components:          source_type_syntax_owned_ids(parsed.implicit_tuple_components, mut payload)
-				generic_application_heads:          source_type_syntax_owned_ids(parsed.generic_application_heads, mut payload)
-				incremental_generic_application:    parsed.incremental_generic_application
-				system_error_suffix:                parsed.system_error_suffix
-				receiver_app_inner:                 parsed.receiver_app_inner
-				fastc_fixed_array_length_valid:     parsed.fastc_fixed_array_length_valid
-				fastc_fixed_array_length:           parsed.fastc_fixed_array_length
-				markused_application_heads:         source_type_syntax_owned_ids(parsed.markused_application_heads, mut payload)
-				contains_capital:                   parsed.contains_capital
-				markused_generic_components:        source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload)
-				first_bracket_source_inner:         parsed.first_bracket_source_inner
-				mut_chars_base:                     parsed.mut_chars_base
-				c_function_pointer_hole:            parsed.c_function_pointer_hole
-				channel_fragment:                   parsed.channel_fragment
-				array_receiver_fragment:            parsed.array_receiver_fragment
-				mangled_open_generic_marker:        parsed.mangled_open_generic_marker
-				array_suffix:                       parsed.array_suffix
-				empty_function_prefix:              parsed.empty_function_prefix
-				c_shared_fragment:                  parsed.c_shared_fragment
-				typ_suffix:                         parsed.typ_suffix
-				typ_suffix_base:                    parsed.typ_suffix_base
-				raw_tuple_parse_components:         source_type_syntax_owned_ids(parsed.raw_tuple_parse_components, mut payload)
-				checker_parse_function_result:      parsed.checker_parse_function_result
-				checker_parse_function_has_params:  parsed.checker_parse_function_has_params
-				top_level_dot_valid:                parsed.top_level_dot_valid
-				top_level_dot_prefix:               parsed.top_level_dot_prefix
-				top_level_dot_suffix:               parsed.top_level_dot_suffix
-				parser_fn_decl_valid:               parsed.parser_fn_decl_valid
-				parser_fn_decl_params:              parsed.parser_fn_decl_params
-				parser_fn_decl_result:              parsed.parser_fn_decl_result
-				fastc_composite_part:               parsed.fastc_composite_part
-				contains_question:                  parsed.contains_question
-				contains_union:                     parsed.contains_union
-				union_parts:                        source_type_syntax_owned_ids(parsed.union_parts, mut payload)
-				named_variant_dot_valid:            parsed.named_variant_dot_valid
-				named_variant_dot_prefix:           parsed.named_variant_dot_prefix
-				named_variant_dot_suffix:           parsed.named_variant_dot_suffix
+				payload:                             payload.ids
+				kind:                                parsed.kind
+				trimmed:                             parsed.trimmed
+				base:                                parsed.base
+				args_span:                           source_type_syntax_owned_ids(parsed.args, mut payload)
+				unqualified:                         parsed.unqualified
+				qualifier:                           parsed.qualifier
+				generic_base:                        parsed.generic_base
+				symbols_span:                        source_type_syntax_owned_ids(parsed.symbols, mut payload)
+				words_span:                          source_type_syntax_owned_ids(parsed.words, mut payload)
+				pointer_base:                        parsed.pointer_base
+				pointer_depth:                       parsed.pointer_depth
+				function_has_result:                 parsed.function_has_result
+				raw_base:                            parsed.raw_base
+				main_base:                           parsed.main_base
+				bare_generic:                        parsed.bare_generic
+				application_base:                    parsed.application_base
+				application_args_span:               source_type_syntax_owned_ids(parsed.application_args, mut payload)
+				application_valid:                   parsed.application_valid
+				generic_app_base:                    parsed.generic_app_base
+				generic_app_args_span:               source_type_syntax_owned_ids(parsed.generic_app_args, mut payload)
+				generic_app_valid:                   parsed.generic_app_valid
+				postfix_base:                        parsed.postfix_base
+				postfix_dims_span:                   source_type_syntax_owned_ids(parsed.postfix_dims, mut payload)
+				parameter_type:                      parsed.parameter_type
+				parameter_mut_type:                  parsed.parameter_mut_type
+				bracket_closed:                      parsed.bracket_closed
+				bracket_base:                        parsed.bracket_base
+				bracket_inner:                       parsed.bracket_inner
+				bracket_raw_inner:                   parsed.bracket_raw_inner
+				bracket_prefix:                      parsed.bracket_prefix
+				function_closed:                     parsed.function_closed
+				function_params_span:                source_type_syntax_owned_ids(parsed.function_params, mut payload)
+				function_result:                     parsed.function_result
+				tuple_components_span:               source_type_syntax_owned_ids(parsed.tuple_components, mut payload)
+				tuple_like:                          parsed.tuple_like
+				function_space_prefix:               parsed.function_space_prefix
+				spaced:                              parsed.spaced
+				first_bracket_closed:                parsed.first_bracket_closed
+				first_bracket_base:                  parsed.first_bracket_base
+				last_space_word:                     parsed.last_space_word
+				named_type:                          parsed.named_type
+				c_qualified:                         parsed.c_qualified
+				first_dot_prefix:                    parsed.first_dot_prefix
+				first_dot_suffix:                    parsed.first_dot_suffix
+				builtin_prefix:                      parsed.builtin_prefix
+				main_fragment:                       parsed.main_fragment
+				function_prefix:                     parsed.function_prefix
+				fn_prefix:                           parsed.fn_prefix
+				shared_fragment:                     parsed.shared_fragment
+				pointer_raw_base:                    parsed.pointer_raw_base
+				qualifier_prefixes_span:             source_type_syntax_owned_ids(parsed.qualifier_prefixes, mut payload)
+				qualifier_suffixes_span:             source_type_syntax_owned_ids(parsed.qualifier_suffixes, mut payload)
+				builtin_base:                        parsed.builtin_base
+				cgen_app_base:                       parsed.cgen_app_base
+				cgen_app_args_span:                  source_type_syntax_owned_ids(parsed.cgen_app_args, mut payload)
+				cgen_app_valid:                      parsed.cgen_app_valid
+				cgen_function_params_span:           source_type_syntax_owned_ids(parsed.cgen_function_params, mut payload)
+				checker_function_params_span:        source_type_syntax_owned_ids(parsed.checker_function_params, mut payload)
+				checker_tuple_components_span:       source_type_syntax_owned_ids(parsed.checker_tuple_components, mut payload)
+				tuple_contains_comma:                parsed.tuple_contains_comma
+				top_space_head:                      parsed.top_space_head
+				top_space_tail:                      parsed.top_space_tail
+				top_space_valid:                     parsed.top_space_valid
+				typeof_expr_prefix:                  parsed.typeof_expr_prefix
+				bracket_suffix:                      parsed.bracket_suffix
+				bracket_from:                        parsed.bracket_from
+				bracket_inner_fixed_length:          parsed.bracket_inner_fixed_length
+				first_bracket_prefix:                parsed.first_bracket_prefix
+				void_pointer_postfix:                parsed.void_pointer_postfix
+				canonical_dotted_name:               parsed.canonical_dotted_name
+				decimal:                             parsed.decimal
+				contains_comma:                      parsed.contains_comma
+				function_fragment:                   parsed.function_fragment
+				dots_base:                           parsed.dots_base
+				cgen_raw_app_base:                   parsed.cgen_raw_app_base
+				cgen_raw_app_args_span:              source_type_syntax_owned_ids(parsed.cgen_raw_app_args, mut payload)
+				cgen_raw_app_valid:                  parsed.cgen_raw_app_valid
+				cgen_parts_span:                     source_type_syntax_owned_ids(parsed.cgen_parts, mut payload)
+				generic_parameter_payload:           parsed.generic_parameter_payload
+				legacy_parameter_type:               parsed.legacy_parameter_type
+				legacy_parameter_mut_type:           parsed.legacy_parameter_mut_type
+				first_bracket_length:                parsed.first_bracket_length
+				checker_raw_tuple_components_span:   source_type_syntax_owned_ids(parsed.checker_raw_tuple_components, mut payload)
+				bracket_raw_parts_span:              source_type_syntax_owned_ids(parsed.bracket_raw_parts, mut payload)
+				bracket_generic_parts_span:          source_type_syntax_owned_ids(parsed.bracket_generic_parts, mut payload)
+				tuple_function_components_span:      source_type_syntax_owned_ids(parsed.tuple_function_components, mut payload)
+				c_pointer_base:                      parsed.c_pointer_base
+				c_ptr_name_suffix:                   parsed.c_ptr_name_suffix
+				c_fn_type_fragment:                  parsed.c_fn_type_fragment
+				underscored:                         parsed.underscored
+				plain_comma_parts_span:              source_type_syntax_owned_ids(parsed.plain_comma_parts, mut payload)
+				source_wrapper_base:                 parsed.source_wrapper_base
+				declaration_head:                    parsed.declaration_head
+				fn_fragment:                         parsed.fn_fragment
+				compact_fn_spelling:                 parsed.compact_fn_spelling
+				first_bracket_raw_inner:             parsed.first_bracket_raw_inner
+				underscore_prefixes_span:            source_type_syntax_owned_ids(parsed.underscore_prefixes, mut payload)
+				cgen_generic_placeholder:            parsed.cgen_generic_placeholder
+				fixed_array_type:                    parsed.fixed_array_type
+				typeof_valid:                        parsed.typeof_valid
+				typeof_inner:                        parsed.typeof_inner
+				postfix_index_base:                  parsed.postfix_index_base
+				last_bracket_prefix:                 parsed.last_bracket_prefix
+				last_bracket_length:                 parsed.last_bracket_length
+				trailing_bracket_prefix:             parsed.trailing_bracket_prefix
+				trailing_bracket_closed:             parsed.trailing_bracket_closed
+				array_chars_base:                    parsed.array_chars_base
+				lowercase_value_ident:               parsed.lowercase_value_ident
+				typeof_prefix:                       parsed.typeof_prefix
+				first_capital:                       parsed.first_capital
+				named_variant:                       parsed.named_variant
+				named_variant_valid:                 parsed.named_variant_valid
+				named_variant_owner:                 parsed.named_variant_owner
+				named_variant_name:                  parsed.named_variant_name
+				main_unlocked:                       parsed.main_unlocked
+				encoded_fixed_length:                parsed.encoded_fixed_length
+				encoded_fixed_base:                  parsed.encoded_fixed_base
+				last_underscore_prefix:              parsed.last_underscore_prefix
+				last_underscore_suffix:              parsed.last_underscore_suffix
+				map_name_prefix:                     parsed.map_name_prefix
+				suffix_bracket_length:               parsed.suffix_bracket_length
+				suffix_bracket_valid:                parsed.suffix_bracket_valid
+				map_function_fragment:               parsed.map_function_fragment
+				bracket_source_inner:                parsed.bracket_source_inner
+				symbol_parts_span:                   source_type_syntax_owned_ids(parsed.symbol_parts, mut payload)
+				symbol_is_name_span:                 source_type_syntax_owned_bools(parsed.symbol_is_name, mut payload)
+				dotted_parts_span:                   source_type_syntax_owned_ids(parsed.dotted_parts, mut payload)
+				c_fixed_typedef_element:             parsed.c_fixed_typedef_element
+				c_fixed_typedef_length:              parsed.c_fixed_typedef_length
+				c_fixed_typedef_valid:               parsed.c_fixed_typedef_valid
+				fixed_array_query_length:            parsed.fixed_array_query_length
+				last_bracket_span_valid:             parsed.last_bracket_span_valid
+				last_bracket_span_inner:             parsed.last_bracket_span_inner
+				plain_type_name:                     parsed.plain_type_name
+				generic_app_legacy_suffix:           parsed.generic_app_legacy_suffix
+				wrapper_prefix:                      parsed.wrapper_prefix
+				wrapper_base:                        parsed.wrapper_base
+				checker_fixed_array_may_be:          parsed.checker_fixed_array_may_be
+				dollar_prefix:                       parsed.dollar_prefix
+				define_prefix:                       parsed.define_prefix
+				define_fragment:                     parsed.define_fragment
+				paren_prefix:                        parsed.paren_prefix
+				fixed_length:                        parsed.fixed_length
+				qualified_modifiers:                 parsed.qualified_modifiers
+				plain_alias_target:                  parsed.plain_alias_target
+				main_removed:                        parsed.main_removed
+				c_array_payload:                     parsed.c_array_payload
+				c_fixed_array_payload:               parsed.c_fixed_array_payload
+				fastc_array_marker:                  parsed.fastc_array_marker
+				fastc_array_marker_payload:          parsed.fastc_array_marker_payload
+				c_map_payload:                       parsed.c_map_payload
+				underscore_suffixes_span:            source_type_syntax_owned_ids(parsed.underscore_suffixes, mut payload)
+				c_ptr_name_base:                     parsed.c_ptr_name_base
+				c_tagged_type:                       parsed.c_tagged_type
+				backward_bracket_prefix:             parsed.backward_bracket_prefix
+				backward_bracket_closed:             parsed.backward_bracket_closed
+				generic_mentions_span:               source_type_syntax_owned_ids(parsed.generic_mentions, mut payload)
+				opening_paren:                       parsed.opening_paren
+				byte_len:                            parsed.byte_len
+				receiver_app_valid:                  parsed.receiver_app_valid
+				receiver_app_base:                   parsed.receiver_app_base
+				receiver_app_args_span:              source_type_syntax_owned_ids(parsed.receiver_app_args, mut payload)
+				checker_bracket_components_span:     source_type_syntax_owned_ids(parsed.checker_bracket_components, mut payload)
+				legacy_generic_words_span:           source_type_syntax_owned_ids(parsed.legacy_generic_words, mut payload)
+				declaration_parameter_payload:       parsed.declaration_parameter_payload
+				declaration_parameter_mut:           parsed.declaration_parameter_mut
+				prefix_dimension_tail:               parsed.prefix_dimension_tail
+				prefix_dimensions_closed:            parsed.prefix_dimensions_closed
+				backward_bracket_after_prefix_dims:  parsed.backward_bracket_after_prefix_dims
+				backward_bracket_inner:              parsed.backward_bracket_inner
+				option_result_void_prefix:           parsed.option_result_void_prefix
+				nested_option_result_marker:         parsed.nested_option_result_marker
+				symbols_first_offsets_span:          source_type_syntax_owned_ids(parsed.symbols_first_offsets, mut payload)
+				c_pointer_depth:                     parsed.c_pointer_depth
+				c_pointer_count:                     parsed.c_pointer_count
+				c_pointer_raw_base:                  parsed.c_pointer_raw_base
+				voidptr_parts_span:                  source_type_syntax_owned_ids(parsed.voidptr_parts, mut payload)
+				thread_value_prefix:                 parsed.thread_value_prefix
+				thread_value_payload:                parsed.thread_value_payload
+				thread_value_type_valid:             parsed.thread_value_type_valid
+				thread_value_type:                   parsed.thread_value_type
+				contains_closing_bracket:            parsed.contains_closing_bracket
+				atomic_val_fragment:                 parsed.atomic_val_fragment
+				inferred_parts_span:                 source_type_syntax_owned_ids(parsed.inferred_parts, mut payload)
+				inferred_annotations_span:           source_type_syntax_owned_ids(parsed.inferred_annotations, mut payload)
+				inferred_expr_ids_span:              source_type_syntax_owned_ids(parsed.inferred_expr_ids, mut payload)
+				expr_prefix:                         parsed.expr_prefix
+				expr_id:                             parsed.expr_id
+				substitution_function_params_span:   source_type_syntax_owned_ids(parsed.substitution_function_params, mut payload)
+				parameter_name:                      parsed.parameter_name
+				parameter_named:                     parsed.parameter_named
+				parameter_is_mut:                    parsed.parameter_is_mut
+				transform_fixed_length:              parsed.transform_fixed_length
+				receiver_collection_id:              parsed.receiver_collection_id
+				ampersand_trimmed:                   parsed.ampersand_trimmed
+				flattened_receiver_parts_span:       source_type_syntax_owned_ids(parsed.flattened_receiver_parts, mut payload)
+				last_double_underscore_suffix:       parsed.last_double_underscore_suffix
+				contains_doubleunderscore:           parsed.contains_doubleunderscore
+				parallel_preseed_fn:                 parsed.parallel_preseed_fn
+				parallel_preseed_short:              parsed.parallel_preseed_short
+				closing_bracket:                     parsed.closing_bracket
+				constraint_receiver_base:            parsed.constraint_receiver_base
+				written_applications_span:           source_type_syntax_owned_ids(parsed.written_applications, mut payload)
+				written_application_offsets_span:    source_type_syntax_owned_ids(parsed.written_application_offsets, mut payload)
+				checker_raw_bracket_components_span: source_type_syntax_owned_ids(parsed.checker_raw_bracket_components, mut payload)
+				cgen_placeholder_candidates_span:    source_type_syntax_owned_ids(parsed.cgen_placeholder_candidates, mut payload)
+				result_suffix:                       parsed.result_suffix
+				cgen_decl_unusable:                  parsed.cgen_decl_unusable
+				cgen_decl_authority:                 parsed.cgen_decl_authority
+				generic_encoded_fragment:            parsed.generic_encoded_fragment
+				fn_ptr_encoded_prefix:               parsed.fn_ptr_encoded_prefix
+				c_result_prefix:                     parsed.c_result_prefix
+				c_option_prefix:                     parsed.c_option_prefix
+				c_multi_return_prefix:               parsed.c_multi_return_prefix
+				c_lower_map_prefix:                  parsed.c_lower_map_prefix
+				open_generic_receiver_marker:        parsed.open_generic_receiver_marker
+				space_removed:                       parsed.space_removed
+				qualified_name_chars:                parsed.qualified_name_chars
+				field_owner_module:                  parsed.field_owner_module
+				const_name_prefix:                   parsed.const_name_prefix
+				reflection_parts_span:               source_type_syntax_owned_ids(parsed.reflection_parts, mut payload)
+				reflection_tuple_parts_span:         source_type_syntax_owned_ids(parsed.reflection_tuple_parts, mut payload)
+				pthread_prefix:                      parsed.pthread_prefix
+				thread_bracket_prefix:               parsed.thread_bracket_prefix
+				fixed_typedef_bracket:               parsed.fixed_typedef_bracket
+				receiver_raw_app_args_span:          source_type_syntax_owned_ids(parsed.receiver_raw_app_args, mut payload)
+				question_trimmed:                    parsed.question_trimmed
+				c_array_fixed_prefix:                parsed.c_array_fixed_prefix
+				vls_generic_words_span:              source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload)
+				function_space_result:               parsed.function_space_result
+				doubleunderscore_dotted:             parsed.doubleunderscore_dotted
+				decimal_value:                       parsed.decimal_value
+				integer_value:                       parsed.integer_value
+				ptr_name_base:                       parsed.ptr_name_base
+				encoded_alnum_dotted:                parsed.encoded_alnum_dotted
+				internal_symbol_prefix:              parsed.internal_symbol_prefix
+				main_at_base:                        parsed.main_at_base
+				last_double_underscore_prefix:       parsed.last_double_underscore_prefix
+				eval_tuple_parts_span:               source_type_syntax_owned_ids(parsed.eval_tuple_parts, mut payload)
+				implicit_tuple_components_span:      source_type_syntax_owned_ids(parsed.implicit_tuple_components, mut payload)
+				generic_application_heads_span:      source_type_syntax_owned_ids(parsed.generic_application_heads, mut payload)
+				incremental_generic_application:     parsed.incremental_generic_application
+				system_error_suffix:                 parsed.system_error_suffix
+				receiver_app_inner:                  parsed.receiver_app_inner
+				fastc_fixed_array_length_valid:      parsed.fastc_fixed_array_length_valid
+				fastc_fixed_array_length:            parsed.fastc_fixed_array_length
+				markused_application_heads_span:     source_type_syntax_owned_ids(parsed.markused_application_heads, mut payload)
+				contains_capital:                    parsed.contains_capital
+				markused_generic_components_span:    source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload)
+				first_bracket_source_inner:          parsed.first_bracket_source_inner
+				mut_chars_base:                      parsed.mut_chars_base
+				c_function_pointer_hole:             parsed.c_function_pointer_hole
+				channel_fragment:                    parsed.channel_fragment
+				array_receiver_fragment:             parsed.array_receiver_fragment
+				mangled_open_generic_marker:         parsed.mangled_open_generic_marker
+				array_suffix:                        parsed.array_suffix
+				empty_function_prefix:               parsed.empty_function_prefix
+				c_shared_fragment:                   parsed.c_shared_fragment
+				typ_suffix:                          parsed.typ_suffix
+				typ_suffix_base:                     parsed.typ_suffix_base
+				raw_tuple_parse_components_span:     source_type_syntax_owned_ids(parsed.raw_tuple_parse_components, mut payload)
+				checker_parse_function_result:       parsed.checker_parse_function_result
+				checker_parse_function_has_params:   parsed.checker_parse_function_has_params
+				top_level_dot_valid:                 parsed.top_level_dot_valid
+				top_level_dot_prefix:                parsed.top_level_dot_prefix
+				top_level_dot_suffix:                parsed.top_level_dot_suffix
+				parser_fn_decl_valid:                parsed.parser_fn_decl_valid
+				parser_fn_decl_params:               parsed.parser_fn_decl_params
+				parser_fn_decl_result:               parsed.parser_fn_decl_result
+				fastc_composite_part:                parsed.fastc_composite_part
+				contains_question:                   parsed.contains_question
+				contains_union:                      parsed.contains_union
+				union_parts_span:                    source_type_syntax_owned_ids(parsed.union_parts, mut payload)
+				named_variant_dot_valid:             parsed.named_variant_dot_valid
+				named_variant_dot_prefix:            parsed.named_variant_dot_prefix
+				named_variant_dot_suffix:            parsed.named_variant_dot_suffix
 			}
 			next:   source_type_syntax_head(slot)
 		}
@@ -965,9 +1624,10 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 }
 
 struct SourceTypeSyntaxPayload {
-	identity_id u32
-	ids         voidptr
-	bools       voidptr
+	identity_id      u32
+	ids              voidptr
+	bools            voidptr
+	bool_base_offset u32
 mut:
 	id_offset   int
 	bool_offset int
@@ -978,31 +1638,27 @@ fn source_type_syntax_packed_ids_len(ids []u32, identity_id u32) int {
 	return if ids.len == 1 && ids[0] == identity_id { 0 } else { ids.len }
 }
 
-fn source_type_syntax_owned_ids(ids []u32, mut payload SourceTypeSyntaxPayload) []u32 {
+fn source_type_syntax_owned_ids(ids []u32, mut payload SourceTypeSyntaxPayload) SourceTypeSyntaxSpan {
 	if ids.len == 0 {
-		return []u32{}
+		return SourceTypeSyntaxSpan{}
 	}
 	if ids.len == 1 && ids[0] == payload.identity_id {
-		return unsafe {
-			array{ data: payload.ids, len: 1, cap: 1, element_size: sizeof(u32), flags: .nogrow | .nofree }
-		}
+		return SourceTypeSyntaxSpan{ len: 1 }
 	}
-	data := unsafe { voidptr(&u8(payload.ids) + uint(payload.id_offset) * sizeof(u32)) }
+	offset := u32(payload.id_offset) * u32(sizeof(u32))
+	data := unsafe { voidptr(&u8(payload.ids) + offset) }
 	payload.id_offset += ids.len
 	unsafe { vmemcpy(data, ids.data, ids.len * int(sizeof(u32))) }
-	return unsafe {
-		array{ data: data, len: ids.len, cap: ids.len, element_size: sizeof(u32), flags: .nogrow | .nofree }
-	}
+	return SourceTypeSyntaxSpan{ offset: offset, len: u32(ids.len) }
 }
 
-fn source_type_syntax_owned_bools(values []bool, mut payload SourceTypeSyntaxPayload) []bool {
-	if values.len == 0 { return []bool{} }
-	data := unsafe { voidptr(&u8(payload.bools) + uint(payload.bool_offset) * sizeof(bool)) }
+fn source_type_syntax_owned_bools(values []bool, mut payload SourceTypeSyntaxPayload) SourceTypeSyntaxSpan {
+	if values.len == 0 { return SourceTypeSyntaxSpan{} }
+	offset := payload.bool_base_offset + u32(payload.bool_offset) * u32(sizeof(bool))
+	data := unsafe { voidptr(&u8(payload.ids) + offset) }
 	payload.bool_offset += values.len
 	unsafe { vmemcpy(data, values.data, values.len * int(sizeof(bool))) }
-	return unsafe {
-		array{ data: data, len: values.len, cap: values.len, element_size: sizeof(bool), flags: .nogrow | .nofree }
-	}
+	return SourceTypeSyntaxSpan{ offset: offset, len: u32(values.len) }
 }
 
 fn source_type_syntax_mangled_generic_marker(raw string) bool {
@@ -1016,11 +1672,11 @@ fn source_type_syntax_mangled_generic_marker(raw string) bool {
 }
 
 fn source_type_syntax_symbols(raw string) ([]u32, []u32) {
-	mut symbols := []u32{}
-	mut offsets := []u32{}
+	mut symbols := source_type_syntax_empty_ids()
+	mut offsets := source_type_syntax_empty_ids()
 	mut first_offsets := map[u32]u32{}
 	mut prior_words := []string{}
-	mut prior_offsets := []u32{}
+	mut prior_offsets := source_type_syntax_empty_ids()
 	mut i := 0
 	for i < raw.len {
 		if !source_type_query_ident(raw[i]) && raw[i] != `.` {
@@ -1055,7 +1711,7 @@ fn source_type_syntax_symbols(raw string) ([]u32, []u32) {
 }
 
 fn source_type_syntax_union_parts(raw string) []u32 {
-	mut parts := []u32{}
+	mut parts := source_type_syntax_empty_ids()
 	mut depth := 0
 	mut start := 0
 	for i, c in raw {
@@ -1075,8 +1731,8 @@ fn source_type_syntax_union_parts(raw string) []u32 {
 }
 
 fn source_type_syntax_symbol_parts(raw string) ([]u32, []bool) {
-	mut parts := []u32{}
-	mut names := []bool{}
+	mut parts := source_type_syntax_empty_ids()
+	mut names := source_type_syntax_empty_bools()
 	mut start := 0
 	mut i := 0
 	for i < raw.len {
@@ -1145,15 +1801,15 @@ fn source_type_syntax_c_fixed_typedef(raw string) (u32, u32, bool) {
 }
 
 fn source_type_syntax_plain_parts(raw string, separator string) []u32 {
-	mut parts := []u32{}
+	mut parts := source_type_syntax_empty_ids()
 	for part in raw.split(separator) { parts << source_type_id(part) }
 	return parts
 }
 
 fn source_type_syntax_inferred(raw string) ([]u32, []u32, []u32) {
-	mut parts := []u32{}
-	mut annotations := []u32{}
-	mut expressions := []u32{}
+	mut parts := source_type_syntax_empty_ids()
+	mut annotations := source_type_syntax_empty_ids()
+	mut expressions := source_type_syntax_empty_ids()
 	mut offset := 0
 	marker := 'typeof(__expr_'
 	for offset < raw.len {
@@ -1176,7 +1832,7 @@ fn source_type_syntax_receiver_collection(id u32, raw string) u32 {
 }
 
 fn source_type_syntax_flattened_receiver(raw string) []u32 {
-	mut parts := []u32{}
+	mut parts := source_type_syntax_empty_ids()
 	mut start := 0
 	mut i := 0
 	for i < raw.len {
@@ -1229,7 +1885,7 @@ fn source_type_syntax_parallel_preseed(raw string) (bool, u32) {
 }
 
 fn source_type_syntax_vls_generic_words(raw string) []u32 {
-	mut words := []u32{}
+	mut words := source_type_syntax_empty_ids()
 	mut i := 0
 	for i < raw.len {
 		if !raw[i].is_letter() && raw[i] != `_` {
@@ -1252,7 +1908,7 @@ fn source_type_syntax_contains_capital(raw string) bool {
 }
 
 fn source_type_syntax_markused_components(raw string) []u32 {
-	mut parts := []u32{}
+	mut parts := source_type_syntax_empty_ids()
 	mut start := 0
 	for start < raw.len {
 		for start < raw.len && !(raw[start].is_letter() || raw[start] == `_`) { start++ }
@@ -1270,7 +1926,7 @@ fn source_type_syntax_markused_components(raw string) []u32 {
 }
 
 fn source_type_syntax_eval_parts(raw string) []u32 {
-	mut parts := []u32{}
+	mut parts := source_type_syntax_empty_ids()
 	mut brackets := 0
 	mut parens := 0
 	mut start := 0
@@ -1299,8 +1955,10 @@ fn source_type_syntax_eval_parts(raw string) []u32 {
 }
 
 fn source_type_syntax_implicit_tuple(raw string) []u32 {
-	if raw.len < 2 || raw[0] != `(` || raw[raw.len - 1] != `)` { return []u32{} }
-	mut parts := []u32{}
+	if raw.len < 2 || raw[0] != `(` || raw[raw.len - 1] != `)` {
+		return source_type_syntax_empty_ids()
+	}
+	mut parts := source_type_syntax_empty_ids()
 	mut depth := 0
 	mut start := 1
 	for i := 1; i < raw.len - 1; i++ {
@@ -1317,12 +1975,12 @@ fn source_type_syntax_implicit_tuple(raw string) []u32 {
 		}
 	}
 	parts << source_type_id(source_type_query_trim(raw[start..raw.len - 1]))
-	if depth != 0 || parts.any(it == 0) { return []u32{} }
+	if depth != 0 || parts.any(it == 0) { return source_type_syntax_empty_ids() }
 	return parts
 }
 
 fn source_type_syntax_application_heads(raw string, allow_at bool) []u32 {
-	mut heads := []u32{}
+	mut heads := source_type_syntax_empty_ids()
 	for i, c in raw {
 		if c != `[` { continue }
 		mut start := i
@@ -1387,7 +2045,7 @@ fn source_type_syntax_fastc_fixed_length(raw string) (bool, u32) {
 }
 
 fn source_type_syntax_reflection_parts(raw string) []u32 {
-	mut parts := []u32{}
+	mut parts := source_type_syntax_empty_ids()
 	mut brackets := 0
 	mut parens := 0
 	mut start := 0
@@ -1411,8 +2069,8 @@ fn source_type_syntax_reflection_parts(raw string) []u32 {
 }
 
 fn source_type_syntax_written_applications(raw string) ([]u32, []u32) {
-	mut applications := []u32{}
-	mut offsets := []u32{}
+	mut applications := source_type_syntax_empty_ids()
+	mut offsets := source_type_syntax_empty_ids()
 	mut i := 0
 	for i < raw.len {
 		c := raw[i]
@@ -1439,7 +2097,7 @@ fn source_type_syntax_written_applications(raw string) ([]u32, []u32) {
 }
 
 fn source_type_syntax_cgen_placeholder_candidates(raw string) []u32 {
-	mut candidates := []u32{}
+	mut candidates := source_type_syntax_empty_ids()
 	source_type_syntax_cgen_collect_placeholders(raw, mut candidates)
 	return candidates
 }
@@ -1521,16 +2179,56 @@ fn source_type_syntax_encoded_alnum_dotted(raw string) bool {
 	return true
 }
 
-fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
+// Reuse the parent spelling when a cold query leaves its original slice intact.
+// Pointer identity is sufficient here; other slices still use exact interning.
+@[inline]
+fn source_type_syntax_child_id(parent u32, raw string, part string) u32 {
+	if raw.str == part.str && raw.len == part.len { return parent }
+	return source_type_id(part)
+}
+
+// Every caller establishes these bounds before extracting an exact raw view.
+// Interning copies a new spelling before this temporary view can escape.
+@[inline]
+fn source_type_syntax_child_range_id(parent u32, raw string, start int, end int) u32 {
+	if start == 0 && end == raw.len { return parent }
+	if start == end { return 0 }
+	return source_type_id(unsafe { raw.substr_unsafe(start, end) })
+}
+
+fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 	mut simple := raw.len > 0
-	for c in raw {
-		if !source_type_query_ident(c) {
+	mut qualified := raw.len > 0
+	mut segment_start := true
+	mut first_dot := -1
+	mut last_dot := -1
+	for i, c in raw {
+		if source_type_query_ident(c) {
+			if segment_start && !c.is_letter() && c != `_` { qualified = false }
+			segment_start = false
+		} else if c == `.` {
 			simple = false
+			if segment_start { qualified = false }
+			if first_dot < 0 { first_dot = i }
+			last_dot = i
+			segment_start = true
+		} else {
+			simple = false
+			qualified = false
 			break
 		}
 	}
-	if simple { return source_type_syntax_simple(id, raw) }
+	if simple { return source_type_syntax_name(id, raw, -1, -1) }
+	if qualified && !segment_start && first_dot >= 0 {
+		return source_type_syntax_name(id, raw, first_dot, last_dot)
+	}
 	clean := source_type_query_trim(raw)
+	clean_id := source_type_syntax_child_id(id, raw, clean)
+	spaced := raw.contains(' ')
+	main_fragment := raw.contains('main.')
+	compact_fn_fragment := raw.contains('fn (')
+	contains_doubleunderscore := raw.contains('__')
+	last_star := raw.last_index_u8(`*`)
 	named_variant := raw.contains(named_variant_marker)
 	mut named_variant_valid := false
 	mut named_variant_owner := u32(0)
@@ -1538,8 +2236,8 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 	if named_variant {
 		if owner, name := decode_named_variant_type_name(raw) {
 			named_variant_valid = true
-			named_variant_owner = source_type_id(owner)
-			named_variant_name = source_type_id(name)
+			named_variant_owner = source_type_syntax_child_id(id, raw, owner)
+			named_variant_name = source_type_syntax_child_id(id, raw, name)
 		}
 	}
 	thread_value_type_valid, thread_value_type := source_type_syntax_thread_value(raw)
@@ -1555,8 +2253,13 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 	generic_app_base, generic_app_args, generic_app_valid := source_type_syntax_application(raw, true)
 	postfix_base, postfix_dims := source_type_syntax_postfix(clean)
 	parameter_type, parameter_mut_type := source_type_syntax_parameter(raw)
-	legacy_parameter_type, legacy_parameter_mut_type := source_type_syntax_legacy_parameter(raw)
-	declaration_parameter_payload, declaration_parameter_mut := source_type_syntax_declaration_parameter(raw)
+	legacy_parameter_type, parameter_name, parameter_named, parameter_is_mut := source_type_syntax_parameter_details(raw)
+	legacy_parameter_mut_type := if parameter_is_mut {
+		source_type_composition_one(.mutable_parameter, legacy_parameter_type)
+	} else {
+		legacy_parameter_type
+	}
+	declaration_parameter_payload, declaration_parameter_mut := source_type_syntax_declaration_parameter(legacy_parameter_type, parameter_is_mut)
 	raw_prefix := source_type_syntax_wrapper_len(raw, true)
 	bracket := raw.index_u8(`[`)
 	bracket_end := if bracket >= 0 {
@@ -1567,9 +2270,13 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 	bracket_closed := bracket >= 0 && bracket_end < raw.len
 	function_closed, function_params, function_result, checker_function_params, cgen_function_params, substitution_function_params, function_space_result := source_type_syntax_function(raw)
 	checker_parse_function_result, checker_parse_function_has_params := source_type_syntax_checker_function_result(raw)
-	_, parameter_name, parameter_named, parameter_is_mut := source_type_syntax_parameter_details(raw)
-	cgen_app_base, cgen_app_args, cgen_app_valid := source_type_syntax_cgen_application(raw)
-	cgen_raw_app_base, cgen_raw_app_args, cgen_raw_app_valid := source_type_syntax_cgen_application_raw(raw)
+	cgen_app_base, cgen_app_args, cgen_app_valid := source_type_syntax_cgen_application_raw(clean)
+	mut cgen_raw_app_base := cgen_app_base
+	mut cgen_raw_app_args := cgen_app_args
+	mut cgen_raw_app_valid := cgen_app_valid
+	if clean != raw {
+		cgen_raw_app_base, cgen_raw_app_args, cgen_raw_app_valid = source_type_syntax_cgen_application_raw(raw)
+	}
 	top_space_head, top_space_tail, top_space_valid := source_type_syntax_top_space(raw)
 	tuple_like := raw.starts_with('(') && raw.ends_with(')')
 	first_close := raw.index_u8(`]`)
@@ -1611,18 +2318,18 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 	for dot_count < raw.len && raw[dot_count] == `.` { dot_count++ }
 	mut raw_pointer_depth := 0
 	for raw_pointer_depth < raw.len && raw[raw_pointer_depth] == `&` { raw_pointer_depth++ }
-	mut qualifier_prefixes := []u32{}
-	mut qualifier_suffixes := []u32{}
-	mut underscore_prefixes := []u32{}
-	mut underscore_suffixes := []u32{}
+	mut qualifier_prefixes := source_type_syntax_empty_ids()
+	mut qualifier_suffixes := source_type_syntax_empty_ids()
+	mut underscore_prefixes := source_type_syntax_empty_ids()
+	mut underscore_suffixes := source_type_syntax_empty_ids()
 	for i, c in raw {
 		if c == `_` {
-			underscore_prefixes << source_type_id(raw[..i])
-			underscore_suffixes << source_type_id(raw[i + 1..])
+			underscore_prefixes << source_type_syntax_child_range_id(id, raw, 0, i)
+			underscore_suffixes << source_type_syntax_child_range_id(id, raw, i + 1, raw.len)
 		}
 		if c == `.` {
-			qualifier_prefixes << source_type_id(raw[..i])
-			qualifier_suffixes << source_type_id(raw[i + 1..])
+			qualifier_prefixes << source_type_syntax_child_range_id(id, raw, 0, i)
+			qualifier_suffixes << source_type_syntax_child_range_id(id, raw, i + 1, raw.len)
 		}
 	}
 	mut nested_option_result_marker := -1
@@ -1634,14 +2341,14 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 	}
 	mut c_pointer_end := raw.len
 	for c_pointer_end > 0 && raw[c_pointer_end - 1] == `*` { c_pointer_end-- }
-	mut voidptr_parts := []u32{}
-	for part in raw.split('voidptr') { voidptr_parts << source_type_id(part) }
+	mut voidptr_parts := source_type_syntax_empty_ids()
+	for part in raw.split('voidptr') { voidptr_parts << source_type_syntax_child_id(id, raw, part) }
 	symbols, symbols_first_offsets := source_type_syntax_symbols(raw)
 	inferred_parts, inferred_annotations, inferred_expr_ids := source_type_syntax_inferred(raw)
 	fastc_fixed_array_length_valid, fastc_fixed_array_length := source_type_syntax_fastc_fixed_length(raw)
 	parallel_preseed_fn, parallel_preseed_short := source_type_syntax_parallel_preseed(raw)
-	mut plain_comma_parts := []u32{}
-	for part in raw.split(',') { plain_comma_parts << source_type_id(part) }
+	mut plain_comma_parts := source_type_syntax_empty_ids()
+	for part in raw.split(',') { plain_comma_parts << source_type_syntax_child_id(id, raw, part) }
 	mut source_wrapper_len := 0
 	for source_wrapper_len < raw.len && raw[source_wrapper_len] in [`&`, `?`, `!`] {
 		source_wrapper_len++
@@ -1703,9 +2410,9 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 	}
 	mut raw_base := u32(0)
 	if raw_prefix > 0 {
-		raw_base = source_type_id(raw[raw_prefix..])
+		raw_base = source_type_syntax_child_range_id(id, raw, raw_prefix, raw.len)
 	} else if bracket_closed && (raw.starts_with('map[') || raw.starts_with('[')) {
-		raw_base = source_type_id(raw[bracket_end + 1..])
+		raw_base = source_type_syntax_child_range_id(id, raw, bracket_end + 1, raw.len)
 	}
 	mut backward_bracket := -1
 	mut backward_depth := 0
@@ -1730,11 +2437,11 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		}
 		prefix_dimension_end += close + 2
 	}
-	mut generic_mentions := []u32{}
+	mut generic_mentions := source_type_syntax_empty_ids()
 	for i, c in raw {
 		if c >= `A` && c <= `Z` && (i == 0 || !(source_type_query_ident(raw[i - 1]) || raw[i - 1] == `.`))
 			&& (i + 1 == raw.len || !(source_type_query_ident(raw[i + 1]) || raw[i + 1] == `.`)) {
-			generic_mentions << source_type_id(raw[i..i + 1])
+			generic_mentions << source_type_syntax_child_range_id(id, raw, i, i + 1)
 		}
 	}
 	mut modifier_start := raw.len
@@ -1765,27 +2472,43 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 	encoded_fixed_length, encoded_fixed_base := source_type_syntax_encoded_fixed(raw)
 	symbol_parts, symbol_is_name := source_type_syntax_symbol_parts(raw)
 	c_fixed_typedef_element, c_fixed_typedef_length, c_fixed_typedef_valid := source_type_syntax_c_fixed_typedef(raw)
-	mut dotted_parts := []u32{}
-	for part in raw.split('.') { dotted_parts << source_type_id(part) }
+	mut dotted_parts := source_type_syntax_empty_ids()
+	for part in raw.split('.') { dotted_parts << source_type_syntax_child_id(id, raw, part) }
 	suffix_bracket_valid := raw.ends_with(']') && last_bracket > 0 && last_bracket + 1 < raw.len - 1
 	plain_type_name := raw.len > 0 && ((raw[0] >= `a` && raw[0] <= `z`) || (raw[0] >= `A` && raw[0] <= `Z`) || raw[0] == `_`)
 		&& source_type_syntax_plain_name(raw)
-	return SourceTypeSyntax{
+	return SourceTypeSyntaxParsed{
 		kind:                               kind
-		trimmed:                            source_type_id(clean)
+		trimmed:                            clean_id
 		base:                               base
 		args:                               args
-		unqualified:                        source_type_id(raw.all_after_last('.'))
-		qualifier:                          source_type_id(raw.all_before_last('.'))
-		generic_base:                       source_type_id(raw.all_before('['))
+		unqualified:                        if qualifier_suffixes.len == 0 {
+			id
+		} else {
+			qualifier_suffixes.last()
+		}
+		qualifier:                          if qualifier_prefixes.len == 0 {
+			id
+		} else {
+			qualifier_prefixes.last()
+		}
+		generic_base:                       if bracket < 0 {
+			id
+		} else {
+			source_type_syntax_child_range_id(id, raw, 0, bracket)
+		}
 		symbols:                            symbols
 		words:                              source_type_syntax_tokens(raw, false)
-		pointer_base:                       source_type_id(pointer_text)
+		pointer_base:                       if pointer_depth == 0 {
+			clean_id
+		} else {
+			source_type_syntax_child_id(id, raw, pointer_text)
+		}
 		pointer_depth:                      pointer_depth
 		function_has_result:                has_result
 		raw_base:                           raw_base
 		main_base:                          if raw.starts_with('main.') {
-			source_type_id(raw[5..])
+			source_type_syntax_child_range_id(id, raw, 5, raw.len)
 		} else {
 			u32(0)
 		}
@@ -1802,22 +2525,22 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		parameter_mut_type:                 parameter_mut_type
 		bracket_closed:                     bracket_closed
 		bracket_base:                       if bracket_closed {
-			source_type_id(source_type_query_trim(raw[bracket_end + 1..]))
+			source_type_syntax_child_id(id, raw, source_type_query_trim(raw[bracket_end + 1..]))
 		} else {
 			u32(0)
 		}
 		bracket_inner:                      if bracket_closed {
-			source_type_id(source_type_query_trim(raw[bracket + 1..bracket_end]))
+			source_type_syntax_child_id(id, raw, source_type_query_trim(raw[bracket + 1..bracket_end]))
 		} else {
 			u32(0)
 		}
 		bracket_raw_inner:                  if bracket_closed {
-			source_type_id(raw[bracket + 1..bracket_end])
+			source_type_syntax_child_range_id(id, raw, bracket + 1, bracket_end)
 		} else {
 			u32(0)
 		}
 		bracket_prefix:                     if bracket_closed {
-			source_type_id(raw[..bracket_end + 1])
+			source_type_syntax_child_range_id(id, raw, 0, bracket_end + 1)
 		} else {
 			u32(0)
 		}
@@ -1827,32 +2550,44 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		tuple_components:                   if tuple_like {
 			source_type_syntax_legacy_parts(raw[1..raw.len - 1])
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		tuple_like:                         tuple_like
 		function_space_prefix:              raw.starts_with('fn ')
-		spaced:                             raw.contains(' ')
+		spaced:                             spaced
 		first_bracket_closed:               first_close > 0
 		first_bracket_base:                 if first_close > 0 {
-			source_type_id(raw[first_close + 1..])
+			source_type_syntax_child_range_id(id, raw, first_close + 1, raw.len)
 		} else {
 			u32(0)
 		}
-		last_space_word:                    source_type_id(raw.all_after_last(' '))
+		last_space_word:                    if !spaced {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, raw.all_after_last(' '))
+		}
 		named_type:                         named_type
 		c_qualified:                        raw.starts_with('C.')
-		first_dot_prefix:                   source_type_id(raw.all_before('.'))
-		first_dot_suffix:                   source_type_id(raw.all_after('.'))
+		first_dot_prefix:                   if qualifier_prefixes.len == 0 {
+			id
+		} else {
+			qualifier_prefixes[0]
+		}
+		first_dot_suffix:                   if qualifier_suffixes.len == 0 {
+			id
+		} else {
+			qualifier_suffixes[0]
+		}
 		builtin_prefix:                     raw.starts_with('builtin.')
-		main_fragment:                      raw.contains('main.')
+		main_fragment:                      main_fragment
 		function_prefix:                    raw.starts_with('fn')
 		fn_prefix:                          raw.starts_with('fn')
 		shared_fragment:                    raw.contains('shared ')
-		pointer_raw_base:                   source_type_id(raw[raw_pointer_depth..])
+		pointer_raw_base:                   source_type_syntax_child_range_id(id, raw, raw_pointer_depth, raw.len)
 		qualifier_prefixes:                 qualifier_prefixes
 		qualifier_suffixes:                 qualifier_suffixes
 		builtin_base:                       if raw.starts_with('builtin.') {
-			source_type_id(raw[8..])
+			source_type_syntax_child_range_id(id, raw, 8, raw.len)
 		} else {
 			u32(0)
 		}
@@ -1864,7 +2599,7 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		checker_tuple_components:           if tuple_like {
 			source_type_syntax_checker_parts(raw[1..raw.len - 1])
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		tuple_contains_comma:               raw.contains(',')
 		top_space_head:                     top_space_head
@@ -1872,12 +2607,12 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		top_space_valid:                    top_space_valid
 		typeof_expr_prefix:                 raw.starts_with('typeof(__expr_')
 		bracket_suffix:                     if bracket_closed {
-			source_type_id(raw[bracket_end + 1..])
+			source_type_syntax_child_range_id(id, raw, bracket_end + 1, raw.len)
 		} else {
 			u32(0)
 		}
 		bracket_from:                       if bracket >= 0 {
-			source_type_id(raw[bracket..])
+			source_type_syntax_child_range_id(id, raw, bracket, raw.len)
 		} else {
 			u32(0)
 		}
@@ -1887,7 +2622,7 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 			false
 		}
 		first_bracket_prefix:               if first_close > 0 {
-			source_type_id(raw[..first_close + 1])
+			source_type_syntax_child_range_id(id, raw, 0, first_close + 1)
 		} else {
 			u32(0)
 		}
@@ -1895,8 +2630,8 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		canonical_dotted_name:              named_type && raw.contains('.') && ((raw[0] >= `a` && raw[0] <= `z`) || (raw[0] >= `A` && raw[0] <= `Z`) || raw[0] == `_`)
 		decimal:                            decimal
 		contains_comma:                     raw.contains(',')
-		function_fragment:                  raw.contains('fn(') || raw.contains('fn (')
-		dots_base:                          source_type_id(raw[dot_count..])
+		function_fragment:                  raw.contains('fn(') || compact_fn_fragment
+		dots_base:                          source_type_syntax_child_range_id(id, raw, dot_count, raw.len)
 		cgen_raw_app_base:                  cgen_raw_app_base
 		cgen_raw_app_args:                  cgen_raw_app_args
 		cgen_raw_app_valid:                 cgen_raw_app_valid
@@ -1904,34 +2639,50 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		generic_parameter_payload:          legacy_parameter_type
 		legacy_parameter_type:              legacy_parameter_type
 		legacy_parameter_mut_type:          legacy_parameter_mut_type
-		first_bracket_length:               source_type_id(source_type_query_trim(raw.all_after('[').all_before(']')))
+		first_bracket_length:               if bracket < 0 && first_close < 0 {
+			clean_id
+		} else {
+			source_type_syntax_child_id(id, raw, source_type_query_trim(raw.all_after('[').all_before(']')))
+		}
 		checker_raw_tuple_components:       if tuple_like {
 			source_type_syntax_checker_parts_mode(raw[1..raw.len - 1], false)
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		bracket_raw_parts:                  if bracket >= 0 {
 			source_type_syntax_checker_parts_mode(source_type_query_trim(raw[bracket + 1..bracket_end]), false)
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		bracket_generic_parts:              if bracket >= 0 {
 			source_type_syntax_legacy_parts(raw[bracket + 1..bracket_end])
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		tuple_function_components:          source_type_syntax_tuple_function(raw)
-		c_pointer_base:                     source_type_id(raw.all_before_last('*'))
+		c_pointer_base:                     if last_star < 0 {
+			id
+		} else {
+			source_type_syntax_child_range_id(id, raw, 0, last_star)
+		}
 		c_ptr_name_suffix:                  raw.ends_with('_ptr')
 		c_fn_type_fragment:                 raw.contains('__vf_fn_type_')
 		underscored:                        raw.contains('_')
 		plain_comma_parts:                  plain_comma_parts
-		source_wrapper_base:                source_type_id(raw[source_wrapper_len..])
-		declaration_head:                   source_type_id(clean.all_before(' ').all_before('\t').all_before('('))
+		source_wrapper_base:                source_type_syntax_child_range_id(id, raw, source_wrapper_len, raw.len)
+		declaration_head:                   if !clean.contains(' ') && !clean.contains('\t') && !clean.contains('(') {
+			clean_id
+		} else {
+			source_type_syntax_child_id(id, raw, clean.all_before(' ').all_before('\t').all_before('('))
+		}
 		fn_fragment:                        raw.contains('fn')
-		compact_fn_spelling:                source_type_id(raw.replace('fn (', 'fn('))
+		compact_fn_spelling:                if !compact_fn_fragment {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, raw.replace('fn (', 'fn('))
+		}
 		first_bracket_raw_inner:            if bracket >= 0 && first_close > bracket {
-			source_type_id(raw[bracket + 1..first_close])
+			source_type_syntax_child_range_id(id, raw, bracket + 1, first_close)
 		} else {
 			u32(0)
 		}
@@ -1940,32 +2691,32 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		fixed_array_type:                   fixed_array_type
 		typeof_valid:                       typeof_valid
 		typeof_inner:                       if typeof_valid {
-			source_type_id(source_type_query_trim(clean[7..clean.len - 1]))
+			source_type_syntax_child_id(id, raw, source_type_query_trim(clean[7..clean.len - 1]))
 		} else {
 			u32(0)
 		}
 		postfix_index_base:                 if raw.ends_with(']') && last_bracket > 0 {
-			source_type_id(source_type_query_trim(raw[..last_bracket]))
+			source_type_syntax_child_id(id, raw, source_type_query_trim(raw[..last_bracket]))
 		} else {
 			u32(0)
 		}
 		last_bracket_prefix:                if last_bracket >= 0 {
-			source_type_id(raw[..last_bracket])
+			source_type_syntax_child_range_id(id, raw, 0, last_bracket)
 		} else {
 			u32(0)
 		}
 		last_bracket_length:                if last_bracket_close >= 0 {
-			source_type_id(source_type_query_trim(raw[last_bracket + 1..last_bracket + 1 + last_bracket_close]))
+			source_type_syntax_child_id(id, raw, source_type_query_trim(raw[last_bracket + 1..last_bracket + 1 + last_bracket_close]))
 		} else {
 			u32(0)
 		}
 		trailing_bracket_prefix:            if trailing_bracket >= 0 {
-			source_type_id(raw[..trailing_bracket])
+			source_type_syntax_child_range_id(id, raw, 0, trailing_bracket)
 		} else {
 			u32(0)
 		}
 		trailing_bracket_closed:            trailing_bracket >= 0
-		array_chars_base:                   source_type_id(raw[array_chars..])
+		array_chars_base:                   source_type_syntax_child_range_id(id, raw, array_chars, raw.len)
 		lowercase_value_ident:              lowercase_value_ident
 		typeof_prefix:                      raw.starts_with('typeof(')
 		first_capital:                      raw.len > 0 && raw[0].is_capital()
@@ -1976,18 +2727,26 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		main_unlocked:                      source_type_syntax_main_unlocked(id, raw)
 		encoded_fixed_length:               encoded_fixed_length
 		encoded_fixed_base:                 encoded_fixed_base
-		last_underscore_prefix:             source_type_id(raw.all_before_last('_'))
-		last_underscore_suffix:             source_type_id(raw.all_after_last('_'))
+		last_underscore_prefix:             if underscore_prefixes.len == 0 {
+			id
+		} else {
+			underscore_prefixes.last()
+		}
+		last_underscore_suffix:             if underscore_suffixes.len == 0 {
+			id
+		} else {
+			underscore_suffixes.last()
+		}
 		map_name_prefix:                    raw.starts_with('map_')
 		suffix_bracket_length:              if suffix_bracket_valid {
-			source_type_id(source_type_query_trim(raw[last_bracket + 1..raw.len - 1]))
+			source_type_syntax_child_id(id, raw, source_type_query_trim(raw[last_bracket + 1..raw.len - 1]))
 		} else {
 			u32(0)
 		}
 		suffix_bracket_valid:               suffix_bracket_valid
 		map_function_fragment:              raw.contains(']fn (') || raw.contains(']fn(')
 		bracket_source_inner:               if bracket >= 0 {
-			source_type_id(raw[bracket + 1..bracket_end])
+			source_type_syntax_child_range_id(id, raw, bracket + 1, bracket_end)
 		} else {
 			u32(0)
 		}
@@ -1998,31 +2757,35 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		c_fixed_typedef_length:             c_fixed_typedef_length
 		c_fixed_typedef_valid:              c_fixed_typedef_valid
 		fixed_array_query_length:           if raw.starts_with('[') {
-			if first_close > 1 { source_type_id(raw[1..first_close]) } else { u32(0) }
+			if first_close > 1 {
+				source_type_syntax_child_range_id(id, raw, 1, first_close)
+			} else {
+				u32(0)
+			}
 		} else if bracket >= 0 && raw.ends_with(']') {
-			source_type_id(raw[bracket + 1..raw.len - 1])
+			source_type_syntax_child_range_id(id, raw, bracket + 1, raw.len - 1)
 		} else {
 			u32(0)
 		}
 		last_bracket_span_valid:            last_bracket >= 0 && last_right_bracket > last_bracket
 		last_bracket_span_inner:            if last_bracket >= 0 && last_right_bracket > last_bracket {
-			source_type_id(source_type_query_trim(raw[last_bracket + 1..last_right_bracket]))
+			source_type_syntax_child_id(id, raw, source_type_query_trim(raw[last_bracket + 1..last_right_bracket]))
 		} else {
 			u32(0)
 		}
 		plain_type_name:                    plain_type_name
 		generic_app_legacy_suffix:          if generic_app_valid {
-			source_type_id(raw[source_type_name(generic_app_base).len..])
+			source_type_syntax_child_range_id(id, raw, source_type_name(generic_app_base).len, raw.len)
 		} else {
 			u32(0)
 		}
 		wrapper_prefix:                     if wrapper_len > 0 {
-			source_type_id(raw[..wrapper_len])
+			source_type_syntax_child_range_id(id, raw, 0, wrapper_len)
 		} else {
 			u32(0)
 		}
 		wrapper_base:                       if wrapper_len > 0 {
-			source_type_id(raw[wrapper_len..])
+			source_type_syntax_child_range_id(id, raw, wrapper_len, raw.len)
 		} else {
 			u32(0)
 		}
@@ -2033,42 +2796,46 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		paren_prefix:                       raw.starts_with('(')
 		fixed_length:                       source_type_syntax_checker_length(raw)
 		qualified_modifiers:                if modifier_start < raw.len {
-			source_type_id(raw[..modifier_start])
+			source_type_syntax_child_range_id(id, raw, 0, modifier_start)
 		} else {
 			u32(0)
 		}
 		plain_alias_target:                 plain_alias_target
-		main_removed:                       source_type_id(raw.replace('main.', ''))
+		main_removed:                       if !main_fragment {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, raw.replace('main.', ''))
+		}
 		c_array_payload:                    if raw.starts_with('Array_') {
-			source_type_id(raw['Array_'.len..])
+			source_type_syntax_child_range_id(id, raw, 'Array_'.len, raw.len)
 		} else {
 			u32(0)
 		}
 		c_fixed_array_payload:              if raw.starts_with('FixedArray_') {
-			source_type_id(raw['FixedArray_'.len..])
+			source_type_syntax_child_range_id(id, raw, 'FixedArray_'.len, raw.len)
 		} else {
 			u32(0)
 		}
 		fastc_array_marker:                 raw.contains('_FASTC_ARRAY_OF_')
 		fastc_array_marker_payload:         if raw.contains('_FASTC_ARRAY_OF_') {
-			source_type_id(raw.all_after('_FASTC_ARRAY_OF_'))
+			source_type_syntax_child_id(id, raw, raw.all_after('_FASTC_ARRAY_OF_'))
 		} else {
 			u32(0)
 		}
 		c_map_payload:                      if raw.starts_with('Map_') {
-			source_type_id(raw['Map_'.len..])
+			source_type_syntax_child_range_id(id, raw, 'Map_'.len, raw.len)
 		} else {
 			u32(0)
 		}
 		underscore_suffixes:                underscore_suffixes
 		c_ptr_name_base:                    if raw.ends_with('_ptr') {
-			source_type_id(raw[..raw.len - 4])
+			source_type_syntax_child_range_id(id, raw, 0, raw.len - 4)
 		} else {
 			u32(0)
 		}
 		c_tagged_type:                      source_type_syntax_c_tagged_type(id, raw)
 		backward_bracket_prefix:            if backward_bracket >= 0 {
-			source_type_id(raw[..backward_bracket])
+			source_type_syntax_child_range_id(id, raw, 0, backward_bracket)
 		} else {
 			u32(0)
 		}
@@ -2078,32 +2845,32 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		byte_len:                           raw.len
 		receiver_app_valid:                 bracket > 0 && raw.ends_with(']')
 		receiver_app_base:                  if bracket > 0 && raw.ends_with(']') {
-			source_type_id(raw[..bracket])
+			source_type_syntax_child_range_id(id, raw, 0, bracket)
 		} else {
 			u32(0)
 		}
 		receiver_app_args:                  if bracket > 0 && raw.ends_with(']') {
 			source_type_syntax_receiver_parts(raw[bracket + 1..raw.len - 1])
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		checker_bracket_components:         if bracket >= 0 {
 			source_type_syntax_checker_parts(raw[bracket + 1..bracket_end])
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		legacy_generic_words:               source_type_syntax_legacy_words(raw)
 		declaration_parameter_payload:      declaration_parameter_payload
 		declaration_parameter_mut:          declaration_parameter_mut
 		prefix_dimension_tail:              if prefix_dimensions_closed {
-			source_type_id(raw[prefix_dimension_end..])
+			source_type_syntax_child_range_id(id, raw, prefix_dimension_end, raw.len)
 		} else {
 			u32(0)
 		}
 		prefix_dimensions_closed:           prefix_dimensions_closed
 		backward_bracket_after_prefix_dims: backward_bracket >= prefix_dimension_end
 		backward_bracket_inner:             if backward_bracket >= 0 && backward_bracket + 1 <= raw.len - 1 {
-			source_type_id(source_type_query_trim(raw[backward_bracket + 1..raw.len - 1]))
+			source_type_syntax_child_id(id, raw, source_type_query_trim(raw[backward_bracket + 1..raw.len - 1]))
 		} else {
 			u32(0)
 		}
@@ -2111,13 +2878,14 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		nested_option_result_marker:        nested_option_result_marker
 		symbols_first_offsets:              symbols_first_offsets
 		c_pointer_depth:                    raw.len - c_pointer_end
-		c_pointer_raw_base:                 source_type_id(raw[..c_pointer_end])
+		c_pointer_count:                    raw.count('*')
+		c_pointer_raw_base:                 source_type_syntax_child_range_id(id, raw, 0, c_pointer_end)
 		voidptr_parts:                      voidptr_parts
 		thread_value_type_valid:            thread_value_type_valid
 		thread_value_type:                  thread_value_type
 		thread_value_prefix:                raw.starts_with('__vf_thread_k')
 		thread_value_payload:               if raw.starts_with('__vf_thread_k') {
-			source_type_id(raw['__vf_thread_k'.len..])
+			source_type_syntax_child_range_id(id, raw, '__vf_thread_k'.len, raw.len)
 		} else {
 			u32(0)
 		}
@@ -2138,20 +2906,28 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		parameter_is_mut:                   parameter_is_mut
 		transform_fixed_length:             source_type_syntax_transform_length(raw)
 		receiver_collection_id:             source_type_syntax_receiver_collection(id, raw)
-		ampersand_trimmed:                  source_type_id(raw.trim('&'))
+		ampersand_trimmed:                  if raw.len == 0 || (raw[0] != `&` && raw[raw.len - 1] != `&`) {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, raw.trim('&'))
+		}
 		flattened_receiver_parts:           source_type_syntax_flattened_receiver(raw)
-		last_double_underscore_suffix:      source_type_id(raw.all_after_last('__'))
-		contains_doubleunderscore:          raw.contains('__')
+		last_double_underscore_suffix:      if !contains_doubleunderscore {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, raw.all_after_last('__'))
+		}
+		contains_doubleunderscore:          contains_doubleunderscore
 		parallel_preseed_fn:                parallel_preseed_fn
 		parallel_preseed_short:             parallel_preseed_short
 		closing_bracket:                    raw.ends_with(']')
-		constraint_receiver_base:           source_type_id(raw.trim_left('&').all_after('mut ').trim_space())
+		constraint_receiver_base:           source_type_syntax_child_id(id, raw, raw.trim_left('&').all_after('mut ').trim_space())
 		written_applications:               written_applications
 		written_application_offsets:        written_application_offsets
 		checker_raw_bracket_components:     if bracket >= 0 {
 			source_type_syntax_checker_parts_mode(raw[bracket + 1..bracket_end], false)
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		cgen_placeholder_candidates:        source_type_syntax_cgen_placeholder_candidates(raw)
 		result_suffix:                      raw.ends_with('Result')
@@ -2159,22 +2935,34 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		cgen_decl_authority:                source_type_syntax_cgen_decl_authority(raw)
 		generic_encoded_fragment:           raw.contains('_T_')
 		fn_ptr_encoded_prefix:              raw.starts_with('_fn_ptr_')
+		c_result_prefix:                    raw.starts_with('__v_result')
+		c_option_prefix:                    raw.starts_with('__v_option_')
+		c_multi_return_prefix:              raw.starts_with('multi_return_')
+		c_lower_map_prefix:                 raw.starts_with('map_') && !raw.starts_with('map__')
 		open_generic_receiver_marker:       source_type_syntax_open_generic_receiver_marker(raw)
-		space_removed:                      source_type_id(raw.replace(' ', ''))
-		qualified_name_chars:               named_type && raw.contains('.')
-		field_owner_module:                 source_type_id(if raw.contains('.C.') {
-			raw.all_before('.C.')
-		} else if raw.contains('.JS.') {
-			raw.all_before('.JS.')
+		space_removed:                      if !spaced {
+			id
 		} else {
-			raw.all_before_last('.')
-		})
+			source_type_syntax_child_id(id, raw, raw.replace(' ', ''))
+		}
+		qualified_name_chars:               named_type && raw.contains('.')
+		field_owner_module:                 if qualifier_prefixes.len == 0 {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, if raw.contains('.C.') {
+				raw.all_before('.C.')
+			} else if raw.contains('.JS.') {
+				raw.all_before('.JS.')
+			} else {
+				raw.all_before_last('.')
+			})
+		}
 		const_name_prefix:                  raw.starts_with('const_')
 		reflection_parts:                   source_type_syntax_reflection_parts(raw)
 		reflection_tuple_parts:             if tuple_like {
 			source_type_syntax_reflection_parts(raw[1..raw.len - 1])
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		pthread_prefix:                     raw.starts_with('pthread_')
 		thread_bracket_prefix:              raw.starts_with('thread[')
@@ -2182,43 +2970,51 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		receiver_raw_app_args:              if bracket >= 0 && raw.ends_with(']') {
 			source_type_syntax_checker_parts_mode(raw[bracket + 1..raw.len - 1], false)
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
-		question_trimmed:                   source_type_id(raw.trim_right('?'))
+		question_trimmed:                   if !raw.ends_with('?') {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, raw.trim_right('?'))
+		}
 		c_array_fixed_prefix:               raw.starts_with('Array_fixed_')
 		vls_generic_words:                  source_type_syntax_vls_generic_words(raw)
 		function_space_result:              function_space_result
-		doubleunderscore_dotted:            if raw.contains('__') {
-			source_type_id(raw.replace('__', '.'))
+		doubleunderscore_dotted:            if contains_doubleunderscore {
+			source_type_syntax_child_id(id, raw, raw.replace('__', '.'))
 		} else {
 			id
 		}
 		decimal_value:                      if decimal { integer_value } else { 0 }
 		integer_value:                      integer_value
 		ptr_name_base:                      if raw.starts_with('ptr') && raw.len > 3 {
-			source_type_id(raw[3..])
+			source_type_syntax_child_range_id(id, raw, 3, raw.len)
 		} else {
 			u32(0)
 		}
 		encoded_alnum_dotted:               source_type_syntax_encoded_alnum_dotted(raw)
 		internal_symbol_prefix:             raw.starts_with('__v3_internal_symbol_')
 		main_at_base:                       if raw.starts_with('main.@') {
-			source_type_id(raw[6..])
+			source_type_syntax_child_range_id(id, raw, 6, raw.len)
 		} else {
 			id
 		}
-		last_double_underscore_prefix:      source_type_id(raw.all_before_last('__'))
+		last_double_underscore_prefix:      if !contains_doubleunderscore {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, raw.all_before_last('__'))
+		}
 		eval_tuple_parts:                   if tuple_like {
 			source_type_syntax_eval_parts(raw[1..raw.len - 1])
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		implicit_tuple_components:          source_type_syntax_implicit_tuple(raw)
 		generic_application_heads:          source_type_syntax_application_heads(raw, false)
 		incremental_generic_application:    source_type_syntax_incremental_generic_application(raw)
 		system_error_suffix:                raw.ends_with('SystemError')
 		receiver_app_inner:                 if bracket > 0 && raw.ends_with(']') {
-			source_type_id(raw[bracket + 1..raw.len - 1])
+			source_type_syntax_child_range_id(id, raw, bracket + 1, raw.len - 1)
 		} else {
 			u32(0)
 		}
@@ -2227,8 +3023,16 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		markused_application_heads:         source_type_syntax_application_heads(raw, true)
 		contains_capital:                   source_type_syntax_contains_capital(raw)
 		markused_generic_components:        source_type_syntax_markused_components(raw)
-		first_bracket_source_inner:         source_type_id(raw.all_after('[').all_before(']'))
-		mut_chars_base:                     source_type_id(raw.trim_left('mut '))
+		first_bracket_source_inner:         if bracket < 0 && first_close < 0 {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, raw.all_after('[').all_before(']'))
+		}
+		mut_chars_base:                     if raw.len == 0 || raw[0] !in [`m`, `u`, `t`, ` `] {
+			id
+		} else {
+			source_type_syntax_child_id(id, raw, raw.trim_left('mut '))
+		}
 		c_function_pointer_hole:            raw.contains('(*)')
 		channel_fragment:                   raw.contains('chan ')
 		array_receiver_fragment:            raw.contains('.[]')
@@ -2238,19 +3042,19 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		c_shared_fragment:                  raw.contains('__shared__')
 		typ_suffix:                         raw.ends_with('.typ')
 		typ_suffix_base:                    if raw.ends_with('.typ') {
-			source_type_id(raw[..raw.len - 4])
+			source_type_syntax_child_range_id(id, raw, 0, raw.len - 4)
 		} else {
 			u32(0)
 		}
 		raw_tuple_parse_components:         if raw.starts_with('(') && raw.contains(',') {
 			source_type_syntax_checker_parts_mode(raw[1..raw.len - 1], false)
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		checker_parse_function_result:      checker_parse_function_result
 		checker_parse_function_has_params:  checker_parse_function_has_params
 		fastc_composite_part:               if raw.contains(' ') || raw.contains('*') || raw.contains('.') {
-			source_type_id(raw.replace(' ', '_').replace('*', '_ptr').replace('.', '__'))
+			source_type_syntax_child_id(id, raw, raw.replace(' ', '_').replace('*', '_ptr').replace('.', '__'))
 		} else {
 			id
 		}
@@ -2259,34 +3063,34 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntax {
 		union_parts:                        source_type_syntax_union_parts(raw)
 		named_variant_dot_valid:            named_variant_dot >= 0
 		named_variant_dot_prefix:           if named_variant_dot >= 0 {
-			source_type_id(raw[..named_variant_dot])
+			source_type_syntax_child_range_id(id, raw, 0, named_variant_dot)
 		} else {
 			u32(0)
 		}
 		named_variant_dot_suffix:           if named_variant_dot >= 0 {
-			source_type_id(raw[named_variant_dot + 1..])
+			source_type_syntax_child_range_id(id, raw, named_variant_dot + 1, raw.len)
 		} else {
 			u32(0)
 		}
 		top_level_dot_valid:                top_level_dot >= 0
 		top_level_dot_prefix:               if top_level_dot >= 0 {
-			source_type_id(raw[..top_level_dot])
+			source_type_syntax_child_range_id(id, raw, 0, top_level_dot)
 		} else {
 			u32(0)
 		}
 		top_level_dot_suffix:               if top_level_dot >= 0 {
-			source_type_id(raw[top_level_dot + 1..])
+			source_type_syntax_child_range_id(id, raw, top_level_dot + 1, raw.len)
 		} else {
 			u32(0)
 		}
 		parser_fn_decl_valid:               parser_fn_decl_valid
 		parser_fn_decl_params:              if parser_fn_decl_valid {
-			source_type_id(raw[3..parser_fn_close])
+			source_type_syntax_child_range_id(id, raw, 3, parser_fn_close)
 		} else {
 			u32(0)
 		}
 		parser_fn_decl_result:              if parser_fn_decl_valid {
-			source_type_id(source_type_query_trim(raw[parser_fn_close + 1..]).trim_left('?!&'))
+			source_type_syntax_child_id(id, raw, source_type_query_trim(raw[parser_fn_close + 1..]).trim_left('?!&'))
 		} else {
 			u32(0)
 		}
@@ -2304,23 +3108,74 @@ fn source_type_syntax_decimal(text string) bool {
 	return true
 }
 
-fn source_type_syntax_simple(id u32, raw string) SourceTypeSyntax {
-	// Most scalar/name queries need no delimiter parser, splitter, normalizer, or
-	// spelling interning. Their derived views are the original numeric identity.
+fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) SourceTypeSyntaxParsed {
+	// Plain and qualified identifiers need no composite parser or parameter
+	// normalizer. Compute their dot views together without copying a second record.
+	qualified := first_dot >= 0
 	identity_ids := [id]
 	integer_value := raw.int()
 	decimal := source_type_syntax_decimal(raw)
 	contains_capital := source_type_syntax_contains_capital(raw)
 	contains_doubleunderscore := raw.contains('__')
 	thread_value_type_valid, thread_value_type := source_type_syntax_thread_value(raw)
-	mut underscore_prefixes := []u32{}
-	mut underscore_suffixes := []u32{}
+	mut underscore_prefixes := source_type_syntax_empty_ids()
+	mut underscore_suffixes := source_type_syntax_empty_ids()
+	mut qualifier_prefixes := source_type_syntax_empty_ids()
+	mut qualifier_suffixes := source_type_syntax_empty_ids()
+	mut dotted_parts := source_type_syntax_empty_ids()
+	mut part_start := 0
+	mut field_owner_c := u32(0)
+	mut field_owner_js := u32(0)
 	for i, c in raw {
 		if c == `_` {
 			underscore_prefixes << source_type_id(raw[..i])
 			underscore_suffixes << source_type_id(raw[i + 1..])
+		} else if c == `.` {
+			prefix := source_type_id(raw[..i])
+			qualifier_prefixes << prefix
+			qualifier_suffixes << source_type_id(raw[i + 1..])
+			dotted_parts << source_type_id(raw[part_start..i])
+			part_start = i + 1
+			if field_owner_c == 0 && raw[i..].starts_with('.C.') { field_owner_c = prefix }
+			if field_owner_js == 0 && raw[i..].starts_with('.JS.') { field_owner_js = prefix }
 		}
 	}
+	mut words := identity_ids
+	mut unqualified := id
+	mut qualifier := id
+	mut first_dot_prefix := id
+	mut first_dot_suffix := id
+	mut main_base := u32(0)
+	mut builtin_base := u32(0)
+	mut vls_generic_words := source_type_syntax_empty_ids()
+	if qualified {
+		dotted_parts << source_type_id(raw[part_start..])
+		// These cold builder views are read-only until copied into the cache.
+		words = unsafe { dotted_parts }
+		unqualified = dotted_parts[dotted_parts.len - 1]
+		qualifier = qualifier_prefixes[qualifier_prefixes.len - 1]
+		first_dot_prefix = dotted_parts[0]
+		first_dot_suffix = qualifier_suffixes[0]
+		if first_dot == 4 && raw.starts_with('main.') { main_base = first_dot_suffix }
+		if first_dot == 7 && raw.starts_with('builtin.') { builtin_base = first_dot_suffix }
+		if first_dot == 1 && raw[0].is_capital() { vls_generic_words << first_dot_prefix }
+	} else {
+		dotted_parts = unsafe { identity_ids }
+		if raw[0].is_digit() {
+			vls_generic_words = source_type_syntax_vls_generic_words(raw)
+		} else if raw.len == 1 && raw[0].is_capital() {
+			vls_generic_words = unsafe { identity_ids }
+		}
+	}
+	main_fragment := qualified && raw.contains('main.')
+	field_owner_module := if field_owner_c != 0 {
+		field_owner_c
+	} else if field_owner_js != 0 {
+		field_owner_js
+	} else {
+		qualifier
+	}
+	typ_suffix := qualified && raw.ends_with('.typ')
 	fn_prefix := raw.starts_with('fn')
 	encoded_fixed_length, encoded_fixed_base := source_type_syntax_encoded_fixed(raw)
 	c_fixed_typedef_element, c_fixed_typedef_length, c_fixed_typedef_valid := source_type_syntax_c_fixed_typedef(raw)
@@ -2330,14 +3185,14 @@ fn source_type_syntax_simple(id u32, raw string) SourceTypeSyntax {
 	if !symbol_is_name[0] {
 		symbol_parts, symbol_is_name = source_type_syntax_symbol_parts(raw)
 	}
-	return SourceTypeSyntax{
+	return SourceTypeSyntaxParsed{
 		kind:                           .name
 		trimmed:                        id
-		unqualified:                    id
-		qualifier:                      id
+		unqualified:                    unqualified
+		qualifier:                      qualifier
 		generic_base:                   id
 		symbols:                        identity_ids
-		words:                          identity_ids
+		words:                          words
 		pointer_base:                   id
 		postfix_base:                   id
 		parameter_type:                 id
@@ -2345,8 +3200,16 @@ fn source_type_syntax_simple(id u32, raw string) SourceTypeSyntax {
 		bare_generic:                   raw.len == 1 && raw[0] >= `A` && raw[0] <= `Z`
 		last_space_word:                id
 		named_type:                     true
-		first_dot_prefix:               id
-		first_dot_suffix:               id
+		first_dot_prefix:               first_dot_prefix
+		first_dot_suffix:               first_dot_suffix
+		main_base:                      main_base
+		builtin_base:                   builtin_base
+		c_qualified:                    qualified && first_dot == 1 && raw[0] == `C`
+		builtin_prefix:                 builtin_base != 0
+		main_fragment:                  main_fragment
+		qualifier_prefixes:             qualifier_prefixes
+		qualifier_suffixes:             qualifier_suffixes
+		canonical_dotted_name:          qualified
 		function_prefix:                fn_prefix
 		fn_prefix:                      fn_prefix
 		pointer_raw_base:               id
@@ -2368,9 +3231,9 @@ fn source_type_syntax_simple(id u32, raw string) SourceTypeSyntax {
 		compact_fn_spelling:            id
 		underscore_prefixes:            underscore_prefixes
 		array_chars_base:               id
-		lowercase_value_ident:          raw[0] >= `a` && raw[0] <= `z`
+		lowercase_value_ident:          !qualified && raw[0] >= `a` && raw[0] <= `z`
 		first_capital:                  raw[0].is_capital()
-		main_unlocked:                  id
+		main_unlocked:                  if main_base != 0 { main_base } else { id }
 		encoded_fixed_length:           encoded_fixed_length
 		encoded_fixed_base:             encoded_fixed_base
 		last_underscore_prefix:         if underscore_prefixes.len > 0 {
@@ -2386,15 +3249,19 @@ fn source_type_syntax_simple(id u32, raw string) SourceTypeSyntax {
 		map_name_prefix:                raw.starts_with('map_')
 		symbol_parts:                   symbol_parts
 		symbol_is_name:                 symbol_is_name
-		dotted_parts:                   identity_ids
+		dotted_parts:                   dotted_parts
 		c_fixed_typedef_element:        c_fixed_typedef_element
 		c_fixed_typedef_length:         c_fixed_typedef_length
 		c_fixed_typedef_valid:          c_fixed_typedef_valid
-		plain_type_name:                raw[0].is_letter() || raw[0] == `_`
+		plain_type_name:                !qualified && (raw[0].is_letter() || raw[0] == `_`)
 		fixed_length:                   (raw[0].is_digit() || raw[0] == `_`) && source_type_syntax_integer(raw)
 		qualified_modifiers:            u32(0)
 		plain_alias_target:             true
-		main_removed:                   id
+		main_removed:                   if main_fragment {
+			source_type_id(raw.replace('main.', ''))
+		} else {
+			id
+		}
 		c_array_payload:                if raw.starts_with('Array_') {
 			source_type_id(raw['Array_'.len..])
 		} else {
@@ -2426,13 +3293,13 @@ fn source_type_syntax_simple(id u32, raw string) SourceTypeSyntax {
 		generic_mentions:               if raw.len == 1 && raw[0].is_capital() {
 			identity_ids
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
-		cgen_generic_placeholder:       raw[0] >= `A` && raw[0] <= `Z`
+		cgen_generic_placeholder:       !qualified && raw[0] >= `A` && raw[0] <= `Z`
 			&& (raw.len == 1 || (raw[1] >= `0` && raw[1] <= `9`))
 		byte_len:                       raw.len
 		legacy_generic_words:           if raw[0].is_letter() || raw[0] == `_` {
-			identity_ids
+			words
 		} else {
 			source_type_syntax_legacy_words(raw)
 		}
@@ -2477,38 +3344,40 @@ fn source_type_syntax_simple(id u32, raw string) SourceTypeSyntax {
 		}
 		contains_doubleunderscore:      contains_doubleunderscore
 		parallel_preseed_fn:            fn_prefix
-		parallel_preseed_short:         if !fn_prefix && raw[0].is_capital() { id } else { u32(0) }
+		parallel_preseed_short:         if !fn_prefix && raw[last_dot + 1].is_capital() {
+			unqualified
+		} else {
+			u32(0)
+		}
 		constraint_receiver_base:       id
 		cgen_placeholder_candidates:    if raw.len == 1 && raw[0] >= `A` && raw[0] <= `Z` {
 			identity_ids
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		result_suffix:                  raw.ends_with('Result')
 		cgen_decl_unusable:             source_type_syntax_cgen_decl_unusable(raw)
 		cgen_decl_authority:            source_type_syntax_cgen_decl_authority(raw)
 		generic_encoded_fragment:       raw.contains('_T_')
 		fn_ptr_encoded_prefix:          raw.starts_with('_fn_ptr_')
+		c_result_prefix:                raw.starts_with('__v_result')
+		c_option_prefix:                raw.starts_with('__v_option_')
+		c_multi_return_prefix:          raw.starts_with('multi_return_')
+		c_lower_map_prefix:             raw.starts_with('map_') && !raw.starts_with('map__')
 		open_generic_receiver_marker:   source_type_syntax_open_generic_receiver_marker(raw)
 		space_removed:                  id
-		qualified_name_chars:           false
-		field_owner_module:             id
+		qualified_name_chars:           qualified
+		field_owner_module:             field_owner_module
 		const_name_prefix:              raw.starts_with('const_')
 		reflection_parts:               identity_ids
-		reflection_tuple_parts:         []u32{}
+		reflection_tuple_parts:         source_type_syntax_empty_ids()
 		pthread_prefix:                 raw.starts_with('pthread_')
 		thread_bracket_prefix:          false
 		fixed_typedef_bracket:          false
-		receiver_raw_app_args:          []u32{}
+		receiver_raw_app_args:          source_type_syntax_empty_ids()
 		question_trimmed:               id
 		c_array_fixed_prefix:           raw.starts_with('Array_fixed_')
-		vls_generic_words:              if raw[0].is_digit() {
-			source_type_syntax_vls_generic_words(raw)
-		} else if raw.len == 1 && raw[0] >= `A` && raw[0] <= `Z` {
-			identity_ids
-		} else {
-			[]u32{}
-		}
+		vls_generic_words:              vls_generic_words
 		doubleunderscore_dotted:        if contains_doubleunderscore {
 			source_type_id(raw.replace('__', '.'))
 		} else {
@@ -2530,7 +3399,19 @@ fn source_type_syntax_simple(id u32, raw string) SourceTypeSyntax {
 		main_at_base:                   id
 		mangled_open_generic_marker:    source_type_syntax_mangled_generic_marker(raw)
 		c_shared_fragment:              raw.contains('__shared__')
-		fastc_composite_part:           id
+		fastc_composite_part:           if qualified {
+			source_type_id(raw.replace('.', '__'))
+		} else {
+			id
+		}
+		typ_suffix:                     typ_suffix
+		typ_suffix_base:                if typ_suffix { qualifier } else { u32(0) }
+		named_variant_dot_valid:        qualified
+		named_variant_dot_prefix:       if qualified { qualifier } else { u32(0) }
+		named_variant_dot_suffix:       if qualified { unqualified } else { u32(0) }
+		top_level_dot_valid:            qualified
+		top_level_dot_prefix:           if qualified { first_dot_prefix } else { u32(0) }
+		top_level_dot_suffix:           if qualified { first_dot_suffix } else { u32(0) }
 		union_parts:                    identity_ids
 		last_double_underscore_prefix:  if contains_doubleunderscore {
 			source_type_id(raw.all_before_last('__'))
@@ -2544,7 +3425,7 @@ fn source_type_syntax_simple(id u32, raw string) SourceTypeSyntax {
 		markused_generic_components:    if contains_capital {
 			source_type_syntax_markused_components(raw)
 		} else {
-			[]u32{}
+			source_type_syntax_empty_ids()
 		}
 		first_bracket_source_inner:     id
 		mut_chars_base:                 if raw[0] in [`m`, `u`, `t`] {
@@ -2575,7 +3456,9 @@ fn source_type_syntax_checker_function_result(raw string) (u32, bool) {
 fn source_type_syntax_function(raw string) (bool, []u32, u32, []u32, []u32, []u32, u32) {
 	text := source_type_query_trim(raw)
 	open := text.index_u8(`(`)
-	if open < 0 { return false, []u32{}, 0, []u32{}, []u32{}, []u32{}, 0 }
+	if open < 0 {
+		return false, source_type_syntax_empty_ids(), 0, source_type_syntax_empty_ids(), source_type_syntax_empty_ids(), source_type_syntax_empty_ids(), 0
+	}
 	mut depth := 1
 	mut end := -1
 	for i := open + 1; i < text.len; i++ {
@@ -2589,20 +3472,23 @@ fn source_type_syntax_function(raw string) (bool, []u32, u32, []u32, []u32, []u3
 			}
 		}
 	}
-	if end < 0 { return false, []u32{}, 0, []u32{}, []u32{}, []u32{}, 0 }
-	mut params := []u32{}
-	for param in source_type_syntax_checker_parts(text[open + 1..end]) {
+	if end < 0 {
+		return false, source_type_syntax_empty_ids(), 0, source_type_syntax_empty_ids(), source_type_syntax_empty_ids(), source_type_syntax_empty_ids(), 0
+	}
+	checker_params := source_type_syntax_checker_parts(text[open + 1..end])
+	mut params := source_type_syntax_empty_ids()
+	for param in checker_params {
 		if param != 0 { params << param }
 	}
-	return true, params, source_type_id(source_type_query_trim(text[end + 1..])), source_type_syntax_checker_parts(text[open + 1..end]), source_type_syntax_legacy_parts(text[open + 1..end]), if source_type_query_trim(text[open + 1..end]).len > 0 {
+	return true, params, source_type_id(source_type_query_trim(text[end + 1..])), checker_params, source_type_syntax_legacy_parts(text[open + 1..end]), if source_type_query_trim(text[open + 1..end]).len > 0 {
 		source_type_syntax_receiver_parts(text[open + 1..end])
 	} else {
-		[]u32{}
+		source_type_syntax_empty_ids()
 	}, source_type_id(text[end + 1..].trim_left(' '))
 }
 
 fn source_type_syntax_tuple_function(raw string) []u32 {
-	mut components := []u32{}
+	mut components := source_type_syntax_empty_ids()
 	if raw.starts_with('(') && raw.ends_with(')') {
 		for part in source_type_syntax_checker_parts(raw[1..raw.len - 1]) {
 			if part != 0 { components << part }
@@ -2611,16 +3497,14 @@ fn source_type_syntax_tuple_function(raw string) []u32 {
 	return components
 }
 
-fn source_type_syntax_cgen_application(raw string) (u32, []u32, bool) {
-	return source_type_syntax_cgen_application_raw(source_type_query_trim(raw))
-}
-
 fn source_type_syntax_cgen_application_raw(text string) (u32, []u32, bool) {
-	if text.starts_with('fn(') || text.starts_with('fn (') { return 0, []u32{}, false }
+	if text.starts_with('fn(') || text.starts_with('fn (') {
+		return 0, source_type_syntax_empty_ids(), false
+	}
 	bracket := text.index_u8(`[`)
-	if bracket <= 0 { return 0, []u32{}, false }
+	if bracket <= 0 { return 0, source_type_syntax_empty_ids(), false }
 	end := source_type_syntax_matching_bracket(text, bracket)
-	if end >= text.len { return 0, []u32{}, false }
+	if end >= text.len { return 0, source_type_syntax_empty_ids(), false }
 	return source_type_id(text[..bracket]), source_type_syntax_legacy_parts(text[bracket + 1..end]), true
 }
 
@@ -2647,7 +3531,7 @@ fn source_type_syntax_top_space(text string) (u32, u32, bool) {
 
 // source_type_has_qualified_prefix compares a module prefix using only IDs on hits.
 pub fn source_type_has_qualified_prefix(id u32, prefix u32) bool {
-	for candidate in source_type_syntax(id).qualifier_prefixes {
+	for candidate in source_type_syntax(id).qualifier_prefixes() {
 		if candidate == prefix { return true }
 	}
 	return false
@@ -2657,8 +3541,8 @@ pub fn source_type_has_qualified_prefix(id u32, prefix u32) bool {
 // Both matching and the returned spelling use numeric IDs after the first query.
 pub fn source_type_qualified_suffix(id u32, prefix u32) ?u32 {
 	syntax := source_type_syntax(id)
-	for i, candidate in syntax.qualifier_prefixes {
-		if candidate == prefix { return syntax.qualifier_suffixes[i] }
+	for i, candidate in syntax.qualifier_prefixes() {
+		if candidate == prefix { return syntax.qualifier_suffixes()[i] }
 	}
 	return none
 }
@@ -2692,9 +3576,11 @@ fn source_type_syntax_matching_bracket(text string, start int) int {
 // must not become stricter merely because the complete spelling is malformed.
 fn source_type_syntax_application(text string, transform bool) (u32, []u32, bool) {
 	bracket := text.index_u8(`[`)
-	if bracket <= 0 { return 0, []u32{}, false }
+	if bracket <= 0 { return 0, source_type_syntax_empty_ids(), false }
 	if transform {
-		if text.starts_with('fn(') || text.starts_with('fn (') { return 0, []u32{}, false }
+		if text.starts_with('fn(') || text.starts_with('fn (') {
+			return 0, source_type_syntax_empty_ids(), false
+		}
 		mut parens := 0
 		for c in text[..bracket] {
 			if c == `(` {
@@ -2703,17 +3589,19 @@ fn source_type_syntax_application(text string, transform bool) (u32, []u32, bool
 				parens--
 			}
 		}
-		if parens != 0 { return 0, []u32{}, false }
+		if parens != 0 { return 0, source_type_syntax_empty_ids(), false }
 	}
 	end := source_type_syntax_matching_bracket(text, bracket)
-	if end <= bracket || (transform && end >= text.len) { return 0, []u32{}, false }
+	if end <= bracket || (transform && end >= text.len) {
+		return 0, source_type_syntax_empty_ids(), false
+	}
 	inner := source_type_query_trim(text[bracket + 1..end])
 	if transform {
 		if source_type_syntax_transform_length(inner) && !inner.starts_with('C.') && !inner.starts_with('JS.') {
-			return 0, []u32{}, false
+			return 0, source_type_syntax_empty_ids(), false
 		}
 	} else if source_type_syntax_checker_length(inner) {
-		return 0, []u32{}, false
+		return 0, source_type_syntax_empty_ids(), false
 	}
 	mut args := if transform {
 		source_type_syntax_legacy_parts(inner)
@@ -2729,9 +3617,9 @@ fn source_type_syntax_application(text string, transform bool) (u32, []u32, bool
 			map_base = source_type_query_trim(map_base[prefix..])
 		}
 		if map_base == 'map' {
-			if end >= text.len { return 0, []u32{}, false }
+			if end >= text.len { return 0, source_type_syntax_empty_ids(), false }
 			value := source_type_id(source_type_query_trim(text[end + 1..]))
-			if value == 0 { return 0, []u32{}, false }
+			if value == 0 { return 0, source_type_syntax_empty_ids(), false }
 			args << value
 		}
 	}
@@ -2739,7 +3627,7 @@ fn source_type_syntax_application(text string, transform bool) (u32, []u32, bool
 }
 
 fn source_type_syntax_legacy_parts(text string) []u32 {
-	mut parts := []u32{}
+	mut parts := source_type_syntax_empty_ids()
 	mut brackets := 0
 	mut parens := 0
 	mut start := 0
@@ -2767,7 +3655,7 @@ fn source_type_syntax_checker_parts(text string) []u32 {
 }
 
 fn source_type_syntax_checker_parts_mode(text string, trim_parts bool) []u32 {
-	mut parts := []u32{}
+	mut parts := source_type_syntax_empty_ids()
 	mut depth := 0
 	mut start := 0
 	for i, c in text {
@@ -2796,7 +3684,7 @@ fn source_type_syntax_checker_parts_mode(text string, trim_parts bool) []u32 {
 }
 
 fn source_type_syntax_receiver_parts(text string) []u32 {
-	mut parts := []u32{}
+	mut parts := source_type_syntax_empty_ids()
 	mut depth := 0
 	mut start := 0
 	for i, c in text {
@@ -2814,7 +3702,7 @@ fn source_type_syntax_receiver_parts(text string) []u32 {
 }
 
 fn source_type_syntax_legacy_words(text string) []u32 {
-	mut words := []u32{}
+	mut words := source_type_syntax_empty_ids()
 	mut start := -1
 	for i, c in text {
 		letter := (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
@@ -2915,7 +3803,7 @@ fn source_type_syntax_transform_length(text string) bool {
 
 fn source_type_syntax_postfix(text string) (u32, []u32) {
 	mut end := text.len
-	mut dims := []u32{}
+	mut dims := source_type_syntax_empty_ids()
 	for end > 0 && text[end - 1] == `]` {
 		mut depth := 0
 		mut start := -1
@@ -2945,15 +3833,6 @@ fn source_type_syntax_parameter_name(head string, tail string) bool {
 		return false
 	}
 	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
-}
-
-fn source_type_syntax_legacy_parameter(raw string) (u32, u32) {
-	payload, _, _, is_mut := source_type_syntax_parameter_details(raw)
-	return payload, if is_mut {
-		source_type_composition_one(.mutable_parameter, payload)
-	} else {
-		payload
-	}
 }
 
 fn source_type_syntax_parameter_details(raw string) (u32, u32, bool, bool) {
@@ -2988,9 +3867,9 @@ fn source_type_syntax_parameter_details(raw string) (u32, u32, bool, bool) {
 	return payload, name, named, is_mut
 }
 
-fn source_type_syntax_declaration_parameter(raw string) (u32, bool) {
-	payload, _ := source_type_syntax_legacy_parameter(raw)
-	mut text := source_type_name(payload)
+fn source_type_syntax_declaration_parameter(payload u32, is_mut bool) (u32, bool) {
+	original := source_type_name(payload)
+	mut text := original
 	for marker in ['[]', '&', 'map[', 'fn(', 'fn ('] {
 		index := text.index(marker) or { continue }
 		if index <= 0 { continue }
@@ -2999,7 +3878,7 @@ fn source_type_syntax_declaration_parameter(raw string) (u32, bool) {
 		if source_type_syntax_parameter_name(head, tail) { text = tail }
 		break
 	}
-	return source_type_id(text), source_type_query_trim(raw).starts_with('mut ')
+	return source_type_syntax_child_id(payload, original, text), is_mut
 }
 
 fn source_type_syntax_parameter(param string) (u32, u32) {
@@ -3048,7 +3927,7 @@ fn source_type_syntax_parameter(param string) (u32, u32) {
 }
 
 fn source_type_syntax_tokens(text string, dotted bool) []u32 {
-	mut ids := []u32{}
+	mut ids := source_type_syntax_empty_ids()
 	mut start := -1
 	for i, c in text {
 		if source_type_query_ident(c) || (dotted && c == `.`) {
@@ -3126,7 +4005,7 @@ fn source_type_syntax_balanced(text string) bool {
 }
 
 fn source_type_syntax_arguments(text string) (bool, []u32) {
-	mut ids := []u32{}
+	mut ids := source_type_syntax_empty_ids()
 	if source_type_query_trim(text).len == 0 {
 		return true, ids
 	}
@@ -3162,10 +4041,10 @@ fn source_type_syntax_arguments(text string) (bool, []u32) {
 
 fn source_type_syntax_components(text string) (SourceTypeSyntaxKind, u32, []u32, bool) {
 	if text.len == 0 {
-		return .empty, 0, []u32{}, false
+		return .empty, 0, source_type_syntax_empty_ids(), false
 	}
 	if !source_type_syntax_balanced(text) {
-		return .invalid, 0, []u32{}, false
+		return .invalid, 0, source_type_syntax_empty_ids(), false
 	}
 	mut prefix_len := 0
 	mut prefix_kind := SourceTypeSyntaxKind.name
@@ -3191,33 +4070,33 @@ fn source_type_syntax_components(text string) (SourceTypeSyntaxKind, u32, []u32,
 	if prefix_len > 0 {
 		child := source_type_query_trim(text[prefix_len..])
 		if child.len == 0 {
-			return .invalid, 0, []u32{}, false
+			return .invalid, 0, source_type_syntax_empty_ids(), false
 		}
-		return prefix_kind, source_type_id(child), []u32{}, false
+		return prefix_kind, source_type_id(child), source_type_syntax_empty_ids(), false
 	}
 	if text.starts_with('map[') {
 		end := source_type_syntax_close(text, 3)
 		if end < 0 || end + 1 == text.len {
-			return .invalid, 0, []u32{}, false
+			return .invalid, 0, source_type_syntax_empty_ids(), false
 		}
 		key := source_type_id(source_type_query_trim(text[4..end]))
 		value := source_type_id(source_type_query_trim(text[end + 1..]))
 		if key == 0 || value == 0 {
-			return .invalid, 0, []u32{}, false
+			return .invalid, 0, source_type_syntax_empty_ids(), false
 		}
 		return .map_type, value, [key], false
 	}
 	if text[0] == `[` {
 		end := source_type_syntax_close(text, 0)
 		if end < 0 || end + 1 == text.len {
-			return .invalid, 0, []u32{}, false
+			return .invalid, 0, source_type_syntax_empty_ids(), false
 		}
 		child := source_type_id(source_type_query_trim(text[end + 1..]))
 		if child == 0 {
-			return .invalid, 0, []u32{}, false
+			return .invalid, 0, source_type_syntax_empty_ids(), false
 		}
 		if end == 1 {
-			return .array, child, []u32{}, false
+			return .array, child, source_type_syntax_empty_ids(), false
 		}
 		return .fixed_array, child, [source_type_id(text[1..end])], false
 	}
@@ -3226,11 +4105,11 @@ fn source_type_syntax_components(text string) (SourceTypeSyntaxKind, u32, []u32,
 		if tail.starts_with('(') {
 			end := source_type_syntax_close(tail, 0)
 			if end < 0 {
-				return .invalid, 0, []u32{}, false
+				return .invalid, 0, source_type_syntax_empty_ids(), false
 			}
 			valid, params := source_type_syntax_arguments(tail[1..end])
 			if !valid {
-				return .invalid, 0, []u32{}, false
+				return .invalid, 0, source_type_syntax_empty_ids(), false
 			}
 			result := source_type_id(source_type_query_trim(tail[end + 1..]))
 			return .function_type, if result == 0 { source_type_void } else { result }, params, result != 0
@@ -3239,7 +4118,7 @@ fn source_type_syntax_components(text string) (SourceTypeSyntaxKind, u32, []u32,
 	if text[0] == `(` && source_type_syntax_close(text, 0) == text.len - 1 {
 		valid, components := source_type_syntax_arguments(text[1..text.len - 1])
 		if !valid {
-			return .invalid, 0, []u32{}, false
+			return .invalid, 0, source_type_syntax_empty_ids(), false
 		}
 		return .tuple, 0, components, false
 	}
@@ -3248,9 +4127,9 @@ fn source_type_syntax_components(text string) (SourceTypeSyntaxKind, u32, []u32,
 		head := source_type_id(source_type_query_trim(text[..open]))
 		valid, components := source_type_syntax_arguments(text[open + 1..text.len - 1])
 		if !valid || head == 0 || components.len == 0 {
-			return .invalid, 0, []u32{}, false
+			return .invalid, 0, source_type_syntax_empty_ids(), false
 		}
 		return .generic, head, components, false
 	}
-	return .name, 0, []u32{}, false
+	return .name, 0, source_type_syntax_empty_ids(), false
 }

@@ -4551,7 +4551,7 @@ fn markused_generic_app_parts(typ_id u32) (u32, []u32, bool) {
 	}
 	syntax := flat.source_type_syntax(clean)
 	if !syntax.bracket_closed { return u32(0), []u32{}, false }
-	return syntax.generic_base, syntax.bracket_generic_parts, true
+	return syntax.generic_base, syntax.bracket_generic_parts(), true
 }
 
 @[direct_array_access]
@@ -4618,7 +4618,7 @@ fn (c &CallCollector) type_text_uses_generics_depth(typ_id u32, cur_module strin
 		return false
 	}
 	syntax := flat.source_type_syntax(typ_id)
-	for head in syntax.markused_application_heads {
+	for head in syntax.markused_application_heads() {
 		if c.generic_type_base_is_known(head, cur_module, imports) { return true }
 	}
 	if !syntax.contains_capital { return false }
@@ -4628,7 +4628,7 @@ fn (c &CallCollector) type_text_uses_generics_depth(typ_id u32, cur_module strin
 	}
 	if c.selective_alias_uses_generics(clean, cur_module, imports, depth + 1) { return true }
 	// Wrapped aliases are not whole type strings, so inspect each named component.
-	for candidate in flat.source_type_syntax(clean).markused_generic_components {
+	for candidate in flat.source_type_syntax(clean).markused_generic_components() {
 		if target := c.generic_alias_target(candidate, cur_module, imports) {
 			if c.type_text_uses_generics_depth(markused_trimmed_source_type(target), cur_module, imports, depth + 1) {
 				return true
@@ -6729,7 +6729,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 				rhs_id := c.a.child(child, 1)
 				tuple := c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, name_state.names, pre_types)
 				tuple_syntax := flat.source_type_syntax(tuple)
-				if tuple_syntax.tuple_like { parts = tuple_syntax.tuple_components }
+				if tuple_syntax.tuple_like { parts = tuple_syntax.tuple_components() }
 			}
 			for j in 0 .. lhs_count {
 				lhs_idx := if j < rhs_count { j * 2 } else { rhs_count + j }
@@ -10190,10 +10190,10 @@ fn markused_receiver_type_text_source_fixed_spelling(type_id u32) u32 {
 		return clean
 	}
 	syntax := flat.source_type_syntax(clean)
-	if syntax.postfix_base == 0 || syntax.postfix_dims.len == 0 { return clean }
+	if syntax.postfix_base == 0 || syntax.postfix_dims().len == 0 { return clean }
 	mut source := syntax.postfix_base
-	for i := syntax.postfix_dims.len; i > 0; i-- {
-		source = flat.source_type_composition_two(.fixed_array, syntax.postfix_dims[i - 1], source)
+	for i := syntax.postfix_dims().len; i > 0; i-- {
+		source = flat.source_type_composition_two(.fixed_array, syntax.postfix_dims()[i - 1], source)
 	}
 	return source
 }
@@ -10380,11 +10380,11 @@ fn (c &CallCollector) generic_factory_qualified_type_text(text_id u32, id flat.N
 fn (c &CallCollector) qualified_type_text_preserving_params(text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_params []string) u32 {
 	syntax := flat.source_type_syntax(text_id)
 	param_ids := flat.TypeTextList.from_names(generic_params).ids
-	mut parts := []u32{cap: syntax.symbol_parts.len}
+	mut parts := []u32{cap: syntax.symbol_parts().len}
 	mut changed := false
-	for i, part in syntax.symbol_parts {
+	for i, part in syntax.symbol_parts() {
 		mut qualified := part
-		if syntax.symbol_is_name[i] {
+		if syntax.symbol_is_name()[i] {
 			qualified = markused_resolve_imported_source_type(part, imports)
 			if qualified !in param_ids {
 				qualified = c.tc.qualify_type_name_at(qualified, id, cur_module)

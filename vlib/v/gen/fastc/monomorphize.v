@@ -492,7 +492,7 @@ fn (g &Parser) mono_parameter_types(source FastcGenericMethodSource, concrete u3
 		mut parameters := signature.parameter_types.ids.clone()
 		for i, typ in parameters {
 			if i < base.parameter_generic_values.len && base.parameter_generic_values[i] && i < base.parameter_mutability.len && base.parameter_mutability[i] {
-				for concrete_type in flat.source_type_syntax(concrete).plain_comma_parts {
+				for concrete_type in flat.source_type_syntax(concrete).plain_comma_parts() {
 					if flat.source_type_query(concrete_type).has(.c_pointer_suffix) && typ == concrete_type {
 						parameters[i] = flat.source_type_composition_two(.concat, typ, flat.source_type_id('*'))
 					}
@@ -523,14 +523,14 @@ fn fastc_infer_generic_type_from_parameter(erased_id u32, actual_id u32) u32 {
 		}
 		return concrete
 	}
-	if erased.voidptr_parts.len < 2 {
+	if erased.voidptr_parts().len < 2 {
 		return u32(0)
 	}
-	prefix := erased.voidptr_parts[0]
+	prefix := erased.voidptr_parts()[0]
 	mut suffix_parts := []u32{}
-	for i in 1 .. erased.voidptr_parts.len {
+	for i in 1 .. erased.voidptr_parts().len {
 		if i > 1 { suffix_parts << flat.source_type_id('voidptr') }
-		suffix_parts << erased.voidptr_parts[i]
+		suffix_parts << erased.voidptr_parts()[i]
 	}
 	suffix := flat.source_type_composition(.concat, suffix_parts)
 	mut concrete := flat.source_type_capture(actual_id, prefix, suffix) or { return u32(0) }
@@ -550,15 +550,15 @@ fn fastc_infer_generic_type_from_parameter(erased_id u32, actual_id u32) u32 {
 fn fastc_specialized_generic_result_type(erased_id u32, concrete_id u32) u32 {
 	if erased_id == 0 { return erased_id }
 	erased := flat.source_type_syntax(erased_id)
-	if erased.voidptr_parts.len < 2 { return erased_id }
+	if erased.voidptr_parts().len < 2 { return erased_id }
 	if erased.c_pointer_raw_base == flat.source_type_id('voidptr') {
 		mut parts := [concrete_id]
 		for _ in 0 .. erased.c_pointer_depth { parts << flat.source_type_id('*') }
 		return flat.source_type_composition(.concat, parts)
 	}
 	concrete_part := flat.source_type_syntax(concrete_id).fastc_composite_part
-	mut parts := []u32{cap: erased.voidptr_parts.len * 2 - 1}
-	for i, part in erased.voidptr_parts {
+	mut parts := []u32{cap: erased.voidptr_parts().len * 2 - 1}
+	for i, part in erased.voidptr_parts() {
 		if i > 0 { parts << concrete_part }
 		parts << part
 	}
@@ -1034,8 +1034,8 @@ fn fastc_read_bracket_names(mut s scanner.Scanner) (string, token.Token) {
 // fastc_type_param_substitutions builds the map from each comma-joined type
 // parameter to its corresponding concrete type argument.
 fn fastc_type_param_substitutions(type_param string, concrete string) map[string]string {
-	type_params := flat.source_type_syntax(flat.source_type_id(type_param)).plain_comma_parts
-	concretes := flat.source_type_syntax(flat.source_type_id(concrete)).plain_comma_parts
+	type_params := flat.source_type_syntax(flat.source_type_id(type_param)).plain_comma_parts()
+	concretes := flat.source_type_syntax(flat.source_type_id(concrete)).plain_comma_parts()
 	mut substitutions := map[string]string{}
 	for index, name in type_params {
 		if index < concretes.len {
@@ -2082,7 +2082,7 @@ fn fastc_body_has_nested_generic(body string, prefs &pref.Preferences) bool {
 // fastc_all_concrete_type_args reports whether every comma-joined argument of a
 // (possibly multi-parameter) instantiation is a concrete type.
 fn fastc_all_concrete_type_args(concrete string) bool {
-	for part in flat.source_type_syntax(flat.source_type_id(concrete)).plain_comma_parts {
+	for part in flat.source_type_syntax(flat.source_type_id(concrete)).plain_comma_parts() {
 		if !fastc_is_concrete_type_arg_id(part) {
 			return false
 		}

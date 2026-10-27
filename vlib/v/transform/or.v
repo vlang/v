@@ -1166,8 +1166,8 @@ fn (t &Transformer) qualify_specialized_or_expr_value_type(typ_id u32) u32 {
 	syntax := flat.source_type_syntax(clean_id)
 	shape := flat.source_type_shape(clean_id)
 	if syntax.tuple_like {
-		mut items := []u32{cap: syntax.tuple_components.len}
-		for item in syntax.tuple_components {
+		mut items := []u32{cap: syntax.tuple_components().len}
+		for item in syntax.tuple_components() {
 			items << t.qualify_specialized_or_expr_value_type(item)
 		}
 		return flat.source_type_composition(.multi_return, items)
@@ -1188,7 +1188,7 @@ fn (t &Transformer) qualify_specialized_or_expr_value_type(typ_id u32) u32 {
 	}
 	if !syntax.generic_app_valid { return clean_id }
 	mut parts := [t.qualify_or_expr_generic_base(syntax.generic_app_base)]
-	parts << syntax.generic_app_args
+	parts << syntax.generic_app_args()
 	return flat.source_type_composition(.generic, parts)
 }
 
@@ -1321,8 +1321,8 @@ fn (t &Transformer) normalize_or_expr_value_type(typ_id u32) u32 {
 		return flat.source_type_composition_two(.map, t.normalize_or_expr_value_type(syntax.bracket_raw_inner), t.normalize_or_expr_value_type(syntax.raw_base))
 	}
 	if syntax.tuple_like {
-		mut items := []u32{cap: syntax.tuple_components.len}
-		for item in syntax.tuple_components { items << t.normalize_or_expr_value_type(item) }
+		mut items := []u32{cap: syntax.tuple_components().len}
+		for item in syntax.tuple_components() { items << t.normalize_or_expr_value_type(item) }
 		return flat.source_type_composition(.multi_return, items)
 	}
 	if shape.has(.map_type) {
@@ -1339,9 +1339,9 @@ fn (t &Transformer) normalize_or_expr_value_type(typ_id u32) u32 {
 	// `orm__QueryBuilder_User`), so retain the qualified owner in option/result
 	// payload temporaries.
 	normalized_base = t.qualify_or_expr_generic_base(normalized_base)
-	mut parts := []u32{cap: syntax.generic_app_args.len + 1}
+	mut parts := []u32{cap: syntax.generic_app_args().len + 1}
 	parts << normalized_base
-	for arg in syntax.generic_app_args { parts << t.normalize_or_expr_value_type(arg) }
+	for arg in syntax.generic_app_args() { parts << t.normalize_or_expr_value_type(arg) }
 	return flat.source_type_composition(.generic, parts)
 }
 
@@ -1807,14 +1807,14 @@ fn (t &Transformer) qualify_or_storage_type(typ_id u32) u32 {
 	}
 	syntax := flat.source_type_syntax(clean_id)
 	if syntax.closing_bracket && syntax.generic_app_valid {
-		mut parts := []u32{cap: syntax.generic_app_args.len + 1}
+		mut parts := []u32{cap: syntax.generic_app_args().len + 1}
 		base := syntax.generic_app_base
 		mut qualified_base := t.qualify_type(base)
 		if qualified_base == base && !t.bare_struct_name_is_local_to_current_module(base) {
 			if imported := t.unique_qualified_struct_for_short(base) { qualified_base = imported }
 		}
 		parts << qualified_base
-		for arg in syntax.generic_app_args { parts << t.qualify_or_storage_type(arg) }
+		for arg in syntax.generic_app_args() { parts << t.qualify_or_storage_type(arg) }
 		return flat.source_type_composition(.generic, parts)
 	}
 	return clean_id

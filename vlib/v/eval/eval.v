@@ -3472,7 +3472,7 @@ fn (mut e Eval) adapt_return_values(values []Value, return_type_id u32) []Value 
 }
 
 fn split_multi_return_types(return_type_id u32) []u32 {
-	parts := flat.source_type_syntax(return_type_id).eval_tuple_parts
+	parts := flat.source_type_syntax(return_type_id).eval_tuple_parts()
 	return if parts.len > 1 { parts.clone() } else { []u32{} }
 }
 

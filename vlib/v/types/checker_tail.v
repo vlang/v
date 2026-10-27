@@ -6141,7 +6141,7 @@ fn (tc &TypeChecker) chained_bare_struct_call_uses_open_param(call flat.Node) bo
 		child := tc.a.node(id)
 		if child.kind == .ident {
 			if type_text_source_id := tc.current_fn_param_type_text(child.value) {
-				symbols := flat.source_type_syntax(type_text_source_id).symbols
+				symbols := flat.source_type_syntax(type_text_source_id).symbols()
 				if tc.fn_context.generic_params.any(flat.source_type_id(it) in symbols) {
 					return true
 				}
@@ -11289,7 +11289,7 @@ fn (mut tc TypeChecker) explicit_receiver_type_args(info CallInfo, receiver Type
 	method_receiver := unwrap_pointer(info.params[0])
 	receiver_struct := unalias_type(method_receiver)
 	receiver_syntax := flat.source_type_syntax(receiver_struct.source_type_id())
-	receiver_args := receiver_syntax.application_args
+	receiver_args := receiver_syntax.application_args()
 	if !receiver_syntax.application_valid {
 		return type_args_ids.clone()
 	}
@@ -11371,7 +11371,7 @@ pub fn (mut tc TypeChecker) report_receiver_type_arg_mismatch(file string, call_
 fn (tc &TypeChecker) explicit_generic_receiver_method_args(receiver_type_id u32, method_name string, type_args_ids []u32) []u32 {
 	method_params := tc.fn_generic_params[method_name] or { return type_args_ids.clone() }
 	receiver_syntax := flat.source_type_syntax(receiver_type_id)
-	receiver_args := receiver_syntax.application_args
+	receiver_args := receiver_syntax.application_args()
 	if !receiver_syntax.application_valid || receiver_args.len == 0
 		|| type_args_ids.len != receiver_args.len + method_params.len {
 		return type_args_ids.clone()
@@ -17512,10 +17512,10 @@ fn (tc &TypeChecker) diagnostic_fntype_alias_display(typ &Type) ?string {
 	params := tc.type_alias_generic_params[lookup] or {
 		tc.type_alias_generic_params[tc.qualify_name(lookup)] or { return none }
 	}
-	if params.len != syntax.application_args.len {
+	if params.len != syntax.application_args().len {
 		return tc.diagnostic_fn_type_text(raw)
 	}
-	return tc.diagnostic_fn_type_text(flat.source_type_name(subst_generic_text(flat.source_type_id(raw), syntax.application_args, params)))
+	return tc.diagnostic_fn_type_text(flat.source_type_name(subst_generic_text(flat.source_type_id(raw), syntax.application_args(), params)))
 }
 
 fn (tc &TypeChecker) bare_generic_fntype_call_param_display(fn_name string, param_idx int) ?string {
@@ -19273,7 +19273,7 @@ fn (tc &TypeChecker) field_init_struct_field_type(struct_name_id u32, param_text
 	}
 	for field in tc.source_struct_field_decls(struct_name_id) {
 		if field.name == field_name {
-			return subst_generic_text(field.typ, syntax.application_args, params)
+			return subst_generic_text(field.typ, syntax.application_args(), params)
 		}
 	}
 	return none
@@ -19367,7 +19367,7 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 			mut field_type_id := u32(0)
 			if struct_name != 0 {
 				if field_type_source_id := tc.field_init_struct_field_type(struct_name, param_type_id, raw_arg.value) {
-					symbols := flat.source_type_syntax(field_type_source_id).symbols
+					symbols := flat.source_type_syntax(field_type_source_id).symbols()
 					if generic_params.any(flat.source_type_id(it) in symbols) {
 						field_type_id = trimmed_source_type_id(field_type_source_id)
 					}
@@ -19436,7 +19436,7 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 		receiver_pattern := flat.source_type_syntax(flat.source_type_id(info.name)).qualifier
 		receiver_syntax := flat.source_type_syntax(receiver_pattern)
 		if receiver_syntax.application_valid {
-			receiver_params := receiver_syntax.application_args.map(flat.source_type_name(it))
+			receiver_params := receiver_syntax.application_args().map(flat.source_type_name(it))
 			mut receiver_inferred := map[string]u32{}
 			actual_receiver := unwrap_pointer(info.params[0]).source_type_id()
 			tc.infer_generic_type_text_from_text(receiver_pattern, actual_receiver, receiver_params, mut receiver_inferred)
@@ -19779,7 +19779,7 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_id u32, actual T
 		return
 	}
 	if syntax.tuple_like && actual is MultiReturn {
-		parts := syntax.checker_tuple_components
+		parts := syntax.checker_tuple_components()
 		if parts.len == actual.types.len {
 			for i, part in parts {
 				tc.infer_generic_type_text_from_type(part, actual.types[i], generic_params, mut inferred)
@@ -19850,8 +19850,8 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_id u32, actual T
 	if syntax.application_valid {
 		actual_id := tc.generic_infer_type_text(actual)
 		actual_syntax := flat.source_type_syntax(actual_id)
-		param_args := syntax.application_args
-		actual_args := actual_syntax.application_args
+		param_args := syntax.application_args()
+		actual_args := actual_syntax.application_args()
 		// The application base is declared source text, so an import alias (`import io as csv`)
 		// must be resolved before it can be told apart from a same-named loaded type.
 		decl_base := tc.generic_param_type_text(syntax.application_base)
@@ -19942,7 +19942,7 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_id u32, actual 
 		return
 	}
 	if syntax.tuple_like && actual is MultiReturn {
-		parts := syntax.checker_tuple_components
+		parts := syntax.checker_tuple_components()
 		if parts.len == actual.types.len {
 			for i, part in parts {
 				tc.infer_generic_type_value_from_type(part, actual.types[i], generic_params, mut inferred)
@@ -20012,9 +20012,9 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_id u32, actual 
 		return
 	}
 	if syntax.application_valid {
-		param_args := syntax.application_args
+		param_args := syntax.application_args()
 		actual_syntax := flat.source_type_syntax(tc.generic_infer_type_text(actual))
-		actual_args := actual_syntax.application_args
+		actual_args := actual_syntax.application_args()
 		decl_base := tc.generic_param_type_text(syntax.application_base)
 		iface_name := tc.interface_metadata_name(decl_base)
 		if flat.source_type_name(iface_name) in tc.interface_names {
@@ -20201,8 +20201,8 @@ fn (tc &TypeChecker) infer_generic_type_text_from_text(param_id u32, actual_id u
 	}
 	if syntax.application_valid || actual_syntax.application_valid {
 		decl_base := tc.generic_param_type_text(syntax.application_base)
-		param_args := syntax.application_args
-		actual_args := actual_syntax.application_args
+		param_args := syntax.application_args()
+		actual_args := actual_syntax.application_args()
 		if !syntax.application_valid || !actual_syntax.application_valid
 			|| param_args.len != actual_args.len
 			|| !tc.generic_type_base_matches(decl_base, actual_syntax.application_base) {
@@ -20219,7 +20219,7 @@ fn (mut tc TypeChecker) infer_generic_fn_type_text_from_type(param_id u32, actua
 	if !syntax.function_closed {
 		return
 	}
-	for i, part in syntax.checker_function_params {
+	for i, part in syntax.checker_function_params() {
 		if i >= actual.params.len {
 			break
 		}
@@ -20237,7 +20237,7 @@ fn (mut tc TypeChecker) infer_generic_fn_type_value_from_type(param_id u32, actu
 	if !syntax.function_closed {
 		return
 	}
-	for i, part in syntax.checker_function_params {
+	for i, part in syntax.checker_function_params() {
 		if i >= actual.params.len {
 			break
 		}
@@ -21007,8 +21007,8 @@ fn (tc &TypeChecker) generic_receiver_qualifier_mismatch(actual &Type, expected 
 	}
 	a_syntax := flat.source_type_syntax(a_full)
 	e_syntax := flat.source_type_syntax(e_full)
-	a_args := a_syntax.application_args
-	e_args := e_syntax.application_args
+	a_args := a_syntax.application_args()
+	e_args := e_syntax.application_args()
 	if !a_syntax.application_valid || !e_syntax.application_valid
 		|| a_args.len != e_args.len || a_args.len == 0 {
 		return false
@@ -21079,7 +21079,7 @@ fn (tc &TypeChecker) is_concrete_generic_instance(name_id u32) bool {
 	if !syntax.application_valid {
 		return false
 	}
-	return tc.generic_args_are_concrete(syntax.application_args)
+	return tc.generic_args_are_concrete(syntax.application_args())
 }
 
 // bare_generic_literal_adopts reports whether a struct literal written as the bare
@@ -21175,7 +21175,7 @@ fn (mut tc TypeChecker) generic_literal_fields_compatible(node flat.Node, expect
 	}
 	e_base := flat.source_type_name(syntax.application_base)
 	e_short := flat.source_type_name(flat.source_type_syntax(syntax.application_base).unqualified)
-	e_args := syntax.application_args
+	e_args := syntax.application_args()
 	params := tc.struct_generic_params[e_base] or {
 		tc.struct_generic_params[e_short] or { return true }
 	}

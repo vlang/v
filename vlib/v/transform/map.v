@@ -3704,8 +3704,8 @@ fn (t &Transformer) fixed_array_map_value_type_text(value_type_id u32) u32 {
 	shape := flat.source_type_shape(value_type_id)
 	if shape.has(.map_type) {
 		syntax := flat.source_type_syntax(value_type_id)
-		if syntax.postfix_dims.len > 0 {
-			length_id := syntax.postfix_dims[0]
+		if syntax.postfix_dims().len > 0 {
+			length_id := syntax.postfix_dims()[0]
 			if flat.source_type_syntax(length_id).decimal || (!isnil(t.tc)
 				&& t.tc.const_int_value_in_module(flat.source_type_name(length_id), t.cur_module, []string{}) != none) {
 				return flat.source_type_composition_two(.fixed_array, length_id, syntax.postfix_base)

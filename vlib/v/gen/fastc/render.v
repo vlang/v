@@ -3,39 +3,40 @@ module fastc
 import v.flat
 import v.token
 
+const fastc_builtin_thread_source_type = flat.source_type_id('thread')
+
 // fastc_builtin_type_idx maps a primitive type name to V's canonical builtin
 // type index (vlib/v/ast/types.v). Used to evaluate `typeof[T]().idx`.
 fn fastc_builtin_type_idx(type_name_source_id u32) ?int {
-	type_name := flat.source_type_name(type_name_source_id)
-	return match type_name {
-		'void' { 1 }
-		'voidptr' { 2 }
-		'byteptr' { 3 }
-		'charptr' { 4 }
-		'i8' { 5 }
-		'i16' { 6 }
-		'i32' { 7 }
-		'int' { 8 }
-		'i64' { 9 }
-		'isize' { 10 }
-		'u8' { 11 }
-		'u16' { 12 }
-		'u32' { 13 }
-		'u64' { 14 }
-		'uint', 'usize' { 15 }
-		'f32' { 16 }
-		'f64' { 17 }
-		'char' { 18 }
-		'bool' { 19 }
-		'string' { 21 }
-		'rune' { 22 }
-		'array' { 23 }
-		'map' { 24 }
-		'chan' { 25 }
-		'any' { 26 }
-		'float_literal' { 27 }
-		'int_literal' { 28 }
-		'thread' { 29 }
+	return match type_name_source_id {
+		flat.source_type_void { 1 }
+		flat.source_type_voidptr { 2 }
+		flat.source_type_byteptr { 3 }
+		flat.source_type_charptr { 4 }
+		flat.source_type_i8 { 5 }
+		flat.source_type_i16 { 6 }
+		flat.source_type_i32 { 7 }
+		flat.source_type_int { 8 }
+		flat.source_type_i64 { 9 }
+		flat.source_type_isize { 10 }
+		flat.source_type_u8 { 11 }
+		flat.source_type_u16 { 12 }
+		flat.source_type_u32 { 13 }
+		flat.source_type_u64 { 14 }
+		flat.source_type_uint, flat.source_type_usize { 15 }
+		flat.source_type_f32 { 16 }
+		flat.source_type_f64 { 17 }
+		flat.source_type_char { 18 }
+		flat.source_type_bool { 19 }
+		flat.source_type_string { 21 }
+		flat.source_type_rune { 22 }
+		fastc_type_array { 23 }
+		fastc_type_map { 24 }
+		fastc_type_chan { 25 }
+		fastc_primitive_any { 26 }
+		fastc_primitive_float_literal { 27 }
+		fastc_primitive_int_literal { 28 }
+		fastc_builtin_thread_source_type { 29 }
 		else { none }
 	}
 }
@@ -1380,7 +1381,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 			}
 		}
 	}
-	if g.selfhost && operator == .assign && fastc_contains(flat.source_type_name(left_type), '_FASTC_ARRAY_OF_')
+	if g.selfhost && operator == .assign && flat.source_type_syntax(left_type).fastc_array_marker
 		&& g.fixed_array_uses_raw_storage(left_tokens) {
 		// `s.arr = [N]T{}` zeroes a raw-storage fixed array; the empty `[N]T{}` literal is not
 		// lowered to a value, so memset rather than memcpy from an unrendered right-hand side.
@@ -1524,14 +1525,18 @@ fn (g &Parser) checked_target_division_enabled() bool {
 }
 
 fn (g &Parser) checked_integer_operation_type(operand_type u32) string {
-	resolved := flat.source_type_name(g.underlying_alias_type(operand_type))
+	resolved := g.underlying_alias_type(operand_type)
 	return match resolved {
-		'int', 'integer literal', 'negative integer literal' { fastc_output_c_type('int') }
-		'char', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'isize', 'uint', 'usize' {
-			fastc_output_c_type(resolved)
+		flat.source_type_int, fastc_type_integer_literal, fastc_type_negative_integer_literal {
+			fastc_platform_int_c_type
 		}
-		'rune' { 'u32' }
-		'unsigned int' { 'u32' }
+		flat.source_type_char, flat.source_type_i8, flat.source_type_u8, flat.source_type_i16,
+		flat.source_type_u16, flat.source_type_i32, flat.source_type_u32, flat.source_type_i64,
+		flat.source_type_u64, flat.source_type_isize, flat.source_type_usize {
+			flat.source_type_name(resolved)
+		}
+		flat.source_type_uint { 'usize' }
+		flat.source_type_rune, fastc_type_unsigned_int { 'u32' }
 		else { '' }
 	}
 }

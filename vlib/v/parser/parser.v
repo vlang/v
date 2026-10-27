@@ -3650,7 +3650,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 				pos := p.s.src.index_after(name, type_start) or { type_start }
 				p.record_diagnostic_span('`${name}` cannot be a return type as it references the fntype',
 					pos, pos + name.len)
-			} else if generic_params.len == 0 && first_type_syntax.generic_mentions.len > 0 {
+			} else if generic_params.len == 0 && first_type_syntax.generic_mentions().len > 0 {
 				p.record_diagnostic_span('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
 					name_pos.offset, name_pos.end)
 			}
@@ -10376,7 +10376,7 @@ fn (mut p Parser) match_type_pattern_node(type_name_id u32) flat.NodeId {
 // e.g. `webgl.GLenum(0x84fe) {`, instead of a sum type variant pattern with a payload binding.
 fn (mut p Parser) match_branch_cast_follows(type_name_id u32) bool {
 	syntax := flat.source_type_syntax(type_name_id)
-	if p.tok != .lpar || p.prefs.is_fmt || syntax.qualifier_prefixes.len != 1 {
+	if p.tok != .lpar || p.prefs.is_fmt || syntax.qualifier_prefixes().len != 1 {
 		return false
 	}
 	if _ := p.named_variant_pattern_type(type_name_id) {
@@ -11874,7 +11874,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			// Imported generated types can start with a lowercase letter or underscore.
 			// A static import path followed by type arguments and `{` is a type literal;
 			// local values and container expressions retain their indexing interpretation.
-			is_imported_type := base_syntax.qualifier_prefixes.len == 1
+			is_imported_type := base_syntax.qualifier_prefixes().len == 1
 				&& p.imported_module_names[flat.source_type_name(base_syntax.first_dot_prefix)]
 				&& !p.is_local_binding(flat.source_type_name(base_syntax.first_dot_prefix))
 			if !p.in_for_container && (type_name_can_init_id(base_type_id)

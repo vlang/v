@@ -245,7 +245,7 @@ fn (g &Parser) typeof_display_name(typ_id u32) string {
 	key := flat.source_type_name(key_id)
 	if key in g.declared_types {
 		syntax := flat.source_type_syntax(key_id)
-		if syntax.dotted_parts.len <= 1 { return key }
+		if syntax.dotted_parts().len <= 1 { return key }
 		name := flat.source_type_name(syntax.unqualified)
 		if syntax.qualifier in [flat.source_type_id('main'), flat.source_type_id('builtin')] {
 			return name
@@ -507,7 +507,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		if operand.len == 1 && operand[0].tok == .name {
 			if local := g.locals[operand[0].lit] {
 				if local.is_reference && flat.source_type_query(local.typ).has(.c_pointer_suffix) {
-					value_type := flat.source_type_id(local.typ_text()[..local.typ_text().len - 1])
+					value_type := flat.source_type_syntax(local.typ).c_pointer_base
 					if fastc_is_integer_type(g.underlying_alias_type(value_type)) {
 						// Concrete mutable scalar parameters are a FastC extension;
 						// integer conversions retain their existing value semantics.

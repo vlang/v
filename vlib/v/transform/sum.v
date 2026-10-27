@@ -139,7 +139,7 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name_id u32, variant
 	if !syntax.generic_app_valid {
 		return none
 	}
-	args := syntax.generic_app_args
+	args := syntax.generic_app_args()
 	params := t.sum_generic_params_for_base_id(syntax.generic_app_base)
 	if params.len == args.len {
 		concrete_pattern := substitute_generic_type_text_with_params(variant_id, args, params)
@@ -154,7 +154,7 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name_id u32, variant
 		}
 	}
 	variant_syntax := flat.source_type_syntax(variant_id)
-	variant_args := variant_syntax.generic_app_args
+	variant_args := variant_syntax.generic_app_args()
 	if variant_syntax.generic_app_valid && variant_args.len == args.len
 		&& t.generic_variant_args_are_open(variant_args) {
 		concrete_pattern := substitute_generic_type_text_with_params(variant_id, args, flat.TypeTextList{ ids: variant_args }.names())
@@ -244,7 +244,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 	syntax := flat.source_type_syntax(sum_name_id)
 	if syntax.generic_app_valid {
 		generic_base_id := syntax.generic_app_base
-		concrete_sum := t.resolve_concrete_generic_sum_name(sum_name_id, generic_base_id, syntax.generic_app_args)
+		concrete_sum := t.resolve_concrete_generic_sum_name(sum_name_id, generic_base_id, syntax.generic_app_args())
 		if concrete_sum != 0 {
 			return concrete_sum
 		}
@@ -266,7 +266,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 		mut suffix_match := u32(0)
 		mut suffix_ambiguous := false
 		for key, _ in t.sum_types.ids {
-			if sum_name_id in flat.source_type_syntax(flat.source_type_id(key)).qualifier_suffixes {
+			if sum_name_id in flat.source_type_syntax(flat.source_type_id(key)).qualifier_suffixes() {
 				key_id := flat.source_type_id(key)
 				if suffix_match != 0 && suffix_match != key_id {
 					suffix_ambiguous = true
@@ -277,7 +277,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name_id u32) u32 {
 		}
 		if !suffix_ambiguous && !isnil(t.tc) {
 			for key, _ in t.tc.sum_types.ids {
-				if sum_name_id in flat.source_type_syntax(flat.source_type_id(key)).qualifier_suffixes {
+				if sum_name_id in flat.source_type_syntax(flat.source_type_id(key)).qualifier_suffixes() {
 					key_id := flat.source_type_id(key)
 					if suffix_match != 0 && suffix_match != key_id {
 						suffix_ambiguous = true
@@ -451,7 +451,7 @@ fn (t &Transformer) sum_subject_type_candidates(subject_type_id u32) []u32 {
 	syntax := flat.source_type_syntax(clean_id)
 	if syntax.generic_app_valid {
 		base := syntax.generic_app_base
-		args := syntax.generic_app_args
+		args := syntax.generic_app_args()
 		scoped_args := t.sum_subject_type_args_in_scope(args)
 		plain := transform_sum_generic_type(base, args)
 		scoped := transform_sum_generic_type(base, scoped_args)
@@ -518,9 +518,9 @@ fn (t &Transformer) sum_subject_type_arg_in_scope(arg_id u32) u32 {
 		return flat.source_type_composition_two(.concat, syntax.bracket_prefix, t.sum_subject_type_arg_in_scope(syntax.raw_base))
 	}
 	if syntax.generic_app_valid {
-		mut args := []u32{cap: syntax.generic_app_args.len + 1}
+		mut args := []u32{cap: syntax.generic_app_args().len + 1}
 		args << t.sum_subject_type_arg_base_in_scope(syntax.generic_app_base)
-		for nested in syntax.generic_app_args { args << t.sum_subject_type_arg_in_scope(nested) }
+		for nested in syntax.generic_app_args() { args << t.sum_subject_type_arg_in_scope(nested) }
 		return flat.source_type_composition(.generic, args)
 	}
 	return t.sum_subject_type_arg_base_in_scope(clean)
@@ -712,7 +712,7 @@ fn (t &Transformer) concrete_sum_name_and_variants(sum_name_id u32) (u32, []u32)
 fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name_id u32) []u32 {
 	name := flat.source_type_name(sum_name_id)
 	syntax := flat.source_type_syntax(sum_name_id)
-	args := syntax.generic_app_args
+	args := syntax.generic_app_args()
 	is_generic := syntax.generic_app_valid
 	if variants := t.sum_types.type_ids(name) {
 		if is_generic {

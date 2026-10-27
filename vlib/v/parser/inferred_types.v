@@ -10,15 +10,15 @@ fn shift_inferred_type_id(typ u32, shift int) u32 {
 		return typ
 	}
 	syntax := flat.source_type_syntax(typ)
-	if syntax.inferred_annotations.len == 0 {
+	if syntax.inferred_annotations().len == 0 {
 		return typ
 	}
-	mut parts := []u32{cap: syntax.inferred_parts.len + syntax.inferred_annotations.len}
-	for i, expression_bits in syntax.inferred_expr_ids {
-		parts << syntax.inferred_parts[i]
+	mut parts := []u32{cap: syntax.inferred_parts().len + syntax.inferred_annotations().len}
+	for i, expression_bits in syntax.inferred_expr_ids() {
+		parts << syntax.inferred_parts()[i]
 		parts << flat.source_type_composition_one(.inferred_expression, u32(int(expression_bits) + shift))
 	}
-	parts << syntax.inferred_parts[syntax.inferred_parts.len - 1]
+	parts << syntax.inferred_parts()[syntax.inferred_parts().len - 1]
 	return flat.source_type_composition(.concat, parts)
 }
 

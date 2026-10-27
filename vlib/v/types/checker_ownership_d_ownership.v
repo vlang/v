@@ -1976,7 +1976,7 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []u32
 				}
 				syntax := flat.source_type_syntax(name_id)
 				if syntax.application_valid && flat.source_type_syntax(syntax.application_base).unqualified == ownership_source_arc {
-					for arg in syntax.application_args {
+					for arg in syntax.application_args() {
 						tc.ownership_collect_drop_type_names(tc.parse_type(arg), mut names, mut seen, first_only)
 					}
 				}

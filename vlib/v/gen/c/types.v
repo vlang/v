@@ -4,6 +4,10 @@ import v.flat
 import v.gen.c.naming
 import v.types { unalias_type }
 
+const cgen_c_namespace_source_type = flat.source_type_id('C')
+const cgen_js_namespace_source_type = flat.source_type_id('JS')
+const cgen_channel_source_type = flat.source_type_id('chan')
+
 fn enum_decl_is_flag(node flat.Node) bool {
 	return node.typ == flat.source_type_id('flag')
 }
@@ -266,7 +270,7 @@ fn type_references_thread(typ &types.Type) bool {
 
 fn pthread_source_type_name(name_id u32) bool {
 	name := flat.source_type_syntax(name_id).trimmed
-	if suffix := flat.source_type_qualified_suffix(name, flat.source_type_id('C')) {
+	if suffix := flat.source_type_qualified_suffix(name, cgen_c_namespace_source_type) {
 		if flat.source_type_syntax(suffix).pthread_prefix { return true }
 	}
 	return flat.source_type_syntax(flat.source_type_syntax(name).unqualified).pthread_prefix
@@ -866,9 +870,9 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(type_id u32, f
 		return flat.source_type_composition_two(.map, canonical_key, canonical_value)
 	}
 	if syntax.cgen_app_valid {
-		mut parts := []u32{cap: syntax.cgen_app_args.len + 1}
+		mut parts := []u32{cap: syntax.cgen_app_args().len + 1}
 		parts << g.canonical_import_alias_type_text_in_file(syntax.cgen_app_base, file)
-		for arg in syntax.cgen_app_args {
+		for arg in syntax.cgen_app_args() {
 			parts << g.canonical_import_alias_type_text_in_file(arg, file)
 		}
 		return flat.source_type_composition(.generic, parts)
@@ -1081,13 +1085,14 @@ fn (mut g FlatGen) collect_specialized_declaration_signature_types() {
 	// before the wrapper forward declarations use them.
 	g.register_specialized_interface_applications()
 	for iface_name, methods in g.interfaces {
-		_, _, is_specialized := parse_shared_generic_app_parts(iface_name)
+		iface_id := flat.source_type_id(iface_name)
+		_, _, is_specialized := parse_shared_generic_app_parts_id(iface_id)
 		if !is_specialized {
 			continue
 		}
 		for method in methods {
-			decl_key := g.interface_method_signature_key(flat.source_type_id(iface_name), method) or { continue }
-			params, ret := g.tc.specialized_interface_method_signature(flat.source_type_id(iface_name), decl_key)
+			decl_key := g.interface_method_signature_key(iface_id, method) or { continue }
+			params, ret := g.tc.specialized_interface_method_signature(iface_id, decl_key)
 			g.collect_declaration_signature_type(ret)
 			for param in params {
 				g.collect_declaration_signature_type(param)
@@ -1602,8 +1607,8 @@ fn (g &FlatGen) type_name_is_unbound_generic_decl(name_id u32, params []string, 
 // type_name_contains_generic_placeholder checks the source spelling ID for unresolved generic placeholders.
 fn (g &FlatGen) type_name_contains_generic_placeholder(name_id u32) bool {
 	if g.skip_generics && !g.placeholder_check_forced { return false }
-	for candidate in flat.source_type_syntax(name_id).cgen_placeholder_candidates {
-		if candidate !in [flat.source_type_id('C'), flat.source_type_id('JS')]
+	for candidate in flat.source_type_syntax(name_id).cgen_placeholder_candidates() {
+		if candidate != cgen_c_namespace_source_type && candidate != cgen_js_namespace_source_type
 			&& !types.is_builtin_type_name_id(candidate)
 			&& !g.type_name_known(candidate) {
 			return true
@@ -1683,7 +1688,7 @@ fn (mut g FlatGen) write_optional_typedef(name string, value_type string) {
 	// aligned offsets, so it would miss them and free what they point to. A pointer
 	// sized `ok` fills the padding without changing the layout.
 	ok_type := if (is_result && g.has_ierror_interface())
-		|| g.optional_payload_holds_pointers(value_type) {
+		|| g.optional_payload_holds_pointers(flat.source_type_id(value_type)) {
 		'intptr_t'
 	} else {
 		'bool'
@@ -1694,28 +1699,31 @@ fn (mut g FlatGen) write_optional_typedef(name string, value_type string) {
 // optional_payload_holds_pointers reports whether an option payload of C type
 // `value_type` holds a pointer at a pointer aligned offset, and so is aligned at
 // least like a pointer.
-fn (mut g FlatGen) optional_payload_holds_pointers(value_type string) bool {
-	if value_type.ends_with('*') || value_type.starts_with('_fn_ptr_')
-		|| value_type.starts_with('__v_result') {
+fn (mut g FlatGen) optional_payload_holds_pointers(value_type u32) bool {
+	syntax := flat.source_type_syntax(value_type)
+	if flat.source_type_query(value_type).has(.c_pointer_suffix) || syntax.fn_ptr_encoded_prefix
+		|| syntax.c_result_prefix {
 		return true
 	}
-	if value_type in ['string', 'Array', 'array', 'map', 'chan', 'IError', 'voidptr', 'charptr',
-		'byteptr'] {
+	if value_type in [flat.source_type_string, cgen_capital_array_source_type, cgen_array_source_type,
+		cgen_map_source_type, cgen_channel_source_type, cgen_ierror_type_name_id,
+		flat.source_type_voidptr, flat.source_type_charptr, flat.source_type_byteptr] {
 		return true
 	}
-	if value_type.starts_with('__v_option_') {
-		inner := g.needed_optional_types.type_id(value_type) or { return false }
-		return g.optional_payload_holds_pointers(flat.source_type_name(inner))
+	if syntax.c_option_prefix {
+		inner := g.needed_optional_types.type_id(flat.source_type_name(value_type)) or { return false }
+		return g.optional_payload_holds_pointers(inner)
 	}
-	if value_type.starts_with('multi_return_') {
+	if syntax.c_multi_return_prefix {
 		for typ in g.multi_return_types {
-			if typ is types.MultiReturn && g.multi_return_c_type_name(typ) == value_type {
+			if typ is types.MultiReturn && flat.source_type_id(g.multi_return_c_type_name(typ)) == value_type {
 				return g.type_holds_aligned_pointer(typ, 0)
 			}
 		}
 		return false
 	}
-	if info := g.fixed_array_typedefs_needed[value_type] {
+	value_type_name := flat.source_type_name(value_type)
+	if info := g.fixed_array_typedefs_needed[value_type_name] {
 		return g.type_holds_aligned_pointer(types.Type(info.arr), 0)
 	}
 	// Built again whenever the checker has registered more types since (a generic
@@ -1739,10 +1747,10 @@ fn (mut g FlatGen) optional_payload_holds_pointers(value_type string) bool {
 			g.optional_payload_types[g.tc.c_type(&typ)] = typ
 		}
 	}
-	if typ := g.optional_payload_types[value_type] {
+	if typ := g.optional_payload_types[value_type_name] {
 		return g.type_holds_aligned_pointer(typ, 0)
 	}
-	return g.qualified_interface_c_types(value_type.all_after_last('__')).contains(value_type)
+	return g.qualified_interface_c_types(flat.source_type_name(syntax.last_double_underscore_suffix)).contains(value_type_name)
 }
 
 // type_holds_aligned_pointer reports whether a value of type `t` holds a pointer at a
@@ -3202,7 +3210,7 @@ fn is_wrapped_c_type_id(name_id u32) bool {
 	if name_id in [option_id, result_id] {
 		return true
 	}
-	prefixes := flat.source_type_syntax(name_id).underscore_prefixes
+	prefixes := flat.source_type_syntax(name_id).underscore_prefixes()
 	return option_id in prefixes || result_id in prefixes
 }
 

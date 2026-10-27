@@ -809,7 +809,7 @@ fn (mut t Transformer) generic_struct_init_value_type(id flat.NodeId) u32 {
 
 fn (mut t Transformer) specialize_struct_default_expr(struct_type_id u32, default_id flat.NodeId) flat.NodeId {
 	syntax := flat.source_type_syntax(struct_type_id)
-	args := syntax.generic_app_args
+	args := syntax.generic_app_args()
 	if !syntax.generic_app_valid || args.len == 0 {
 		return default_id
 	}
@@ -854,7 +854,7 @@ fn (t &Transformer) nested_generic_defaults_need_lowering(type_name_id u32, mut 
 	syntax := flat.source_type_syntax(normalized_source_id)
 	for field in info.fields {
 		if int(field.default_expr) >= 0 {
-			if syntax.generic_app_valid && syntax.generic_app_args.len > 0 { return true }
+			if syntax.generic_app_valid && syntax.generic_app_args().len > 0 { return true }
 			continue
 		}
 		field_type_source_id := t.lookup_struct_field_type(normalized_source_id, field.name) or { field.typ }
@@ -887,7 +887,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 	mut missing_defaults := map[string]flat.NodeId{}
 	resolved_node_type_source_id := t.normalize_type_alias(node.source_value_id())
 	syntax := flat.source_type_syntax(resolved_node_type_source_id)
-	mut lower_generic_defaults := syntax.generic_app_valid && syntax.generic_app_args.len > 0
+	mut lower_generic_defaults := syntax.generic_app_valid && syntax.generic_app_args().len > 0
 	for field in info.fields {
 		if field.name in provided { continue }
 		if int(field.default_expr) >= 0 {
@@ -1116,7 +1116,7 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 		}
 	}
 	syntax := flat.source_type_syntax(scoped_name)
-	args := syntax.generic_app_args
+	args := syntax.generic_app_args()
 	if syntax.generic_app_valid {
 		if base_info := t.lookup_struct_info_direct(syntax.generic_app_base) {
 			params := t.generic_struct_param_names_for_base_id(syntax.generic_app_base)
@@ -1696,7 +1696,7 @@ fn (t &Transformer) struct_field_sum_type(field_type_id u32, owner_module string
 }
 
 fn (t &Transformer) sum_type_for_union_text(field_type_id u32, owner_module string) ?u32 {
-	raw_variants := flat.source_type_syntax(field_type_id).union_parts
+	raw_variants := flat.source_type_syntax(field_type_id).union_parts()
 	if raw_variants.len < 2 {
 		return none
 	}

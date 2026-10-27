@@ -171,14 +171,14 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 	raw_syntax := flat.source_type_syntax(raw_clean_source_id)
 	if raw_syntax.generic_app_valid
 		&& flat.source_type_name(raw_syntax.generic_app_base) in t.tc.interface_names {
-		return interface_type_application(raw_syntax.generic_app_base, raw_syntax.generic_app_args, true)
+		return interface_type_application(raw_syntax.generic_app_base, raw_syntax.generic_app_args(), true)
 	}
 	if flat.source_type_name(raw_clean_source_id) in t.tc.interface_names {
 		return raw_clean_source_id
 	}
 	mut clean_id := t.trim_all_pointer_type(t.normalize_type_alias(name_id))
 	syntax := flat.source_type_syntax(clean_id)
-	args := syntax.generic_app_args
+	args := syntax.generic_app_args()
 	if syntax.generic_app_valid {
 		clean_id = syntax.generic_app_base
 	}
@@ -1308,7 +1308,7 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 				interface_name = t.resolve_interface_type_name(receiver_source_type)
 			}
 			receiver_syntax := flat.source_type_syntax(t.trim_pointer_type(receiver_source_type))
-			receiver_args := receiver_syntax.generic_app_args
+			receiver_args := receiver_syntax.generic_app_args()
 			if receiver_syntax.generic_app_valid && receiver_args.len > 0
 				&& interface_name == receiver_syntax.generic_app_base
 				&& !receiver_args.any(t.generic_arg_is_unresolved(it)) {

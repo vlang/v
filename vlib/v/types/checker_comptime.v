@@ -960,7 +960,7 @@ fn (tc &TypeChecker) comptime_static_for_value_source_type(raw_id u32) ?u32 {
 	if clean_id == 0 {
 		return none
 	}
-	parts := flat.source_type_syntax(clean_id).dotted_parts
+	parts := flat.source_type_syntax(clean_id).dotted_parts()
 	if parts.len == 0 {
 		return none
 	}
@@ -7120,7 +7120,7 @@ fn (mut tc TypeChecker) record_unhandled_result_call(call_id flat.NodeId, result
 }
 
 fn type_id_contains_any(type_id u32) bool {
-	return flat.source_type_id('any') in flat.source_type_syntax(type_id).words
+	return flat.source_type_id('any') in flat.source_type_syntax(type_id).words()
 }
 
 fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
@@ -14273,7 +14273,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 					capture_type_text, literal_generic_params)
 				for generic_name in tc.fn_context.generic_params {
 					if generic_name !in literal_generic_params
-						&& flat.source_type_id(generic_name) in flat.source_type_syntax(capture_dependency_text).symbols {
+						&& flat.source_type_id(generic_name) in flat.source_type_syntax(capture_dependency_text).symbols() {
 						current_list := literal_generic_params.join(', ')
 						if !missing_capture_generic {
 							if tc.checker_fixture_mode && literal_generic_params.len == 0 {
@@ -14436,7 +14436,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		capture := tc.a.node(capture_id)
 		capture_type_id := tc.current_fn_param_type_text(capture.value) or { u32(0) }
 		capture_has_open_generic :=
-			saved_fn_context.generic_params.any(flat.source_type_id(it) in flat.source_type_syntax(capture_type_id).symbols)
+			saved_fn_context.generic_params.any(flat.source_type_id(it) in flat.source_type_syntax(capture_type_id).symbols())
 		if capture.kind == .ident && capture.value.len > 0 && !capture_has_open_generic
 			&& !tc.fn_literal_body_uses_ident(node, capture.value)
 			&& !tc.comptime_skipped_body_uses(node, capture.value) {
@@ -14570,7 +14570,7 @@ fn (mut tc TypeChecker) check_generic_fn_literal_capture_types(node flat.Node) {
 					capture_type_text, literal_generic_params)
 				for generic_name in tc.fn_context.generic_params {
 					if generic_name !in literal_generic_params
-						&& flat.source_type_id(generic_name) in flat.source_type_syntax(capture_dependency_text).symbols {
+						&& flat.source_type_id(generic_name) in flat.source_type_syntax(capture_dependency_text).symbols() {
 						if !missing_capture_generic {
 							if tc.checker_fixture_mode && literal_generic_params.len == 0 {
 								tc.record_error_at(.unsupported_generic, 'generic closure fn must specify type parameter, e.g. fn [foo] [T]()', id, child.pos)

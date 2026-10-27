@@ -1177,7 +1177,7 @@ fn (tc &TypeChecker) subtree_depends_on_type_params(id flat.NodeId, names map[st
 
 // type_id_names_any reports whether the source type names any of `names`.
 fn type_id_names_any(type_id u32, names map[string]bool) bool {
-	words := flat.source_type_syntax(type_id).words
+	words := flat.source_type_syntax(type_id).words()
 	for name, _ in names {
 		if flat.source_type_id(name) in words {
 			return true

@@ -17,13 +17,13 @@ fn (t &Transformer) resolve_inferred_type_id(typ_id u32) u32 {
 		return typ_id
 	}
 	syntax := flat.source_type_syntax(typ_id)
-	mut result := syntax.inferred_parts[0]
+	mut result := syntax.inferred_parts()[0]
 	mut stopped := false
 	mut changed := false
-	for i, annotation in syntax.inferred_annotations {
+	for i, annotation in syntax.inferred_annotations() {
 		mut replacement := annotation
 		if !stopped {
-			expression_id := flat.NodeId(syntax.inferred_expr_ids[i])
+			expression_id := flat.NodeId(syntax.inferred_expr_ids()[i])
 			if int(expression_id) < 0 || int(expression_id) >= t.a.nodes.len {
 				stopped = true
 			} else {
@@ -41,7 +41,7 @@ fn (t &Transformer) resolve_inferred_type_id(typ_id u32) u32 {
 			}
 		}
 		result = flat.source_type_composition_two(.concat, result, replacement)
-		result = flat.source_type_composition_two(.concat, result, syntax.inferred_parts[i + 1])
+		result = flat.source_type_composition_two(.concat, result, syntax.inferred_parts()[i + 1])
 	}
 	return if changed { result } else { typ_id }
 }

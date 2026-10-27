@@ -4851,7 +4851,7 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 				if current.kind == .array_init {
 					if bound_id := fixed_array_bound_id(current.typ) {
 						name_id := flat.source_type_id(name)
-						if bound_id == name_id || name_id in flat.source_type_syntax(bound_id).symbols {
+						if bound_id == name_id || name_id in flat.source_type_syntax(bound_id).symbols() {
 							used_names[name] = true
 						}
 					}

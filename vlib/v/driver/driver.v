@@ -9556,7 +9556,7 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 
 fn incremental_type_is_generic_named_application(type_name_id u32, module_name string, tc &types.TypeChecker) bool {
 	if !flat.source_type_shape(type_name_id).has(.bracketed) { return false }
-	for head in flat.source_type_syntax(type_name_id).generic_application_heads {
+	for head in flat.source_type_syntax(type_name_id).generic_application_heads() {
 		if incremental_generic_type_base_is_known(head, module_name, tc) { return true }
 	}
 	return false
@@ -9843,8 +9843,8 @@ fn v3_source_is_pure_v(path string) bool {
 fn v3_type_text_uses_interop_namespace(type_id u32, namespace string) bool {
 	if !flat.source_type_shape(type_id).has(.dotted) { return false }
 	namespace_id := flat.source_type_id(namespace)
-	for symbol in flat.source_type_syntax(type_id).symbols {
-		if namespace_id in flat.source_type_syntax(symbol).qualifier_prefixes { return true }
+	for symbol in flat.source_type_syntax(type_id).symbols() {
+		if namespace_id in flat.source_type_syntax(symbol).qualifier_prefixes() { return true }
 	}
 	return false
 }
@@ -23658,7 +23658,7 @@ fn implicit_declared_child(name_idx int, values int) int {
 // return type of a function that returns several, `(string, []int)`; none when
 // it is not one.
 fn implicit_multi_value_types(raw_id u32, index ImplicitFieldScanIndex) []u32 {
-	return flat.source_type_syntax(implicit_normalize_type(raw_id, index)).implicit_tuple_components.clone()
+	return flat.source_type_syntax(implicit_normalize_type(raw_id, index)).implicit_tuple_components().clone()
 }
 
 fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut index ImplicitFieldScanIndex) {

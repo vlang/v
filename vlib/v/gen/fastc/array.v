@@ -17,7 +17,7 @@ fn (g &Parser) render_fixed_array_layout_argument(tokens []FastcExpressionToken,
 	actual_layout := g.underlying_alias_type(actual_type)
 	if expected_layout == actual_layout
 		|| !flat.source_type_query(actual_layout).has(.c_fixed_array_prefix)
-		|| flat.source_type_name(expected_layout).count('*') != flat.source_type_name(actual_layout).count('*') {
+		|| flat.source_type_syntax(expected_layout).c_pointer_count != flat.source_type_syntax(actual_layout).c_pointer_count {
 		return none
 	}
 	mut expected_element := fastc_trim_pointer_type(expected_layout)
@@ -1493,7 +1493,7 @@ fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_typ
 
 // fastc_collect_referenced_fixed_array_type registers fixed-array identifier tokens in a type ID.
 fn fastc_collect_referenced_fixed_array_type(type_id u32, mut fixed_array_types flat.TypeTextBindings) {
-	for name_id in flat.source_type_syntax(type_id).words {
+	for name_id in flat.source_type_syntax(type_id).words() {
 		if flat.source_type_query(name_id).has(.c_fixed_array_prefix)
 			&& flat.source_type_syntax(name_id).fastc_array_marker
 			&& !fixed_array_types.contains(flat.source_type_name(name_id)) {

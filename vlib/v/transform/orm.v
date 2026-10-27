@@ -657,7 +657,7 @@ fn (mut t Transformer) sql_record_generic_helper_specialization(spec_name string
 
 fn (mut t Transformer) sql_record_table_generic_spec(table_name_id u32) {
 	syntax := flat.source_type_syntax(table_name_id)
-	args := syntax.generic_app_args
+	args := syntax.generic_app_args()
 	if !syntax.generic_app_valid || args.len == 0 {
 		return
 	}
@@ -698,9 +698,9 @@ fn (mut t Transformer) sql_db_connection_arg(db_expr flat.NodeId) flat.NodeId {
 fn (mut t Transformer) sql_query_builder_method_call(qb flat.NodeId, method string, args []flat.NodeId, typ_id u32) flat.NodeId {
 	t.mark_fn_used_name('orm.QueryBuilder.${method}')
 	syntax := flat.source_type_syntax(t.trim_pointer_type(t.node_type(qb)))
-	if syntax.generic_app_valid && syntax.generic_app_args.len == 1
+	if syntax.generic_app_valid && syntax.generic_app_args().len == 1
 		&& flat.source_type_syntax(syntax.generic_app_base).unqualified == sql_query_builder_name {
-		method_name := '${flat.source_type_name(syntax.generic_app_base)}_${sql_generic_type_suffix(flat.source_type_name(syntax.generic_app_args[0]))}.${method}'
+		method_name := '${flat.source_type_name(syntax.generic_app_base)}_${sql_generic_type_suffix(flat.source_type_name(syntax.generic_app_args()[0]))}.${method}'
 		t.mark_fn_used_name(method_name)
 		mut call_args := []flat.NodeId{cap: args.len + 1}
 		call_args << qb
@@ -3458,10 +3458,10 @@ fn (t &Transformer) sql_resolved_table_name(table u32) u32 {
 		return table_name_id
 	}
 	resolved_base := t.sql_resolved_table_name(syntax.generic_app_base)
-	mut parts := []u32{cap: syntax.generic_app_args.len + 1}
+	mut parts := []u32{cap: syntax.generic_app_args().len + 1}
 	parts << resolved_base
 	mut changed := table_name_id != table || resolved_base != syntax.generic_app_base
-	for arg in syntax.generic_app_args {
+	for arg in syntax.generic_app_args() {
 		resolved_arg := t.sql_resolved_table_name(arg)
 		if resolved_arg != arg {
 			changed = true
