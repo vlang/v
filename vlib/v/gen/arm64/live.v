@@ -5,6 +5,11 @@ module arm64
 // reloading: the extracted bytes are written to a file, then loaded into an
 // executable page of the running binary and called via a function pointer.
 // Ported from v2 (vlib/v2_toberemoved/gen/arm64/arm64.v).
+//
+// Only self-contained functions are supported: if the function body needs
+// address fixups at its load address (calls, string literals, globals), the
+// raw bytes cannot be relocated by a plain copy, so extraction is rejected.
+// Callers (notably `-hot-fn`) treat an empty result as a build error.
 pub fn (mut g Gen) extract_function(fn_name string) []u8 {
 	target_sym := '_' + fn_name
 
@@ -51,6 +56,18 @@ pub fn (mut g Gen) extract_function(fn_name string) []u8 {
 	if code_size <= 0 || fn_start + u64(code_size) > u64(g.macho.text_data.len) {
 		eprintln('extract_function: invalid range ${fn_start}..${fn_end}')
 		return []u8{}
+	}
+
+	// The sliced bytes are pre-link object code. Any relocation inside the
+	// range (branch26 call, adrp/ldr literal or global access, GOT load)
+	// would target the wrong address after a plain copy to a new executable
+	// page, so refuse to extract such functions instead of emitting silently
+	// broken machine code.
+	for r in g.macho.relocs {
+		if u64(r.addr) >= fn_start && u64(r.addr) < fn_end {
+			eprintln('extract_function: "${target_sym}" needs address fixups (reloc type ${r.type_} at offset ${r.addr}); only self-contained functions can be hot-reloaded')
+			return []u8{}
+		}
 	}
 
 	return g.macho.text_data[int(fn_start)..int(fn_end)].clone()

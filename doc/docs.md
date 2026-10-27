@@ -11726,6 +11726,10 @@ Single functions can be extracted as raw machine code with `-hot-fn`:
 v -b arm64 -hot-fn print_message -o print_message.bin message.v
 ```
 
+Only self-contained `@[live]` functions are supported for now: functions
+needing address fixups (calls, string literals, globals) are rejected at
+extract time instead of emitting silently broken machine code.
+
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
 
