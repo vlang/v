@@ -7472,12 +7472,11 @@ fn (mut g FlatGen) gen_c_int_array_storage(arrays []CIntArrayStorage) {
 // when their source ranges overlap. Returns false — falling through to normal
 // emission — when there is nothing to wrap, including the re-entrant emission where
 // the out-arguments are already scheduled.
-fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool {
+fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node, callee_name string) bool {
 	if node.children_count == 0 {
 		return false
 	}
 	fn_node := g.a.child_node(&node, 0)
-	callee_name := g.call_target_name(g.a.child(&node, 0))
 	is_c_call := callee_name.starts_with('C.') || fn_node.value.starts_with('C.')
 	if !is_c_call {
 		return false
@@ -7872,7 +7871,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 			return
 		}
 	}
-	if g.gen_c_call_int_out_wrap(id, node) {
+	if g.gen_c_call_int_out_wrap(id, node, callee_name) {
 		return
 	}
 	if fn_node.kind == .ident && fn_name == '__alignof__' && node.children_count == 2 {
