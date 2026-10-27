@@ -17,7 +17,7 @@ fn v3_v_string_literal(s string) string {
 		} else if ch == `\t` {
 			out += '\\t'
 		} else {
-			out += ch.str()
+			out += ch.ascii_str()
 		}
 	}
 	out += '"'
@@ -100,6 +100,11 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	}
 
 	mut out := 'import time\n\n'
+	out += '$if macos {\n'
+	out += '#include <libkern/OSCacheControl.h>\n'
+	out += '}\n'
+	out += '#include <sys/mman.h>\n'
+	out += '#include <sys/stat.h>\n\n'
 	out += 'fn C.stat(path &u8, buf &u8) int\n'
 	out += 'fn C.mmap(addr voidptr, len uint, prot int, flags int, fd int, offset i64) voidptr\n'
 	out += 'fn C.mprotect(addr voidptr, len uint, prot int) int\n'
@@ -156,9 +161,9 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	for idx, m in live_mangled {
 		bin := '/tmp/_hot_${m}.bin'
 		out += '\t\t\t{\n'
-		out += '\t\t\t\tcmd := "${live_vexe} ${live_opts} -hot-fn ${m} -o ${bin} ${live_source_file}"\n'
+		out += '\t\t\t\tcmd := "' + '$' + '{live_vexe} ' + '$' + '{live_opts} -hot-fn ' + m + ' -o ' + bin + ' ' + '$' + '{live_source_file}"\n'
 		out += '\t\t\t\tC.system(cmd.str)\n'
-		out += '\t\t\t\tf := C.fopen(c"${bin}", c"rb")\n'
+		out += '\t\t\t\tf := C.fopen(c"' + bin + '", c"rb")\n'
 		out += '\t\t\t\tif f != unsafe { nil } {\n'
 		out += '\t\t\t\t\tC.fseek(f, 0, 2)\n'
 		out += '\t\t\t\t\tsz := int(C.ftell(f))\n'
