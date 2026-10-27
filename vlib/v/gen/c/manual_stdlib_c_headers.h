@@ -60,10 +60,21 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 // Mesa's Solaris gl.h predates the glvnd-era behavior of pulling glext.h in
 // under GL_GLEXT_PROTOTYPES, and sokol_gfx.h asks the GL 1.1 core for GL 3
 // entry points, so bring the extension prototypes in here, ahead of every
-// user of them.
-#define GL_GLEXT_PROTOTYPES
-#include <GL/gl.h>
-#include <GL/glext.h>
+// user of them. Compilers without __has_include include unconditionally, as
+// before; on systems without GL headers, non-graphics programs then build,
+// and graphics programs fail at sokol's own include, where the missing
+// dependency belongs.
+#if defined(__has_include)
+#  if __has_include(<GL/gl.h>)
+#    define GL_GLEXT_PROTOTYPES
+#    include <GL/gl.h>
+#    include <GL/glext.h>
+#  endif
+#else
+#  define GL_GLEXT_PROTOTYPES
+#  include <GL/gl.h>
+#  include <GL/glext.h>
+#endif
 V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 #elif defined(__TINYC__) && (defined(__FreeBSD__) || defined(__OpenBSD__))
 // TinyCC reports a hard redefinition error if system OpenSSL pulls in
