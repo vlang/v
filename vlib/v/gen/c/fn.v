@@ -11830,24 +11830,26 @@ fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
 			&& (name in g.tc.fn_param_types || name in g.tc.fn_ret_types) {
 			return name
 		}
-		if resolved_call_matches_target(resolved, name) {
+		if g.resolved_call_matches_target(resolved, name) {
 			return g.normalize_call_key(resolved)
 		}
 	}
 	return g.normalize_call_key(name)
 }
 
-fn resolved_call_matches_target(resolved string, target string) bool {
+// resolved_call_matches_target reports whether the checker's resolved call name
+// denotes `target`, directly, by C name, or by short name.
+fn (g &FlatGen) resolved_call_matches_target(resolved string, target string) bool {
 	if resolved.len == 0 || target.len == 0 {
 		return false
 	}
-	if resolved == target || c_name(resolved) == target || resolved == c_name(target) {
+	if resolved == target || g.cname(resolved) == target || resolved == g.cname(target) {
 		return true
 	}
 	resolved_short := c_short_name_view(resolved)
 	target_short := c_short_name_view(target)
-	return resolved_short == target_short || c_name(resolved_short) == target_short
-		|| resolved_short == c_name(target_short)
+	return resolved_short == target_short || g.cname(resolved_short) == target_short
+		|| resolved_short == g.cname(target_short)
 }
 
 // normalize_call_key transforms normalize call key data for c.
@@ -13943,7 +13945,7 @@ fn (g &FlatGen) resolved_name_is_generic_plain(name string) bool {
 fn (g &FlatGen) generic_plain_fn_base_for_call(id flat.NodeId, name string) ?string {
 	mut candidates := []string{}
 	if resolved := g.tc.resolved_call_name(id) {
-		if resolved_call_matches_target(resolved, name) {
+		if g.resolved_call_matches_target(resolved, name) {
 			candidates << resolved
 		}
 	}
