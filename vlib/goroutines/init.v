@@ -57,6 +57,11 @@ fn init() {
 	m0.curg = main_g
 	main_g.m = m0
 
+	// Convert the main thread to a fiber on Windows before any context switch.
+	$if windows {
+		m0.g0.context = convert_thread_to_fiber()
+	}
+
 	// Wire M0 to P0
 	mut p0 := gsched.allp[0]
 	wire_p(mut m0, mut p0)

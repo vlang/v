@@ -312,6 +312,10 @@ fn new_m(id i64, pp &Processor) {
 fn m_thread_entry(mut mp Machine) {
 	// Register this M as the current thread's Machine so that
 	// get_current_m()/get_current_p() work on worker threads.
+	// Convert this OS thread to a fiber on Windows before scheduling.
+	$if windows {
+		mp.g0.context = convert_thread_to_fiber()
+	}
 	set_current_m(mp)
 	// Enter the scheduling loop - this never returns
 	schedule_loop(mut mp)
