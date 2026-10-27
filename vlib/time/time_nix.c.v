@@ -32,21 +32,22 @@ fn C.localtime_r(t &C.time_t, tm &C.tm)
 fn C.gmtime_r(t &C.time_t, tm &C.tm)
 
 // c_local_epoch_offset answers how many seconds east of UTC the zone is at the
-// instant `sec`. glibc and the BSDs expose it as struct tm's tm_gmtoff. Solaris's
+// instant `sec`. glibc and the BSDs expose it as struct tm's tm_gmtoff, which
+// loc_tm — the caller's localtime_r result for `sec` — already carries. Solaris's
 // struct tm has no such member, so it is worked out: mktime reads the UTC fields
 // back as local time, and tm_isdst = -1 lets it apply the zone's current offset
-// (with 0 it assumes standard time, which is an hour off during DST).
+// (with 0 it assumes standard time, which is an hour off during DST). For instants
+// inside a DST spring-forward gap, mktime resolves the ambiguity by the zone's
+// rules, so the offset can be an hour off for that hour each year.
 @[inline]
-fn c_local_epoch_offset(sec i64) i64 {
+fn c_local_epoch_offset(sec i64, loc_tm C.tm) i64 {
 	$if solaris {
 		mut utc_tm := C.tm{}
 		C.gmtime_r(voidptr(&sec), &utc_tm)
 		utc_tm.tm_isdst = -1
 		return sec - i64(C.mktime(&utc_tm))
 	} $else {
-		tm := C.tm{}
-		C.localtime_r(voidptr(&sec), &tm)
-		return i64(tm.tm_gmtoff)
+		return i64(loc_tm.tm_gmtoff)
 	}
 }
 
@@ -78,7 +79,7 @@ pub fn (t Time) local() Time {
 	loc_tm := C.tm{}
 	t_ := t.unix()
 	C.localtime_r(voidptr(&t_), &loc_tm)
-	return convert_ctime_with_unix(loc_tm, t.nanosecond, t_ + c_local_epoch_offset(t_))
+	return convert_ctime_with_unix(loc_tm, t.nanosecond, t_ + c_local_epoch_offset(t_, loc_tm))
 }
 
 // in most systems, these are __quad_t, which is an i64
@@ -125,7 +126,8 @@ fn linux_now() Time {
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
 	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
-	return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + c_local_epoch_offset(i64(ts.tv_sec)))
+	return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + c_local_epoch_offset(i64(ts.tv_sec),
+		loc_tm))
 }
 
 fn linux_utc() Time {
