@@ -1181,14 +1181,22 @@ fn (mut c GenericUnresolvedCache) put(id u32, value i8) {
 // on the heap so `&Transformer` query methods can populate it; keyed by
 // `type\nmethod`, cleared on module switch (candidate construction consults
 // cur_module) and whenever the transformer registers new fn signatures
-// (closure lifting / synthesized helpers can change name resolution).
+// (closure lifting / synthesized helpers can change name resolution). Cached
+// misses are also dropped when the checker signatures change.
 struct ReceiverMethodCache {
 mut:
 	module   string
 	fn_count int
-	entries  map[u64]string
-	misses   map[u64]bool
-	methods  map[string]u32
+	// Checker signature snapshot for the cached misses: generated
+	// specializations can register a method only in the checker, leaving
+	// fn_count unchanged.
+	tc          voidptr
+	tc_revision u64
+	tc_rets     int
+	tc_params   int
+	entries     map[u64]string
+	misses      map[u64]bool
+	methods     map[string]u32
 	// Direct-mapped front keyed by (type, borrowed method spelling). A slot is
 	// valid only while its generation matches front_generation.
 	front_generation  u32 = 1
