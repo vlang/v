@@ -77,18 +77,29 @@ fn (mut t Transformer) enum_from_string_member_value(info EnumFromStringInfo, me
 fn (t &Transformer) optional_base_type(typ_id u32) u32 {
 	if !flat.source_type_shape(typ_id).has(.optional) { return typ_id }
 	if !isnil(t.alias_cache) {
-		if base := t.alias_cache.optional_bases[typ_id] { return base }
+		mut cache := t.alias_cache
+		slot := typ_id & 255
+		if cache.optional_keys[slot] == typ_id {
+			return cache.optional_vals[slot]
+		}
+		base := cache.optional_bases[typ_id] or {
+			computed := if typ_id in [transform_identity_bare_result, transform_identity_bare_option] {
+				flat.source_type_void
+			} else {
+				flat.source_type_syntax(typ_id).raw_base()
+			}
+			cache.optional_bases[typ_id] = computed
+			computed
+		}
+		cache.optional_keys[slot] = typ_id
+		cache.optional_vals[slot] = base
+		return base
 	}
-	base := if typ_id in [transform_identity_bare_result, transform_identity_bare_option] {
+	return if typ_id in [transform_identity_bare_result, transform_identity_bare_option] {
 		flat.source_type_void
 	} else {
 		flat.source_type_syntax(typ_id).raw_base()
 	}
-	if !isnil(t.alias_cache) {
-		mut cache := t.alias_cache
-		cache.optional_bases[typ_id] = base
-	}
-	return base
 }
 
 // array_index_info supports array index info handling for Transformer.
@@ -2752,11 +2763,22 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 		if t.tc.resolved_call_never_returns(id) || resolved in t.a.noreturn_fns {
 			return true
 		}
-		resolved_module := resolved.all_before_last('.')
+		// Compare against views of `resolved` instead of building a string per candidate.
+		dot := resolved.last_index_u8(`.`)
+		mut short_name := ''
+		mut main_or_builtin := false
+		if dot >= 0 {
+			resolved_module := unsafe { tos(resolved.str, dot) }
+			main_or_builtin = resolved_module == 'main' || resolved_module == 'builtin'
+			short_name = unsafe { tos(resolved.str + dot + 1, resolved.len - dot - 1) }
+		}
 		for candidate, _ in t.a.noreturn_fns {
-			if (candidate.contains('.') && resolved.ends_with('.${candidate}'))
-				|| (!candidate.contains('.') && resolved_module in ['main', 'builtin']
-					&& resolved == '${resolved_module}.${candidate}') {
+			if candidate.contains_u8(`.`) {
+				if resolved.len > candidate.len && resolved[resolved.len - candidate.len - 1] == `.`
+					&& resolved.ends_with(candidate) {
+					return true
+				}
+			} else if main_or_builtin && short_name == candidate {
 				return true
 			}
 		}

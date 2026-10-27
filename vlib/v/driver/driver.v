@@ -24761,12 +24761,28 @@ struct EagerSelfhostModule {
 mut:
 	identity     string
 	import_paths []string
+	// The texts the import scan read, by index into `files` ('' when unread).
+	sources []string
 }
 
 struct EagerSelfhostScanArgs {
 	path string
 mut:
+	// The text of `path`, kept so that the eager parse does not read the file
+	// again; '' when the scan had to read it the ordinary way.
+	source  string
 	imports []string
+}
+
+// scan reads the file into memory of the C allocator, which outlives the
+// arenas of the pool tasks, and extracts its imports.
+fn (mut scan EagerSelfhostScanArgs) scan() {
+	scan.source = parser.read_batch_source(scan.path)
+	if scan.source.len > 0 {
+		scan.imports = source_imports_from(scan.source)
+	} else {
+		scan.imports = source_imports_fast(scan.path)
+	}
 }
 
 struct EagerSelfhostResolveArgs {
@@ -24783,7 +24799,7 @@ mut:
 
 fn eager_selfhost_scan_thread(arg voidptr) voidptr {
 	mut scan := unsafe { &EagerSelfhostScanArgs(arg) }
-	scan.imports = source_imports_fast(scan.path)
+	scan.scan()
 	return unsafe { nil }
 }
 
@@ -24847,9 +24863,14 @@ fn make_import_scan_delimiters() [256]bool {
 // without constructing tokens. It is used only to assemble the trusted
 // -building-v parse batch; the real parser remains authoritative immediately
 // afterwards.
-@[direct_array_access]
 fn source_imports_fast(path string) []string {
 	source := os.read_file(path) or { return []string{} }
+	return source_imports_from(source)
+}
+
+// source_imports_from is source_imports_fast for a text already read.
+@[direct_array_access]
+fn source_imports_from(source string) []string {
 	mut imports := []string{cap: 16}
 	mut i := 0
 	mut at_line_head := true
@@ -24990,7 +25011,9 @@ fn source_imports_fast(path string) []string {
 				continue
 			}
 			if context_top == 0 && at_line_head && i + 7 <= source.len
-				&& source[i..i + 6] == 'import' && source[i + 6] in [` `, `\t`] {
+				&& source[i] == `i` && source[i + 1] == `m` && source[i + 2] == `p`
+				&& source[i + 3] == `o` && source[i + 4] == `r` && source[i + 5] == `t`
+				&& source[i + 6] in [` `, `\t`] {
 				i += 7
 				for i < source.len && source[i] in [` `, `\t`] {
 					i++
@@ -25015,20 +25038,23 @@ fn source_imports_fast(path string) []string {
 	return imports
 }
 
-fn source_imports_fast_parallel(a &flat.FlatAst, files []string) [][]string {
-	if files.len < 2 || isnil(a.worker_pool) || a.worker_pool.size() == 0 {
-		mut imports := [][]string{cap: files.len}
-		for file in files {
-			imports << source_imports_fast(file)
-		}
-		return imports
-	}
+// source_imports_fast_parallel scans `files` for their imports, returning one
+// scan per file, in order.
+fn source_imports_fast_parallel(a &flat.FlatAst, files []string) []EagerSelfhostScanArgs {
 	mut scans := []EagerSelfhostScanArgs{cap: files.len}
-	mut tasks := []workers.Task{cap: files.len}
-	for i, file in files {
+	for file in files {
 		scans << EagerSelfhostScanArgs{
 			path: file
 		}
+	}
+	if files.len < 2 || isnil(a.worker_pool) || a.worker_pool.size() == 0 {
+		for i in 0 .. scans.len {
+			scans[i].scan()
+		}
+		return scans
+	}
+	mut tasks := []workers.Task{cap: files.len}
+	for i in 0 .. scans.len {
 		tasks << workers.Task{
 			run:        eager_selfhost_scan_thread
 			arg:        unsafe { voidptr(&scans[i]) }
@@ -25036,11 +25062,7 @@ fn source_imports_fast_parallel(a &flat.FlatAst, files []string) [][]string {
 		}
 	}
 	a.worker_pool.run(tasks)
-	mut imports := [][]string{cap: files.len}
-	for scan in scans {
-		imports << scan.imports
-	}
-	return imports
+	return scans
 }
 
 // discover_eager_selfhost_modules resolves the complete trusted compiler import
@@ -25084,6 +25106,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 		}
 		wave_results := resolve_eager_selfhost_wave(a, prefs, wave_requests, project_root)
 		mut wave_files := []string{}
+		wave_first_module := modules.len
 		for i, result in wave_results {
 			import_req := wave_requests[i]
 			importing_dir := if import_req.importing_file.len > 0 {
@@ -25112,9 +25135,18 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 			}
 			wave_files << result.files
 		}
-		wave_imports := source_imports_fast_parallel(a, wave_files)
+		wave_scans := source_imports_fast_parallel(a, wave_files)
+		// The new modules' files were appended to wave_files in module order.
+		mut scan_idx := 0
+		for mi in wave_first_module .. modules.len {
+			modules[mi].sources = []string{cap: modules[mi].files.len}
+			for _ in modules[mi].files {
+				modules[mi].sources << wave_scans[scan_idx].source
+				scan_idx++
+			}
+		}
 		for i, file in wave_files {
-			for imported in wave_imports[i] {
+			for imported in wave_scans[i].imports {
 				if imported in skipped_modules {
 					continue
 				}
@@ -25266,13 +25298,18 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			cache_state.module_sources[identity] = module_info.files
 			cache_state.parsed_from_source[identity] = true
 			cache_state.source_body_modules[identity] = true
-			for file in module_info.files {
+			for fi, file in module_info.files {
 				eager_files << file
 				eager_canons << if identity == module_info.path { identity } else { '' }
+				// The import scan read the file already.
+				if fi < module_info.sources.len && module_info.sources[fi].len > 0 {
+					p.preload_source(file, module_info.sources[fi])
+				}
 			}
 		}
 		if eager_files.len > 0 {
 			starts, eager_parallel := parse_files_dispatch_profiled(mut p, eager_files, allow_parallel, mut parse_timing)
+			p.clear_preloaded_sources()
 			was_parallel = was_parallel || eager_parallel
 			end_node := a.nodes.len
 			for i, canon in eager_canons {

@@ -324,11 +324,12 @@ fn cgen_worker_scope_begin(enabled bool) voidptr {
 const cgen_chunk_arena_keep_bytes = int($d('cgen_chunk_arena_keep_mb', 1)) * 1024 * 1024
 
 // cgen_worker_scope_reenter makes a chunk arena that was left current again,
-// rewound, for the next chunk. False means the caller needs a new arena.
-fn cgen_worker_scope_reenter(scope voidptr) bool {
+// rewound, for the next chunk, keeping up to `keep_bytes` of it mapped.
+// False means the caller needs a new arena.
+fn cgen_worker_scope_reenter(scope voidptr, keep_bytes int) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
-			return unsafe { prealloc_scope_reenter(scope, cgen_chunk_arena_keep_bytes) }
+			return unsafe { prealloc_scope_reenter(scope, keep_bytes) }
 		}
 	}
 	return false
@@ -5165,9 +5166,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	type_index_args, type_index_threads := g.start_type_indexes(no_parallel)
 	if no_parallel && g.incremental_fn_names.len == 0 {
-		// Serial body generation needs the same immutable name rejection tables
-		// as the worker path. Field-position indexes still stay worker-only.
+		// Serial body generation needs the same immutable lookup tables as the
+		// worker path. Building the field index once here keeps scoped batches
+		// from re-indexing large structs after every scratch cache swap.
 		g.type_name_short_index = new_type_name_short_index(g.tc)
+		g.struct_field_index_base = new_struct_field_index_base(g.tc.structs)
 	}
 	g.reserve_collect_gen_info_maps(no_parallel, defer_fn_signature_registrations)
 	g.precompute_export_lookups()
@@ -23966,12 +23969,20 @@ fn (mut g FlatGen) fixed_array_len_type_is_early_complete(typ types.Type) bool {
 // the element type is defined.
 fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 	old_module := g.tc.cur_module
+	// Only the wrapper's C name depends on the owner module, so derive it only for
+	// the few entries that contain a fixed-array return.
 	for name, ret_type in g.tc.fn_ret_types {
+		if !fixed_array_is_return_wrapped(ret_type) && !fn_type_has_fixed_array_return(ret_type) {
+			continue
+		}
 		g.tc.cur_module = module_from_qualified_name(name)
 		g.collect_fixed_array_return_wrapper(ret_type)
 		g.collect_fn_type_fixed_array_return_wrappers(ret_type)
 	}
 	for name, param_types in g.tc.fn_param_types {
+		if !param_types.any(fn_type_has_fixed_array_return(it)) {
+			continue
+		}
 		g.tc.cur_module = module_from_qualified_name(name)
 		for param_type in param_types {
 			g.collect_fn_type_fixed_array_return_wrappers(param_type)
@@ -23982,12 +23993,18 @@ fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 		g.collect_fn_type_fixed_array_return_wrappers(g.tc.parse_type(target_id))
 	}
 	for name, fields in g.tc.structs {
+		if !fields.any(fn_type_has_fixed_array_return(it.typ)) {
+			continue
+		}
 		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
 		for field in fields {
 			g.collect_fn_type_fixed_array_return_wrappers(field.typ)
 		}
 	}
 	for name, fields in g.tc.interface_fields {
+		if !fields.any(fn_type_has_fixed_array_return(it.typ)) {
+			continue
+		}
 		g.tc.cur_module = module_from_qualified_name(name)
 		for field in fields {
 			g.collect_fn_type_fixed_array_return_wrappers(field.typ)
@@ -24006,6 +24023,53 @@ fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 		g.collect_fn_type_fixed_array_return_wrappers(typ)
 	}
 	g.tc.cur_module = old_module
+}
+
+// fixed_array_is_return_wrapped reports whether collect_fixed_array_return_wrapper records `typ`.
+fn fixed_array_is_return_wrapped(typ types.Type) bool {
+	if typ is types.ArrayFixed {
+		return true
+	} else if typ is types.Alias {
+		return fixed_array_is_return_wrapped(typ.base_type)
+	}
+	return false
+}
+
+// fn_type_has_fixed_array_return reports whether
+// collect_fn_type_fixed_array_return_wrappers records anything for `typ`.
+fn fn_type_has_fixed_array_return(typ types.Type) bool {
+	if typ is types.FnType {
+		if fixed_array_is_return_wrapped(typ.return_type) {
+			return true
+		}
+		for parameter in typ.params {
+			if fn_type_has_fixed_array_return(parameter.typ) {
+				return true
+			}
+		}
+	} else if typ is types.Pointer {
+		return fn_type_has_fixed_array_return(typ.base_type)
+	} else if typ is types.Alias {
+		return fn_type_has_fixed_array_return(typ.base_type)
+	} else if typ is types.OptionType {
+		return fn_type_has_fixed_array_return(typ.base_type)
+	} else if typ is types.ResultType {
+		return fn_type_has_fixed_array_return(typ.base_type)
+	} else if typ is types.Array {
+		return fn_type_has_fixed_array_return(typ.elem_type)
+	} else if typ is types.ArrayFixed {
+		return fn_type_has_fixed_array_return(typ.elem_type)
+	} else if typ is types.Map {
+		return fn_type_has_fixed_array_return(typ.key_type)
+			|| fn_type_has_fixed_array_return(typ.value_type)
+	} else if typ is types.MultiReturn {
+		for item in typ.types {
+			if fn_type_has_fixed_array_return(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) collect_fixed_array_return_wrapper(typ types.Type) {

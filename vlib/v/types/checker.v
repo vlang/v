@@ -1132,6 +1132,7 @@ pub mut:
 	mut_receiver_methods             map[string]bool
 	source_no_body_fns               map[string]bool
 	source_no_body_fn_suffixes       map[string]bool
+	source_no_body_method_names      map[string]bool
 	unsafe_fns                       map[string]bool
 	unsafe_c_fns                     map[string]bool
 	fn_ret_type_texts                flat.TypeTextBindings     // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
@@ -1151,6 +1152,7 @@ pub mut:
 	fn_implicit_veb_ctx              map[string]bool
 	receiver_method_suffix_index     map[string]string
 	receiver_method_short_names      map[string]bool
+	collection_method_short_names    map[string]bool // short names of `[]T.m` and `map[K]V.m` methods
 	generic_receiver_method_index    map[string][]string
 	structs                          map[string][]StructField
 	c_struct_scoped_fields           map[string][]StructField
@@ -1364,14 +1366,15 @@ pub mut:
 	sum_type_short_names         map[string]bool
 	sum_type_short_names_count   int = -1
 	alias_short_names            map[string]bool
-	alias_short_names_count      int = -1
-	const_suffix_key_count       int = -1
-	const_selector_bloom         NameBloom // of const_types and const_suffixes
-	const_selector_suffix_count  int = -1
+	alias_short_names_count      int                 = -1
+	const_suffix_key_count       int                 = -1
+	const_selector_bloom         &ConstSelectorBloom = unsafe { nil } // of const_types and const_suffixes
+	const_selector_suffix_count  int                 = -1
 	const_expr_short_names       map[string]bool
 	const_expr_short_names_count int = -1
 	global_name_bloom            NameBloom // of global_names
-	call_flag_bloom              NameBloom // of the call_info flag tables (call_flag_tables_count)
+	call_flag_bloom              NameBloom // of the set call_info flags, see call_flag_tables_count
+	call_flag_lens               [4]int    // call_flag_table_lens when call_flag_bloom was built
 	// The last call whose callee generic_compile_error_instantiation found to be
 	// no generic function: its children start, callee name and module.
 	nongeneric_call_start  int = -1
@@ -1521,6 +1524,10 @@ mut:
 	fn_check_costs              []i32
 	direct_parent_index_trusted bool
 	has_goto_nodes              bool
+	// Memo of comptime_methods_loop_exists for the AST at comptime_methods_scan_ast.
+	comptime_methods_scan_ast   voidptr
+	comptime_methods_scan_len   int
+	comptime_methods_loop_found bool
 	// Immutable declaration indexes shared by checker workers.
 	strings_builder_bindings          map[string]bool
 	strings_builder_candidates        []i32
@@ -1603,6 +1610,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		mut_receiver_methods:                    map[string]bool{}
 		source_no_body_fns:                      map[string]bool{}
 		source_no_body_fn_suffixes:              map[string]bool{}
+		source_no_body_method_names:             map[string]bool{}
 		unsafe_fns:                              map[string]bool{}
 		unsafe_c_fns:                            map[string]bool{}
 		fn_ret_type_texts:                       flat.TypeTextBindings{}
@@ -1616,6 +1624,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_implicit_veb_ctx:                     map[string]bool{}
 		receiver_method_suffix_index:            map[string]string{}
 		receiver_method_short_names:             map[string]bool{}
+		collection_method_short_names:           map[string]bool{}
 		generic_receiver_method_index:           map[string][]string{}
 		structs:                                 map[string][]StructField{}
 		c_struct_scoped_fields:                  map[string][]StructField{}
@@ -1769,6 +1778,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		mut_receiver_methods:                  tc.mut_receiver_methods
 		source_no_body_fns:                    tc.source_no_body_fns
 		source_no_body_fn_suffixes:            tc.source_no_body_fn_suffixes
+		source_no_body_method_names:           tc.source_no_body_method_names
 		unsafe_fns:                            tc.unsafe_fns
 		unsafe_c_fns:                          tc.unsafe_c_fns
 		fn_ret_type_texts:                     tc.fn_ret_type_texts
@@ -1783,6 +1793,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_implicit_veb_ctx:                   tc.fn_implicit_veb_ctx
 		receiver_method_suffix_index:          tc.receiver_method_suffix_index
 		receiver_method_short_names:           tc.receiver_method_short_names
+		collection_method_short_names:         tc.collection_method_short_names
 		generic_receiver_method_index:         tc.generic_receiver_method_index
 		structs:                               tc.structs
 		c_struct_scoped_fields:                tc.c_struct_scoped_fields
@@ -1844,6 +1855,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		alias_short_names_count:               tc.alias_short_names_count
 		global_name_bloom:                     tc.global_name_bloom
 		call_flag_bloom:                       tc.call_flag_bloom
+		call_flag_lens:                        tc.call_flag_lens
 		declaration_visibility:                tc.declaration_visibility
 		imports:                               tc.imports
 		file_imports:                          tc.file_imports
@@ -1932,6 +1944,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		preflight_node_ids:                    tc.preflight_node_ids
 		preflight_index_nodes_len:             tc.preflight_index_nodes_len
 		has_goto_nodes:                        tc.has_goto_nodes
+		comptime_methods_scan_ast:             tc.comptime_methods_scan_ast
+		comptime_methods_scan_len:             tc.comptime_methods_scan_len
+		comptime_methods_loop_found:           tc.comptime_methods_loop_found
 		declaration_attributes:                tc.declaration_attributes
 		attribute_schemas:                     tc.attribute_schemas
 		type_declaration_ids:                  tc.type_declaration_ids
@@ -2153,6 +2168,7 @@ pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
 		tc.fn_param_types = tc.fn_param_types.clone()
 		tc.receiver_method_suffix_index = tc.receiver_method_suffix_index.clone()
 		tc.receiver_method_short_names = tc.receiver_method_short_names.clone()
+		tc.collection_method_short_names = tc.collection_method_short_names.clone()
 		tc.generic_receiver_method_index = clone_string_list_map(tc.generic_receiver_method_index)
 		tc.fn_variadic = tc.fn_variadic.clone()
 		tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
@@ -2488,6 +2504,7 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.has_goto_nodes = false
 	tc.preflight_node_ids = []i32{}
 	tc.preflight_index_nodes_len = -1
+	tc.comptime_methods_scan_ast = unsafe { nil }
 }
 
 struct DirectParentEdge {
@@ -2616,6 +2633,44 @@ fn (tc &TypeChecker) preflight_nodes(kind flat.NodeKind) []i32 {
 		}
 	}
 	return ids
+}
+
+// comptime_methods_loop_exists reports whether the AST has a `$for m in T.methods`
+// loop. Without one, no call can reach a reflected method call. Nodes appended
+// after an earlier answer are scanned on the next query.
+@[direct_array_access]
+fn (mut tc TypeChecker) comptime_methods_loop_exists() bool {
+	if tc.comptime_methods_scan_ast != voidptr(tc.a) {
+		tc.comptime_methods_scan_ast = voidptr(tc.a)
+		tc.comptime_methods_scan_len = 0
+		tc.comptime_methods_loop_found = false
+	}
+	n := tc.a.nodes.len
+	if tc.comptime_methods_loop_found || tc.comptime_methods_scan_len >= n {
+		return tc.comptime_methods_loop_found
+	}
+	mut found := false
+	if tc.comptime_methods_scan_len == 0 && tc.direct_parent_index_trusted
+		&& tc.preflight_index_nodes_len == n {
+		for id in tc.preflight_node_ids {
+			node := tc.a.nodes[id]
+			if node.kind == .comptime_for && node.value.ends_with('|methods') {
+				found = true
+				break
+			}
+		}
+	} else {
+		for id in tc.comptime_methods_scan_len .. n {
+			node := tc.a.nodes[id]
+			if node.kind == .comptime_for && node.value.ends_with('|methods') {
+				found = true
+				break
+			}
+		}
+	}
+	tc.comptime_methods_scan_len = n
+	tc.comptime_methods_loop_found = found
+	return found
 }
 
 fn (mut tc TypeChecker) collect_direct_parent_metadata(a &flat.FlatAst) {
@@ -4734,8 +4789,11 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 						tc.source_no_body_fn_suffixes[node.value.all_after_last('.')] = true
 					}
 					tc.source_no_body_fns[qname] = true
+					// Pass 2 never prunes the short names; a superset keeps the call prescreen exact.
+					tc.source_no_body_method_names[qname.all_after_last('.')] = true
 					if tc.cur_module in ['', 'main'] {
 						tc.source_no_body_fns[node.value] = true
+						tc.source_no_body_method_names[node.value.all_after_last('.')] = true
 					}
 				}
 			}
@@ -5815,14 +5873,7 @@ fn (mut tc TypeChecker) build_const_suffixes() {
 	}
 	tc.const_suffix_key_count = tc.const_types.len
 	// Include the complete existing suffix table, including ambiguous suffixes.
-	tc.const_selector_bloom = NameBloom{}
-	for name, _ in tc.const_types {
-		tc.const_selector_bloom.add(name)
-	}
-	for name, _ in tc.const_suffixes {
-		tc.const_selector_bloom.add(name)
-	}
-	tc.const_selector_bloom.count = u64(tc.const_types.len)
+	tc.const_selector_bloom = new_const_selector_bloom(tc.const_types, tc.const_suffixes)
 	tc.const_selector_suffix_count = tc.const_suffixes.len
 }
 
@@ -5885,36 +5936,65 @@ fn (mut tc TypeChecker) prepare_check_name_filters() {
 	}
 	tc.global_name_bloom.count = u64(tc.global_names.len)
 	tc.call_flag_bloom = NameBloom{}
-	for name, _ in tc.fn_shared_params {
-		tc.call_flag_bloom.add(name)
+	$if ownership ? {
+		// Ownership checks register fn literal signatures from the workers.
+		return
 	}
-	for name, _ in tc.fn_variadic {
-		tc.call_flag_bloom.add(name)
+	// fn_variadic holds every fn, so only the entries that set a flag go in.
+	for name, shared_params in tc.fn_shared_params {
+		if shared_params.len > 0 {
+			tc.call_flag_bloom.add(name)
+		}
 	}
-	for name, _ in tc.c_variadic_fns {
-		tc.call_flag_bloom.add(name)
+	for name, is_variadic in tc.fn_variadic {
+		if is_variadic {
+			tc.call_flag_bloom.add(name)
+		}
 	}
-	for name, _ in tc.fn_implicit_veb_ctx {
-		tc.call_flag_bloom.add(name)
+	for name, is_c_variadic in tc.c_variadic_fns {
+		if is_c_variadic {
+			tc.call_flag_bloom.add(name)
+		}
 	}
-	tc.call_flag_bloom.count = tc.call_flag_tables_count()
+	for name, has_ctx in tc.fn_implicit_veb_ctx {
+		if has_ctx {
+			tc.call_flag_bloom.add(name)
+		}
+	}
+	tc.call_flag_lens = tc.call_flag_table_lens()
+	tc.call_flag_bloom.count = call_flag_bloom_built
 }
 
-// call_flag_tables_count identifies the sizes of the sparse tables that
-// call_info reads besides the signatures (all smaller than 2^16 entries).
-// Keep all four lengths even when the compiler runs on a 32-bit host.
+// call_flag_bloom_built is the call_flag_bloom count while it covers the flag tables.
+const call_flag_bloom_built = u64(1)
+
+// call_flag_table_lens are the sizes of the sparse tables that call_info reads
+// besides the signatures.
+@[inline]
+fn (tc &TypeChecker) call_flag_table_lens() [4]int {
+	return [tc.fn_shared_params.len, tc.fn_variadic.len, tc.c_variadic_fns.len,
+		tc.fn_implicit_veb_ctx.len]!
+}
+
+// call_flag_tables_count is call_flag_bloom_built while no flag table changed
+// size since prepare_check_name_filters, so that a table written directly
+// (not through a registration, which disables the bloom) makes call_info read
+// every table again.
 @[inline]
 fn (tc &TypeChecker) call_flag_tables_count() u64 {
-	counts := [tc.fn_shared_params.len, tc.fn_variadic.len, tc.c_variadic_fns.len,
-		tc.fn_implicit_veb_ctx.len]!
-	mut count := u64(0)
-	for n in counts {
-		if n >= 65535 {
-			return name_bloom_invalid_count
-		}
-		count = (count << 16) | u64(n)
+	if tc.call_flag_lens[0] != tc.fn_shared_params.len || tc.call_flag_lens[1] != tc.fn_variadic.len
+		|| tc.call_flag_lens[2] != tc.c_variadic_fns.len
+		|| tc.call_flag_lens[3] != tc.fn_implicit_veb_ctx.len {
+		return name_bloom_invalid_count
 	}
-	return count
+	return call_flag_bloom_built
+}
+
+// disable_call_flag_bloom makes call_info read every flag table, after a flag
+// table entry may have been set without call_flag_bloom.
+@[inline]
+fn (mut tc TypeChecker) disable_call_flag_bloom() {
+	tc.call_flag_bloom.count = name_bloom_invalid_count
 }
 
 // NameBloom is a 4096-bit bloom filter over the names of a table that had
@@ -5961,10 +6041,77 @@ fn (tc &TypeChecker) selector_names_no_const(field string) bool {
 		return false
 	}
 	if tc.const_selector_suffix_count == tc.const_suffixes.len
-		&& tc.const_selector_bloom.excludes(field, u64(tc.const_types.len)) {
+		&& tc.const_selector_bloom.excludes(field, tc.const_types.len) {
 		return true
 	}
 	return field !in tc.const_suffixes && field !in tc.const_types
+}
+
+// ConstSelectorBloom is a two-probe bloom filter over the const keys and the
+// const suffixes, sized to about 16 bits per name. The const tables hold far
+// more names than a 4096-bit NameBloom can tell apart. It is never changed
+// after it is built, so forks share it.
+@[heap]
+struct ConstSelectorBloom {
+	count int // const_types.len when it was built
+	mask  u32
+	bits  []u64
+}
+
+// new_const_selector_bloom builds a ConstSelectorBloom over the keys of both tables.
+fn new_const_selector_bloom(const_types map[string]Type, const_suffixes map[string]string) &ConstSelectorBloom {
+	mut nbits := u32(4096)
+	for u64(nbits) < u64(const_types.len + const_suffixes.len) * 16 && nbits < (u32(1) << 24) {
+		nbits <<= 1
+	}
+	mask := nbits - 1
+	mut bits := []u64{len: int(nbits >> 6)}
+	for name, _ in const_types {
+		const_selector_bloom_add(mut bits, mask, name)
+	}
+	for name, _ in const_suffixes {
+		const_selector_bloom_add(mut bits, mask, name)
+	}
+	return &ConstSelectorBloom{
+		count: const_types.len
+		mask:  mask
+		bits:  bits
+	}
+}
+
+// const_selector_hash is FNV-1a over all bytes of `name`, with a final mix.
+@[direct_array_access; inline]
+fn const_selector_hash(name string) u32 {
+	mut h := u32(0x811c9dc5)
+	for i in 0 .. name.len {
+		h = (h ^ u32(name[i])) * 0x01000193
+	}
+	return h ^ (h >> 15)
+}
+
+@[direct_array_access]
+fn const_selector_bloom_add(mut bits []u64, mask u32, name string) {
+	h := const_selector_hash(name)
+	b1 := h & mask
+	b2 := ((h * 0x9e3779b1) >> 8) & mask
+	bits[b1 >> 6] |= u64(1) << (b1 & 63)
+	bits[b2 >> 6] |= u64(1) << (b2 & 63)
+}
+
+// excludes reports whether `name` is surely not in the tables, which must
+// still have `count` const keys.
+@[direct_array_access; inline]
+fn (bloom &ConstSelectorBloom) excludes(name string, count int) bool {
+	if isnil(bloom) || bloom.count != count {
+		return false
+	}
+	h := const_selector_hash(name)
+	b1 := h & bloom.mask
+	if bloom.bits[b1 >> 6] & (u64(1) << (b1 & 63)) == 0 {
+		return true
+	}
+	b2 := ((h * 0x9e3779b1) >> 8) & bloom.mask
+	return bloom.bits[b2 >> 6] & (u64(1) << (b2 & 63)) == 0
 }
 
 // selector_names_no_global reports that no global has the last name segment of
@@ -6387,7 +6534,7 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 		return none
 	}
 	resolved := tc.resolve_import_alias(base_node.value) or {
-		if base_node.value == tc.cur_module.all_after_last('.') {
+		if base_node.value == short_name_view(tc.cur_module) {
 			tc.cur_module
 		} else {
 			base_node.value
@@ -7320,10 +7467,23 @@ fn (tc &TypeChecker) selective_import_has_missing_value_symbol(node flat.Node, m
 	return false
 }
 
+// private_declaration returns the visibility of `name` when it is private to
+// another module. Regular test files see private declarations; that path test
+// runs only once a private declaration is found, since most lookups miss.
 fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
-	if name == '' || is_regular_v_test_file(tc.cur_file) {
+	if name == '' {
 		return none
 	}
+	visibility := tc.private_declaration_any_file(name)?
+	if is_regular_v_test_file(tc.cur_file) {
+		return none
+	}
+	return visibility
+}
+
+// private_declaration_any_file is `private_declaration` without the test-file
+// exemption.
+fn (tc &TypeChecker) private_declaration_any_file(name string) ?DeclarationVisibility {
 	// A module's own C declaration is its local view of the external type.
 	// The canonical visibility entry may belong to a different module's mirror.
 	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, name) in tc.c_struct_scoped_fields {
@@ -8539,7 +8699,13 @@ fn (tc &TypeChecker) imported_type_short_name(typ_id u32) ?u32 {
 
 // has_active_import reports whether has active import applies in types.
 fn (tc &TypeChecker) has_active_import(alias string) bool {
-	info := tc.file_imports_by_file[tc.cur_file] or { return false }
+	info := tc.current_file_import_info()
+	if isnil(info) {
+		return false
+	}
+	if info.imports_mask_ready && info.imports_name_mask & scope_name_bit(alias) == 0 {
+		return false
+	}
 	return alias in info.imports
 }
 
@@ -8684,6 +8850,7 @@ fn (mut tc TypeChecker) register_fn_name_alias_owned(name string, ret_type Type,
 }
 
 fn (mut tc TypeChecker) register_fn_ancillary_owned(name string, shared_params []bool, is_variadic bool, implicit_veb_ctx bool) {
+	tc.disable_call_flag_bloom()
 	if shared_params.len > 0 {
 		tc.fn_shared_params[name] = shared_params
 	} else if tc.fn_shared_params.len > 0 {
@@ -8729,6 +8896,7 @@ pub fn (mut tc TypeChecker) rebuild_fn_param_suffix_index() {
 	tc.clear_generic_receiver_pattern_cache()
 	tc.receiver_method_suffix_index = map[string]string{}
 	tc.receiver_method_short_names = map[string]bool{}
+	tc.collection_method_short_names = map[string]bool{}
 	tc.generic_receiver_method_index = map[string][]string{}
 	tc.receiver_method_suffix_index.reserve(u32(tc.fn_param_types.len * 3))
 	for name, _ in tc.fn_param_types {
@@ -8764,6 +8932,13 @@ fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
 		tc.receiver_method_short_names[unsafe { method.substr_unsafe(1, method.len) }] = true
 	}
 	receiver_id := syntax.qualifier()
+	receiver := flat.source_type_name(receiver_id)
+	if receiver.contains('[]') || receiver.contains('map[') {
+		tc.collection_method_short_names[method] = true
+		if method.len > 1 && method[0] == `@` {
+			tc.collection_method_short_names[unsafe { method.substr_unsafe(1, method.len) }] = true
+		}
+	}
 	receiver_shape := flat.source_type_shape(receiver_id)
 	if receiver_shape.has(.bracketed) && flat.source_type_query(receiver_id).has(.bracket_suffix) {
 		mut indexed := tc.generic_receiver_method_index[method] or { []string{} }
@@ -8826,6 +9001,7 @@ fn (mut tc TypeChecker) register_c_variadic_fn_with_lowered(name string, lowered
 		}
 		return
 	}
+	tc.disable_call_flag_bloom()
 	tc.c_variadic_fns[name] = true
 	if lowered_name != name {
 		tc.c_variadic_fns[lowered_name] = true
@@ -14179,14 +14355,43 @@ fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, met
 	if type_name == 0 {
 		return none
 	}
-	for method_name in receiver_method_name_candidates(clean, method, tc.cur_module) {
-		if !tc.fn_signature_known(method_name) {
-			continue
+	mut recv := clean
+	if recv is Alias {
+		recv = recv.base_type
+	}
+	if recv !is Array && recv !is Map {
+		// Same two candidates, in the same order, as receiver_method_name_candidates;
+		// the escaped name is built only when the plain one does not resolve.
+		type_text := flat.source_type_name(type_name)
+		plain := '${type_text}.${method}'
+		if tc.fn_signature_known(plain)
+			&& tc.method_can_be_called_on_receiver(base_type, method, plain) {
+			return plain
 		}
-		if !tc.method_can_be_called_on_receiver(base_type, method, method_name) {
-			continue
+		escaped := '${type_text}.@${method}'
+		if tc.fn_signature_known(escaped)
+			&& tc.method_can_be_called_on_receiver(base_type, method, escaped) {
+			return escaped
 		}
-		return method_name
+	} else if tc.method_suffix_prescreen && tc.top_level_idx.len > 0 && method.index_u8(`.`) < 0
+		&& method !in tc.collection_method_short_names {
+		// No array or map receiver declares this method, so of all the
+		// receiver_method_name_candidates only these can resolve (same order).
+		if found := tc.selected_file_collection_method_without_collection_decl(base_type,
+			recv, type_name, method)
+		{
+			return found
+		}
+	} else {
+		for method_name in receiver_method_name_candidates(clean, method, tc.cur_module) {
+			if !tc.fn_signature_known(method_name) {
+				continue
+			}
+			if !tc.method_can_be_called_on_receiver(base_type, method, method_name) {
+				continue
+			}
+			return method_name
+		}
 	}
 	if info := tc.embedded_method_call_info(type_name, method) {
 		if info.name.len > 0 {
@@ -14197,6 +14402,28 @@ fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, met
 		if info.name.len > 0 {
 			return info.name
 		}
+	}
+	return none
+}
+
+// selected_file_collection_method_without_collection_decl tries the candidates of
+// receiver_method_name_candidates whose receiver is not spelled as an array or map
+// type: the receiver's own name (plain, then escaped), then `array.m` or `map.m`.
+fn (tc &TypeChecker) selected_file_collection_method_without_collection_decl(base_type Type, recv Type, type_name u32, method string) ?string {
+	type_text := flat.source_type_name(type_name)
+	plain := '${type_text}.${method}'
+	if tc.fn_signature_known(plain) && tc.method_can_be_called_on_receiver(base_type, method, plain) {
+		return plain
+	}
+	escaped := '${type_text}.@${method}'
+	if tc.fn_signature_known(escaped)
+		&& tc.method_can_be_called_on_receiver(base_type, method, escaped) {
+		return escaped
+	}
+	generic := if recv is Array { 'array.${method}' } else { 'map.${method}' }
+	if tc.fn_signature_known(generic)
+		&& tc.method_can_be_called_on_receiver(base_type, method, generic) {
+		return generic
 	}
 	return none
 }
@@ -14578,6 +14805,11 @@ fn is_c_backend_test_file(path string) bool {
 fn is_regular_v_test_file(path string) bool {
 	if path.ends_with('_test.v') || path.ends_with('_test.vv') {
 		return true
+	}
+	// Every test file spelling (`_test.v`, `_test.vv`, `_test.<backend>.v`, ...)
+	// contains `_test` in its leaf name; skip the allocating pref check otherwise.
+	if !path_leaf_view(path).contains('_test') {
+		return false
 	}
 	// Backend-qualified test files such as `foo_test.c.v` are test files
 	// too: the test driver compiles them as tests, so the test-only

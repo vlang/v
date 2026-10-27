@@ -19,7 +19,10 @@ const min_flat_cgen_parallel_items = 128
 // V3-generated compilers allocate temporary sum payloads while lowering each
 // expression. Keep self-host body batches narrow so those values are released
 // throughout cgen instead of accumulating across hundreds of functions.
-const scoped_cgen_worker_batches = 256
+// Every batch starts with cold generator/checker caches (c names, parsed types,
+// interned types, local scopes), so too many batches re-derive the same facts:
+// 16 batches keep most of that warmth while still bounding the scratch.
+const scoped_cgen_worker_batches = 16
 const min_scoped_cgen_batch_cost = 16_384
 const flat_cgen_chunks_per_job = 32
 
@@ -1968,7 +1971,8 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		for item in chunks[chunk_idx] {
 			chunk_cost += item.cost
 		}
-		if scratch_scope == unsafe { nil } || !cgen_worker_scope_reenter(scratch_scope) {
+		if scratch_scope == unsafe { nil }
+			|| !cgen_worker_scope_reenter(scratch_scope, cgen_chunk_arena_keep_bytes) {
 			cgen_worker_scope_free(scratch_scope)
 			scratch_scope = cgen_worker_scope_begin(true)
 		}
@@ -2016,6 +2020,10 @@ fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
 	n_batches := g.scoped_cgen_batch_count(items.len, total_cost)
 	mut start := 0
 	mut consumed_cost := i64(0)
+	// Batches are cost-balanced and each one is absorbed before the next starts,
+	// so one scratch arena is rewound and reused whole instead of being unmapped
+	// and faulted in again for every batch.
+	mut scratch_scope := unsafe { nil }
 	for batch_idx in 0 .. n_batches {
 		mut end := start
 		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
@@ -2024,14 +2032,17 @@ fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
 			consumed_cost += i64(items[end].cost) + 1
 			end++
 		}
-		scratch_scope := cgen_worker_scope_begin(true)
+		if scratch_scope == unsafe { nil } || !cgen_worker_scope_reenter(scratch_scope, max_int) {
+			cgen_worker_scope_free(scratch_scope)
+			scratch_scope = cgen_worker_scope_begin(true)
+		}
 		mut batch := g.new_parallel_worker(batch_idx)
 		batch.gen_fn_items(items[start..end])
 		cgen_worker_scope_leave(scratch_scope)
 		g.absorb_scoped_cgen_batch(batch, false)
-		cgen_worker_scope_free(scratch_scope)
 		start = end
 	}
+	cgen_worker_scope_free(scratch_scope)
 }
 
 fn clone_embedded_fields_by_type(values map[u32][]types.StructField) map[u32][]types.StructField {

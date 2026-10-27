@@ -6439,14 +6439,19 @@ fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
 			if memo.call_ret_gens[slot] == memo.generation && memo.call_ret_ids[slot] == idx {
 				return *memo.call_ret_values[slot]
 			}
-			result := g.declared_call_return_type_uncached(call_id)
+			result, canonical := g.declared_call_return_type_uncached(call_id)
 			memo.call_ret_ids[slot] = idx
 			memo.call_ret_gens[slot] = memo.generation
-			memo.call_ret_values[slot] = g.tc.intern_type_reference(result)
+			memo.call_ret_values[slot] = if isnil(canonical) {
+				g.tc.intern_type_reference(result)
+			} else {
+				canonical
+			}
 			return result
 		}
 	}
-	return g.declared_call_return_type_uncached(call_id)
+	result, _ := g.declared_call_return_type_uncached(call_id)
+	return result
 }
 
 // body_resolve_type is tc.resolve_type memoized for the nodes of the active body,
@@ -6564,40 +6569,42 @@ fn (g &FlatGen) body_context_type_memo() &UsableExprTypeMemo {
 	return memo
 }
 
-fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) types.Type {
+// declared_call_return_type_uncached also returns the canonical interned reference of
+// the result when the lookup already holds one (declared fns), else nil.
+fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) (types.Type, &types.Type) {
 	if int(call_id) < 0 {
-		return types.Type(types.void_)
+		return types.Type(types.void_), unsafe { nil }
 	}
 	call_node_ref := g.a.node(call_id)
 	call_node := g.a.nodes[int(call_id)]
 	if call_node.kind != .call || call_node.children_count == 0 {
-		return types.Type(types.void_)
+		return types.Type(types.void_), unsafe { nil }
 	}
 	fn_node := g.a.child_node(call_node_ref, 0)
 	if fn_node.kind == .selector {
 		if ret := g.selector_call_return_type(fn_node) {
-			return ret
+			return ret, unsafe { nil }
 		}
 	} else if fn_node.kind == .ident {
 		// A local or parameter fn value takes precedence over same-named declarations.
 		if local_type := g.local_ident_type(fn_node.value) {
 			if local_fn := fn_type_from(local_type) {
-				return *local_fn.return_type
+				return *local_fn.return_type, unsafe { nil }
 			}
 		}
 		if ret := g.module_c_fn_return_type(fn_node.value) {
-			return ret
+			return ret, unsafe { nil }
 		}
-		if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
-			return ret
+		if rt := g.fn_decl_return_type_reference_for_call_name(fn_node.value) {
+			return *rt, rt
 		}
 		if ret := g.tc.fn_ret_types[fn_node.value] {
-			return ret
+			return ret, unsafe { nil }
 		}
 		cfn := g.cname(fn_node.value)
 		if cfn != fn_node.value {
 			if ret := g.tc.fn_ret_types[cfn] {
-				return ret
+				return ret, unsafe { nil }
 			}
 		}
 	}
@@ -6611,9 +6618,9 @@ fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) types.Ty
 		callee_t = types.unwrap_pointer((callee_t as types.Alias).base_type)
 	}
 	if callee_t is types.FnType {
-		return *callee_t.return_type
+		return *callee_t.return_type, unsafe { nil }
 	}
-	return types.Type(types.void_)
+	return types.Type(types.void_), unsafe { nil }
 }
 
 fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
@@ -6693,7 +6700,7 @@ fn (g &FlatGen) module_c_fn_return_type(name string) ?types.Type {
 		return none
 	}
 	// A bare `getenv()` inside `os` calls os.getenv, not the same-named C.getenv.
-	if _ := g.fn_decl_return_type_in_current_module(name) {
+	if _ := g.fn_decl_return_type_reference_in_current_module(name) {
 		return none
 	}
 	return ret
@@ -6770,53 +6777,65 @@ fn (g &FlatGen) selector_fn_field_return_type(fn_node flat.Node) ?types.Type {
 }
 
 fn (g &FlatGen) fn_decl_return_type_for_call_name(name string) ?types.Type {
+	rt := g.fn_decl_return_type_reference_for_call_name(name) or { return none }
+	return *rt
+}
+
+// fn_decl_return_type_reference_for_call_name returns the canonical interned return
+// type registered for the fn declaration that a call name refers to.
+fn (g &FlatGen) fn_decl_return_type_reference_for_call_name(name string) ?&types.Type {
 	if name.len == 0 {
 		return none
 	}
 	if !name.contains('.') {
-		if rt := g.fn_decl_return_type_in_current_module(name) {
+		if rt := g.fn_decl_return_type_reference_in_current_module(name) {
 			return rt
 		}
-	}
-	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {
-		qname := '${g.tc.cur_module}.${name}'
-		if rt := g.fn_decl_ret_types[qname] {
-			return *rt
-		}
-		cqname := g.cname(qname)
-		if cqname != qname {
-			if rt := g.fn_decl_ret_types[cqname] {
-				return *rt
+		if g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {
+			qname := '${g.tc.cur_module}.${name}'
+			if rt := g.fn_decl_ret_types[qname] {
+				return rt
+			}
+			cqname := g.cname(qname)
+			if cqname != qname {
+				if rt := g.fn_decl_ret_types[cqname] {
+					return rt
+				}
 			}
 		}
 	}
 	// Indexed in collect_gen_info (register_fn_decl_ret_type); previously this scanned
 	// every AST node per call (O(n^2)) and re-mangled each decl name with c_name.
 	if rt := g.fn_decl_ret_types[name] {
-		return *rt
+		return rt
 	}
 	cname := g.cname(name)
 	if cname != name {
 		if rt := g.fn_decl_ret_types[cname] {
-			return *rt
+			return rt
 		}
 	}
 	return none
 }
 
 fn (g &FlatGen) fn_decl_return_type_in_current_module(name string) ?types.Type {
+	rt := g.fn_decl_return_type_reference_in_current_module(name) or { return none }
+	return *rt
+}
+
+fn (g &FlatGen) fn_decl_return_type_reference_in_current_module(name string) ?&types.Type {
 	if rt := module_keyed_type_reference(g.fn_decl_ret_types, g.tc.cur_module, '', name) {
-		return *rt
+		return rt
 	}
 	// Empty and `main` are equivalent source-module spellings.
 	if g.tc.cur_module == '' {
 		if rt := module_keyed_type_reference(g.fn_decl_ret_types, 'main', '', name) {
-			return *rt
+			return rt
 		}
 	}
 	if g.tc.cur_module == 'main' {
 		if rt := module_keyed_type_reference(g.fn_decl_ret_types, '', '', name) {
-			return *rt
+			return rt
 		}
 	}
 	return none
@@ -8847,10 +8866,29 @@ fn (mut g FlatGen) track_local_pointer_storage_decl(lhs flat.Node, owner types.S
 	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 		return
 	}
-	g.track_shadowed_global_local(lhs.value, owner)
-	g.declare_local_c_type(owner, c_type)
-	g.declare_local_mutability(owner, g.current_decl_is_mut || lhs.is_mut)
-	g.declare_local_pointer_storage(owner, typ is types.Pointer || c_type_is_pointer_storage(c_type))
+	key := owner.storage_key()
+	if key.len == 0 {
+		return
+	}
+	// Record all declaration facts under one key; deleting from an empty map is a no-op.
+	if g.local_name_needs_global_suffix(lhs.value) {
+		g.shadowed_global_locals[key] = true
+	}
+	if c_type.len > 0 {
+		g.local_c_type_by_owner.set_id(key, flat.source_type_id(c_type))
+	} else if g.local_c_type_by_owner.ids.len > 0 {
+		g.local_c_type_by_owner.delete(key)
+	}
+	if g.current_decl_is_mut || lhs.is_mut {
+		g.local_mutable_by_owner[key] = true
+	} else if g.local_mutable_by_owner.len > 0 {
+		g.local_mutable_by_owner.delete(key)
+	}
+	if typ is types.Pointer || c_type_is_pointer_storage(c_type) {
+		g.local_pointer_storage_by_owner[key] = true
+	} else if g.local_pointer_storage_by_owner.len > 0 {
+		g.local_pointer_storage_by_owner.delete(key)
+	}
 }
 
 fn (mut g FlatGen) track_local_fn_value_decl(lhs flat.Node, owner types.ScopeBindingOwner, rhs flat.Node) {
@@ -10373,6 +10411,29 @@ fn (g &FlatGen) current_param_use_cname(name string) string {
 struct LocalNameExceptions {
 	names            map[string]bool
 	global_name_bits [64]u64
+	// name_bits holds one bit per key of `names`; a clear bit proves a miss.
+	name_bits [local_name_bit_words]u64
+}
+
+const local_name_bit_words = 1024
+
+// local_name_bit returns the `name_bits` slot of `name`.
+@[direct_array_access; inline]
+fn local_name_bit(name string) u32 {
+	mut hash := u32(2166136261)
+	for i in 0 .. name.len {
+		hash = (hash ^ u32(name[i])) * 16777619
+	}
+	return hash & u32(local_name_bit_words * 64 - 1)
+}
+
+@[direct_array_access; inline]
+fn (ex &LocalNameExceptions) has(name string) bool {
+	slot := local_name_bit(name)
+	if ex.name_bits[slot >> 6] & (u64(1) << (slot & 63)) == 0 {
+		return false
+	}
+	return name in ex.names
 }
 
 fn (mut g FlatGen) precompute_local_name_exceptions() {
@@ -10394,9 +10455,15 @@ fn (mut g FlatGen) precompute_local_name_exceptions() {
 		mark_global_name_filter(mut global_name_bits, name)
 		mark_global_name_filter(mut global_name_bits, name.all_after_last('.'))
 	}
+	mut name_bits := [local_name_bit_words]u64{}
+	for name, _ in names {
+		slot := local_name_bit(name)
+		name_bits[slot >> 6] |= u64(1) << (slot & 63)
+	}
 	g.local_name_exceptions = &LocalNameExceptions{
 		names:            names
 		global_name_bits: global_name_bits
+		name_bits:        name_bits
 	}
 }
 
@@ -10437,8 +10504,9 @@ fn (g &FlatGen) ordinary_local_cname(name string, owner types.ScopeBindingOwner)
 	}
 	// Some source names acquire a reserved-word prefix. Check the emitted
 	// spelling too, so a typedef named v_abs still protects a local named abs.
-	if name in g.local_name_exceptions.names
-		|| (cname != name && cname in g.local_name_exceptions.names) {
+	// An unchanged spelling (usually the same buffer) needs no second lookup.
+	if g.local_name_exceptions.has(name) || ((cname.str != name.str || cname.len != name.len)
+		&& g.local_name_exceptions.has(cname)) {
 		return none
 	}
 	return cname

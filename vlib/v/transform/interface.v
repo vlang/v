@@ -158,11 +158,23 @@ fn (t &Transformer) resolve_interface_type_name(name_id u32) u32 {
 		cache.module = t.cur_module
 		cache.file = t.cur_file
 		cache.entries.clear()
+		cache.generation++
 	}
-	if resolved := cache.entries[name_id] { return resolved }
-	resolved := t.resolve_interface_type_name_uncached(name_id)
-	// Zero is a cached miss; the lookup guard preserves its presence.
-	cache.entries[name_id] = resolved
+	slot := int(name_id & 255)
+	if cache.recent_gens[slot] == cache.generation && cache.recent_keys[slot] == name_id {
+		return cache.recent_vals[slot]
+	}
+	mut resolved := u32(0)
+	if cached := cache.entries[name_id] {
+		resolved = cached
+	} else {
+		resolved = t.resolve_interface_type_name_uncached(name_id)
+		// Zero is a cached miss; the lookup guard preserves its presence.
+		cache.entries[name_id] = resolved
+	}
+	cache.recent_gens[slot] = cache.generation
+	cache.recent_keys[slot] = name_id
+	cache.recent_vals[slot] = resolved
 	return resolved
 }
 

@@ -259,6 +259,25 @@ fn fn_type_return_type_text(typ_id u32) ?u32 {
 
 // is_known_fn_name reports whether is known fn name applies in transform.
 fn (t &Transformer) is_known_fn_name(name string) bool {
+	if isnil(t.fn_return_name_cache) || name.len == 0 {
+		return t.is_known_fn_name_uncached(name)
+	}
+	mut cache := t.fn_return_name_cache
+	t.sync_fn_signature_snapshot(mut cache)
+	n := uint(name.len)
+	slot := int((n * 31 + uint(name[0]) * 7 + uint(name[n / 2]) * 3 + uint(name[n - 1]) +
+		(uint(name[(n * 3) / 4]) << 4)) & 511)
+	state := cache.known_states[slot]
+	if state != 0 && same_transform_text(cache.known_names[slot], name) {
+		return state > 0
+	}
+	known := t.is_known_fn_name_uncached(name)
+	cache.known_names[slot] = name
+	cache.known_states[slot] = if known { i8(1) } else { i8(-1) }
+	return known
+}
+
+fn (t &Transformer) is_known_fn_name_uncached(name string) bool {
 	if name in t.fn_ret_types.ids {
 		return true
 	}
@@ -266,6 +285,28 @@ fn (t &Transformer) is_known_fn_name(name string) bool {
 		return name in t.tc.fn_ret_types || name in t.tc.fn_param_types
 	}
 	return false
+}
+
+// sync_fn_signature_snapshot drops signature-membership memos when the
+// transformer or checker signature maps changed. Those maps only grow between
+// checker revision bumps, so their sizes identify a snapshot.
+@[inline]
+fn (t &Transformer) sync_fn_signature_snapshot(mut cache FnReturnNameCache) {
+	tc_ptr := voidptr(t.tc)
+	tc_revision := if isnil(t.tc) { u64(0) } else { t.tc.fn_ret_types_revision }
+	tc_rets := if isnil(t.tc) { 0 } else { t.tc.fn_ret_types.len }
+	tc_params := if isnil(t.tc) { 0 } else { t.tc.fn_param_types.len }
+	if cache.array_method_rets != t.fn_ret_types.ids.len || cache.array_method_tc != tc_ptr
+		|| cache.array_method_revision != tc_revision || cache.array_method_tc_rets != tc_rets
+		|| cache.array_method_params != tc_params {
+		cache.array_method_states = [32]i8{}
+		cache.known_states = [512]i8{}
+		cache.array_method_rets = t.fn_ret_types.ids.len
+		cache.array_method_tc = tc_ptr
+		cache.array_method_revision = tc_revision
+		cache.array_method_tc_rets = tc_rets
+		cache.array_method_params = tc_params
+	}
 }
 
 // resolve_receiver_method_name resolves resolve receiver method name information for transform.
@@ -413,6 +454,21 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type_id u32, metho
 			cache.fn_count = t.fn_ret_types.ids.len
 			cache.entries.clear()
 			cache.misses.clear()
+			cache.front_generation++
+		}
+		front_slot := if method.len == 0 {
+			int(receiver_type_id & 255)
+		} else {
+			int((receiver_type_id * 13 + u32(method.len) * 7 + u32(method[0]) +
+				u32(method[method.len - 1]) * 3) & 255)
+		}
+		if cache.front_generations[front_slot] == cache.front_generation
+			&& cache.front_types[front_slot] == receiver_type_id
+			&& same_transform_text(cache.front_methods[front_slot], method) {
+			if cache.front_states[front_slot] > 0 {
+				return cache.front_results[front_slot]
+			}
+			return none
 		}
 		method_id := cache.methods[method] or {
 			id := u32(cache.methods.len + 1)
@@ -420,16 +476,33 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type_id u32, metho
 			id
 		}
 		key := u64(receiver_type_id) << 32 | u64(method_id)
-		if cached := cache.entries[key] { return cached }
-		if cache.misses[key] { return none }
+		if cached := cache.entries[key] {
+			cache.set_front(front_slot, receiver_type_id, method, cached, true)
+			return cached
+		}
+		if cache.misses[key] {
+			cache.set_front(front_slot, receiver_type_id, method, '', false)
+			return none
+		}
 		if resolved := t.resolve_receiver_method_for_type_uncached(receiver_type_id, method) {
 			cache.entries[key] = resolved
+			cache.set_front(front_slot, receiver_type_id, method, resolved, true)
 			return resolved
 		}
 		cache.misses[key] = true
+		cache.set_front(front_slot, receiver_type_id, method, '', false)
 		return none
 	}
 	return t.resolve_receiver_method_for_type_uncached(receiver_type_id, method)
+}
+
+@[inline]
+fn (mut cache ReceiverMethodCache) set_front(slot int, receiver_type_id u32, method string, result string, found bool) {
+	cache.front_generations[slot] = cache.front_generation
+	cache.front_types[slot] = receiver_type_id
+	cache.front_methods[slot] = method
+	cache.front_results[slot] = result
+	cache.front_states[slot] = if found { i8(1) } else { i8(-1) }
 }
 
 fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type_id u32, method string) ?string {
@@ -3965,28 +4038,45 @@ fn (t &Transformer) call_is_variadic_for_node(call_name string, node flat.Node) 
 	return false
 }
 
+// name_has_generic_marker reports whether `name` contains `_T_`, the
+// separator of generic specialization names.
+@[direct_array_access]
+fn name_has_generic_marker(name string) bool {
+	for i := 1; i + 1 < name.len; i++ {
+		if name[i] == `T` && name[i - 1] == `_` && name[i + 1] == `_` {
+			return true
+		}
+	}
+	return false
+}
+
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
-	// Generic specializations are re-checked on every call (see below).
-	if isnil(t.call_variadic_cache) || call_name.contains('_T_') {
-		return t.call_is_variadic_keyed(call_name)
+	if isnil(t.call_variadic_cache) {
+		return t.call_is_variadic_keyed(call_name, name_has_generic_marker(call_name))
 	}
-	// Answer repeated lookups before building the memo's composite key.
+	// Answer repeated lookups before building the memo's composite key. Only
+	// non-generic names are stored here (keys compare exactly), so a hit never
+	// hides a generic specialization.
 	mut cache := t.call_variadic_cache
 	mut recent := cache.recent_cache()
 	state, _ := recent.get(t.cur_file, call_name, '')
 	if state != 0 {
 		return state > 0
 	}
-	result := t.call_is_variadic_keyed(call_name)
-	recent.put(t.cur_file, call_name, '', if result { i8(1) } else { i8(-1) }, '')
+	generic := name_has_generic_marker(call_name)
+	result := t.call_is_variadic_keyed(call_name, generic)
+	// Generic specializations are re-checked on every call (see below).
+	if !generic {
+		recent.put(t.cur_file, call_name, '', if result { i8(1) } else { i8(-1) }, '')
+	}
 	return result
 }
 
-fn (t &Transformer) call_is_variadic_keyed(call_name string) bool {
+fn (t &Transformer) call_is_variadic_keyed(call_name string, generic bool) bool {
 	// Generic signatures are registered after some early transform probes. Do not
 	// let an earlier negative cache entry hide the template's variadic marker.
-	if !isnil(t.tc) && call_name.contains('_T_') && t.tc.specialized_generic_fns[call_name]
+	if generic && !isnil(t.tc) && t.tc.specialized_generic_fns[call_name]
 		&& t.tc.fn_variadic[call_name.all_before('_T_')] {
 		return true
 	}
@@ -13074,8 +13164,28 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 }
 
 fn (t &Transformer) array_builtin_method_name(method string) ?string {
+	if isnil(t.fn_return_name_cache) || method.len == 0 {
+		method_name := 'array.${method}'
+		if t.is_known_fn_name(method_name) {
+			return method_name
+		}
+		return none
+	}
+	mut cache := t.fn_return_name_cache
+	t.sync_fn_signature_snapshot(mut cache)
+	slot := int((uint(method.len) * 7 + uint(method[0]) + uint(method[method.len - 1])) & 31)
+	if cache.array_method_states[slot] != 0 && cache.array_methods[slot] == method {
+		if cache.array_method_states[slot] < 0 {
+			return none
+		}
+		return cache.array_method_names[slot]
+	}
 	method_name := 'array.${method}'
-	if t.is_known_fn_name(method_name) {
+	known := t.is_known_fn_name(method_name)
+	cache.array_methods[slot] = method
+	cache.array_method_names[slot] = method_name
+	cache.array_method_states[slot] = if known { i8(1) } else { i8(-1) }
+	if known {
 		return method_name
 	}
 	return none
@@ -18291,7 +18401,14 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 }
 
 fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ_id u32) bool {
-	receiver_name := method_name.all_before_last('.')
+	// A borrowed view avoids copying the method name; it is only compared and
+	// looked up, and source_type_id copies spellings it stores.
+	receiver_dot := method_name.last_index_u8(`.`)
+	receiver_name := if receiver_dot < 0 {
+		method_name
+	} else {
+		unsafe { tos(method_name.str, receiver_dot) }
+	}
 	if receiver_name.len == 0 {
 		return true
 	}

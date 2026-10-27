@@ -3,7 +3,7 @@ module c
 import v.flat
 import v.types
 
-fn test_serial_collection_builds_complete_name_index_without_field_index() {
+fn test_serial_collection_builds_complete_name_and_field_indexes() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['models.Record'] = []types.StructField{}
@@ -19,7 +19,7 @@ fn test_serial_collection_builds_complete_name_index_without_field_index() {
 	assert g.ident_may_name_type('missing')
 	g.collect_gen_info(true)
 	assert !isnil(g.type_name_short_index)
-	assert isnil(g.struct_field_index_base)
+	assert !isnil(g.struct_field_index_base)
 	for name in ['Record', 'Alias', 'State', 'Choice', 'Reader'] {
 		assert g.ident_may_name_type(name)
 		assert g.ident_may_name_type('other.${name}')

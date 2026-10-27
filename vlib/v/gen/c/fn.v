@@ -1744,13 +1744,17 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		return selected
 	}
 	synthetic_name := c_short_name_view(name)
-	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+	// The length and first-byte guards below only skip comparisons that cannot match; this
+	// runs for every direct call, and most names match none of the special cases.
+	if synthetic_name.len > 5 && synthetic_name[0] == `_` && (synthetic_name.starts_with('__v3_sum_eq_')
+		|| synthetic_name.starts_with('__v3_autostr_')
 		|| synthetic_name.starts_with('__v3_struct_eq_')
-		|| synthetic_name.starts_with('__v3_default_clone_') {
+		|| synthetic_name.starts_with('__v3_default_clone_')) {
 		return g.cname(synthetic_name)
 	}
-	if name in ['builtin.map__set', 'builtin_map__set', 'builtin__map__set']
-		|| name == builtin_map_set_fn_key {
+	if (name.len == 16 || name.len == 17 || name.len == builtin_map_set_fn_key.len)
+		&& (name in ['builtin.map__set', 'builtin_map__set', 'builtin__map__set']
+			|| name == builtin_map_set_fn_key) {
 		return 'map__set'
 	}
 	if g.c_decl_abi_names.len > 0 {
@@ -1775,29 +1779,41 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		// the renamed symbol rather than the bare `main`.
 		return g.cname('main.main')
 	}
-	if name in ['free', 'main.free', 'builtin.free'] {
+	if (name.len == 4 || name.len == 9 || name.len == 12)
+		&& name in ['free', 'main.free', 'builtin.free'] {
 		return 'v_free'
 	}
 	if shadow_name := g.main_runtime_shadow_fn_c_name(g.tc.cur_module, name) {
 		return shadow_name
 	}
-	if name == 'new_map' {
-		if g.tc.cur_module == 'builtin' {
-			return 'new_map'
+	match name.len {
+		7 {
+			if name == 'new_map' {
+				if g.tc.cur_module == 'builtin' {
+					return 'new_map'
+				}
+				return 'main__new_map'
+			}
+			if name == 'int_str' {
+				return 'int__str'
+			}
 		}
-		return 'main__new_map'
-	}
-	if name == 'int_str' {
-		return 'int__str'
-	}
-	if name == 'bool_str' {
-		return 'bool__str'
-	}
-	if name == 'char.vstring' {
-		return 'charptr__vstring'
-	}
-	if name == 'char.vstring_with_len' {
-		return 'charptr__vstring_with_len'
+		8 {
+			if name == 'bool_str' {
+				return 'bool__str'
+			}
+		}
+		12 {
+			if name == 'char.vstring' {
+				return 'charptr__vstring'
+			}
+		}
+		21 {
+			if name == 'char.vstring_with_len' {
+				return 'charptr__vstring_with_len'
+			}
+		}
+		else {}
 	}
 	if (g.tc.autofree_mode || g.target.os == 'vinix') && g.tc.cur_module in ['', 'main'] {
 		legacy_name := name.trim_string_left('main.')
@@ -2231,10 +2247,32 @@ fn (g &FlatGen) selector_base_module_for_member(name string, member string) ?str
 	return g.selector_base_module(name)
 }
 
+// selector_base_names_module reports whether `base` is `current`, its last
+// segment, or `current.<last segment>`, without building those strings.
+fn selector_base_names_module(base string, current string) bool {
+	if base == current {
+		return true
+	}
+	short_start := current.last_index_u8(`.`) + 1
+	short_len := current.len - short_start
+	if base.len == short_len {
+		return current.ends_with(base)
+	}
+	if base.len != current.len + 1 + short_len || !base.starts_with(current)
+		|| base[current.len] != `.` {
+		return false
+	}
+	for i in 0 .. short_len {
+		if base[current.len + 1 + i] != current[short_start + i] {
+			return false
+		}
+	}
+	return true
+}
+
 fn (g &FlatGen) current_module_selector_const_name(base string, member string) ?string {
 	current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-	short := current.all_after_last('.')
-	if base != current && base != short && base != '${current}.${short}' {
+	if !selector_base_names_module(base, current) {
 		return none
 	}
 	if g.selector_base_is_local_value(base) || g.current_module_global_type_for_ident(base) != none {
@@ -7472,12 +7510,11 @@ fn (mut g FlatGen) gen_c_int_array_storage(arrays []CIntArrayStorage) {
 // when their source ranges overlap. Returns false — falling through to normal
 // emission — when there is nothing to wrap, including the re-entrant emission where
 // the out-arguments are already scheduled.
-fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool {
+fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node, callee_name string) bool {
 	if node.children_count == 0 {
 		return false
 	}
 	fn_node := g.a.child_node(&node, 0)
-	callee_name := g.call_target_name(g.a.child(&node, 0))
 	is_c_call := callee_name.starts_with('C.') || fn_node.value.starts_with('C.')
 	if !is_c_call {
 		return false
@@ -7872,7 +7909,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 			return
 		}
 	}
-	if g.gen_c_call_int_out_wrap(id, node) {
+	if g.gen_c_call_int_out_wrap(id, node, callee_name) {
 		return
 	}
 	if fn_node.kind == .ident && fn_name == '__alignof__' && node.children_count == 2 {
@@ -10447,20 +10484,22 @@ fn (g &FlatGen) call_target_name(id flat.NodeId) string {
 
 // Match replace('__', '.').all_after_last('.') without allocating transformed names.
 // Consume underscore pairs from the left so an odd trailing underscore is preserved.
-@[inline]
+// The result is a view into `name`; callers only hash it or read it.
+@[direct_array_access; inline]
 fn const_call_name_suffix(name string) string {
 	mut start := 0
 	mut i := 0
 	for i < name.len {
-		if name[i] == `.` {
+		c := name[i]
+		if c == `.` {
 			start = i + 1
-		} else if name[i] == `_` && i + 1 < name.len && name[i + 1] == `_` {
+		} else if c == `_` && i + 1 < name.len && name[i + 1] == `_` {
 			i++
 			start = i + 1
 		}
 		i++
 	}
-	return name[start..]
+	return name.substr_unsafe(start, name.len)
 }
 
 fn (mut idx ConstShortIndex) mark_call_name(name string) {
@@ -11828,24 +11867,26 @@ fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
 			&& (name in g.tc.fn_param_types || name in g.tc.fn_ret_types) {
 			return name
 		}
-		if resolved_call_matches_target(resolved, name) {
+		if g.resolved_call_matches_target(resolved, name) {
 			return g.normalize_call_key(resolved)
 		}
 	}
 	return g.normalize_call_key(name)
 }
 
-fn resolved_call_matches_target(resolved string, target string) bool {
+// resolved_call_matches_target reports whether the checker's resolved call name
+// denotes `target`, directly, by C name, or by short name.
+fn (g &FlatGen) resolved_call_matches_target(resolved string, target string) bool {
 	if resolved.len == 0 || target.len == 0 {
 		return false
 	}
-	if resolved == target || c_name(resolved) == target || resolved == c_name(target) {
+	if resolved == target || g.cname(resolved) == target || resolved == g.cname(target) {
 		return true
 	}
 	resolved_short := c_short_name_view(resolved)
 	target_short := c_short_name_view(target)
-	return resolved_short == target_short || c_name(resolved_short) == target_short
-		|| resolved_short == c_name(target_short)
+	return resolved_short == target_short || g.cname(resolved_short) == target_short
+		|| resolved_short == g.cname(target_short)
 }
 
 // normalize_call_key transforms normalize call key data for c.
@@ -13941,7 +13982,7 @@ fn (g &FlatGen) resolved_name_is_generic_plain(name string) bool {
 fn (g &FlatGen) generic_plain_fn_base_for_call(id flat.NodeId, name string) ?string {
 	mut candidates := []string{}
 	if resolved := g.tc.resolved_call_name(id) {
-		if resolved_call_matches_target(resolved, name) {
+		if g.resolved_call_matches_target(resolved, name) {
 			candidates << resolved
 		}
 	}
@@ -17300,18 +17341,41 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_from_node(id flat.NodeId, mu
 	}
 	// Symbol collection does not grow the AST, so recursive calls can borrow nodes.
 	node := unsafe { &g.a.nodes[int(id)] }
-	if (node.kind == .ident && node.value.starts_with('C.'))
-		|| (node.kind == .selector && node.children_count > 0 && node.value.len > 0) {
-		g.collect_c_extern_ref_from_node_into(node, mut refs)
-	}
-	if node.children_count > 0 {
-		g.collect_c_extern_referenced_symbols_from_children(node, mut refs)
-	}
+	g.collect_c_extern_referenced_symbols_in(node, mut refs)
 }
 
-fn (g &FlatGen) collect_c_extern_referenced_symbols_from_children(node &flat.Node, mut refs map[string]bool) {
-	for i in 0 .. node.children_count {
-		g.collect_c_extern_referenced_symbols_from_node(g.a.child(node, i), mut refs)
+@[direct_array_access]
+fn (g &FlatGen) collect_c_extern_referenced_symbols_in(node &flat.Node, mut refs map[string]bool) {
+	if node.kind == .ident {
+		if node.value.len > 1 && node.value[0] == `C` && node.value[1] == `.` {
+			g.collect_c_extern_ref_from_node_into(node, mut refs)
+		}
+	} else if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
+		g.collect_c_extern_ref_from_node_into(node, mut refs)
+	}
+	if node.children_count <= 0 {
+		return
+	}
+	// Visit the children that `g.a.child` would return; out-of-range slots are empty there.
+	mut start := int(node.children_start)
+	mut end := start + int(node.children_count)
+	if start < 0 {
+		start = 0
+	}
+	if end > g.a.children.len {
+		end = g.a.children.len
+	}
+	for i in start .. end {
+		child_id := int(g.a.children[i])
+		if child_id < 0 || child_id >= g.a.nodes.len {
+			continue
+		}
+		child := unsafe { &g.a.nodes[child_id] }
+		// A leaf that is not an identifier can neither name C nor reach a node that does.
+		if child.children_count <= 0 && child.kind != .ident {
+			continue
+		}
+		g.collect_c_extern_referenced_symbols_in(child, mut refs)
 	}
 }
 
@@ -18957,6 +19021,10 @@ fn (mut g FlatGen) gen_shared_local_receiver_arg(base_id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) fn_needs_implicit_veb_ctx(node flat.Node) bool {
+	// Only a `...Result` return can be `veb.Result`; skip the receiver scan for the rest.
+	if node.typ != cgen_veb_result_source_type && !node.typ_text().ends_with('Result') {
+		return false
+	}
 	return g.fn_has_receiver_param(node) && g.fn_returns_veb_result(node)
 		&& !g.fn_receiver_type_is_context(node) && !g.fn_has_veb_context_param(node)
 		&& g.type_name_known_in_current_module('Context')
