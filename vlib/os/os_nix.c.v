@@ -633,6 +633,7 @@ pub fn page_size() int {
 
 struct C.statvfs {
 	f_bsize  uint
+	f_frsize uint
 	f_blocks uint
 	f_bfree  uint
 	f_bavail uint
@@ -648,13 +649,19 @@ pub fn disk_usage(path string) !DiskUsage {
 	if ret == -1 {
 		return error('cannot get disk usage of path')
 	}
-	f_bsize := u64(vfs.f_bsize)
+	// f_blocks counts f_frsize units (POSIX). f_bsize is the preferred I/O size,
+	// which Solaris and FreeBSD report far above the fragment size, so using it
+	// overstated the disk size.
+	mut unit := u64(vfs.f_frsize)
+	if unit == 0 {
+		unit = u64(vfs.f_bsize)
+	}
 	f_blocks := u64(vfs.f_blocks)
 	f_bavail := u64(vfs.f_bavail)
 	f_bfree := u64(vfs.f_bfree)
 	return DiskUsage{
-		total:     f_bsize * f_blocks
-		available: f_bsize * f_bavail
-		used:      f_bsize * (f_blocks - f_bfree)
+		total:     unit * f_blocks
+		available: unit * f_bavail
+		used:      unit * (f_blocks - f_bfree)
 	}
 }
