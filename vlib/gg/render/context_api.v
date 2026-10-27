@@ -84,12 +84,6 @@ pub fn (ctx &Context) end() {
 			st.error = .commands_full
 		}
 	}
-	// The batch is recorded; a loaded pipeline must not leak into later batches.
-	// Text and the translucent draw helpers load their pipeline right before
-	// their batch, and nothing counts on it outliving one, so every batch after
-	// a text draw would otherwise run with the font shader — which reads the
-	// texture's red channel as alpha and paints white where a color was asked.
-	ctx.load_default_pipeline()
 	st.base_vertex = st.vertex_count
 }
 
