@@ -324,11 +324,12 @@ fn cgen_worker_scope_begin(enabled bool) voidptr {
 const cgen_chunk_arena_keep_bytes = int($d('cgen_chunk_arena_keep_mb', 1)) * 1024 * 1024
 
 // cgen_worker_scope_reenter makes a chunk arena that was left current again,
-// rewound, for the next chunk. False means the caller needs a new arena.
-fn cgen_worker_scope_reenter(scope voidptr) bool {
+// rewound, for the next chunk, keeping up to `keep_bytes` of it mapped.
+// False means the caller needs a new arena.
+fn cgen_worker_scope_reenter(scope voidptr, keep_bytes int) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
-			return unsafe { prealloc_scope_reenter(scope, cgen_chunk_arena_keep_bytes) }
+			return unsafe { prealloc_scope_reenter(scope, keep_bytes) }
 		}
 	}
 	return false
