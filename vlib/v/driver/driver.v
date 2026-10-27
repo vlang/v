@@ -4403,9 +4403,12 @@ fn transform_helper_scopes_fit_retention_budget(scopes []voidptr) bool {
 }
 
 fn should_parallel_monomorphize() bool {
-	// TinyCC-built compilers can corrupt the heap during parallel merges.
+	// Parallel merges are covered for TinyCC builds on Linux/amd64. Other
+	// TinyCC targets keep the serial path until their merges are validated.
 	$if tinyc {
-		return false
+		$if !linux || !amd64 {
+			return false
+		}
 	}
 	// Nested generic-interface dispatch still needs serial specialization by
 	// default. Keep parallel merges opt-in until that regression is resolved.

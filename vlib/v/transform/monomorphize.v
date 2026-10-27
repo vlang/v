@@ -1748,9 +1748,10 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[u32]u32, decl
 			continue
 		}
 		methods := methods_by_receiver[base] or { continue }
-		fixture_expand_regular_methods := t.fixture_should_expand_regular_generic_methods(flat.TypeTextList.from_names(args).ids)
-			&& t.generic_struct_spec_has_emitted_method(base, flat.TypeTextList.from_names(args).ids, decls, emitted)
-		concrete_args_source_ids := t.canonical_generic_specialization_args(flat.TypeTextList.from_names(args).ids)
+		spec_args := flat.TypeTextList.from_names(args).ids
+		fixture_expand_regular_methods := t.fixture_should_expand_regular_generic_methods(spec_args)
+			&& t.generic_struct_spec_has_emitted_method(base, spec_args, decls, emitted)
+		concrete_args_source_ids := t.canonical_generic_specialization_args(spec_args)
 
 		for decl in methods {
 			decl_key := decl.key
@@ -1787,7 +1788,7 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[u32]u32, decl
 			} else if !fixture_expand_regular_methods
 				&& !t.generic_struct_method_needed_for_interface(spec_id, method, interfaces_by_method, mut interface_impl_cache) {
 				mvkey := '${spec}.${method}'
-				if !t.generic_struct_method_used_for_spec(spec, decl, flat.TypeTextList.from_names(args).ids, method) {
+				if !t.generic_struct_method_used_for_spec(spec, decl, spec_args, method) {
 					if isnil(t.tc) || method !in t.tc.generic_method_value_info[spec_id] {
 						continue
 					}

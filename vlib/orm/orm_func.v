@@ -1165,6 +1165,24 @@ fn row_primitive_to_bool(value Primitive) bool {
 	}
 }
 
+// Keep the remaining dynamic sum type casts outside model field loops. Inlining
+// `value as Type` into map_row would repeat the complete cast error switch for
+// every string and time field in every model.
+@[noinline]
+fn row_primitive_to_string(value Primitive) string {
+	return value as string
+}
+
+@[noinline]
+fn row_primitive_to_time(value Primitive) time.Time {
+	return value as time.Time
+}
+
+@[noinline]
+fn row_primitive_to_time_string(value Primitive) time.Time {
+	return time.parse(value as string)!
+}
+
 struct MappedRowField {
 	typ   int
 	index int
@@ -1225,12 +1243,12 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 						} $else $if sub.unaliased_typ is bool || sub.unaliased_typ is ?bool {
 							embedded.$(sub.name) = row_primitive_to_bool(value)
 						} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
-							embedded.$(sub.name) = value as string
+							embedded.$(sub.name) = row_primitive_to_string(value)
 						} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
 							if mapped.typ == time_ {
-								embedded.$(sub.name) = value as time.Time
+								embedded.$(sub.name) = row_primitive_to_time(value)
 							} else if mapped.typ == type_string {
-								embedded.$(sub.name) = time.parse(value as string)!
+								embedded.$(sub.name) = row_primitive_to_time_string(value)
 							}
 						}
 					}
@@ -1273,12 +1291,12 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 					} $else $if field.unaliased_typ is bool || field.unaliased_typ is ?bool {
 						instance.$(field.name) = row_primitive_to_bool(value)
 					} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
-						instance.$(field.name) = value as string
+						instance.$(field.name) = row_primitive_to_string(value)
 					} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
 						if mapped.typ == time_ {
-							instance.$(field.name) = value as time.Time
+							instance.$(field.name) = row_primitive_to_time(value)
 						} else if mapped.typ == type_string {
-							instance.$(field.name) = time.parse(value as string)!
+							instance.$(field.name) = row_primitive_to_time_string(value)
 						}
 					}
 				}

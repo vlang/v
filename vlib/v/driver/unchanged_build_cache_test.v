@@ -140,6 +140,16 @@ fn test_parallel_monomorphize_requires_explicit_opt_in() {
 	assert !should_parallel_monomorphize()
 	os.setenv('V3_PARALLEL_MONOMORPHIZE', '0', true)
 	assert !should_parallel_monomorphize()
+	os.setenv('V3_PARALLEL_MONOMORPHIZE', '1', true)
+	$if tinyc {
+		$if linux && amd64 {
+			assert should_parallel_monomorphize()
+		} $else {
+			assert !should_parallel_monomorphize()
+		}
+	} $else {
+		assert should_parallel_monomorphize()
+	}
 }
 
 fn test_default_build_rechecks_compile_time_environment() {

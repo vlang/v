@@ -1024,10 +1024,11 @@ comparing generated C through the full dispatch path; ordinary compilation keeps
 
 ### Monomorphization parallelism
 
-Generic specialization stays serial by default. Set `V3_PARALLEL_MONOMORPHIZE=1` to opt in
-when using a GCC- or Clang-built compiler. Parallel specialization remains experimental because
-nested generic-interface instantiations can lose specialization results. TinyCC-built compilers
-always specialize serially; `V3_PARALLEL_MONOMORPHIZE=0` also keeps specialization serial.
+Generic specialization stays serial by default. Set `V3_PARALLEL_MONOMORPHIZE=1` to opt in.
+Parallel specialization remains experimental because nested generic-interface instantiations can
+lose specialization results. It is available with GCC- and Clang-built compilers, and with
+TinyCC-built compilers on Linux/amd64; other TinyCC targets specialize serially.
+`V3_PARALLEL_MONOMORPHIZE=0` and `-no-parallel` keep specialization serial.
 
 ### Transform batch arenas
 

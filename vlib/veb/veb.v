@@ -486,65 +486,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		// V does not allow `return` in one, so recovery prepares its response here and
 		// skips the after-middleware through the else branch.
 		if msg := recover() {
-			eprintln('[veb] handler for route "${url.path}" panicked: ${msg}')
-			// A takeover handler owns the connection and may already have written to it.
-			if user_context.Context.takeover_mode == .none {
-				// Discard the prepared representation, including file streaming and framing.
-				// server_error replaces and frees the old body through send_response_to_client.
-				user_context.Context.done = false
-				user_context.Context.return_type = .normal
-				user_context.Context.return_file = ''
-				user_context.Context.content_type = ''
-				user_context.Context.already_compressed = false
-				for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
-					.transfer_encoding, .trailer, .content_range, .content_disposition, .accept_ranges,
-					.etag, .last_modified, .cache_control, .expires, .age, .location] {
-					user_context.Context.res.header.delete(header)
-				}
-				user_context.server_error('Internal Server Error')
-			}
+			finish_panicked_route(mut user_context.Context, url.path, msg)
 		} else {
-			// execute middleware functions after veb is done and before the response is send
-			mut was_done := true
-			$if A is MiddlewareApp {
-				if !not_found && !middleware_has_sent_response {
-					// if the middleware doesn't send an alternate response, but only changes the
-					// response object we only have to check if the `done` was previously set to true
-					was_done = user_context.Context.done
-					// reset `done` so the middleware functions can return a different response
-					// 1 time only, since the `done` guard is still present in
-					// `Context.send_response_to_client`
-					user_context.Context.done = false
-
-					// no need to check the result of `validate_middleware`, since a response has to be sent
-					// anyhow. This function makes sure no further middleware is executed.
-					validate_middleware[X](mut user_context, app_global_handlers_after(app))
-					// skip route-specific after-middleware if global already sent a response
-					if !user_context.Context.done {
-						validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
-							user_context.Context.req.method))
-						// Preserve an after-middleware response, or restore the handler response state.
-						user_context.Context.done = user_context.Context.done || was_done
-					}
-				}
-			}
-			// send only the headers, because if the response body is too big, TcpConn code will
-			// actually block, because it has to wait for the socket to become ready to write. veb
-			// will handle this case.
-			if !was_done && !user_context.Context.done && user_context.Context.takeover_mode == .none {
-				eprintln('[veb] handler for route "${url.path}" does not send any data!')
-				// send response anyway so the connection won't block
-				// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
-			} else if user_context.Context.takeover_mode == .none {
-				// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
-			}
-			// Context.takeover_mode is set, so the user must send a response.
-		}
-		// Free the handler slots a throttle took for this request on every way
-		// out, including the 404 and refusing-middleware paths that skip the
-		// after-middleware above.
-		if user_context.Context.throttle_leases.len > 0 {
-			user_context.Context.release_throttle_leases()
+			finish_route[A, X](app, mut user_context, route, url.path, not_found,
+				middleware_has_sent_response)
 		}
 	}
 
@@ -735,6 +680,79 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	user_context.not_found()
 	not_found = true
 	return
+}
+
+// finish_panicked_route builds the fallback response after a handler panic.
+// Keeping it out of handle_route's defer avoids copying this cleanup block into
+// every unrolled route dispatch return.
+fn finish_panicked_route(mut ctx Context, path string, msg string) {
+	eprintln('[veb] handler for route "${path}" panicked: ${msg}')
+	// A takeover handler owns the connection and may already have written to it.
+	if ctx.takeover_mode == .none {
+		// Discard the prepared representation, including file streaming and framing.
+		// server_error replaces and frees the old body through send_response_to_client.
+		ctx.done = false
+		ctx.return_type = .normal
+		ctx.return_file = ''
+		ctx.content_type = ''
+		ctx.already_compressed = false
+		for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
+			.transfer_encoding, .trailer, .content_range, .content_disposition, .accept_ranges,
+			.etag, .last_modified, .cache_control, .expires, .age, .location] {
+			ctx.res.header.delete(header)
+		}
+		ctx.server_error('Internal Server Error')
+	}
+	if ctx.throttle_leases.len > 0 {
+		ctx.release_throttle_leases()
+	}
+}
+
+// finish_route runs after-handlers and releases request resources. It is shared
+// by every return in the comptime-unrolled dispatcher, preventing the defer body
+// from being copied into each generated route branch.
+fn finish_route[A, X](app &A, mut user_context X, route Route, path string, not_found bool, middleware_has_sent_response bool) {
+	// execute middleware functions after veb is done and before the response is send
+	mut was_done := true
+	$if A is MiddlewareApp {
+		if !not_found && !middleware_has_sent_response {
+			// if the middleware doesn't send an alternate response, but only changes the
+			// response object we only have to check if the `done` was previously set to true
+			was_done = user_context.Context.done
+			// reset `done` so the middleware functions can return a different response
+			// 1 time only, since the `done` guard is still present in
+			// `Context.send_response_to_client`
+			user_context.Context.done = false
+
+			// no need to check the result of `validate_middleware`, since a response has to be sent
+			// anyhow. This function makes sure no further middleware is executed.
+			validate_middleware[X](mut user_context, app_global_handlers_after(app))
+			// skip route-specific after-middleware if global already sent a response
+			if !user_context.Context.done {
+				validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
+					user_context.Context.req.method))
+				// Preserve an after-middleware response, or restore the handler response state.
+				user_context.Context.done = user_context.Context.done || was_done
+			}
+		}
+	}
+	// send only the headers, because if the response body is too big, TcpConn code will
+	// actually block, because it has to wait for the socket to become ready to write. veb
+	// will handle this case.
+	if !was_done && !user_context.Context.done && user_context.Context.takeover_mode == .none {
+		eprintln('[veb] handler for route "${path}" does not send any data!')
+		// send response anyway so the connection won't block
+		// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
+	} else if user_context.Context.takeover_mode == .none {
+		// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
+	}
+	// Context.takeover_mode is set, so the user must send a response.
+	// Free the handler slots a throttle took for this request on every way
+	// out, including the 404 and refusing-middleware paths that skip the
+	// after-middleware above.
+	if user_context.Context.throttle_leases.len > 0 {
+		user_context.Context.release_throttle_leases()
+	}
 }
 
 // RouteMatch holds runtime routing work shared by all controller types. Only the
