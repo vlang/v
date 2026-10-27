@@ -5407,11 +5407,17 @@ fn (g &FlatGen) tinyc_stack_value_alignment(typ &types.Type, c_type string) ?str
 	if clean !is types.Struct {
 		return none
 	}
-	for name in [typ.name(), clean.name(), c_type] {
-		if name.len == 0 {
+	for name_id in [typ.source_type_id(), clean.source_type_id()] {
+		if name_id == 0 {
 			continue
 		}
-		if align := g.struct_decl_alignment_for_name(flat.source_type_id(name)) {
+		if align := g.struct_decl_alignment_for_name(name_id) {
+			align_ct := g.struct_decl_alignment_c_type(clean.source_type_id(), c_type)
+			return struct_decl_alignment_memdup_arg(align, align_ct)
+		}
+	}
+	if c_type.len > 0 {
+		if align := g.struct_decl_alignment_for_name(flat.source_type_id(c_type)) {
 			align_ct := g.struct_decl_alignment_c_type(clean.source_type_id(), c_type)
 			return struct_decl_alignment_memdup_arg(align, align_ct)
 		}
@@ -7522,7 +7528,7 @@ fn (mut g FlatGen) emit_struct(name string) {
 	g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
 	if name in g.tc.structs {
 		fields := g.tc.structs[name]
-		pack := g.struct_decl_pack_for_name(name)
+		pack := g.struct_decl_pack_for_name(flat.source_type_id(name))
 		if pack.len > 0 {
 			g.writeln('#pragma pack(push, ${pack})')
 		}
@@ -7581,8 +7587,8 @@ fn (mut g FlatGen) emit_struct(name string) {
 	g.tc.cur_module = old_module
 }
 
-fn (g &FlatGen) struct_decl_pack_for_name(name string) string {
-	info := g.find_struct_decl(flat.source_type_id(name)) or { return '' }
+fn (g &FlatGen) struct_decl_pack_for_name(type_name_id u32) string {
+	info := g.find_struct_decl(type_name_id) or { return '' }
 	attrs := g.decl_attrs[info.node_id] or { return '' }
 	for raw_attr in attrs {
 		attr := raw_attr.trim_space()

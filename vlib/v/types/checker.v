@@ -7945,6 +7945,9 @@ fn type_id_contains_qualified_import(type_id u32, alias_id u32) bool {
 	if type_id == 0 || alias_id == 0 {
 		return false
 	}
+	if !flat.source_type_shape(type_id).has(.dotted) {
+		return false
+	}
 	for symbol in flat.source_type_syntax(type_id).symbols() {
 		if flat.source_type_has_qualified_prefix(symbol, alias_id) {
 			return true

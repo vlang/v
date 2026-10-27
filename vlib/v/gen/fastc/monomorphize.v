@@ -556,7 +556,7 @@ fn fastc_specialized_generic_result_type(erased_id u32, concrete_id u32) u32 {
 		for _ in 0 .. erased.c_pointer_depth { parts << flat.source_type_id('*') }
 		return flat.source_type_composition(.concat, parts)
 	}
-	concrete_part := flat.source_type_syntax(concrete_id).fastc_composite_part
+	concrete_part := flat.source_type_composition_one(.fastc_composite_part, concrete_id)
 	mut parts := []u32{cap: erased.voidptr_parts().len * 2 - 1}
 	for i, part in erased.voidptr_parts() {
 		if i > 0 { parts << concrete_part }

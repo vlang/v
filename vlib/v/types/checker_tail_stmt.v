@@ -4959,7 +4959,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				} else if tc.anonymous_struct_assignment_mismatch(value_id, actual, expected) {
 					tc.record_error_at(.assignment_mismatch, 'cannot assign anonymous `struct` to a typed `struct`', value_id, tc.anonymous_struct_literal_brace_pos(value_id))
 				} else if value_node.kind == .map_init && value_node.children_count == 0
-					&& clean_expected is Struct && is_anonymous_struct_name(clean_expected.name()) {
+					&& clean_expected is Struct && is_anonymous_struct_id(clean_expected.source_type_id()) {
 					tc.record_error_at(.assignment_mismatch, '`{}` cannot be used to initialize anonymous structs. Use `struct{}` instead.', value_id, tc.empty_map_literal_diagnostic_pos(value_id))
 				} else if clean_actual is OptionType && clean_expected !is OptionType {
 					tc.record_error_at(.assignment_mismatch, 'cannot assign an Option value to a non-option struct field', field_id, tc.struct_init_field_deprecation_pos(field))
@@ -5486,7 +5486,11 @@ fn subst_fn_diagnostic_type_id(raw_id u32, args []u32, params []string) u32 {
 }
 
 fn fn_diagnostic_parameter_modes(raw string) []string {
-	syntax := flat.source_type_syntax(flat.source_type_id(raw))
+	return fn_diagnostic_parameter_modes_id(flat.source_type_id(raw))
+}
+
+fn fn_diagnostic_parameter_modes_id(raw_id u32) []string {
+	syntax := flat.source_type_syntax(raw_id)
 	if !syntax.function_closed {
 		return []string{}
 	}

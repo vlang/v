@@ -5407,17 +5407,14 @@ fn (mut g FlatGen) gen_thread_wait_call(fn_node &flat.Node) bool {
 }
 
 fn (g &FlatGen) resolved_method_name_for_spawn(clean_type &types.Type, method string) string {
-	mut type_name := clean_type.name()
-	if clean_type is types.Struct {
-		type_name = clean_type.name()
-	}
+	type_name_id := clean_type.source_type_id()
+	type_name := flat.source_type_name(type_name_id)
 	method_name := '${type_name}.${method}'
 	if method_name in g.tc.fn_param_types {
 		return method_name
 	}
 	for alias, target_id in g.tc.type_aliases.ids {
-		target := flat.source_type_name(target_id)
-		if target == type_name {
+		if target_id == type_name_id {
 			alias_method := '${alias}.${method}'
 			if alias_method in g.tc.fn_param_types {
 				return alias_method

@@ -1696,7 +1696,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				g.writeln('${drop_cname}(${drop_arg});')
 				return
 			}
-			packed := g.struct_decl_pack_for_name(typ.name()).len > 0
+			packed := g.struct_decl_pack_for_name(typ.source_type_id()).len > 0
 			for field in g.tc.struct_fields_for_type(typ.source_type_id()) {
 				if g.tc.struct_field_is_shared(typ.source_type_id(), field.name) {
 					continue
@@ -5853,17 +5853,27 @@ fn (mut g FlatGen) merge_local_pointer_alias_source_for_assignment(owner types.S
 fn (g &FlatGen) heap_local_memdup_expr(source_expr string, base_type &types.Type, base_ct string, source_is_pointer bool) string {
 	src := if source_is_pointer { source_expr } else { '&${source_expr}' }
 	clean_base := default_init_unalias_type(base_type)
-	mut names := []string{}
-	for name in [clean_base.name(), base_type.name(), base_ct] {
-		if name.len > 0 && name !in names {
-			names << name
+	mut name_ids := []u32{}
+	for name_id in [clean_base.source_type_id(), base_type.source_type_id()] {
+		if name_id != 0 && name_id !in name_ids {
+			name_ids << name_id
 		}
 	}
-	for name in names {
-		if align := g.struct_decl_alignment_for_name(flat.source_type_id(name)) {
+	for name_id in name_ids {
+		if align := g.struct_decl_alignment_for_name(name_id) {
 			align_ct := g.struct_decl_alignment_c_type(clean_base.source_type_id(), base_ct)
 			align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
 			return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
+		}
+	}
+	if base_ct.len > 0 {
+		base_ct_id := flat.source_type_id(base_ct)
+		if base_ct_id !in name_ids {
+			if align := g.struct_decl_alignment_for_name(base_ct_id) {
+				align_ct := g.struct_decl_alignment_c_type(clean_base.source_type_id(), base_ct)
+				align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
+				return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
+			}
 		}
 	}
 	mut seen := map[u32]bool{}

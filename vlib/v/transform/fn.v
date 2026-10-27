@@ -8928,7 +8928,7 @@ fn (t &Transformer) stringify_aggregate_type_name(typ_id u32) ?u32 {
 	}
 	syntax := flat.source_type_syntax(clean_id)
 	if syntax.generic_app_valid && syntax.generic_app_args().len > 0
-		&& t.generic_aggregate_base_exists(flat.source_type_name(syntax.generic_app_base), syntax.generic_app_args().len) {
+		&& t.generic_aggregate_base_exists(syntax.generic_app_base, syntax.generic_app_args().len) {
 		return clean_id
 	}
 	clean := flat.source_type_name(clean_id)
@@ -9083,17 +9083,17 @@ fn (t &Transformer) decode_single_generic_specialized_type_arg_with_prefix(name_
 	return none
 }
 
-fn (t &Transformer) generic_aggregate_base_exists(base string, arg_count int) bool {
+fn (t &Transformer) generic_aggregate_base_exists(base_id u32, arg_count int) bool {
 	if isnil(t.tc) {
 		return false
 	}
+	base := flat.source_type_name(base_id)
 	if params := t.tc.struct_generic_params[base] {
 		return params.len == arg_count
 	}
 	if params := t.tc.sum_generic_params[base] {
 		return params.len == arg_count
 	}
-	base_id := flat.source_type_id(base)
 	if flat.source_type_query(base_id).has(.main_prefix) {
 		short := flat.source_type_name(flat.source_type_syntax(base_id).main_base)
 		if params := t.tc.struct_generic_params[short] {

@@ -337,9 +337,8 @@ fn (mut g FlatGen) precompute_thread_type_usage() {
 		g.note_thread_type_usage(typ)
 	}
 	for _, variants_id in g.tc.sum_types.ids {
-		variants := variants_id.map(flat.source_type_name(it))
-		for variant in variants {
-			g.note_thread_type_usage(g.tc.parse_type(flat.source_type_id(variant)))
+		for variant_id in variants_id {
+			g.note_thread_type_usage(g.tc.parse_type(variant_id))
 		}
 	}
 }
@@ -1783,8 +1782,7 @@ fn (mut g FlatGen) type_holds_aligned_pointer(t types.Type, depth int) bool {
 			return false
 		}
 		types.Struct {
-			name := flat.source_type_name(t.name_id)
-			if flat.source_type_query(t.name_id).has(.c_prefix) || g.struct_decl_pack_for_name(name) != '' {
+			if flat.source_type_query(t.name_id).has(.c_prefix) || g.struct_decl_pack_for_name(t.name_id) != '' {
 				return false
 			}
 			for field in g.tc.struct_fields_for_type(t.name_id) {

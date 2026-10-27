@@ -753,6 +753,14 @@ fn written_type_ids(node flat.Node) []u32 {
 		.global_decl, .const_field, .fn_literal, .array_init, .decl_assign] {
 		type_ids << node.typ
 	}
+	// Only type-bearing operands need an interned value spelling. Most AST nodes
+	// have ordinary values that none of the following branches can use.
+	uses_value_type := (node.kind == .ident && node.pos.end > 0)
+		|| (node.kind == .interface_field && node.op != .dot && node.typ == 0
+			&& node.value.len > 0)
+		|| node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init, .struct_init]
+		|| (node.kind in [.sizeof_expr, .typeof_expr] && node.children_count == 0)
+	if !uses_value_type { return type_ids }
 	value_id := node.source_value_id()
 	// The variants of a sum type, `type Sum = Box[int] | string`.
 	if node.kind == .ident && flat.source_type_shape(value_id).has(.bracketed) && node.pos.end > 0 {

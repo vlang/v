@@ -14259,9 +14259,47 @@ fn (tc &TypeChecker) call_param_has_open_generic_source(call flat.Node, info Cal
 	return tc.type_text_has_generic_placeholder(param.typ)
 }
 
+enum ChannelBuiltinCallMethod {
+	other
+	try_push
+	try_pop
+}
+
+// channel_builtin_call_method classifies the final call-name spelling once before
+// argument checking. This accepts the same raw/malformed spellings as the legacy
+// channel-name predicate, without parsing or interning arbitrary function names.
+@[direct_array_access]
+fn channel_builtin_call_method(name string) ChannelBuiltinCallMethod {
+	mut start := 0
+	mut end := name.len
+	for start < end && is_trim_space_byte(name[start]) {
+		start++
+	}
+	for end > start && is_trim_space_byte(name[end - 1]) {
+		end--
+	}
+	for start < end && name[start] == `&` {
+		start++
+		for start < end && is_trim_space_byte(name[start]) {
+			start++
+		}
+	}
+	if end - start < 5 || name[start] != `c` || name[start + 1] != `h`
+		|| name[start + 2] != `a` || name[start + 3] != `n` || name[start + 4] != ` ` {
+		return .other
+	}
+	if end - start >= 9 && name[end - 9..end] == '.try_push' {
+		return .try_push
+	}
+	if end - start >= 8 && name[end - 8..end] == '.try_pop' {
+		return .try_pop
+	}
+	return .other
+}
+
 // is_channel_builtin_method_call_name reports whether `name`, behind any `&`
-// prefixes, spells the builtin `chan` method `method`. It scans the spelling in
-// place: call argument checks ask this for every argument of every call.
+// prefixes, spells the builtin `chan` method `method`. Keep the arbitrary-method
+// spelling boundary for callers that do not have a classified call name.
 @[direct_array_access]
 fn is_channel_builtin_method_call_name(name string, method string) bool {
 	mut start := 0
@@ -14516,15 +14554,15 @@ fn (tc &TypeChecker) selector_fn_value_param_is_mut(callee &flat.Node, param_idx
 		ResultType { *field_type.base_type }
 		else { field_type }
 	}
-	raw_fn_type := if callable_type is Alias {
-		tc.source_fn_alias_type_text(callable_type.name()) or { '' }
+	raw_fn_type_id := if callable_type is Alias {
+		flat.source_type_id(tc.source_fn_alias_type_text(callable_type.name()) or { '' })
 	} else {
-		callable_type.name()
+		callable_type.source_type_id()
 	}
-	if raw_fn_type.len == 0 {
+	if raw_fn_type_id == 0 {
 		return false
 	}
-	params, _ := fn_diagnostic_type_parts(raw_fn_type)
+	params, _ := fn_diagnostic_type_parts_id(raw_fn_type_id)
 	return param_idx >= 0 && param_idx < params.len && params[param_idx].is_mut
 }
 
@@ -14556,7 +14594,7 @@ fn (tc &TypeChecker) call_local_fn_param_is_mut(node flat.Node, param_idx int) b
 		if param.kind != .param || param.value != callee.value {
 			continue
 		}
-		modes := fn_diagnostic_parameter_modes(param.typ_text())
+		modes := fn_diagnostic_parameter_modes_id(param.typ)
 		return param_idx >= 0 && param_idx < modes.len && modes[param_idx] == 'mut'
 	}
 	return false
@@ -16253,6 +16291,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	} else {
 		builtin_void_type
 	}
+	// Classify after all CallInfo rewrites; the immutable final name owns this result.
+	channel_method := channel_builtin_call_method(info.name)
 	mut expanded_arg_offset := 0
 	mut pointer_slot_call_args := []flat.NodeId{}
 	for i in 1 + info.arg_offset .. node.children_count {
@@ -16625,7 +16665,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			expected = elem_type
 		}
-		if is_channel_builtin_method_call_name(info.name, 'try_push') && info.has_receiver
+		if channel_method == .try_push && info.has_receiver
 			&& param_idx == 1 {
 			actual_push := unalias_type(tc.resolve_type(arg_id))
 			expected_push := unalias_type(expected)
@@ -16653,7 +16693,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
-		if is_channel_builtin_method_call_name(info.name, 'try_pop') && info.has_receiver
+		if channel_method == .try_pop && info.has_receiver
 			&& param_idx == 1 {
 			actual_pop := unalias_type(tc.resolve_type(arg_id))
 			expected_pop := unalias_type(expected)
@@ -16691,7 +16731,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
-		param_is_mut := (is_channel_builtin_method_call_name(info.name, 'try_pop')
+		param_is_mut := (channel_method == .try_pop
 			&& param_idx == 1) || tc.call_param_is_mut(info, param_idx)
 			|| tc.explicit_generic_source_param_is_mut(node, info, param_idx)
 			|| (info.name.len == 0
@@ -16720,7 +16760,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.record_error_at(.call_arg_mismatch, '${call_kind} with `shared` arguments cannot be called while `${tc.autolocked_map}` is locked automatically, call it in a separate statement', arg_id, arg_pos)
 		}
 		if call_param_is_shared(info, param_idx) && !tc.expr_is_explicit_shared_arg(arg_id) {
-			param_name := tc.source_call_param_name(info.name, param_idx) or {
+			param_name := tc.source_call_param_name_with_channel_method(info.name, param_idx, channel_method) or {
 				'${param_idx + 1 - (if info.has_receiver { 1 } else { 0 })}'
 			}
 			call_kind := if info.has_receiver { 'method' } else { 'function' }
@@ -16782,7 +16822,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg
 			&& !tc.disable_explicit_mutability {
-			param_label := if param_name := tc.source_call_param_name(info.name, param_idx) {
+			param_label := if param_name := tc.source_call_param_name_with_channel_method(info.name, param_idx, channel_method) {
 				'`${param_name}`'
 			} else {
 				'${param_idx + 1 - (if info.has_receiver { 1 } else { 0 })}'
@@ -16811,7 +16851,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.record_error_at(.call_arg_mismatch, 'array literal can not be modified', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				tc.record_error_at(.call_arg_mismatch, 'cannot pass expression as `mut`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			}
-			param_label := if param_name := tc.source_call_param_name(info.name, param_idx) {
+			param_label := if param_name := tc.source_call_param_name_with_channel_method(info.name, param_idx, channel_method) {
 				'`${param_name}`'
 			} else {
 				'${param_idx + 1 - (if info.has_receiver { 1 } else { 0 })}'
@@ -17058,7 +17098,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		if expected is Pointer
-			&& !is_channel_builtin_method_call_name(info.name, 'try_push')
+			&& channel_method != .try_push
 			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
 				.string_literal, .string_interp] {
 			mut raw_reference_name_id := u32(0)
@@ -17111,7 +17151,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				&& unalias_type(expected).is_integer() {
 				continue
 			}
-			if is_channel_builtin_method_call_name(info.name, 'try_pop') && param_idx == 1 {
+			if channel_method == .try_pop && param_idx == 1 {
 				tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as argument for `try_pop` (`${call_argument_type_name(expected)}` expected)', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				continue
 			}
@@ -17237,7 +17277,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
-		if is_channel_builtin_method_call_name(info.name, 'try_pop') && info.has_receiver
+		if channel_method == .try_pop && info.has_receiver
 			&& param_idx == 1 && mut_arg_node.is_mut
 			&& !tc.chan_try_pop_destination_is_valid(arg_id, actual) {
 			if tc.should_diagnose(id) {
@@ -17385,10 +17425,10 @@ fn (mut tc TypeChecker) infer_call_info_receiver(node flat.Node, info CallInfo) 
 	}
 	if callee.kind == .ident && info.name.contains('.') && node.children_count > 1 {
 		receiver_type := unwrap_pointer(info.params[0])
-		owner := owner_name_view(info.name)
-		receiver_name := receiver_type.name()
-		if owner == receiver_name || call_owner_has_qualified_suffix(owner, receiver_name)
-			|| call_owner_has_qualified_suffix(receiver_name, owner) {
+		owner_id := flat.source_type_id(owner_name_view(info.name))
+		receiver_name_id := receiver_type.source_type_id()
+		if owner_id == receiver_name_id || call_owner_has_qualified_suffix_id(owner_id, receiver_name_id)
+			|| call_owner_has_qualified_suffix_id(receiver_name_id, owner_id) {
 			return CallInfo{
 				...info
 				has_receiver: true
@@ -17570,11 +17610,17 @@ fn (tc &TypeChecker) call_arg_is_callee_receiver(node flat.Node, arg_id flat.Nod
 		&& receiver.pos.offset == arg.pos.offset && receiver.pos.end == arg.pos.end
 }
 
-// call_owner_has_qualified_suffix compares `.suffix` without creating its spelling.
+// call_owner_has_qualified_suffix compares spellings at a textual name boundary.
 @[inline]
 fn call_owner_has_qualified_suffix(name string, suffix string) bool {
-	return name.len > suffix.len && name[name.len - suffix.len - 1] == `.`
-		&& name.ends_with(suffix)
+	return call_owner_has_qualified_suffix_id(flat.source_type_id(name), flat.source_type_id(suffix))
+}
+
+// call_owner_has_qualified_suffix_id compares exact raw `.suffix` components.
+@[inline]
+fn call_owner_has_qualified_suffix_id(name_id u32, suffix_id u32) bool {
+	return flat.source_type_shape(name_id).has(.dotted)
+		&& suffix_id in flat.source_type_syntax(name_id).qualifier_suffixes()
 }
 
 fn (tc &TypeChecker) call_arg_is_lowered_method_receiver(node flat.Node, info CallInfo, param_idx int, expected &Type) bool {
@@ -17586,10 +17632,10 @@ fn (tc &TypeChecker) call_arg_is_lowered_method_receiver(node flat.Node, info Ca
 		return false
 	}
 	receiver_type := unwrap_pointer(expected)
-	owner := owner_name_view(info.name)
-	receiver_name := receiver_type.name()
-	return owner == receiver_name || call_owner_has_qualified_suffix(owner, receiver_name)
-		|| call_owner_has_qualified_suffix(receiver_name, owner)
+	owner_id := flat.source_type_id(owner_name_view(info.name))
+	receiver_name_id := receiver_type.source_type_id()
+	return owner_id == receiver_name_id || call_owner_has_qualified_suffix_id(owner_id, receiver_name_id)
+		|| call_owner_has_qualified_suffix_id(receiver_name_id, owner_id)
 }
 
 fn (tc &TypeChecker) current_variadic_param_elem_name(id flat.NodeId) ?u32 {
@@ -17828,7 +17874,15 @@ fn (tc &TypeChecker) source_call_param_name(call_name string, param_idx int) ?st
 	if call_name == '' || param_idx < 0 {
 		return none
 	}
-	if is_channel_builtin_method_call_name(call_name, 'try_pop') && param_idx == 1 {
+	return tc.source_call_param_name_with_channel_method(call_name, param_idx,
+		channel_builtin_call_method(call_name))
+}
+
+fn (tc &TypeChecker) source_call_param_name_with_channel_method(call_name string, param_idx int, channel_method ChannelBuiltinCallMethod) ?string {
+	if call_name == '' || param_idx < 0 {
+		return none
+	}
+	if channel_method == .try_pop && param_idx == 1 {
 		return 'obj'
 	}
 	for i in tc.top_level_idx {
@@ -19513,9 +19567,9 @@ fn (tc &TypeChecker) generic_signature_arg_text(fn_name string, arg_id u32, arg_
 	if locked_id == arg_id {
 		return arg_id
 	}
-	expected := arg_type.name()
-	if tc.parse_fn_signature_type(fn_name, arg_id).name() != expected
-		&& tc.parse_fn_signature_type(fn_name, locked_id).name() == expected {
+	expected := arg_type.source_type_id()
+	if tc.parse_fn_signature_type(fn_name, arg_id).source_type_id() != expected
+		&& tc.parse_fn_signature_type(fn_name, locked_id).source_type_id() == expected {
 		return locked_id
 	}
 	return arg_id

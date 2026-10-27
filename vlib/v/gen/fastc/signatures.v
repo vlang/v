@@ -1803,7 +1803,7 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 }
 
 fn fastc_composite_type_part(typ string) string {
-	return flat.source_type_name(flat.source_type_syntax(flat.source_type_id(typ)).fastc_composite_part)
+	return flat.source_type_name(flat.source_type_composition_one(.fastc_composite_part, flat.source_type_id(typ)))
 }
 
 fn fastc_fixed_array_type(length string, element_type string) string {
@@ -1814,7 +1814,7 @@ fn fastc_fixed_array_type_id(length string, element_type u32) u32 {
 	return flat.source_type_composition(.concat, [flat.source_type_id('FixedArray_'),
 		flat.source_type_id(fastc_fixed_array_length_part(length)),
 		flat.source_type_id('_FASTC_ARRAY_OF_'),
-		flat.source_type_syntax(element_type).fastc_composite_part])
+		flat.source_type_composition_one(.fastc_composite_part, element_type)])
 }
 
 fn fastc_fixed_array_length_part(length string) string {
@@ -2046,7 +2046,7 @@ fn fastc_array_c_type(element_type string) string {
 }
 
 fn fastc_array_c_type_id(element_type u32) u32 {
-	return flat.source_type_composition_two(.concat, flat.source_type_id('Array_'), flat.source_type_syntax(element_type).fastc_composite_part)
+	return flat.source_type_composition_two(.concat, flat.source_type_id('Array_'), flat.source_type_composition_one(.fastc_composite_part, element_type))
 }
 
 fn fastc_map_c_type(key_type string, value_type string) string {
@@ -2055,8 +2055,8 @@ fn fastc_map_c_type(key_type string, value_type string) string {
 
 fn fastc_map_c_type_id(key_type u32, value_type u32) u32 {
 	return flat.source_type_composition(.concat, [flat.source_type_id('Map_'),
-		flat.source_type_syntax(key_type).fastc_composite_part, flat.source_type_id('_'),
-		flat.source_type_syntax(value_type).fastc_composite_part])
+		flat.source_type_composition_one(.fastc_composite_part, key_type), flat.source_type_id('_'),
+		flat.source_type_composition_one(.fastc_composite_part, value_type)])
 }
 
 fn fastc_map_key_value_types(typ_id u32) ?(u32, u32) {
@@ -2085,7 +2085,7 @@ fn fastc_declared_map_key_value_types(typ_id u32, declared_kinds map[string]Fast
 	for type_key, kind in declared_kinds {
 		if kind !in [.enum_, .alias_] { continue }
 		c_type := fastc_c_declared_type_name(type_key)
-		prefix := flat.source_type_syntax(flat.source_type_id(c_type)).fastc_composite_part
+		prefix := flat.source_type_composition_one(.fastc_composite_part, flat.source_type_id(c_type))
 		// Later underscore boundaries are longer prefixes, preserving the longest match.
 		for index, candidate in syntax.underscore_prefixes() {
 			if candidate == prefix && index > matched_index {

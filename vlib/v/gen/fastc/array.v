@@ -1461,7 +1461,7 @@ fn fastc_array_initializer_c_type(array_type_id u32) string {
 	array_type := flat.source_type_name(array_type_id)
 	length := fastc_fixed_array_length_id(array_type_id) or { return array_type }
 	element_type := fastc_fixed_array_element_type(array_type_id) or { return array_type }
-	return 'FixedArray_${fastc_fixed_array_length_part(length)}_${flat.source_type_name(flat.source_type_syntax(element_type).fastc_composite_part)}'
+	return 'FixedArray_${fastc_fixed_array_length_part(length)}_${flat.source_type_name(flat.source_type_composition_one(.fastc_composite_part, element_type))}'
 }
 
 // fastc_collect_referenced_fixed_array_types finds every `FixedArray_<len>_FASTC_ARRAY_OF_<elem>`
@@ -1540,7 +1540,7 @@ fn fastc_write_fixed_array_declaration(name string, fixed_array_types flat.TypeT
 	if fixed_array_types.contains(element_key) {
 		fastc_write_fixed_array_declaration(element_key, fixed_array_types, mut emitted, mut out)
 	}
-	declaration_name := if flat.source_type_syntax(array_type).fastc_composite_part == array_type {
+	declaration_name := if flat.source_type_composition_one(.fastc_composite_part, array_type) == array_type {
 		flat.source_type_name(array_type)
 	} else {
 		name

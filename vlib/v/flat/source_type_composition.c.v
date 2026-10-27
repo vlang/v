@@ -33,6 +33,7 @@ pub enum SourceTypeComposition {
 	concat
 	inferred_expression
 	fastc_thread_handle
+	fastc_composite_part
 }
 
 struct SourceTypeCompositionEntry {
@@ -56,6 +57,7 @@ __global g_source_type_compositions [4096]voidptr
 // Concatenation accepts any number of parts, including an empty tuple.
 // inferred_expression takes raw expression-node bits instead of a spelling ID.
 // fastc_thread_handle encodes one source spelling into its FastC thread handle name.
+// fastc_composite_part applies FastC component escaping only when that spelling is requested.
 // Entries own only IDs, so borrowed type descriptors and worker arenas can change
 // or expire without invalidating a cached spelling.
 @[direct_array_access]
@@ -203,6 +205,14 @@ fn source_type_composition_text(kind SourceTypeComposition, parts []u32) string 
 		.thread { return 'thread ${source_type_name(parts[0])}' }
 		.named_parameter { return '${source_type_name(parts[0])} ${source_type_name(parts[1])}' }
 		.inferred_expression { return 'typeof(__expr_${int(parts[0])})' }
+		.fastc_composite_part {
+			text := source_type_name(parts[0])
+			return if text.contains(' ') || text.contains('*') || text.contains('.') {
+				text.replace(' ', '_').replace('*', '_ptr').replace('.', '__')
+			} else {
+				text
+			}
+		}
 		.fastc_thread_handle {
 			value_type := source_type_name(parts[0])
 			if value_type in ['', 'void'] { return '__vf_thread_void' }

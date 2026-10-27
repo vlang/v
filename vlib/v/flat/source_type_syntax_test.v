@@ -149,19 +149,47 @@ fn test_source_type_syntax_numeric_reconstruction_preserves_spelling() {
 	assert source_type_name(source_type_composition(.void_function_type_spaced, [t])) == 'fn (T)'
 }
 
-fn test_source_type_syntax_collisions_compare_ids() {
-	first := source_type_id('syntax_collision.First[T]')
-	second := source_type_id('syntax_collision.Second[U]')
-	slot := 27
-	a := source_type_syntax_miss(slot, first)
-	b := source_type_syntax_miss(slot, second)
+fn test_source_type_syntax_numeric_slots_compare_ids() {
+	first := source_type_id('syntax_slots.First[T]')
+	second := source_type_id('syntax_slots.Second[U]')
+	a := source_type_syntax(first)
+	b := source_type_syntax(second)
 	assert a != b
-	assert &source_type_syntax_find(slot, first).syntax == a
-	assert &source_type_syntax_find(slot, second).syntax == b
-	assert a.base == source_type_id('syntax_collision.First')
-	assert b.base == source_type_id('syntax_collision.Second')
+	assert &source_type_syntax_find(first).syntax == a
+	assert &source_type_syntax_find(second).syntax == b
+	assert a.base == source_type_id('syntax_slots.First')
+	assert b.base == source_type_id('syntax_slots.Second')
 	assert a.args() == [source_type_id('T')]
 	assert b.args() == [source_type_id('U')]
+}
+
+fn test_source_type_syntax_zero_slot_is_stable() {
+	empty := source_type_syntax(0)
+	assert empty == source_type_syntax(source_type_id(''))
+	assert empty.kind == .empty
+	assert empty.trimmed == 0
+	assert empty.args().len == 0
+	assert &source_type_syntax_find(0).syntax == empty
+}
+
+fn test_source_type_syntax_page_boundary_preserves_entries() {
+	mut before := source_type_id('syntax_page_boundary_0')
+	for i in 1 .. source_type_chunk_size {
+		if (before - 1) & (source_type_chunk_size - 1) == source_type_chunk_size - 1 {
+			break
+		}
+		before = source_type_id('syntax_page_boundary_${i}')
+	}
+	after := source_type_id('syntax_page_boundary_after')
+	assert (before - 1) & (source_type_chunk_size - 1) == source_type_chunk_size - 1
+	assert after == before + 1
+	left := source_type_syntax(before)
+	right := source_type_syntax(after)
+	assert left != right
+	assert left.trimmed == before
+	assert right.trimmed == after
+	assert source_type_syntax(before) == left
+	assert source_type_syntax(after) == right
 }
 
 fn test_source_type_syntax_does_not_retain_mutable_input_bytes() {
@@ -613,8 +641,8 @@ fn test_source_type_syntax_offsets_and_remaining_query_views() {
 	assert syntax.symbols() == [source_type_id('OtherThing'), source_type_id('Thing'),
 		source_type_id('Thing'), source_type_id('pkg.T'), source_type_id('T')]
 	assert syntax.symbols_first_offsets() == [u32(0), 5, 5, 23, 5]
-	assert source_type_syntax(source_type_id('fn (T)')).fastc_composite_part == source_type_id('fn_(T)')
-	assert source_type_syntax(source_type_id('&pkg.T*')).fastc_composite_part == source_type_id('&pkg__T_ptr')
+	assert source_type_composition_one(.fastc_composite_part, source_type_id('fn (T)')) == source_type_id('fn_(T)')
+	assert source_type_composition_one(.fastc_composite_part, source_type_id('&pkg.T*')) == source_type_id('&pkg__T_ptr')
 	assert source_type_syntax(source_type_id('T?')).contains_question
 	assert source_type_syntax(source_type_id('[]chan T')).channel_fragment
 	assert source_type_syntax(source_type_id('void (*)()')).c_function_pointer_hole
@@ -747,7 +775,7 @@ fn test_source_type_syntax_qualified_name_fast_path_preserves_views() {
 			raw.all_before_last('.')
 		})
 		assert syntax.vls_generic_words() == source_type_syntax_vls_generic_words(raw)
-		assert syntax.fastc_composite_part == source_type_id(raw.replace('.', '__'))
+		assert source_type_composition_one(.fastc_composite_part, id) == source_type_id(raw.replace('.', '__'))
 		assert syntax.typ_suffix == raw.ends_with('.typ')
 		assert syntax.typ_suffix_base == if raw.ends_with('.typ') {
 			syntax.qualifier
@@ -830,4 +858,112 @@ fn test_source_type_syntax_array_views_have_independent_headers() {
 	kinds := source_type_syntax(source_type_id('&Name')).symbol_is_name()
 	assert parts == [source_type_id('&'), source_type_id('Name')]
 	assert kinds == [false, true]
+}
+
+fn source_type_syntax_expected_underscore_parts(text string, suffix bool) []u32 {
+	mut parts := []u32{}
+	for i, c in text {
+		if c == `_` {
+			parts << source_type_id(if suffix { text[i + 1..] } else { text[..i] })
+		}
+	}
+	return parts
+}
+
+fn test_source_type_syntax_lazy_underscore_parts_preserve_raw_bytes() {
+	for text in ['', '_', '__', '_lead', 'tail_', 'a__b_', ' padded_name_ ', 'pkg.under_score.Name',
+		'&?map[_K]fn (a_b) x_y[bad_'] {
+		id := source_type_id(text)
+		syntax := source_type_syntax(id)
+		prefixes := syntax.underscore_prefixes()
+		suffixes := syntax.underscore_suffixes()
+		assert prefixes == source_type_syntax_expected_underscore_parts(text, false)
+		assert suffixes == source_type_syntax_expected_underscore_parts(text, true)
+		assert prefixes.data == syntax.underscore_prefixes().data
+		assert suffixes.data == syntax.underscore_suffixes().data
+		assert syntax.last_underscore_prefix() == source_type_id(text.all_before_last('_'))
+		assert syntax.last_underscore_suffix() == source_type_id(text.all_after_last('_'))
+	}
+	// A manually initialized zero-value record retains its empty view behavior.
+	zero := SourceTypeSyntax{}
+	assert zero.underscore_prefixes().len == 0
+	assert zero.underscore_suffixes().len == 0
+}
+
+fn test_source_type_syntax_underscore_directions_are_independently_lazy() {
+	id := source_type_id('syntax_lazy_underscore_direction__fresh_')
+	syntax := source_type_syntax(id)
+	prefix_slot := source_type_syntax_underscore_slot(id, false)
+	suffix_slot := source_type_syntax_underscore_slot(id, true)
+	assert isnil(source_type_syntax_underscore_find(prefix_slot, id, false))
+	assert isnil(source_type_syntax_underscore_find(suffix_slot, id, true))
+	prefixes := syntax.underscore_prefixes()
+	assert !isnil(source_type_syntax_underscore_find(prefix_slot, id, false))
+	assert isnil(source_type_syntax_underscore_find(suffix_slot, id, true))
+	suffixes := syntax.underscore_suffixes()
+	assert !isnil(source_type_syntax_underscore_find(suffix_slot, id, true))
+	assert prefixes == source_type_syntax_expected_underscore_parts(source_type_name(id), false)
+	assert suffixes == source_type_syntax_expected_underscore_parts(source_type_name(id), true)
+	// A missing underscore also has a published negative cache entry.
+	empty_id := source_type_id('SyntaxLazyUnderscoreAbsentFresh')
+	empty := source_type_syntax(empty_id)
+	assert empty.underscore_prefixes().len == 0
+	assert !isnil(source_type_syntax_underscore_find(source_type_syntax_underscore_slot(empty_id, false), empty_id, false))
+	assert isnil(source_type_syntax_underscore_find(source_type_syntax_underscore_slot(empty_id, true), empty_id, true))
+}
+
+fn source_type_syntax_underscore_worker(id u32, suffix bool) []u32 {
+	mut result := []u32{}
+	for _ in 0 .. 64 {
+		syntax := source_type_syntax(id)
+		result = if suffix { syntax.underscore_suffixes() } else { syntax.underscore_prefixes() }
+	}
+	return result
+}
+
+fn test_source_type_syntax_underscore_parallel_publication_is_stable() {
+	id := source_type_id('syntax_lazy_underscore_parallel__fresh_')
+	mut threads := []thread []u32{}
+	for worker in 0 .. 8 {
+		threads << spawn source_type_syntax_underscore_worker(id, worker % 2 != 0)
+	}
+	syntax := source_type_syntax(id)
+	for worker, handle in threads {
+		parts := handle.wait()
+		expected := if worker % 2 != 0 {
+			syntax.underscore_suffixes()
+		} else {
+			syntax.underscore_prefixes()
+		}
+		assert parts == expected
+		assert parts.data == expected.data
+	}
+}
+
+fn source_type_syntax_underscore_in_disposable_scope() u32 {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		id := source_type_id('syntax_lazy_underscore_arena__fresh_'.clone())
+		source_type_syntax(id).underscore_prefixes()
+		source_type_syntax(id).underscore_suffixes()
+		unsafe {
+			prealloc_scope_leave(scope)
+			prealloc_scope_free_after(scope)
+			prealloc_thread_cleanup()
+		}
+		return id
+	} $else {
+		id := source_type_id('syntax_lazy_underscore_arena__fresh_'.clone())
+		source_type_syntax(id).underscore_prefixes()
+		source_type_syntax(id).underscore_suffixes()
+		return id
+	}
+}
+
+fn test_source_type_syntax_underscore_parts_outlive_the_creating_worker() {
+	handle := spawn source_type_syntax_underscore_in_disposable_scope()
+	id := handle.wait()
+	syntax := source_type_syntax(id)
+	assert syntax.underscore_prefixes() == source_type_syntax_expected_underscore_parts(source_type_name(id), false)
+	assert syntax.underscore_suffixes() == source_type_syntax_expected_underscore_parts(source_type_name(id), true)
 }

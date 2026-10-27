@@ -16556,7 +16556,7 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 			t.canonical_generic_specialization_arg(syntax.bracket_suffix))
 	}
 	if fixed := t.canonical_suffix_fixed_array_arg_id(clean_id) { return fixed }
-	if syntax.underscored && flat.source_type_syntax(syntax.last_underscore_suffix).decimal
+	if syntax.underscored && flat.source_type_syntax(syntax.last_underscore_suffix()).decimal
 		&& !t.type_name_is_declared_id(clean_id) {
 		// Short symbol spellings are decoded at their emitted-name boundary.
 		if fixed := t.generic_fixed_array_type_arg_from_short_suffix_id(clean_id) {
@@ -16614,13 +16614,13 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 fn (t &Transformer) generic_fixed_array_type_arg_from_short_suffix_id(suffix_id u32) ?u32 {
 	clean := t.trimmed_type_id(suffix_id)
 	syntax := flat.source_type_syntax(clean)
-	if !syntax.underscored || syntax.last_underscore_prefix == 0
-		|| !flat.source_type_syntax(syntax.last_underscore_suffix).decimal {
+	if !syntax.underscored || syntax.last_underscore_prefix() == 0
+		|| !flat.source_type_syntax(syntax.last_underscore_suffix()).decimal {
 		return none
 	}
-	elem := t.generic_type_arg_from_suffix_with_containers_id(syntax.last_underscore_prefix)
+	elem := t.generic_type_arg_from_suffix_with_containers_id(syntax.last_underscore_prefix())
 	if elem == 0 { return none }
-	candidate := flat.source_type_composition_two(.fixed_array, syntax.last_underscore_suffix, elem)
+	candidate := flat.source_type_composition_two(.fixed_array, syntax.last_underscore_suffix(), elem)
 	if generic_type_arg_short_id(candidate) == clean { return candidate }
 	return none
 }
@@ -16761,12 +16761,12 @@ fn (t &Transformer) canonical_short_fixed_array_arg_id(arg_id u32) ?u32 {
 	clean_id := t.trimmed_type_id(arg_id)
 	if clean_id == 0 || t.type_name_is_declared_id(clean_id) { return none }
 	syntax := flat.source_type_syntax(clean_id)
-	if !syntax.underscored || syntax.last_underscore_prefix == 0 || syntax.last_underscore_suffix == 0 {
+	if !syntax.underscored || syntax.last_underscore_prefix() == 0 || syntax.last_underscore_suffix() == 0 {
 		return none
 	}
-	len_id := syntax.last_underscore_suffix
+	len_id := syntax.last_underscore_suffix()
 	if !flat.source_type_syntax(len_id).decimal { return none }
-	encoded_elem := syntax.last_underscore_prefix
+	encoded_elem := syntax.last_underscore_prefix()
 	canonical_elem := t.canonical_generic_specialization_arg(encoded_elem)
 	if canonical_elem == encoded_elem && !types.is_builtin_type_name_id(encoded_elem)
 		&& !t.type_name_is_declared_id(encoded_elem) {

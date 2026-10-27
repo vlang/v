@@ -78,3 +78,19 @@ fn test_source_type_composition_fastc_thread_handle_preserves_codec() {
 	}
 	assert source_type_composition_one(.fastc_thread_handle, source_type_id([u8(0), 255].bytestr())) == source_type_id('__vf_thread_k_00_ff')
 }
+
+fn test_source_type_composition_fastc_component_preserves_raw_codec() {
+	inputs := ['', 'int', 'pkg.Type', '*', '_ptr', 'a*b c.d', 'fn (pkg.T*)', '\t T\n', 'é.*']
+	expected := ['', 'int', 'pkg__Type', '_ptr', '_ptr', 'a_ptrb_c__d', 'fn_(pkg__T_ptr)', '\t_T\n',
+		'é___ptr']
+	for i, raw in inputs {
+		id := source_type_id(raw)
+		for _ in 0 .. 2 {
+			assert source_type_composition_one(.fastc_composite_part, id) == source_type_id(expected[i])
+		}
+	}
+	zero := [u8(0)].bytestr()
+	last := [u8(255)].bytestr()
+	raw := zero + ' *.' + last
+	assert source_type_composition_one(.fastc_composite_part, source_type_id(raw)) == source_type_id(zero + '__ptr__' + last)
+}

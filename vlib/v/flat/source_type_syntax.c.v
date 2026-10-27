@@ -64,11 +64,9 @@ pub struct SourceTypeSyntax {
 	bracket_generic_parts_span          SourceTypeSyntaxSpan
 	tuple_function_components_span      SourceTypeSyntaxSpan
 	plain_comma_parts_span              SourceTypeSyntaxSpan
-	underscore_prefixes_span            SourceTypeSyntaxSpan
 	symbol_parts_span                   SourceTypeSyntaxSpan
 	symbol_is_name_span                 SourceTypeSyntaxSpan
 	dotted_parts_span                   SourceTypeSyntaxSpan
-	underscore_suffixes_span            SourceTypeSyntaxSpan
 	generic_mentions_span               SourceTypeSyntaxSpan
 	receiver_app_args_span              SourceTypeSyntaxSpan
 	checker_bracket_components_span     SourceTypeSyntaxSpan
@@ -191,8 +189,6 @@ pub:
 	main_unlocked                      u32
 	encoded_fixed_length               u32
 	encoded_fixed_base                 u32
-	last_underscore_prefix             u32
-	last_underscore_suffix             u32
 	map_name_prefix                    bool
 	suffix_bracket_length              u32
 	suffix_bracket_valid               bool
@@ -315,7 +311,6 @@ pub:
 	parser_fn_decl_valid              bool
 	parser_fn_decl_params             u32
 	parser_fn_decl_result             u32
-	fastc_composite_part              u32
 	contains_question                 bool
 	contains_union                    bool
 	named_variant_dot_valid           bool
@@ -493,10 +488,12 @@ pub fn (syntax &SourceTypeSyntax) plain_comma_parts() []u32 {
 	return syntax.ids(syntax.plain_comma_parts_span)
 }
 
-// underscore_prefixes returns a process-owned immutable array view.
+// underscore_prefixes returns a lazily cached process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) underscore_prefixes() []u32 {
-	return syntax.ids(syntax.underscore_prefixes_span)
+	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
+	id := unsafe { *&u32(syntax.payload) }
+	return source_type_syntax_underscore_ids(id, false)
 }
 
 // symbol_parts returns a process-owned immutable array view.
@@ -517,10 +514,30 @@ pub fn (syntax &SourceTypeSyntax) dotted_parts() []u32 {
 	return syntax.ids(syntax.dotted_parts_span)
 }
 
-// underscore_suffixes returns a process-owned immutable array view.
+// underscore_suffixes returns a lazily cached process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) underscore_suffixes() []u32 {
-	return syntax.ids(syntax.underscore_suffixes_span)
+	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
+	id := unsafe { *&u32(syntax.payload) }
+	return source_type_syntax_underscore_ids(id, true)
+}
+
+// last_underscore_prefix returns the exact raw component after querying its cached view.
+// When no underscore occurs, it returns the original spelling ID.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) last_underscore_prefix() u32 {
+	parts := syntax.underscore_prefixes()
+	if parts.len > 0 { return parts[parts.len - 1] }
+	return if isnil(syntax.payload) { u32(0) } else { unsafe { *&u32(syntax.payload) } }
+}
+
+// last_underscore_suffix returns the exact raw component after querying its cached view.
+// When no underscore occurs, it returns the original spelling ID.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) last_underscore_suffix() u32 {
+	parts := syntax.underscore_suffixes()
+	if parts.len > 0 { return parts[parts.len - 1] }
+	return if isnil(syntax.payload) { u32(0) } else { unsafe { *&u32(syntax.payload) } }
 }
 
 // generic_mentions returns a process-owned immutable array view.
@@ -776,7 +793,6 @@ struct SourceTypeSyntaxParsed {
 	fn_fragment                        bool
 	compact_fn_spelling                u32
 	first_bracket_raw_inner            u32
-	underscore_prefixes                []u32 = source_type_syntax_empty_ids()
 	cgen_generic_placeholder           bool
 	fixed_array_type                   bool
 	typeof_valid                       bool
@@ -797,8 +813,6 @@ struct SourceTypeSyntaxParsed {
 	main_unlocked                      u32
 	encoded_fixed_length               u32
 	encoded_fixed_base                 u32
-	last_underscore_prefix             u32
-	last_underscore_suffix             u32
 	map_name_prefix                    bool
 	suffix_bracket_length              u32
 	suffix_bracket_valid               bool
@@ -831,7 +845,6 @@ struct SourceTypeSyntaxParsed {
 	fastc_array_marker                 bool
 	fastc_array_marker_payload         u32
 	c_map_payload                      u32
-	underscore_suffixes                []u32 = source_type_syntax_empty_ids()
 	c_ptr_name_base                    u32
 	c_tagged_type                      u32
 	backward_bracket_prefix            u32
@@ -950,7 +963,6 @@ struct SourceTypeSyntaxParsed {
 	parser_fn_decl_valid              bool
 	parser_fn_decl_params             u32
 	parser_fn_decl_result             u32
-	fastc_composite_part              u32
 	contains_question                 bool
 	contains_union                    bool
 	union_parts                       []u32 = source_type_syntax_empty_ids()
@@ -960,12 +972,116 @@ struct SourceTypeSyntaxParsed {
 }
 
 struct SourceTypeSyntaxEntry {
-	id     u32
 	syntax SourceTypeSyntax
-	next   &SourceTypeSyntaxEntry = unsafe { nil }
 }
 
-__global g_source_type_syntax [4096]voidptr
+// Positive IDs use the same bounded page indices as the spelling interner.
+// Zero is a valid empty spelling and has its own slot outside those pages.
+__global g_source_type_syntax_pages [source_type_chunk_count]voidptr
+__global g_source_type_syntax_empty voidptr
+
+// Prefixes and suffixes have independent cache entries: requesting either view
+// never interns the other. Empty views are cached too. The spelling ID is stored
+// in slot zero of the owning syntax payload, even for the empty spelling.
+struct SourceTypeUnderscoreEntry {
+	id     u32
+	suffix bool
+	len    int
+	next   &SourceTypeUnderscoreEntry = unsafe { nil }
+}
+
+__global g_source_type_underscore_parts [4096]voidptr
+
+@[inline]
+fn source_type_syntax_underscore_slot(id u32, suffix bool) int {
+	return int((id ^ (if suffix { u32(2166136261) } else { u32(0) })) & 4095)
+}
+
+fn source_type_syntax_underscore_ids(id u32, suffix bool) []u32 {
+	slot := source_type_syntax_underscore_slot(id, suffix)
+	cached := source_type_syntax_underscore_find(slot, id, suffix)
+	if !isnil(cached) { return source_type_syntax_underscore_view(cached) }
+	return source_type_syntax_underscore_miss(slot, id, suffix)
+}
+
+fn source_type_syntax_underscore_miss(slot int, id u32, suffix bool) []u32 {
+	// Interning can acquire the source spelling lock. Complete every spelling
+	// operation before taking that lock to publish the immutable result.
+	raw := source_type_name(id)
+	mut parts := source_type_syntax_empty_ids()
+	for i, c in raw {
+		if c == `_` {
+			parts << if suffix {
+				source_type_syntax_child_range_id(id, raw, i + 1, raw.len)
+			} else {
+				source_type_syntax_child_range_id(id, raw, 0, i)
+			}
+		}
+	}
+	source_type_lock()
+	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
+	existing := source_type_syntax_underscore_find(slot, id, suffix)
+	if !isnil(existing) { return source_type_syntax_underscore_view(existing) }
+	payload_bytes := u64(sizeof(SourceTypeUnderscoreEntry)) + u64(parts.len) * u64(sizeof(u32))
+	if payload_bytes > u64(0x7fffffff) {
+		panic('source type underscore components exceed the allocation limit')
+	}
+	mut entry := unsafe { &SourceTypeUnderscoreEntry(node_payload_alloc_zeroed(uint(payload_bytes))) }
+	if isnil(entry) { panic('could not allocate source type underscore components') }
+	unsafe {
+		*entry = SourceTypeUnderscoreEntry{
+			id:     id
+			suffix: suffix
+			len:    parts.len
+			next:   source_type_syntax_underscore_head(slot)
+		}
+		if parts.len > 0 {
+			vmemcpy(voidptr(&u8(entry) + sizeof(SourceTypeUnderscoreEntry)), parts.data,
+				parts.len * int(sizeof(u32)))
+		}
+	}
+	$if x32 {
+		C.atomic_store_u32(voidptr(&g_source_type_underscore_parts[slot]), u32(voidptr(entry)))
+	} $else {
+		C.atomic_store_u64(voidptr(&g_source_type_underscore_parts[slot]), u64(voidptr(entry)))
+	}
+	return source_type_syntax_underscore_view(entry)
+}
+
+@[inline]
+fn source_type_syntax_underscore_view(entry &SourceTypeUnderscoreEntry) []u32 {
+	return unsafe {
+		array{
+			data:         if entry.len == 0 {
+				nil
+			} else {
+				voidptr(&u8(entry) + sizeof(SourceTypeUnderscoreEntry))
+			}
+			len:          entry.len
+			cap:          entry.len
+			element_size: sizeof(u32)
+			flags:        .nogrow | .nofree
+		}
+	}
+}
+
+@[direct_array_access; inline]
+fn source_type_syntax_underscore_head(slot int) &SourceTypeUnderscoreEntry {
+	$if x32 {
+		return unsafe { &SourceTypeUnderscoreEntry(voidptr(C.atomic_load_u32(voidptr(&g_source_type_underscore_parts[slot])))) }
+	} $else {
+		return unsafe { &SourceTypeUnderscoreEntry(voidptr(C.atomic_load_u64(voidptr(&g_source_type_underscore_parts[slot])))) }
+	}
+}
+
+fn source_type_syntax_underscore_find(slot int, id u32, suffix bool) &SourceTypeUnderscoreEntry {
+	mut entry := source_type_syntax_underscore_head(slot)
+	for !isnil(entry) {
+		if entry.id == id && entry.suffix == suffix { return entry }
+		entry = entry.next
+	}
+	return unsafe { nil }
+}
 
 struct SourceTypeCaptureEntry {
 	actual  u32
@@ -1216,44 +1332,86 @@ fn source_type_predicate_find(slot int, actual u32, parameter u32, kind SourceTy
 }
 
 // source_type_syntax returns process-owned numeric spelling components. A cache
-// hit only compares IDs; spelling bytes are read only on cache misses.
+// hit addresses immutable components by ID without reading spelling bytes.
 @[direct_array_access]
 pub fn source_type_syntax(id u32) &SourceTypeSyntax {
-	slot := int(id & 4095)
-	cached := source_type_syntax_find(slot, id)
+	cached := source_type_syntax_find(id)
 	if !isnil(cached) {
 		return &cached.syntax
 	}
-	return source_type_syntax_miss(slot, id)
+	return source_type_syntax_miss(id)
+}
+
+@[inline]
+fn source_type_syntax_pointer_load(slot voidptr) voidptr {
+	$if x32 {
+		return unsafe { voidptr(C.atomic_load_u32(slot)) }
+	} $else {
+		return unsafe { voidptr(C.atomic_load_u64(slot)) }
+	}
+}
+
+@[inline]
+fn source_type_syntax_pointer_store(slot voidptr, value voidptr) {
+	$if x32 {
+		C.atomic_store_u32(slot, u32(value))
+	} $else {
+		C.atomic_store_u64(slot, u64(value))
+	}
 }
 
 @[direct_array_access; inline]
-fn source_type_syntax_head(slot int) &SourceTypeSyntaxEntry {
-	$if x32 {
-		return unsafe { &SourceTypeSyntaxEntry(voidptr(C.atomic_load_u32(voidptr(&g_source_type_syntax[slot])))) }
-	} $else {
-		return unsafe { &SourceTypeSyntaxEntry(voidptr(C.atomic_load_u64(voidptr(&g_source_type_syntax[slot])))) }
+fn source_type_syntax_find(id u32) &SourceTypeSyntaxEntry {
+	if id == 0 {
+		return unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(voidptr(&g_source_type_syntax_empty))) }
 	}
+	idx := id - 1
+	page_index := idx >> source_type_chunk_bits
+	if page_index >= source_type_chunk_count {
+		// The miss path preserves source_type_name's invalid-ID diagnostic.
+		return unsafe { nil }
+	}
+	page := source_type_syntax_pointer_load(voidptr(&g_source_type_syntax_pages[page_index]))
+	if isnil(page) {
+		return unsafe { nil }
+	}
+	slot := unsafe { voidptr(&(&voidptr(page))[idx & (source_type_chunk_size - 1)]) }
+	return unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
 }
 
-fn source_type_syntax_find(slot int, id u32) &SourceTypeSyntaxEntry {
-	mut entry := source_type_syntax_head(slot)
-	for !isnil(entry) {
-		if entry.id == id {
-			return entry
+@[direct_array_access]
+fn source_type_syntax_publish(id u32, entry &SourceTypeSyntaxEntry) {
+	// The caller owns the spelling writer lock and has rechecked this ID.
+	if id == 0 {
+		source_type_syntax_pointer_store(voidptr(&g_source_type_syntax_empty), voidptr(entry))
+		return
+	}
+	idx := id - 1
+	page_index := idx >> source_type_chunk_bits
+	// Parsing the spelling before publication already checked the ID bounds.
+	mut page := source_type_syntax_pointer_load(voidptr(&g_source_type_syntax_pages[page_index]))
+	new_page := isnil(page)
+	if new_page {
+		page = node_payload_alloc_zeroed(source_type_chunk_size * sizeof(voidptr))
+		if isnil(page) {
+			panic('could not allocate a source type syntax page')
 		}
-		entry = entry.next
 	}
-	return unsafe { nil }
+	slot := unsafe { voidptr(&(&voidptr(page))[idx & (source_type_chunk_size - 1)]) }
+	source_type_syntax_pointer_store(slot, voidptr(entry))
+	if new_page {
+		// Publish a new page only after its first complete entry is visible.
+		source_type_syntax_pointer_store(voidptr(&g_source_type_syntax_pages[page_index]), page)
+	}
 }
 
-fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
+fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	// Interning components can acquire the source spelling writer lock itself.
 	// Finish every spelling operation before taking that lock for publication.
 	parsed := source_type_syntax_parse(id, source_type_name(id))
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
-	cached := source_type_syntax_find(slot, id)
+	cached := source_type_syntax_find(id)
 	if !isnil(cached) {
 		return &cached.syntax
 	}
@@ -1280,10 +1438,8 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 		source_type_syntax_packed_ids_len(parsed.bracket_generic_parts, id) +
 		source_type_syntax_packed_ids_len(parsed.tuple_function_components, id) +
 		source_type_syntax_packed_ids_len(parsed.plain_comma_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.underscore_prefixes, id) +
 		source_type_syntax_packed_ids_len(parsed.symbol_parts, id) +
 		source_type_syntax_packed_ids_len(parsed.dotted_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.underscore_suffixes, id) +
 		source_type_syntax_packed_ids_len(parsed.generic_mentions, id) +
 		source_type_syntax_packed_ids_len(parsed.receiver_app_args, id) +
 		source_type_syntax_packed_ids_len(parsed.checker_bracket_components, id) +
@@ -1332,7 +1488,6 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 	// and preallocated arenas. The release store publishes them only when complete.
 	unsafe {
 		*entry = SourceTypeSyntaxEntry{
-			id:     id
 			syntax: SourceTypeSyntax{
 				payload:                             payload.ids
 				kind:                                parsed.kind
@@ -1431,7 +1586,6 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 				fn_fragment:                         parsed.fn_fragment
 				compact_fn_spelling:                 parsed.compact_fn_spelling
 				first_bracket_raw_inner:             parsed.first_bracket_raw_inner
-				underscore_prefixes_span:            source_type_syntax_owned_ids(parsed.underscore_prefixes, mut payload)
 				cgen_generic_placeholder:            parsed.cgen_generic_placeholder
 				fixed_array_type:                    parsed.fixed_array_type
 				typeof_valid:                        parsed.typeof_valid
@@ -1452,8 +1606,6 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 				main_unlocked:                       parsed.main_unlocked
 				encoded_fixed_length:                parsed.encoded_fixed_length
 				encoded_fixed_base:                  parsed.encoded_fixed_base
-				last_underscore_prefix:              parsed.last_underscore_prefix
-				last_underscore_suffix:              parsed.last_underscore_suffix
 				map_name_prefix:                     parsed.map_name_prefix
 				suffix_bracket_length:               parsed.suffix_bracket_length
 				suffix_bracket_valid:                parsed.suffix_bracket_valid
@@ -1486,7 +1638,6 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 				fastc_array_marker:                  parsed.fastc_array_marker
 				fastc_array_marker_payload:          parsed.fastc_array_marker_payload
 				c_map_payload:                       parsed.c_map_payload
-				underscore_suffixes_span:            source_type_syntax_owned_ids(parsed.underscore_suffixes, mut payload)
 				c_ptr_name_base:                     parsed.c_ptr_name_base
 				c_tagged_type:                       parsed.c_tagged_type
 				backward_bracket_prefix:             parsed.backward_bracket_prefix
@@ -1604,7 +1755,6 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 				parser_fn_decl_valid:                parsed.parser_fn_decl_valid
 				parser_fn_decl_params:               parsed.parser_fn_decl_params
 				parser_fn_decl_result:               parsed.parser_fn_decl_result
-				fastc_composite_part:                parsed.fastc_composite_part
 				contains_question:                   parsed.contains_question
 				contains_union:                      parsed.contains_union
 				union_parts_span:                    source_type_syntax_owned_ids(parsed.union_parts, mut payload)
@@ -1612,14 +1762,9 @@ fn source_type_syntax_miss(slot int, id u32) &SourceTypeSyntax {
 				named_variant_dot_prefix:            parsed.named_variant_dot_prefix
 				named_variant_dot_suffix:            parsed.named_variant_dot_suffix
 			}
-			next:   source_type_syntax_head(slot)
 		}
 	}
-	$if x32 {
-		C.atomic_store_u32(voidptr(&g_source_type_syntax[slot]), u32(voidptr(entry)))
-	} $else {
-		C.atomic_store_u64(voidptr(&g_source_type_syntax[slot]), u64(voidptr(entry)))
-	}
+	source_type_syntax_publish(id, entry)
 	return &entry.syntax
 }
 
@@ -2140,16 +2285,13 @@ fn source_type_syntax_cgen_collect_args(raw string, mut candidates []u32) {
 	source_type_syntax_cgen_collect_placeholders(raw[start..], mut candidates)
 }
 
-fn source_type_syntax_cgen_decl_authority(raw string) bool {
+fn source_type_syntax_cgen_declaration(raw string) (bool, bool) {
 	clean := if raw.contains(' ') { raw.replace(' ', '') } else { raw }
-	return clean in ['Option', '__v_option', '__v_result'] || clean.starts_with('Option_')
+	authority := clean in ['Option', '__v_option', '__v_result'] || clean.starts_with('Option_')
 		|| clean.starts_with('__v_option_') || clean.starts_with('__v_result_')
-}
-
-fn source_type_syntax_cgen_decl_unusable(raw string) bool {
-	clean := if raw.contains(' ') { raw.replace(' ', '') } else { raw }
-	return source_type_syntax_cgen_decl_authority(clean) || clean == 'void' || clean.starts_with('void[')
+	unusable := authority || clean == 'void' || clean.starts_with('void[')
 		|| clean.ends_with(']void') || clean.contains(']void[')
+	return unusable, authority
 }
 
 fn source_type_syntax_open_generic_receiver_marker(raw string) bool {
@@ -2228,6 +2370,7 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 	main_fragment := raw.contains('main.')
 	compact_fn_fragment := raw.contains('fn (')
 	contains_doubleunderscore := raw.contains('__')
+	cgen_decl_unusable, cgen_decl_authority := source_type_syntax_cgen_declaration(raw)
 	last_star := raw.last_index_u8(`*`)
 	named_variant := raw.contains(named_variant_marker)
 	mut named_variant_valid := false
@@ -2252,8 +2395,8 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 	application_base, application_args, application_valid := source_type_syntax_application(raw, false)
 	generic_app_base, generic_app_args, generic_app_valid := source_type_syntax_application(raw, true)
 	postfix_base, postfix_dims := source_type_syntax_postfix(clean)
-	parameter_type, parameter_mut_type := source_type_syntax_parameter(raw)
-	legacy_parameter_type, parameter_name, parameter_named, parameter_is_mut := source_type_syntax_parameter_details(raw)
+	legacy_parameter_type, parameter_name, parameter_named, parameter_is_mut, parameter_text := source_type_syntax_parameter_details(raw)
+	parameter_type, parameter_mut_type := source_type_syntax_parameter(parameter_text, legacy_parameter_type, parameter_is_mut)
 	legacy_parameter_mut_type := if parameter_is_mut {
 		source_type_composition_one(.mutable_parameter, legacy_parameter_type)
 	} else {
@@ -2320,13 +2463,7 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 	for raw_pointer_depth < raw.len && raw[raw_pointer_depth] == `&` { raw_pointer_depth++ }
 	mut qualifier_prefixes := source_type_syntax_empty_ids()
 	mut qualifier_suffixes := source_type_syntax_empty_ids()
-	mut underscore_prefixes := source_type_syntax_empty_ids()
-	mut underscore_suffixes := source_type_syntax_empty_ids()
 	for i, c in raw {
-		if c == `_` {
-			underscore_prefixes << source_type_syntax_child_range_id(id, raw, 0, i)
-			underscore_suffixes << source_type_syntax_child_range_id(id, raw, i + 1, raw.len)
-		}
 		if c == `.` {
 			qualifier_prefixes << source_type_syntax_child_range_id(id, raw, 0, i)
 			qualifier_suffixes << source_type_syntax_child_range_id(id, raw, i + 1, raw.len)
@@ -2686,7 +2823,6 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		} else {
 			u32(0)
 		}
-		underscore_prefixes:                underscore_prefixes
 		cgen_generic_placeholder:           cgen_generic_placeholder
 		fixed_array_type:                   fixed_array_type
 		typeof_valid:                       typeof_valid
@@ -2727,16 +2863,6 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		main_unlocked:                      source_type_syntax_main_unlocked(id, raw)
 		encoded_fixed_length:               encoded_fixed_length
 		encoded_fixed_base:                 encoded_fixed_base
-		last_underscore_prefix:             if underscore_prefixes.len == 0 {
-			id
-		} else {
-			underscore_prefixes.last()
-		}
-		last_underscore_suffix:             if underscore_suffixes.len == 0 {
-			id
-		} else {
-			underscore_suffixes.last()
-		}
 		map_name_prefix:                    raw.starts_with('map_')
 		suffix_bracket_length:              if suffix_bracket_valid {
 			source_type_syntax_child_id(id, raw, source_type_query_trim(raw[last_bracket + 1..raw.len - 1]))
@@ -2827,7 +2953,6 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		} else {
 			u32(0)
 		}
-		underscore_suffixes:                underscore_suffixes
 		c_ptr_name_base:                    if raw.ends_with('_ptr') {
 			source_type_syntax_child_range_id(id, raw, 0, raw.len - 4)
 		} else {
@@ -2931,8 +3056,8 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		}
 		cgen_placeholder_candidates:        source_type_syntax_cgen_placeholder_candidates(raw)
 		result_suffix:                      raw.ends_with('Result')
-		cgen_decl_unusable:                 source_type_syntax_cgen_decl_unusable(raw)
-		cgen_decl_authority:                source_type_syntax_cgen_decl_authority(raw)
+		cgen_decl_unusable:                 cgen_decl_unusable
+		cgen_decl_authority:                cgen_decl_authority
 		generic_encoded_fragment:           raw.contains('_T_')
 		fn_ptr_encoded_prefix:              raw.starts_with('_fn_ptr_')
 		c_result_prefix:                    raw.starts_with('__v_result')
@@ -3053,11 +3178,6 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		}
 		checker_parse_function_result:      checker_parse_function_result
 		checker_parse_function_has_params:  checker_parse_function_has_params
-		fastc_composite_part:               if raw.contains(' ') || raw.contains('*') || raw.contains('.') {
-			source_type_syntax_child_id(id, raw, raw.replace(' ', '_').replace('*', '_ptr').replace('.', '__'))
-		} else {
-			id
-		}
 		contains_question:                  raw.contains('?')
 		contains_union:                     raw.contains('|')
 		union_parts:                        source_type_syntax_union_parts(raw)
@@ -3117,9 +3237,9 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	decimal := source_type_syntax_decimal(raw)
 	contains_capital := source_type_syntax_contains_capital(raw)
 	contains_doubleunderscore := raw.contains('__')
+	cgen_decl_unusable, cgen_decl_authority := source_type_syntax_cgen_declaration(raw)
 	thread_value_type_valid, thread_value_type := source_type_syntax_thread_value(raw)
-	mut underscore_prefixes := source_type_syntax_empty_ids()
-	mut underscore_suffixes := source_type_syntax_empty_ids()
+	mut last_underscore := -1
 	mut qualifier_prefixes := source_type_syntax_empty_ids()
 	mut qualifier_suffixes := source_type_syntax_empty_ids()
 	mut dotted_parts := source_type_syntax_empty_ids()
@@ -3128,8 +3248,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	mut field_owner_js := u32(0)
 	for i, c in raw {
 		if c == `_` {
-			underscore_prefixes << source_type_id(raw[..i])
-			underscore_suffixes << source_type_id(raw[i + 1..])
+			last_underscore = i
 		} else if c == `.` {
 			prefix := source_type_id(raw[..i])
 			qualifier_prefixes << prefix
@@ -3223,29 +3342,18 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		c_pointer_base:                 id
 		c_ptr_name_suffix:              raw.ends_with('_ptr')
 		c_fn_type_fragment:             raw.contains('__vf_fn_type_')
-		underscored:                    underscore_prefixes.len > 0
+		underscored:                    last_underscore >= 0
 		plain_comma_parts:              identity_ids
 		source_wrapper_base:            id
 		declaration_head:               id
 		fn_fragment:                    raw.contains('fn')
 		compact_fn_spelling:            id
-		underscore_prefixes:            underscore_prefixes
 		array_chars_base:               id
 		lowercase_value_ident:          !qualified && raw[0] >= `a` && raw[0] <= `z`
 		first_capital:                  raw[0].is_capital()
 		main_unlocked:                  if main_base != 0 { main_base } else { id }
 		encoded_fixed_length:           encoded_fixed_length
 		encoded_fixed_base:             encoded_fixed_base
-		last_underscore_prefix:         if underscore_prefixes.len > 0 {
-			underscore_prefixes[underscore_prefixes.len - 1]
-		} else {
-			id
-		}
-		last_underscore_suffix:         if underscore_prefixes.len > 0 {
-			underscore_suffixes[underscore_suffixes.len - 1]
-		} else {
-			id
-		}
 		map_name_prefix:                raw.starts_with('map_')
 		symbol_parts:                   symbol_parts
 		symbol_is_name:                 symbol_is_name
@@ -3283,7 +3391,6 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		} else {
 			u32(0)
 		}
-		underscore_suffixes:            underscore_suffixes
 		c_ptr_name_base:                if raw.ends_with('_ptr') {
 			source_type_id(raw[..raw.len - 4])
 		} else {
@@ -3332,7 +3439,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		}
 		transform_fixed_length:         source_type_syntax_transform_length(raw)
 		ampersand_trimmed:              id
-		flattened_receiver_parts:       if underscore_prefixes.len > 0 {
+		flattened_receiver_parts:       if last_underscore >= 0 {
 			source_type_syntax_flattened_receiver(raw)
 		} else {
 			identity_ids
@@ -3356,8 +3463,8 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 			source_type_syntax_empty_ids()
 		}
 		result_suffix:                  raw.ends_with('Result')
-		cgen_decl_unusable:             source_type_syntax_cgen_decl_unusable(raw)
-		cgen_decl_authority:            source_type_syntax_cgen_decl_authority(raw)
+		cgen_decl_unusable:             cgen_decl_unusable
+		cgen_decl_authority:            cgen_decl_authority
 		generic_encoded_fragment:       raw.contains('_T_')
 		fn_ptr_encoded_prefix:          raw.starts_with('_fn_ptr_')
 		c_result_prefix:                raw.starts_with('__v_result')
@@ -3399,11 +3506,6 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		main_at_base:                   id
 		mangled_open_generic_marker:    source_type_syntax_mangled_generic_marker(raw)
 		c_shared_fragment:              raw.contains('__shared__')
-		fastc_composite_part:           if qualified {
-			source_type_id(raw.replace('.', '__'))
-		} else {
-			id
-		}
 		typ_suffix:                     typ_suffix
 		typ_suffix_base:                if typ_suffix { qualifier } else { u32(0) }
 		named_variant_dot_valid:        qualified
@@ -3835,7 +3937,7 @@ fn source_type_syntax_parameter_name(head string, tail string) bool {
 	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
 }
 
-fn source_type_syntax_parameter_details(raw string) (u32, u32, bool, bool) {
+fn source_type_syntax_parameter_details(raw string) (u32, u32, bool, bool, string) {
 	trimmed := source_type_query_trim(raw)
 	mut text := trimmed
 	is_mut := text.starts_with('mut ')
@@ -3864,7 +3966,7 @@ fn source_type_syntax_parameter_details(raw string) (u32, u32, bool, bool) {
 		}
 	}
 	payload := source_type_id(text)
-	return payload, name, named, is_mut
+	return payload, name, named, is_mut, text
 }
 
 fn source_type_syntax_declaration_parameter(payload u32, is_mut bool) (u32, bool) {
@@ -3881,30 +3983,11 @@ fn source_type_syntax_declaration_parameter(payload u32, is_mut bool) (u32, bool
 	return source_type_syntax_child_id(payload, original, text), is_mut
 }
 
-fn source_type_syntax_parameter(param string) (u32, u32) {
-	mut text := source_type_query_trim(param)
-	mut is_mut := false
-	if text.starts_with('mut ') {
-		is_mut = true
-		text = source_type_query_trim(text[4..])
-	}
-	mut depth := 0
-	mut space := -1
-	for i, c in text {
-		if c == `(` || c == `[` {
-			depth++
-		} else if c == `)` || c == `]` {
-			depth--
-		} else if c == ` ` && depth == 0 {
-			space = i
-			break
-		}
-	}
-	if space > 0 {
-		head := source_type_query_trim(text[..space])
-		tail := source_type_query_trim(text[space + 1..])
-		if source_type_syntax_parameter_name(head, tail) { text = tail }
-	}
+// The shared details pass has already trimmed and peeled the first mut/name.
+// This view alone also handles a second mut and embedded type markers.
+fn source_type_syntax_parameter(param string, payload u32, initial_mut bool) (u32, u32) {
+	mut text := param
+	mut is_mut := initial_mut
 	if text.starts_with('mut ') {
 		is_mut = true
 		text = source_type_query_trim(text[4..])
@@ -3919,7 +4002,7 @@ fn source_type_syntax_parameter(param string) (u32, u32) {
 			break
 		}
 	}
-	id := source_type_id(text)
+	id := source_type_syntax_child_id(payload, param, text)
 	if is_mut && id != 0 {
 		return source_type_composition_one(.pointer, id), source_type_composition_one(.mutable_parameter, id)
 	}
