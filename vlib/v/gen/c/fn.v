@@ -18960,6 +18960,10 @@ fn (mut g FlatGen) gen_shared_local_receiver_arg(base_id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) fn_needs_implicit_veb_ctx(node flat.Node) bool {
+	// Only a `...Result` return can be `veb.Result`; skip the receiver scan for the rest.
+	if node.typ != cgen_veb_result_source_type && !node.typ_text().ends_with('Result') {
+		return false
+	}
 	return g.fn_has_receiver_param(node) && g.fn_returns_veb_result(node)
 		&& !g.fn_receiver_type_is_context(node) && !g.fn_has_veb_context_param(node)
 		&& g.type_name_known_in_current_module('Context')
