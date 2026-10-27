@@ -2220,14 +2220,20 @@ fn cleanup_c_build_dir(dir string) {
 	}
 }
 
-fn run_test_binary(bin_file string) int {
-	return run_binary(bin_file, []string{})
+fn run_test_binary(bin_file string, keep_binary bool) int {
+	return run_binary(bin_file, []string{}, !keep_binary)
 }
 
 fn ignore_run_signal(_ os.Signal) {
 }
 
-fn run_binary(bin_file string, args []string) int {
+fn run_binary(bin_file string, args []string, remove_after_run bool) int {
+	defer {
+		if remove_after_run {
+			os.rm(bin_file) or {}
+			v3_remove_macos_debug_symbols(bin_file)
+		}
+	}
 	// The build is published: the builds that wait to populate the cache need
 	// not wait for the program as well.
 	release_v3_cache_population_lock()
@@ -2316,7 +2322,7 @@ fn run_v_inline_source(args []string, option_index int, consumed int, source str
 	mut child_args := args[..option_index].clone()
 	child_args << ['run', temporary_source]
 	child_args << args[option_index + consumed..]
-	exit_code := run_binary(os.executable(), child_args)
+	exit_code := run_binary(os.executable(), child_args, false)
 	os.rm(temporary_source) or {
 		eprintln('cannot remove temporary inline source file: ${err.msg()}')
 		if exit_code == 0 {
@@ -12357,8 +12363,8 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	binary_existed_before := os.exists(bin_file)
-	remove_binary_after_run := should_run && !is_crun && !is_direct_vsh && !explicit_output && !keep_c
-		&& !binary_existed_before
+	mut remove_binary_after_run := should_run && !explicit_output
+		&& (fastc_test_file || (!is_crun && !is_direct_vsh && !keep_c && !binary_existed_before))
 
 	// Decide which backend modules to compile into the output. Standalone compilers
 	// default to C; optional backends and their SSA dependencies can be skipped. This
@@ -12931,10 +12937,7 @@ pub fn run(args []string) {
 				}
 			}
 			if should_run {
-				run_result := run_binary(bin_file, run_args)
-				if remove_binary_after_run {
-					os.rm(bin_file) or {}
-				}
+				run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 				if run_result != 0 {
 					exit(run_result)
 				}
@@ -13409,6 +13412,9 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	test_files := test_input_files(user_files, backend, prefs.target)
+	if should_run && test_files.len > 0 && !explicit_output {
+		remove_binary_after_run = true
+	}
 	// A test binary keeps the harness counters (`__test_failures` and the
 	// setjmp buffer that `assert` longjmps out of) as `static` definitions inside
 	// the program body, so they live in whichever split unit the body lands in
@@ -13803,7 +13809,7 @@ pub fn run(args []string) {
 		}
 		if os.is_file(bin_file) && v3_crun_cache_matches(bin_file, crun_build_identity, input_file) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-			run_result := run_binary(bin_file, run_args)
+			run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 			if run_result != 0 {
 				exit(run_result)
 			}
@@ -13926,10 +13932,7 @@ pub fn run(args []string) {
 					b.step(if cache_with_tcc { 'tcc (cached)' } else { 'cc (cached)' })
 					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 					if should_run {
-						run_result := run_binary(bin_file, run_args)
-						if remove_binary_after_run {
-							os.rm(bin_file) or {}
-						}
+						run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 						if run_result != 0 {
 							exit(run_result)
 						}
@@ -15743,19 +15746,13 @@ pub fn run(args []string) {
 			b.step('link')
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if should_run {
-				run_result := run_binary(bin_file, run_args)
-				if remove_binary_after_run {
-					os.rm(bin_file) or {}
-					if (is_debug || race) && target.os == 'macos' {
-						v3_remove_macos_debug_symbols(bin_file)
-					}
-				}
+				run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 				if run_result != 0 {
 					exit(run_result)
 				}
 				b.step('run')
 			} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
-				test_result := run_test_binary(bin_file)
+				test_result := run_test_binary(bin_file, explicit_output)
 				if test_result != 0 {
 					exit(test_result)
 				}
@@ -17590,22 +17587,16 @@ Please install the corresponding development package/libraries and make sure the
 		// The C compiler is done. What was set up for `cl` must not reach the program that runs next.
 		msvc_restore_environment(msvc_saved_environment)
 		if should_run {
-			if (is_crun || is_direct_vsh) && !explicit_output {
+			if (is_crun || is_direct_vsh) && !explicit_output && !remove_binary_after_run {
 				write_v3_crun_cache_marker(bin_file, crun_build_identity) or {}
 			}
-			run_result := run_binary(bin_file, run_args)
-			if remove_binary_after_run {
-				os.rm(bin_file) or {}
-				if (is_debug || race) && target.os == 'macos' {
-					v3_remove_macos_debug_symbols(bin_file)
-				}
-			}
+			run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 			if run_result != 0 {
 				exit(run_result)
 			}
 			b.step('run')
 		} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
-			test_result := run_test_binary(bin_file)
+			test_result := run_test_binary(bin_file, explicit_output)
 			if test_result != 0 {
 				exit(test_result)
 			}
