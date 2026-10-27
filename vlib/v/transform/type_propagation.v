@@ -718,10 +718,11 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 				}
 			}
 			if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-				qenum := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base_node.source_value_id())
-				if fields := t.enum_types[qenum] {
-					if field_name in fields {
-						return qenum
+				if qenum := flat.source_type_existing_id('${t.cur_module}.${flat.source_type_name(base_node.source_value_id())}') {
+					if fields := t.enum_types[qenum] {
+						if field_name in fields {
+							return qenum
+						}
 					}
 				}
 			}
@@ -2116,9 +2117,10 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 			return node.source_value_id()
 		}
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			qname := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), node.source_value_id())
-			if qname in t.structs {
-				return qname
+			if qname := flat.source_type_existing_id('${t.cur_module}.${flat.source_type_name(node.source_value_id())}') {
+				if qname in t.structs {
+					return qname
+				}
 			}
 		}
 		return node.source_value_id()

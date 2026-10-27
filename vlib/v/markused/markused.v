@@ -1547,7 +1547,7 @@ fn interface_dispatch_dotted_name(name string, tc &types.TypeChecker) ?string {
 		return none
 	}
 	recv := recv_c.replace('__', '.')
-	recv_id := flat.source_type_id(recv)
+	recv_id := flat.source_type_existing_id(recv) or { return none }
 	if recv_id in tc.interface_names {
 		return '${recv}.${method}'
 	}
@@ -10017,7 +10017,6 @@ fn (c &CallCollector) collection_alias_receiver_method_name(type_name_id u32, me
 	mut owner := cur_module
 	mut aliases := []u32{}
 	for _ in 0 .. 16 {
-		current_text := flat.source_type_name(current)
 		qualified_id := if flat.source_type_shape(current).has(.dotted) {
 			current
 		} else {
@@ -10025,7 +10024,7 @@ fn (c &CallCollector) collection_alias_receiver_method_name(type_name_id u32, me
 		}
 		alias_id := if c.tc.type_aliases.contains(qualified_id) {
 			qualified_id
-		} else if c.tc.type_aliases.contains(flat.source_type_id(current_text)) {
+		} else if c.tc.type_aliases.contains(current) {
 			current
 		} else {
 			return none

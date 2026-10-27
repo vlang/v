@@ -230,14 +230,18 @@ fn (mut g FlatGen) value_c_type(t &types.Type) string {
 			return qualified + pointer_suffix
 		}
 	}
-	// Both alias keys have the same final component, including C spellings.
-	if g.name_may_be_type_alias(ct) {
-		if target_source_id := g.tc.type_aliases.type_id(flat.source_type_id(ct)) {
+	// C spellings need not be source types. Registry probes must not retain them.
+	if ct_id := flat.source_type_existing_id(ct) {
+		if !g.type_id_may_be_alias(ct_id) {
+			return ct
+		}
+		if target_source_id := g.tc.type_aliases.type_id(ct_id) {
 			return g.tc.c_type(unalias_type(g.tc.parse_type(target_source_id)))
 		}
-		if target_source_id := main_type_alias_id(g.tc.type_aliases, flat.source_type_id(ct)) {
-			return g.tc.c_type(unalias_type(g.tc.parse_type(target_source_id)))
-		}
+	}
+	// A registered main alias does not require its bare C spelling to be interned.
+	if target_source_id := main_type_alias_text_id(g.tc.type_aliases, ct) {
+		return g.tc.c_type(unalias_type(g.tc.parse_type(target_source_id)))
 	}
 	return ct
 }
@@ -380,10 +384,26 @@ fn known_type_id(id u32, text string) u32 {
 	return if id != 0 { id } else { flat.source_type_id(text) }
 }
 
-// main_type_alias_id reads the `main.<name>` alias using an interned key.
+// main_type_alias_id reads the `main.<name>` alias without retaining missing keys.
 @[inline]
 fn main_type_alias_id(aliases flat.SourceTypeBindings, name_id u32) ?u32 {
-	return aliases.type_id(flat.source_type_composition_two(.qualified, flat.source_type_id('main'), name_id))
+	return main_type_alias_text_id(aliases, flat.source_type_name(name_id))
+}
+
+fn main_type_alias_text_id(aliases flat.SourceTypeBindings, name string) ?u32 {
+	key_id := cgen_existing_qualified_type_id('main', name) or { return none }
+	return aliases.type_id(key_id)
+}
+
+// cgen_existing_qualified_type_id borrows a joined spelling for lookup only.
+@[direct_array_access]
+fn cgen_existing_qualified_type_id(module_name string, name string) ?u32 {
+	if module_name.len + 1 + name.len > module_key_view_cap {
+		return flat.source_type_existing_id('${module_name}.${name}')
+	}
+	mut buf := [module_key_view_cap]u8{}
+	key := unsafe { joined_key_view(&buf[0], module_name, `.`, name, 0, '') }
+	return flat.source_type_existing_id(key)
 }
 
 // cgen_type_is_map reports whether typ is a map, looking through any alias
@@ -2142,8 +2162,10 @@ fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
 	} else {
 		node.value
 	}
-	if flat.source_type_id(candidate) in g.tc.enum_names {
-		return g.enum_type_codegen_name(candidate)
+	if candidate_id := flat.source_type_existing_id(candidate) {
+		if candidate_id in g.tc.enum_names {
+			return g.enum_type_codegen_name(candidate)
+		}
 	}
 	mut resolved := ''
 	for registry_name_id in g.tc.enum_names.keys() {
@@ -2166,9 +2188,11 @@ fn (g &FlatGen) enum_type_codegen_name(name string) string {
 	if !g.tc.autofree_mode || name.contains('.') {
 		return name
 	}
-	if module_name := g.enum_modules[flat.source_type_id(name)] {
-		if module_name in ['', 'main'] {
-			return 'main.${name}'
+	if name_id := flat.source_type_existing_id(name) {
+		if module_name := g.enum_modules[name_id] {
+			if module_name in ['', 'main'] {
+				return 'main.${name}'
+			}
 		}
 	}
 	return name
@@ -2184,9 +2208,11 @@ fn (g &FlatGen) enum_type_c_name(name string) string {
 // Its values and synthesized helpers keep their `<Enum>__` prefix.
 fn (g &FlatGen) enum_typedef_c_name(name string) string {
 	if !name.contains('.') {
-		if module_name := g.enum_modules[flat.source_type_id(name)] {
-			if module_name in ['', 'main'] {
-				return g.cname('main.${name}')
+		if name_id := flat.source_type_existing_id(name) {
+			if module_name := g.enum_modules[name_id] {
+				if module_name in ['', 'main'] {
+					return g.cname('main.${name}')
+				}
 			}
 		}
 	}
@@ -2205,8 +2231,10 @@ fn (g &FlatGen) enum_autostr_c_name(type_name_id u32) string {
 	}
 	if !flat.source_type_shape(name_id).has(.dotted) && g.tc.cur_module.len > 0 {
 		qualified := '${g.tc.cur_module}.${name}'
-		if flat.source_type_id(qualified) in g.tc.enum_names {
-			return g.cname(qualified)
+		if qualified_id := cgen_existing_qualified_type_id(g.tc.cur_module, name) {
+			if qualified_id in g.tc.enum_names {
+				return g.cname(qualified)
+			}
 		}
 	}
 	short_name := flat.source_type_name(flat.source_type_syntax(name_id).unqualified())

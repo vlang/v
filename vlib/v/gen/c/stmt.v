@@ -3149,7 +3149,6 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 							} else {
 								''
 							}
-							expr_value_name := expr_value_type.name()
 							is_alias_value := expr_value_type is types.Alias
 								|| g.tc.type_aliases.contains(expr_value_type.source_type_id())
 								|| g.tc.qualify_type_name(expr_value_type.source_type_id()) in g.tc.type_aliases.ids
@@ -10533,8 +10532,17 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		}
 	}
 	cname := g.cname(name)
-	result := cname in v_runtime_typedef_names || cname in g.inlined_c_typedef_names
-		|| flat.source_type_id(cname) in g.tc.c_typedef_structs || flat.source_type_id('C.${cname}') in g.tc.c_typedef_structs
+	mut result := cname in v_runtime_typedef_names || cname in g.inlined_c_typedef_names
+	if !result {
+		if type_id := flat.source_type_existing_id(cname) {
+			result = type_id in g.tc.c_typedef_structs
+		}
+	}
+	if !result {
+		if type_id := cgen_existing_qualified_type_id('C', cname) {
+			result = type_id in g.tc.c_typedef_structs
+		}
+	}
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
 		cache.put(name, if result { i8(1) } else { i8(-1) })

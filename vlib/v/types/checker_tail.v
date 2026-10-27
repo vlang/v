@@ -5089,7 +5089,14 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				}
 				if base.kind == .ident && base.value == 'C' {
 					c_name := 'C.${callee.value}'
-					if c_name !in tc.fn_ret_types && flat.source_type_id(c_name) !in tc.structs {
+					c_name_known := if c_name in tc.fn_ret_types {
+						true
+					} else if c_type_id := flat.source_type_existing_id(c_name) {
+						c_type_id in tc.structs
+					} else {
+						false
+					}
+					if !c_name_known {
 						tc.record_error_at(.unknown_fn, 'unknown C function: `${c_name}`. `C.` calls are external C calls; declare the function with `fn ${c_name}(...)` and include/link the C header/library that provides it.', id, tc.method_call_name_pos(node, callee))
 						tc.register_synth_type(id, Type(MultiReturn{
 							types: []Type{}
@@ -5248,8 +5255,16 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)
 			receiver := tc.a.nodes[int(receiver_id)]
-			if receiver.kind == .ident && receiver.value == 'C' && flat.source_type_id('C.${callee.value}') in tc.structs
-				&& node.children_count == 2 {
+			c_struct_known := if receiver.kind == .ident && receiver.value == 'C' {
+				if c_type_id := flat.source_type_existing_id('C.${callee.value}') {
+					c_type_id in tc.structs
+				} else {
+					false
+				}
+			} else {
+				false
+			}
+			if c_struct_known && node.children_count == 2 {
 				arg_id := tc.call_arg_value(tc.a.child(&node, 1))
 				if tc.expr_tail_is_nil(arg_id) && tc.node_source_starts_with(arg_id, 'unsafe') {
 					name_pos := tc.method_call_name_pos(node, callee)
@@ -5634,8 +5649,11 @@ fn (mut tc TypeChecker) check_c_alias_cast_call(id flat.NodeId, node flat.Node, 
 		return false
 	}
 	base := tc.a.child_node(&callee, 0)
-	type_name_id := flat.source_type_id('C.${callee.value}')
-	if base.kind != .ident || base.value != 'C' || !tc.type_aliases.contains(type_name_id) {
+	if base.kind != .ident || base.value != 'C' {
+		return false
+	}
+	type_name_id := flat.source_type_existing_id('C.${callee.value}') or { return false }
+	if !tc.type_aliases.contains(type_name_id) {
 		return false
 	}
 	cast_node := flat.Node{
@@ -17671,9 +17689,13 @@ fn (tc &TypeChecker) call_argument_target_name(node flat.Node, info CallInfo) st
 				receiver_id := tc.a.child(callee, 0)
 				receiver := tc.a.node(receiver_id)
 				// A method declared on an alias keeps that nominal owner after specialization.
-				if (receiver.kind == .ident && tc.binding_is_strings_builder(receiver.value))
-					|| flat.source_type_id(info.name.all_before_last('.')) in tc.type_aliases.ids {
+				if receiver.kind == .ident && tc.binding_is_strings_builder(receiver.value) {
 					return info.name.replace('fn(', 'fn (')
+				}
+				if owner_id := flat.source_type_existing_id(info.name.all_before_last('.')) {
+					if owner_id in tc.type_aliases.ids {
+						return info.name.replace('fn(', 'fn (')
+					}
 				}
 				receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
 				if flat.source_type_shape(receiver_type.source_type_id()).has(.bracketed) && !type_contains_unknown(receiver_type) {
@@ -19809,9 +19831,11 @@ fn (tc &TypeChecker) generic_param_type_text(text_id u32) u32 {
 		return flat.source_type_id(selected)
 	}
 	module_name := tc.file_modules[file] or { tc.cur_module }
-	qualified_id := flat.source_type_id(qualify_decl_name_in_module(resolved_text, module_name))
-	if tc.type_symbol_known(qualified_id) {
-		return qualified_id
+	if qualified_id := flat.source_type_existing_id(qualify_decl_name_in_module(resolved_text,
+		module_name)) {
+		if tc.type_symbol_known(qualified_id) {
+			return qualified_id
+		}
 	}
 	return resolved
 }
@@ -22490,10 +22514,14 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			}
 			if resolved_mod := tc.resolve_import_alias(base_node.value) {
 				mod_name := '${resolved_mod}.${fn_node.value}'
-				mod_name_id := flat.source_type_id(mod_name)
-				if mod_name in tc.fn_ret_types || tc.sum_types.contains(mod_name_id) || mod_name_id in tc.structs
-					|| mod_name_id in tc.enum_names {
+				if mod_name in tc.fn_ret_types {
 					return true
+				}
+				if mod_name_id := flat.source_type_existing_id(mod_name) {
+					if tc.sum_types.contains(mod_name_id) || mod_name_id in tc.structs
+						|| mod_name_id in tc.enum_names {
+						return true
+					}
 				}
 			}
 			if base_node.source_value_id() in tc.structs || base_node.source_value_id() in tc.enum_names {

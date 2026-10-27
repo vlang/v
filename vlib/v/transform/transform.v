@@ -4426,7 +4426,11 @@ fn (mut t Transformer) collect_alias_methods() {
 			continue
 		}
 		receiver_name := name.all_before_last('.')
-		if receiver_name.len == 0 || !t.tc.type_aliases.contains(flat.source_type_id(receiver_name)) {
+		if receiver_name.len == 0 {
+			continue
+		}
+		receiver_id := flat.source_type_existing_id(receiver_name) or { continue }
+		if !t.tc.type_aliases.contains(receiver_id) {
 			continue
 		}
 		method := name.all_after_last('.')
@@ -32671,7 +32675,8 @@ fn (mut t Transformer) annotate_left_shift_assign(node_id flat.NodeId) {
 
 // get_struct_info returns get struct info data for Transformer.
 pub fn (t &Transformer) get_struct_info(name string) ?StructInfo {
-	if info := t.structs[flat.source_type_id(name)] {
+	name_id := flat.source_type_existing_id(name) or { return none }
+	if info := t.structs[name_id] {
 		return info
 	}
 	return none

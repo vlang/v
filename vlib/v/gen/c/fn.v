@@ -1184,7 +1184,8 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, node_index int,
 		candidates << '${module_name}.${base}'
 	}
 	for candidate in candidates {
-		params := g.tc.struct_generic_params[flat.source_type_id(candidate)] or { continue }
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+		params := g.tc.struct_generic_params[candidate_id] or { continue }
 		for arg in args {
 			if arg.trim_space() in params {
 				return true
@@ -1629,8 +1630,12 @@ fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?
 	if name in ['near', 'far', 'pascal', 'cdecl'] {
 		return '__v3_internal_symbol_macro_${name}'
 	}
-	c_type_name := !isnil(g.tc)
-		&& (flat.source_type_id('C.${name}') in g.tc.structs || flat.source_type_id('C.${name}') in g.tc.c_typedef_structs)
+	mut c_type_name := false
+	if !isnil(g.tc) {
+		if type_id := cgen_existing_qualified_type_id('C', name) {
+			c_type_name = type_id in g.tc.structs || type_id in g.tc.c_typedef_structs
+		}
+	}
 	main_fn_decl := fn_decl_module_key('main', name) in g.fn_decl_ret_types
 		|| fn_decl_module_key('', name) in g.fn_decl_ret_types
 	c_fn_name := !isnil(g.tc)
@@ -7860,12 +7865,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	if g.gen_lowered_enum_autostr_pointer_call(id, node, fn_node) {
 		return
 	}
-	if fn_node.kind == .selector && node.children_count == 2 && target_name.starts_with('C.')
-		&& g.tc.type_aliases.contains(flat.source_type_id(target_name)) {
-		g.write('(${g.direct_call_name(target_name)})(')
-		g.gen_expr(g.a.child(node, 1))
-		g.write(')')
-		return
+	if fn_node.kind == .selector && node.children_count == 2 && target_name.starts_with('C.') {
+		if target_type_id := flat.source_type_existing_id(target_name) {
+			if g.tc.type_aliases.contains(target_type_id) {
+				g.write('(${g.direct_call_name(target_name)})(')
+				g.gen_expr(g.a.child(node, 1))
+				g.write(')')
+				return
+			}
+		}
 	}
 	if g.gen_c_va_macro_call(node, target_name, resolved_target_name) {
 		return
@@ -8425,10 +8433,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				} else if base.kind == .ident && !base_is_local && g.has_import_alias(base.value) {
 					mod := g.import_alias_module(base.value) or { '' }
 					full_name := '${mod}.${fn_node.value}'
-					if g.tc.type_aliases.contains(flat.source_type_id(full_name)) || flat.source_type_id(full_name) in g.tc.structs
-						|| flat.source_type_id(full_name) in g.tc.enum_names || g.tc.sum_types.contains(flat.source_type_id(full_name))
-						|| flat.source_type_id(full_name) in g.tc.interface_names {
-						target_type := g.tc.parse_type(flat.source_type_id(full_name))
+					full_type_id := flat.source_type_existing_id(full_name) or { u32(0) }
+					if full_type_id != 0 && (g.tc.type_aliases.contains(full_type_id) || full_type_id in g.tc.structs
+						|| full_type_id in g.tc.enum_names || g.tc.sum_types.contains(full_type_id)
+						|| full_type_id in g.tc.interface_names) {
+						target_type := g.tc.parse_type(full_type_id)
 						if target_type is types.Interface && node.children_count > 1 {
 							g.gen_expr_with_expected_type(g.a.child(node, 1), target_type)
 						} else if target_type is types.SumType && node.children_count > 1 {
@@ -12312,7 +12321,7 @@ fn (g &FlatGen) interface_method_param_types(name string) ?[]types.Type {
 		return none
 	}
 	iface_name := name.all_before_last('.')
-	iface_name_id := flat.source_type_id(iface_name)
+	iface_name_id := flat.source_type_existing_id(iface_name) or { return none }
 	if iface_name_id !in g.interfaces {
 		return none
 	}
@@ -14885,7 +14894,6 @@ fn (g &FlatGen) type_is_reftype(typ &types.Type, mut seen map[u32]bool) bool {
 		return false
 	}
 	if typ is types.Struct {
-		name := typ.name()
 		if typ.source_type_id() in seen {
 			return false
 		}

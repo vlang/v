@@ -240,10 +240,11 @@ fn (t &Transformer) comptime_resolve_selective_import_type(raw_id u32) u32 {
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(clean_id))] or {
 		[]string{}
 	} {
-		if t.tc.type_aliases.contains(flat.source_type_id(candidate)) || flat.source_type_id(candidate) in t.tc.structs
-			|| flat.source_type_id(candidate) in t.tc.interface_names || flat.source_type_id(candidate) in t.tc.flag_enums
-			|| flat.source_type_id(candidate) in t.tc.enum_names || t.tc.sum_types.contains(flat.source_type_id(candidate)) {
-			return flat.source_type_id(candidate)
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+		if t.tc.type_aliases.contains(candidate_id) || candidate_id in t.tc.structs
+			|| candidate_id in t.tc.interface_names || candidate_id in t.tc.flag_enums
+			|| candidate_id in t.tc.enum_names || t.tc.sum_types.contains(candidate_id) {
+			return candidate_id
 		}
 	}
 	return clean_id
@@ -280,10 +281,13 @@ fn (t &Transformer) comptime_local_reflection_source(name string) ?string {
 		return none
 	}
 	qualified := '${t.cur_module}.${name}'
-	if qualified in t.tc.fn_ret_types || qualified in t.tc.fn_param_types
-		|| t.tc.type_aliases.contains(flat.source_type_id(qualified)) || flat.source_type_id(qualified) in t.tc.structs
-		|| flat.source_type_id(qualified) in t.tc.interface_names || flat.source_type_id(qualified) in t.tc.flag_enums
-		|| flat.source_type_id(qualified) in t.tc.enum_names || t.tc.sum_types.contains(flat.source_type_id(qualified)) {
+	if qualified in t.tc.fn_ret_types || qualified in t.tc.fn_param_types {
+		return qualified
+	}
+	qualified_id := flat.source_type_existing_id(qualified) or { return none }
+	if t.tc.type_aliases.contains(qualified_id) || qualified_id in t.tc.structs
+		|| qualified_id in t.tc.interface_names || qualified_id in t.tc.flag_enums
+		|| qualified_id in t.tc.enum_names || t.tc.sum_types.contains(qualified_id) {
 		return qualified
 	}
 	return none

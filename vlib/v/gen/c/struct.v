@@ -2471,7 +2471,7 @@ fn (g &FlatGen) struct_default_canonical_leaf_type_text(name_id u32, module_name
 }
 
 fn (g &FlatGen) struct_default_type_key_known(name string) bool {
-	name_id := flat.source_type_id(name)
+	name_id := flat.source_type_existing_id(name) or { return false }
 	return name_id in g.tc.structs || g.tc.type_aliases.contains(name_id) || name_id in g.tc.interface_names
 		|| g.tc.sum_types.contains(name_id) || name_id in g.tc.enum_names || name_id in g.tc.flag_enums
 		|| name_id in g.struct_decl_infos
@@ -2643,9 +2643,11 @@ fn (mut g FlatGen) struct_default_field_type_text(
 	if field_type_id != 0 && !flat.source_type_shape(field_type_id).has(.dotted) && info.module.len > 0 && info.module != 'main'
 		&& info.module != 'builtin' {
 		qtyp := '${info.module}.${field_type}'
-		if flat.source_type_id(qtyp) in g.tc.enum_names || flat.source_type_id(qtyp) in g.tc.structs || g.tc.sum_types.contains(flat.source_type_id(qtyp))
-			|| flat.source_type_id(qtyp) in g.tc.interface_names {
-			return *g.tc.parse_type(flat.source_type_id(qtyp))
+		if qtyp_id := flat.source_type_existing_id(qtyp) {
+			if qtyp_id in g.tc.enum_names || qtyp_id in g.tc.structs || g.tc.sum_types.contains(qtyp_id)
+				|| qtyp_id in g.tc.interface_names {
+				return *g.tc.parse_type(qtyp_id)
+			}
 		}
 	}
 	return *g.tc.parse_type(field_type_id)
@@ -2973,8 +2975,10 @@ fn (g &FlatGen) enum_fields_for_type(type_name_id u32) ?[]string {
 	if !flat.source_type_shape(type_name_id).has(.dotted) && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
 		&& g.tc.cur_module != 'builtin' {
 		qname := '${g.tc.cur_module}.${type_name}'
-		if fields := g.tc.enum_fields[flat.source_type_id(qname)] {
-			return fields
+		if qname_id := flat.source_type_existing_id(qname) {
+			if fields := g.tc.enum_fields[qname_id] {
+				return fields
+			}
 		}
 	}
 	if !flat.source_type_shape(type_name_id).has(.dotted) {
@@ -3641,7 +3645,7 @@ fn (g &FlatGen) shared_qualify_leaf_type_text(name_id u32, module_name string) u
 	clean := flat.source_type_name(clean_id)
 	mut imported := u32(0)
 	for candidate in g.file_selective_import_candidates(g.tc.cur_file, clean) or { []string{} } {
-		candidate_id := flat.source_type_id(candidate)
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
 		if candidate_id !in g.tc.structs && !g.tc.type_aliases.contains(candidate_id) && candidate_id !in g.tc.interface_names
 			&& !g.tc.sum_types.contains(candidate_id) && candidate_id !in g.tc.enum_names && candidate_id !in g.tc.flag_enums {
 			continue
@@ -3650,10 +3654,11 @@ fn (g &FlatGen) shared_qualify_leaf_type_text(name_id u32, module_name string) u
 		imported = candidate_id
 	}
 	if imported != 0 { return imported }
-	candidate_id := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), clean_id)
-	if candidate_id in g.tc.structs || g.tc.type_aliases.contains(candidate_id) || candidate_id in g.tc.interface_names
-		|| g.tc.sum_types.contains(candidate_id) || candidate_id in g.tc.enum_names || candidate_id in g.tc.flag_enums {
-		return candidate_id
+	if candidate_id := flat.source_type_existing_id('${module_name}.${clean}') {
+		if candidate_id in g.tc.structs || g.tc.type_aliases.contains(candidate_id) || candidate_id in g.tc.interface_names
+			|| g.tc.sum_types.contains(candidate_id) || candidate_id in g.tc.enum_names || candidate_id in g.tc.flag_enums {
+			return candidate_id
+		}
 	}
 	return name_id
 }
@@ -4800,7 +4805,6 @@ fn cgen_compact_generic_type_id(base u32, args []u32) u32 {
 }
 
 fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
-	type_name := flat.source_type_name(type_name_id)
 	base_source_id, args_source_ids, is_generic := g.shared_generic_app_parts(type_name_id)
 	base := flat.source_type_name(base_source_id)
 	if is_generic && args_source_ids.len > 0 && !flat.source_type_shape(base_source_id).has(.dotted) {
@@ -5030,7 +5034,7 @@ fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
 		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_name) or {
 			[]string{}
 		} {
-			candidate_id := flat.source_type_id(candidate)
+			candidate_id := flat.source_type_existing_id(candidate) or { continue }
 			if info := g.struct_decl_infos[candidate_id] {
 				return info
 			}
@@ -5274,7 +5278,7 @@ fn (g &FlatGen) find_struct_decl_preferred_uncached(type_name_id u32) ?StructDec
 	short_name_id := flat.source_type_syntax(type_name_id).unqualified()
 	preferred_name_id := if !has_dot && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
 		&& g.tc.cur_module != 'builtin' {
-		flat.source_type_composition_two(.qualified, flat.source_type_id(g.tc.cur_module), type_name_id)
+		flat.source_type_existing_id('${g.tc.cur_module}.${flat.source_type_name(type_name_id)}') or { return none }
 	} else {
 		type_name_id
 	}
@@ -5764,12 +5768,13 @@ fn (g &FlatGen) embedded_field_type_name(field types.StructField) u32 {
 	// rather than the outer struct.
 	if clean_type is types.FnType {
 		for candidate in [field.name, g.tc.qualify_name(field.name)] {
-			if !g.tc.type_aliases.contains(flat.source_type_id(candidate)) {
+			candidate_id := flat.source_type_existing_id(candidate) or { continue }
+			if !g.tc.type_aliases.contains(candidate_id) {
 				continue
 			}
-			alias_type := g.tc.parse_type(flat.source_type_id(candidate))
+			alias_type := g.tc.parse_type(candidate_id)
 			if alias_type is types.Alias && alias_type.base_type is types.FnType {
-				return flat.source_type_id(candidate)
+				return candidate_id
 			}
 		}
 	}
@@ -6671,15 +6676,15 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	}
 	if name.starts_with('C.builtin__closure__') {
 		// This C view resolves to a V runtime type, whose complete layout owns it.
-		if flat.source_type_id('closure.${name['C.builtin__closure__'.len..]}') in g.tc.structs {
-			return true
+		if closure_id := flat.source_type_existing_id('closure.${name['C.builtin__closure__'.len..]}') {
+			if closure_id in g.tc.structs { return true }
 		}
 	}
 	if name.starts_with('C.') {
 		// Match V1: `@[typedef]` C structs name types supplied by native code and
 		// must never get a synthesized V-owned declaration or body.
-		if flat.source_type_id(name) in g.tc.c_typedef_structs {
-			return true
+		if name_id := flat.source_type_existing_id(name) {
+			if name_id in g.tc.c_typedef_structs { return true }
 		}
 		if g.cache_native_c_symbols[name[2..]] {
 			return true
@@ -6687,17 +6692,19 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		if g.inlined_c_typedef_names[name[2..]] {
 			return true
 		}
-		if info := g.struct_decl_infos[flat.source_type_id(name)] {
-			// Headerless vlib bindings supply their own complete C layouts.
-			// Keep externally supplied types opaque when headers own their definitions.
-			// A c_struct_header_guards type is V's to lay out: the generated C includes its
-			// header only where the program does, and the guard defers to the header then --
-			// unless the program's C can follow the type block, where the guard cannot see a
-			// header it includes; such a program keeps this rule (can_emit_c_after_types).
-			if !(name in c_struct_header_guards && !g.can_emit_c_after_types())
-				&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
-				&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
-				return true
+		if name_id := flat.source_type_existing_id(name) {
+			if info := g.struct_decl_infos[name_id] {
+				// Headerless vlib bindings supply their own complete C layouts.
+				// Keep externally supplied types opaque when headers own their definitions.
+				// A c_struct_header_guards type is V's to lay out: the generated C includes its
+				// header only where the program does, and the guard defers to the header then --
+				// unless the program's C can follow the type block, where the guard cannot see a
+				// header it includes; such a program keeps this rule (can_emit_c_after_types).
+				if !(name in c_struct_header_guards && !g.can_emit_c_after_types())
+					&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
+					&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
+					return true
+				}
 			}
 		}
 	}
@@ -7718,10 +7725,11 @@ fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
 		return true
 	}
 	c_decl_name := 'C.${soa_name}'
-	if flat.source_type_id(c_decl_name) in g.tc.structs && flat.source_type_id(c_decl_name) !in g.tc.c_typedef_structs {
+	c_decl_id := flat.source_type_existing_id(c_decl_name) or { return false }
+	if c_decl_id in g.tc.structs && c_decl_id !in g.tc.c_typedef_structs {
 		return true
 	}
-	if info := g.struct_decl_infos[flat.source_type_id(c_decl_name)] {
+	if info := g.struct_decl_infos[c_decl_id] {
 		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
 	}
 	return false
@@ -7729,9 +7737,14 @@ fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
 
 fn (g &FlatGen) soa_companion_collision(struct_name string, soa_name string, fields []SoaFieldInfo) ?string {
 	c_decl_name := 'C.${soa_name}'
-	has_matching_c_decl := flat.source_type_id(c_decl_name) in g.tc.structs
+	has_c_decl := if c_decl_id := flat.source_type_existing_id(c_decl_name) {
+		c_decl_id in g.tc.structs
+	} else {
+		false
+	}
+	has_matching_c_decl := has_c_decl
 		&& g.soa_companion_c_decl_matches(c_decl_name, fields)
-	if flat.source_type_id(c_decl_name) in g.tc.structs && !has_matching_c_decl {
+	if has_c_decl && !has_matching_c_decl {
 		return c_decl_name
 	}
 	for registry_name_id in g.tc.structs.keys() {
@@ -7775,7 +7788,8 @@ fn (g &FlatGen) soa_companion_collision(struct_name string, soa_name string, fie
 }
 
 fn (g &FlatGen) soa_companion_c_decl_matches(c_name string, fields []SoaFieldInfo) bool {
-	decl_fields := g.tc.structs[flat.source_type_id(c_name)] or { return false }
+	c_name_id := flat.source_type_existing_id(c_name) or { return false }
+	decl_fields := g.tc.structs[c_name_id] or { return false }
 	if decl_fields.len != fields.len + 2 {
 		return false
 	}

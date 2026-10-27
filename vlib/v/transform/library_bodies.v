@@ -122,9 +122,10 @@ fn (mut t Transformer) prepare_library_bodies() {
 			continue
 		}
 		receiver := key[..dot]
-		if flat.source_type_id(receiver) in t.tc.structs || t.tc.sum_types.contains(flat.source_type_id(receiver)) || t.tc.type_aliases.contains(flat.source_type_id(receiver))
-			|| flat.source_type_id(receiver) in t.tc.enum_names {
-			t.library_bodies.methods[flat.source_type_id(receiver)] << key
+		receiver_id := flat.source_type_existing_id(receiver) or { continue }
+		if receiver_id in t.tc.structs || t.tc.sum_types.contains(receiver_id)
+			|| t.tc.type_aliases.contains(receiver_id) || receiver_id in t.tc.enum_names {
+			t.library_bodies.methods[receiver_id] << key
 		}
 	}
 }

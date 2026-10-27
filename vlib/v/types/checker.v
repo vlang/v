@@ -7375,16 +7375,25 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	}
 	// A module's own C declaration is its local view of the external type.
 	// The canonical visibility entry may belong to a different module's mirror.
-	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, flat.source_type_id(name)) in tc.c_struct_scoped_fields {
-		return none
+	if name.starts_with('C.') {
+		if name_id := flat.source_type_existing_id(name) {
+			if module_id := flat.source_type_existing_id(tc.cur_module) {
+				scoped_key := (u64(module_id) << 32) | u64(name_id)
+				if scoped_key in tc.c_struct_scoped_fields {
+					return none
+				}
+			}
+		}
 	}
 	mut declaration_name := name
 	if name.contains('.') {
 		receiver_name := owner_name_view(visible_mutation_fn_lookup_name(name))
-		if flat.source_type_id(receiver_name) in tc.interface_names {
-			// Inherited methods use the base interface's declaration for access checks.
-			declaration_name = tc.interface_method_signature_key(flat.source_type_id(receiver_name),
-				short_name_view(name)) or { name }
+		if receiver_id := flat.source_type_existing_id(receiver_name) {
+			if receiver_id in tc.interface_names {
+				// Inherited methods use the base interface's declaration for access checks.
+				declaration_name = tc.interface_method_signature_key(receiver_id,
+					short_name_view(name)) or { name }
+			}
 		}
 	}
 	if visibility := tc.declaration_visibility[declaration_name] {
@@ -7493,7 +7502,7 @@ fn (mut tc TypeChecker) check_selective_type_imports(node flat.Node, module_path
 		mut symbol_name := ''
 		for module_name in [node.value, module_path, module_path.all_after_last('.')] {
 			name := '${module_name}.${child.value}'
-			if tc.type_symbol_known(flat.source_type_id(name)) {
+			if tc.type_symbol_spelling_known(name) {
 				symbol_name = name
 				break
 			}
@@ -7928,11 +7937,16 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 }
 
 fn (tc &TypeChecker) c_symbol_declared_in_module(module_path string, name string) bool {
-	name_id := flat.source_type_id(name)
 	for module_name in [module_path, module_path.all_after_last('.')] {
-		if c_fn_module_signature_key(module_name, name) in tc.c_fn_module_ret_types
-			|| tc.type_alias_modules[name_id] or { '' } == module_name
-			|| tc.struct_modules[name_id] or { '' } == module_name {
+		if c_fn_module_signature_key(module_name, name) in tc.c_fn_module_ret_types {
+			return true
+		}
+		if name_id := flat.source_type_existing_id(name) {
+			if tc.type_alias_modules[name_id] or { '' } == module_name
+				|| tc.struct_modules[name_id] or { '' } == module_name {
+				return true
+			}
+		} else if module_name == '' {
 			return true
 		}
 	}
@@ -8326,7 +8340,7 @@ pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
 	candidates := tc.selective_import_candidates(name) or { return none }
 	for candidate in candidates {
-		candidate_id := flat.source_type_id(candidate)
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
 		// Monomorphization erases generic struct templates from `structs`, but cgen
 		// still has to resolve `Foo[Bar]` after `import foo { Foo }` to `foo.Foo`.
 		if tc.type_symbol_known(candidate_id) || candidate_id in tc.struct_generic_params {
@@ -8403,6 +8417,16 @@ fn (tc &TypeChecker) type_symbol_known(name_id u32) bool {
 		|| name_id in tc.flag_enums || name_id in tc.enum_names || tc.sum_types.contains(name_id)
 }
 
+fn (tc &TypeChecker) type_symbol_spelling_known(name string) bool {
+	name_id := flat.source_type_existing_id(name) or { return false }
+	return tc.type_symbol_known(name_id)
+}
+
+fn (tc &TypeChecker) qualify_candidate_type_spelling_exists(name string) bool {
+	name_id := flat.source_type_existing_id(name) or { return false }
+	return tc.qualify_candidate_type_exists(name_id)
+}
+
 fn (tc &TypeChecker) unqualified_type_symbol_is_builtin(name string) bool {
 	name_id := flat.source_type_id(name)
 	if mod_name := tc.struct_modules[name_id] {
@@ -8424,7 +8448,7 @@ fn (tc &TypeChecker) unqualified_type_symbol_has_scoped_shadow(name string) bool
 	}
 	if tc.cur_module.len > 0 && tc.cur_module != 'main' && tc.cur_module != 'builtin' {
 		local := '${tc.cur_module}.${name}'
-		if tc.type_symbol_known(flat.source_type_id(local)) {
+		if tc.type_symbol_spelling_known(local) {
 			return true
 		}
 	}
@@ -16947,7 +16971,7 @@ fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeI
 	// selected main file declares the same type.
 	qualified := if tc.cur_module.len > 0 { '${tc.cur_module}.${name}' } else { name }
 	report_import_scope_error := !should_diagnose && !name.contains('.')
-		&& name !in ['Error', 'MessageError', 'IError'] && tc.cur_module !in ['', 'main', 'builtin'] && tc.selected_main_file_declares_type(name) && !tc.qualify_candidate_type_exists(flat.source_type_id(qualified))
+		&& name !in ['Error', 'MessageError', 'IError'] && tc.cur_module !in ['', 'main', 'builtin'] && tc.selected_main_file_declares_type(name) && !tc.qualify_candidate_type_spelling_exists(qualified)
 		&& !tc.source_declares_type_in_scope(flat.source_type_id(name), tc.cur_file, tc.cur_module)
 	if !should_diagnose && !report_import_scope_error {
 		return
@@ -16957,7 +16981,7 @@ fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeI
 	}
 	if should_diagnose && !name.contains('.') {
 		if candidates := tc.selective_import_candidates(name) {
-			if candidates.len > 0 && candidates.all(!tc.type_symbol_known(flat.source_type_id(it))) {
+			if candidates.len > 0 && candidates.all(!tc.type_symbol_spelling_known(it)) {
 				qualified_candidate := candidates[0]
 				pos := tc.type_name_diagnostic_pos(node_id, name)
 				if !tc.unknown_type_already_reported_on_line(qualified_candidate, pos) {

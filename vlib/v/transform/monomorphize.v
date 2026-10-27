@@ -2077,7 +2077,8 @@ fn (t &Transformer) interface_boxed_type_marked(iface_name_id u32, concrete_type
 		}
 	}
 	for candidate in [concrete_type, t.tc.qualify_name(concrete_type)] {
-		target := t.tc.type_aliases.type_id(flat.source_type_id(candidate)) or { continue }
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+		target := t.tc.type_aliases.type_id(candidate_id) or { continue }
 		for iface in iface_names {
 			if t.interface_boxed_type_key_marked(interface_boxed_type_key(iface, target))
 				|| t.interface_boxed_type_key_marked(interface_boxed_type_key(iface, flat.source_type_id(c_name(flat.source_type_name(target)))))
@@ -4179,7 +4180,7 @@ fn (t &Transformer) selective_import_generic_struct_base(base_id u32, file_name 
 	}
 	candidates := t.tc.file_selective_imports[file_import_key(file_name, flat.source_type_name(base_id))] or { return none }
 	for candidate in candidates {
-		candidate_id := flat.source_type_id(candidate)
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
 		if candidate_id in decls {
 			return candidate_id
 		}
@@ -4193,7 +4194,7 @@ fn (t &Transformer) selective_import_generic_sum_base(base_id u32, file_name str
 	}
 	candidates := t.tc.file_selective_imports[file_import_key(file_name, flat.source_type_name(base_id))] or { return none }
 	for candidate in candidates {
-		candidate_id := flat.source_type_id(candidate)
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
 		if candidate_id in decls {
 			return candidate_id
 		}
@@ -6089,9 +6090,10 @@ fn (t &Transformer) selective_signature_type_symbol_id(file string, name_id u32)
 	}
 	candidates := t.tc.file_selective_imports[file_import_key(file, flat.source_type_name(name_id))] or { return none }
 	for candidate in candidates {
-		if t.tc.type_aliases.contains(flat.source_type_id(candidate)) || flat.source_type_id(candidate) in t.tc.structs
-			|| flat.source_type_id(candidate) in t.tc.interface_names || flat.source_type_id(candidate) in t.tc.flag_enums
-			|| flat.source_type_id(candidate) in t.tc.enum_names || t.tc.sum_types.contains(flat.source_type_id(candidate)) {
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+		if t.tc.type_aliases.contains(candidate_id) || candidate_id in t.tc.structs
+			|| candidate_id in t.tc.interface_names || candidate_id in t.tc.flag_enums
+			|| candidate_id in t.tc.enum_names || t.tc.sum_types.contains(candidate_id) {
 			return candidate
 		}
 	}
@@ -10705,7 +10707,7 @@ fn (t &Transformer) generic_arg_module_owns_type(name string, module_name string
 	if module_name == '' || module_name == 'main' || module_name == 'builtin' {
 		return false
 	}
-	qname := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), flat.source_type_id(name))
+	qname := flat.source_type_existing_id('${module_name}.${name}') or { return false }
 	if qname in t.structs || t.sum_types.contains(qname) || qname in t.enum_types {
 		return true
 	}

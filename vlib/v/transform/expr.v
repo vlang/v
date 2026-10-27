@@ -2622,7 +2622,7 @@ fn (t &Transformer) selective_import_struct_lookup_name(name_id u32) ?u32 {
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
 		return none
 	} {
-		candidate_id := flat.source_type_id(candidate)
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
 		if candidate_id in t.structs || candidate_id in t.tc.structs {
 			return candidate_id
 		}
@@ -2641,7 +2641,7 @@ fn (t &Transformer) selective_import_type_name_for_file(file string, name_id u32
 	}
 	name := flat.source_type_name(name_id)
 	for candidate in t.tc.file_selective_imports[file_import_key(file, name)] or { return none } {
-		candidate_id := flat.source_type_id(candidate)
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
 		if candidate_id in t.structs || t.sum_types.contains(candidate_id) || candidate_id in t.enum_types
 			|| candidate_id in t.tc.structs || t.tc.sum_types.contains(candidate_id)
 			|| candidate_id in t.tc.enum_names || candidate_id in t.tc.interface_names
@@ -4838,7 +4838,9 @@ fn (t &Transformer) enum_type_name_for_expected(expected_enum_id u32, owner_mod 
 	if flat.source_type_shape(clean_id).has(.dotted) { return 0 }
 	for mod_name in [owner_mod, t.cur_module] {
 		if mod_name.len == 0 || mod_name == 'main' || mod_name == 'builtin' { continue }
-		qname := flat.source_type_composition_two(.qualified, flat.source_type_id(mod_name), clean_id)
+		qname := flat.source_type_existing_id('${mod_name}.${flat.source_type_name(clean_id)}') or {
+			continue
+		}
 		if qname in t.enum_types { return qname }
 	}
 	mut cache_key := u64(0)

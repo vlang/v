@@ -3,6 +3,25 @@ module markused
 import v.flat
 import v.types
 
+fn test_interface_dispatch_probes_do_not_retain_non_type_receivers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	missing := 'nominal_registry_dispatch_missing.Receiver'
+	assert flat.source_type_existing_id(missing) == none
+	for _ in 0 .. 2 {
+		assert interface_dispatch_dotted_name('nominal_registry_dispatch_missing__Receiver__run', &tc) == none
+	}
+	assert flat.source_type_existing_id(missing) == none
+
+	iface := flat.source_type_id('nominal_registry_dispatch.Iface')
+	alias := flat.source_type_id('nominal_registry_dispatch.Alias')
+	tc.interface_names[iface] = true
+	tc.type_aliases.set_id(alias, iface)
+	assert interface_dispatch_dotted_name('nominal_registry_dispatch__Iface__run', &tc)? == 'nominal_registry_dispatch.Iface.run'
+	assert interface_dispatch_dotted_name('nominal_registry_dispatch__Alias__run', &tc)? == 'nominal_registry_dispatch.Iface.run'
+	assert interface_dispatch_dotted_name('already.dotted.run', &tc)? == 'already.dotted.run'
+}
+
 fn test_struct_registry_keeps_exact_names_and_module_fallback_order() {
 	item := flat.source_type_id('Item')
 	alpha_item := flat.source_type_id('alpha.Item')

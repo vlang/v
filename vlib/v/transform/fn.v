@@ -458,8 +458,15 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type_id u
 		if !clean_shape.has(.dotted) && t.cur_module.len > 0
 			&& t.cur_module !in ['main', 'builtin'] {
 			qualified_type := '${t.cur_module}.${clean_type}'
-			if isnil(t.tc) || flat.source_type_id(qualified_type) in t.tc.structs
-				|| flat.source_type_id(qualified_type) in t.tc.interface_names || t.tc.type_aliases.contains(flat.source_type_id(qualified_type)) {
+			qualified_type_known := if isnil(t.tc) {
+				true
+			} else if qualified_id := flat.source_type_existing_id(qualified_type) {
+				qualified_id in t.tc.structs || qualified_id in t.tc.interface_names
+					|| t.tc.type_aliases.contains(qualified_id)
+			} else {
+				false
+			}
+			if qualified_type_known {
 				qualified_method := '${qualified_type}.${method}'
 				if t.is_known_fn_name(qualified_method) {
 					return qualified_method
@@ -916,7 +923,11 @@ fn (t &Transformer) alias_receiver_method_candidates(method string) []string {
 			continue
 		}
 		receiver_name := name.all_before_last('.')
-		if receiver_name.len > 0 && t.tc.type_aliases.contains(flat.source_type_id(receiver_name)) {
+		if receiver_name.len == 0 {
+			continue
+		}
+		receiver_id := flat.source_type_existing_id(receiver_name) or { continue }
+		if t.tc.type_aliases.contains(receiver_id) {
 			candidates << name
 		}
 	}
@@ -15524,10 +15535,11 @@ fn (mut t Transformer) try_lower_resolved_named_cast_call(id flat.NodeId, node f
 		return none
 	}
 	target := t.tc.resolved_call_name(id) or { return none }
-	if !t.tc.type_aliases.contains(flat.source_type_id(target)) && flat.source_type_id(target) !in t.tc.structs && flat.source_type_id(target) !in t.tc.enum_names {
+	target_id := flat.source_type_existing_id(target) or { return none }
+	if !t.tc.type_aliases.contains(target_id) && target_id !in t.tc.structs
+		&& target_id !in t.tc.enum_names {
 		return none
 	}
-	target_id := flat.source_type_id(target)
 	return t.make_cast(target_id, t.transform_expr(t.a.child(&node, 1)), target_id)
 }
 
@@ -18116,7 +18128,8 @@ fn (mut t Transformer) try_lower_checker_selected_alias_method(call_id flat.Node
 	}
 	resolved := t.tc.resolved_call_name(call_id) or { return none }
 	receiver := resolved.all_before_last('.')
-	if flat.source_type_id(receiver) !in t.tc.type_aliases.ids || t.receiver_method_name_is_open_generic(resolved)
+	receiver_id := flat.source_type_existing_id(receiver) or { return none }
+	if receiver_id !in t.tc.type_aliases.ids || t.receiver_method_name_is_open_generic(resolved)
 		|| !t.is_known_fn_name(resolved) {
 		return none
 	}
@@ -18125,7 +18138,7 @@ fn (mut t Transformer) try_lower_checker_selected_alias_method(call_id flat.Node
 	// multi-variant match branch repeats for each variant.
 	base_type := t.normalize_type_alias(t.unshared_type_id(t.trim_all_pointer_type(t.node_type(base_id))))
 	if base_type == 0 || !flat.source_type_shape(base_type).has(.array_type)
-		|| t.normalize_type_alias(flat.source_type_id(receiver)) != base_type {
+		|| t.normalize_type_alias(receiver_id) != base_type {
 		return none
 	}
 	args := t.transform_receiver_method_args(node, base_id, resolved)

@@ -8994,7 +8994,8 @@ fn (g &FlatGen) c_source_defines_used_c_type(text string) bool {
 	}
 	for name, _ in names {
 		full_name := 'C.${name}'
-		if flat.source_type_id(full_name) in g.tc.structs || flat.source_type_id(full_name) in g.tc.unions || g.tc.type_aliases.contains(flat.source_type_id(full_name)) || flat.source_type_id(full_name) in g.tc.enum_names {
+		name_id := flat.source_type_existing_id(full_name) or { continue }
+		if name_id in g.tc.structs || name_id in g.tc.unions || g.tc.type_aliases.contains(name_id) || name_id in g.tc.enum_names {
 			return true
 		}
 	}
@@ -19909,7 +19910,13 @@ fn (g &FlatGen) is_module_qualified_enum(base flat.Node) bool {
 	mod := g.import_alias_module(inner_base.value) or { inner_base.value }
 	short_mod := if mod.contains('.') { mod.all_after_last('.') } else { mod }
 	qname := '${short_mod}.${base.value}'
-	return flat.source_type_id(qname) in g.tc.enum_names || flat.source_type_id(base.value) in g.tc.enum_names
+	if name_id := flat.source_type_existing_id(qname) {
+		if name_id in g.tc.enum_names {
+			return true
+		}
+	}
+	name_id := flat.source_type_existing_id(base.value) or { return false }
+	return name_id in g.tc.enum_names
 }
 
 fn (mut g FlatGen) preamble() {
@@ -23541,7 +23548,12 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln("static inline string v3_string_upper_ascii(string s) { u8* out = malloc_noscan((ptrdiff_t)s.len + 1); for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[i] = c >= 'a' && c <= 'z' ? (u8)(c - ('a' - 'A')) : c; } out[s.len] = 0; return (string){.str = out, .len = s.len, .is_lit = 0}; }")
 	g.writeln('static inline string v3_char_string(int c) { return rune__str((u32)c); }')
 	g.writeln("static inline string v3_indent_multiline(string s) { int lines = 0; for (int i = 0; i < s.len; ++i) if (s.str[i] == '\\n') ++lines; if (lines == 0) return s; int out_len = s.len + lines * 4; u8* out = malloc_noscan((ptrdiff_t)out_len + 1); int p = 0; for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[p++] = c; if (c == '\\n') { memset(out + p, ' ', 4); p += 4; } } out[p] = 0; return (string){.str = out, .len = out_len, .is_lit = 0}; }")
-	if flat.source_type_id('sync.Channel') in g.tc.structs {
+	has_channel := if channel_id := flat.source_type_existing_id('sync.Channel') {
+		channel_id in g.tc.structs
+	} else {
+		false
+	}
+	if has_channel {
 		g.writeln('static inline string v3_chan_str(chan ch, string elem) { if (ch == NULL) return string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("(nil)", 5)); string out = string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("{\\n    cap: ", 11)); out = string__plus(out, int__str(ch->cap)); out = string__plus(out, ch->closed != 0 ? v3_c_lit(", closed: true\\n}", 16) : v3_c_lit(", closed: false\\n}", 17)); return out; }')
 	}
 	if g.target.os != 'vinix' {

@@ -13357,12 +13357,13 @@ fn (mut b Builder) load_map_len(map_ptr ValueID) ValueID {
 
 fn (mut b Builder) native_utsname_field_value(struct_typ_id TypeID, field_ptr ValueID) ?ValueID {
 	if b.m.target.ptr_size == 8 {
+		uname_name_id := flat.source_type_existing_id('C.utsname') or { return none }
 		mut base_type := struct_typ_id
 		if base_type > 0 && base_type < b.m.type_store.types.len
 			&& b.m.type_store.types[base_type].kind == .ptr_t {
 			base_type = b.m.type_store.types[base_type].elem_type
 		}
-		if uname_type := b.struct_types[flat.source_type_id('C.utsname')] {
+		if uname_type := b.struct_types[uname_name_id] {
 			field_type := b.deref_type(field_ptr)
 			if base_type == uname_type && field_type > 0
 				&& field_type < b.m.type_store.types.len

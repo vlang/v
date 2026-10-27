@@ -1181,8 +1181,10 @@ fn (tc &TypeChecker) vls_enum_receiver(receiver &flat.Node) ?string {
 		module_node := tc.a.child_node(receiver, 0)
 		if module_node.kind == .ident {
 			qualified := '${module_node.value}.${receiver.value}'
-			if flat.source_type_id(qualified) in tc.enum_names {
-				return qualified
+			if name_id := flat.source_type_existing_id(qualified) {
+				if name_id in tc.enum_names {
+					return qualified
+				}
 			}
 		}
 	}
@@ -1789,7 +1791,8 @@ fn (tc &TypeChecker) vls_named_type_text(name string) string {
 	if name.contains('[') {
 		return name
 	}
-	index := tc.first_type_declaration_ids[flat.source_type_id(name)] or { return name }
+	name_id := flat.source_type_existing_id(name) or { return name }
+	index := tc.first_type_declaration_ids[name_id] or { return name }
 	node := tc.a.nodes[index]
 	file := tc.a.source_files[node.pos.id] or { return name }
 	// A file without a `module` line belongs to `main`.

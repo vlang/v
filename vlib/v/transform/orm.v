@@ -1798,7 +1798,12 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 			}
 			if method := t.tc.concrete_method_signature_key(t.trim_all_pointer_type(receiver_type_source_id),
 				callee.value) {
-				if flat.source_type_id(method.all_before_last('.')) in t.tc.type_aliases.ids
+				is_alias_receiver := if receiver_id := flat.source_type_existing_id(method.all_before_last('.')) {
+					receiver_id in t.tc.type_aliases.ids
+				} else {
+					false
+				}
+				if is_alias_receiver
 					&& !t.receiver_method_name_is_open_generic(method)
 					&& !t.call_selector_base_is_namespace(receiver, callee.value, method) {
 					if t.tc.sql_orm_method_is_private(method, t.cur_file, t.cur_module) {
@@ -3965,18 +3970,25 @@ fn (t &Transformer) sql_transform_type_is_enum(typ_id u32) bool {
 		return true
 	}
 	if t.tc.cur_module.len > 0 && t.tc.cur_module !in ['', 'main', 'builtin'] {
-		return flat.source_type_composition_two(.qualified, flat.source_type_id(t.tc.cur_module), typ_id) in t.enum_types
+		qualified_id := flat.source_type_existing_id('${t.tc.cur_module}.${flat.source_type_name(typ_id)}') or {
+			return false
+		}
+		return qualified_id in t.enum_types
 	}
 	return false
 }
 
 fn (t &Transformer) sql_token_root_is_enum_type(root string) bool {
-	root_id := flat.source_type_id(root)
-	if root_id in t.enum_types {
-		return true
+	if root_id := flat.source_type_existing_id(root) {
+		if root_id in t.enum_types {
+			return true
+		}
 	}
 	if t.tc.cur_module.len > 0 && t.tc.cur_module !in ['', 'main', 'builtin'] {
-		return flat.source_type_composition_two(.qualified, flat.source_type_id(t.tc.cur_module), root_id) in t.enum_types
+		qualified_id := flat.source_type_existing_id('${t.tc.cur_module}.${root}') or {
+			return false
+		}
+		return qualified_id in t.enum_types
 	}
 	return false
 }

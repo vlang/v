@@ -184,8 +184,10 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 	}
 	clean := flat.source_type_name(clean_id)
 	if t.is_builtin_ierror_interface_name(clean_id) {
-		if flat.source_type_id('builtin.IError') in t.tc.interface_names {
-			return flat.source_type_id('builtin.IError')
+		if builtin_id := flat.source_type_existing_id('builtin.IError') {
+			if builtin_id in t.tc.interface_names {
+				return builtin_id
+			}
 		}
 		return flat.source_type_id('IError')
 	}
@@ -197,8 +199,9 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
 			[]string{}
 		} {
-			if flat.source_type_id(candidate) in t.tc.interface_names {
-				return interface_type_application(flat.source_type_id(candidate), args, syntax.generic_app_valid())
+			candidate_id := flat.source_type_existing_id(candidate) or { continue }
+			if candidate_id in t.tc.interface_names {
+				return interface_type_application(candidate_id, args, syntax.generic_app_valid())
 			}
 		}
 	}
