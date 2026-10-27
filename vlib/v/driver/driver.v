@@ -21950,6 +21950,11 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 			if callee.kind == .ident && callee.value == 'new_map' {
 				unsupported_type = tc.resolve_type(id).source_type_id()
 			}
+			// Runtime auto-formatters need a recursion guard with no wasm body.
+			// Constant array text is folded before this post-transform check.
+			if callee.kind == .ident && callee.value == 'autostr_addr_type_push' {
+				return '${fallback_location}error: the V wasm backend does not support runtime value formatting yet'
+			}
 		}
 		if unsupported_type != 0 {
 			return '${fallback_location}error: the V wasm backend does not support type `${flat.source_type_name(unsupported_type)}` yet'
