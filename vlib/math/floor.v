@@ -82,7 +82,7 @@ pub fn round(x f64) f64 {
 	if e_ < bias {
 		// Round abs(x) < 1 including denormals.
 		bits &= sign_mask // +-0
-		if e_ == bias - 1 {
+		if e_ == bias - u64(1) {
 			bits |= uvone // +-1
 		}
 	} else if e_ < bias + shift {
