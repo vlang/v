@@ -8972,7 +8972,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			if p.peek() == .lpar && !p.parenthesized_match_header_starts_block() {
 				return p.assign_or_expr_stmt()
 			}
-			return p.match_stmt()
+			return p.match_stmt(false)
 		}
 		.key_break {
 			kw_pos := p.tok_pos
@@ -9603,7 +9603,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 	for_start := p.span_start()
 	p.next() // skip 'for'
 	if p.tok == .key_match {
-		condition := p.match_stmt()
+		condition := p.match_stmt(false)
 		init_empty := p.add(flat.NodeKind.empty)
 		post_empty := p.add(flat.NodeKind.empty)
 		start := p.add_children([init_empty, condition, post_empty])
@@ -10158,7 +10158,7 @@ fn (mut p Parser) record_for_mut_diagnostic(id flat.NodeId, message string) {
 	p.record_diagnostic_span(message, variable.pos.offset, variable.pos.end)
 }
 
-fn (mut p Parser) match_stmt() flat.NodeId {
+fn (mut p Parser) match_stmt(stop_at_struct_field bool) flat.NodeId {
 	match_start := p.span_start()
 	p.next() // skip 'match'
 	if p.tok == .name && p.lit == 'sql' && !p.prefs.is_fmt {
@@ -10189,7 +10189,8 @@ fn (mut p Parser) match_stmt() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(match_start)
 	})
-	if p.current_token_is_newline_semicolon() && p.peek() == .key_or {
+	// A field named `or` after a default is separate from the match expression.
+	if !stop_at_struct_field && p.current_token_is_newline_semicolon() && p.peek() == .key_or {
 		p.next()
 	}
 	if p.tok == .key_or {
@@ -13679,7 +13680,7 @@ fn (mut p Parser) prefix_expr(stop_at_struct_field bool) flat.NodeId {
 			if p.keyword_token_is_ident_expr() && !p.parenthesized_match_header_starts_block() {
 				return p.keyword_ident_expr()
 			}
-			return p.match_stmt()
+			return p.match_stmt(stop_at_struct_field)
 		}
 		.key_fn {
 			return p.fn_literal()

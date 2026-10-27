@@ -429,7 +429,7 @@ fn make_shader_with_frag(glsl410 string, glsl300es string, metal string, wgsl st
 	$if sokol_gles3 ? {
 		desc.set_vert_src(glsl300es_vs)
 		desc.set_frag_src(glsl300es)
-	} $else $if sokol_metal ? {
+	} $else $if sokol_metal ?|| (macos && !darwin_sokol_glcore33 ?) {
 		desc.vs.entry = c'main0'
 		desc.fs.entry = c'main0'
 		desc.set_vert_src(metal_sim_vs)

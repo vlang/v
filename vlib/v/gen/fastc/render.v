@@ -4932,11 +4932,12 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		// The `.lsbr` guard below would wrongly skip this because the chain indexes an array.
 		return '*(${rendered})'
 	}
-	if flat.source_type_query(actual_type).has(.c_pointer_suffix) && expected_type_source_id == fastc_trim_pointer_type(actual_type) && expected_type_source_id != flat.source_type_voidptr && !fastc_expression_tokens_contain(tokens, .lsbr) {
+	if flat.source_type_query(actual_type).has(.c_pointer_suffix) && expected_type_source_id == fastc_trim_pointer_type(actual_type) && expected_type_source_id != flat.source_type_voidptr && (!fastc_expression_tokens_contain(tokens, .lsbr) || fastc_tokens_are_plain_call(fastc_strip_paren_tokens(tokens))) {
 		// V automatically dereferences an explicit reference when a by-value
 		// parameter is expected (`s &string` passed to `log_line(s string)`). A
 		// slice of a mutable array is already a by-value array even though the
 		// receiver local retains its pointer type during inference.
+		// Indexes inside call arguments do not change the call's pointer result.
 		return '*(${rendered})'
 	}
 	if flat.source_type_query(expected_type_source_id).has(.c_pointer_suffix) && actual_type == flat.source_type_voidptr && rendered.trim_space() == 'NULL' {

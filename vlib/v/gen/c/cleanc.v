@@ -6073,24 +6073,34 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 		|| g.object_file_mode || g.target_libc_headers {
 		return false
 	}
+	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
+	if !isnil(g.a) {
+		// The header of a cached module holds the directives of all of its sources,
+		// and does not say which one each came from. Judging it by one of them only
+		// kept a binding such as `os`'s <sys/mman.h> as an SDK header in the builds
+		// that read `os` from its header, and not in the one that parsed its
+		// sources: they generated different C, so neither found the module objects
+		// of the other.
+		if sources := g.a.cached_header_module_sources[source_file] {
+			return sources.any(g.core_native_source_header_is_redeclared(root, it, include_arg))
+		}
+	}
 	source := if isnil(g.a) {
 		source_file
 	} else {
 		g.a.cached_header_sources[source_file] or { source_file }
 	}
-	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
+	return g.core_native_source_header_is_redeclared(root, source, include_arg)
+}
+
+// core_native_source_header_is_redeclared is core_native_header_is_redeclared for
+// an include in the V source file `source`.
+fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source string, include_arg string) bool {
 	path := source.replace('\\', '/')
 	if root.len == 0 || !path.starts_with(root + '/vlib/') {
 		return false
 	}
 	relative := path[root.len + 6..]
-	// Cached module headers stand in for every source, but their owner can be
-	// any file in that module. Keep os's mmap declarations headerless on warm builds.
-	if !isnil(g.a) && source_file in g.a.cached_header_sources
-		&& relative.starts_with('os/') && include_arg == '<sys/mman.h>' {
-		return g.target.pointer_bits == 64 && g.target.os in ['macos', 'linux', 'android', 'termux',
-			'freebsd', 'openbsd', 'dragonfly']
-	}
 	if relative.starts_with('term/termios/termios_') && relative.ends_with('.c.v') {
 		return include_arg in ['<termios.h>', '<sys/ioctl.h>']
 	}
@@ -24268,6 +24278,9 @@ fn (g &FlatGen) fixed_array_type_defined(typ0 &types.Type, emitted_structs map[s
 fn (mut g FlatGen) fixed_array_typedef_type_module(name string, fallback string) string {
 	if info := g.struct_decl_infos[name] {
 		return info.module
+	}
+	if module_name := g.tc.struct_modules[name] {
+		return module_name
 	}
 	mod := module_from_qualified_name(name)
 	if mod.len > 0 {

@@ -12635,7 +12635,8 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 	}
 	mut cloned_call_args := []u32{cap: node.call_type_args().len}
 	for arg in node.call_type_args() {
-		cloned_call_args << t.subst_type(arg, args_ids)
+		substituted_arg := t.subst_type(arg, args_ids)
+		cloned_call_args << t.lock_colliding_main_substitution_type_text(arg, substituted_arg, t.cur_module, t.active_generic_params)
 	}
 	has_source_value := node.source_value != 0 || node.kind in [.struct_init, .assoc, .cast_expr,
 		.as_expr, .is_expr, .map_init, .array_init, .array_literal, .sizeof_expr, .typeof_expr,
@@ -13339,7 +13340,9 @@ fn (mut t Transformer) substitute_cloned_generic_call_type_args(node flat.Node, 
 			&& !generic_text_contains_param(arg, t.active_generic_params) {
 			continue
 		}
-		substituted := flat.source_type_name(t.resolve_substituted_type_text(t.subst_type(arg_source_id_10, args_ids)))
+		concrete := t.subst_type(arg_source_id_10, args_ids)
+		locked := t.lock_colliding_main_substitution_type_text(arg_source_id_10, concrete, t.cur_module, t.active_generic_params)
+		substituted := flat.source_type_name(t.resolve_substituted_type_text(locked))
 		if substituted.len == 0 || substituted == arg
 			|| t.generic_args_have_placeholders(flat.TypeTextList.from_names([substituted]).ids) {
 			continue

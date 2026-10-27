@@ -5,6 +5,10 @@ It is currently implemented using `sokol`, and makes easy creating
 apps that just need a way to draw simple 2D shapes, and to react to
 user's keyboard/mouse input.
 
+On macOS, the default backend uses Metal shaders and requires an available Metal device. If a
+virtual machine does not provide GPU access, `gg` stops during initialization with a message
+explaining that no Metal device is available.
+
 With `ui_mode: true`, call `context.refresh_ui()` to request a redraw. The C backend accepts
 requests from any thread and preserves requests made while a frame is being drawn. Drawing and
 the trailing frames after a refresh are handled by the frame thread.

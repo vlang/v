@@ -8296,6 +8296,7 @@ fn clone_flat_ast_after_transform_from_scope(ast &flat.FlatAst, scope voidptr) &
 		source_files:                  ast.source_files
 		resolved_source_paths:         ast.resolved_source_paths.clone()
 		cached_header_sources:         clone_string_string_map(ast.cached_header_sources)
+		cached_header_module_sources:  ast.cached_header_module_sources.clone()
 		source_paths_frozen:           ast.source_paths_frozen
 		template_call_sites:           ast.template_call_sites.clone()
 		template_actions:              clone_int_string_map(ast.template_actions)
@@ -25239,6 +25240,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		if builtin_sources.len > 0 {
 			builtin_header := cache_state.manager.entry('builtin', builtin_sources).header
 			a.cached_header_sources[builtin_header] = builtin_sources[0]
+			a.cached_header_module_sources[builtin_header] = builtin_sources.clone()
 		}
 	}
 	mut was_parallel := false
@@ -25699,6 +25701,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 								parse_files = [header.header]
 								if mod_files.len > 0 {
 									a.cached_header_sources[header.header] = mod_files[0]
+									a.cached_header_module_sources[header.header] = mod_files.clone()
 								}
 							} else {
 								cache_state.source_body_modules[cache_module] = true
@@ -25728,6 +25731,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 							parse_files = [cached.header]
 							if mod_files.len > 0 {
 								a.cached_header_sources[cached.header] = mod_files[0]
+								a.cached_header_module_sources[cached.header] = mod_files.clone()
 							}
 						} else {
 							// Cached declaration headers omit local bindings. Project-owned

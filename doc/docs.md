@@ -3272,6 +3272,8 @@ struct Settings {
 }
 ```
 
+The same rule applies to defaults such as `match` expressions, including fields named `or`.
+
 ### Required fields
 
 ```v
@@ -11503,7 +11505,9 @@ functions. Numeric local labels such as `1:` with `1b` (backward) and `1f` (forw
 also useful for short branches. Do not use an ordinary global-looking label in a raw block unless
 it is deliberately exported: two instantiations of a function can otherwise define the same
 assembler symbol. In x86 and arm64 raw blocks, the compiler warns about such a label inside a
-function unless it is numeric, uses `%=`, or is exported with `.globl`, `.global`, or `.weak`.
+function unless it is an unquoted numeric label, uses `%=`, or is exported with `.globl`,
+`.global`, or `.weak`. Quoted symbol definitions are checked too: `"1":` is an ordinary symbol,
+not a numeric local label.
 
 For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
 the pointer inside the template, and decrement the count until it reaches zero:
