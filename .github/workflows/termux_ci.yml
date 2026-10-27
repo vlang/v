@@ -171,7 +171,7 @@ jobs:
             export TERMUX_VERSION=0.118.3
             bash .github/workflows/retry.sh pkg update -y
             bash .github/workflows/retry.sh pkg install -y clang make git libgc libgc-static
-            git clone --depth 1 -b mob https://repo.or.cz/tinycc.git ~/tinycc
+            bash .github/workflows/retry.sh git clone --depth 1 -b mob https://repo.or.cz/tinycc.git ~/tinycc
             cd ~/tinycc
             git log -n1 --format=%H
             # Termux has no /bin/sh, so run configure and make with $PREFIX/bin/sh.
