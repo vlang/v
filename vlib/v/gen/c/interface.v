@@ -1098,15 +1098,16 @@ fn (g &FlatGen) ierror_array_get_base_name(node flat.Node) ?string {
 	if clean.kind != .call || clean.children_count < 2 {
 		return none
 	}
+	// Check the cheap base shape before resolving the call target name.
+	base := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 1))])
+	if base.kind != .ident || base.value.len == 0 {
+		return none
+	}
 	target := g.call_target_name(g.a.child(&clean, 0))
 	if target !in ['array_get', 'array__get'] {
 		return none
 	}
-	base := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 1))])
-	if base.kind == .ident && base.value.len > 0 {
-		return base.value
-	}
-	return none
+	return base.value
 }
 
 fn (g &FlatGen) ierror_pointer_alias_name_from_addr(node flat.Node) ?string {

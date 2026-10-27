@@ -2281,33 +2281,41 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	if node.payload == 0 {
 		return
 	}
-	old_params := node.generic_params()
+	// Resolve the payload once instead of once per metadata accessor.
+	payload := flat.node_payload_at(node.payload)
+	old_params := payload.generic_params
+	call_args := payload.call_type_args.ids
+	has_debugger_types := node.kind == .debugger_stmt && payload.debugger_value_types.ids.len > 0
 	if old_params.len == 0 {
-		call_args := node.call_type_args()
-		if call_args.len > 0 && (transform_scope_owns(scope, node.payload_ptr()) || transform_scope_owns(scope, call_args.data)) {
+		if call_args.len > 0 && (transform_scope_owns(scope, payload)
+			|| transform_scope_owns(scope, call_args.data)) {
 			publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
 			node.set_call_type_args(call_args)
 			transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 			return
 		}
-		debugger_types := node.debugger_value_type_ids()
-		if (debugger_types.len > 0 && (transform_scope_owns(scope, node.payload_ptr()) || transform_scope_owns(scope, debugger_types.data))) || ((node.enum_backing_type_id() != 0 || node.has_lowered_type_metadata()) && transform_scope_owns(scope, node.payload_ptr())) {
+		enum_backing := if node.kind == .enum_decl { payload.enum_backing_type } else { u32(0) }
+		has_lowered := payload.fn_value_type != 0 || payload.generated_variant_type != 0
+			|| payload.mut_optional_arg_view_type != 0
+		if (has_debugger_types && (transform_scope_owns(scope, payload)
+			|| transform_scope_owns(scope, payload.debugger_value_types.ids.data)))
+			|| ((enum_backing != 0 || has_lowered) && transform_scope_owns(scope, payload)) {
 			publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
-			if debugger_types.len > 0 {
-				node.set_debugger_value_type_ids(debugger_types)
-			} else if node.enum_backing_type_id() != 0 {
-				node.set_enum_backing_type_id(node.enum_backing_type_id())
+			if has_debugger_types {
+				node.set_debugger_value_type_ids(payload.debugger_value_types.ids)
+			} else if enum_backing != 0 {
+				node.set_enum_backing_type_id(enum_backing)
 			} else {
-				node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
+				node.set_generic_params_and_constraint_ids([]string{}, payload.generic_constraints.ids)
 			}
 			transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 		}
 		return
 	}
-	old_constraints := node.payload_ptr().generic_constraints.ids
-	call_args := node.call_type_args()
-	debugger_types := node.debugger_value_type_ids()
-	mut needs_owned_params := (debugger_types.len > 0 && transform_scope_owns(scope, debugger_types.data)) || transform_scope_owns(scope, node.payload_ptr())
+	old_constraints := payload.generic_constraints.ids
+	mut needs_owned_params := (has_debugger_types
+		&& transform_scope_owns(scope, payload.debugger_value_types.ids.data))
+		|| transform_scope_owns(scope, payload)
 		|| transform_scope_owns(scope, old_params.data)
 		|| (old_constraints.len > 0 && transform_scope_owns(scope, old_constraints.data))
 		|| (call_args.len > 0 && transform_scope_owns(scope, call_args.data))
@@ -2339,21 +2347,26 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 	if value == '' {
 		return ''
 	}
-	// Shallow string copies share `.str`, so one batch promotes the same
-	// instance thousands of times: a pointer probe is much cheaper than the
-	// content-hash table lookups below. Only valid within one absorb pass
-	// (absorb_scoped_batch bumps the generation before scope addresses can be
-	// reused).
+	// One batch promotes the same texts thousands of times; a content-keyed
+	// probe is much cheaper than the hash-table lookups below.
 	mut cache := t.promote_text_cache
 	use_cache := !isnil(cache) && cache.active
 	mut slot := 0
 	if use_cache {
-		slot = int((u64(voidptr(value.str)) >> 4) & 2047)
-		// The length check guards against distinct strings sharing one base
-		// pointer (unsafe zero-copy slices).
-		if cache.generations[slot] == cache.generation && cache.ptrs[slot] == voidptr(value.str)
-			&& cache.results[slot].len == value.len {
+		slot = promote_text_cache_slot(value)
+		if cache.generations[slot] == cache.generation && cache.results[slot] == value {
 			return cache.results[slot]
+		}
+		// The first lookup of a text in a window: a table id remembered from an
+		// earlier window still names the same content, so check it before hashing.
+		table_id := int(cache.table_ids[slot])
+		if table_id > 0 && table_id <= t.a.text_values.len {
+			table_text := t.a.text_values[table_id - 1]
+			if table_text == value {
+				cache.generations[slot] = cache.generation
+				cache.results[slot] = table_text
+				return table_text
+			}
 		}
 	}
 	// Scoped workers only read the compilation text table. Reuse its canonical
@@ -2362,6 +2375,9 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 	mut canonical := ''
 	if id := t.a.text_ids[value] {
 		canonical = t.a.text_values[int(id) - 1]
+		if use_cache {
+			cache.table_ids[slot] = id
+		}
 	} else if promoted := t.scoped_promoted_texts[value] {
 		canonical = promoted
 	} else {
@@ -2371,7 +2387,6 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 		t.scoped_promoted_texts[canonical] = canonical
 	}
 	if use_cache {
-		cache.ptrs[slot] = voidptr(value.str)
 		cache.generations[slot] = cache.generation
 		cache.results[slot] = canonical
 	}
@@ -2452,7 +2467,17 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	// Setters record writes to every pre-existing node, including nodes reached
 	// indirectly by generic lowering. Publish those and the appended region;
 	// scanning the growing AST after each batch makes publication quadratic.
+	// A payload-less node whose value text lies outside the batch arena owns
+	// nothing there, so it needs no promotion.
+	scope_lo, scope_hi := transform_scope_address_range(scope)
 	for idx in new_node_start .. batch.a.nodes.len {
+		if idx >= 0 && idx < t.a.nodes.len {
+			node := unsafe { &t.a.nodes[idx] }
+			value_address := uint(node.value.str)
+			if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi) {
+				continue
+			}
+		}
 		t.promote_scoped_node_to_current(idx, scope)
 	}
 	for idx in batch.scoped_owned_base_nodes.keys() {
@@ -3219,6 +3244,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	previous_used_fns_root := t.used_fns_root
 	shared_used_fns := t.used_fns.clone()
 	t.used_fns_root = unsafe { &shared_used_fns }
+	t.reset_used_fn_name_cache()
 	t.timing_profile('  [ttime]     ss split+part  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	mut args := []SharedChunkArgs{len: chunk_count}
 	args[0] = SharedChunkArgs{
@@ -3419,6 +3445,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	t.shared_base_nodes = -1
 	t.shared_base_children = -1
 	t.used_fns_root = previous_used_fns_root
+	t.reset_used_fn_name_cache()
 	t.flush_deferred_base_writes()
 	if t.ignored_comptime_for_log.len > 0 {
 		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {

@@ -487,9 +487,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					}
 				}
 				info := FnDeclInfo{
-					node_id:        flat.NodeId(node_idx)
-					module:         fn_decl_module
-					import_context: fn_decl_import_context
+					node_id:           flat.NodeId(node_idx)
+					module:            fn_decl_module
+					import_context:    fn_decl_import_context
+					positional_params: markused_positional_param_count(a, &node)
 				}
 				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, node.value, info)
 				if can_suffix_match {
@@ -2214,6 +2215,9 @@ struct FnDeclInfo {
 	node_id        flat.NodeId
 	module         string
 	import_context int
+	// positional_params counts the declared params a call passes positionally;
+	// -1 when it was not computed with the declaration.
+	positional_params int = -1
 }
 
 // StructDeclInfo stores struct decl info metadata used by markused.
@@ -2389,9 +2393,10 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		has_dot := node.value.index_u8(`.`) >= 0
 		can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 		info := FnDeclInfo{
-			node_id:        flat.NodeId(node_idx)
-			module:         fn_decl_module
-			import_context: fn_decl_import_context
+			node_id:           flat.NodeId(node_idx)
+			module:            fn_decl_module
+			import_context:    fn_decl_import_context
+			positional_params: markused_positional_param_count(a, &node)
 		}
 		add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info)
 		if can_suffix_match {
@@ -6449,18 +6454,7 @@ fn (c &CallCollector) local_value_info_for_names(node &flat.Node, cur_module str
 	if names.len == 0 && !has_inference_binders {
 		return names, type_names, ident_types, visible_local_idents
 	}
-	param_types := c.local_fn_param_type_names(node, cur_module)
-	for i in 0 .. node.children_count {
-		child_id := c.a.child(node, i)
-		if int(child_id) >= 0 {
-			param := c.a.node(child_id)
-			if param.kind == .param && param.value.len > 0 && param.typ != 0 {
-				type_names.set_id(param.value, param_types.type_id(param.value) or {
-					markused_resolve_imported_source_type(param.typ, imports)
-				})
-			}
-		}
-	}
+	c.set_local_fn_param_types(node, cur_module, imports, mut type_names)
 	// Infer calls using the locals visible at each identifier, not declarations
 	// collected later in the body or in a different block. The call walk reuses
 	// this same visibility map when local names collide with declarations.
@@ -6815,30 +6809,131 @@ fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node,
 	}
 }
 
+const markused_max_inline_fn_params = 16
+
+// set_local_fn_param_types binds each named, typed parameter of a fn declaration.
+// A checked signature with one entry per named parameter supplies the types
+// (the last of duplicate names wins); otherwise the source spelling is resolved
+// through the file's imports.
 @[direct_array_access]
-fn (c &CallCollector) local_fn_param_type_names(node &flat.Node, cur_module string) flat.TypeTextBindings {
-	mut result := c.new_local_types()
-	mut param_names := []string{}
+fn (c &CallCollector) set_local_fn_param_types(node &flat.Node, cur_module string, imports map[string]string, mut type_names flat.TypeTextBindings) {
+	mut named := [markused_max_inline_fn_params]flat.NodeId{}
+	mut named_count := 0
 	for i in 0 .. node.children_count {
-		child := c.a.child_node(node, i)
+		child_id := c.a.child(node, i)
+		child := c.a.node(child_id)
 		if child.kind == .param && child.value.len > 0 {
-			param_names << child.value
+			if named_count < markused_max_inline_fn_params {
+				named[named_count] = child_id
+			}
+			named_count++
 		}
 	}
-	if param_names.len == 0 {
-		return result
+	if named_count == 0 {
+		return
 	}
-	for candidate in markused_fn_signature_name_candidates(node.value, cur_module) {
-		params := c.tc.fn_param_types[candidate] or { continue }
-		if params.len != param_names.len {
+	if named_count > markused_max_inline_fn_params {
+		c.set_many_local_fn_param_types(node, cur_module, imports, named_count, mut type_names)
+		return
+	}
+	params := c.local_fn_signature_param_types(node.value, cur_module, named_count) or {
+		for k in 0 .. named_count {
+			param := c.a.node(named[k])
+			if param.typ != 0 {
+				type_names.set_id(param.value, markused_resolve_imported_source_type(param.typ,
+					imports))
+			}
+		}
+		return
+	}
+	// Intern every signature type in order before binding, as a full name table would.
+	mut ids := [markused_max_inline_fn_params]u32{}
+	for k in 0 .. named_count {
+		ids[k] = params[k].source_type_id()
+	}
+	for k in 0 .. named_count {
+		param := c.a.node(named[k])
+		if param.typ == 0 {
 			continue
 		}
-		for i, name in param_names {
-			result.set_id(name, params[i].source_type_id())
+		mut last := k
+		for j := named_count - 1; j > k; j-- {
+			if c.a.node(named[j]).value == param.value {
+				last = j
+				break
+			}
 		}
-		return result
+		type_names.set_id(param.value, ids[last])
 	}
-	return result
+}
+
+// set_many_local_fn_param_types is set_local_fn_param_types for declarations
+// with more parameters than fit its inline buffers.
+@[direct_array_access]
+fn (c &CallCollector) set_many_local_fn_param_types(node &flat.Node, cur_module string, imports map[string]string, named_count int, mut type_names flat.TypeTextBindings) {
+	mut param_types := c.new_local_types()
+	if params := c.local_fn_signature_param_types(node.value, cur_module, named_count) {
+		mut k := 0
+		for i in 0 .. node.children_count {
+			child := c.a.child_node(node, i)
+			if child.kind == .param && child.value.len > 0 {
+				param_types.set_id(child.value, params[k].source_type_id())
+				k++
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		param := c.a.child_node(node, i)
+		if param.kind == .param && param.value.len > 0 && param.typ != 0 {
+			type_names.set_id(param.value, param_types.type_id(param.value) or {
+				markused_resolve_imported_source_type(param.typ, imports)
+			})
+		}
+	}
+}
+
+// local_fn_signature_param_types returns the checked parameter types of fn
+// `name` when they have `param_count` entries. It probes the spellings of
+// markused_fn_signature_name_candidates in the same order, deriving a C name
+// only after the spellings before it missed.
+fn (c &CallCollector) local_fn_signature_param_types(name string, cur_module string, param_count int) ?[]types.Type {
+	module_first := cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin'
+	first := if module_first { '${cur_module}.${name}' } else { name }
+	if params := c.fn_param_types_with_count(first, param_count) {
+		return params
+	}
+	first_c := markused_c_name(first)
+	if first_c != first {
+		if params := c.fn_param_types_with_count(first_c, param_count) {
+			return params
+		}
+	}
+	if !module_first {
+		// The qualified spelling equals `name` outside modules.
+		return none
+	}
+	if params := c.fn_param_types_with_count(name, param_count) {
+		return params
+	}
+	name_c := markused_c_name(name)
+	if name_c != name && name_c != first && name_c != first_c {
+		if params := c.fn_param_types_with_count(name_c, param_count) {
+			return params
+		}
+	}
+	return none
+}
+
+@[inline]
+fn (c &CallCollector) fn_param_types_with_count(key string, param_count int) ?[]types.Type {
+	if key.len == 0 {
+		return none
+	}
+	params := c.tc.fn_param_types[key] or { return none }
+	if params.len != param_count {
+		return none
+	}
+	return params
 }
 
 fn (c &CallCollector) local_decl_type_name(declared_id u32, rhs_id flat.NodeId, cur_module string, imports map[string]string, local_types flat.TypeTextBindings) u32 {
@@ -6942,7 +7037,10 @@ fn markused_visible_local_idents(a &flat.FlatAst, root &flat.Node, local_values 
 }
 
 fn markused_ident_is_visible_local(id flat.NodeId, name string, local_values map[string]bool, visible_local_idents map[int]bool) bool {
-	return name.len > 0 && name in local_values && int(id) in visible_local_idents
+	// The integer node-id probe is cheaper than hashing the name and rejects
+	// most identifiers, so it runs first; the result is the same conjunction.
+	return name.len > 0 && visible_local_idents.len > 0 && int(id) in visible_local_idents
+		&& name in local_values
 }
 
 fn markused_push_visible_local(name string, mut locals map[string]int, mut local_stack []string) {
@@ -10459,6 +10557,23 @@ fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module s
 	c.collect_struct_default_calls_from_info(info, value_struct_default_type_name(init_type), set_fields, mut calls)
 }
 
+// markused_positional_param_count counts the declared positional params of a fn
+// decl. Params precede the body statements; the receiver (op == .dot) is the
+// selector base, not a positional argument.
+fn markused_positional_param_count(a &flat.FlatAst, fn_node &flat.Node) int {
+	mut npos := 0
+	for i in 0 .. fn_node.children_count {
+		p := a.child_node(fn_node, i)
+		if p.kind != .param {
+			break
+		}
+		if p.op != .dot {
+			npos++
+		}
+	}
+	return npos
+}
+
 // collect_omitted_params_default_calls marks the field-initializer calls of a
 // trailing struct parameter that the call site omitted (e.g. `zstd.compress(data)`
 // leaving out its `@[params] CompressParams` argument). The transformer synthesizes
@@ -10488,12 +10603,27 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 	if name.len == 0 {
 		return
 	}
-	info := c.fn_decls[name] or { c.fn_decls[callee_name] or { return } }
+	info := c.fn_decls[name] or {
+		// `name` is `callee_name` unless the latter was empty; skip the repeated miss.
+		if name == callee_name {
+			return
+		}
+		c.fn_decls[callee_name] or { return }
+	}
 	fn_node := c.a.node(info.node_id)
+	npos := if info.positional_params >= 0 {
+		info.positional_params
+	} else {
+		markused_positional_param_count(c.a, fn_node)
+	}
+	if npos == 0 {
+		return
+	}
 	// Count only positional arguments. Trailing named params
 	// (`compress(data, level: 3)`) are `field_init` children of the call, not
 	// positional arguments; counting them would make the trailing params struct
 	// look fully provided and skip collecting its omitted field defaults.
+	// Most calls provide every param; stop counting as soon as they do.
 	mut provided := 0
 	for i in 1 .. int(call.children_count) {
 		arg := c.a.child_node(call, i)
@@ -10501,18 +10631,30 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 			continue
 		}
 		provided++
+		if provided >= npos {
+			return
+		}
 	}
-	// Visit only omitted parameter types; ordinary calls need no temporary
-	// signature array. Receiver and named-argument handling stays independent.
+	c.collect_omitted_param_types_default_calls(fn_node, info, provided, mut calls)
+}
+
+// collect_omitted_param_types_default_calls visits the param types at positional
+// index >= `provided`, the params a call omitted. It is kept out of line so the
+// common fully-provided call stays cheap.
+@[noinline]
+fn (c &CallCollector) collect_omitted_param_types_default_calls(fn_node &flat.Node, info FnDeclInfo, provided int, mut calls []string) {
+	imports := c.imports(info.import_context)
 	mut param_index := 0
 	for i in 0 .. fn_node.children_count {
 		p := c.a.child_node(fn_node, i)
-		// The receiver (op == .dot) is the selector base, not a positional argument.
-		if p.kind != .param || p.op == .dot {
+		if p.kind != .param {
+			break
+		}
+		if p.op == .dot {
 			continue
 		}
 		if param_index >= provided {
-			c.collect_struct_default_calls_for_type(p.typ, info.module, c.imports(info.import_context), mut calls)
+			c.collect_struct_default_calls_for_type(p.typ, info.module, imports, mut calls)
 		}
 		param_index++
 	}

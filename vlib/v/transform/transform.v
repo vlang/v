@@ -348,6 +348,7 @@ mut:
 	alias_receiver_method_cache            &LookupCache               = unsafe { nil }
 	receiver_method_cache                  &ReceiverMethodCache       = unsafe { nil }
 	promote_text_cache                     &PromoteTextCache          = unsafe { nil }
+	used_fn_name_cache                     &UsedFnNameCache           = unsafe { nil }
 	call_variadic_cache                    &BoolLookupCache           = unsafe { nil }
 	str_alias_cache                        &StrAliasCache             = unsafe { nil }
 	file_import_cache                      &util.KeyRecentCache       = unsafe { nil }
@@ -779,9 +780,15 @@ mut:
 	canonical_types    [1024]u32
 	optional_bases     map[u32]u32
 	pointer_bases      map[u32]u32
-	shared_bases       map[u32]u32
-	variadic_arrays    map[u32]u32
-	entries            map[u32]u32
+	// Direct-mapped fronts for the pure pointer/optional base maps above.
+	// Type id 0 is never stored, so zeroed keys mark empty slots.
+	pointer_keys    [1024]u32
+	pointer_vals    [1024]u32
+	optional_keys   [256]u32
+	optional_vals   [256]u32
+	shared_bases    map[u32]u32
+	variadic_arrays map[u32]u32
+	entries         map[u32]u32
 }
 
 // Field lookups alternate between owner modules within one source file. Keep
@@ -953,6 +960,12 @@ mut:
 	entries map[u32]u32
 	misses  map[u32]bool
 	texts   flat.TypeTextTable
+	// recent_* is a direct-mapped front for `entries`. A slot is valid only
+	// while its generation matches; clearing `entries` bumps the generation.
+	generation  u32 = 1
+	recent_gens [256]u32
+	recent_keys [256]u32
+	recent_vals [256]u32
 }
 
 // EquivalentNamesCache memoizes interface_alias_equivalent_names for one
@@ -1176,26 +1189,62 @@ mut:
 	entries  map[u64]string
 	misses   map[u64]bool
 	methods  map[string]u32
+	// Direct-mapped front keyed by (type, borrowed method spelling). A slot is
+	// valid only while its generation matches front_generation.
+	front_generation  u32 = 1
+	front_types       [256]u32
+	front_methods     [256]string
+	front_results     [256]string
+	front_states      [256]i8
+	front_generations [256]u32
 }
 
 // PromoteTextCache short-circuits repeated promote_scoped_result_text calls on
-// the SAME string instance (shallow string copies share `.str`, so one batch
-// promotes the same pointer thousands of times). Pointer keys are only valid
-// while the source scope is alive, so the cache only serves lookups inside an
-// explicit window (absorb_scoped_batch) that ends before the scope is freed;
-// outside a window promote falls back to the content-hash tables.
+// equal text (one batch promotes the same identifiers and type names thousands
+// of times, mostly through distinct string instances). Slots are keyed by a
+// cheap content hash and a hit compares the full text, so a hit returns the
+// canonical string the map lookups below would have produced earlier in the same
+// window. The cache only serves lookups inside an explicit window
+// (absorb_scoped_batch); each window starts with empty results, so text interned
+// into the compilation table between windows is preferred again.
 struct PromoteTextCache {
 mut:
 	active      bool
 	generation  u32 = 1
-	ptrs        [2048]voidptr
-	generations [2048]u32
-	results     [2048]string
+	generations [promote_text_cache_slots]u32
+	results     [promote_text_cache_slots]string
+	// table_ids outlives windows: it remembers compilation-table text ids,
+	// which stay unique per content and keep their value when the table is
+	// rebuilt. A hit re-reads the current table entry and compares it, so it
+	// returns exactly what the text_ids lookup would.
+	table_ids [promote_text_cache_slots]flat.TextId
 }
 
-// begin_promote_text_window arms the pointer cache for one promotion pass over
-// a still-live scope. end_promote_text_window MUST run before that scope is
-// freed; unpaired promote calls simply bypass the cache.
+const promote_text_cache_slots = 8192
+
+// promote_text_cache_slot hashes the length and the first and last eight bytes
+// of a non-empty text into a PromoteTextCache slot.
+@[direct_array_access; inline]
+fn promote_text_cache_slot(text string) int {
+	mut key := u64(text.len)
+	if text.len >= 8 {
+		mut first := u64(0)
+		mut last := u64(0)
+		// Word copies stay within the borrowed slice, including unaligned views.
+		unsafe {
+			vmemcpy(&first, text.str, 8)
+			vmemcpy(&last, text.str + text.len - 8, 8)
+		}
+		key ^= first ^ (last * u64(0x9e3779b97f4a7c15))
+	} else {
+		key ^= (u64(text[0]) << 8) ^ (u64(text[text.len >> 1]) << 16) ^ (u64(text[text.len - 1]) << 24)
+	}
+	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
+	return int((key >> 32) & u64(promote_text_cache_slots - 1))
+}
+
+// begin_promote_text_window arms the text cache for one promotion pass over a
+// still-live scope. Unpaired promote calls simply bypass the cache.
 @[inline]
 fn (mut t Transformer) begin_promote_text_window() {
 	if !isnil(t.promote_text_cache) {
@@ -1208,6 +1257,109 @@ fn (mut t Transformer) begin_promote_text_window() {
 fn (mut t Transformer) end_promote_text_window() {
 	if !isnil(t.promote_text_cache) {
 		t.promote_text_cache.active = false
+	}
+}
+
+// UsedFnNameCache remembers (module, name) pairs whose mark_fn_used_name pass
+// found or inserted every spelling it records. The used sets only grow, so a
+// repeated call for such a pair would insert and log nothing. Keys are copied
+// inline because the names may live in scratch arenas freed before the next
+// lookup. Any change of the parent or root used set starts a new generation.
+struct UsedFnNameCache {
+mut:
+	generation u32 = 1
+	parent     voidptr
+	root       voidptr
+	slots      [used_fn_name_cache_slots]UsedFnNameCacheSlot
+}
+
+struct UsedFnNameCacheSlot {
+mut:
+	generation u32
+	module_len u8
+	name_len   u8
+	bytes      [used_fn_name_cache_key_bytes]u8
+}
+
+const used_fn_name_cache_slots = 1024
+const used_fn_name_cache_key_bytes = 58
+
+// used_fn_name_cache_slot hashes a non-empty name and its module into a
+// UsedFnNameCache slot.
+@[direct_array_access; inline]
+fn used_fn_name_cache_slot(module_name string, name string) int {
+	mut key := u64(name.len) ^ (u64(module_name.len) << 8)
+	if name.len >= 8 {
+		mut first := u64(0)
+		mut last := u64(0)
+		// Word copies stay within the borrowed slice, including unaligned views.
+		unsafe {
+			vmemcpy(&first, name.str, 8)
+			vmemcpy(&last, name.str + name.len - 8, 8)
+		}
+		key ^= first ^ (last * u64(0x9e3779b97f4a7c15))
+	} else {
+		key ^= (u64(name[0]) << 16) ^ (u64(name[name.len >> 1]) << 24) ^ (u64(name[name.len - 1]) << 32)
+	}
+	if module_name.len > 0 {
+		key ^= ((u64(module_name[0]) << 8) ^ u64(module_name[module_name.len - 1]) ^ (u64(module_name[module_name.len >> 1]) << 16)) * u64(0xc2b2ae3d27d4eb4f)
+	}
+	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
+	return int((key >> 32) & u64(used_fn_name_cache_slots - 1))
+}
+
+// used_fn_name_cache_probe returns -2 when mark_fn_used_name already handled
+// `name` in the current module, the slot to fill after a full pass, or -1 when
+// the pair cannot be cached.
+@[direct_array_access]
+fn (mut t Transformer) used_fn_name_cache_probe(name string) int {
+	mut cache := t.used_fn_name_cache
+	if isnil(cache) {
+		return -1
+	}
+	module_name := t.cur_module
+	if module_name.len + name.len > used_fn_name_cache_key_bytes {
+		return -1
+	}
+	if cache.parent != voidptr(t.used_fns_parent) || cache.root != voidptr(t.used_fns_root) {
+		cache.generation++
+		cache.parent = voidptr(t.used_fns_parent)
+		cache.root = voidptr(t.used_fns_root)
+	}
+	slot := used_fn_name_cache_slot(module_name, name)
+	entry := &cache.slots[slot]
+	if entry.generation == cache.generation && int(entry.module_len) == module_name.len
+		&& int(entry.name_len) == name.len && unsafe {
+		vmemcmp(&entry.bytes[0], module_name.str, module_name.len) == 0
+			&& vmemcmp(&entry.bytes[module_name.len], name.str, name.len) == 0
+	} {
+		return -2
+	}
+	return slot
+}
+
+// fill_used_fn_name_cache records a completed mark_fn_used_name pass for
+// `name` in the current module.
+@[direct_array_access]
+fn (mut t Transformer) fill_used_fn_name_cache(slot int, name string) {
+	mut cache := t.used_fn_name_cache
+	module_name := t.cur_module
+	mut entry := &cache.slots[slot]
+	entry.generation = cache.generation
+	entry.module_len = u8(module_name.len)
+	entry.name_len = u8(name.len)
+	unsafe {
+		vmemcpy(&entry.bytes[0], module_name.str, module_name.len)
+		vmemcpy(&entry.bytes[module_name.len], name.str, name.len)
+	}
+}
+
+// reset_used_fn_name_cache forgets every completed pass after the used sets
+// were replaced.
+@[inline]
+fn (mut t Transformer) reset_used_fn_name_cache() {
+	if !isnil(t.used_fn_name_cache) {
+		t.used_fn_name_cache.generation++
 	}
 }
 
@@ -1385,6 +1537,20 @@ mut:
 	revision                 u64
 	count                    int = -1
 	memo_semantic_type_names bool
+	// `array.<method>` lookups, keyed by method spelling. The signature maps
+	// only grow between revision bumps, so their sizes identify a snapshot.
+	array_methods         [32]string
+	array_method_names    [32]string
+	array_method_states   [32]i8
+	array_method_tc       voidptr
+	array_method_revision u64
+	array_method_rets     int = -1
+	array_method_tc_rets  int
+	array_method_params   int
+	// is_known_fn_name results, keyed by borrowed fn name spellings and
+	// invalidated with the same signature snapshot as the array methods.
+	known_names  [512]string
+	known_states [512]i8
 }
 
 fn new_fn_return_name_cache() &FnReturnNameCache {
@@ -1402,6 +1568,12 @@ fn (t &Transformer) clear_fn_return_name_cache() {
 		cache.names = [128]string{}
 		cache.states = [128]i8{}
 		cache.count = -1
+		cache.array_method_states = [32]i8{}
+		cache.known_states = [512]i8{}
+	}
+	if !isnil(t.receiver_method_cache) {
+		mut receiver_cache := t.receiver_method_cache
+		receiver_cache.front_generation++
 	}
 }
 
@@ -1552,6 +1724,7 @@ pub fn transform_prepared_selfhost_owned(mut prepared PreparedSelfhostTransform,
 	t.a = unsafe { &a }
 	t.replace_prepared_type_checker(tc)
 	t.used_fns = used_fns.clone()
+	t.reset_used_fn_name_cache()
 	configure_transformer(mut t, true, true, true, true, true, stage_scope)
 	if t.materialize_inferred_anonymous_structs() {
 		// Preparation overlapped markused against the checked AST. Materialization
@@ -2571,6 +2744,10 @@ fn (mut t Transformer) mark_fn_used_name(name string) {
 	if name == '' {
 		return
 	}
+	cache_slot := t.used_fn_name_cache_probe(name)
+	if cache_slot == -2 {
+		return
+	}
 	lowered := if isnil(t.tc) { c_name(name) } else { t.tc.cached_c_name(name) }
 	name_used := t.used_fn_contains_name(name)
 	lowered_used := if lowered == name { name_used } else { t.used_fn_contains_name(lowered) }
@@ -2591,6 +2768,9 @@ fn (mut t Transformer) mark_fn_used_name(name string) {
 			t.mark_used_fn_key(qname)
 			t.mark_used_fn_key(if isnil(t.tc) { c_name(qname) } else { t.tc.cached_c_name(qname) })
 		}
+	}
+	if cache_slot >= 0 {
+		t.fill_used_fn_name_cache(cache_slot, name)
 	}
 }
 
@@ -2747,6 +2927,7 @@ fn (mut t Transformer) prepare() {
 	}
 	t.receiver_method_cache = &ReceiverMethodCache{}
 	t.promote_text_cache = &PromoteTextCache{}
+	t.used_fn_name_cache = &UsedFnNameCache{}
 	t.struct_field_type_cache = &FieldTypeCache{}
 	t.variant_short_name_cache = &AliasCache{}
 	t.selector_type_cache = &SelectorTypeCache{}
@@ -3597,7 +3778,7 @@ struct ImplicitErrScope {
 // are hidden until leave_implicit_err_scope restores them.
 fn (mut t Transformer) enter_implicit_err_scope(has_error bool) ImplicitErrScope {
 	scope := ImplicitErrScope{
-		var_types:   t.var_types.clone()
+		var_types:   copy_var_types(t.var_types)
 		smartcasts:  t.smartcast_stack.clone()
 		invalidated: t.invalidated_smartcasts.clone()
 		heaped:      t.save_heaped_local_state()
@@ -3612,6 +3793,14 @@ fn (mut t Transformer) enter_implicit_err_scope(has_error bool) ImplicitErrScope
 		t.smartcast_stack = smartcasts_without_binding(t.smartcast_stack, 'err')
 	}
 	return scope
+}
+
+// copy_var_types returns an independent copy that has capacity only for the live
+// bindings; `.clone()` would copy the whole (often much larger) reserved capacity.
+fn copy_var_types(bindings []VarTypeBinding) []VarTypeBinding {
+	mut out := []VarTypeBinding{cap: bindings.len}
+	out << bindings
+	return out
 }
 
 // leave_implicit_err_scope restores the bindings and smartcasts saved by
@@ -5282,6 +5471,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	}
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
+	w.used_fn_name_cache = &UsedFnNameCache{}
 	w.struct_field_type_cache = &FieldTypeCache{}
 	w.variant_short_name_cache = &AliasCache{}
 	w.selector_type_cache = &SelectorTypeCache{}
@@ -5425,6 +5615,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	}
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
+	w.used_fn_name_cache = &UsedFnNameCache{}
 	w.struct_field_type_cache = &FieldTypeCache{}
 	w.variant_short_name_cache = &AliasCache{}
 	w.selector_type_cache = &SelectorTypeCache{}
@@ -8923,6 +9114,37 @@ fn (mut t Transformer) escape_arg_value_contains_fixed_array(arg_id flat.NodeId)
 	return t.cached_escape_value_contains_fixed_array(value_type)
 }
 
+// escape_arg_may_mark_fixed_array_view mirrors the final test of
+// mark_fixed_array_reference_argument_escape: the referenced value must be
+// stack-local storage that holds an inline fixed array.
+fn (mut t Transformer) escape_arg_may_mark_fixed_array_view(arg_id flat.NodeId, local_stack_names map[string]bool, amp_ptrs map[string]bool, ptr_aliases map[string]string) bool {
+	mut value_id := arg_id
+	for int(value_id) >= 0 && int(value_id) < t.a.nodes.len {
+		node := t.a.nodes[int(value_id)]
+		if (node.kind in [.paren, .expr_stmt] || (node.kind == .prefix && node.op == .amp))
+			&& node.children_count == 1 {
+			value_id = t.a.child(&node, 0)
+			continue
+		}
+		break
+	}
+	if int(value_id) < 0 || int(value_id) >= t.a.nodes.len {
+		return false
+	}
+	value := t.a.nodes[int(value_id)]
+	if value.kind == .index && value.value == 'range' && value.children_count > 0 {
+		value_id = t.a.child(&value, 0)
+	}
+	if !t.escape_address_expr_is_stack_local(value_id, local_stack_names, amp_ptrs, ptr_aliases) {
+		return false
+	}
+	mut value_type := types.unalias_type(t.tc.resolve_type(value_id))
+	for value_type is types.Pointer {
+		value_type = types.unalias_type(value_type.base_type)
+	}
+	return t.cached_escape_value_contains_fixed_array(value_type)
+}
+
 fn (mut t Transformer) cached_escape_value_contains_fixed_array(value_type &types.Type) bool {
 	if value_type is types.Struct || value_type is types.SumType {
 		if cached := t.escape_fixed_array_nominal_cache[value_type.source_type_id()] {
@@ -10933,8 +11155,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		t.var_type_undo_active = previous_var_undo
 	}
 	// A nested reflected loop can append nodes while an ancestor is being scanned.
-	node_storage := t.a.nodes[int(id)]
-	node := &node_storage
+	node := t.a.nodes[int(id)]
 	if node.kind in [.if_expr, .comptime_if, .match_stmt, .match_branch, .for_stmt, .select_stmt] {
 		// These hold declarations scoped to them outside of a block: the statements of a
 		// match branch and of a `for i := 0; ...` or `for cond` loop, and the binding of an
@@ -10946,7 +11167,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		// The `else` of an `if x := res()` guard binds the error as `err`, which is only
 		// declared when the branch is lowered.
 		is_guard := node.kind == .if_expr && node.children_count > 0
-			&& t.a.node(t.a.child(node, 0)).kind == .decl_assign
+			&& t.a.node(t.a.child(&node, 0)).kind == .decl_assign
 		mut previous_err_depth := -1
 		if is_guard {
 			previous_err_depth = t.escape_decl_depths['err'] or { -1 }
@@ -10956,7 +11177,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 			&& node.children_count > 0 {
 			// `Expr.Node(n)` binds `n` in the branch. Its declaration is only synthesized
 			// when the branch is lowered (see named_variant_binding_decls).
-			binding := t.named_variant_binding_name(t.a.child(node, 0))
+			binding := t.named_variant_binding_name(t.a.child(&node, 0))
 			if binding.len > 0 {
 				t.escape_decl_depths[binding] = t.escape_scope_depth
 			}
@@ -10968,7 +11189,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 			if i == body_start {
 				t.escape_scope_depth++
 			}
-			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 		}
 		if body_start < node.children_count {
 			t.escape_scope_depth--
@@ -10989,7 +11210,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		}
 		mut body_start := if node.value == 'else' { 0 } else { 1 }
 		if node.children_count >= 2 {
-			second := t.a.node(t.a.child(node, 1))
+			second := t.a.node(t.a.child(&node, 1))
 			if second.kind == .prefix && second.op == .arrow {
 				body_start = 2
 			}
@@ -10998,17 +11219,17 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 			if node.value == 'recv' && body_start == 2 && i == 0 {
 				continue
 			}
-			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 		}
 		if node.value == 'recv' && body_start == 2 {
-			lhs := t.a.child_node(node, 0)
+			lhs := t.a.child_node(&node, 0)
 			if lhs.kind == .ident && lhs.value_text().len > 0 && lhs.value_text() != '_' {
 				add_escape_local_stack_name(lhs.value_text(), mut local_stack_names, mut local_stack_added)
 				t.escape_decl_depths[lhs.value_text()] = t.escape_scope_depth
 			}
 		}
 		for i in body_start .. node.children_count {
-			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 		}
 		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 		return
@@ -11017,14 +11238,14 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		scope_mark := local_stack_added.len
 		t.escape_scope_depth++
 		for i in 0 .. node.children_count {
-			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
 		}
 		t.escape_scope_depth--
 		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 		return
 	}
 	if node.kind == .for_in_stmt {
-		t.scan_for_in_escape_pass(node, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
+		t.scan_for_in_escape_pass(&node, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
 		return
 	}
 	// Nested function bodies have their own frame and escape analysis. Their
@@ -11051,22 +11272,22 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
 		mut declared_names := []string{}
 		if node.kind == .decl_assign {
-			for lhs_id in t.multi_assign_lhs_ids(*node) {
+			for lhs_id in t.multi_assign_lhs_ids(node) {
 				lhs := t.a.nodes[int(lhs_id)]
 				if lhs.kind == .ident && lhs.value_text().len > 0 && lhs.value_text() != '_' {
 					declared_names << lhs.value_text()
 				}
 			}
 		}
-		lhs_count := t.multi_assign_lhs_count(*node)
-		rhs_count := t.multi_assign_rhs_count(*node)
+		lhs_count := t.multi_assign_lhs_count(node)
+		rhs_count := t.multi_assign_rhs_count(node)
 		pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
 		for i in 0 .. pair_count {
-			lhs := t.a.nodes[int(t.multi_assign_lhs_id(*node, i))]
-			rhs_id := t.multi_assign_rhs_id(*node, i)
+			lhs := t.a.nodes[int(t.multi_assign_lhs_id(node, i))]
+			rhs_id := t.multi_assign_rhs_id(node, i)
 			rhs := t.a.nodes[int(rhs_id)]
 			if node.kind == .decl_assign || (node.kind == .assign && node.op == .assign) {
-				stores << t.multi_assign_lhs_id(*node, i)
+				stores << t.multi_assign_lhs_id(node, i)
 				stores << rhs_id
 			}
 			mut lhs_marks_interface_box := false
@@ -11123,7 +11344,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 	}
 	if node.kind == .return_stmt {
 		for i in 0 .. node.children_count {
-			child_id := t.a.child(node, i)
+			child_id := t.a.child(&node, i)
 			boxed_pointer := t.return_slot_is_boxed_pointer(child_id)
 			if !boxed_pointer
 				&& t.return_slot_consumes_pointer_value(child_id, i, int(node.children_count)) {
@@ -11141,10 +11362,10 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		}
 	}
 	if node.kind == .infix && node.op == .left_shift && node.children_count == 2
-		&& t.escape_append_target_is_array(t.a.child(node, 0)) {
+		&& t.escape_append_target_is_array(t.a.child(&node, 0)) {
 		// `vals << &char(&num)`: the array keeps the appended address, and can outlive this
 		// stack frame (a `mut` parameter, a field, a global, a returned array).
-		for value_id in t.escape_value_tails(t.a.child(node, 1)) {
+		for value_id in t.escape_value_tails(t.a.child(&node, 1)) {
 			t.collect_return_escape_idents(value_id, mut returned)
 			for source_name in t.escape_aggregate_address_sources(value_id, amp_sources, ptr_aliases) {
 				t.escaping_amp_sources[source_name] = true
@@ -11152,20 +11373,20 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		}
 	}
 	if node.kind == .spawn_expr {
-		t.mark_spawn_argument_address_escapes(*node, amp_sources, ptr_aliases, local_stack_names)
+		t.mark_spawn_argument_address_escapes(node, amp_sources, ptr_aliases, local_stack_names)
 	}
 	if node.kind == .call && node.children_count > 0 {
 		for i in 1 .. node.children_count {
-			t.mark_callback_method_value_receiver_escape(t.a.child(node, i), amp_sources, ptr_aliases, local_stack_names)
+			t.mark_callback_method_value_receiver_escape(t.a.child(&node, i), amp_sources, ptr_aliases, local_stack_names)
 		}
-		t.mark_call_provenance_argument_escapes(id, *node, amp_sources, ptr_aliases)
-		t.mark_implicit_voidptr_argument_escapes(id, *node, local_stack_names)
-		t.mark_fixed_array_reference_argument_escapes(id, *node, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
+		t.mark_call_provenance_argument_escapes(id, node, amp_sources, ptr_aliases)
+		t.mark_implicit_voidptr_argument_escapes(id, node, local_stack_names)
+		t.mark_fixed_array_reference_argument_escapes(id, node, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
 		&& node.children_count == 2 {
-		lhs_id := t.a.child(node, 0)
-		rhs_id := t.a.child(node, 1)
+		lhs_id := t.a.child(&node, 0)
+		rhs_id := t.a.child(&node, 1)
 		lhs_root := t.escape_address_root_name(lhs_id) or { '' }
 		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
 			if source_name == lhs_root && source_name in local_stack_names {
@@ -11190,7 +11411,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		}
 	}
 	for i in 0 .. node.children_count {
-		t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
+		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
 	}
 	for k, name in assigned_value_names {
 		for source_name in t.escape_aggregate_address_sources(assigned_value_ids[k], amp_sources, ptr_aliases) {
@@ -11538,12 +11759,26 @@ fn (t &Transformer) escape_concrete_inline_field_type(base_id u32, field_name st
 }
 
 fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.NodeId, call flat.Node, amp_ptrs map[string]bool, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
-	if isnil(t.tc) {
+	if isnil(t.tc) || call.children_count == 0 {
 		return
 	}
-	// Every mark below needs a receiver or argument holding an inline fixed
-	// array; check that before resolving the callee signature.
-	if !t.escape_call_args_contain_fixed_array(call, false) {
+	// Every mark below needs a stack-local receiver or argument holding an inline
+	// fixed array; check that before resolving the callee signature.
+	callee := t.a.child_node(&call, 0)
+	recv_may_mark := callee.kind == .selector && callee.children_count > 0
+		&& t.escape_arg_may_mark_fixed_array_view(t.a.child(callee, 0), local_stack_names, amp_ptrs, ptr_aliases)
+	mut arg_mask := u64(0)
+	for i in 1 .. call.children_count {
+		if i > 63 {
+			// Calls with this many arguments keep the full per-argument check.
+			arg_mask = max_u64
+			break
+		}
+		if t.escape_arg_may_mark_fixed_array_view(t.a.child(&call, i), local_stack_names, amp_ptrs, ptr_aliases) {
+			arg_mask |= u64(1) << u64(i)
+		}
+	}
+	if !recv_may_mark && arg_mask == 0 {
 		return
 	}
 	call_name := t.call_name_for_node(call_id, call)
@@ -11568,12 +11803,9 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 	} else {
 		t.call_param_offset_for_node(call_name, call, params)
 	}
-	if offset == 1 && params.len > 0 {
-		callee := t.a.child_node(&call, 0)
-		if callee.kind == .selector && callee.children_count > 0
-			&& !t.fixed_array_call_param_borrows(call_name, call, 0) {
-			t.mark_fixed_array_reference_argument_escape(t.a.child(callee, 0), params[0], amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
-		}
+	if offset == 1 && params.len > 0 && recv_may_mark
+		&& !t.fixed_array_call_param_borrows(call_name, call, 0) {
+		t.mark_fixed_array_reference_argument_escape(t.a.child(callee, 0), params[0], amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
 	variadic_idx := if is_variadic && params.len > 0 && params[params.len - 1] is types.Array {
 		params.len - 1
@@ -11581,6 +11813,9 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 		-1
 	}
 	for child_idx in 1 .. call.children_count {
+		if child_idx < 64 && arg_mask & (u64(1) << u64(child_idx)) == 0 {
+			continue
+		}
 		param_idx := child_idx - 1 + offset
 		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
 		if t.fixed_array_call_param_borrows(call_name, call, param_idx) {

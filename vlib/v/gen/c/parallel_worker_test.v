@@ -76,7 +76,7 @@ fn test_scoped_cgen_batches_amortize_small_bodies_and_bound_compiler_scratch() {
 	assert g.scoped_cgen_batch_count(1, 1_000_000) == 1
 	assert g.scoped_cgen_batch_count(10_000, 100_000_000) == scoped_cgen_worker_batches
 	tc.building_v_fast = true
-	assert g.scoped_cgen_batch_count(169, 1000) == 169
+	assert g.scoped_cgen_batch_count(12, 1000) == 12
 	assert g.scoped_cgen_batch_count(10_000, 100_000_000) == scoped_cgen_worker_batches
 }
 

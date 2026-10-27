@@ -7488,6 +7488,14 @@ fn (g &FlatGen) collect_c_struct_auxiliary_type_refs(typ types.Type, mut seen ma
 }
 
 fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool) {
+	// Builtin leaves never name a C struct and reference nothing else.
+	match typ {
+		types.Void, types.Unknown, types.Nil, types.None, types.String, types.Char, types.Rune,
+		types.ISize, types.USize, types.Primitive {
+			return
+		}
+		else {}
+	}
 	key := typ.source_type_id()
 	if seen[key] {
 		return
