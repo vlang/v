@@ -672,7 +672,8 @@ fn test_source_type_syntax_offsets_and_remaining_query_views() {
 
 fn test_source_type_syntax_integer_conversion_preserves_raw_int() {
 	for raw in ['', '0', '42', '4x', '1_000', '0xff', '0b101', '0o17', '-42', '+17', ' 42 ', '\t-17\n',
-		'-0xff', 'not-a-number', '2147483648', '9223372036854775807', '0x', '--1', '3.14', '12tail'] {
+		'-0xff', 'not-a-number', '2147483648', '9223372036854775807', '0x', '--1', '3.14', '12tail',
+		'Name', 'pkg.Name', '_123', '__expr_123', '0x_FF', '123_T', '1__2', '1_', '0x__2a'] {
 		id := source_type_id(raw)
 		syntax := source_type_syntax(id)
 		assert syntax.integer_value() == raw.int()
@@ -1464,33 +1465,43 @@ fn test_source_type_syntax_qualifier_scalar_and_singleton_queries_remain_lazy() 
 
 fn test_source_type_syntax_name_publication_preserves_all_packed_views() {
 	for raw, expected_name_packing in {
-		'Name':                         true
-		'T':                            true
-		'C':                            true
-		'Z':                            true
-		'pkg.Name':                     true
-		'T.Value':                      true
-		'pkg.T':                        true
-		'_Name':                        true
-		'123T':                         true
-		'123T456U':                     true
-		'123_T':                        true
-		'voidptr':                      true
-		'AvoidptrvoidptrTail':          true
-		'pkg.voidptrName':              true
-		'Map_voidptr_FASTC_ARRAY_OF_T': true
-		'':                             false
-		' Name ':                       false
-		'main.123':                     false
-		'pkg..Name':                    false
-		'.A':                           false
-		'A.':                           false
-		'map[T]U':                      false
-		'fn (T, U) V':                  false
-		'(T, U)':                       false
-		'Box[T':                        false
-		'[3]T':                         false
-		'T | U':                        false
+		'Name':                                  true
+		'T':                                     true
+		'C':                                     true
+		'Z':                                     true
+		'pkg.Name':                              true
+		'T.Value':                               true
+		'pkg.T':                                 true
+		'_Name':                                 true
+		'123T':                                  true
+		'123T456U':                              true
+		'123_T':                                 true
+		'voidptr':                               true
+		'AvoidptrvoidptrTail':                   true
+		'pkg.voidptrName':                       true
+		'Map_voidptr_FASTC_ARRAY_OF_T':          true
+		'main.sub.Name':                         true
+		'builtin.pkg.Name':                      true
+		'pkg.C.Name.typ':                        true
+		'pkg.JS.Name':                           true
+		'_123Name':                              true
+		'Array_fixed_u8_12':                     true
+		'FixedArray_12_FASTC_ARRAY_OF_pkg_Name': true
+		'struct_Map_uint_ptr':                   true
+		'__vf_thread_k_5b_5du8':                 true
+		'__expr_123':                            true
+		'':                                      false
+		' Name ':                                false
+		'main.123':                              false
+		'pkg..Name':                             false
+		'.A':                                    false
+		'A.':                                    false
+		'map[T]U':                               false
+		'fn (T, U) V':                           false
+		'(T, U)':                                false
+		'Box[T':                                 false
+		'[3]T':                                  false
+		'T | U':                                 false
 	} {
 		id := source_type_id(raw)
 		parsed := source_type_syntax_parse(id, raw)
@@ -2351,4 +2362,103 @@ fn test_source_type_syntax_borrowed_backend_ranges_keep_exact_bytes() {
 		assert !valid
 		assert length == 0
 	}
+}
+
+fn assert_source_type_syntax_recent_out_of_range(invalid_id u32, marker &SourceTypeSyntaxEntry) {
+	slot := voidptr(&g_source_type_syntax_recent[invalid_id & 4095])
+	saved := source_type_syntax_pointer_load(slot)
+	defer { source_type_syntax_pointer_store(slot, saved) }
+	// A valid published pointer with another full owner cannot validate an invalid ID.
+	source_type_syntax_pointer_store(slot, voidptr(marker))
+	assert isnil(source_type_syntax_find(invalid_id))
+	assert source_type_syntax_pointer_load(slot) == voidptr(marker)
+}
+
+fn test_source_type_syntax_recent_zero_and_out_of_range_ids() {
+	marker_id := source_type_id('RecentSyntaxZeroMarkerFresh8611')
+	source_type_syntax(marker_id)
+	marker := source_type_syntax_find(marker_id)
+	zero_slot := voidptr(&g_source_type_syntax_recent[0])
+	saved_zero := source_type_syntax_pointer_load(zero_slot)
+	defer { source_type_syntax_pointer_store(zero_slot, saved_zero) }
+	// Occupying slot zero must not affect the independent empty spelling slot.
+	source_type_syntax_pointer_store(zero_slot, voidptr(marker))
+	empty := source_type_syntax(0)
+	assert empty.kind() == .empty
+	assert empty.trimmed() == 0
+	assert empty.args().len == 0
+	assert &source_type_syntax_find(0).syntax == empty
+	assert source_type_syntax_pointer_load(zero_slot) == voidptr(marker)
+	for invalid_id in [u32(source_type_chunk_count * source_type_chunk_size) + 1, u32(0xffffffff)] {
+		assert_source_type_syntax_recent_out_of_range(invalid_id, marker)
+	}
+}
+
+fn test_source_type_syntax_recent_collisions_keep_authoritative_entries() {
+	first_id := source_type_id('RecentSyntaxCollisionFirstFresh8612')
+	mut second_id := u32(0)
+	// Interning does not parse syntax or create child spellings, so these fresh
+	// names find the next owner of the same slot within one complete cache cycle.
+	for index in 0 .. 4096 {
+		candidate := source_type_id('RecentSyntaxCollisionPaddingFresh8613_${index}')
+		if candidate & 4095 == first_id & 4095 {
+			second_id = candidate
+			break
+		}
+	}
+	assert second_id != 0
+	assert second_id == first_id + 4096
+	assert second_id & 4095 == first_id & 4095
+	first := source_type_syntax(first_id)
+	second := source_type_syntax(second_id)
+	assert first != second
+	slot := voidptr(&g_source_type_syntax_recent[first_id & 4095])
+	second_entry := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
+	assert !isnil(second_entry)
+	assert &second_entry.syntax == second
+	// Repeated evictions must recover the exact canonical record from its page.
+	for _ in 0 .. 4 {
+		assert source_type_syntax(first_id) == first
+		assert first.trimmed() == first_id
+		assert first.args().len == 0
+		first_entry := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
+		assert !isnil(first_entry)
+		assert &first_entry.syntax == first
+		assert source_type_syntax(second_id) == second
+		assert second.trimmed() == second_id
+		assert second.args().len == 0
+		retained := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
+		assert !isnil(retained)
+		assert &retained.syntax == second
+	}
+	// An empty recent slot also falls back to the same authoritative record.
+	source_type_syntax_pointer_store(slot, voidptr(unsafe { nil }))
+	assert source_type_syntax(first_id) == first
+	assert source_type_syntax(second_id) == second
+}
+
+fn test_source_type_syntax_recent_publication_outlives_worker_arenas() {
+	raw := 'RecentSyntaxArenaFresh8614.Pair[[]T, fn (U) V]'
+	id := source_type_id(raw)
+	assert isnil(source_type_syntax_find(id))
+	handle := spawn source_type_syntax_general_in_recycled_scope(raw)
+	assert handle.wait() == id
+	slot := voidptr(&g_source_type_syntax_recent[id & 4095])
+	// Observe the writer's recent publication before any reader can refresh it.
+	published := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
+	assert !isnil(published)
+	assert !isnil(published.syntax.payload)
+	owner := unsafe { *&u32(published.syntax.payload) }
+	assert owner == id
+	assert published.syntax.args() == [source_type_id('[]T'), source_type_id('fn (U) V')]
+	assert source_type_syntax(id) == &published.syntax
+	// The authoritative record and its payload survive both worker arena reuse
+	// and eviction of the recent pointer that originally made them observable.
+	source_type_syntax_pointer_store(slot, voidptr(unsafe { nil }))
+	retained := source_type_syntax(id)
+	assert retained == &published.syntax
+	assert retained.kind() == .generic
+	assert retained.base() == source_type_id('RecentSyntaxArenaFresh8614.Pair')
+	assert retained.args() == [source_type_id('[]T'), source_type_id('fn (U) V')]
+	assert_source_type_syntax_scalar_views(retained, source_type_syntax_parse(id, raw))
 }

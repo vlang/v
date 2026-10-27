@@ -2246,6 +2246,10 @@ struct SourceTypeSyntaxEntry {
 __global g_source_type_syntax_pages [source_type_chunk_count]voidptr
 __global g_source_type_syntax_empty voidptr
 
+// A bounded recent cache shortcuts page lookup for positive IDs. Every pointer
+// refers to immutable process-owned storage; the payload owner rejects collisions.
+__global g_source_type_syntax_recent [4096]voidptr
+
 // Prefixes and suffixes have independent cache entries: requesting either view
 // never interns the other. Empty views are cached too. The spelling ID is stored
 // in slot zero of the owning syntax payload, even for the empty spelling.
@@ -2881,6 +2885,15 @@ fn source_type_syntax_find(id u32) &SourceTypeSyntaxEntry {
 	if id == 0 {
 		return unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(voidptr(&g_source_type_syntax_empty))) }
 	}
+	recent_slot := voidptr(&g_source_type_syntax_recent[id & 4095])
+	recent := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(recent_slot)) }
+	if !isnil(recent) {
+		// The acquire load makes the immutable owner and payload visible together.
+		owner := unsafe { *&u32(recent.syntax.payload) }
+		if owner == id {
+			return recent
+		}
+	}
 	idx := id - 1
 	page_index := idx >> source_type_chunk_bits
 	if page_index >= source_type_chunk_count {
@@ -2892,7 +2905,11 @@ fn source_type_syntax_find(id u32) &SourceTypeSyntaxEntry {
 		return unsafe { nil }
 	}
 	slot := unsafe { voidptr(&(&voidptr(page))[idx & (source_type_chunk_size - 1)]) }
-	return unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
+	entry := unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(slot)) }
+	if !isnil(entry) {
+		source_type_syntax_pointer_store(recent_slot, voidptr(entry))
+	}
+	return entry
 }
 
 @[direct_array_access]
@@ -2919,6 +2936,8 @@ fn source_type_syntax_publish(id u32, entry &SourceTypeSyntaxEntry) {
 		// Publish a new page only after its first complete entry is visible.
 		source_type_syntax_pointer_store(voidptr(&g_source_type_syntax_pages[page_index]), page)
 	}
+	// Seed only complete entries, after publication in the authoritative pages.
+	source_type_syntax_pointer_store(voidptr(&g_source_type_syntax_recent[id & 4095]), voidptr(entry))
 }
 
 fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
@@ -2985,112 +3004,183 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 			source_type_syntax_packed_ids_len(parsed.raw_tuple_parse_components, id) +
 			source_type_syntax_packed_ids_len(parsed.union_parts, id)
 	}
+	// The strict name constructor fixes 27 owner IDs and 43 zero scalar slots.
+	// Pack only its 29 remaining fields, preserving their generic rank order.
+	name_scalar_indices := [
+		0,
+		1,
+		4,
+		5,
+		10,
+		23,
+		24,
+		26,
+		52,
+		53,
+		54,
+		57,
+		58,
+		65,
+		66,
+		67,
+		68,
+		69,
+		70,
+		81,
+		82,
+		87,
+		90,
+		97,
+		99,
+		101,
+		102,
+		105,
+		106,
+	]!
 	mut values := [107]u32{}
-	values[0] = u32(parsed.qualifier_count)
-	values[1] = u32(parsed.kind)
-	values[2] = u32(parsed.trimmed)
-	values[3] = u32(parsed.base)
-	values[4] = u32(parsed.unqualified)
-	values[5] = u32(parsed.qualifier)
-	values[6] = u32(parsed.generic_base)
-	values[7] = u32(parsed.pointer_base)
-	values[9] = u32(parsed.raw_base)
-	values[10] = u32(parsed.main_base)
-	values[11] = u32(parsed.application_base)
-	values[12] = u32(parsed.generic_app_base)
-	values[13] = u32(parsed.postfix_base)
-	values[14] = u32(parsed.parameter_type)
-	values[15] = u32(parsed.parameter_mut_type)
-	values[16] = u32(parsed.bracket_base)
-	values[17] = u32(parsed.bracket_inner)
-	values[18] = u32(parsed.bracket_raw_inner)
-	values[19] = u32(parsed.bracket_prefix)
-	values[20] = u32(parsed.function_result)
-	values[21] = u32(parsed.first_bracket_base)
-	values[22] = u32(parsed.last_space_word)
-	values[23] = u32(parsed.first_dot_prefix)
-	values[24] = u32(parsed.first_dot_suffix)
-	values[25] = u32(parsed.pointer_raw_base)
-	values[26] = u32(parsed.builtin_base)
-	values[27] = u32(parsed.cgen_app_base)
-	values[28] = u32(parsed.top_space_head)
-	values[29] = u32(parsed.top_space_tail)
-	values[30] = u32(parsed.bracket_suffix)
-	values[31] = u32(parsed.bracket_from)
-	values[32] = u32(parsed.first_bracket_prefix)
-	values[33] = u32(parsed.dots_base)
-	values[34] = u32(parsed.cgen_raw_app_base)
-	values[35] = u32(parsed.generic_parameter_payload)
-	values[36] = u32(parsed.legacy_parameter_type)
-	values[37] = u32(parsed.legacy_parameter_mut_type)
-	values[38] = u32(parsed.first_bracket_length)
-	values[39] = u32(parsed.c_pointer_base)
-	values[40] = u32(parsed.source_wrapper_base)
-	values[41] = u32(parsed.declaration_head)
-	values[42] = u32(parsed.compact_fn_spelling)
-	values[43] = u32(parsed.first_bracket_raw_inner)
-	values[44] = u32(parsed.typeof_inner)
-	values[45] = u32(parsed.postfix_index_base)
-	values[46] = u32(parsed.last_bracket_prefix)
-	values[47] = u32(parsed.last_bracket_length)
-	values[48] = u32(parsed.trailing_bracket_prefix)
-	values[49] = u32(parsed.array_chars_base)
-	values[50] = u32(parsed.named_variant_owner)
-	values[51] = u32(parsed.named_variant_name)
-	values[52] = u32(parsed.main_unlocked)
-	values[53] = u32(parsed.encoded_fixed_length)
-	values[54] = u32(parsed.encoded_fixed_base)
-	values[55] = u32(parsed.suffix_bracket_length)
-	values[56] = u32(parsed.bracket_source_inner)
-	values[57] = u32(parsed.c_fixed_typedef_element)
-	values[58] = u32(parsed.c_fixed_typedef_length)
-	values[59] = u32(parsed.fixed_array_query_length)
-	values[60] = u32(parsed.last_bracket_span_inner)
-	values[61] = u32(parsed.generic_app_legacy_suffix)
-	values[62] = u32(parsed.wrapper_prefix)
-	values[63] = u32(parsed.wrapper_base)
-	values[64] = u32(parsed.qualified_modifiers)
-	values[65] = u32(parsed.c_array_payload)
-	values[66] = u32(parsed.c_fixed_array_payload)
-	values[67] = u32(parsed.fastc_array_marker_payload)
-	values[68] = u32(parsed.c_map_payload)
-	values[69] = u32(parsed.c_ptr_name_base)
-	values[70] = u32(parsed.c_tagged_type)
-	values[71] = u32(parsed.backward_bracket_prefix)
-	values[73] = u32(parsed.receiver_app_base)
-	values[74] = u32(parsed.declaration_parameter_payload)
-	values[75] = u32(parsed.prefix_dimension_tail)
-	values[76] = u32(parsed.backward_bracket_inner)
-	values[80] = u32(parsed.c_pointer_raw_base)
-	values[81] = u32(parsed.thread_value_payload)
-	values[82] = u32(parsed.thread_value_type)
-	values[84] = u32(parsed.parameter_name)
-	values[85] = u32(parsed.receiver_collection_id)
-	values[86] = u32(parsed.ampersand_trimmed)
-	values[87] = u32(parsed.parallel_preseed_short)
-	values[88] = u32(parsed.constraint_receiver_base)
-	values[89] = u32(parsed.space_removed)
-	values[90] = u32(parsed.field_owner_module)
-	values[91] = u32(parsed.question_trimmed)
-	values[92] = u32(parsed.function_space_result)
-	values[95] = u32(parsed.main_at_base)
-	values[96] = u32(parsed.receiver_app_inner)
-	values[97] = u32(parsed.fastc_fixed_array_length)
-	values[98] = u32(parsed.first_bracket_source_inner)
-	values[99] = u32(parsed.typ_suffix_base)
-	values[100] = u32(parsed.checker_parse_function_result)
-	values[101] = u32(parsed.top_level_dot_prefix)
-	values[102] = u32(parsed.top_level_dot_suffix)
-	values[103] = u32(parsed.parser_fn_decl_params)
-	values[104] = u32(parsed.parser_fn_decl_result)
-	values[105] = u32(parsed.named_variant_dot_prefix)
-	values[106] = u32(parsed.named_variant_dot_suffix)
+	if parsed.name_packing {
+		values[0] = u32(parsed.qualifier_count)
+		values[1] = u32(parsed.kind)
+		values[2] = u32(parsed.unqualified)
+		values[3] = u32(parsed.qualifier)
+		values[4] = u32(parsed.main_base)
+		values[5] = u32(parsed.first_dot_prefix)
+		values[6] = u32(parsed.first_dot_suffix)
+		values[7] = u32(parsed.builtin_base)
+		values[8] = u32(parsed.main_unlocked)
+		values[9] = u32(parsed.encoded_fixed_length)
+		values[10] = u32(parsed.encoded_fixed_base)
+		values[11] = u32(parsed.c_fixed_typedef_element)
+		values[12] = u32(parsed.c_fixed_typedef_length)
+		values[13] = u32(parsed.c_array_payload)
+		values[14] = u32(parsed.c_fixed_array_payload)
+		values[15] = u32(parsed.fastc_array_marker_payload)
+		values[16] = u32(parsed.c_map_payload)
+		values[17] = u32(parsed.c_ptr_name_base)
+		values[18] = u32(parsed.c_tagged_type)
+		values[19] = u32(parsed.thread_value_payload)
+		values[20] = u32(parsed.thread_value_type)
+		values[21] = u32(parsed.parallel_preseed_short)
+		values[22] = u32(parsed.field_owner_module)
+		values[23] = u32(parsed.fastc_fixed_array_length)
+		values[24] = u32(parsed.typ_suffix_base)
+		values[25] = u32(parsed.top_level_dot_prefix)
+		values[26] = u32(parsed.top_level_dot_suffix)
+		values[27] = u32(parsed.named_variant_dot_prefix)
+		values[28] = u32(parsed.named_variant_dot_suffix)
+	} else {
+		values[0] = u32(parsed.qualifier_count)
+		values[1] = u32(parsed.kind)
+		values[2] = u32(parsed.trimmed)
+		values[3] = u32(parsed.base)
+		values[4] = u32(parsed.unqualified)
+		values[5] = u32(parsed.qualifier)
+		values[6] = u32(parsed.generic_base)
+		values[7] = u32(parsed.pointer_base)
+		values[9] = u32(parsed.raw_base)
+		values[10] = u32(parsed.main_base)
+		values[11] = u32(parsed.application_base)
+		values[12] = u32(parsed.generic_app_base)
+		values[13] = u32(parsed.postfix_base)
+		values[14] = u32(parsed.parameter_type)
+		values[15] = u32(parsed.parameter_mut_type)
+		values[16] = u32(parsed.bracket_base)
+		values[17] = u32(parsed.bracket_inner)
+		values[18] = u32(parsed.bracket_raw_inner)
+		values[19] = u32(parsed.bracket_prefix)
+		values[20] = u32(parsed.function_result)
+		values[21] = u32(parsed.first_bracket_base)
+		values[22] = u32(parsed.last_space_word)
+		values[23] = u32(parsed.first_dot_prefix)
+		values[24] = u32(parsed.first_dot_suffix)
+		values[25] = u32(parsed.pointer_raw_base)
+		values[26] = u32(parsed.builtin_base)
+		values[27] = u32(parsed.cgen_app_base)
+		values[28] = u32(parsed.top_space_head)
+		values[29] = u32(parsed.top_space_tail)
+		values[30] = u32(parsed.bracket_suffix)
+		values[31] = u32(parsed.bracket_from)
+		values[32] = u32(parsed.first_bracket_prefix)
+		values[33] = u32(parsed.dots_base)
+		values[34] = u32(parsed.cgen_raw_app_base)
+		values[35] = u32(parsed.generic_parameter_payload)
+		values[36] = u32(parsed.legacy_parameter_type)
+		values[37] = u32(parsed.legacy_parameter_mut_type)
+		values[38] = u32(parsed.first_bracket_length)
+		values[39] = u32(parsed.c_pointer_base)
+		values[40] = u32(parsed.source_wrapper_base)
+		values[41] = u32(parsed.declaration_head)
+		values[42] = u32(parsed.compact_fn_spelling)
+		values[43] = u32(parsed.first_bracket_raw_inner)
+		values[44] = u32(parsed.typeof_inner)
+		values[45] = u32(parsed.postfix_index_base)
+		values[46] = u32(parsed.last_bracket_prefix)
+		values[47] = u32(parsed.last_bracket_length)
+		values[48] = u32(parsed.trailing_bracket_prefix)
+		values[49] = u32(parsed.array_chars_base)
+		values[50] = u32(parsed.named_variant_owner)
+		values[51] = u32(parsed.named_variant_name)
+		values[52] = u32(parsed.main_unlocked)
+		values[53] = u32(parsed.encoded_fixed_length)
+		values[54] = u32(parsed.encoded_fixed_base)
+		values[55] = u32(parsed.suffix_bracket_length)
+		values[56] = u32(parsed.bracket_source_inner)
+		values[57] = u32(parsed.c_fixed_typedef_element)
+		values[58] = u32(parsed.c_fixed_typedef_length)
+		values[59] = u32(parsed.fixed_array_query_length)
+		values[60] = u32(parsed.last_bracket_span_inner)
+		values[61] = u32(parsed.generic_app_legacy_suffix)
+		values[62] = u32(parsed.wrapper_prefix)
+		values[63] = u32(parsed.wrapper_base)
+		values[64] = u32(parsed.qualified_modifiers)
+		values[65] = u32(parsed.c_array_payload)
+		values[66] = u32(parsed.c_fixed_array_payload)
+		values[67] = u32(parsed.fastc_array_marker_payload)
+		values[68] = u32(parsed.c_map_payload)
+		values[69] = u32(parsed.c_ptr_name_base)
+		values[70] = u32(parsed.c_tagged_type)
+		values[71] = u32(parsed.backward_bracket_prefix)
+		values[73] = u32(parsed.receiver_app_base)
+		values[74] = u32(parsed.declaration_parameter_payload)
+		values[75] = u32(parsed.prefix_dimension_tail)
+		values[76] = u32(parsed.backward_bracket_inner)
+		values[80] = u32(parsed.c_pointer_raw_base)
+		values[81] = u32(parsed.thread_value_payload)
+		values[82] = u32(parsed.thread_value_type)
+		values[84] = u32(parsed.parameter_name)
+		values[85] = u32(parsed.receiver_collection_id)
+		values[86] = u32(parsed.ampersand_trimmed)
+		values[87] = u32(parsed.parallel_preseed_short)
+		values[88] = u32(parsed.constraint_receiver_base)
+		values[89] = u32(parsed.space_removed)
+		values[90] = u32(parsed.field_owner_module)
+		values[91] = u32(parsed.question_trimmed)
+		values[92] = u32(parsed.function_space_result)
+		values[95] = u32(parsed.main_at_base)
+		values[96] = u32(parsed.receiver_app_inner)
+		values[97] = u32(parsed.fastc_fixed_array_length)
+		values[98] = u32(parsed.first_bracket_source_inner)
+		values[99] = u32(parsed.typ_suffix_base)
+		values[100] = u32(parsed.checker_parse_function_result)
+		values[101] = u32(parsed.top_level_dot_prefix)
+		values[102] = u32(parsed.top_level_dot_suffix)
+		values[103] = u32(parsed.parser_fn_decl_params)
+		values[104] = u32(parsed.parser_fn_decl_result)
+		values[105] = u32(parsed.named_variant_dot_prefix)
+		values[106] = u32(parsed.named_variant_dot_suffix)
+	}
 	mut scalar_present := [2]u64{}
-	mut scalar_identity := [2]u64{}
+	mut scalar_identity := if parsed.name_packing {
+		[u64(0x207fa0240e0c4), u64(0x48b410c00)]!
+	} else {
+		[2]u64{}
+	}
 	mut scalar_count := 0
 	mut scalar_first_count := 0
-	for index in 0 .. values.len {
-		value := values[index]
+	scalar_limit := if parsed.name_packing { name_scalar_indices.len } else { values.len }
+	for ordinal in 0 .. scalar_limit {
+		index := if parsed.name_packing { name_scalar_indices[ordinal] } else { ordinal }
+		value := values[ordinal]
 		if value == 0 { continue }
 		word := index >> 6
 		bit := u64(1) << u32(index & 63)
@@ -4895,7 +4985,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	qualified := first_dot >= 0
 	identity_entry := source_type_read_entry(id)
 	identity_ids := source_type_syntax_singleton_ids(&identity_entry.id)
-	integer_value := raw.int()
+	integer_value := if raw[0].is_digit() { raw.int() } else { 0 }
 	decimal := source_type_syntax_decimal(raw)
 	contains_capital := source_type_syntax_contains_capital(raw)
 	contains_doubleunderscore := raw.contains('__')
