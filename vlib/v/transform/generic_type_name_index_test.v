@@ -19,7 +19,6 @@ fn test_generic_type_name_indexes_refresh_after_late_declarations() {
 		assert t.generic_concrete_name_known(flat.source_type_id(name))
 		assert t.type_name_is_declared_id(flat.source_type_id(name))
 	}
-	assert t.generic_type_name_index_cache.checker_count == t.generic_checker_concrete_name_count()
 	assert t.generic_checker_sum_name_known(flat.source_type_id('late.Choice'))
 	assert t.generic_checker_interface_name_known(flat.source_type_id('late.Reader'))
 	assert !t.generic_checker_sum_name_known(flat.source_type_id('late.MoreChoice'))
@@ -47,7 +46,6 @@ fn test_generic_type_name_indexes_refresh_after_late_declarations() {
 		assert t.type_name_is_declared_id(flat.source_type_id(name))
 	}
 	assert !t.type_name_is_declared_id(flat.source_type_id('late.Missing'))
-	assert t.generic_type_name_index_cache.transform_count == t.structs.len + t.sum_types.ids.len + t.enum_types.len
 }
 
 fn test_generic_type_name_index_refresh_is_private_to_each_worker() {
@@ -67,8 +65,6 @@ fn test_generic_type_name_index_refresh_is_private_to_each_worker() {
 	assert !worker.generic_concrete_name_known(flat.source_type_id('RootRecord'))
 	assert t.generic_concrete_name_known(flat.source_type_id('RootRecord'))
 	assert !t.generic_concrete_name_known(flat.source_type_id('WorkerRecord'))
-	assert worker.generic_type_name_index_cache.checker_count == 1
-	assert t.generic_type_name_index_cache.checker_count == 2
 }
 
 fn test_generic_type_name_indexes_refresh_struct_enum_and_parameter_views() {

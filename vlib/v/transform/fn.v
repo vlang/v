@@ -540,6 +540,43 @@ fn (mut cache ReceiverMethodCache) set_front(slot int, receiver_type_id u32, met
 	cache.front_states[slot] = if found { i8(1) } else { i8(-1) }
 }
 
+// bare_struct_candidates returns the module-qualified, non-generic structs whose
+// short name is `short_id`. Entries can be stale after template erasure, so
+// callers check that each name is still in `t.tc.structs`.
+fn (t &Transformer) bare_struct_candidates(short_id u32) []u32 {
+	if isnil(t.receiver_method_cache) {
+		return t.collect_bare_struct_candidates(short_id)
+	}
+	mut cache := t.receiver_method_cache
+	tc_ptr := voidptr(t.tc)
+	if cache.bare_structs_tc != tc_ptr || cache.bare_structs_len != t.tc.structs.len {
+		cache.bare_structs.clear()
+		for sname_id, _ in t.tc.structs {
+			sname_shape := flat.source_type_shape(sname_id)
+			if !sname_shape.has(.dotted) || sname_shape.has(.bracketed) {
+				continue
+			}
+			short := flat.source_type_syntax(sname_id).unqualified()
+			cache.bare_structs[short] << sname_id
+		}
+		cache.bare_structs_tc = tc_ptr
+		cache.bare_structs_len = t.tc.structs.len
+	}
+	return cache.bare_structs[short_id] or { []u32{} }
+}
+
+fn (t &Transformer) collect_bare_struct_candidates(short_id u32) []u32 {
+	mut ids := []u32{}
+	for sname_id, _ in t.tc.structs {
+		sname_shape := flat.source_type_shape(sname_id)
+		if sname_shape.has(.dotted) && !sname_shape.has(.bracketed)
+			&& flat.source_type_syntax(sname_id).unqualified() == short_id {
+			ids << sname_id
+		}
+	}
+	return ids
+}
+
 fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type_id u32, method string) ?string {
 	clean_type_id := t.trim_pointer_type(receiver_type_id)
 	clean_type := flat.source_type_name(clean_type_id)
@@ -649,15 +686,11 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type_id u
 		if !clean_shape.has(.dotted) && !clean_shape.has(.bracketed) && !isnil(t.tc)
 			&& !t.tc.is_locally_declared_bare_type(clean_type_id) {
 			mut matched := ''
-			for sname_source_id, _ in t.tc.structs {
-				sname := flat.source_type_name(sname_source_id)
-				sname_id := sname_source_id
-				sname_shape := flat.source_type_shape(sname_id)
-				if !sname_shape.has(.dotted) || sname_shape.has(.bracketed)
-					|| flat.source_type_syntax(sname_id).unqualified() != clean_type_id {
+			for sname_id in t.bare_struct_candidates(clean_type_id) {
+				if sname_id !in t.tc.structs {
 					continue
 				}
-				qmethod := '${sname}.${method}'
+				qmethod := '${flat.source_type_name(sname_id)}.${method}'
 				if t.is_known_fn_name(qmethod) {
 					if matched != '' && matched != qmethod {
 						matched = ''

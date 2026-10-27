@@ -1578,7 +1578,7 @@ fn (t &Transformer) generic_checker_struct_name_known(name_id u32) bool {
 	if t.generic_type_indexes_ready && t.generic_checker_struct_index_count == t.tc.structs.len {
 		return t.generic_checker_struct_names[name_id]
 	}
-	return t.refresh_checker_struct_type_name_index().struct_names[name_id]
+	return name_id in t.tc.structs
 }
 
 fn (t &Transformer) comptime_method_requested_module(raw_id u32) string {
