@@ -445,13 +445,16 @@ fn (t &Transformer) resolve_collection_receiver_method_name(base_id flat.NodeId,
 // repetition of (receiver type, method) pairs. The uncached resolution below
 // scans struct tables and builds many candidate strings, so memoize per
 // (module, type, method); the cache clears when the fn table grows (closure
-// lifting / str-method synthesis can change what resolves).
+// lifting / str-method synthesis can change what resolves), and cached misses
+// are also dropped when the checker signatures change.
 fn (t &Transformer) resolve_receiver_method_for_type(receiver_type_id u32, method string) ?string {
 	if !isnil(t.receiver_method_cache) {
 		mut cache := t.receiver_method_cache
-		if !same_transform_text(cache.module, t.cur_module) || cache.fn_count != t.fn_ret_types.ids.len {
+		if !same_transform_text(cache.module, t.cur_module)
+			|| cache.fn_count != t.fn_ret_types.ids.len {
 			cache.module = t.cur_module
 			cache.fn_count = t.fn_ret_types.ids.len
+			cache.sync_tc_snapshot(t.tc)
 			cache.entries.clear()
 			cache.misses.clear()
 			cache.front_generation++
@@ -468,7 +471,9 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type_id u32, metho
 			if cache.front_states[front_slot] > 0 {
 				return cache.front_results[front_slot]
 			}
-			return none
+			if !cache.drop_misses_if_tc_changed(t.tc) {
+				return none
+			}
 		}
 		method_id := cache.methods[method] or {
 			id := u32(cache.methods.len + 1)
@@ -480,7 +485,7 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type_id u32, metho
 			cache.set_front(front_slot, receiver_type_id, method, cached, true)
 			return cached
 		}
-		if cache.misses[key] {
+		if cache.misses[key] && !cache.drop_misses_if_tc_changed(t.tc) {
 			cache.set_front(front_slot, receiver_type_id, method, '', false)
 			return none
 		}
@@ -494,6 +499,36 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type_id u32, metho
 		return none
 	}
 	return t.resolve_receiver_method_for_type_uncached(receiver_type_id, method)
+}
+
+// sync_tc_snapshot records the checker signature state that the cached misses
+// were computed against, and reports whether it changed.
+fn (mut cache ReceiverMethodCache) sync_tc_snapshot(tc &types.TypeChecker) bool {
+	tc_ptr := voidptr(tc)
+	tc_revision := if isnil(tc) { u64(0) } else { tc.fn_ret_types_revision }
+	tc_rets := if isnil(tc) { 0 } else { tc.fn_ret_types.len }
+	tc_params := if isnil(tc) { 0 } else { tc.fn_param_types.len }
+	if cache.tc == tc_ptr && cache.tc_revision == tc_revision && cache.tc_rets == tc_rets
+		&& cache.tc_params == tc_params {
+		return false
+	}
+	cache.tc = tc_ptr
+	cache.tc_revision = tc_revision
+	cache.tc_rets = tc_rets
+	cache.tc_params = tc_params
+	return true
+}
+
+// drop_misses_if_tc_changed forgets the cached misses after a checker-only
+// registration (generated specializations, merged scoped-batch signatures),
+// which leaves fn_count unchanged. Only negative answers pay for this check.
+fn (mut cache ReceiverMethodCache) drop_misses_if_tc_changed(tc &types.TypeChecker) bool {
+	if !cache.sync_tc_snapshot(tc) {
+		return false
+	}
+	cache.misses.clear()
+	cache.front_generation++
+	return true
 }
 
 @[inline]
