@@ -1744,13 +1744,17 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		return selected
 	}
 	synthetic_name := c_short_name_view(name)
-	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+	// The length and first-byte guards below only skip comparisons that cannot match; this
+	// runs for every direct call, and most names match none of the special cases.
+	if synthetic_name.len > 5 && synthetic_name[0] == `_` && (synthetic_name.starts_with('__v3_sum_eq_')
+		|| synthetic_name.starts_with('__v3_autostr_')
 		|| synthetic_name.starts_with('__v3_struct_eq_')
-		|| synthetic_name.starts_with('__v3_default_clone_') {
+		|| synthetic_name.starts_with('__v3_default_clone_')) {
 		return g.cname(synthetic_name)
 	}
-	if name in ['builtin.map__set', 'builtin_map__set', 'builtin__map__set']
-		|| name == builtin_map_set_fn_key {
+	if (name.len == 16 || name.len == 17 || name.len == builtin_map_set_fn_key.len)
+		&& (name in ['builtin.map__set', 'builtin_map__set', 'builtin__map__set']
+			|| name == builtin_map_set_fn_key) {
 		return 'map__set'
 	}
 	if g.c_decl_abi_names.len > 0 {
@@ -1775,29 +1779,41 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		// the renamed symbol rather than the bare `main`.
 		return g.cname('main.main')
 	}
-	if name in ['free', 'main.free', 'builtin.free'] {
+	if (name.len == 4 || name.len == 9 || name.len == 12)
+		&& name in ['free', 'main.free', 'builtin.free'] {
 		return 'v_free'
 	}
 	if shadow_name := g.main_runtime_shadow_fn_c_name(g.tc.cur_module, name) {
 		return shadow_name
 	}
-	if name == 'new_map' {
-		if g.tc.cur_module == 'builtin' {
-			return 'new_map'
+	match name.len {
+		7 {
+			if name == 'new_map' {
+				if g.tc.cur_module == 'builtin' {
+					return 'new_map'
+				}
+				return 'main__new_map'
+			}
+			if name == 'int_str' {
+				return 'int__str'
+			}
 		}
-		return 'main__new_map'
-	}
-	if name == 'int_str' {
-		return 'int__str'
-	}
-	if name == 'bool_str' {
-		return 'bool__str'
-	}
-	if name == 'char.vstring' {
-		return 'charptr__vstring'
-	}
-	if name == 'char.vstring_with_len' {
-		return 'charptr__vstring_with_len'
+		8 {
+			if name == 'bool_str' {
+				return 'bool__str'
+			}
+		}
+		12 {
+			if name == 'char.vstring' {
+				return 'charptr__vstring'
+			}
+		}
+		21 {
+			if name == 'char.vstring_with_len' {
+				return 'charptr__vstring_with_len'
+			}
+		}
+		else {}
 	}
 	if (g.tc.autofree_mode || g.target.os == 'vinix') && g.tc.cur_module in ['', 'main'] {
 		legacy_name := name.trim_string_left('main.')
