@@ -191,6 +191,7 @@ mut:
 	objects_only              bool // the program unit is compiled and linked with the objects directly: no dylib, no program plan
 	no_program_declarations   bool // nothing reads the declarations of the program unit on its own: no dev dylib, no generic or incremental plan
 	force_source              bool
+	force_source_modules      []string
 	bundle_valid              bool
 	calls_recover             bool // the code of a module of this build calls `recover()`, see cache_module_calls_recover
 	module_sources            map[string][]string
@@ -13184,6 +13185,7 @@ pub fn run(args []string) {
 		bundle_sources:            bundle_sources
 		bundle_source_paths:       module_cache_source_path_set(p.a, bundle_sources)
 		force_source:              force_cache_source
+		force_source_modules:      os.getenv(v3_internal_cache_force_source_env).split_into_lines()
 		module_sources:            map[string][]string{}
 		module_import_paths:       map[string]string{}
 		module_dependencies:       map[string][]string{}
@@ -13208,7 +13210,7 @@ pub fn run(args []string) {
 	cache_state.module_sources['builtin'] = builtin_files
 	mut files := []string{}
 	mut loaded_cached_bundle := false
-	if !force_cache_source {
+	if !force_cache_source && 'builtin' !in cache_state.force_source_modules {
 		if bundle_object := cache_manager.valid_object('builtin', bundle_sources) {
 			if builtin_header := cache_manager.valid_header('builtin', builtin_files) {
 				record_v3_cached_source_digests(mut cache_state, builtin_header.source_digests)
@@ -16578,7 +16580,6 @@ pub fn run(args []string) {
 				compile_signature += program_suffix
 				objects := cache_state.manager.valid_cgen_prepared_objects(cgen_cache_entry, compile_signature) or {
 					if resolve_flag_specific_cache_objects(mut cache_state, a, object_flags_signature + program_suffix, parse_v3_interface_scopes(interface_impl_signature)) {
-						os.setenv(v3_internal_cache_force_source_env, '1', true)
 						restart_v3_after_cache_invalidation(cc_dir)
 					}
 					resolved_objects := cache_object_paths(cache_state.objects)
@@ -18380,7 +18381,6 @@ fn v3_incremental_program_main_source(cached_prefix string, body_source string) 
 
 fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_declarations_path string, cached_prefix string, object_base string, interface_impl_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
-		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation(state.c_build_dir)
 	}
 	objects := cache_object_paths(state.objects)
@@ -18404,7 +18404,6 @@ fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string,
 		return error('v3 module cache directory is unavailable')
 	}
 	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
-		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation(state.c_build_dir)
 	}
 	incremental_c_function_sections(generated_source) or {
@@ -18452,7 +18451,6 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	mut has_declarations := false
 	scopes := parse_v3_interface_scopes(interface_impl_signature)
 	if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
-		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation(state.c_build_dir)
 	}
 	main_body := split.modules['main'] or { '' }
@@ -18637,7 +18635,6 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		// Refresh stops before the program link could discover that mismatch.
 		state.objects = object_paths.clone()
 		if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
-			os.setenv(v3_internal_cache_force_source_env, '1', true)
 			restart_v3_after_cache_invalidation(state.c_build_dir)
 		}
 	}
@@ -20037,9 +20034,44 @@ fn (scopes &V3InterfaceScopes) declaring_module(name_id u32) string {
 // An interface or an implementer that the signature says too little about makes
 // the module depend on every list, as all of them did before.
 fn (scopes &V3InterfaceScopes) module_signature(visible map[string]bool) string {
+	return scopes.object_signature(visible, false)
+}
+
+fn (scopes &V3InterfaceScopes) builtin_error_signature(name u32) ?string {
+	impls := scopes.impls[name]
+	ids := types.stable_interface_type_ids(impls)
+	mut builtin_ids := []string{}
+	for impl in impls {
+		// Retain the full dependency when hashes collide. The signature can also
+		// contain open generic types that code generation leaves out of dispatch.
+		seed := types.stable_interface_type_ids([impl])
+		if ids[impl] != seed[impl] {
+			return none
+		}
+		owner := scopes.declaring_module(impl)
+		if owner == '?' {
+			return none
+		}
+		if owner == 'builtin' {
+			builtin_ids << '${flat.source_type_name(impl)}=${ids[impl]}'
+		}
+	}
+	return '#builtin ${flat.source_type_name(name)}=${builtin_ids.join(',')}'
+}
+
+fn (scopes &V3InterfaceScopes) object_signature(visible map[string]bool, builtin_bundle bool) string {
 	mut in_scope := map[u32]bool{}
 	mut pending := []u32{cap: scopes.names.len}
+	mut lines := []string{cap: scopes.names.len}
 	for i, name in scopes.names {
+		// Dispatch stubs belong to the program, but builtin error boxing and the
+		// None__ check embed builtin dispatch IDs. Preserve those dependencies.
+		if builtin_bundle && flat.source_type_name(name) in ['IError', 'builtin.IError'] {
+			if signature := scopes.builtin_error_signature(name) {
+				lines << signature
+				continue
+			}
+		}
 		owner := scopes.owners[i]
 		// The code of a module cannot name an interface of the program.
 		if owner == 'main' {
@@ -20079,7 +20111,6 @@ fn (scopes &V3InterfaceScopes) module_signature(visible map[string]bool) string 
 			}
 		}
 	}
-	mut lines := []string{cap: pending.len}
 	for name in scopes.names {
 		if in_scope[name] {
 			lines << scopes.lines[name]
@@ -20127,7 +20158,8 @@ fn cache_object_visible_modules(state &V3ModuleCacheState, roots []string, commo
 // module from its header finds the object under this signature.
 fn v3_cached_object_alias_signature(object_base string, scopes &V3InterfaceScopes, state &V3ModuleCacheState, roots []string, common []string) string {
 	visible := cache_object_visible_modules(state, roots, common)
-	return '${object_base}\ninterfaces=${scopes.module_signature(visible)}'
+	builtin_bundle := 'builtin' in roots && roots.all(it in modulecache.builtin_bundle_modules)
+	return '${object_base}\ninterfaces=${scopes.object_signature(visible, builtin_bundle)}'
 }
 
 // v3_cached_object_content_signature identifies a module object by how it is
@@ -20448,6 +20480,7 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 		return false
 	}
 	common := cache_common_visible_modules(state, a)
+	mut missing := false
 	for object_name in state.objects.keys() {
 		roots := if object_name == 'builtin' {
 			cache_builtin_bundle_roots(state, a)
@@ -20464,7 +20497,9 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 			if os.getenv('V3_CACHE_TRACE') != '' {
 				eprintln('  V3 module cache object miss: module=${object_name} reason=no object for these C compilation flags and interface implementations')
 			}
-			return true
+			force_v3_cache_object_sources(object_name)
+			missing = true
+			continue
 		}
 		dependency_inputs := cache_object_dependency_signatures(state, a, roots)
 		if entry := state.manager.valid_object_for_compile_signature(object_name, source_files, v3_cached_object_content_signature(object_base, content_key), dependency_inputs) {
@@ -20473,10 +20508,26 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 			if os.getenv('V3_CACHE_TRACE') != '' {
 				eprintln('  V3 module cache object miss: module=${object_name}')
 			}
-			return true
+			force_v3_cache_object_sources(object_name)
+			missing = true
+			continue
 		}
 	}
-	return false
+	return missing
+}
+
+// force_v3_cache_object_sources reparses only the objects whose configuration
+// changed. Other cached modules keep their headers and objects on the retry.
+fn force_v3_cache_object_sources(object_name string) {
+	current := os.getenv(v3_internal_cache_force_source_env)
+	if current == '1' {
+		return
+	}
+	mut modules := current.split_into_lines().filter(it.len > 0)
+	if object_name !in modules {
+		modules << object_name
+	}
+	os.setenv(v3_internal_cache_force_source_env, modules.join('\n'), true)
 }
 
 fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
@@ -25713,7 +25764,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						cache_state.parsed_from_source[cache_module] = true
 						cache_state.source_body_modules[cache_module] = true
 					}
-				} else if !cache_state.force_source {
+				} else if !cache_state.force_source
+					&& cache_module !in cache_state.force_source_modules {
 					if cached := cache_state.manager.valid_entry_with_metadata_cache(cache_module, mod_files, mut cache_state.dependency_metadata) {
 						record_v3_cached_source_digests(mut cache_state, cached.source_digests)
 						cache_module_calls_recover(mut cache_state, modulecache.header_calls_recover(cached))

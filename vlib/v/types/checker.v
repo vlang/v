@@ -18216,6 +18216,8 @@ fn is_attribute_target_name(name string) bool {
 // exact and case-sensitive: a name differing only in casing is unknown.
 const builtin_attribute_names = [
 	'_allow_multiple_values',
+	'_constructor',
+	'_destructor',
 	'_linker_section',
 	'_naked',
 	'_pack',
