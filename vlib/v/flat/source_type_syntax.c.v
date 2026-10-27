@@ -2807,7 +2807,13 @@ fn source_type_syntax_publish(id u32, entry &SourceTypeSyntaxEntry) {
 fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	// Interning components can acquire the source spelling writer lock itself.
 	// Finish every spelling operation before taking that lock for publication.
-	parsed := source_type_syntax_parse(id, source_type_name(id))
+	parsed, scratch_scope := source_type_syntax_parse_scoped(id, source_type_name(id), true)
+	defer {
+		$if prealloc {
+			// Only copied numeric IDs and process-owned spellings survive publication.
+			unsafe { prealloc_scope_end(scratch_scope) }
+		}
+	}
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
 	cached := source_type_syntax_find(id)
@@ -2974,7 +2980,8 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	mut scalar_identity := [2]u64{}
 	mut scalar_count := 0
 	mut scalar_first_count := 0
-	for index, value in values {
+	for index in 0 .. values.len {
+		value := values[index]
 		if value == 0 { continue }
 		word := index >> 6
 		bit := u64(1) << u32(index & 63)
@@ -2982,6 +2989,8 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 			scalar_identity[word] |= bit
 		} else {
 			scalar_present[word] |= bit
+			// Compact only into the consumed prefix; unread field values stay intact.
+			values[scalar_count] = value
 			scalar_count++
 			if word == 0 { scalar_first_count++ }
 		}
@@ -3159,12 +3168,9 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 		ids:         unsafe { voidptr(&u8(entry) + sizeof(SourceTypeSyntaxEntry)) }
 	}
 	unsafe { *&u32(payload.ids) = id }
-	mut scalar_offset := 1
-	for value in values {
-		if value == 0 || value == id { continue }
+	for index in 0 .. scalar_count {
 		// The 80-byte header and 8-byte owner prefix align writer-owned u64 slots.
-		unsafe { (&u64(payload.ids))[scalar_offset] = value }
-		scalar_offset++
+		unsafe { (&u64(payload.ids))[1 + index] = values[index] }
 	}
 
 	// Records and slices belong to the process, independently of parser workers
@@ -3234,7 +3240,12 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	mut span_present := u64(0)
 	mut span_identity := u64(0)
 	mut span_offset := 2 + 2 * scalar_count
-	for index, span in spans {
+	// Strict names only populate these ten views, in the same rank order.
+	name_span_indices := [11, 16, 17, 20, 21, 28, 29, 32, 37, 39]!
+	span_limit := if parsed.name_packing { name_span_indices.len } else { spans.len }
+	for ordinal in 0 .. span_limit {
+		index := if parsed.name_packing { name_span_indices[ordinal] } else { ordinal }
+		span := spans[index]
 		if span.len == 0 { continue }
 		bit := u64(1) << u32(index)
 		if span.offset == 0 && span.len == 1 {
@@ -3851,6 +3862,13 @@ fn source_type_syntax_dot_edges(id u32, raw string, first_dot int, last_dot int)
 }
 
 fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
+	parsed, _ := source_type_syntax_parse_scoped(id, raw, false)
+	return parsed
+}
+
+// The caller keeps a general parser's arena alive until all array values are copied.
+// Direct parser checks use the unscoped wrapper and retain their existing lifetime.
+fn source_type_syntax_parse_scoped(id u32, raw string, scoped bool) (SourceTypeSyntaxParsed, voidptr) {
 	mut simple := raw.len > 0
 	mut qualified := raw.len > 0
 	mut segment_start := true
@@ -3872,9 +3890,16 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 			break
 		}
 	}
-	if simple { return source_type_syntax_name(id, raw, -1, -1) }
+	if simple { return source_type_syntax_name(id, raw, -1, -1), unsafe { nil } }
 	if qualified && !segment_start && first_dot >= 0 {
-		return source_type_syntax_name(id, raw, first_dot, last_dot)
+		return source_type_syntax_name(id, raw, first_dot, last_dot), unsafe { nil }
+	}
+	mut scratch_scope := voidptr(unsafe { nil })
+	$if prealloc {
+		if scoped {
+			// Every escaping spelling and ID tuple is copied to process-owned storage.
+			scratch_scope = unsafe { prealloc_scope_begin() }
+		}
 	}
 	clean := source_type_query_trim(raw)
 	clean_id := source_type_syntax_child_id(id, raw, clean)
@@ -4700,7 +4725,7 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		} else {
 			u32(0)
 		}
-	}
+	}, scratch_scope
 }
 
 fn source_type_syntax_plain_name(raw string) bool {

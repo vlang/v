@@ -1962,3 +1962,144 @@ fn test_source_type_syntax_sparse_full_width_integer_slots() {
 		assert copied.integer_value() == int(value)
 	}
 }
+
+// Only these eager numeric views cross the general parser's scratch-scope boundary.
+fn source_type_syntax_general_payload_views(syntax &SourceTypeSyntax) [][]u32 {
+	return [
+		syntax.args(),
+		syntax.application_args(),
+		syntax.generic_app_args(),
+		syntax.postfix_dims(),
+		syntax.function_params(),
+		syntax.tuple_components(),
+		syntax.cgen_app_args(),
+		syntax.cgen_function_params(),
+		syntax.checker_function_params(),
+		syntax.checker_tuple_components(),
+		syntax.cgen_raw_app_args(),
+		syntax.cgen_parts(),
+		syntax.checker_raw_tuple_components(),
+		syntax.bracket_raw_parts(),
+		syntax.bracket_generic_parts(),
+		syntax.tuple_function_components(),
+		syntax.plain_comma_parts(),
+		syntax.generic_mentions(),
+		syntax.receiver_app_args(),
+		syntax.checker_bracket_components(),
+		syntax.voidptr_parts(),
+		syntax.inferred_parts(),
+		syntax.inferred_annotations(),
+		syntax.inferred_expr_ids(),
+		syntax.substitution_function_params(),
+		syntax.written_applications(),
+		syntax.written_application_offsets(),
+		syntax.checker_raw_bracket_components(),
+		syntax.cgen_placeholder_candidates(),
+		syntax.reflection_parts(),
+		syntax.reflection_tuple_parts(),
+		syntax.receiver_raw_app_args(),
+		syntax.vls_generic_words(),
+		syntax.eval_tuple_parts(),
+		syntax.implicit_tuple_components(),
+		syntax.generic_application_heads(),
+		syntax.markused_application_heads(),
+		syntax.markused_generic_components(),
+		syntax.raw_tuple_parse_components(),
+		syntax.union_parts(),
+	]
+}
+
+// The worker owns the arena; only process-owned cache storage crosses its lifetime.
+fn source_type_syntax_general_in_recycled_scope(raw string) u32 {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		input := raw.clone()
+		assert unsafe { prealloc_scope_owns(scope, input.str) }
+		id := source_type_id(input)
+		syntax := source_type_syntax(id)
+		assert !unsafe { prealloc_scope_owns(scope, syntax) }
+		assert !unsafe { prealloc_scope_owns(scope, syntax.payload) }
+		assert !unsafe { prealloc_scope_owns(scope, source_type_name(id).str) }
+		for view in source_type_syntax_general_payload_views(syntax) {
+			assert !unsafe { prealloc_scope_owns(scope, view.data) }
+		}
+		// The published record is the only retained view; input and temporary headers die here.
+		unsafe { prealloc_scope_end(scope) }
+		for _ in 0 .. 4 {
+			reused := unsafe { prealloc_scope_begin() }
+			bytes := []u8{len: 192 * 1024, init: u8(0xa5)}
+			assert bytes[0] == 0xa5
+			assert bytes[bytes.len - 1] == 0xa5
+			unsafe { prealloc_scope_end(reused) }
+		}
+		unsafe { prealloc_thread_cleanup() }
+		return id
+	} $else {
+		id := source_type_id(raw)
+		source_type_syntax(id)
+		return id
+	}
+}
+
+fn test_source_type_syntax_general_payloads_outlive_scratch_and_caller_arenas() {
+	for raw in ['scoped_general_payload710.Pair[[]T, fn (U) V]',
+		'fn (mut value &scoped_general_payload711.Dog, ...[]T) map[string]T',
+		'[ 2 + n ]?scoped_general_payload712.Node',
+		'(scoped_general_payload713.Dog, map[string]fn (T) []U)',
+		'map[string]fn (&scoped_general_payload714.Node) ?[]T', '  scoped_general_payload715.T[3][ 5 ] ',
+		'scoped_general_payload716.Box[T', 'scoped_general_payload717.T | U'] {
+		id := source_type_id(raw)
+		assert isnil(source_type_syntax_find(id))
+		handle := spawn source_type_syntax_general_in_recycled_scope(raw)
+		assert handle.wait() == id
+		syntax := source_type_syntax(id)
+		parsed := source_type_syntax_parse(id, raw)
+		assert !parsed.name_packing
+		assert_source_type_syntax_scalar_views(syntax, parsed)
+		expected := [
+			parsed.args,
+			parsed.application_args,
+			parsed.generic_app_args,
+			parsed.postfix_dims,
+			parsed.function_params,
+			parsed.tuple_components,
+			parsed.cgen_app_args,
+			parsed.cgen_function_params,
+			parsed.checker_function_params,
+			parsed.checker_tuple_components,
+			parsed.cgen_raw_app_args,
+			parsed.cgen_parts,
+			parsed.checker_raw_tuple_components,
+			parsed.bracket_raw_parts,
+			parsed.bracket_generic_parts,
+			parsed.tuple_function_components,
+			parsed.plain_comma_parts,
+			parsed.generic_mentions,
+			parsed.receiver_app_args,
+			parsed.checker_bracket_components,
+			parsed.voidptr_parts,
+			parsed.inferred_parts,
+			parsed.inferred_annotations,
+			parsed.inferred_expr_ids,
+			parsed.substitution_function_params,
+			parsed.written_applications,
+			parsed.written_application_offsets,
+			parsed.checker_raw_bracket_components,
+			parsed.cgen_placeholder_candidates,
+			parsed.reflection_parts,
+			parsed.reflection_tuple_parts,
+			parsed.receiver_raw_app_args,
+			parsed.vls_generic_words,
+			parsed.eval_tuple_parts,
+			parsed.implicit_tuple_components,
+			parsed.generic_application_heads,
+			parsed.markused_application_heads,
+			parsed.markused_generic_components,
+			parsed.raw_tuple_parse_components,
+			parsed.union_parts,
+		]
+		assert source_type_syntax_general_payload_views(syntax) == expected
+		copied := *syntax
+		assert source_type_syntax_general_payload_views(&copied) == expected
+	}
+}
