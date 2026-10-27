@@ -1205,6 +1205,12 @@ mut:
 	front_results     [256]string
 	front_states      [256]i8
 	front_generations [256]u32
+	// Short source type id -> source type ids of the module-qualified,
+	// non-generic structs with that short name. Rebuilt when the struct table
+	// changes owner or size; template erasure resets bare_structs_len.
+	bare_structs_tc  voidptr
+	bare_structs_len int = -1
+	bare_structs     map[u32][]u32
 }
 
 // PromoteTextCache short-circuits repeated promote_scoped_result_text calls on

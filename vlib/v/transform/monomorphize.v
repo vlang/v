@@ -3260,6 +3260,9 @@ fn (mut t Transformer) materialize_generic_structs(erase_templates bool) {
 			t.tc.params_structs.delete(decl_id)
 			t.tc.unregister_short_type_name(decl_id)
 		}
+		if !isnil(t.receiver_method_cache) {
+			t.receiver_method_cache.bare_structs_len = -1
+		}
 		// Refresh once after both registries have finished removing templates.
 		t.erase_generic_sum_templates(sum_decls)
 	}
@@ -10371,28 +10374,9 @@ fn (t &Transformer) generic_enum_type_name_known(name_id u32) bool {
 	if t.generic_type_indexes_ready && t.generic_enum_index_count == count {
 		return t.generic_enum_type_names[name_id]
 	}
-	return t.refresh_enum_type_name_index().enum_names[name_id]
-}
-
-fn (t &Transformer) refresh_enum_type_name_index() &GenericTypeNameIndexCache {
-	mut cache := t.generic_type_name_index_cache
-	count := t.enum_types.len + if isnil(t.tc) { 0 } else { t.tc.enum_names.len }
-	if cache.enum_count != count {
-		mut names := map[u32]bool{}
-		mut checker_names := map[u32]bool{}
-		for name_id, _ in t.enum_types { names[name_id] = true }
-		if !isnil(t.tc) {
-			for name_source_id, _ in t.tc.enum_names {
-				name_id := name_source_id
-				names[name_id] = true
-				checker_names[name_id] = true
-			}
-		}
-		cache.enum_names = names.move()
-		cache.checker_enum_names = checker_names.move()
-		cache.enum_count = count
-	}
-	return cache
+	// Late registrations make the prepared index stale; the registries are
+	// keyed by interned ids, so look the id up directly.
+	return name_id in t.enum_types || (!isnil(t.tc) && name_id in t.tc.enum_names)
 }
 
 fn (t &Transformer) refresh_checker_struct_type_name_index() &GenericTypeNameIndexCache {
@@ -10425,14 +10409,7 @@ fn (t &Transformer) generic_checker_sum_name_known(name_id u32) bool {
 	if t.generic_type_indexes_ready && t.generic_checker_sum_index_count == count {
 		return t.generic_checker_sum_names[name_id]
 	}
-	mut cache := t.generic_type_name_index_cache
-	if cache.sum_count != count {
-		mut names := map[u32]bool{}
-		for name_source_id, _ in t.tc.sum_types.ids { names[name_source_id] = true }
-		cache.sum_names = names.move()
-		cache.sum_count = count
-	}
-	return cache.sum_names[name_id]
+	return name_id in t.tc.sum_types.ids
 }
 
 fn (t &Transformer) generic_checker_interface_name_known(name_id u32) bool {
@@ -10441,14 +10418,7 @@ fn (t &Transformer) generic_checker_interface_name_known(name_id u32) bool {
 	if t.generic_type_indexes_ready && t.generic_checker_interface_index_count == count {
 		return t.generic_checker_interface_names[name_id]
 	}
-	mut cache := t.generic_type_name_index_cache
-	if cache.interface_count != count {
-		mut names := map[u32]bool{}
-		for name_source_id, _ in t.tc.interface_names { names[name_source_id] = true }
-		cache.interface_names = names.move()
-		cache.interface_count = count
-	}
-	return cache.interface_names[name_id]
+	return name_id in t.tc.interface_names
 }
 
 fn (t &Transformer) generic_exact_alias_name_known(name_id u32) bool {
@@ -10457,59 +10427,18 @@ fn (t &Transformer) generic_exact_alias_name_known(name_id u32) bool {
 	if t.generic_type_indexes_ready && t.generic_exact_alias_names.len == count {
 		return t.generic_exact_alias_names[name_id]
 	}
-	mut cache := t.generic_type_name_index_cache
-	if cache.alias_count != count {
-		mut names := map[u32]bool{}
-		for name_source_id, _ in t.tc.type_aliases.ids { names[name_source_id] = true }
-		cache.alias_names = names.move()
-		cache.alias_count = count
-	}
-	return cache.alias_names[name_id]
+	return name_id in t.tc.type_aliases.ids
 }
 
-// GenericTypeNameIndexCache belongs to one transformer or worker. Late
-// declarations invalidate the prepared indexes; rebuild their numeric views
-// once per registry size change instead of re-interning every key per lookup.
+// GenericTypeNameIndexCache belongs to one transformer or worker. Late struct
+// declarations invalidate the prepared indexes; rebuild the short-name view
+// once per registry size change. Exact-name checks look the interned spelling
+// up in the registry directly instead.
 struct GenericTypeNameIndexCache {
 mut:
-	checker_count      int = -1
-	checker_names      map[u32]bool
-	sum_count          int = -1
-	sum_names          map[u32]bool
-	interface_count    int = -1
-	interface_names    map[u32]bool
-	alias_count        int = -1
-	alias_names        map[u32]bool
-	enum_count         int = -1
-	enum_names         map[u32]bool
-	checker_enum_names map[u32]bool
 	struct_count       int = -1
 	struct_names       map[u32]bool
 	struct_short_names map[u32]bool
-	parameter_count    int = -1
-	parameter_names    map[u32]bool
-	transform_count    int = -1
-	transform_names    map[u32]bool
-	main_structs       map[u32]bool
-}
-
-fn (t &Transformer) refresh_transform_type_name_index() &GenericTypeNameIndexCache {
-	mut cache := t.generic_type_name_index_cache
-	count := t.structs.len + t.sum_types.ids.len + t.enum_types.len
-	if cache.transform_count != count {
-		mut names := map[u32]bool{}
-		mut main_structs := map[u32]bool{}
-		for name_id, info in t.structs {
-			names[name_id] = true
-			if info.module in ['', 'main'] { main_structs[name_id] = true }
-		}
-		for name_id, _ in t.sum_types.ids { names[name_id] = true }
-		for name_id, _ in t.enum_types { names[name_id] = true }
-		cache.transform_names = names.move()
-		cache.main_structs = main_structs.move()
-		cache.transform_count = count
-	}
-	return cache
 }
 
 fn (t &Transformer) generic_transform_concrete_name_known(name_id u32) bool {
@@ -10517,7 +10446,7 @@ fn (t &Transformer) generic_transform_concrete_name_known(name_id u32) bool {
 		&& t.generic_transform_concrete_index_count == t.structs.len + t.sum_types.ids.len + t.enum_types.len {
 		return t.generic_transform_concrete_type_names[name_id]
 	}
-	return t.refresh_transform_type_name_index().transform_names[name_id]
+	return name_id in t.structs || name_id in t.sum_types.ids || name_id in t.enum_types
 }
 
 fn (t &Transformer) generic_resolved_concrete_name_known(name_id u32) bool {
@@ -10526,21 +10455,12 @@ fn (t &Transformer) generic_resolved_concrete_name_known(name_id u32) bool {
 
 fn (t &Transformer) generic_concrete_name_known(name_id u32) bool {
 	if isnil(t.tc) { return false }
-	count := t.generic_checker_concrete_name_count()
-	if t.generic_type_indexes_ready && t.generic_alias_index_concrete_count == count {
+	if t.generic_type_indexes_ready
+		&& t.generic_alias_index_concrete_count == t.generic_checker_concrete_name_count() {
 		return t.generic_concrete_type_names[name_id]
 	}
-	mut cache := t.generic_type_name_index_cache
-	if cache.checker_count != count {
-		mut names := map[u32]bool{}
-		for name_source_id, _ in t.tc.structs { names[name_source_id] = true }
-		for name_source_id, _ in t.tc.sum_types.ids { names[name_source_id] = true }
-		for name_source_id, _ in t.tc.enum_names { names[name_source_id] = true }
-		for name_source_id, _ in t.tc.interface_names { names[name_source_id] = true }
-		cache.checker_names = names.move()
-		cache.checker_count = count
-	}
-	return cache.checker_names[name_id]
+	return name_id in t.tc.structs || name_id in t.tc.sum_types.ids || name_id in t.tc.enum_names
+		|| name_id in t.tc.interface_names
 }
 
 fn (t &Transformer) generic_arg_is_alias_name(arg string, module_name string) bool {
@@ -10699,8 +10619,7 @@ fn (t &Transformer) qualify_generic_arg_for_decl_module(arg_id u32, module_name 
 fn (t &Transformer) generic_main_arg_checker_declaration_known(name_id u32) bool {
 	if t.generic_exact_alias_name_known(name_id) { return true }
 	if isnil(t.tc) { return false }
-	return t.refresh_enum_type_name_index().checker_enum_names[name_id]
-		|| t.generic_checker_interface_name_known(name_id)
+	return name_id in t.tc.enum_names || t.generic_checker_interface_name_known(name_id)
 }
 
 fn (t &Transformer) generic_arg_module_owns_type(name string, module_name string) bool {
@@ -16630,16 +16549,13 @@ fn (t &Transformer) generic_type_base_requires_args(typ_id u32) bool {
 	if t.generic_type_indexes_ready && t.generic_parameter_type_index_count == count {
 		return t.generic_parameter_type_names[clean_id] || t.generic_parameter_type_names[short_id]
 	}
-	mut cache := t.generic_type_name_index_cache
-	if cache.parameter_count != count {
-		mut names := map[u32]bool{}
-		for name_source_id, _ in t.tc.struct_generic_params { names[name_source_id] = true }
-		for name_source_id, _ in t.tc.sum_generic_params { names[name_source_id] = true }
-		for name_source_id, _ in t.tc.type_alias_generic_params { names[name_source_id] = true }
-		cache.parameter_names = names.move()
-		cache.parameter_count = count
-	}
-	return cache.parameter_names[clean_id] || cache.parameter_names[short_id]
+	return t.generic_parameter_type_name_known(clean_id)
+		|| t.generic_parameter_type_name_known(short_id)
+}
+
+fn (t &Transformer) generic_parameter_type_name_known(name_id u32) bool {
+	return name_id in t.tc.struct_generic_params || name_id in t.tc.sum_generic_params
+		|| name_id in t.tc.type_alias_generic_params
 }
 
 fn strip_main_type_locks(typ string) string {
@@ -17081,7 +16997,8 @@ fn (t &Transformer) is_known_main_struct_type_name_id(name_id u32) bool {
 		&& t.generic_alias_index_authority_count == t.generic_type_authority_name_count() {
 		return t.generic_main_struct_names[bare_id]
 	}
-	return t.refresh_transform_type_name_index().main_structs[bare_id]
+	info := t.structs[bare_id] or { return false }
+	return info.module in ['', 'main']
 }
 
 fn (t &Transformer) type_name_is_declared(name string) bool {
