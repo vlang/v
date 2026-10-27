@@ -1664,7 +1664,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 				} else {
 					type_kind := if node.children_count > 0 {
 						'sum type'
-					} else if node.typ_text().starts_with('fn') {
+					} else if flat.source_type_syntax(node.typ).fn_prefix() {
 						'fn type'
 					} else {
 						'type alias'
@@ -3265,9 +3265,10 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 // spells `Octet` as `string` and `pack` is a method of `Octet`.
 fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []u32) bool {
 	type_name, member := concrete_member_error_parts(msg) or { return false }
+	type_name_id := flat.source_type_id(type_name)
 	for arg in args {
 		typ := unwrap_pointer(tc.parse_type(arg))
-		if typ is Alias && unalias_type(typ).name() == type_name
+		if typ is Alias && unalias_type(typ).source_type_id() == type_name_id
 			&& tc.alias_declares_method(typ, member) {
 			return true
 		}
@@ -3828,8 +3829,9 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 		}
 	}
 	tc.cur_scope = tc.file_scope
-	checked_return_type := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
-		flat.source_type_id(node.typ_text().trim_right('?'))
+	return_syntax := flat.source_type_syntax(node.typ)
+	checked_return_type := if return_syntax.question_trimmed() != node.typ && !flat.source_type_shape(node.typ).has(.option_type) {
+		return_syntax.question_trimmed()
 	} else {
 		node.typ
 	}
@@ -3859,7 +3861,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	if !fast_valid_build && module_name != 'builtin' && node.value.ends_with('.map')
 		&& node.children_count > 0 {
 		receiver := tc.a.child_node(&node, 0)
-		if receiver.kind == .param && receiver.typ_text().trim_left('&').starts_with('[]') {
+		if receiver.kind == .param && flat.source_type_shape(flat.source_type_syntax(receiver.typ).pointer_raw_base()).has(.array_type) {
 			tc.record_error_at(.call_arg_mismatch, 'method overrides built-in array method', flat.NodeId(fn_idx), tc.fn_declaration_diagnostic_pos(node))
 		}
 	}
@@ -3881,7 +3883,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 				if param.is_mut {
 					implicit_mut_reference := param.op != .amp && flat.source_type_shape(param.typ).has(.pointer)
 					diagnostic_type_id := if implicit_mut_reference {
-						flat.source_type_id(param.typ_text()[1..])
+						flat.source_type_syntax(param.typ).raw_base()
 					} else {
 						param.typ
 					}
@@ -4011,8 +4013,8 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				}
 				Alias, Struct, Interface, Enum, SumType {
 					receiver_name_id := receiver_type.source_type_id()
-					receiver_name := flat.source_type_name(receiver_name_id)
-					!receiver_name.starts_with('C.') && !receiver_name.starts_with('JS.')
+					receiver_query := flat.source_type_query(receiver_name_id)
+					!receiver_query.has(.c_prefix) && !receiver_query.has(.js_prefix)
 						&& tc.type_name_known(receiver_name_id)
 						&& !tc.source_module_declares_type(receiver_name_id)
 				}
@@ -4034,8 +4036,8 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			}
 			if is_non_local_type && !is_builtin_array_override && !is_local_collection {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
-				receiver_generics := tc.fn_context.generic_params.filter(type_text_contains_symbol(receiver.typ_text(),
-					it))
+				receiver_generics := tc.fn_context.generic_params.filter(type_id_contains_symbol(receiver.typ,
+					flat.source_type_id(it)))
 				alias_name := if receiver_generics.len == 0 {
 					'AliasName'
 				} else {
@@ -4050,15 +4052,19 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			}
 		}
 	}
-	raw_return_type := node.typ_text().trim_space()
-	if raw_return_type.starts_with('!?') || raw_return_type.starts_with('?!') {
+	raw_return_type_id := trimmed_source_type_id(node.typ)
+	raw_return_shape := flat.source_type_shape(raw_return_type_id)
+	raw_return_syntax := flat.source_type_syntax(raw_return_type_id)
+	raw_return_payload_shape := flat.source_type_shape(raw_return_syntax.raw_base())
+	if (raw_return_shape.has(.result_type) && raw_return_payload_shape.has(.option_type))
+		|| (raw_return_shape.has(.option_type) && raw_return_payload_shape.has(.result_type)) {
 		tc.record_error_at(.return_mismatch, 'the type must be Option or Result', id, tc.nested_option_result_marker_pos(node))
 	}
-	if trimmed_source_type_id(node.typ) == checker_option_void_source_type {
+	if raw_return_type_id == checker_option_void_source_type {
 		tc.record_error_at(.return_mismatch, 'use `?` instead of `?void`', id, tc.option_void_payload_diagnostic_pos(node))
 	}
-	if raw_return_type.ends_with('?') && !raw_return_type.starts_with('?') {
-		tc.record_error_at(.return_mismatch, 'wrong syntax, it must be ?${raw_return_type.trim_right('?')}, not ${raw_return_type}', id, tc.suffix_option_return_type_diagnostic_pos(node))
+	if raw_return_syntax.question_trimmed() != raw_return_type_id && !raw_return_shape.has(.option_type) {
+		tc.record_error_at(.return_mismatch, 'wrong syntax, it must be ?${flat.source_type_name(raw_return_syntax.question_trimmed())}, not ${flat.source_type_name(raw_return_type_id)}', id, tc.suffix_option_return_type_diagnostic_pos(node))
 	}
 	signature_return_type := unalias_type(tc.parse_type(node.typ))
 	if signature_return_type is MultiReturn {
@@ -4078,7 +4084,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				&& node.value.all_after_last('.') in tc.interface_abstract_method_names(receiver_type.source_type_id()) {
 				tc.record_error_at(.duplicate_decl, 'interface `${receiver_type.name()}` cannot implement its own interface method `${node.value.all_after_last('.')}`', id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type is OptionType || receiver.typ_text().contains('?')
+			if receiver_type is OptionType || flat.source_type_syntax(receiver.typ).contains_question()
 				|| receiver_name.starts_with('?') {
 				tc.record_error_at(.call_arg_mismatch, 'option types cannot have methods', id, tc.fn_option_receiver_diagnostic_pos(node, receiver.value))
 			}
@@ -4089,13 +4095,13 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			}
 		}
 	}
-	if raw_return_type.starts_with('!') {
-		alias_name := raw_return_type[1..]
+	if raw_return_shape.has(.result_type) {
+		alias_name := flat.source_type_name(raw_return_syntax.raw_base())
 		alias_target_shape := flat.source_type_shape(tc.type_aliases.type_id(alias_name) or {
 			tc.type_aliases.type_id(tc.qualify_name(alias_name)) or { u32(0) }
 		})
 		if alias_target_shape.has(.option_type) {
-			tc.record_error_at(.return_mismatch, 'the fn returns type `${raw_return_type}`, but type `${alias_name}` is an Option alias, you can not mix them', id, tc.fn_return_type_diagnostic_pos(node))
+			tc.record_error_at(.return_mismatch, 'the fn returns type `${flat.source_type_name(raw_return_type_id)}`, but type `${alias_name}` is an Option alias, you can not mix them', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
 	operator := node.value.all_after_last('.')
@@ -4224,16 +4230,15 @@ fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
 }
 
 fn (tc &TypeChecker) source_module_declares_type(type_name_id u32) bool {
-	type_name := flat.source_type_name(type_name_id)
-	qualified_base := type_name.all_before('[')
+	qualified_base := flat.source_type_syntax(type_name_id).generic_base()
+	base_syntax := flat.source_type_syntax(qualified_base)
 	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
-	if qualified_base.contains('.') {
-		owner_module := qualified_base.all_before_last('.')
-		if owner_module != current_module {
+	if flat.source_type_shape(qualified_base).has(.dotted) {
+		if base_syntax.qualifier() != flat.source_type_id(current_module) {
 			return false
 		}
 	}
-	base_name := qualified_base.all_after_last('.')
+	base_name := flat.source_type_name(base_syntax.unqualified())
 	// Ownership is indexed by module, independently of the method's source file.
 	decl_name := qualify_decl_name_in_module(base_name, current_module)
 	if declaration := tc.declaration_visibility[decl_name] {
@@ -4384,11 +4389,11 @@ fn param_source_type_is_option(source_id u32) bool {
 	if !shape.has(.padded) && !shape.has(.mutable_type) && !shape.has(.pointer) {
 		return shape.has(.option_type)
 	}
-	mut clean := flat.source_type_name(source_id).trim_space()
-	if clean.starts_with('mut ') {
-		clean = clean[4..].trim_space()
+	mut clean := trimmed_source_type_id(source_id)
+	if flat.source_type_shape(clean).has(.mutable_type) {
+		clean = trimmed_source_type_id(flat.source_type_syntax(clean).raw_base())
 	}
-	return clean.trim_left('&').starts_with('?')
+	return flat.source_type_shape(flat.source_type_syntax(clean).pointer_raw_base()).has(.option_type)
 }
 
 // guard_binds_mut_param_payload reports whether `cond_id` is `mut v := a` with `a` one of
@@ -4844,8 +4849,9 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 					continue
 				}
 				if current.kind == .array_init {
-					if bound := fixed_array_bound_text(current.typ_text()) {
-						if bound == name || type_text_contains_symbol(bound, name) {
+					if bound_id := fixed_array_bound_id(current.typ) {
+						name_id := flat.source_type_id(name)
+						if bound_id == name_id || name_id in flat.source_type_syntax(bound_id).symbols() {
 							used_names[name] = true
 						}
 					}
@@ -4924,8 +4930,7 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 }
 
 fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u32) bool {
-	param_type := flat.source_type_name(param_type_id)
-	if param_type_id == u32(0) || param_type !in node.generic_params() {
+	if param_type_id == u32(0) || !node.generic_params().any(flat.source_type_id(it) == param_type_id) {
 		return false
 	}
 	mut stack := []flat.NodeId{}
@@ -4941,7 +4946,7 @@ fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u
 		if child.kind == .comptime_for && child.typ == param_type_id {
 			return true
 		}
-		if child.kind == .comptime_if && comptime_cond_mentions_type(child.value, param_type) {
+		if child.kind == .comptime_if && comptime_cond_mentions_type(child.value, flat.source_type_name(param_type_id)) {
 			return true
 		}
 		for i in 0 .. child.children_count {
@@ -5299,7 +5304,7 @@ fn (mut tc TypeChecker) prewarm_shared_type_cache() {
 	}
 	tc.prepare_tail_decl_ids()
 	_ = tc.local_fn_decl_exists('__v3_prewarm__')
-	_ = flat.source_type_name(tc.unique_qualified_type_name('__V3Prewarm__') or { u32(0) })
+	_ = tc.unique_qualified_type_name('__V3Prewarm__') or { u32(0) }
 	_ = tc.source_struct_has_non_builtin_error_embed(flat.source_type_id('__V3Prewarm__'), '', '')
 }
 

@@ -21,8 +21,7 @@ pub fn named_variant_pattern_binding(a &flat.FlatAst, cond &flat.Node) ?flat.Nod
 // named_variant_payload_type returns the payload type of a concrete hidden
 // variant struct, or none for a payload-less variant.
 pub fn (tc &TypeChecker) named_variant_payload_type(variant_type_id u32) ?Type {
-	variant_type := flat.source_type_name(variant_type_id)
-	if !flat.is_named_variant_type_name(variant_type) {
+	if !flat.source_type_syntax(variant_type_id).named_variant() {
 		return none
 	}
 	return tc.struct_field_type(variant_type_id, flat.named_variant_payload_field)
@@ -44,23 +43,26 @@ fn (mut tc TypeChecker) declare_named_variant_binding(subject_type Type, branch 
 	sum_name := if subject_type is SumType {
 		subject_type.source_type_id()
 	} else if subject_type is Struct {
-		owner, _ := flat.decode_named_variant_type_name(subject_type.name()) or { return }
-		flat.source_type_id(owner)
+		variant_syntax := flat.source_type_syntax(subject_type.source_type_id())
+		if !variant_syntax.named_variant_valid() {
+			return
+		}
+		variant_syntax.named_variant_owner()
 	} else {
 		return
 	}
 	pattern_source_id := tc.match_type_pattern(cond) or { return }
 
 	variant_type_source_id := tc.sum_variant_type_for_pattern(sum_name, pattern_source_id) or { return }
-	variant_type := flat.source_type_name(variant_type_source_id)
-	display := flat.named_variant_display_name(variant_type)
 	payload_type := tc.named_variant_payload_type(variant_type_source_id) or {
+		display := flat.named_variant_display_name(flat.source_type_name(variant_type_source_id))
 		tc.record_error_at(.condition_mismatch, '`${display}` has no payload to bind to `${binding.value}`',
 			binding_id, binding.pos)
 		tc.cur_scope.insert(binding.value, Type(Unknown{}))
 		return
 	}
 	if binding.is_mut {
+		display := flat.named_variant_display_name(flat.source_type_name(variant_type_source_id))
 		tc.record_error_at(.assignment_mismatch, 'the payload binding `${binding.value}` cannot be mutable; it is a copy of the payload, assign a new variant value to change it',
 			binding_id, binding.pos)
 	}
@@ -83,38 +85,58 @@ fn (tc &TypeChecker) named_variant_diagnostic(msg string, node flat.NodeId) stri
 		return msg
 	}
 	parent := tc.a.node(parent_id)
-	if parent.kind != .struct_init || !flat.is_named_variant_type_name(parent.value_text()) {
+	if parent.kind != .struct_init
+		|| !flat.source_type_syntax(parent.source_value_id()).named_variant() {
 		return msg
 	}
-	variant := flat.named_variant_display_name(parent.value_text().all_after_last('.'))
+	variant := flat.named_variant_display_name(flat.source_type_name(flat.source_type_syntax(parent.source_value_id()).unqualified()))
 	return 'invalid payload for `${variant}`: ${msg[named_variant_payload_field_prefix.len..]}'
 }
 
 // named_sum_variant_names returns the variant names of a sum type declared with
 // named variants, or an empty list for any other type.
-fn (tc &TypeChecker) named_sum_variant_names(sum_name string) []string {
-	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(sum_name) or { return []string{} } }.names()
+fn (tc &TypeChecker) named_sum_variant_names(sum_name_id u32) []string {
+	variants := tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { return []string{} }
 	mut names := []string{cap: variants.len}
 	for variant in variants {
-		_, name := flat.decode_named_variant_type_name(variant) or { return []string{} }
-		names << name
+		syntax := flat.source_type_syntax(variant)
+		if !syntax.named_variant_valid() {
+			return []string{}
+		}
+		names << flat.source_type_name(syntax.named_variant_name())
 	}
 	return names
+}
+
+fn named_variant_init_display(variant_id u32) string {
+	syntax := flat.source_type_syntax(variant_id)
+	owner_name := flat.source_type_syntax(syntax.named_variant_owner()).unqualified()
+	return '${flat.source_type_name(owner_name)}.${flat.source_type_name(syntax.named_variant_name())}'
 }
 
 // check_named_variant_init checks a lowered variant constructor,
 // `Expr(Expr@variant@Count{payload: x})` for `Expr.Count(x)`, before the regular
 // struct literal checks. It returns false when the literal was fully handled.
 fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node) bool {
-	sum_text, variant := flat.decode_named_variant_type_name(node.value_text()) or { return true }
-	display := '${sum_text.all_after_last('.')}.${variant}'
-	variant_type := tc.parse_type(node.source_value_id())
-	base_name := generic_base_name(node.value_text())
+	variant_id := node.source_value_id()
+	variant_syntax := flat.source_type_syntax(variant_id)
+	if !variant_syntax.named_variant_valid() {
+		return true
+	}
+	variant_type := tc.parse_type(variant_id)
+	base_id := generic_base_type_id(variant_id)
 	if variant_type !is Struct
-		|| (base_name !in tc.structs && tc.qualify_name(base_name) !in tc.structs) {
-		sum_type := tc.parse_type(flat.source_type_id(sum_text))
-		sum_name := if sum_type is SumType { sum_type.name() } else { '' }
-		names := if sum_name.len > 0 { tc.named_sum_variant_names(sum_name) } else { []string{} }
+		|| (flat.source_type_name(base_id) !in tc.structs
+			&& flat.source_type_name(tc.qualify_type_name(base_id)) !in tc.structs) {
+		sum_type := tc.parse_type(variant_syntax.named_variant_owner())
+		names := if sum_type is SumType && sum_type.source_type_id() != 0 {
+			tc.named_sum_variant_names(sum_type.source_type_id())
+		} else {
+			[]string{}
+		}
+		sum_text := flat.source_type_name(variant_syntax.named_variant_owner())
+		variant := flat.source_type_name(variant_syntax.named_variant_name())
+		display := named_variant_init_display(variant_id)
 		message := if names.len > 0 {
 			'`${sum_text}` has no variant `${variant}`; its variants are: ${names.map('`${it}`').join(', ')}'
 		} else if sum_type is SumType || sum_type is Struct || sum_type is Enum
@@ -130,14 +152,16 @@ fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node)
 		tc.register_synth_type(id, Type(Unknown{}))
 		return false
 	}
-	if payload_type := tc.named_variant_payload_type(node.source_value_id()) {
+	if payload_type := tc.named_variant_payload_type(variant_id) {
 		if node.children_count == 0 {
+			display := named_variant_init_display(variant_id)
 			tc.record_error_at(.assignment_mismatch, '`${display}` needs a payload of type `${flat.source_type_name(tc.type_name(payload_type))}`, e.g. `${display}(value)`',
 				id, node.pos)
 			tc.register_synth_type(id, variant_type)
 			return false
 		}
 	} else if node.children_count > 0 {
+		display := named_variant_init_display(variant_id)
 		tc.record_error_at(.assignment_mismatch, '`${display}` has no payload; write it without a value: `${display}`',
 			id, node.pos)
 		for i in 0 .. node.children_count {
@@ -157,6 +181,6 @@ fn (tc &TypeChecker) named_variant_init_was_reported(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.node(id)
-	return node.kind == .struct_init && flat.is_named_variant_type_name(node.value_text())
+	return node.kind == .struct_init && flat.source_type_syntax(node.source_value_id()).named_variant()
 		&& tc.errors.any(it.node == id)
 }

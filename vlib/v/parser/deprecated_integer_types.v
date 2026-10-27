@@ -6,19 +6,26 @@ import v.flat
 // replacements and point the warning at the original token. Preserve the legacy
 // signed type identity for compatibility with existing methods and aliases.
 fn (mut p Parser) canonical_integer_type(name string, start int, end int) string {
+	if name !in ['isize', 'usize'] {
+		return name
+	}
+	return flat.source_type_name(p.canonical_integer_type_id(flat.source_type_id(name), start, end))
+}
+
+fn (mut p Parser) canonical_integer_type_id(name u32, start int, end int) u32 {
 	// These standard-library declarations retain the legacy signed type during
 	// migration: builtin methods and strconv.Numeric must still accept it.
-	if name.len != 5 || p.prefs.is_fmt
-		|| (name == 'isize' && p.cur_module in ['builtin', 'strconv']) {
+	if name !in [flat.source_type_isize, flat.source_type_usize] || p.prefs.is_fmt
+		|| (name == flat.source_type_isize && p.cur_module in ['builtin', 'strconv']) {
 		return name
 	}
 	replacement := match name {
-		'isize' { 'int' }
-		'usize' { 'uint' }
+		flat.source_type_isize { flat.source_type_int }
+		flat.source_type_usize { flat.source_type_uint }
 		else { return name }
 	}
-	p.record_warning_span('`${name}` is deprecated; use `${replacement}` instead', start, end)
-	return if name == 'usize' { replacement } else { name }
+	p.record_warning_span('`${flat.source_type_name(name)}` is deprecated; use `${flat.source_type_name(replacement)}` instead', start, end)
+	return if name == flat.source_type_usize { replacement } else { name }
 }
 
 // Canonicalize type tokens inside explicit generic arguments before rebuilding

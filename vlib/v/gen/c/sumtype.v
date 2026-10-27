@@ -70,7 +70,7 @@ fn (mut g FlatGen) sum_pointer_slot_typedefs_for_array(arr types.ArrayFixed) {
 	mut sum_names := g.tc.sum_types.keys()
 	sum_names.sort()
 	for name in sum_names {
-		g.tc.cur_module = module_from_qualified_name(name.all_before('['))
+		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(flat.source_type_id(name)).generic_base())
 		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
 			typ := g.tc.parse_canonical_type(variant)
 			if !sum_pointer_needs_erased_storage(typ) { continue }
@@ -116,7 +116,7 @@ fn (mut g FlatGen) sum_pointer_slot_c_type(typ &types.Type) ?string {
 	mut sum_names := g.tc.sum_types.keys()
 	sum_names.sort()
 	for name in sum_names {
-		g.tc.cur_module = module_from_qualified_name(name.all_before('['))
+		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(flat.source_type_id(name)).generic_base())
 		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
 			candidate := g.tc.parse_canonical_type(variant)
 			if cgen_types_equal_after_alias_erasure(base, candidate) {
@@ -147,7 +147,7 @@ fn (mut g FlatGen) sum_slot_aware_field_type(typ &types.Type) ?string {
 fn (mut g FlatGen) erased_sum_pointer_field_type(base_type &types.Type, field string) ?types.Type {
 	sum := g.sum_type_name_for_type(base_type) or { return none }
 	old_module := g.tc.cur_module
-	g.tc.cur_module = module_from_qualified_name(flat.source_type_name(sum).all_before('['))
+	g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(sum).generic_base())
 	defer { g.tc.cur_module = old_module }
 	for variant in g.tc.sum_types.type_ids(flat.source_type_name(sum)) or { []u32{} } {
 		if sum_field_name(flat.source_type_name(variant)) != field { continue }
@@ -260,7 +260,7 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected &types.Type) bool
 		// A sum type can itself be a variant of a wider sum type (for example
 		// `ast.Stmt` inside `ast.Node`). Only skip wrapping when the value is
 		// already the expected sum.
-		if g.type_names_match(raw_actual_type, sum_type0) || g.resolve_sum_name(raw_actual_type.name_id) == g.resolve_sum_name(sum_type.name_id) || (!g.tc.sum_types.contains(raw_actual_type.name()) && raw_actual_type.name().all_after_last('.') == sum_type.name().all_after_last('.')) {
+		if g.type_names_match(raw_actual_type, sum_type0) || g.resolve_sum_name(raw_actual_type.name_id) == g.resolve_sum_name(sum_type.name_id) || (!g.tc.sum_types.contains(raw_actual_type.name()) && flat.source_type_syntax(raw_actual_type.source_type_id()).unqualified() == flat.source_type_syntax(sum_type.source_type_id()).unqualified()) {
 			return false
 		}
 	}

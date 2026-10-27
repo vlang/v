@@ -352,7 +352,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 		}
 		is_array_receiver := tokens[i].lit in ['contains', 'index', 'last_index']
-			&& fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(fastc_normalize_inferred_type(receiver_type)))).starts_with('Array_')
+			&& flat.source_type_query(g.underlying_alias_type(fastc_normalize_inferred_type(receiver_type))).has(.c_array_prefix)
 		mut array_has_user_contains := false
 		if tokens[i].lit == 'contains' && is_array_receiver {
 			contains_method_key, _ := g.resolve_method(receiver_type, 'contains')
@@ -465,9 +465,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 		}
-		if tokens[i].lit == 'wait' && flat.source_type_name(receiver_type).trim_right('*').starts_with('Array_') {
+		if tokens[i].lit == 'wait' && flat.source_type_query(receiver_type).has(.c_array_prefix) {
 			element := (g.array_element_type(receiver_type) or { u32(0) })
-			if flat.source_type_name(element).starts_with(fastc_thread_type_prefix) {
+			if flat.source_type_query(element).has(.c_thread_prefix) {
 				// `[]thread T`.wait() joins every handle and gathers their `[]T` results.
 				wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
@@ -476,7 +476,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				result_type_id := if value_type == 0 {
 					flat.source_type_void
 				} else {
-					flat.source_type_id(fastc_array_c_type(flat.source_type_name(value_type)))
+					fastc_array_c_type_id(value_type)
 				}
 				result_type := flat.source_type_name(result_type_id)
 				mut w := unsafe { &Parser(g) }
@@ -515,13 +515,13 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 		}
-		if tokens[i].lit == 'wait' && flat.source_type_name(receiver_type).starts_with(fastc_thread_type_prefix) {
+		if tokens[i].lit == 'wait' && flat.source_type_query(receiver_type).has(.c_thread_prefix) {
 			// `.wait()` joins a spawned thread (see spawn.v); it has no entry in
 			// the collected function signatures.
 			wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 			value_type := (g.fastc_thread_value_type(receiver_type) or { u32(0) })
-			wait_call := '${g.fastc_thread_wait_helper(flat.source_type_name(receiver_type).trim_right('*'), value_type)}(${receiver.source})'
+			wait_call := '${g.fastc_thread_wait_helper(flat.source_type_name(fastc_trim_pointer_type(receiver_type)), value_type)}(${receiver.source})'
 			if receiver_start == 0 && wait_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: wait_call
@@ -594,7 +594,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					continue
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
-				enum_c := flat.source_type_name(fastc_normalize_inferred_type(receiver_type)).trim_right('*')
+				enum_c := flat.source_type_name(fastc_trim_pointer_type(fastc_normalize_inferred_type(receiver_type)))
 				receiver_argument := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
@@ -617,8 +617,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				continue
 			}
-			if tokens[i].lit == 'str' && (flat.source_type_name(receiver_type).trim_right('*').starts_with('Array_')
-				|| flat.source_type_name(receiver_type).trim_right('*') in g.sum_types) {
+			if tokens[i].lit == 'str' && (flat.source_type_query(receiver_type).has(.c_array_prefix)
+				|| flat.source_type_name(fastc_trim_pointer_type(receiver_type)) in g.sum_types) {
 				// `arr.str()`: reuse the same generated array formatter as `${arr}`.
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				if call_end != i + 2 {
@@ -626,7 +626,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				mut w := unsafe { &Parser(g) }
-				helper := if flat.source_type_name(receiver_type).trim_right('*') in g.sum_types {
+				helper := if flat.source_type_name(fastc_trim_pointer_type(receiver_type)) in g.sum_types {
 					w.fastc_sumtype_str_helper(receiver_type) or { continue }
 				} else {
 					w.fastc_array_str_name(receiver_type) or { continue }
@@ -679,7 +679,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 			if tokens[i].lit == 'str' && g.selfhost
-				&& fastc_trim_pointer_suffix(flat.source_type_name(fastc_normalize_inferred_type(receiver_type))).starts_with('Map_') {
+				&& flat.source_type_query(fastc_normalize_inferred_type(receiver_type)).has(.c_map_prefix) {
 				// `m.str()`: the map's generated `{'k': v}` formatter.
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				if call_end != i + 2 {
@@ -894,7 +894,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			effective_is_pointer = false
 		}
 		receiver_argument := if flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && !effective_is_pointer {
-			g.value_address_expression(flat.source_type_id(expected_receiver.trim_right('*')), effective_receiver_source,
+			g.value_address_expression(flat.source_type_syntax(signature.parameter_types.ids[0]).c_pointer_raw_base(), effective_receiver_source,
 				receiver_tokens)
 		} else if !flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && effective_is_pointer {
 			'*(${effective_receiver_source})'

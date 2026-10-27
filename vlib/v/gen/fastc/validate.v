@@ -225,7 +225,6 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 // nil_positional_field_is_voidptr reports whether the value being read in a positional literal
 // of `struct_type` initializes a field declared `voidptr`: the field at the value's position.
 fn (g &Parser) nil_positional_field_is_voidptr(tokens []FastcExpressionToken, struct_type_source_id u32) bool {
-	struct_type := flat.source_type_name(struct_type_source_id)
 	open := fastc_innermost_open_index(tokens)
 	if open < 0 || tokens[open].tok != .lcbr {
 		return false
@@ -254,7 +253,7 @@ fn (g &Parser) nil_positional_field_is_voidptr(tokens []FastcExpressionToken, st
 			else {}
 		}
 	}
-	fields := g.struct_field_info[fastc_trim_pointer_suffix(struct_type)] or { return false }
+	fields := g.struct_field_info[flat.source_type_name(fastc_trim_pointer_type(struct_type_source_id))] or { return false }
 	return index < fields.len && g.nil_field_is_allowed(fields[index])
 }
 
@@ -846,7 +845,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				i = call_end + 1
 				continue
 			}
-			if name == 'wait' && flat.source_type_name(receiver_type).starts_with(fastc_thread_type_prefix) {
+			if name == 'wait' && flat.source_type_query(receiver_type).has(.c_thread_prefix) {
 				// `.wait()` on a spawned thread resolves through the generated
 				// join helper, not the collected function signatures.
 				if call_args.len != 0 {
@@ -942,7 +941,7 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 		receiver_type := g.infer_expression_type(receiver[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, receiver[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable && item.unsafe_depth == 0 {
-			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified())
 			return g.unsupported('mutating method `${method_name}` receiver field `${type_name}.${field.name}` is not `pub mut` in imported module `${field.module_name}`')
 		}
 	}
@@ -969,7 +968,7 @@ fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken,
 		receiver_type := g.infer_expression_type(argument[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, argument[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable {
-			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified())
 			return g.unsupported('mutable argument field `${type_name}.${field.name}` to function `${function_name}` parameter ${argument_index + 1} is not `pub mut` in imported module `${field.module_name}`')
 		}
 	}
@@ -1155,7 +1154,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 		// `mut`; the specialization therefore needs the same privilege as its private
 		// field access above.
 		if !field.is_mutable && item.unsafe_depth == 0 && !can_mutate_root && !g.in_mono_drain {
-			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified())
 			return g.unsupported('mutation of immutable field `${type_name}.${field.name}`')
 		}
 	}
@@ -1190,20 +1189,20 @@ fn (g &Parser) struct_direct_member_type_uncached(receiver_type_id u32, field_na
 			return field.typ
 		}
 	}
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type_id)))
-	if layout_type.starts_with('Array_') {
-		layout_type = 'array'
-	} else if layout_type.starts_with('Map_') {
-		layout_type = 'map'
+	mut layout_type_id := fastc_trim_pointer_type(g.underlying_alias_type(receiver_type_id))
+	if flat.source_type_query(layout_type_id).has(.c_array_prefix) {
+		layout_type_id = fastc_type_array
+	} else if flat.source_type_query(layout_type_id).has(.c_map_prefix) {
+		layout_type_id = fastc_type_map
 	}
-	if fields := g.struct_fields[layout_type] {
+	if fields := g.struct_fields[flat.source_type_name(layout_type_id)] {
 		return fields.type_id(field_name) or { u32(0) }
 	}
 	return u32(0)
 }
 
 fn (g &Parser) struct_member_type(receiver_type_id u32, field_name string) u32 {
-	if field_name == 'len' && fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type_id))).starts_with('FixedArray_') {
+	if field_name == 'len' && flat.source_type_query(g.underlying_alias_type(receiver_type_id)).has(.c_fixed_array_prefix) {
 		// A fixed array's `len` is its length, an int; the C struct has no such member.
 		return flat.source_type_int
 	}
@@ -1267,13 +1266,13 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&Fas
 }
 
 fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type)))
-	if layout_type.starts_with('Array_') {
-		layout_type = 'array'
-	} else if layout_type.starts_with('Map_') {
-		layout_type = 'map'
+	mut layout_type_id := fastc_trim_pointer_type(g.underlying_alias_type(receiver_type))
+	if flat.source_type_query(layout_type_id).has(.c_array_prefix) {
+		layout_type_id = fastc_type_array
+	} else if flat.source_type_query(layout_type_id).has(.c_map_prefix) {
+		layout_type_id = fastc_type_map
 	}
-	if fields := g.struct_field_lookup[layout_type] {
+	if fields := g.struct_field_lookup[flat.source_type_name(layout_type_id)] {
 		if field := fields[field_name] {
 			return field
 		}
@@ -1282,11 +1281,11 @@ fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string
 }
 
 fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) ?FastcStructField {
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type)))
-	if layout_type.starts_with('Array_') {
-		layout_type = 'array'
-	} else if layout_type.starts_with('Map_') {
-		layout_type = 'map'
+	mut layout_type_id := fastc_trim_pointer_type(g.underlying_alias_type(receiver_type))
+	if flat.source_type_query(layout_type_id).has(.c_array_prefix) {
+		layout_type_id = fastc_type_array
+	} else if flat.source_type_query(layout_type_id).has(.c_map_prefix) {
+		layout_type_id = fastc_type_map
 	}
 	direct_type := g.struct_direct_member_type(receiver_type, field_name)
 	if direct_type != 0 {
@@ -1297,7 +1296,7 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) 
 			is_mutable: true
 		}
 	}
-	fields := g.struct_field_info[layout_type] or { return none }
+	fields := g.struct_field_info[flat.source_type_name(layout_type_id)] or { return none }
 	for index in 0 .. fields.len {
 		field := &fields[index]
 		if !field.name.starts_with('__embedded_') {
@@ -1305,7 +1304,7 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) 
 		}
 		// Accessing the embed itself by its type name (`d.SilentStreamingDownloader`):
 		// resolve to the `__embedded_N` field, keeping its concrete type.
-		if field.typ_text() == field_name || field.typ_text().all_after_last('__') == field_name {
+		if field.typ == flat.source_type_id(field_name) || flat.source_type_syntax(field.typ).last_double_underscore_suffix() == flat.source_type_id(field_name) {
 			// The `__embedded_N` field IS the target; its name already renders the
 			// access, so return it as-is (no extra storage path).
 			return *field
@@ -1402,7 +1401,7 @@ fn (g &Parser) validate_expression_field_visibility(tokens []FastcExpressionToke
 		}
 		field := g.struct_field_metadata(receiver_type, tokens[i + 1].lit) or { continue }
 		if !g.struct_field_is_visible(field) {
-			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(receiver_type)).unqualified())
 			return g.unsupported('private field `${type_name}.${field.name}` from imported module `${field.module_name}`')
 		}
 	}
@@ -1417,7 +1416,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 		return
 	}
 	c_type := g.type_from_expression_tokens(tokens[type_start..open]) or { return }
-	layout_type := fastc_trim_pointer_suffix(flat.source_type_name(c_type))
+	layout_type := flat.source_type_name(fastc_trim_pointer_type(c_type))
 	if layout_type !in g.struct_field_info {
 		return
 	}
@@ -1454,13 +1453,13 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 		field_name := tokens[index].lit
 		has_field = true
 		if field_name in initialized_fields {
-			type_name := flat.source_type_name(g.semantic_type_key(c_type)).all_after_last('.')
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type)).unqualified())
 			return g.unsupported('duplicate field `${type_name}.${field_name}` in struct literal')
 		}
 		field := g.struct_field_metadata(c_type, field_name) or { return }
 		initialized_fields[field_name] = true
 		if !g.struct_field_is_visible(field) {
-			type_name := flat.source_type_name(g.semantic_type_key(c_type)).all_after_last('.')
+			type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type)).unqualified())
 			return g.unsupported('private field `${type_name}.${field.name}` from imported module `${field.module_name}`')
 		}
 		index++
@@ -1515,7 +1514,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	if !has_update {
 		for field in g.struct_field_info[layout_type] {
 			if field.is_required && field.name !in initialized_fields {
-				type_name := flat.source_type_name(g.semantic_type_key(c_type)).all_after_last('.')
+				type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type)).unqualified())
 				return g.unsupported('field `${type_name}.${field.name}` must be initialized')
 			}
 		}
@@ -1531,12 +1530,12 @@ fn (g &Parser) validate_fixed_array_struct_field_length(c_type_source_id u32, fi
 	} else {
 		value_tokens.len
 	}
-	type_name := flat.source_type_name(g.semantic_type_key(c_type_source_id)).all_after_last('.')
+	type_name := flat.source_type_name(flat.source_type_syntax(g.semantic_type_key(c_type_source_id)).unqualified())
 	if array_end < 2 || value_tokens[0].tok != .lsbr || value_tokens[array_end - 1].tok != .rsbr {
 		return
 	}
 	items := fastc_expression_list_items(value_tokens, 1, array_end - 1)!
-	expected_length_source := fastc_fixed_array_length(field.typ_text()) or {
+	expected_length_source := fastc_fixed_array_length_id(field.typ) or {
 		return g.unsupported('unverifiable fixed-array length for struct field `${type_name}.${field.name}`')
 	}
 	if expected_length := g.fixed_array_length_value(expected_length_source) {

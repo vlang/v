@@ -1376,7 +1376,7 @@ struct FastcTypeDeclarations {
 	sum_types map[string]bool
 	// Declared variants per sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`
 	// (see Parser.sum_type_variants).
-	sum_type_variants map[string]bool
+	sum_type_variants map[u64]bool
 }
 
 struct FastcLoopBlockResult {
@@ -1460,7 +1460,7 @@ struct Parser {
 	// Declared variants of each sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`.
 	// Lets an append distinguish push-many (`[]T << []T`) from boxing an array-valued
 	// variant of a recursive sum type as one element (see sumtype_has_variant).
-	sum_type_variants   map[string]bool
+	sum_type_variants   map[u64]bool
 	struct_fields       map[string]flat.TypeTextBindings
 	struct_field_info   map[string][]FastcStructField
 	struct_field_lookup map[string]map[string]&FastcStructField
@@ -1600,6 +1600,8 @@ mut:
 	// Inferred types memoized per token subrange the same way, and cleared
 	// whenever the locals or the registered functions change mid-expression.
 	type_memo map[i64]u32
+	// Generic return-source token queries share the Parser's scanner preferences.
+	generic_return_parameter_memo map[u64]bool
 	// Method keys memoized per receiver type and method name; the key only
 	// depends on the file-level tables, so it is reset with the other memos.
 	method_key_memo map[u32]map[string]string
@@ -1778,7 +1780,7 @@ struct FastcFileGenContext {
 	alias_base_types          flat.TypeTextBindings
 	fn_alias_return_types     flat.TypeTextBindings
 	sum_types                 map[string]bool
-	sum_type_variants         map[string]bool
+	sum_type_variants         map[u64]bool
 	struct_fields             map[string]flat.TypeTextBindings
 	struct_field_info         map[string][]FastcStructField
 	struct_field_lookup       map[string]map[string]&FastcStructField
@@ -1871,90 +1873,91 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	prefs := ctx.prefs
 	body_capacity := source_file.source.len * (if prefs.building_v { 4 } else { 2 }) + 1024
 	mut gen := Parser{
-		prefs:                     unsafe { prefs }
-		unqualified_key_memo:      map[string]string{}
-		global_key_memo:           map[string]string{}
-		c_function_name_memo:      map[string]string{}
-		nonlocal_name_type_memo:   flat.TypeTextBindings{}
-		resolved_name_memo:        map[string]string{}
-		declared_type_key_memo:    map[string]FastcMemoEntry{}
-		path:                      source_file.path
-		source_offset:             source_file.source_offset
-		source_origins:            source_file.source_origins
-		source_line_offset:        source_file.source_line_offset
-		source_column_offset:      source_file.source_column_offset
-		module_name:               source_file.header.module_name
-		imports:                   source_file.header.imports
-		declared_types:            ctx.declared_types
-		declared_type_c_names:     ctx.declared_type_c_names
-		declared_type_key_by_name: ctx.declared_type_key_by_name
-		fastc_prefixed_c_names:    ctx.fastc_prefixed_c_names
-		has_c_functions:           ctx.has_c_functions
-		numeric_ops_are_builtin:   ctx.numeric_ops_are_builtin
-		primitive_cmps_builtin:    ctx.primitive_cmps_builtin
-		comparison_memo:           map[i64]FastcRenderedExpression{}
-		type_memo:                 map[i64]u32{}
-		method_key_memo:           map[u32]map[string]string{}
-		field_memo:                map[u32]map[string]&FastcStructField{}
-		member_smartcasts:         map[string]FastcMemberSmartcast{}
-		spawn_typedefs:            map[string]string{}
-		spawn_helpers:             map[string]string{}
-		thread_value_types:        flat.TypeTextBindings{}
-		declared_kinds:            ctx.declared_kinds
-		enum_flags:                ctx.enum_flags
-		enum_field_types:          ctx.enum_field_types
-		enum_field_names:          ctx.enum_field_names
-		alias_base_types:          ctx.alias_base_types
-		fn_alias_return_types:     ctx.fn_alias_return_types
-		sum_types:                 ctx.sum_types
-		sum_type_variants:         ctx.sum_type_variants
-		struct_fields:             ctx.struct_fields
-		struct_field_info:         ctx.struct_field_info
-		struct_field_lookup:       ctx.struct_field_lookup
-		generic_method_sources:    ctx.generic_method_sources
-		generic_method_names:      ctx.generic_method_names
-		module_aliases:            ctx.module_aliases
-		generated_mono:            map[string]bool{}
-		mono_functions:            map[string]FastcFunctionSignature{}
-		mono_definitions:          map[string]string{}
-		interface_fields:          ctx.interface_fields
-		constants:                 ctx.constants
-		constant_values:           ctx.constant_values
-		public_constants:          ctx.public_constants
-		globals:                   ctx.globals
-		global_suffix_index:       ctx.global_suffix_index
-		public_globals:            ctx.public_globals
-		used_function_names:       ctx.used_function_names
-		function_c_names:          ctx.function_c_names
-		selfhost:                  prefs.building_v
-		type_descriptor_memo:      if prefs.building_v {
+		prefs:                         unsafe { prefs }
+		unqualified_key_memo:          map[string]string{}
+		global_key_memo:               map[string]string{}
+		c_function_name_memo:          map[string]string{}
+		nonlocal_name_type_memo:       flat.TypeTextBindings{}
+		resolved_name_memo:            map[string]string{}
+		declared_type_key_memo:        map[string]FastcMemoEntry{}
+		path:                          source_file.path
+		source_offset:                 source_file.source_offset
+		source_origins:                source_file.source_origins
+		source_line_offset:            source_file.source_line_offset
+		source_column_offset:          source_file.source_column_offset
+		module_name:                   source_file.header.module_name
+		imports:                       source_file.header.imports
+		declared_types:                ctx.declared_types
+		declared_type_c_names:         ctx.declared_type_c_names
+		declared_type_key_by_name:     ctx.declared_type_key_by_name
+		fastc_prefixed_c_names:        ctx.fastc_prefixed_c_names
+		has_c_functions:               ctx.has_c_functions
+		numeric_ops_are_builtin:       ctx.numeric_ops_are_builtin
+		primitive_cmps_builtin:        ctx.primitive_cmps_builtin
+		comparison_memo:               map[i64]FastcRenderedExpression{}
+		type_memo:                     map[i64]u32{}
+		generic_return_parameter_memo: map[u64]bool{}
+		method_key_memo:               map[u32]map[string]string{}
+		field_memo:                    map[u32]map[string]&FastcStructField{}
+		member_smartcasts:             map[string]FastcMemberSmartcast{}
+		spawn_typedefs:                map[string]string{}
+		spawn_helpers:                 map[string]string{}
+		thread_value_types:            flat.TypeTextBindings{}
+		declared_kinds:                ctx.declared_kinds
+		enum_flags:                    ctx.enum_flags
+		enum_field_types:              ctx.enum_field_types
+		enum_field_names:              ctx.enum_field_names
+		alias_base_types:              ctx.alias_base_types
+		fn_alias_return_types:         ctx.fn_alias_return_types
+		sum_types:                     ctx.sum_types
+		sum_type_variants:             ctx.sum_type_variants
+		struct_fields:                 ctx.struct_fields
+		struct_field_info:             ctx.struct_field_info
+		struct_field_lookup:           ctx.struct_field_lookup
+		generic_method_sources:        ctx.generic_method_sources
+		generic_method_names:          ctx.generic_method_names
+		module_aliases:                ctx.module_aliases
+		generated_mono:                map[string]bool{}
+		mono_functions:                map[string]FastcFunctionSignature{}
+		mono_definitions:              map[string]string{}
+		interface_fields:              ctx.interface_fields
+		constants:                     ctx.constants
+		constant_values:               ctx.constant_values
+		public_constants:              ctx.public_constants
+		globals:                       ctx.globals
+		global_suffix_index:           ctx.global_suffix_index
+		public_globals:                ctx.public_globals
+		used_function_names:           ctx.used_function_names
+		function_c_names:              ctx.function_c_names
+		selfhost:                      prefs.building_v
+		type_descriptor_memo:          if prefs.building_v {
 			&FastcTypeDescriptorMemo{}
 		} else {
 			unsafe { nil }
 		}
-		translated:                source_file.header.translated
-		source_has_select:         source_file.header.has_select
-		has_startup_inits:         ctx.has_startup_inits
-		has_cleanup_hooks:         ctx.has_cleanup_hooks
-		s:                         scanner.new_scanner(prefs, .normal)
-		out:                       strings.new_builder(body_capacity)
-		protos:                    strings.new_builder(4096)
-		functions:                 ctx.functions
-		function_id_table:         ctx.function_ids
-		constant_types:            ctx.constant_types
-		global_types:              ctx.global_types
+		translated:                    source_file.header.translated
+		source_has_select:             source_file.header.has_select
+		has_startup_inits:             ctx.has_startup_inits
+		has_cleanup_hooks:             ctx.has_cleanup_hooks
+		s:                             scanner.new_scanner(prefs, .normal)
+		out:                           strings.new_builder(body_capacity)
+		protos:                        strings.new_builder(4096)
+		functions:                     ctx.functions
+		function_id_table:             ctx.function_ids
+		constant_types:                ctx.constant_types
+		global_types:                  ctx.global_types
 		// These maps are per-file registration deltas. The stitch pass already owns
 		// the declarations collected before file generation, so copying that shared
 		// seed into every parser only adds allocation and hashing work.
-		fixed_array_types:         flat.TypeTextBindings{}
-		composite_types:           map[string]bool{}
-		deferred_lines:            []string{}
-		deferred_block_starts:     []int{}
-		loop_defer_block_starts:   []int{}
-		loop_has_breaks:           []bool{}
-		loop_labels:               []string{}
-		parsing_loop_labels:       []string{}
-		statement_reachable:       true
+		fixed_array_types:             flat.TypeTextBindings{}
+		composite_types:               map[string]bool{}
+		deferred_lines:                []string{}
+		deferred_block_starts:         []int{}
+		loop_defer_block_starts:       []int{}
+		loop_has_breaks:               []bool{}
+		loop_labels:                   []string{}
+		parsing_loop_labels:           []string{}
+		statement_reachable:           true
 	}
 	// The per-file lookup memos fill up quickly; size them once instead of
 	// rehashing through the small capacities.
@@ -2447,9 +2450,9 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut callback_fixed_array_types := flat.TypeTextBindings{}
 	for name, typ_id in fixed_array_types.ids {
 		element_type := fastc_fixed_array_element_type(typ_id) or { continue }
-		if flat.source_type_name(element_type).contains('__vf_fn_type_') {
+		if flat.source_type_syntax(element_type).c_fn_type_fragment() {
 			callback_fixed_array_types.set_id(name, typ_id)
-		} else if fastc_primitive_c_type(flat.source_type_name(element_type)) != none
+		} else if fastc_primitive_c_type_id(element_type) != none
 			&& element_type !in [flat.source_type_string, fastc_type_array, fastc_type_map,
 				fastc_type_option, fastc_type_result] {
 			scalar_fixed_array_types.set_id(name, typ_id)

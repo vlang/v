@@ -1521,8 +1521,7 @@ fn (mut e Eval) assignment_target_type_name(lhs_id flat.NodeId, declare bool) u3
 				container_type := e.infer_expr_type_name(e.child(node, 0))
 				elem := array_elem_type_name_from_type(container_type)
 				if elem != 0 { return elem }
-				spelling := flat.source_type_name(container_type)
-				if spelling.starts_with('map[') {
+				if flat.source_type_shape(container_type).has(.map_type) {
 					_, value_type := split_map_type(container_type)
 					return value_type
 				}
@@ -1627,7 +1626,7 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) u32 {
 				typ := e.infer_expr_type_name(e.child(node, 0))
 				if typ != 0 {
 					if node.op == .amp {
-						return flat.source_type_id('&${flat.source_type_name(typ)}')
+						return flat.source_type_composition_one(.pointer, typ)
 					}
 					if node.op == .mul { return e.dereferenced_type_name(typ) }
 				}
@@ -1654,8 +1653,7 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) u32 {
 				container_type := e.infer_expr_type_name(e.child(node, 0))
 				elem := array_elem_type_name_from_type(container_type)
 				if elem != 0 { return elem }
-				spelling := flat.source_type_name(container_type)
-				if spelling.starts_with('map[') {
+				if flat.source_type_shape(container_type).has(.map_type) {
 					_, value_type := split_map_type(container_type)
 					return value_type
 				}
@@ -1664,7 +1662,7 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) u32 {
 		.array_literal {
 			elem_type_name := e.array_literal_elem_type_name(node)
 			if elem_type_name != 0 {
-				return flat.source_type_id('[]${flat.source_type_name(elem_type_name)}')
+				return flat.source_type_composition_one(.array, elem_type_name)
 			}
 		}
 		else {}
@@ -1677,8 +1675,9 @@ fn (e &Eval) dereferenced_type_name(type_name_id u32) u32 {
 	mut seen := map[u32]bool{}
 	for name != 0 && name !in seen {
 		seen[name] = true
-		spelling := flat.source_type_name(name)
-		if spelling.starts_with('&') { return flat.source_type_id(spelling[1..]) }
+		if flat.source_type_shape(name).has(.pointer) {
+			return flat.source_type_syntax(name).raw_base()
+		}
 		if alias := e.type_alias_info_in_module(name, e.current_module_name()) {
 			name = e.qualify_declared_type_name(alias.module_name, alias.file_name, alias.target)
 		} else {
@@ -1714,9 +1713,7 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 		receiver_id := e.child(callee, 0)
 		receiver := e.node(receiver_id)
 		if type_name_source_id := e.type_value_name_from_expr(receiver_id) {
-			type_name := flat.source_type_name(type_name_source_id)
-
-			static_name := flat.encode_static_type_method_name(type_name.all_after_last('.'),
+			static_name := flat.encode_static_type_method_name(flat.source_type_name(flat.source_type_syntax(type_name_source_id).unqualified()),
 				callee.value_text())
 			module_name := e.type_value_module_name(TypeValue{ name: type_name_source_id })
 			if target := e.function_def(module_name, static_name) {
@@ -1770,9 +1767,8 @@ fn (e &Eval) array_literal_elem_type_name(node &flat.Node) u32 {
 }
 
 fn array_elem_type_name_from_type(type_name_id u32) u32 {
-	type_name := flat.source_type_name(type_name_id)
-	if type_name.starts_with('[]') {
-		return flat.source_type_id(type_name[2..])
+	if flat.source_type_shape(type_name_id).has(.array_type) {
+		return flat.source_type_syntax(type_name_id).raw_base()
 	}
 	if is_fixed_array_type_name(type_name_id) {
 		return fixed_array_elem_type_name(type_name_id)
@@ -2136,7 +2132,7 @@ fn (mut e Eval) eval_condition_flow(id flat.NodeId) !FlowSignal {
 fn (e &Eval) guard_binding_type_name(rhs_id flat.NodeId, value Value) u32 {
 	name := eval_pointer_base_type_id(e.infer_expr_type_name(rhs_id))
 	if flat.source_type_shape(name).has(.optional) {
-		return flat.source_type_id(flat.source_type_name(name)[1..])
+		return flat.source_type_syntax(name).raw_base()
 	}
 	if name != 0 { return name }
 	return e.runtime_type_id(e.unwrap_option_like(value))
@@ -2964,7 +2960,7 @@ fn (mut e Eval) eval_ident(name string) !Value {
 			name: mod_name
 		}
 	}
-	if e.has_type_name(e.current_module_name(), name) {
+	if e.has_type_name(e.current_module_name(), flat.source_type_id(name)) {
 		return TypeValue{
 			name: e.qualify_type_name(e.current_module_name(), flat.source_type_id(name))
 		}
@@ -2983,13 +2979,15 @@ fn (e &Eval) resolve_module_name(name string) string {
 	return name
 }
 
-fn (e &Eval) has_type_name(module_name string, name string) bool {
+fn (e &Eval) has_type_name(module_name string, name_id u32) bool {
+	name := flat.source_type_name(name_id)
 	if module_name in e.type_names && name in e.type_names[module_name] {
 		return true
 	}
-	if name.contains('.') {
-		mod := name.all_before_last('.')
-		short := name.all_after_last('.')
+	if flat.source_type_shape(name_id).has(.dotted) {
+		syntax := flat.source_type_syntax(name_id)
+		mod := flat.source_type_name(syntax.qualifier())
+		short := flat.source_type_name(syntax.unqualified())
 		return mod in e.type_names && short in e.type_names[mod]
 	}
 	return name in e.structs || e.sum_types.contains(name)
@@ -3103,7 +3101,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			}
 		}
 		if left is TypeValue {
-			static_name := flat.encode_static_type_method_name(left.name_text().all_after_last('.'),
+			static_name := flat.encode_static_type_method_name(flat.source_type_name(flat.source_type_syntax(left.name).unqualified()),
 				callee.value_text())
 			static_module := e.type_value_module_name(left)
 			if value := e.disabled_function_zero_value(static_module, static_name, node) {
@@ -3269,9 +3267,18 @@ fn (e &Eval) function_param_type_names(def FunctionDef, skip int) []u32 {
 }
 
 fn (e &Eval) qualify_expected_type_name(module_name string, type_name_id u32) u32 {
-	spelling := flat.source_type_name(type_name_id)
-	qualified := e.qualify_expected_type_name_bytes(module_name, spelling)
-	return if qualified == spelling { type_name_id } else { flat.source_type_id(qualified) }
+	name := eval_trimmed_source_type_id(type_name_id)
+	if name == 0 { return 0 }
+	shape := flat.source_type_shape(name)
+	if shape.has(.pointer) || shape.has(.mutable_type) {
+		return flat.source_type_composition_one(.pointer,
+			e.qualify_expected_type_name(module_name, flat.source_type_syntax(name).raw_base()))
+	}
+	if shape.has(.variadic) {
+		return flat.source_type_composition_one(.variadic_parameter,
+			e.qualify_expected_type_name(module_name, flat.source_type_syntax(name).raw_base()))
+	}
+	return e.qualify_nested_type_name(module_name, name)
 }
 
 fn (e &Eval) fn_value_param_type_names(fv FnValue) []u32 {
@@ -3359,7 +3366,7 @@ fn call_arg_expected_type(expected_types_ids []u32, index int) u32 {
 	if index < expected_types_ids.len {
 		typ := expected_types_ids[index]
 		return if flat.source_type_shape(typ).has(.variadic) {
-			flat.source_type_id(flat.source_type_name(typ)[3..])
+			flat.source_type_syntax(typ).raw_base()
 		} else {
 			typ
 		}
@@ -3367,16 +3374,19 @@ fn call_arg_expected_type(expected_types_ids []u32, index int) u32 {
 	if expected_types_ids.len > 0 {
 		last := expected_types_ids.last()
 		if flat.source_type_shape(last).has(.variadic) {
-			return flat.source_type_id(flat.source_type_name(last)[3..])
+			return flat.source_type_syntax(last).raw_base()
 		}
 	}
 	return 0
 }
 
 fn call_arg_value_expected_type(type_name_id u32) u32 {
-	spelling := flat.source_type_name(type_name_id)
-	value_type := call_arg_value_expected_type_bytes(spelling)
-	return if value_type == spelling { type_name_id } else { flat.source_type_id(value_type) }
+	name := eval_trimmed_source_type_id(type_name_id)
+	shape := flat.source_type_shape(name)
+	if shape.has(.pointer) || shape.has(.mutable_type) || shape.has(.variadic) {
+		return call_arg_value_expected_type(flat.source_type_syntax(name).raw_base())
+	}
+	return name
 }
 
 fn (mut e Eval) disabled_function_zero_value(module_name string, fn_name string, call_node &flat.Node) ?Value {
@@ -3462,48 +3472,8 @@ fn (mut e Eval) adapt_return_values(values []Value, return_type_id u32) []Value 
 }
 
 fn split_multi_return_types(return_type_id u32) []u32 {
-	return_type := flat.source_type_name(return_type_id)
-	if !return_type.starts_with('(') || !return_type.ends_with(')') {
-		return []u32{}
-	}
-	inner := return_type[1..return_type.len - 1]
-	mut types := []u32{}
-	mut start := 0
-	mut paren_depth := 0
-	mut bracket_depth := 0
-	for i := 0; i < inner.len; i++ {
-		ch := inner[i]
-		match ch {
-			`(` {
-				paren_depth++
-			}
-			`)` {
-				if paren_depth > 0 {
-					paren_depth--
-				}
-			}
-			`[` {
-				bracket_depth++
-			}
-			`]` {
-				if bracket_depth > 0 {
-					bracket_depth--
-				}
-			}
-			`,` {
-				if paren_depth == 0 && bracket_depth == 0 {
-					types << flat.source_type_id(inner[start..i].trim_space())
-					start = i + 1
-				}
-			}
-			else {}
-		}
-	}
-	last := inner[start..].trim_space()
-	if last.len > 0 {
-		types << flat.source_type_id(last)
-	}
-	return if types.len > 1 { types } else { []u32{} }
+	parts := flat.source_type_syntax(return_type_id).eval_tuple_parts()
+	return if parts.len > 1 { parts.clone() } else { []u32{} }
 }
 
 fn (e &Eval) minimum_arg_count(params []flat.NodeId) int {
@@ -3521,7 +3491,7 @@ fn (mut e Eval) bind_call_params(params []flat.NodeId, args []Value) ! {
 	for i, param_id in params {
 		param := e.node(param_id)
 		if flat.source_type_shape(param.typ).has(.variadic) {
-			elem_type := flat.source_type_id(param.typ_text()[3..])
+			elem_type := flat.source_type_syntax(param.typ).raw_base()
 			mut values := []Value{cap: if args.len > i { args.len - i } else { 0 }}
 			for j := i; j < args.len; j++ {
 				values << e.adapt_value_to_type_name(args[j], elem_type)
@@ -3530,7 +3500,7 @@ fn (mut e Eval) bind_call_params(params []flat.NodeId, args []Value) ! {
 				e.declare_var_typed(param.value, ArrayValue{
 					elem_type_name: elem_type
 					values:         values
-				}, flat.source_type_id('[]${flat.source_type_name(elem_type)}'))
+				}, flat.source_type_composition_one(.array, elem_type))
 			}
 			return
 		}
@@ -3711,7 +3681,7 @@ fn (mut e Eval) eval_selector_value(left Value, field string) !Value {
 				return e.enum_value(left.name, value)
 			}
 			return TypeValue{
-				name: flat.source_type_id('${left.name_text()}.${field}')
+				name: flat.source_type_composition_two(.qualified, left.name, flat.source_type_id(field))
 			}
 		}
 		ArrayValue {
@@ -3762,7 +3732,7 @@ fn (e &Eval) eval_sum_selector(value SumValue, field string) !Value {
 fn (e &Eval) sum_variant_index(type_name_id u32, variant_name_id u32) int {
 	if variants := e.sum_types.type_ids(flat.source_type_name(type_name_id)) {
 		sum_module := if flat.source_type_shape(type_name_id).has(.dotted) {
-			flat.source_type_name(type_name_id).all_before_last('.')
+			flat.source_type_name(flat.source_type_syntax(type_name_id).qualifier())
 		} else {
 			e.current_module_name()
 		}
@@ -3771,9 +3741,9 @@ fn (e &Eval) sum_variant_index(type_name_id u32, variant_name_id u32) int {
 			if variant == expected_name || variant == variant_name_id { return i }
 		}
 		mut short_match_index := -1
-		short_variant := flat.source_type_name(variant_name_id).all_after_last('.')
+		short_variant := flat.source_type_syntax(variant_name_id).unqualified()
 		for i, variant in variants {
-			if flat.source_type_name(variant).all_after_last('.') == short_variant {
+			if flat.source_type_syntax(variant).unqualified() == short_variant {
 				if short_match_index >= 0 { return 0 }
 				short_match_index = i
 			}
@@ -4141,7 +4111,7 @@ fn is_fixed_array_type_name(type_name_id u32) bool {
 	if !shape.has(.bracketed) || shape.has(.array_type) || shape.has(.map_type) {
 		return false
 	}
-	return shape.has(.leading_bracket) || flat.source_type_name(type_name_id).ends_with(']')
+	return shape.has(.leading_bracket) || flat.source_type_query(type_name_id).has(.bracket_suffix)
 }
 
 fn (mut e Eval) fixed_array_len(type_name_id u32) !int {
@@ -4182,11 +4152,19 @@ fn fixed_array_len_literal(text string) ?int {
 }
 
 fn fixed_array_len_text(type_name_id u32) string {
-	return fixed_array_len_text_bytes(flat.source_type_name(type_name_id))
+	return flat.source_type_name(flat.source_type_syntax(type_name_id).first_bracket_length())
 }
 
 fn fixed_array_elem_type_name(type_name_id u32) u32 {
-	return flat.source_type_id(fixed_array_elem_type_name_bytes(flat.source_type_name(type_name_id)))
+	syntax := flat.source_type_syntax(type_name_id)
+	if flat.source_type_shape(type_name_id).has(.leading_bracket) {
+		return if syntax.first_bracket_closed() {
+			syntax.first_bracket_base()
+		} else {
+			type_name_id
+		}
+	}
+	return syntax.generic_base()
 }
 
 fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
@@ -4257,8 +4235,10 @@ fn (mut e Eval) eval_string_interp_flow(node &flat.Node) !FlowSignal {
 }
 
 fn split_map_type(type_name_id u32) (u32, u32) {
-	key, value := split_map_type_bytes(flat.source_type_name(type_name_id))
-	return flat.source_type_id(key), flat.source_type_id(value)
+	if !flat.source_type_shape(type_name_id).has(.map_type) { return 0, 0 }
+	syntax := flat.source_type_syntax(type_name_id)
+	if !syntax.first_bracket_closed() { return 0, 0 }
+	return syntax.first_bracket_raw_inner(), syntax.first_bracket_base()
 }
 
 fn (mut e Eval) eval_struct_init(node &flat.Node) !Value {
@@ -4696,7 +4676,7 @@ fn (e &Eval) type_value_name_from_expr(id flat.NodeId) ?u32 {
 	node := e.node(id)
 	match node.kind {
 		.ident {
-			if e.has_type_name(e.current_module_name(), node.value_text()) {
+			if e.has_type_name(e.current_module_name(), node.source_value_id()) {
 				return e.qualify_type_name(e.current_module_name(), node.source_value_id())
 			}
 		}
@@ -4705,7 +4685,7 @@ fn (e &Eval) type_value_name_from_expr(id flat.NodeId) ?u32 {
 				left := e.node(e.child(node, 0))
 				if left.kind == .ident {
 					mod := e.resolve_module_name(left.value)
-					if e.has_type_name(mod, node.value_text()) {
+					if e.has_type_name(mod, node.source_value_id()) {
 						return e.qualify_type_name(mod, node.source_value_id())
 					}
 				}
@@ -4717,9 +4697,9 @@ fn (e &Eval) type_value_name_from_expr(id flat.NodeId) ?u32 {
 }
 
 fn (mut e Eval) lookup_enum_value(enum_type_name_id u32, field string) ?Value {
-	enum_type_name := flat.source_type_name(enum_type_name_id)
-	mod := if enum_type_name.contains('.') {
-		enum_type_name.all_before_last('.')
+	syntax := flat.source_type_syntax(enum_type_name_id)
+	mod := if flat.source_type_shape(enum_type_name_id).has(.dotted) {
+		flat.source_type_name(syntax.qualifier())
 	} else {
 		e.current_module_name()
 	}
@@ -4729,7 +4709,7 @@ fn (mut e Eval) lookup_enum_value(enum_type_name_id u32, field string) ?Value {
 		fields << if field.starts_with('@') { plain } else { '@' + field }
 	}
 	for name in fields {
-		enum_key := '${enum_type_name.all_after_last('.')}.${name}'
+		enum_key := '${flat.source_type_name(syntax.unqualified())}.${name}'
 		if value := e.lookup_const(mod, enum_key) {
 			return e.enum_value(e.qualify_type_name(mod, enum_type_name_id), value)
 		}
@@ -5054,10 +5034,11 @@ fn (mut e Eval) call_method_target(receiver Value, target FunctionDef, args []Va
 }
 
 fn (e &Eval) resolve_method_target(type_name_id u32, method_name string) ?FunctionDef {
+	syntax := flat.source_type_syntax(type_name_id)
 	type_name := flat.source_type_name(type_name_id)
-	short_type := type_name.all_after_last('.')
-	module_name := if type_name.contains('.') {
-		type_name.all_before_last('.')
+	short_type := flat.source_type_name(syntax.unqualified())
+	module_name := if flat.source_type_shape(type_name_id).has(.dotted) {
+		flat.source_type_name(syntax.qualifier())
 	} else {
 		e.current_module_name()
 	}
@@ -5656,7 +5637,7 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name
 		return Value(i64(0))
 	}
 	if flat.source_type_shape(name).has(.array_type) {
-		return ArrayValue{ elem_type_name: e.qualify_nested_type_name(module_name, flat.source_type_id(flat.source_type_name(name)[2..])) }
+		return ArrayValue{ elem_type_name: e.qualify_nested_type_name(module_name, flat.source_type_syntax(name).raw_base()) }
 	}
 	if is_fixed_array_type_name(name) {
 		elem_type := e.qualify_nested_type_name(module_name, fixed_array_elem_type_name(name))
@@ -5696,9 +5677,46 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name
 }
 
 fn (e &Eval) qualify_nested_type_name(module_name string, type_name_id u32) u32 {
-	spelling := flat.source_type_name(type_name_id)
-	qualified := e.qualify_nested_type_name_bytes(module_name, spelling)
-	return if qualified == spelling { type_name_id } else { flat.source_type_id(qualified) }
+	name := eval_trimmed_source_type_id(type_name_id)
+	if name == 0 { return 0 }
+	if e.sizeof_type_bindings.len > 0 && flat.source_type_name(name) in e.sizeof_type_bindings {
+		return name
+	}
+	shape := flat.source_type_shape(name)
+	if shape.has(.pointer) || shape.has(.optional) || shape.has(.array_type) {
+		inner := e.qualify_nested_type_name(module_name, flat.source_type_syntax(name).raw_base())
+		kind := if shape.has(.pointer) {
+			flat.SourceTypeComposition.pointer
+		} else if shape.has(.option_type) {
+			flat.SourceTypeComposition.option
+		} else if shape.has(.result_type) {
+			flat.SourceTypeComposition.result
+		} else {
+			flat.SourceTypeComposition.array
+		}
+		return flat.source_type_composition_one(kind, inner)
+	}
+	if is_fixed_array_type_name(name) && !e.sizeof_is_generic_aggregate(name, module_name) {
+		elem := e.qualify_nested_type_name(module_name, fixed_array_elem_type_name(name))
+		raw_len := flat.source_type_syntax(name).first_bracket_length()
+		len := if module_name in e.consts && flat.source_type_name(raw_len) in e.consts[module_name] {
+			flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), raw_len)
+		} else {
+			raw_len
+		}
+		kind := if shape.has(.leading_bracket) {
+			flat.SourceTypeComposition.fixed_array
+		} else {
+			flat.SourceTypeComposition.fixed_array_suffix
+		}
+		return flat.source_type_composition_two(kind, len, elem)
+	}
+	if shape.has(.map_type) {
+		key, value := split_map_type(name)
+		return flat.source_type_composition_two(.map,
+			e.qualify_nested_type_name(module_name, key), e.qualify_nested_type_name(module_name, value))
+	}
+	return e.qualify_type_name(module_name, name)
 }
 
 fn (mut e Eval) zero_struct_value(type_name_id u32) StructValue {
@@ -5775,24 +5793,24 @@ fn (e &Eval) resolve_struct_type_name_in_module(type_name_id u32, module_name st
 	if flat.source_type_name(qualified) in e.structs { return qualified }
 	spelling := flat.source_type_name(type_name_id)
 	if spelling in e.structs { return type_name_id }
-	short := spelling.all_after_last('.')
-	if short in e.structs { return flat.source_type_id(short) }
+	short := flat.source_type_syntax(type_name_id).unqualified()
+	if flat.source_type_name(short) in e.structs { return short }
 	return type_name_id
 }
 
 fn (e &Eval) adapt_value_to_type_name(value Value, type_name_id u32) Value {
-	type_name := flat.source_type_name(type_name_id)
+	shape := flat.source_type_shape(type_name_id)
 	if alias := e.type_alias_info_in_module(type_name_id, e.current_module_name()) {
 		return e.adapt_value_to_type_name(value, e.qualify_type_name(alias.module_name,
 			alias.target))
 	}
-	if type_name.starts_with('?') {
+	if shape.has(.option_type) {
 		if value is VoidValue || e.is_option_like_value(value) {
 			return value
 		}
-		inner_type := type_name[1..]
-		data := if inner_type.len > 0 {
-			e.adapt_value_to_type_name(value, flat.source_type_id(inner_type))
+		inner_type := flat.source_type_syntax(type_name_id).raw_base()
+		data := if inner_type != 0 {
+			e.adapt_value_to_type_name(value, inner_type)
 		} else {
 			value
 		}
@@ -5804,13 +5822,13 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name_id u32) Value {
 			}
 		}
 	}
-	if type_name.starts_with('!') {
+	if shape.has(.result_type) {
 		if e.is_option_like_value(value) {
 			return value
 		}
-		inner_type := type_name[1..]
-		data := if inner_type.len > 0 {
-			e.adapt_value_to_type_name(value, flat.source_type_id(inner_type))
+		inner_type := flat.source_type_syntax(type_name_id).raw_base()
+		data := if inner_type != 0 {
+			e.adapt_value_to_type_name(value, inner_type)
 		} else {
 			value
 		}
@@ -5823,8 +5841,8 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name_id u32) Value {
 			}
 		}
 	}
-	if type_name.starts_with('[]') && value is ArrayValue {
-		elem_type_name := e.qualify_nested_type_name(e.current_module_name(), flat.source_type_id(type_name[2..]))
+	if shape.has(.array_type) && value is ArrayValue {
+		elem_type_name := e.qualify_nested_type_name(e.current_module_name(), flat.source_type_syntax(type_name_id).raw_base())
 		mut arr := value
 		arr.elem_type_name = elem_type_name
 		mut values := []Value{cap: arr.values.cap}
@@ -5834,7 +5852,7 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name_id u32) Value {
 		arr.values = values
 		return arr
 	}
-	if type_name.starts_with('map[') && value is MapValue {
+	if shape.has(.map_type) && value is MapValue {
 		key_type_name, value_type_name := split_map_type(type_name_id)
 		qualified_key_type_name := e.qualify_nested_type_name(e.current_module_name(),
 			key_type_name)
@@ -5855,13 +5873,13 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name_id u32) Value {
 	if flat.source_type_name(target_type_name) in e.enum_fields {
 		return e.enum_value(target_type_name, value)
 	}
-	if type_name in e.enum_fields {
+	if flat.source_type_name(type_name_id) in e.enum_fields {
 		return e.enum_value(type_name_id, value)
 	}
 	if e.sum_types.contains(flat.source_type_name(target_type_name)) && !e.value_matches_type_name(value, target_type_name) {
 		return e.wrap_sum_value(target_type_name, value)
 	}
-	if e.sum_types.contains(type_name) && !e.value_matches_type_name(value, type_name_id) {
+	if e.sum_types.contains(flat.source_type_name(type_name_id)) && !e.value_matches_type_name(value, type_name_id) {
 		return e.wrap_sum_value(type_name_id, value)
 	}
 	return value
@@ -5917,7 +5935,7 @@ fn (e &Eval) cast_value_in_module(value Value, type_name_id u32, module_name str
 	if flat.source_type_name(name) in e.enum_fields { return e.enum_value(name, source) }
 	if flat.source_type_shape(name).has(.option_type) {
 		if source is VoidValue { return source }
-		inner_type := flat.source_type_id(flat.source_type_name(name)[1..])
+		inner_type := flat.source_type_syntax(name).raw_base()
 		data := if inner_type != 0 {
 			e.adapt_value_to_type_name(source, inner_type)
 		} else {
@@ -5968,7 +5986,7 @@ fn (e &Eval) value_matches_type_name(value Value, target_name_id u32) bool {
 		ArrayValue {
 			if name == eval_type_array { return true }
 			if !flat.source_type_shape(name).has(.array_type) { return false }
-			return e.type_name_matches(value.elem_type_name, flat.source_type_id(flat.source_type_name(name)[2..]))
+			return e.type_name_matches(value.elem_type_name, flat.source_type_syntax(name).raw_base())
 		}
 		MapValue {
 			if !flat.source_type_shape(name).has(.map_type) { return false }
@@ -5993,7 +6011,7 @@ fn (e &Eval) type_name_matches(actual_id u32, expected_id u32) bool {
 
 fn (e &Eval) type_value_module_name(value TypeValue) string {
 	if flat.source_type_shape(value.name).has(.dotted) {
-		return value.name_text().all_before_last('.')
+		return flat.source_type_name(flat.source_type_syntax(value.name).qualifier())
 	}
 	return e.current_module_name()
 }
@@ -6005,21 +6023,16 @@ fn is_builtin_type_name(name_id u32) bool {
 }
 
 fn (e &Eval) qualify_type_name(module_name string, type_name_id u32) u32 {
-	spelling := flat.source_type_name(type_name_id)
-	qualified := e.qualify_type_name_bytes(module_name, spelling)
-	return if qualified == spelling { type_name_id } else { flat.source_type_id(qualified) }
-}
-
-fn (e &Eval) resolve_import_alias_type_name(type_name string) string {
-	if !type_name.contains('.') {
-		return type_name
+	name := e.resolve_import_alias_type_id(type_name_id)
+	shape := flat.source_type_shape(name)
+	if name == 0 || shape.has(.dotted) || shape.has(.array_type) || shape.has(.map_type)
+		|| is_builtin_type_name(name) {
+		return name
 	}
-	mod_alias := type_name.all_before('.')
-	real_module := e.resolve_module_name(mod_alias)
-	if real_module == mod_alias {
-		return type_name
+	if module_name != '' && module_name != 'main' && module_name != 'builtin' {
+		return flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), name)
 	}
-	return '${real_module}.${type_name.all_after('.')}'
+	return name
 }
 
 fn (e &Eval) normalize_type_name(type_name_id u32) u32 {
@@ -6062,16 +6075,16 @@ fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, 
 	if node.typ == 0 && node.kind == .prefix && node.children_count > 0 {
 		typ := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
 		if typ != 0 {
-			if node.op == .amp { return flat.source_type_id('&${flat.source_type_name(typ)}') }
+			if node.op == .amp { return flat.source_type_composition_one(.pointer, typ) }
 			if node.op == .mul { return e.dereferenced_type_name(typ) }
 		}
 	}
 	if node.typ == 0 && node.kind == .index && node.children_count > 0 {
 		typ := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
-		spelling := flat.source_type_name(typ)
-		if spelling.starts_with('[]') { return flat.source_type_id(spelling[2..]) }
+		shape := flat.source_type_shape(typ)
+		if shape.has(.array_type) { return flat.source_type_syntax(typ).raw_base() }
 		if is_fixed_array_type_name(typ) { return fixed_array_elem_type_name(typ) }
-		if spelling.starts_with('map[') {
+		if shape.has(.map_type) {
 			_, value_type := split_map_type(typ)
 			return value_type
 		}
@@ -6088,10 +6101,11 @@ fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, 
 fn (e &Eval) sizeof_const_type_name(name string, seen []flat.NodeId) ?u32 {
 	mut module_name := e.current_module_name()
 	mut constant_name := name
-	if name.contains('.') && name !in e.consts[module_name] {
-		qualified := e.resolve_import_alias_type_name(name)
-		module_name = qualified.all_before_last('.')
-		constant_name = qualified.all_after_last('.')
+	name_id := flat.source_type_id(name)
+	if flat.source_type_shape(name_id).has(.dotted) && name !in e.consts[module_name] {
+		qualified := flat.source_type_syntax(e.resolve_import_alias_type_id(name_id))
+		module_name = flat.source_type_name(qualified.qualifier())
+		constant_name = flat.source_type_name(qualified.unqualified())
 	}
 	if module_name in e.consts && constant_name in e.consts[module_name] {
 		entry := e.consts[module_name][constant_name]
@@ -6133,18 +6147,12 @@ fn (e &Eval) sizeof_is_generic_aggregate(name_id u32, module_name string) bool {
 
 fn sizeof_generic_parts(name_id u32) ?(u32, []u32) {
 	if !flat.source_type_shape(name_id).has(.bracketed) { return none }
-	name := flat.source_type_name(name_id)
-	if !name.ends_with(']') { return none }
-	open := name.index('[') or { return none }
-	if open <= 0 { return none }
-	text := name[open + 1..name.len - 1].trim_space()
-	if text.len == 0 { return none }
-	parts := split_multi_return_types(flat.source_type_id('(${text})'))
-	return flat.source_type_id(name[..open]), if parts.len > 0 {
-		parts
-	} else {
-		[flat.source_type_id(text)]
-	}
+	syntax := flat.source_type_syntax(name_id)
+	if !syntax.receiver_app_valid() { return none }
+	text := eval_trimmed_source_type_id(syntax.receiver_app_inner())
+	if text == 0 { return none }
+	parts := split_multi_return_types(flat.source_type_composition_one(.multi_return, text))
+	return syntax.receiver_app_base(), if parts.len > 0 { parts } else { [text] }
 }
 
 fn (e &Eval) sizeof_generic_context(module_name string, file_name string, params []string, args_ids []u32, caller_module string, seen []TypeLayoutVisit) Eval {
@@ -6159,10 +6167,10 @@ fn (e &Eval) sizeof_generic_context(module_name string, file_name string, params
 }
 
 fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []TypeLayoutVisit) TypeLayout {
-	raw_name := flat.source_type_name(raw_name_id)
-	trimmed := raw_name.trim_space()
-	if layout := e.sizeof_type_bindings[trimmed] { return layout }
-	trimmed_id := if trimmed == raw_name { raw_name_id } else { flat.source_type_id(trimmed) }
+	trimmed_id := eval_trimmed_source_type_id(raw_name_id)
+	if e.sizeof_type_bindings.len > 0 {
+		if layout := e.sizeof_type_bindings[flat.source_type_name(trimmed_id)] { return layout }
+	}
 	name_id := e.qualify_nested_type_name(module_name, trimmed_id)
 	name := flat.source_type_name(name_id)
 	shape := flat.source_type_shape(name_id)
@@ -6188,7 +6196,7 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 	if shape.has(.optional) {
 		// An option is `{ bool ok; T value; }`, and a result keeps its 16 byte IError
 		// in a union with the value. A bare `?` or `!` stores an `int`.
-		elem_name := flat.source_type_id(name[1..].trim_space())
+		elem_name := eval_trimmed_source_type_id(flat.source_type_syntax(name_id).raw_base())
 		elem := if elem_name in [u32(0), flat.source_type_void] {
 			TypeLayout{ size: 4, align: 4 }
 		} else {
@@ -6310,10 +6318,11 @@ fn (e &Eval) sizeof_fixed_array_len(text string, module_name string, seen []flat
 	}
 	mut constant_name := text
 	mut constant_module := module_name
-	if text.contains('.') {
-		qualified := e.resolve_import_alias_type_name(text)
-		constant_module = qualified.all_before_last('.')
-		constant_name = qualified.all_after_last('.')
+	text_id := flat.source_type_id(text)
+	if flat.source_type_shape(text_id).has(.dotted) {
+		qualified := flat.source_type_syntax(e.resolve_import_alias_type_id(text_id))
+		constant_module = flat.source_type_name(qualified.qualifier())
+		constant_name = flat.source_type_name(qualified.unqualified())
 	}
 	if constant_module in e.consts && constant_name in e.consts[constant_module] {
 		entry := e.consts[constant_module][constant_name]
@@ -6588,11 +6597,11 @@ fn (e &Eval) enum_value_string(value EnumValue) string {
 	enum_name := e.normalize_type_name(value.type_name)
 	if fields := e.enum_fields[flat.source_type_name(enum_name)] {
 		module_name := if flat.source_type_shape(enum_name).has(.dotted) {
-			flat.source_type_name(enum_name).all_before_last('.')
+			flat.source_type_name(flat.source_type_syntax(enum_name).qualifier())
 		} else {
 			e.current_module_name()
 		}
-		short_name := flat.source_type_name(enum_name).all_after_last('.')
+		short_name := flat.source_type_name(flat.source_type_syntax(enum_name).unqualified())
 		if module_name in e.consts {
 			for field in fields {
 				if entry := e.consts[module_name]['${short_name}.${field}'] {
@@ -6638,9 +6647,9 @@ fn (e &Eval) runtime_type_id(value Value) u32 {
 		f64 { flat.source_type_f64 }
 		string { flat.source_type_string }
 		VoidValue { flat.source_type_void }
-		ArrayValue { flat.source_type_id('[]${value.elem_type_name_text()}') }
+		ArrayValue { flat.source_type_composition_one(.array, value.elem_type_name) }
 		MapValue {
-			flat.source_type_id('map[${value.key_type_name_text()}]${value.value_type_name_text()}')
+			flat.source_type_composition_two(.map, value.key_type_name, value.value_type_name)
 		}
 		ModuleValue { eval_type_module }
 		RangeValue { eval_type_range }
@@ -6749,118 +6758,27 @@ fn (info &StructInfo) name_text() string {
 	return flat.source_type_name(info.name)
 }
 
-// Complete type queries use numeric IDs; recursive qualification renders private byte grammar.
-fn (e &Eval) qualify_expected_type_name_bytes(module_name string, type_name string) string {
-	name := type_name.trim_space()
-	if name == '' {
-		return ''
+fn eval_trimmed_source_type_id(type_id u32) u32 {
+	return if flat.source_type_shape(type_id).has(.padded) {
+		flat.source_type_syntax(type_id).trimmed()
+	} else {
+		type_id
 	}
-	if name.starts_with('&') {
-		return '&${e.qualify_expected_type_name_bytes(module_name, name[1..])}'
-	}
-	if name.starts_with('...') {
-		return '...${e.qualify_expected_type_name_bytes(module_name, name[3..])}'
-	}
-	if name.starts_with('mut ') {
-		return '&${e.qualify_expected_type_name_bytes(module_name, name[4..])}'
-	}
-	return e.qualify_nested_type_name_bytes(module_name, name)
 }
 
-fn (e &Eval) qualify_nested_type_name_bytes(module_name string, type_name string) string {
-	name := type_name.trim_space()
-	if name == '' {
-		return ''
-	}
-	if name in e.sizeof_type_bindings { return name }
-	if name.starts_with('&') || name.starts_with('?') || name.starts_with('!') {
-		return '${name[..1]}${e.qualify_nested_type_name_bytes(module_name, name[1..])}'
-	}
-	if name.starts_with('[]') {
-		return '[]${e.qualify_nested_type_name_bytes(module_name, name[2..])}'
-	}
-	if is_fixed_array_type_name_bytes(name) && !e.sizeof_is_generic_aggregate(flat.source_type_id(name), module_name) {
-		elem := e.qualify_nested_type_name_bytes(module_name, fixed_array_elem_type_name_bytes(name))
-		raw_len := fixed_array_len_text_bytes(name)
-		len := if module_name in e.consts && raw_len in e.consts[module_name] {
-			'${module_name}.${raw_len}'
-		} else {
-			raw_len
-		}
-		return if name.starts_with('[') { '[${len}]${elem}' } else { '${elem}[${len}]' }
-	}
-	if name.starts_with('map[') {
-		key_type, value_type := split_map_type_bytes(name)
-		return 'map[${e.qualify_nested_type_name_bytes(module_name, key_type)}]${e.qualify_nested_type_name_bytes(module_name, value_type)}'
-	}
-	return e.qualify_type_name_bytes(module_name, name)
-}
-
-fn (e &Eval) qualify_type_name_bytes(module_name string, type_name string) string {
-	name := e.resolve_import_alias_type_name(type_name)
-	if name == '' || name.contains('.') || name.starts_with('[]') || name.starts_with('map[')
-		|| is_builtin_type_name_bytes(name) {
-		return name
-	}
-	if module_name != '' && module_name != 'main' && module_name != 'builtin' {
-		return '${module_name}.${name}'
-	}
-	return name
-}
-
-fn is_builtin_type_name_bytes(name string) bool {
-	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-		'uint', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr', 'byteptr',
-		'array']
-}
-
-fn call_arg_value_expected_type_bytes(type_name string) string {
-	name := type_name.trim_space()
-	if name.starts_with('&') {
-		return call_arg_value_expected_type_bytes(name[1..])
-	}
-	if name.starts_with('mut ') {
-		return call_arg_value_expected_type_bytes(name[4..])
-	}
-	if name.starts_with('...') {
-		return call_arg_value_expected_type_bytes(name[3..])
-	}
-	return name
-}
-
-fn is_fixed_array_type_name_bytes(type_name string) bool {
-	if type_name.starts_with('[]') || type_name.starts_with('map[') {
-		return false
-	}
-	return type_name.contains('[') && (type_name.ends_with(']') || type_name.starts_with('['))
-}
-
-fn fixed_array_len_text_bytes(type_name string) string {
-	return type_name.all_after('[').all_before(']').trim_space()
-}
-
-fn fixed_array_elem_type_name_bytes(type_name string) string {
-	if type_name.starts_with('[') {
-		return type_name.all_after(']')
-	}
-	return type_name.all_before('[')
-}
-
-fn split_map_type_bytes(type_name string) (string, string) {
-	if !type_name.starts_with('map[') {
-		return '', ''
-	}
-	inner := type_name[4..]
-	if idx := inner.index(']') {
-		return inner[..idx], inner[idx + 1..]
-	}
-	return '', ''
+fn (e &Eval) resolve_import_alias_type_id(type_id u32) u32 {
+	if !flat.source_type_shape(type_id).has(.dotted) { return type_id }
+	syntax := flat.source_type_syntax(type_id)
+	alias := flat.source_type_name(syntax.first_dot_prefix())
+	real_module := e.resolve_module_name(alias)
+	if real_module == alias { return type_id }
+	return flat.source_type_composition_two(.qualified, flat.source_type_id(real_module), syntax.first_dot_suffix())
 }
 
 // eval_pointer_base_type_id strips the pointer spelling grammar without decoding plain identities.
 fn eval_pointer_base_type_id(source_id u32) u32 {
 	return if flat.source_type_shape(source_id).has(.pointer) {
-		flat.source_type_id(flat.source_type_name(source_id).trim_left('&'))
+		flat.source_type_syntax(source_id).pointer_raw_base()
 	} else {
 		source_id
 	}

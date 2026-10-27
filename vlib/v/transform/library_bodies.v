@@ -139,12 +139,17 @@ fn (mut t Transformer) keep_library_bodies(reason string) {
 // its own only (`fn (r Runner) run[T](x T)`).
 fn (mut t Transformer) generic_decl_receiver_is_generic(decl GenericFnDecl) bool {
 	mut params := []string{}
-	t.collect_generic_param_names_from_type(decl.node.value.all_before_last('.'), decl.module, mut
-		params)
+	decl_id := flat.source_type_id(decl.node.value)
+	receiver_id := if flat.source_type_shape(decl_id).has(.dotted) {
+		flat.source_type_syntax(decl_id).qualifier()
+	} else {
+		decl_id
+	}
+	t.collect_generic_param_names_from_type_id(receiver_id, decl.module, mut params)
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind == .param {
-			t.collect_generic_param_names_from_type(child.typ_text(), decl.module, mut params)
+			t.collect_generic_param_names_from_type_id(child.typ, decl.module, mut params)
 			break
 		}
 	}
@@ -157,7 +162,7 @@ fn library_type_key(name_id u32, module_name string) u32 {
 	if module_name in ['', 'main', 'builtin'] || flat.source_type_shape(name_id).has(.dotted) {
 		return name_id
 	}
-	return flat.source_type_id('${module_name}.${flat.source_type_name(name_id)}')
+	return flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), name_id)
 }
 
 // program_comptime_for tells where a function of the program without type
@@ -249,70 +254,73 @@ fn (mut t Transformer) library_type_reaches_program(typ_id u32) bool {
 }
 
 fn library_type_text(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
-	text := library_type_text_bytes(typ)
-	return if text == typ { typ_id } else { flat.source_type_id(text) }
-}
-
-fn library_type_text_bytes(typ string) string {
-	text := trimmed_transform_text(typ)
-	return if text.starts_with('main.') { text['main.'.len..] } else { text }
+	text := transform_trimmed_type_id(typ_id)
+	return if flat.source_type_query(text).has(.main_prefix) {
+		flat.source_type_syntax(text).main_base()
+	} else {
+		text
+	}
 }
 
 // library_type_parts returns the types that a value of the type `text` gives a
 // library body, or none when the type keeps the body (see LibraryBodies) or is
 // not known here.
 fn (mut t Transformer) library_type_parts(text_id u32) ?[]u32 {
-	text := flat.source_type_name(text_id)
-	for prefix in ['mut ', 'shared ', 'atomic ', '...', '&', '?', '!', '[]', 'chan ', 'thread '] {
-		if text.starts_with(prefix) {
-			return [flat.source_type_id(library_type_text_bytes(text[prefix.len..]))]
+	shape := flat.source_type_shape(text_id)
+	syntax := flat.source_type_syntax(text_id)
+	if shape.has(.mutable_type) || shape.has(.shared_type) || shape.has(.atomic_type)
+		|| shape.has(.variadic) || shape.has(.pointer) || shape.has(.optional)
+		|| shape.has(.array_type) || shape.has(.channel_type) || shape.has(.thread_type) {
+		return [library_type_text(syntax.raw_base())]
+	}
+	if shape.has(.map_type) {
+		if !syntax.bracket_closed() || syntax.bracket_suffix() == 0 { return none }
+		return [library_type_text(syntax.bracket_raw_inner()),
+			library_type_text(syntax.bracket_suffix())]
+	}
+	if shape.has(.leading_bracket) {
+		if !syntax.bracket_closed() || syntax.bracket_suffix() == 0 { return none }
+		return [library_type_text(syntax.bracket_suffix())]
+	}
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
+		if !syntax.function_closed() { return none }
+		mut parts := []u32{cap: syntax.function_params().len + 1}
+		for param in syntax.function_params() {
+			parts << library_type_text(flat.source_type_syntax(param).generic_parameter_payload())
 		}
-	}
-	if text.starts_with('map[') {
-		end := generic_matching_bracket(text, 3)
-		if end + 1 >= text.len { return none }
-		return [flat.source_type_id(library_type_text_bytes(text[4..end])),
-			flat.source_type_id(library_type_text_bytes(text[end + 1..]))]
-	}
-	if text.starts_with('[') {
-		end := generic_matching_bracket(text, 0)
-		if end + 1 >= text.len { return none }
-		return [flat.source_type_id(library_type_text_bytes(text[end + 1..]))]
-	}
-	if text.starts_with('fn(') || text.starts_with('fn (') {
-		params, ret := fn_type_text_parts(text) or { return none }
-		mut parts := params.map(flat.source_type_id(library_type_text_bytes(generic_fn_type_param_payload(it))))
-		if ret.len > 0 { parts << flat.source_type_id(library_type_text_bytes(ret)) }
+		if syntax.function_result() != 0 { parts << library_type_text(syntax.function_result()) }
 		return parts
 	}
-	if text.starts_with('(') && text.ends_with(')') {
-		return split_generic_args(text[1..text.len - 1]).map(flat.source_type_id(library_type_text_bytes(it)))
+	if syntax.tuple_like() {
+		return syntax.tuple_components().map(library_type_text(it))
 	}
-	if text.starts_with('C.') || text.starts_with('JS.') || types.is_builtin_type_name(text) {
+	query := flat.source_type_query(text_id)
+	if query.has(.c_prefix) || query.has(.js_prefix) || types.is_builtin_type_name_id(text_id) {
 		return []u32{}
 	}
-	base, args, is_app := generic_app_parts(text)
-	name := if is_app { base } else { text }
-	name_id := if is_app { flat.source_type_id(base) } else { text_id }
-	if name_id in [transform_identity_ierror, transform_identity_builtin_ierror] || name in t.tc.interface_names
+	is_app := syntax.generic_app_valid()
+	name_id := if is_app { syntax.generic_app_base() } else { text_id }
+	if name_id in [transform_identity_ierror, transform_identity_builtin_ierror] || t.generic_checker_interface_name_known(name_id)
 		|| name_id in t.library_bodies.receivers {
 		return none
 	}
+	// Checker declaration tables still use declaration names as keys.
+	name := flat.source_type_name(name_id)
+	text := flat.source_type_name(text_id)
 	mut parts := []u32{}
 	if is_app {
 		// A generic type of the program keeps the body; of a library one, what it
 		// holds of the program comes in through its type arguments.
-		file := t.tc.struct_files[base] or { return none }
+		file := t.tc.struct_files[name] or { return none }
 		if file in t.tc.diagnostic_files { return none }
-		for arg in args { parts << flat.source_type_id(library_type_text_bytes(arg)) }
+		for arg in syntax.generic_app_args() { parts << library_type_text(arg) }
 	}
 	if fields := t.tc.structs[text] {
 		for field in fields { parts << library_type_text(field.typ.source_type_id()) }
 	} else if is_app {
-		fields := t.tc.structs[base] or { return none }
-		params := t.tc.struct_generic_params[base] or { []string{} }
-		args_ids := flat.TypeTextList.from_names(args).ids
+		fields := t.tc.structs[name] or { return none }
+		params := t.tc.struct_generic_params[name] or { []string{} }
+		args_ids := syntax.generic_app_args()
 		for field in fields {
 			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.source_type_id(),
 				args_ids, params))

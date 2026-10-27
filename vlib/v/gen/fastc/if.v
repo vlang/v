@@ -13,7 +13,7 @@ fn (g &Parser) smartcast_payload_binding(value_type u32, object string, wants_re
 	// read back through the same type, while the local keeps the V type.
 	c_type := fastc_output_c_type(value_type_name)
 	if is_reference {
-		return flat.source_type_id(value_type_name + '*'), '(${c_type} *)${object}', true
+		return fastc_with_pointer_depth(value_type, 1), '(${c_type} *)${object}', true
 	}
 	source := if fastc_is_pointer_type(underlying) {
 		object
@@ -33,7 +33,7 @@ fn (g &Parser) narrowed_member_view(variant u32, value_type u32, pointer string)
 	if (value_type == u32(0) || value_type == variant) && g.is_scalar_type(variant) {
 		return variant, '(*${pointer})'
 	}
-	return flat.source_type_id(flat.source_type_name(variant) + '*'), pointer
+	return flat.source_type_composition_two(.concat, variant, flat.source_type_id('*')), pointer
 }
 
 // is_scalar_type reports a number, bool, rune or enum type, also behind an alias.
@@ -609,7 +609,7 @@ fn (mut g Parser) parse_if() !bool {
 					// (`x is ast.IfExpr`). Composites must be registered; a qualified
 					// variant already resolves to its declared C type.
 					target := fastc_normalize_inferred_type(resolved_target)
-					if flat.source_type_name(target).starts_with('Array_') || flat.source_type_name(target).starts_with('Map_') {
+					if flat.source_type_query(target).has(.c_array_prefix) || flat.source_type_query(target).has(.c_map_prefix) {
 						fastc_register_composite_type(target, mut g.composite_types)
 						smartcast_name = cond_tokens[local_start].lit
 						smartcast_type = target
@@ -753,7 +753,7 @@ fn (mut g Parser) parse_if() !bool {
 				g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${name} = ${g.option_value_expression(guard_type, guard_option)};')
 			} else {
 				value := if g.prefs.target_libc_headers {
-					'*(${g.option_value_expression(flat.source_type_id(flat.source_type_name(guard_type) + '*'), guard_option)})'
+					'*(${g.option_value_expression(flat.source_type_composition_two(.concat, guard_type, flat.source_type_id('*')), guard_option)})'
 				} else {
 					'**((${fastc_output_c_type(flat.source_type_name(guard_type))} **)${guard_option}.data)'
 				}
@@ -2189,7 +2189,7 @@ fn (g &Parser) expected_enum_shorthand_expression() ?string {
 	if !g.selfhost || g.last_expression_type != u32(0) || g.last_expression.len != 2 || g.last_expression[0].tok != .dot || g.last_expression[1].tok != .name || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.return_type))] != .enum_ {
 		return none
 	}
-	return '${g.return_type_text().trim_right('*')}__${g.last_expression[1].lit}'
+	return '${flat.source_type_name(flat.source_type_syntax(g.return_type).c_pointer_raw_base())}__${g.last_expression[1].lit}'
 }
 
 // boxed_type_text resolves the indexed source type spelling.

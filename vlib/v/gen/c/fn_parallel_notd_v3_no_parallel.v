@@ -1349,7 +1349,7 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 	if fused {
 		if g.prep_alias_short_names.len == 0 {
 			for name, _ in g.tc.type_aliases.ids {
-				g.prep_alias_short_names[name.all_after_last('.')] = true
+				g.prep_alias_short_names[flat.source_type_syntax(flat.source_type_id(name)).unqualified()] = true
 			}
 		}
 		prep_g = voidptr(g)
@@ -2966,60 +2966,10 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 // V alias declarations are capitalized; literal callback types are the only
 // lowercase text that can require a function-pointer preseed.
 fn parallel_type_text_may_preseed(g &FlatGen, typ_id u32) bool {
-	if typ_id == 0 {
-		return false
-	}
-	typ := flat.source_type_name(typ_id)
-	mut start := 0
-	for start < typ.len {
-		for start < typ.len && typ[start] in [` `, `\t`, `\n`, `\r`] {
-			start++
-		}
-		if start + 7 <= typ.len && typ[start] == `s` && typ[start + 1] == `h`
-			&& typ[start + 2] == `a` && typ[start + 3] == `r` && typ[start + 4] == `e`
-			&& typ[start + 5] == `d` && typ[start + 6] == ` ` {
-			start += 7
-			continue
-		}
-		if start + 3 <= typ.len && typ[start] == `.` && typ[start + 1] == `.`
-			&& typ[start + 2] == `.` {
-			start += 3
-			continue
-		}
-		if start + 2 <= typ.len && typ[start] == `[` && typ[start + 1] == `]` {
-			start += 2
-			continue
-		}
-		if start < typ.len && typ[start] in [`&`, `?`, `!`] {
-			start++
-			continue
-		}
-		break
-	}
-	if start >= typ.len {
-		return false
-	}
-	if start + 1 < typ.len && typ[start] == `f` && typ[start + 1] == `n` {
-		return true
-	}
-	mut name_start := start
-	for i := start; i < typ.len; i++ {
-		if typ[i] == `.` {
-			name_start = i + 1
-		}
-	}
-	if name_start >= typ.len || !typ[name_start].is_capital() {
-		return false
-	}
-	mut end := typ.len
-	for end > name_start && typ[end - 1] in [` `, `\t`, `\n`, `\r`] {
-		end--
-	}
-	if end <= name_start {
-		return false
-	}
-	short := unsafe { tos(typ.str + name_start, end - name_start) }
-	return short in g.prep_alias_short_names
+	if typ_id == 0 { return false }
+	syntax := flat.source_type_syntax(typ_id)
+	return syntax.parallel_preseed_fn() || (syntax.parallel_preseed_short() != 0
+		&& syntax.parallel_preseed_short() in g.prep_alias_short_names)
 }
 
 // par_cgen_prep_enabled gates the parallel fused item prep, so a single binary
@@ -3061,10 +3011,11 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ_id u32) bool {
 	if typ_id == 0 {
 		return false
 	}
-	clean := flat.source_type_name(g.parallel_base_type_text(typ_id))
-	if clean.contains('fn(') || clean.contains('fn (') {
+	clean_id := g.parallel_base_type_text(typ_id)
+	if flat.source_type_syntax(clean_id).function_fragment() {
 		return true
 	}
+	clean := flat.source_type_name(clean_id)
 	if g.tc.type_aliases.contains(clean) {
 		return true
 	}
@@ -3074,22 +3025,17 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ_id u32) bool {
 
 // parallel_base_type_text supports parallel base type text handling for FlatGen.
 fn (g &FlatGen) parallel_base_type_text(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
-	mut clean := trimmed_space(typ)
-	for clean.len > 0 {
-		if clean.starts_with('shared ') {
-			clean = trimmed_space(clean[7..])
-		} else if clean[0] == `&` || clean[0] == `?` || clean[0] == `!` {
-			clean = trimmed_space(clean[1..])
-		} else if clean.starts_with('...') {
-			clean = trimmed_space(clean[3..])
-		} else if clean.starts_with('[]') {
-			clean = trimmed_space(clean[2..])
+	mut clean := flat.source_type_syntax(typ_id).trimmed()
+	for clean != 0 {
+		shape := flat.source_type_shape(clean)
+		if shape.has(.shared_type) || shape.has(.pointer) || shape.has(.option_type)
+			|| shape.has(.result_type) || shape.has(.variadic) || shape.has(.array_type) {
+			clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base()).trimmed()
 		} else {
 			break
 		}
 	}
-	return if clean == typ { typ_id } else { flat.source_type_id(clean) }
+	return clean
 }
 
 // preseed_parallel_fn_ptr_type supports preseed parallel fn ptr type handling for FlatGen.

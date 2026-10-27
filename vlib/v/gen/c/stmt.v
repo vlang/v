@@ -378,7 +378,7 @@ fn (g &FlatGen) array_push_type_arg_id(id flat.NodeId) u32 {
 			if base == 0 {
 				return node.source_value_id()
 			}
-			return flat.source_type_id('${flat.source_type_name(base)}.${node.value}')
+			return flat.source_type_composition_two(.qualified, base, node.source_value_id())
 		}
 		.index {
 			if node.children_count < 2 || node.value == 'range' {
@@ -388,15 +388,15 @@ fn (g &FlatGen) array_push_type_arg_id(id flat.NodeId) u32 {
 			if base == 0 {
 				return 0
 			}
-			mut args := []string{}
+			mut parts := [base]
 			for i in 1 .. node.children_count {
 				arg := g.array_push_type_arg_id(g.a.child(&node, i))
 				if arg == 0 {
 					return 0
 				}
-				args << flat.source_type_name(arg)
+				parts << arg
 			}
-			return flat.source_type_id('${flat.source_type_name(base)}[${args.join(', ')}]')
+			return flat.source_type_composition(.generic, parts)
 		}
 		.prefix {
 			if node.children_count == 0 {
@@ -407,7 +407,7 @@ fn (g &FlatGen) array_push_type_arg_id(id flat.NodeId) u32 {
 				return 0
 			}
 			if node.op == .amp {
-				return flat.source_type_id('&${flat.source_type_name(child)}')
+				return flat.source_type_composition_one(.pointer, child)
 			}
 			return child
 		}
@@ -960,7 +960,7 @@ fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node, id flat.Node
 		entries = g.take_transformed_return_ownership_drops(source_id)
 	} else if node.typ == 0 {
 		entries = g.take_return_ownership_drops_for_node(id)
-	} else if node.typ_text()[0] !in [`!`, `?`] {
+	} else if !flat.source_type_shape(node.typ).has(.result_type) && !flat.source_type_shape(node.typ).has(.option_type) {
 		entries = []types.OwnershipDropEntry{}
 	} else if return_node_is_direct_optional_forward(node.value)
 		|| node.value == optional_success_return_value
@@ -1080,7 +1080,7 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 			g.gen_ownership_drop_value(typ, expr, 0)
 		}
 		if free_pointer_storage {
-			free_fn := if g.pointer_free_needs_aligned_free(g.tc.parse_type(flat.source_type_id('&${entry.type_name_text()}'))) {
+			free_fn := if g.pointer_free_needs_aligned_free(g.tc.parse_type(flat.source_type_composition_one(.pointer, entry.type_name))) {
 				'v3_aligned_free'
 			} else {
 				'v_free'
@@ -1235,7 +1235,7 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 		// drop helper: only its concrete instantiations (`Printer[cli.Buffer]`)
 		// have emitted C types. `is_generic_struct` only matches the base decl
 		// name, so also reject names whose generic args still hold a placeholder.
-		if name.starts_with('C.') || name in g.tc.unions || g.is_generic_struct(name)
+		if flat.source_type_query(name_id).has(.c_prefix) || name in g.tc.unions || g.is_generic_struct(name)
 			|| g.type_contains_generic_placeholder(parsed)
 			|| g.type_name_contains_generic_placeholder(name_id) || g.skip_builtin_struct(name)
 			|| g.ownership_struct_destructor_method(name_id).len > 0 {
@@ -1473,7 +1473,7 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 		// Sums have no struct module entry. Derive their declaration context rather
 		// than inheriting the module left by parallel declaration generation.
 		g.tc.cur_module = g.tc.struct_modules[type_name] or {
-			module_from_qualified_name(type_name.all_before('['))
+			module_from_source_type_name(flat.source_type_syntax(type_name_id).generic_base())
 		}
 		g.tc.cur_file = g.tc.struct_files[type_name] or { old_file }
 		g.writeln('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(type_name_id)}* _value) {')
@@ -1679,9 +1679,9 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			g.writeln('map__free(&(${expr}));')
 		}
 		types.Struct {
-			thread_name := trimmed_space(typ.name())
-			if g.detached_spawn_drop && (thread_name == 'thread'
-				|| thread_name.ends_with('.thread') || thread_name.starts_with('thread ')) {
+			thread_name := flat.source_type_syntax(typ.source_type_id()).trimmed()
+			if g.detached_spawn_drop && (thread_name == flat.source_type_id('thread')
+				|| flat.source_type_query(thread_name).has(.thread_suffix) || flat.source_type_shape(thread_name).has(.thread_type)) {
 				g.writeln(g.detached_spawn_result_cleanup(typ, expr, depth))
 				return
 			}
@@ -1691,8 +1691,8 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 					decl_module := g.tc.struct_module_for_type(typ.source_type_id())
 					method_module := if decl_module.len > 0 {
 						decl_module
-					} else if typ.name().contains('.') {
-						typ.name().all_before_last('.')
+					} else if flat.source_type_shape(typ.source_type_id()).has(.dotted) {
+						flat.source_type_name(flat.source_type_syntax(typ.source_type_id()).qualifier())
 					} else {
 						g.tc.cur_module
 					}
@@ -1709,7 +1709,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				g.writeln('${drop_cname}(${drop_arg});')
 				return
 			}
-			packed := g.struct_decl_pack_for_name(typ.name()).len > 0
+			packed := g.struct_decl_pack_for_name(typ.source_type_id()).len > 0
 			for field in g.tc.struct_fields_for_type(typ.source_type_id()) {
 				if g.tc.struct_field_is_shared(typ.source_type_id(), field.name) {
 					continue
@@ -1981,9 +1981,9 @@ fn (g &FlatGen) ownership_type_requires_destruction(typ &types.Type, depth int) 
 			return g.detached_spawn_drop
 		}
 		types.Struct {
-			thread_name := trimmed_space(typ.name())
-			if g.detached_spawn_drop && (thread_name == 'thread'
-				|| thread_name.ends_with('.thread') || thread_name.starts_with('thread ')) {
+			thread_name := flat.source_type_syntax(typ.source_type_id()).trimmed()
+			if g.detached_spawn_drop && (thread_name == flat.source_type_id('thread')
+				|| flat.source_type_query(thread_name).has(.thread_suffix) || flat.source_type_shape(thread_name).has(.thread_type)) {
 				return true
 			}
 			if g.ownership_struct_destructor_method(typ.source_type_id()).len > 0 {
@@ -3153,7 +3153,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 							expr_value_name := expr_value_type.name()
 							is_alias_value := expr_value_type is types.Alias
 								|| g.tc.type_aliases.contains(expr_value_name)
-								|| g.tc.qualify_name(expr_value_name) in g.tc.type_aliases.ids
+								|| flat.source_type_name(g.tc.qualify_type_name(expr_value_type.source_type_id())) in g.tc.type_aliases.ids
 							pointer_value_expr := g.pointer_value_return_expr_string(ret_id, base) or {
 								''
 							}
@@ -4016,7 +4016,7 @@ fn (g &FlatGen) consume_assert_value_type_budget(typ &types.Type, mut budget Ass
 		types.Struct {
 			// The V declaration of a C struct need not match its C layout, like for
 			// anonymous struct members, so it can not be printed field by field.
-			if clean.name().starts_with('C.') {
+			if flat.source_type_query(clean.source_type_id()).has(.c_prefix) {
 				return false
 			}
 			key := u64(clean.name_id) << 1
@@ -5325,11 +5325,13 @@ fn (g &FlatGen) debugger_var_expr(name string) string {
 }
 
 fn debugger_type_name(typ &types.Type) string {
-	mut name := typ.name()
-	if name.starts_with('builtin.') {
-		name = name.all_after_last('.')
-	}
-	return name
+	name_id := typ.source_type_id()
+	syntax := flat.source_type_syntax(name_id)
+	return flat.source_type_name(if syntax.builtin_prefix() {
+		syntax.unqualified()
+	} else {
+		name_id
+	})
 }
 
 fn debugger_string_literal(value string) string {
@@ -5549,16 +5551,10 @@ fn (g &FlatGen) pointer_value_return_source_id(id flat.NodeId) flat.NodeId {
 }
 
 fn pointer_value_type_names_match(actual_id u32, expected_id u32) bool {
-	if !flat.source_type_shape(actual_id).has(.pointer) {
-		return false
-	}
-	actual := flat.source_type_name(actual_id)
-	expected := flat.source_type_name(expected_id)
-	clean_actual := actual[1..]
-	if clean_actual == expected {
-		return true
-	}
-	return clean_actual.all_after_last('.') == expected.all_after_last('.')
+	if !flat.source_type_shape(actual_id).has(.pointer) { return false }
+	clean_actual_id := flat.source_type_syntax(actual_id).raw_base()
+	return clean_actual_id == expected_id
+		|| flat.source_type_syntax(clean_actual_id).unqualified() == flat.source_type_syntax(expected_id).unqualified()
 }
 
 fn (g &FlatGen) pointer_payload_return_expr_matches(actual &types.Type, expected &types.Type) bool {
@@ -5874,17 +5870,27 @@ fn (mut g FlatGen) merge_local_pointer_alias_source_for_assignment(owner types.S
 fn (g &FlatGen) heap_local_memdup_expr(source_expr string, base_type &types.Type, base_ct string, source_is_pointer bool) string {
 	src := if source_is_pointer { source_expr } else { '&${source_expr}' }
 	clean_base := default_init_unalias_type(base_type)
-	mut names := []string{}
-	for name in [clean_base.name(), base_type.name(), base_ct] {
-		if name.len > 0 && name !in names {
-			names << name
+	mut name_ids := []u32{}
+	for name_id in [clean_base.source_type_id(), base_type.source_type_id()] {
+		if name_id != 0 && name_id !in name_ids {
+			name_ids << name_id
 		}
 	}
-	for name in names {
-		if align := g.struct_decl_alignment_for_name(flat.source_type_id(name)) {
+	for name_id in name_ids {
+		if align := g.struct_decl_alignment_for_name(name_id) {
 			align_ct := g.struct_decl_alignment_c_type(clean_base.source_type_id(), base_ct)
 			align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
 			return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
+		}
+	}
+	if base_ct.len > 0 {
+		base_ct_id := flat.source_type_id(base_ct)
+		if base_ct_id !in name_ids {
+			if align := g.struct_decl_alignment_for_name(base_ct_id) {
+				align_ct := g.struct_decl_alignment_c_type(clean_base.source_type_id(), base_ct)
+				align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
+				return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
+			}
 		}
 	}
 	mut seen := map[u32]bool{}
@@ -6316,8 +6322,7 @@ fn (g &FlatGen) type_can_return_as_ierror(typ &types.Type) bool {
 }
 
 fn (g &FlatGen) struct_type_embeds_error(type_name_id u32) bool {
-	type_name := flat.source_type_name(type_name_id)
-	if type_name == 'Error' || type_name.ends_with('.Error') {
+	if flat.source_type_syntax(type_name_id).unqualified() == flat.source_type_id('Error') {
 		return true
 	}
 	for field in g.struct_embedded_fields(type_name_id) {
@@ -6671,8 +6676,8 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 	if ret := g.tc.fn_ret_types[method_name] {
 		return ret
 	}
-	if receiver_name.contains('.') {
-		short_name := receiver_name.all_after_last('.')
+	if flat.source_type_shape(receiver_name_id).has(.dotted) {
+		short_name := flat.source_type_name(flat.source_type_syntax(receiver_name_id).unqualified())
 		short_method := '${short_name}.${fn_node.value}'
 		if ret := g.tc.fn_ret_types[short_method] {
 			return ret
@@ -7245,7 +7250,7 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 			// longer follows the lexical scope of this identifier. A `shared T`
 			// annotation parses as `T`, without the pointer the local is stored as,
 			// so `&local` would be taken once more.
-			if node.typ != 0 && !trimmed_space(node.typ_text()).starts_with('shared ') {
+			if node.typ != 0 && !flat.source_type_shape(flat.source_type_syntax(node.typ).trimmed()).has(.shared_type) {
 				annotated := g.parse_node_type_reference(node)
 				if !decl_annotation_is_unusable(annotated, node.typ)
 					&& !g.type_contains_generic_placeholder(annotated) {
@@ -7654,17 +7659,18 @@ fn (g &FlatGen) array_abi_types_match(a &types.Type, b &types.Type) bool {
 		return true
 	}
 	if a0 is types.Array {
-		return generated_array_type_name(b0.name())
+		return generated_array_type_name(b0.source_type_id())
 	}
 	if b0 is types.Array {
-		return generated_array_type_name(a0.name())
+		return generated_array_type_name(a0.source_type_id())
 	}
 	return false
 }
 
-fn generated_array_type_name(name string) bool {
-	clean := name.all_after_last('.')
-	return clean.starts_with('Array_') && !clean.starts_with('Array_fixed_')
+fn generated_array_type_name(name_id u32) bool {
+	clean := flat.source_type_syntax(name_id).unqualified()
+	return flat.source_type_query(clean).has(.c_array_prefix)
+		&& flat.source_type_id('Array_fixed') !in flat.source_type_syntax(clean).underscore_prefixes()
 }
 
 fn (g &FlatGen) map_abi_types_match(a &types.Type, b &types.Type) bool {
@@ -7674,16 +7680,16 @@ fn (g &FlatGen) map_abi_types_match(a &types.Type, b &types.Type) bool {
 		return true
 	}
 	if a0 is types.Map {
-		return generated_map_type_name(b0.name())
+		return generated_map_type_name(b0.source_type_id())
 	}
 	if b0 is types.Map {
-		return generated_map_type_name(a0.name())
+		return generated_map_type_name(a0.source_type_id())
 	}
 	return false
 }
 
-fn generated_map_type_name(name string) bool {
-	return name.all_after_last('.').starts_with('Map_')
+fn generated_map_type_name(name_id u32) bool {
+	return flat.source_type_query(flat.source_type_syntax(name_id).unqualified()).has(.c_map_prefix)
 }
 
 fn (g &FlatGen) or_value_temp_matches_array_return(node flat.Node, expected &types.Type) bool {
@@ -7745,12 +7751,12 @@ fn (g &FlatGen) call_constructs_type(id flat.NodeId, target &types.Type) bool {
 	if fn_node.kind != .ident {
 		return false
 	}
-	target_name := target.name()
-	if target_name.len == 0 {
+	target_name_id := target.source_type_id()
+	if target_name_id == 0 {
 		return false
 	}
-	short_target := target_name.all_after_last('.')
-	return fn_node.value == target_name || fn_node.value == short_target
+	return fn_node.source_value_id() == target_name_id
+		|| fn_node.source_value_id() == flat.source_type_syntax(target_name_id).unqualified()
 }
 
 fn (g &FlatGen) multi_return_expr_type(id flat.NodeId) ?types.MultiReturn {
@@ -8072,7 +8078,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 		}
 		va_list_init := g.a.node(va_list_init_id)
 		if va_list_init.kind == .struct_init
-			&& flat.source_type_name(g.struct_init_effective_type_name(va_list_init_id, va_list_init)).trim_left('&') == 'C.va_list'
+			&& flat.source_type_syntax(g.struct_init_effective_type_name(va_list_init_id, va_list_init)).pointer_raw_base() == flat.source_type_id('C.va_list')
 			&& lhs.kind == .ident {
 			if !lhs_is_defer_capture {
 				g.write('${decl_prefix}va_list ')
@@ -8372,7 +8378,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					v_type = decl_type
 				}
 			}
-			if rhs.kind == .call && lhs.typ_text().starts_with('(') && lhs.typ_text().contains(',') {
+			if rhs.kind == .call && flat.source_type_syntax(lhs.typ).paren_prefix() && flat.source_type_syntax(lhs.typ).tuple_contains_comma() {
 				mut declared_ret := g.declared_call_return_type(rhs_id)
 				if rhs.children_count > 0 {
 					callee := g.a.node(g.a.child(&rhs, 0))
@@ -8408,8 +8414,8 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				rhs_value := unalias_type(types.unwrap_pointer(rhs_type))
 				if current_value is types.Struct && rhs_value is types.Struct
 					&& cgen_type_pointer_depth(v_type) == cgen_type_pointer_depth(rhs_type)
-					&& rhs_value.name().contains('.')
-					&& current_value.name().all_after_last('.') == rhs_value.name().all_after_last('.') {
+					&& flat.source_type_shape(rhs_value.source_type_id()).has(.dotted)
+					&& flat.source_type_syntax(current_value.source_type_id()).unqualified() == flat.source_type_syntax(rhs_value.source_type_id()).unqualified() {
 					v_type = rhs_type
 				}
 			}
@@ -8549,8 +8555,8 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			if node.typ != 0 && !flat.source_type_shape(node.typ).has(.dotted) && v_type is types.Struct {
 				rhs_type := g.usable_expr_type(rhs_id)
-				if rhs_type is types.Struct && rhs_type.name().contains('.')
-					&& rhs_type.name().all_after_last('.') == v_type.name().all_after_last('.') {
+				if rhs_type is types.Struct && flat.source_type_shape(rhs_type.source_type_id()).has(.dotted)
+					&& flat.source_type_syntax(rhs_type.source_type_id()).unqualified() == flat.source_type_syntax(v_type.source_type_id()).unqualified() {
 					v_type = rhs_type
 				}
 			}
@@ -8712,11 +8718,11 @@ fn (mut g FlatGen) gen_shared_local_decl(lhs_id flat.NodeId, rhs_id flat.NodeId,
 	inner := g.shared_qualify_type_text(value_type.source_type_id(), g.tc.cur_module)
 	mut wrapper := g.shared_wrapper_c_name(inner)
 	if wrapper !in g.shared_type_names {
-		short_inner := flat.source_type_name(inner).all_after_last('.')
+		short_inner := flat.source_type_syntax(inner).unqualified()
 		mut matching_wrapper := ''
 		mut ambiguous := false
 		for candidate, info in g.shared_type_names {
-			if flat.source_type_name(info.inner).all_after_last('.') != short_inner {
+			if flat.source_type_syntax(info.inner).unqualified() != short_inner {
 				continue
 			}
 			if matching_wrapper.len > 0 {
@@ -9047,14 +9053,14 @@ fn (g &FlatGen) preserve_specialized_alias_decl_type(rhs_id flat.NodeId, rhs fla
 }
 
 fn (g &FlatGen) struct_init_decl_type_is_bare_generic_instance(rhs flat.Node, v_type &types.Type) bool {
-	if rhs.kind != .struct_init || rhs.value_text().contains('[') {
+	if rhs.kind != .struct_init || flat.source_type_shape(rhs.source_value_id()).has(.bracketed) {
 		return false
 	}
-	type_name := v_type.name()
-	if !type_name.contains('[') {
+	type_id := v_type.source_type_id()
+	if !flat.source_type_shape(type_id).has(.bracketed) {
 		return false
 	}
-	return rhs.value_text().all_after_last('.') == type_name.all_before('[').all_after_last('.')
+	return flat.source_type_syntax(rhs.source_value_id()).unqualified() == flat.source_type_syntax(flat.source_type_syntax(type_id).generic_base()).unqualified()
 }
 
 fn (mut g FlatGen) struct_init_decl_c_type(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type) string {
@@ -9165,7 +9171,7 @@ fn (g &FlatGen) checker_struct_field_type(type_name_id u32, field_name string) ?
 		}
 	}
 	if flat.source_type_shape(type_name_id).has(.dotted) {
-		short_id := flat.source_type_id(c_short_name_view(flat.source_type_name(type_name_id)))
+		short_id := flat.source_type_syntax(type_name_id).unqualified()
 		return g.checker_owner_field_type(short_id, field_name)
 	}
 	qname := g.tc.qualify_type_name(type_name_id)
@@ -9185,10 +9191,7 @@ fn (g &FlatGen) checker_owner_field_type(owner_id u32, field_name string) ?types
 }
 
 fn field_type_needs_checker_authority(raw string) bool {
-	// Most spellings have no spaces; check them in place instead of copying.
-	clean_raw := if raw.index_u8(` `) >= 0 { raw.replace(' ', '') } else { raw }
-	return clean_raw in ['Option', '__v_option', '__v_result'] || clean_raw.starts_with('Option_')
-		|| clean_raw.starts_with('__v_option_') || clean_raw.starts_with('__v_result_')
+	return flat.source_type_syntax(flat.source_type_id(raw)).cgen_decl_authority()
 }
 
 fn (mut g FlatGen) fixed_array_decl_is_unusable(typ types.ArrayFixed) bool {
@@ -9200,22 +9203,11 @@ fn decl_annotation_is_unusable(typ &types.Type, raw_id u32) bool {
 	if typ is types.ArrayFixed && fixed_array_contains_void(typ) {
 		return true
 	}
-	return decl_annotation_text_is_unusable(flat.source_type_name(raw_id))
+	return flat.source_type_syntax(raw_id).cgen_decl_unusable()
 }
 
 fn decl_annotation_text_is_unusable(raw string) bool {
-	// Most spellings have no spaces; check them in place instead of copying.
-	clean_raw := if raw.index_u8(` `) >= 0 { raw.replace(' ', '') } else { raw }
-	// Without `]`, only an `Option`, `__v_` or `void` prefix can match below.
-	if clean_raw.len == 0 || (clean_raw[0] != `O` && clean_raw[0] != `_` && clean_raw[0] != `v`
-		&& clean_raw.index_u8(`]`) < 0) {
-		return false
-	}
-	if field_type_needs_checker_authority(clean_raw) {
-		return true
-	}
-	return clean_raw == 'void' || clean_raw.starts_with('void[') || clean_raw.ends_with(']void')
-		|| (clean_raw.index_u8(`]`) >= 0 && clean_raw.contains(']void['))
+	return flat.source_type_syntax(flat.source_type_id(raw)).cgen_decl_unusable()
 }
 
 fn fixed_array_contains_void(typ &types.Type) bool {
@@ -10199,15 +10191,14 @@ fn (g &FlatGen) assign_struct_operator_method(lhs_type &types.Type, op flat.Op) 
 }
 
 fn (g &FlatGen) assign_struct_operator_receivers(type_name_id u32) []u32 {
-	type_name := flat.source_type_name(type_name_id)
 	mut receivers := []u32{cap: 2}
-	if type_name.len == 0 {
+	if type_name_id == 0 {
 		return receivers
 	}
 	receivers << type_name_id
-	if !type_name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
+	if !flat.source_type_shape(type_name_id).has(.dotted) && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
 		&& g.tc.cur_module != 'builtin' {
-		receivers << flat.source_type_id('${g.tc.cur_module}.${type_name}')
+		receivers << flat.source_type_composition_two(.qualified, flat.source_type_id(g.tc.cur_module), type_name_id)
 	}
 	return receivers
 }
@@ -11094,14 +11085,14 @@ fn (g &FlatGen) thread_wait_expr_return_type(call flat.Node) ?types.Type {
 		return none
 	}
 	thread_struct := thread_type as types.Struct
-	thread_name := trimmed_space(thread_struct.name())
-	if thread_name == 'thread' {
+	thread_name := flat.source_type_syntax(thread_struct.source_type_id()).trimmed()
+	if thread_name == flat.source_type_id('thread') {
 		return types.Type(types.void_)
 	}
-	if !thread_name.starts_with('thread ') {
+	if !flat.source_type_shape(thread_name).has(.thread_type) {
 		return none
 	}
-	payload := g.tc.parse_type(flat.source_type_id(trimmed_space(thread_name[7..])))
+	payload := g.tc.parse_type(flat.source_type_syntax(flat.source_type_syntax(thread_name).raw_base()).trimmed())
 	if base_type !is types.Array && base_type !is types.ArrayFixed {
 		return *payload
 	}

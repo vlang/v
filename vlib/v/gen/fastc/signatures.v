@@ -121,7 +121,7 @@ fn fastc_skip_type_declaration(mut scan scanner.Scanner, first token.Token) !tok
 }
 
 fn fastc_parameter_is_params_struct(parameter_type u32, params_structs map[string]bool) bool {
-	return params_structs[flat.source_type_name(parameter_type).trim_right('*')]
+	return params_structs[flat.source_type_name(fastc_trim_pointer_type(parameter_type))]
 }
 
 fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
@@ -225,10 +225,10 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				tok = tok_scan_token
 
 				if receiver_key == '' {
-					receiver_key = fastc_semantic_declared_type_key(flat.source_type_name(receiver_type), declared_type_c_names)
+					receiver_key = flat.source_type_name(fastc_semantic_declared_type_key(receiver_type, declared_type_c_names))
 				}
 				if receiver_is_mut && !flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
-					receiver_type = flat.source_type_id(flat.source_type_name(receiver_type) + '*')
+					receiver_type = flat.source_type_composition_two(.concat, receiver_type, flat.source_type_id('*'))
 				}
 				parameter_types << receiver_type
 				parameter_mutability << receiver_is_mut
@@ -405,7 +405,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				parameter_type := parameter_type_source_id_2
 
 				stored_parameter_type := if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
-					flat.source_type_id(flat.source_type_name(parameter_type) + '*')
+					flat.source_type_composition_two(.concat, parameter_type, flat.source_type_id('*'))
 				} else {
 					parameter_type
 				}
@@ -741,7 +741,7 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 		parameter_type := parameter_type_source_id_2_2
 
 		parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
-			flat.source_type_id(flat.source_type_name(parameter_type) + '*')
+			flat.source_type_composition_two(.concat, parameter_type, flat.source_type_id('*'))
 		} else {
 			parameter_type
 		}
@@ -1210,7 +1210,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				parameter_type := parameter_type_source_id_2_2_2
 
 				parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
-					flat.source_type_id(flat.source_type_name(parameter_type) + '*')
+					flat.source_type_composition_two(.concat, parameter_type, flat.source_type_id('*'))
 				} else {
 					parameter_type
 				}
@@ -1480,7 +1480,7 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		parameter_type := parameter_type_source_id_2_2_2_2
 
 		parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
-			flat.source_type_id(flat.source_type_name(parameter_type) + '*')
+			flat.source_type_composition_two(.concat, parameter_type, flat.source_type_id('*'))
 		} else {
 			parameter_type
 		}
@@ -1803,11 +1803,18 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 }
 
 fn fastc_composite_type_part(typ string) string {
-	return typ.replace(' ', '_').replace('*', '_ptr').replace('.', '__')
+	return flat.source_type_name(flat.source_type_composition_one(.fastc_composite_part, flat.source_type_id(typ)))
 }
 
 fn fastc_fixed_array_type(length string, element_type string) string {
-	return 'FixedArray_${fastc_fixed_array_length_part(length)}_FASTC_ARRAY_OF_${fastc_composite_type_part(element_type)}'
+	return flat.source_type_name(fastc_fixed_array_type_id(length, flat.source_type_id(element_type)))
+}
+
+fn fastc_fixed_array_type_id(length string, element_type u32) u32 {
+	return flat.source_type_composition(.concat, [flat.source_type_id('FixedArray_'),
+		flat.source_type_id(fastc_fixed_array_length_part(length)),
+		flat.source_type_id('_FASTC_ARRAY_OF_'),
+		flat.source_type_composition_one(.fastc_composite_part, element_type)])
 }
 
 fn fastc_fixed_array_length_part(length string) string {
@@ -1819,16 +1826,15 @@ fn fastc_fixed_array_length_part(length string) string {
 }
 
 fn fastc_fixed_array_length(typ string) ?string {
-	if !typ.starts_with('FixedArray_') || !typ.contains('_FASTC_ARRAY_OF_') {
+	return fastc_fixed_array_length_id(flat.source_type_id(typ))
+}
+
+fn fastc_fixed_array_length_id(typ_id u32) ?string {
+	syntax := flat.source_type_syntax(typ_id)
+	if !syntax.fastc_fixed_array_length_valid() {
 		return none
 	}
-	details := typ['FixedArray_'.len..]
-	part := details.all_before('_FASTC_ARRAY_OF_')
-	if part.starts_with('EXPRHEX') {
-		decoded := hex.decode(part['EXPRHEX'.len..]) or { return none }
-		return decoded.bytestr()
-	}
-	return part
+	return flat.source_type_name(syntax.fastc_fixed_array_length())
 }
 
 fn fastc_fixed_length_expression(tokens []FastcExpressionToken, start int, minimum_precedence int, module_name string, imports map[string]string, declared_types map[string]bool) !(string, int) {
@@ -1905,11 +1911,12 @@ fn fastc_fixed_length_atom(tokens []FastcExpressionToken, start int, module_name
 }
 
 fn fastc_fixed_array_element_type(typ_id u32) ?u32 {
-	typ := flat.source_type_name(typ_id)
-	if !typ.starts_with('FixedArray_') || !typ.contains('_FASTC_ARRAY_OF_') {
+	base := fastc_trim_pointer_type(typ_id)
+	syntax := flat.source_type_syntax(base)
+	if !flat.source_type_query(base).has(.c_fixed_array_prefix) || !syntax.fastc_array_marker() {
 		return none
 	}
-	return flat.source_type_id(fastc_decode_ptr_element_type(typ.trim_right('*').all_after('_FASTC_ARRAY_OF_')))
+	return fastc_decode_ptr_element_type_id(syntax.fastc_array_marker_payload())
 }
 
 fn fastc_decimal_integer_value(source string) ?int {
@@ -2035,67 +2042,72 @@ fn (g &Parser) c_integer_term_value(term string, depth int) ?int {
 }
 
 fn fastc_array_c_type(element_type string) string {
-	return 'Array_${fastc_composite_type_part(element_type)}'
+	return flat.source_type_name(fastc_array_c_type_id(flat.source_type_id(element_type)))
+}
+
+fn fastc_array_c_type_id(element_type u32) u32 {
+	return flat.source_type_composition_two(.concat, flat.source_type_id('Array_'), flat.source_type_composition_one(.fastc_composite_part, element_type))
 }
 
 fn fastc_map_c_type(key_type string, value_type string) string {
-	return 'Map_${fastc_composite_type_part(key_type)}_${fastc_composite_type_part(value_type)}'
+	return flat.source_type_name(fastc_map_c_type_id(flat.source_type_id(key_type), flat.source_type_id(value_type)))
+}
+
+fn fastc_map_c_type_id(key_type u32, value_type u32) u32 {
+	return flat.source_type_composition(.concat, [flat.source_type_id('Map_'),
+		flat.source_type_composition_one(.fastc_composite_part, key_type), flat.source_type_id('_'),
+		flat.source_type_composition_one(.fastc_composite_part, value_type)])
 }
 
 fn fastc_map_key_value_types(typ_id u32) ?(u32, u32) {
-	typ := flat.source_type_name(typ_id)
-	base := typ.trim_right('*')
-	if !base.starts_with('Map_') {
-		return none
-	}
-	payload := base['Map_'.len..]
-	// Composite C type names can contain underscores, so splitting every
-	// underscore loses the value type. Map keys are restricted to scalar V
-	// types; use that boundary and retain the complete encoded value type.
-	for key_type in ['string', 'rune', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
+	base := fastc_trim_pointer_type(typ_id)
+	if !flat.source_type_query(base).has(.c_map_prefix) { return none }
+	syntax := flat.source_type_syntax(flat.source_type_syntax(base).c_map_payload())
+	// Retain the scalar-key priority and complete encoded composite value.
+	for key in ['string', 'rune', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
 		'f32', 'f64', 'char', 'uint', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr', 'bool'] {
-		prefix := '${fastc_composite_type_part(key_type)}_'
-		if payload.starts_with(prefix) {
-			return flat.source_type_id(key_type), flat.source_type_id(fastc_decode_map_value_type(payload[prefix.len..]))
+		key_id := flat.source_type_id(key)
+		for index, prefix in syntax.underscore_prefixes() {
+			if prefix == key_id {
+				return key_id, fastc_decode_map_value_type_id(syntax.underscore_suffixes()[index])
+			}
 		}
 	}
 	return none
 }
 
 fn fastc_declared_map_key_value_types(typ_id u32, declared_kinds map[string]FastcDeclaredTypeKind) ?(u32, u32) {
-	typ := flat.source_type_name(typ_id)
-	base := typ.trim_right('*')
-	if !base.starts_with('Map_') {
-		return none
-	}
-	payload := base['Map_'.len..]
-	mut matched_key := ''
-	mut matched_prefix := ''
+	base := fastc_trim_pointer_type(typ_id)
+	if !flat.source_type_query(base).has(.c_map_prefix) { return none }
+	syntax := flat.source_type_syntax(flat.source_type_syntax(base).c_map_payload())
+	mut matched_key := u32(0)
+	mut matched_index := -1
 	for type_key, kind in declared_kinds {
-		// Map keys may be enums or aliases of scalar key types. Choose the longest
-		// matching C spelling because qualified type names can share prefixes.
-		if kind !in [.enum_, .alias_] {
-			continue
-		}
+		if kind !in [.enum_, .alias_] { continue }
 		c_type := fastc_c_declared_type_name(type_key)
-		prefix := '${fastc_composite_type_part(c_type)}_'
-		if payload.starts_with(prefix) && prefix.len > matched_prefix.len {
-			matched_key = c_type
-			matched_prefix = prefix
+		prefix := flat.source_type_composition_one(.fastc_composite_part, flat.source_type_id(c_type))
+		// Later underscore boundaries are longer prefixes, preserving the longest match.
+		for index, candidate in syntax.underscore_prefixes() {
+			if candidate == prefix && index > matched_index {
+				matched_key = flat.source_type_id(c_type)
+				matched_index = index
+			}
 		}
 	}
-	if matched_key == '' {
-		return none
-	}
-	return flat.source_type_id(matched_key), flat.source_type_id(fastc_decode_map_value_type(payload[matched_prefix.len..]))
+	if matched_key == 0 { return none }
+	return matched_key, fastc_decode_map_value_type_id(syntax.underscore_suffixes()[matched_index])
 }
 
 fn fastc_decode_map_value_type(encoded string) string {
-	// A trailing `_ptr` on a composite value can belong to its nested element
-	// type (`map[string][]&T` -> `Map_string_Array_T_ptr`), not to the map
-	// value itself. Preserve composite names so their own decoder handles it.
-	if encoded.ends_with('_ptr') && !encoded.starts_with('Array_') && !encoded.starts_with('Map_') && !encoded.starts_with('FixedArray_') {
-		return encoded[..encoded.len - '_ptr'.len] + '*'
+	return flat.source_type_name(fastc_decode_map_value_type_id(flat.source_type_id(encoded)))
+}
+
+fn fastc_decode_map_value_type_id(encoded u32) u32 {
+	syntax := flat.source_type_syntax(encoded)
+	query := flat.source_type_query(encoded)
+	// A nested composite owns the `_ptr` suffix of its encoded element.
+	if syntax.c_ptr_name_suffix() && !query.has(.c_array_prefix) && !query.has(.c_map_prefix) && !query.has(.c_fixed_array_prefix) {
+		return flat.source_type_composition_two(.concat, syntax.c_ptr_name_base(), flat.source_type_id('*'))
 	}
 	return encoded
 }
@@ -2119,7 +2131,7 @@ fn (g &Parser) map_key_value_types(typ u32) ?(u32, u32) {
 // not a map.
 fn (g &Parser) map_type_of(typ u32) ?u32 {
 	map_type := g.map_type_through_alias(typ)
-	if fastc_trim_pointer_suffix(flat.source_type_name(map_type)).starts_with('Map_') {
+	if flat.source_type_query(map_type).has(.c_map_prefix) {
 		return map_type
 	}
 	return none
@@ -2129,11 +2141,11 @@ fn (g &Parser) map_type_of(typ u32) ?u32 {
 // (`main__Counts` -> `Map_string_int`), keeping a pointer suffix. Any other type is
 // returned unchanged. The alias is a C typedef of the map, so the two are interchangeable.
 fn (g &Parser) map_type_through_alias(typ u32) u32 {
-	if typ == 0 || fastc_trim_pointer_suffix(flat.source_type_name(typ)).starts_with('Map_') {
+	if typ == 0 || flat.source_type_query(typ).has(.c_map_prefix) {
 		return typ
 	}
 	aliased := g.underlying_alias_type(typ)
-	if aliased != typ && fastc_trim_pointer_suffix(flat.source_type_name(aliased)).starts_with('Map_') {
+	if aliased != typ && flat.source_type_query(aliased).has(.c_map_prefix) {
 		return aliased
 	}
 	return typ
@@ -2145,9 +2157,10 @@ fn (g &Parser) is_map_type(typ u32) bool {
 }
 
 fn fastc_register_composite_type(typ u32, mut composite_types map[string]bool) {
-	base := flat.source_type_name(typ).trim_right('*')
-	if base.starts_with('Array_') || base.starts_with('Map_') {
-		composite_types[base] = true
+	base := fastc_trim_pointer_type(typ)
+	query := flat.source_type_query(base)
+	if query.has(.c_array_prefix) || query.has(.c_map_prefix) {
+		composite_types[flat.source_type_name(base)] = true
 	}
 }
 

@@ -78,12 +78,15 @@ fn (tc &TypeChecker) value_allocation_layout(typ &Type,
 
 fn (tc &TypeChecker) struct_allocation_layout(name_id u32,
 	mut seen map[u32]bool) AllocationLayout {
-	name := flat.source_type_name(name_id)
-	if name.starts_with('C.') {
+	if flat.source_type_query(name_id).has(.c_prefix) {
 		return .aligned | .scanned
 	}
-	base, _, is_generic := generic_type_application_parts(name)
-	key := if is_generic { base } else { name }
+	syntax := flat.source_type_syntax(name_id)
+	key := flat.source_type_name(if syntax.application_valid() {
+		syntax.application_base()
+	} else {
+		name_id
+	})
 	// Zero is the valid empty layout flag set.
 	mut layout := unsafe { AllocationLayout(0) }
 	if index := tc.first_type_declaration_ids[key] {

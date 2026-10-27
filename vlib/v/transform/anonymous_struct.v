@@ -63,7 +63,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				// anonymous structs with this field shape. Keep that nominal identity;
 				// transform_struct_init will apply it when this literal is lowered.
 				if checked_type := t.tc.expr_type(flat.NodeId(idx)) {
-					if transform_is_anonymous_struct_name(flat.source_type_name(t.tc.type_name(checked_type))) {
+					if transform_is_anonymous_struct_name(checked_type.source_type_id()) {
 						continue
 					}
 				}
@@ -100,8 +100,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				}
 				shape := '${cur_module.len}:${cur_module}:${shape_parts.join(',')}'
 				if semantic_name_id := inferred_by_shape[shape] {
-					semantic_name := flat.source_type_name(semantic_name_id)
-					t.a.nodes[idx].set_value_text(semantic_name.all_after_last('.'))
+					t.a.nodes[idx].set_value_text(flat.source_type_name(flat.source_type_syntax(semantic_name_id).unqualified()))
 					t.a.nodes[idx].typ = semantic_name_id
 					t.mark_scoped_owned_base_node(idx)
 					t.tc.register_synth_type(flat.NodeId(idx), types.Struct{
