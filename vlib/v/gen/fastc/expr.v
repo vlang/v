@@ -3668,7 +3668,9 @@ fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) u32 {
 	}
 	arg_index := fastc_call_argument_index(tokens, open)
 	name := tokens[open - 1].lit
-	if open >= 2 && tokens[open - 2].tok == .dot {
+	if open >= 2 && tokens[open - 2].tok == .dot
+		&& !(open >= 3 && tokens[open - 3].tok == .name && tokens[open - 3].lit in g.imports
+			&& tokens[open - 3].lit !in g.locals && (open < 4 || tokens[open - 4].tok != .dot)) {
 		// `recv.method(…)`: resolve on the receiver's type; parameter_types[0] is the receiver.
 		receiver_start := fastc_method_receiver_start(tokens, open - 2)
 		receiver_tokens := tokens[receiver_start..open - 2]
@@ -3682,7 +3684,7 @@ fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) u32 {
 			u32(0)
 		}
 	}
-	function_key := g.unqualified_function_key(name)
+	function_key := g.function_key_for_call(tokens, open - 1)
 	signature := g.functions[function_key] or { return u32(0) }
 	return if arg_index < signature.parameter_types.ids.len {
 		signature.parameter_types.ids[arg_index]

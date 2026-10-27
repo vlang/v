@@ -964,11 +964,20 @@ fn (mut g Parser) parse_match_statement() !bool {
 		mut had_member_smartcast := false
 		mut member_smartcast_active := false
 		common_numeric_type := fastc_match_common_numeric_variant(variant_types)
+		mut array_variant_count := 0
+		if variant_types.len > 1 {
+			// Keep this scan within the FastC self-hosting subset used by PGO training.
+			for variant_type in variant_types {
+				if flat.source_type_query(variant_type).has(.c_array_prefix) {
+					array_variant_count++
+				}
+			}
+		}
 		// Several struct variants in one arm (`FnTypeDecl, AliasTypeDecl { node.type_pos }`)
 		// may only read fields common to all of them, which V lays out compatibly, so a
 		// plain-local subject narrows through the first variant — mirroring the member-chain
 		// smart-cast below.
-		struct_multi_variant := variant_types.len > 1 && common_numeric_type == 0 && !variant_types.any(flat.source_type_query(it).has(.c_array_prefix))
+		struct_multi_variant := variant_types.len > 1 && common_numeric_type == 0 && array_variant_count == 0
 		smartcast_active := is_boxed && !is_else && (variant_types.len == 1 || common_numeric_type != 0) && subject_local != ''
 		if smartcast_active {
 			variant_cname := if common_numeric_type != 0 {
@@ -1027,7 +1036,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 		// layout for array variants) is correct.
 		member_smartcast_type := flat.source_type_id(if variant_types.len == 1 {
 			flat.source_type_name(variant_types[0])
-		} else if variant_types.len > 1 && variant_types.all(flat.source_type_query(it).has(.c_array_prefix)) {
+		} else if variant_types.len > 1 && array_variant_count == variant_types.len {
 			'array'
 		} else if variant_types.len > 1 && common_numeric_type == 0 {
 			flat.source_type_name(variant_types[0])
@@ -2162,10 +2171,22 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 	if g.selfhost && names.len > 1 && g.parallel_rhs_is_option_tuple_or() {
 		return g.parse_parallel_option_tuple(names, mutability, is_declaration)
 	}
+	assignment_targets := if is_declaration {
+		[]FastcRenderedExpression{}
+	} else {
+		g.validate_parallel_assignment_targets(names)!
+	}
 	g.last_multi_return_types = flat.TypeTextList{ ids: ([]u32{}).clone() }
 	mut values := []string{}
 	mut value_types := []u32{}
+	previous_expected_type := g.expected_expression_type
 	for {
+		// Each assignment value takes its context from the corresponding target.
+		g.expected_expression_type = if values.len < assignment_targets.len {
+			assignment_targets[values.len].typ
+		} else {
+			u32(0)
+		}
 		item := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 		if item == '' {
 			return g.unsupported('empty parallel assignment')
@@ -2177,6 +2198,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 		}
 		g.next()
 	}
+	g.expected_expression_type = previous_expected_type
 	value := values[0]
 	if value == '' {
 		return g.unsupported('empty parallel assignment')
@@ -2185,11 +2207,6 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 	if values.len > 1 {
 		if values.len != names.len {
 			return g.unsupported('parallel assignment with ${names.len} targets and ${values.len} values')
-		}
-		assignment_targets := if is_declaration {
-			[]FastcRenderedExpression{}
-		} else {
-			g.validate_parallel_assignment_targets(names)!
 		}
 		mut temporaries := []string{cap: values.len}
 		for i, item in values {
@@ -2227,11 +2244,6 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 	mut component_types := g.multi_return_types_for_expression(g.last_expression)
 	if component_types.len == 0 {
 		component_types = g.last_multi_return_types.ids.clone()
-	}
-	assignment_targets := if is_declaration {
-		[]FastcRenderedExpression{}
-	} else {
-		g.validate_parallel_assignment_targets(names)!
 	}
 	temporary := g.temporary_name('multi_return')
 	g.write_line('MultiReturn ${temporary} = (${value});')
@@ -2286,7 +2298,13 @@ fn (mut g Parser) finish_parallel_member_assignment(names []string, member_targe
 	g.last_multi_return_types = flat.TypeTextList{ ids: ([]u32{}).clone() }
 	mut values := []string{}
 	mut value_types := []u32{}
+	previous_expected_type := g.expected_expression_type
 	for {
+		g.expected_expression_type = if values.len < targets.len {
+			targets[values.len].typ
+		} else {
+			u32(0)
+		}
 		value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 		if value == '' {
 			return g.unsupported('empty parallel assignment')
@@ -2298,6 +2316,7 @@ fn (mut g Parser) finish_parallel_member_assignment(names []string, member_targe
 		}
 		g.next()
 	}
+	g.expected_expression_type = previous_expected_type
 	g.consume_statement_end()
 	if values.len > 1 {
 		if values.len != targets.len {
@@ -2574,7 +2593,13 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 	g.last_multi_return_types = flat.TypeTextList{ ids: ([]u32{}).clone() }
 	mut values := []string{}
 	mut value_types := []u32{}
+	previous_expected_type := g.expected_expression_type
 	for {
+		g.expected_expression_type = if values.len < targets.len {
+			targets[values.len].typ
+		} else {
+			u32(0)
+		}
 		value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 		if value == '' {
 			return g.unsupported('empty parallel assignment')
@@ -2586,6 +2611,7 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 		}
 		g.next()
 	}
+	g.expected_expression_type = previous_expected_type
 	g.consume_statement_end()
 	if values.len > 1 {
 		if values.len != targets.len {

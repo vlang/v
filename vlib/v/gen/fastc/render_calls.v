@@ -562,7 +562,7 @@ fn (g &Parser) render_c_struct_sizeof(tokens []FastcExpressionToken) ?FastcRende
 }
 
 fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
-	if tokens.len < 7 {
+	if tokens.len < 6 {
 		return none
 	}
 	mut rendered := rendered_expression
@@ -613,7 +613,10 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 		}
 		method := tokens[i].lit
 		raw_receiver_source := fastc_take_string(mut receiver)
-		receiver_source := g.render_member_receiver(receiver_tokens) or { raw_receiver_source }
+		receiver_source := g.render_member_receiver(receiver_tokens) or {
+			// Imported calls must resolve their C name and render their arguments too.
+			g.render_call_argument_expression(receiver_tokens, receiver_type) or { raw_receiver_source }
+		}
 		raw_argument_source := fastc_take_string(mut raw_argument)
 		c_argument_source := fastc_take_string(mut c_argument)
 		mut needle := '${raw_receiver_source}.${method}(${c_argument_source})'
