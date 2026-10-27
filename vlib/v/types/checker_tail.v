@@ -9577,7 +9577,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				return tc.call_info(literal_method, true)
 			}
 		}
-		if fn_typ := tc.selector_fn_type(fn_node) {
+		// Resolve the declared field/global/const type once for both the plain and
+		// the Option/Result-wrapped function value checks.
+		declared_value_type := tc.selector_declared_value_type(fn_node) or { builtin_void_type }
+		if fn_typ := fn_type_from_type(declared_value_type) {
 			return CallInfo{
 				name:         ''
 				params:       fn_typ.params.map(*it.typ)
@@ -9587,7 +9590,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			}
 		}
 		mut use_resolved_fn_value_call := base_is_imported_module
-		if _ := tc.selector_wrapped_fn_type(fn_node) {
+		if _ := wrapped_fn_type_from_type(declared_value_type) {
 			use_resolved_fn_value_call = true
 		}
 		if use_resolved_fn_value_call {
@@ -17443,7 +17446,9 @@ fn (mut tc TypeChecker) infer_call_info_receiver(node flat.Node, info CallInfo) 
 	if callee.kind != .selector || callee.children_count == 0 {
 		return info
 	}
-	if tc.selector_fn_type(*callee) != none || tc.selector_wrapped_fn_type(*callee) != none {
+	declared_value_type := tc.selector_declared_value_type(*callee) or { builtin_void_type }
+	if fn_type_from_type(declared_value_type) != none
+		|| wrapped_fn_type_from_type(declared_value_type) != none {
 		return info
 	}
 	receiver_id := tc.a.child(callee, 0)
@@ -21561,14 +21566,8 @@ fn (tc &TypeChecker) selector_field_fn_type(node flat.Node, base_type Type) ?FnT
 	return none
 }
 
-// selector_fn_type supports selector fn type handling for TypeChecker.
-fn (tc &TypeChecker) selector_fn_type(node flat.Node) ?FnType {
-	typ := tc.selector_declared_value_type(node) or { return none }
-	return fn_type_from_type(typ)
-}
-
-fn (tc &TypeChecker) selector_wrapped_fn_type(node flat.Node) ?FnType {
-	typ := tc.selector_declared_value_type(node) or { return none }
+// wrapped_fn_type_from_type returns the function type wrapped by an Option or Result type.
+fn wrapped_fn_type_from_type(typ Type) ?FnType {
 	payload := match typ {
 		OptionType { *typ.base_type }
 		ResultType { *typ.base_type }
