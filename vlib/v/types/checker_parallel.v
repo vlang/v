@@ -527,6 +527,7 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 	if tc.fn_ancillary_registrations.len == 0 {
 		return
 	}
+	tc.disable_call_flag_bloom()
 	pool := checker_worker_pool(tc.a)
 	if isnil(pool) || pool.size() < 2 {
 		for group in 0 .. pass2_ancillary_groups {
@@ -1135,6 +1136,10 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	mut pfsw := time.new_stopwatch()
 	error_count := tc.errors.len
 	tc.prepare_check_name_filters()
+	// Later stages write the flag tables without going through registration.
+	defer {
+		tc.disable_call_flag_bloom()
+	}
 	tc.check_postfix_value_uses_preflight()
 	tc.check_for_in_const_conflicts_preflight()
 	if tc.checker_fixture_mode && tc.errors.len > 0 {

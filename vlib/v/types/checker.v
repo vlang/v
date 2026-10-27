@@ -1371,7 +1371,8 @@ pub mut:
 	const_expr_short_names       map[string]bool
 	const_expr_short_names_count int = -1
 	global_name_bloom            NameBloom // of global_names
-	call_flag_bloom              NameBloom // of the call_info flag tables (call_flag_tables_count)
+	call_flag_bloom              NameBloom // of the set call_info flags, see call_flag_tables_count
+	call_flag_lens               [4]int    // call_flag_table_lens when call_flag_bloom was built
 	// The last call whose callee generic_compile_error_instantiation found to be
 	// no generic function: its children start, callee name and module.
 	nongeneric_call_start  int = -1
@@ -1844,6 +1845,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		alias_short_names_count:               tc.alias_short_names_count
 		global_name_bloom:                     tc.global_name_bloom
 		call_flag_bloom:                       tc.call_flag_bloom
+		call_flag_lens:                        tc.call_flag_lens
 		declaration_visibility:                tc.declaration_visibility
 		imports:                               tc.imports
 		file_imports:                          tc.file_imports
@@ -5885,36 +5887,65 @@ fn (mut tc TypeChecker) prepare_check_name_filters() {
 	}
 	tc.global_name_bloom.count = u64(tc.global_names.len)
 	tc.call_flag_bloom = NameBloom{}
-	for name, _ in tc.fn_shared_params {
-		tc.call_flag_bloom.add(name)
+	$if ownership ? {
+		// Ownership checks register fn literal signatures from the workers.
+		return
 	}
-	for name, _ in tc.fn_variadic {
-		tc.call_flag_bloom.add(name)
+	// fn_variadic holds every fn, so only the entries that set a flag go in.
+	for name, shared_params in tc.fn_shared_params {
+		if shared_params.len > 0 {
+			tc.call_flag_bloom.add(name)
+		}
 	}
-	for name, _ in tc.c_variadic_fns {
-		tc.call_flag_bloom.add(name)
+	for name, is_variadic in tc.fn_variadic {
+		if is_variadic {
+			tc.call_flag_bloom.add(name)
+		}
 	}
-	for name, _ in tc.fn_implicit_veb_ctx {
-		tc.call_flag_bloom.add(name)
+	for name, is_c_variadic in tc.c_variadic_fns {
+		if is_c_variadic {
+			tc.call_flag_bloom.add(name)
+		}
 	}
-	tc.call_flag_bloom.count = tc.call_flag_tables_count()
+	for name, has_ctx in tc.fn_implicit_veb_ctx {
+		if has_ctx {
+			tc.call_flag_bloom.add(name)
+		}
+	}
+	tc.call_flag_lens = tc.call_flag_table_lens()
+	tc.call_flag_bloom.count = call_flag_bloom_built
 }
 
-// call_flag_tables_count identifies the sizes of the sparse tables that
-// call_info reads besides the signatures (all smaller than 2^16 entries).
-// Keep all four lengths even when the compiler runs on a 32-bit host.
+// call_flag_bloom_built is the call_flag_bloom count while it covers the flag tables.
+const call_flag_bloom_built = u64(1)
+
+// call_flag_table_lens are the sizes of the sparse tables that call_info reads
+// besides the signatures.
+@[inline]
+fn (tc &TypeChecker) call_flag_table_lens() [4]int {
+	return [tc.fn_shared_params.len, tc.fn_variadic.len, tc.c_variadic_fns.len,
+		tc.fn_implicit_veb_ctx.len]!
+}
+
+// call_flag_tables_count is call_flag_bloom_built while no flag table changed
+// size since prepare_check_name_filters, so that a table written directly
+// (not through a registration, which disables the bloom) makes call_info read
+// every table again.
 @[inline]
 fn (tc &TypeChecker) call_flag_tables_count() u64 {
-	counts := [tc.fn_shared_params.len, tc.fn_variadic.len, tc.c_variadic_fns.len,
-		tc.fn_implicit_veb_ctx.len]!
-	mut count := u64(0)
-	for n in counts {
-		if n >= 65535 {
-			return name_bloom_invalid_count
-		}
-		count = (count << 16) | u64(n)
+	if tc.call_flag_lens[0] != tc.fn_shared_params.len || tc.call_flag_lens[1] != tc.fn_variadic.len
+		|| tc.call_flag_lens[2] != tc.c_variadic_fns.len
+		|| tc.call_flag_lens[3] != tc.fn_implicit_veb_ctx.len {
+		return name_bloom_invalid_count
 	}
-	return count
+	return call_flag_bloom_built
+}
+
+// disable_call_flag_bloom makes call_info read every flag table, after a flag
+// table entry may have been set without call_flag_bloom.
+@[inline]
+fn (mut tc TypeChecker) disable_call_flag_bloom() {
+	tc.call_flag_bloom.count = name_bloom_invalid_count
 }
 
 // NameBloom is a 4096-bit bloom filter over the names of a table that had
@@ -8703,6 +8734,7 @@ fn (mut tc TypeChecker) register_fn_name_alias_owned(name string, ret_type Type,
 }
 
 fn (mut tc TypeChecker) register_fn_ancillary_owned(name string, shared_params []bool, is_variadic bool, implicit_veb_ctx bool) {
+	tc.disable_call_flag_bloom()
 	if shared_params.len > 0 {
 		tc.fn_shared_params[name] = shared_params
 	} else if tc.fn_shared_params.len > 0 {
@@ -8845,6 +8877,7 @@ fn (mut tc TypeChecker) register_c_variadic_fn_with_lowered(name string, lowered
 		}
 		return
 	}
+	tc.disable_call_flag_bloom()
 	tc.c_variadic_fns[name] = true
 	if lowered_name != name {
 		tc.c_variadic_fns[lowered_name] = true
