@@ -303,7 +303,7 @@ fn test_selfhost_return_alias_cache_preserves_module_and_worker_context() {
 	for module_name in ['one', 'two', 'one', 'two'] {
 		t.cur_module = module_name
 		for typ in ['Value', '?Value', '[]Value', 'map[string]Value', ' int '] {
-			expected := t.raw_return_type_contains_alias_uncached(typ)
+			expected := t.raw_return_type_contains_alias_uncached(flat.source_type_id(typ))
 			assert t.raw_return_type_contains_alias(flat.source_type_id(typ)) == expected
 			assert t.raw_return_type_contains_alias(flat.source_type_id(typ.clone())) == expected
 		}
