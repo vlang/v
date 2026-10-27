@@ -8869,10 +8869,29 @@ fn (mut g FlatGen) track_local_pointer_storage_decl(lhs flat.Node, owner types.S
 	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 		return
 	}
-	g.track_shadowed_global_local(lhs.value, owner)
-	g.declare_local_c_type(owner, c_type)
-	g.declare_local_mutability(owner, g.current_decl_is_mut || lhs.is_mut)
-	g.declare_local_pointer_storage(owner, typ is types.Pointer || c_type_is_pointer_storage(c_type))
+	key := owner.storage_key()
+	if key.len == 0 {
+		return
+	}
+	// Record all declaration facts under one key; deleting from an empty map is a no-op.
+	if g.local_name_needs_global_suffix(lhs.value) {
+		g.shadowed_global_locals[key] = true
+	}
+	if c_type.len > 0 {
+		g.local_c_type_by_owner.set_id(key, flat.source_type_id(c_type))
+	} else if g.local_c_type_by_owner.ids.len > 0 {
+		g.local_c_type_by_owner.delete(key)
+	}
+	if g.current_decl_is_mut || lhs.is_mut {
+		g.local_mutable_by_owner[key] = true
+	} else if g.local_mutable_by_owner.len > 0 {
+		g.local_mutable_by_owner.delete(key)
+	}
+	if typ is types.Pointer || c_type_is_pointer_storage(c_type) {
+		g.local_pointer_storage_by_owner[key] = true
+	} else if g.local_pointer_storage_by_owner.len > 0 {
+		g.local_pointer_storage_by_owner.delete(key)
+	}
 }
 
 fn (mut g FlatGen) track_local_fn_value_decl(lhs flat.Node, owner types.ScopeBindingOwner, rhs flat.Node) {
