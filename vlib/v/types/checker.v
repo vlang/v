@@ -1151,6 +1151,7 @@ pub mut:
 	fn_implicit_veb_ctx              map[string]bool
 	receiver_method_suffix_index     map[string]string
 	receiver_method_short_names      map[string]bool
+	collection_method_short_names    map[string]bool // short names of `[]T.m` and `map[K]V.m` methods
 	generic_receiver_method_index    map[string][]string
 	structs                          map[string][]StructField
 	c_struct_scoped_fields           map[string][]StructField
@@ -1621,6 +1622,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_implicit_veb_ctx:                     map[string]bool{}
 		receiver_method_suffix_index:            map[string]string{}
 		receiver_method_short_names:             map[string]bool{}
+		collection_method_short_names:           map[string]bool{}
 		generic_receiver_method_index:           map[string][]string{}
 		structs:                                 map[string][]StructField{}
 		c_struct_scoped_fields:                  map[string][]StructField{}
@@ -1788,6 +1790,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_implicit_veb_ctx:                   tc.fn_implicit_veb_ctx
 		receiver_method_suffix_index:          tc.receiver_method_suffix_index
 		receiver_method_short_names:           tc.receiver_method_short_names
+		collection_method_short_names:         tc.collection_method_short_names
 		generic_receiver_method_index:         tc.generic_receiver_method_index
 		structs:                               tc.structs
 		c_struct_scoped_fields:                tc.c_struct_scoped_fields
@@ -2162,6 +2165,7 @@ pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
 		tc.fn_param_types = tc.fn_param_types.clone()
 		tc.receiver_method_suffix_index = tc.receiver_method_suffix_index.clone()
 		tc.receiver_method_short_names = tc.receiver_method_short_names.clone()
+		tc.collection_method_short_names = tc.collection_method_short_names.clone()
 		tc.generic_receiver_method_index = clone_string_list_map(tc.generic_receiver_method_index)
 		tc.fn_variadic = tc.fn_variadic.clone()
 		tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
@@ -8886,6 +8890,7 @@ pub fn (mut tc TypeChecker) rebuild_fn_param_suffix_index() {
 	tc.clear_generic_receiver_pattern_cache()
 	tc.receiver_method_suffix_index = map[string]string{}
 	tc.receiver_method_short_names = map[string]bool{}
+	tc.collection_method_short_names = map[string]bool{}
 	tc.generic_receiver_method_index = map[string][]string{}
 	tc.receiver_method_suffix_index.reserve(u32(tc.fn_param_types.len * 3))
 	for name, _ in tc.fn_param_types {
@@ -8921,6 +8926,13 @@ fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
 		tc.receiver_method_short_names[unsafe { method.substr_unsafe(1, method.len) }] = true
 	}
 	receiver_id := syntax.qualifier()
+	receiver := flat.source_type_name(receiver_id)
+	if receiver.contains('[]') || receiver.contains('map[') {
+		tc.collection_method_short_names[method] = true
+		if method.len > 1 && method[0] == `@` {
+			tc.collection_method_short_names[unsafe { method.substr_unsafe(1, method.len) }] = true
+		}
+	}
 	receiver_shape := flat.source_type_shape(receiver_id)
 	if receiver_shape.has(.bracketed) && flat.source_type_query(receiver_id).has(.bracket_suffix) {
 		mut indexed := tc.generic_receiver_method_index[method] or { []string{} }
@@ -14355,6 +14367,15 @@ fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, met
 			&& tc.method_can_be_called_on_receiver(base_type, method, escaped) {
 			return escaped
 		}
+	} else if tc.method_suffix_prescreen && tc.top_level_idx.len > 0 && method.index_u8(`.`) < 0
+		&& method !in tc.collection_method_short_names {
+		// No array or map receiver declares this method, so of all the
+		// receiver_method_name_candidates only these can resolve (same order).
+		if found := tc.selected_file_collection_method_without_collection_decl(base_type,
+			recv, type_name, method)
+		{
+			return found
+		}
 	} else {
 		for method_name in receiver_method_name_candidates(clean, method, tc.cur_module) {
 			if !tc.fn_signature_known(method_name) {
@@ -14375,6 +14396,28 @@ fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, met
 		if info.name.len > 0 {
 			return info.name
 		}
+	}
+	return none
+}
+
+// selected_file_collection_method_without_collection_decl tries the candidates of
+// receiver_method_name_candidates whose receiver is not spelled as an array or map
+// type: the receiver's own name (plain, then escaped), then `array.m` or `map.m`.
+fn (tc &TypeChecker) selected_file_collection_method_without_collection_decl(base_type Type, recv Type, type_name u32, method string) ?string {
+	type_text := flat.source_type_name(type_name)
+	plain := '${type_text}.${method}'
+	if tc.fn_signature_known(plain) && tc.method_can_be_called_on_receiver(base_type, method, plain) {
+		return plain
+	}
+	escaped := '${type_text}.@${method}'
+	if tc.fn_signature_known(escaped)
+		&& tc.method_can_be_called_on_receiver(base_type, method, escaped) {
+		return escaped
+	}
+	generic := if recv is Array { 'array.${method}' } else { 'map.${method}' }
+	if tc.fn_signature_known(generic)
+		&& tc.method_can_be_called_on_receiver(base_type, method, generic) {
+		return generic
 	}
 	return none
 }
