@@ -10591,10 +10591,26 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 		c.fn_decls[callee_name] or { return }
 	}
 	fn_node := c.a.node(info.node_id)
+	// Count the declared positional params. Params precede the body statements;
+	// the receiver (op == .dot) is the selector base, not a positional argument.
+	mut npos := 0
+	for i in 0 .. fn_node.children_count {
+		p := c.a.child_node(fn_node, i)
+		if p.kind != .param {
+			break
+		}
+		if p.op != .dot {
+			npos++
+		}
+	}
+	if npos == 0 {
+		return
+	}
 	// Count only positional arguments. Trailing named params
 	// (`compress(data, level: 3)`) are `field_init` children of the call, not
 	// positional arguments; counting them would make the trailing params struct
 	// look fully provided and skip collecting its omitted field defaults.
+	// Most calls provide every param; stop counting as soon as they do.
 	mut provided := 0
 	for i in 1 .. int(call.children_count) {
 		arg := c.a.child_node(call, i)
@@ -10602,18 +10618,30 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 			continue
 		}
 		provided++
+		if provided >= npos {
+			return
+		}
 	}
-	// Visit only omitted parameter types; ordinary calls need no temporary
-	// signature array. Receiver and named-argument handling stays independent.
+	c.collect_omitted_param_types_default_calls(fn_node, info, provided, mut calls)
+}
+
+// collect_omitted_param_types_default_calls visits the param types at positional
+// index >= `provided`, the params a call omitted. It is kept out of line so the
+// common fully-provided call stays cheap.
+@[noinline]
+fn (c &CallCollector) collect_omitted_param_types_default_calls(fn_node &flat.Node, info FnDeclInfo, provided int, mut calls []string) {
+	imports := c.imports(info.import_context)
 	mut param_index := 0
 	for i in 0 .. fn_node.children_count {
 		p := c.a.child_node(fn_node, i)
-		// The receiver (op == .dot) is the selector base, not a positional argument.
-		if p.kind != .param || p.op == .dot {
+		if p.kind != .param {
+			break
+		}
+		if p.op == .dot {
 			continue
 		}
 		if param_index >= provided {
-			c.collect_struct_default_calls_for_type(p.typ, info.module, c.imports(info.import_context), mut calls)
+			c.collect_struct_default_calls_for_type(p.typ, info.module, imports, mut calls)
 		}
 		param_index++
 	}
