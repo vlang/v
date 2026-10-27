@@ -5040,7 +5040,7 @@ fn (mut p FastArm64Parser) parse_enum_shorthand(type_name_source_id u32) !FastAr
 		declaration = candidate
 	}
 	if declaration.source == '' {
-		return p.unsupported('enum shorthand `${type_name}.${field}`')
+		return p.unsupported('enum shorthand `${flat.source_type_name(type_name_source_id)}.${field}`')
 	}
 	mut value := p.parse_constant_declaration(declaration)!
 	typ := p.program.type_id(type_name_source_id)

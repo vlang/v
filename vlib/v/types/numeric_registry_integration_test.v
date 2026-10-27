@@ -96,13 +96,21 @@ interface Contract {
 	assert tc.source_declares_type_in_scope(flat.source_type_id('Item'), path, 'registryfixture')
 	// Mutate existing list elements too: independent map headers alone cannot
 	// protect the master's collected fields and metadata from a worker write.
-	worker.structs[item_id][0].name = 'worker_value'
+	worker_struct_field := worker.structs[item_id][0]
+	worker.structs[item_id][0] = StructField{
+		...worker_struct_field
+		name: 'worker_value'
+	}
 	worker.struct_modules[item_id] = 'worker'
 	worker.struct_files[item_id] = 'worker.v'
 	worker.struct_generic_params[box_id][0] = 'WorkerT'
 	worker.sum_types.set_ids(choice_id, [flat.source_type_bool])
 	worker.enum_fields[kind_id][0] = 'worker_first'
-	worker.interface_fields[contract_id][0].name = 'worker_label'
+	worker_interface_field := worker.interface_fields[contract_id][0]
+	worker.interface_fields[contract_id][0] = StructField{
+		...worker_interface_field
+		name: 'worker_label'
+	}
 	worker.interface_abstract_methods[parent_id][0] = 'worker_parent'
 	worker.interface_embeds.set_ids(contract_id, []u32{})
 	assert worker.structs[item_id][0].name == 'worker_value'

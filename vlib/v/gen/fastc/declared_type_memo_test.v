@@ -28,6 +28,8 @@ fn fastc_declared_memo_test_parser(module_name string) Parser {
 }
 
 fn test_fastc_declared_type_memo_preserves_resolution_and_negative_results() {
+	// Existing spelling IDs still retain negative results in the per-file memo.
+	flat.source_type_id('ordinary_value_name')
 	g := fastc_declared_memo_test_parser('alpha')
 	for _ in 0 .. 2 {
 		assert g.resolve_declared_type_key('Record') or { panic('missing local record') } == flat.source_type_id('alpha.Record')
@@ -50,6 +52,7 @@ fn test_fastc_declared_type_memo_preserves_resolution_and_negative_results() {
 }
 
 fn test_fastc_declared_type_memo_resets_when_monomorphization_switches_modules() {
+	flat.source_type_id('ordinary_value_name')
 	mut g := fastc_declared_memo_test_parser('alpha')
 	assert g.resolve_declared_type_key('Record') or { panic('missing alpha type') } == flat.source_type_id('alpha.Record')
 	assert g.resolve_declared_type_key('Private') or { panic('missing private type') } == flat.source_type_id('alpha.Private')
@@ -105,10 +108,12 @@ fn test_fastc_lookup_only_type_probes_do_not_intern_misses() {
 	assert fastc_resolve_declared_type_key('alpha', missing, g.imports, g.declared_types) == none
 	assert flat.source_type_existing_id('alpha.${missing}') == none
 	assert flat.source_type_existing_id('beta.${missing}') == none
-	assert g.resolve_declared_type_key(missing) == none
-	raw_id := flat.source_type_existing_id(missing) or { panic('negative memo key missing') }
-	entry := g.declared_type_key_memo[raw_id] or { panic('negative memo result missing') }
-	assert !entry.found
+	memo_count := g.declared_type_key_memo.len
+	for _ in 0 .. 2 {
+		assert g.resolve_declared_type_key(missing) == none
+		assert flat.source_type_existing_id(missing) == none
+		assert g.declared_type_key_memo.len == memo_count
+	}
 	assert flat.source_type_existing_id('alpha.${missing}') == none
 	assert flat.source_type_existing_id('beta.${missing}') == none
 }

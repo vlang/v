@@ -3228,7 +3228,11 @@ fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports 
 }
 
 fn (g &Parser) resolve_declared_type_key(raw_type string) ?u32 {
-	raw_id := flat.source_type_id(raw_type)
+	// Calls also probe ordinary value names. Do not retain those names in the
+	// process-wide type table just to cache a failed lookup for this source file.
+	raw_id := flat.source_type_existing_id(raw_type) or {
+		return g.resolve_declared_type_key_uncached(raw_type)
+	}
 	if entry := g.declared_type_key_memo[raw_id] {
 		if entry.found {
 			return entry.value

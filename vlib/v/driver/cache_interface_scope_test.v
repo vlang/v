@@ -191,7 +191,7 @@ fn test_interface_scopes_split_generic_names_at_the_right_commas() {
 	assert flat.source_type_name(v3_interface_line_name('#module Box=main')) == '#module Box'
 	scopes := parse_v3_interface_scopes('lists.Seq[K, V]=lists.Pair[K, V],Mine[int, string]\n#module Mine[int, string]=main\n#reach Mine[int, string]=lists.Seq[K, V]')
 	assert flat.TypeTextList{ ids: scopes.names }.names() == ['lists.Seq[K, V]']
-	assert scopes.modules['Mine[int, string]'] == 'main'
+	assert scopes.modules[flat.source_type_id('Mine[int, string]')] == 'main'
 	assert scopes.declaring_module(flat.source_type_id('lists.Seq[K, V]')) == 'lists'
 	assert scopes.module_signature(visible_modules('lists')) == 'lists.Seq[K, V]=lists.Pair[K, V],Mine[int, string]'
 	assert scopes.module_signature(visible_modules()) == ''
