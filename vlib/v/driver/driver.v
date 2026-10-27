@@ -3923,7 +3923,14 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		// The program brings its own `_start`, syscalls and allocator (see
 		// vlib/builtin/linux_bare), so it links nothing from the host.
 		if !options.is_o && !options.is_shared {
-			after_inputs << ['-static', '-nostdlib']
+			if options.target_os == 'macos' {
+				// macOS cannot link static binaries and always starts via dyld,
+				// so a freestanding macOS program still links libSystem (which
+				// also provides pthread_create for vlibc threads).
+				after_inputs << ['-lSystem']
+			} else {
+				after_inputs << ['-static', '-nostdlib']
+			}
 			// `-nostdlib` also drops TinyCC's own runtime, whose helpers (like
 			// `__builtin_clz`) the generated code calls; they do not need libc.
 			if options.is_tcc {
