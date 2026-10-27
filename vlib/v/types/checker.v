@@ -1195,16 +1195,16 @@ pub mut:
 	receiver_method_short_names      map[string]bool
 	generic_receiver_method_index    map[string][]string
 	structs                          map[u32][]StructField
-	c_struct_scoped_fields           map[string][]StructField
+	c_struct_scoped_fields           map[u64][]StructField
 	struct_modules                   map[u32]string
 	struct_files                     map[u32]string
 	soa_structs                      map[u32]bool
-	// set of `${file}\x01${module}\x01${name}` keys for every source-level
+	// Packed source-context ID and type spelling ID keys for every source-level
 	// struct/type/interface/enum declaration, built once in `collect`. Replaces
 	// the former full-node scan in `source_declares_type_in_scope`, which was
 	// O(nodes) per call and dominated check/transform/cgen (called via qualify_name).
-	declared_type_scope_keys           map[string]bool
-	concrete_type_scope_keys           map[string]bool
+	declared_type_scope_keys           map[u64]bool
+	concrete_type_scope_keys           map[u64]bool
 	struct_error_embeds_shadow_builtin map[u32]bool
 	struct_generic_params              map[u32][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
 	struct_implements                  flat.SourceTypeListBindings
@@ -1660,12 +1660,12 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		receiver_method_short_names:             map[string]bool{}
 		generic_receiver_method_index:           map[string][]string{}
 		structs:                                 map[u32][]StructField{}
-		c_struct_scoped_fields:                  map[string][]StructField{}
+		c_struct_scoped_fields:                  map[u64][]StructField{}
 		struct_modules:                          map[u32]string{}
 		struct_files:                            map[u32]string{}
 		soa_structs:                             map[u32]bool{}
-		declared_type_scope_keys:                map[string]bool{}
-		concrete_type_scope_keys:                map[string]bool{}
+		declared_type_scope_keys:                map[u64]bool{}
+		concrete_type_scope_keys:                map[u64]bool{}
 		struct_error_embeds_shadow_builtin:      map[u32]bool{}
 		struct_generic_params:                   map[u32][]string{}
 		struct_implements:                       flat.SourceTypeListBindings{}
@@ -2222,7 +2222,7 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.struct_modules = clone_owned_source_type_string_map(tc.struct_modules)
 	tc.struct_files = clone_owned_source_type_string_map(tc.struct_files)
 	tc.soa_structs = tc.soa_structs.clone()
-	tc.declared_type_scope_keys = clone_owned_string_bool_map(tc.declared_type_scope_keys)
+	tc.declared_type_scope_keys = tc.declared_type_scope_keys.clone()
 	tc.struct_error_embeds_shadow_builtin = tc.struct_error_embeds_shadow_builtin.clone()
 	tc.struct_generic_params = clone_owned_source_type_string_list_map(tc.struct_generic_params)
 	tc.struct_implements = tc.struct_implements.clone_owned()
@@ -4075,16 +4075,18 @@ fn (mut tc TypeChecker) collect_index_child(a &flat.FlatAst, i int, idx_file str
 			if node.value == 'string' {
 				tc.has_builtins = true
 			}
-			tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, node.value)] = true
+			name_id := node.source_value_id()
+			tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, name_id)] = true
 			if node.generic_params().len == 0 {
-				tc.concrete_type_scope_keys[scope_type_key(idx_file, idx_module, node.value.all_after_last('.'))] = true
+				tc.concrete_type_scope_keys[scope_type_key(idx_file, idx_module, scope_unqualified_type_name(name_id))] = true
 			}
 			tc.top_level_idx << i
 		}
 		.type_decl, .interface_decl, .enum_decl {
-			tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, node.value)] = true
+			name_id := node.source_value_id()
+			tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, name_id)] = true
 			if node.kind != .enum_decl && node.generic_params().len == 0 {
-				tc.concrete_type_scope_keys[scope_type_key(idx_file, idx_module, node.value.all_after_last('.'))] = true
+				tc.concrete_type_scope_keys[scope_type_key(idx_file, idx_module, scope_unqualified_type_name(name_id))] = true
 			}
 			tc.top_level_idx << i
 		}
@@ -4149,8 +4151,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	// pass 1 because pass 1 already calls qualify_name, which depends on it.
 	// No later phase adds declarations, so both indexes stay complete for the
 	// whole compile.
-	tc.declared_type_scope_keys = map[string]bool{}
-	tc.concrete_type_scope_keys = map[string]bool{}
+	tc.declared_type_scope_keys = map[u64]bool{}
+	tc.concrete_type_scope_keys = map[u64]bool{}
 	tc.top_level_idx = []i32{cap: 65536}
 	if !parallel_index_prep {
 		tc.prepare_threads_condition()
@@ -4201,16 +4203,18 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				if node.value == 'string' {
 					tc.has_builtins = true
 				}
-				tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, node.value)] = true
+				name_id := node.source_value_id()
+				tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, name_id)] = true
 				if node.generic_params().len == 0 {
-					tc.concrete_type_scope_keys[scope_type_key(idx_file, idx_module, node.value.all_after_last('.'))] = true
+					tc.concrete_type_scope_keys[scope_type_key(idx_file, idx_module, scope_unqualified_type_name(name_id))] = true
 				}
 				tc.top_level_idx << i
 			}
 			.type_decl, .interface_decl, .enum_decl {
-				tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, node.value)] = true
+				name_id := node.source_value_id()
+				tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, name_id)] = true
 				if node.kind != .enum_decl && node.generic_params().len == 0 {
-					tc.concrete_type_scope_keys[scope_type_key(idx_file, idx_module, node.value.all_after_last('.'))] = true
+					tc.concrete_type_scope_keys[scope_type_key(idx_file, idx_module, scope_unqualified_type_name(name_id))] = true
 				}
 				tc.top_level_idx << i
 			}
@@ -5015,7 +5019,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				// it is deterministic regardless of module collection order, instead of
 				// letting whichever declaration is collected last silently win.
 				if qname.starts_with('C.') {
-					scoped_name := c_struct_module_key(tc.cur_module, qname)
+					scoped_name := c_struct_module_key(tc.cur_module, qname_id)
 					if existing := tc.c_struct_scoped_fields[scoped_name] {
 						if fields.len > existing.len {
 							tc.c_struct_scoped_fields[scoped_name] = fields
@@ -5237,8 +5241,9 @@ fn (mut tc TypeChecker) set_struct_fields(name_id u32, fields []StructField, sha
 	}
 }
 
-fn c_struct_module_key(module_name string, qname string) string {
-	return '${module_name}\x00${qname}'
+// Keep the module and type identities distinct without allocating a compound spelling.
+fn c_struct_module_key(module_name string, qname_id u32) u64 {
+	return (u64(flat.source_type_id(module_name)) << 32) | u64(qname_id)
 }
 
 // Seed the frozen cache once instead of making every checker batch walk the
@@ -5509,8 +5514,8 @@ struct CStructDeclRecord {
 // C structs so far: per module, and the public ones.
 struct CStructRedeclarations {
 mut:
-	module_decls map[string]CStructDeclRecord
-	public_decls map[string]CStructDeclRecord
+	module_decls map[u64]CStructDeclRecord
+	public_decls map[u32]CStructDeclRecord
 }
 
 fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
@@ -5538,7 +5543,8 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations_of(a &flat.FlatAst, entrie
 					file:      tc.cur_file
 					module_:   tc.cur_module
 				}
-				module_key := '${tc.cur_module}\x00${qname}'
+				qname_id := flat.source_type_id(qname)
+				module_key := c_struct_module_key(tc.cur_module, qname_id)
 				if existing := seen.module_decls[module_key] {
 					if !c_struct_decl_signatures_compatible(existing.signature, current.signature)
 						&& !tc.c_struct_redeclaration_allowed(qname, existing.file, current.file,
@@ -5552,16 +5558,16 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations_of(a &flat.FlatAst, entrie
 				if node.op != .arrow {
 					continue
 				}
-				if existing := seen.public_decls[qname] {
+				if existing := seen.public_decls[qname_id] {
 					if existing.module_ != current.module_
 						&& !c_struct_decl_signatures_compatible(existing.signature, current.signature)
 						&& !tc.c_struct_redeclaration_allowed(qname, existing.file, current.file,
 							existing.module_, current.module_) {
 						tc.record_c_struct_redeclaration(node_idx, node, qname)
 					}
-					seen.public_decls[qname] = preferred_c_struct_decl(existing, current)
+					seen.public_decls[qname_id] = preferred_c_struct_decl(existing, current)
 				} else {
-					seen.public_decls[qname] = current
+					seen.public_decls[qname_id] = current
 				}
 			}
 			else {}
@@ -6859,7 +6865,7 @@ fn (tc &TypeChecker) qualify_type_name_uncached(name_id u32) u32 {
 	}
 	// A declaration in the active source scope shadows an already-collected
 	// unqualified symbol (notably errors.Error shadows builtin.Error).
-	if tc.source_declares_type_in_scope(name, tc.cur_file, tc.cur_module) { return qualified_id }
+	if tc.source_declares_type_in_scope(name_id, tc.cur_file, tc.cur_module) { return qualified_id }
 	// Substituted generic arguments may belong to another module's caller.
 	if tc.resolution_type_mode && (name_id in tc.structs || name_id in tc.interface_names
 		|| tc.sum_types.contains(name_id) || name_id in tc.enum_names || name_id in tc.flag_enums
@@ -7369,7 +7375,7 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	}
 	// A module's own C declaration is its local view of the external type.
 	// The canonical visibility entry may belong to a different module's mirror.
-	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, name) in tc.c_struct_scoped_fields {
+	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, flat.source_type_id(name)) in tc.c_struct_scoped_fields {
 		return none
 	}
 	mut declaration_name := name
@@ -8422,7 +8428,7 @@ fn (tc &TypeChecker) unqualified_type_symbol_has_scoped_shadow(name string) bool
 			return true
 		}
 	}
-	if tc.source_declares_type_in_scope(name, tc.cur_file, tc.cur_module) {
+	if tc.source_declares_type_in_scope(flat.source_type_id(name), tc.cur_file, tc.cur_module) {
 		return true
 	}
 	if file_import_key(tc.cur_file, name) in tc.file_selective_imports {
@@ -15864,8 +15870,7 @@ fn (mut tc TypeChecker) check_implicit_generic_sumtype_decl(node_id flat.NodeId,
 		syntax := flat.source_type_syntax(variant_id)
 		is_generic := syntax.application_valid()
 		lookup_id := if is_generic { syntax.application_base() } else { variant_id }
-		lookup := flat.source_type_name(lookup_id)
-		if !is_generic && tc.concrete_type_declared_in_current_file(lookup) {
+		if !is_generic && tc.concrete_type_declared_in_current_file(lookup_id) {
 			continue
 		}
 		qualified_id := tc.qualify_type_name(lookup_id)
@@ -15895,6 +15900,7 @@ fn (mut tc TypeChecker) check_implicit_generic_sumtype_decl(node_id flat.NodeId,
 			} else {
 				'sumtype'
 			}
+			lookup := flat.source_type_name(lookup_id)
 			tc.record_error_at(.unknown_type, 'generic ${kind} `${lookup}` must specify generic type names, e.g. ${lookup}[${params.join(', ')}]', child_id, tc.type_diagnostic_pos(node_id, flat.source_type_name(variant_id)))
 			continue
 		}
@@ -16218,7 +16224,7 @@ fn (tc &TypeChecker) bare_generic_decl_type_name_id(type_id u32) ?u32 {
 		return none
 	}
 	if syntax.application_valid() || !syntax.named_type() { return none }
-	if scope_type_key(tc.cur_file, tc.cur_module, flat.source_type_name(syntax.unqualified())) in tc.concrete_type_scope_keys {
+	if scope_type_key(tc.cur_file, tc.cur_module, syntax.unqualified()) in tc.concrete_type_scope_keys {
 		return none
 	}
 	qualified_id := tc.qualify_type_name(clean_id)
@@ -16235,8 +16241,8 @@ fn (tc &TypeChecker) bare_generic_decl_type_name_id(type_id u32) ?u32 {
 	return none
 }
 
-fn (tc &TypeChecker) concrete_type_declared_in_current_file(name string) bool {
-	return scope_type_key(tc.cur_file, tc.cur_module, name.all_after_last('.')) in tc.concrete_type_scope_keys
+fn (tc &TypeChecker) concrete_type_declared_in_current_file(name_id u32) bool {
+	return scope_type_key(tc.cur_file, tc.cur_module, scope_unqualified_type_name(name_id)) in tc.concrete_type_scope_keys
 }
 
 fn (mut tc TypeChecker) check_recursive_alias_decls() {
@@ -16942,7 +16948,7 @@ fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeI
 	qualified := if tc.cur_module.len > 0 { '${tc.cur_module}.${name}' } else { name }
 	report_import_scope_error := !should_diagnose && !name.contains('.')
 		&& name !in ['Error', 'MessageError', 'IError'] && tc.cur_module !in ['', 'main', 'builtin'] && tc.selected_main_file_declares_type(name) && !tc.qualify_candidate_type_exists(flat.source_type_id(qualified))
-		&& !tc.source_declares_type_in_scope(name, tc.cur_file, tc.cur_module)
+		&& !tc.source_declares_type_in_scope(flat.source_type_id(name), tc.cur_file, tc.cur_module)
 	if !should_diagnose && !report_import_scope_error {
 		return
 	}
@@ -17422,9 +17428,10 @@ fn identifier_word_match_at(source string, name string, start int) bool {
 }
 
 fn (tc &TypeChecker) selected_main_file_declares_type(name string) bool {
+	name_id := flat.source_type_id(name)
 	for file, selected in tc.diagnostic_files {
 		if selected && !file.starts_with('generic:')
-			&& tc.source_declares_type_in_scope(name, file, 'main') {
+			&& tc.source_declares_type_in_scope(name_id, file, 'main') {
 			return true
 		}
 	}

@@ -15,7 +15,7 @@ fn test_option_and_result_have_distinct_layouts() {
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	g.interfaces['IError'] = []string{}
+	g.interfaces[flat.source_type_id('IError')] = []string{}
 	option := types.Type(types.OptionType{ base_type: &types.Type(types.i64_) })
 	result := types.Type(types.ResultType{ base_type: &types.Type(types.i64_) })
 	option_name := g.optional_type_name(option)
@@ -52,7 +52,7 @@ fn test_option_with_pointer_payload_has_pointer_sized_ok() {
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	g.interfaces['IError'] = []string{}
+	g.interfaces[flat.source_type_id('IError')] = []string{}
 	for value_type in ['string', 'Array', 'map', 'u8*', 'sample__Node'] {
 		assert g.emit_optional_typedef('__v_option_${value_type}', value_type)
 	}

@@ -642,8 +642,7 @@ fn (t &Transformer) local_receiver_type_name(clean_type_id u32) u32 {
 		return clean_type_id
 	}
 	mut qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), elem_id)
-	qualified := flat.source_type_name(qualified_id)
-	if flat.source_type_id(qualified) in t.tc.structs || t.tc.sum_types.contains(flat.source_type_id(qualified)) || flat.source_type_id(qualified) in t.tc.enum_names {
+	if qualified_id in t.tc.structs || t.tc.sum_types.contains(qualified_id) || qualified_id in t.tc.enum_names {
 		for _ in 0 .. dimensions {
 			qualified_id = flat.source_type_composition_one(.array, qualified_id)
 		}
@@ -669,8 +668,7 @@ fn (t &Transformer) resolve_imported_flattened_generic_receiver_method(receiver_
 		|| t.bare_struct_name_is_local_to_current_module(receiver_type_id) {
 		return none
 	}
-	for short_base, qualified_base_id in t.qualified_types.ids {
-		short_base_id := flat.source_type_id(short_base)
+	for short_base_id, qualified_base_id in t.qualified_types.ids {
 		prefix_index := receiver_syntax.underscore_prefixes().index(short_base_id)
 		if prefix_index < 0 || qualified_base_id == short_base_id {
 			continue
@@ -737,9 +735,8 @@ fn (t &Transformer) resolve_specialized_generic_receiver_method(receiver_type_id
 	// before enumerating flattened specializations, otherwise the emitted C call
 	// loses the `orm__` prefix even though the specialization itself is qualified.
 	base_dotted := flat.source_type_shape(base_id).has(.dotted)
-	base := flat.source_type_name(base_id)
 	if !base_dotted && !t.bare_struct_name_is_local_to_current_module(base_id) {
-		if qualified_source_id := t.qualified_types.type_id(base) {
+		if qualified_source_id := t.qualified_types.type_id(base_id) {
 			if qualified_source_id != base_id {
 				mut qualified_parts := [qualified_source_id]
 				qualified_parts << args
@@ -751,6 +748,7 @@ fn (t &Transformer) resolve_specialized_generic_receiver_method(receiver_type_id
 	}
 	short_args := generic_type_args_short(args)
 	suffix := generic_type_suffixes(args)
+	base := flat.source_type_name(base_id)
 	mut candidates := []string{}
 	if !base_dotted && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		candidates << '${t.cur_module}.${base}[${short_args}].${method}'
@@ -979,9 +977,9 @@ fn (t &Transformer) resolve_embedded_receiver_method(base_type_id u32, method st
 			}
 		}
 	}
-	if flat.source_type_name(lookup_type) !in t.structs && flat.source_type_shape(lookup_type).has(.dotted) {
+	if lookup_type !in t.structs && flat.source_type_shape(lookup_type).has(.dotted) {
 		short_type := flat.source_type_syntax(lookup_type).unqualified()
-		if flat.source_type_name(short_type) in t.structs {
+		if short_type in t.structs {
 			lookup_type = short_type
 		}
 	}
@@ -3407,8 +3405,7 @@ fn (t &Transformer) add_static_assoc_type_candidate(mut candidates []u32, name_i
 }
 
 fn (t &Transformer) is_static_assoc_type_name(type_name_id u32) bool {
-	type_name := flat.source_type_name(type_name_id)
-	if type_name in t.structs || type_name in t.enum_types || t.sum_types.contains(type_name) {
+	if type_name_id in t.structs || type_name_id in t.enum_types || t.sum_types.contains(type_name_id) {
 		return true
 	}
 	if isnil(t.tc) {
@@ -3916,8 +3913,7 @@ fn (t &Transformer) decl_param_type_in_scope(typ_id u32, module_name string, fil
 		return clean_id
 	}
 	qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), clean_id)
-	qualified := flat.source_type_name(qualified_id)
-	if t.type_authority_has(qualified) { return qualified_id }
+	if t.type_authority_has(qualified_id) { return qualified_id }
 	if !isnil(t.tc) && (t.tc.type_aliases.contains(qualified_id) || qualified_id in t.tc.structs
 		|| qualified_id in t.tc.enum_names || t.tc.sum_types.contains(qualified_id) || qualified_id in t.tc.interface_names) {
 		return qualified_id
@@ -4520,7 +4516,7 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 			return t.make_cast(param_type_id, addr, param_type_id)
 		}
 	}
-	if arg_node.kind == .enum_val && flat.source_type_name(param_type_id) in t.enum_types {
+	if arg_node.kind == .enum_val && param_type_id in t.enum_types {
 		return t.transform_enum_shorthand(arg_id, *arg_node, param_type_id)
 	}
 	if param_shape.has(.pointer) && arg_node.kind == .prefix && arg_node.op == .amp
@@ -5665,7 +5661,6 @@ fn (t &Transformer) const_expr_for_name_in_context(name string, module_name stri
 // pack_variadic_args supports pack variadic args handling for Transformer.
 fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_type types.Type) flat.NodeId {
 	expected_enum_source_id := t.semantic_type_name(elem_type)
-	expected_enum := flat.source_type_name(expected_enum_source_id)
 	array_type := flat.source_type_composition_one(.array, expected_enum_source_id)
 	if t.next_non_field_init_arg(node, first_arg) == node.children_count {
 		if named_arg := t.transform_variadic_struct_fields(node, first_arg, elem_type) {
@@ -5695,7 +5690,7 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 			}
 			arg_id := t.a.child(&node, i)
 			arg := t.a.nodes[int(arg_id)]
-			if arg.kind == .enum_val && expected_enum in t.enum_types {
+			if arg.kind == .enum_val && expected_enum_source_id in t.enum_types {
 				values << t.transform_enum_shorthand(arg_id, arg, expected_enum_source_id)
 			} else if t.is_sum_type_name(expected_enum_source_id) {
 				values << t.wrap_sum_value(arg_id, expected_enum_source_id)
@@ -5751,11 +5746,10 @@ fn (mut t Transformer) append_trailing_args_to_variadic_tail(tail flat.NodeId, n
 
 fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.NodeId, elem_type types.Type) {
 	expected_elem_source_id := t.semantic_type_name(elem_type)
-	expected_elem := flat.source_type_name(expected_elem_source_id)
 	arg := t.a.nodes[int(arg_id)]
 	mut value := if specialized := t.specialize_generic_fn_value_arg(arg_id, expected_elem_source_id, true) {
 		specialized
-	} else if arg.kind == .enum_val && expected_elem in t.enum_types {
+	} else if arg.kind == .enum_val && expected_elem_source_id in t.enum_types {
 		t.transform_enum_shorthand(arg_id, arg, expected_elem_source_id)
 	} else if t.is_sum_type_name(expected_elem_source_id) {
 		t.wrap_sum_value(arg_id, expected_elem_source_id)
@@ -5846,7 +5840,7 @@ fn (t &Transformer) voidptr_variadic_storage_type(arg_id flat.NodeId) u32 {
 		parsed := types.unalias_type(t.tc.parse_type(typ_source_id))
 		if parsed is types.Enum {
 			// An enum occupies its backing type, or C's 32 bit `int` when it declares none.
-			scalar = t.enum_backing_types.type_id(parsed.name()) or { flat.source_type_i32 }
+			scalar = t.enum_backing_types.type_id(parsed.source_type_id()) or { flat.source_type_i32 }
 		}
 	}
 	match scalar {
@@ -6428,7 +6422,7 @@ fn (t &Transformer) is_numeric_stringify_type(typ_id u32) bool {
 		transform_identity_float_literal, flat.source_type_rune] {
 		return true
 	}
-	return flat.source_type_name(typ_id) in t.enum_types
+	return typ_id in t.enum_types
 }
 
 // is_enum_stringify_type reports whether is enum stringify type applies in transform.
@@ -6440,14 +6434,14 @@ fn (t &Transformer) is_enum_stringify_type(typ_id u32) bool {
 	if flat.source_type_shape(clean_typ).has(.mutable_type) {
 		clean_typ = flat.source_type_syntax(clean_typ).raw_base()
 	}
-	if flat.source_type_name(clean_typ) in t.enum_types {
+	if clean_typ in t.enum_types {
 		return true
 	}
 	mut qtyp := clean_typ
 	if !flat.source_type_shape(qtyp).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qtyp = flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_typ)
-		if flat.source_type_name(qtyp) in t.enum_types {
+		if qtyp in t.enum_types {
 			return true
 		}
 	}
@@ -6524,22 +6518,20 @@ fn (t &Transformer) enum_autostr_type_name(typ_id u32) u32 {
 	// Alias fields retain their alias spelling after checking, while the helper
 	// belongs to the underlying enum declaration.
 	resolved_id := t.alias_str_resolved_base_type(typ_id)
-	typ := flat.source_type_name(resolved_id)
 	mut qualified_id := resolved_id
 	if flat.source_type_query(qualified_id).has(.main_prefix) {
 		qualified_id = flat.source_type_syntax(qualified_id).main_base()
 	} else if !flat.source_type_shape(resolved_id).has(.dotted) {
 		q := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), resolved_id)
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
-			&& flat.source_type_name(q) in t.enum_types {
+			&& q in t.enum_types {
 			qualified_id = q
-		} else if fields := t.enum_types[typ] {
+		} else if fields := t.enum_types[resolved_id] {
 			// A bare name in a foreign-module expansion (auto-stringified struct
 			// fields keep their declaring module's spelling): the bare alias entry
 			// shares its field-array backing with the declaring qualified entry,
 			// which recovers the exact declared name cgen used for the helper.
-			for k, v in t.enum_types {
-				key_id := flat.source_type_id(k)
+			for key_id, v in t.enum_types {
 				if flat.source_type_shape(key_id).has(.dotted)
 					&& flat.source_type_syntax(key_id).unqualified() == resolved_id && v.data == fields.data {
 					qualified_id = key_id
@@ -6550,8 +6542,7 @@ fn (t &Transformer) enum_autostr_type_name(typ_id u32) u32 {
 			// No bare alias (shadowed): fall back to a unique qualified suffix.
 			mut match_name := u32(0)
 			mut matches := 0
-			for k, _ in t.enum_types {
-				key_id := flat.source_type_id(k)
+			for key_id, _ in t.enum_types {
 				if flat.source_type_shape(key_id).has(.dotted)
 					&& flat.source_type_syntax(key_id).unqualified() == resolved_id {
 					match_name = key_id
@@ -6566,10 +6557,8 @@ fn (t &Transformer) enum_autostr_type_name(typ_id u32) u32 {
 			}
 		}
 	}
-	qualified := flat.source_type_name(qualified_id)
 	short_id := flat.source_type_syntax(qualified_id).unqualified()
-	short_name := flat.source_type_name(short_id)
-	if qualified !in t.enum_types && short_name in t.enum_types {
+	if qualified_id !in t.enum_types && short_id in t.enum_types {
 		return short_id
 	}
 	if !isnil(t.tc) && qualified_id !in t.tc.enum_names {
@@ -6597,8 +6586,7 @@ fn (t &Transformer) source_enum_type_name(file string, spelling_id u32) ?u32 {
 	} else {
 		t.selective_import_type_name_for_file(file, spelling_id) or { return none }
 	}
-	resolved := flat.source_type_name(resolved_id)
-	if resolved in t.enum_types || resolved_id in t.tc.enum_names {
+	if resolved_id in t.enum_types || resolved_id in t.tc.enum_names {
 		return resolved_id
 	}
 	return none
@@ -6741,7 +6729,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 			}
 		}
 		if !clean_shape.has(.dotted) && !local_struct_shadows_alias {
-			aliases := t.type_aliases_with_short_name(flat.source_type_name(clean_typ))
+			aliases := t.type_aliases_with_short_name(clean_typ)
 			if aliases.len > 0 {
 				return t.alias_str_wrap(expr, clean_type_id, aliases[0].target, is_ref)
 			}
@@ -6901,7 +6889,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 			return t.make_call_typed('f64.str', [expr], flat.source_type_string)
 		}
 		else {
-			if flat.source_type_name(clean_typ) in t.enum_types
+			if clean_typ in t.enum_types
 				&& !local_struct_shadows_alias
 				&& (!isnil(t.tc) || !t.bare_struct_name_is_local_to_current_module(clean_typ)) {
 				if method := t.enum_str_method_name(clean_type_id) {
@@ -6914,7 +6902,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 				&& t.cur_module != 'builtin' {
 				qenum = flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_typ)
 			}
-			if flat.source_type_name(qenum) in t.enum_types {
+			if qenum in t.enum_types {
 				if method := t.enum_str_method_name(qenum) {
 					return t.make_call_typed(method, [expr], flat.source_type_string)
 				}
@@ -7217,7 +7205,7 @@ fn (t &Transformer) aggregate_str_method_name(aggregate_id u32) ?string {
 	// resolve its qualified owner before falling back to generated auto-str.
 	if !flat.source_type_shape(aggregate_id).has(.dotted) && !t.bare_struct_name_is_local_to_current_module(aggregate_id)
 		&& !t.bare_sum_type_name_is_local_to_current_module(aggregate_id) {
-		if qualified_source_id := t.qualified_types.type_id(aggregate) {
+		if qualified_source_id := t.qualified_types.type_id(aggregate_id) {
 			if method := t.resolve_receiver_method_for_type(qualified_source_id, 'str') {
 				return method
 			}
@@ -8336,9 +8324,9 @@ fn struct_string_display_name(typ u32) string {
 
 fn (t &Transformer) alias_string_display_name(alias_name_id u32, base_type_id u32) string {
 	if !flat.source_type_shape(alias_name_id).has(.dotted) && t.cur_module !in ['', 'main', 'builtin'] {
-		qualified := flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), alias_name_id))
-		if !isnil(t.tc) && t.tc.type_aliases.contains(flat.source_type_id(qualified)) {
-			return qualified
+		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), alias_name_id)
+		if !isnil(t.tc) && t.tc.type_aliases.contains(qualified) {
+			return flat.source_type_name(qualified)
 		}
 	}
 	if !flat.source_type_shape(alias_name_id).has(.dotted) && !isnil(t.tc) {
@@ -8484,15 +8472,14 @@ fn (mut t Transformer) struct_str_field_needs_indent(field_type_id u32) bool {
 		return false
 	}
 	resolved_source_id := t.alias_str_resolved_base_type(clean_id)
-	resolved := flat.source_type_name(resolved_source_id)
 	if !t.alias_str_needs_name_wrapper(resolved_source_id) {
 		return false
 	}
-	if resolved in t.enum_types {
+	if resolved_source_id in t.enum_types {
 		return false
 	}
 	if !flat.source_type_shape(resolved_source_id).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' && flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), resolved_source_id)) in t.enum_types {
+		&& t.cur_module != 'builtin' && flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), resolved_source_id) in t.enum_types {
 		return false
 	}
 	if aggregate_source_id := t.stringify_aggregate_type_name(resolved_source_id) {
@@ -8573,7 +8560,7 @@ fn (mut t Transformer) stringify_expansion_estimate_at(typ_id u32, depth_left in
 	}
 	agg_source_id := t.stringify_aggregate_type_name(clean) or { return 0 }
 	agg_source_id_2 := agg_source_id
-	resolved_sum := flat.source_type_name(t.resolve_sum_name(agg_source_id))
+	resolved_sum := t.resolve_sum_name(agg_source_id)
 	is_sum := t.sum_types.contains(resolved_sum)
 	// A struct with a custom/generated str() method that survives markused lowers
 	// to a bounded call, not an inline expansion. Sum types get no such shortcut:
@@ -8921,8 +8908,7 @@ fn (t &Transformer) stringify_aggregate_type_name(typ_id u32) ?u32 {
 	if flat.source_type_query(clean_id).has(.main_prefix)
 		&& !flat.source_type_shape(flat.source_type_syntax(clean_id).main_base()).has(.dotted) {
 		short_id := flat.source_type_syntax(clean_id).main_base()
-		short := flat.source_type_name(short_id)
-		if short in t.structs || t.sum_types.contains(short)
+		if short_id in t.structs || t.sum_types.contains(short_id)
 			|| (!isnil(t.tc) && (short_id in t.tc.structs || t.tc.sum_types.contains(short_id))) {
 			clean_id = short_id
 		}
@@ -8932,7 +8918,6 @@ fn (t &Transformer) stringify_aggregate_type_name(typ_id u32) ?u32 {
 		&& t.generic_aggregate_base_exists(syntax.generic_app_base(), syntax.generic_app_args().len) {
 		return clean_id
 	}
-	clean := flat.source_type_name(clean_id)
 	if flat.source_type_shape(clean_id).has(.dotted) {
 		if !isnil(t.tc) && (clean_id in t.tc.structs || t.tc.sum_types.contains(clean_id)) {
 			return clean_id
@@ -8941,8 +8926,7 @@ fn (t &Transformer) stringify_aggregate_type_name(typ_id u32) ?u32 {
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qname_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_id)
-		qname := flat.source_type_name(qname_id)
-		if qname in t.structs || t.sum_types.contains(qname) {
+		if qname_id in t.structs || t.sum_types.contains(qname_id) {
 			return qname_id
 		}
 		if !isnil(t.tc) && (qname_id in t.tc.structs || t.tc.sum_types.contains(qname_id)) {
@@ -8953,16 +8937,14 @@ fn (t &Transformer) stringify_aggregate_type_name(typ_id u32) ?u32 {
 	// types also populate qualified_types by short name, and consulting that index
 	// first can redirect a local `Chunk` to an imported `ui.Chunk` during auto-str
 	// lowering.
-	if clean in t.structs || t.sum_types.contains(clean) {
+	if clean_id in t.structs || t.sum_types.contains(clean_id) {
 		return clean_id
 	}
 	if !isnil(t.tc) && (clean_id in t.tc.structs || t.tc.sum_types.contains(clean_id)) {
 		return clean_id
 	}
-	if qualified_source_id := t.qualified_types.type_id(clean) {
-		qualified := flat.source_type_name(qualified_source_id)
-
-		if qualified in t.structs || t.sum_types.contains(qualified) {
+	if qualified_source_id := t.qualified_types.type_id(clean_id) {
+		if qualified_source_id in t.structs || t.sum_types.contains(qualified_source_id) {
 			return qualified_source_id
 		}
 		if !isnil(t.tc) && (qualified_source_id in t.tc.structs || t.tc.sum_types.contains(qualified_source_id)) {
@@ -9099,21 +9081,21 @@ fn (t &Transformer) generic_aggregate_base_exists(base_id u32, arg_count int) bo
 		return params.len == arg_count
 	}
 	if flat.source_type_query(base_id).has(.main_prefix) {
-		short := flat.source_type_name(flat.source_type_syntax(base_id).main_base())
-		if params := t.tc.struct_generic_params[flat.source_type_id(short)] {
+		short := flat.source_type_syntax(base_id).main_base()
+		if params := t.tc.struct_generic_params[short] {
 			return params.len == arg_count
 		}
-		if params := t.tc.sum_generic_params[flat.source_type_id(short)] {
+		if params := t.tc.sum_generic_params[short] {
 			return params.len == arg_count
 		}
 	}
 	if !flat.source_type_shape(base_id).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
-		qname := flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base_id))
-		if params := t.tc.struct_generic_params[flat.source_type_id(qname)] {
+		qname := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base_id)
+		if params := t.tc.struct_generic_params[qname] {
 			return params.len == arg_count
 		}
-		if params := t.tc.sum_generic_params[flat.source_type_id(qname)] {
+		if params := t.tc.sum_generic_params[qname] {
 			return params.len == arg_count
 		}
 	}
@@ -9203,19 +9185,19 @@ fn (t &Transformer) source_type_name_from_c_name(typ_id u32) ?u32 {
 	if t.type_name_is_declared(clean) {
 		return none
 	}
-	for name, _ in t.structs {
-		if source_type_name_matches_c_name(name, clean) {
-			return flat.source_type_id(name)
+	for name_id, _ in t.structs {
+		if source_type_name_matches_c_name(flat.source_type_name(name_id), clean) {
+			return name_id
 		}
 	}
-	for name, _ in t.sum_types.ids {
-		if source_type_name_matches_c_name(name, clean) {
-			return flat.source_type_id(name)
+	for name_id, _ in t.sum_types.ids {
+		if source_type_name_matches_c_name(flat.source_type_name(name_id), clean) {
+			return name_id
 		}
 	}
-	for name, _ in t.enum_types {
-		if source_type_name_matches_c_name(name, clean) {
-			return flat.source_type_id(name)
+	for name_id, _ in t.enum_types {
+		if source_type_name_matches_c_name(flat.source_type_name(name_id), clean) {
+			return name_id
 		}
 	}
 	if isnil(t.tc) {
@@ -9349,8 +9331,7 @@ fn (t &Transformer) normalize_runtime_array_stringify_type(typ_id u32) u32 {
 	clean_id := t.trimmed_type_id(typ_id)
 	if flat.source_type_query(clean_id).has(.c_array_prefix)
 		&& !flat.source_type_syntax(clean_id).c_array_fixed_prefix() {
-		clean := flat.source_type_name(clean_id)
-		if clean in t.structs || t.sum_types.contains(clean) || clean in t.enum_types {
+		if clean_id in t.structs || t.sum_types.contains(clean_id) || clean_id in t.enum_types {
 			return typ_id
 		}
 		if !isnil(t.tc) && t.tc.type_aliases.contains(clean_id) {
@@ -10330,20 +10311,18 @@ fn general_float_format(format string) ?GeneralFloatFormat {
 }
 
 fn (t &Transformer) enum_backing_is_unsigned(clean_typ_id u32) bool {
-	clean_typ := flat.source_type_name(clean_typ_id)
-	mut backing := t.enum_backing_types.type_id(clean_typ) or { u32(0) }
+	mut backing := t.enum_backing_types.type_id(clean_typ_id) or { u32(0) }
 	if backing == 0 && !flat.source_type_shape(clean_typ_id).has(.dotted) && t.cur_module.len > 0
 		&& t.cur_module !in ['main', 'builtin'] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_typ_id)
-		backing = t.enum_backing_types.type_id(flat.source_type_name(qualified)) or { u32(0) }
+		backing = t.enum_backing_types.type_id(qualified) or { u32(0) }
 	}
 	return backing in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
 		flat.source_type_u64, flat.source_type_uint]
 }
 
 fn (t &Transformer) is_formatted_enum_type(clean_typ_id u32) bool {
-	clean_typ := flat.source_type_name(clean_typ_id)
-	if clean_typ in t.enum_types {
+	if clean_typ_id in t.enum_types {
 		return true
 	}
 	if !flat.source_type_shape(clean_typ_id).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
@@ -10351,7 +10330,7 @@ fn (t &Transformer) is_formatted_enum_type(clean_typ_id u32) bool {
 		'builtin',
 	] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_typ_id)
-		return flat.source_type_name(qualified) in t.enum_types
+		return qualified in t.enum_types
 	}
 	return false
 }
@@ -11052,8 +11031,7 @@ fn (t &Transformer) map_str_type_has_transform_conversion(typ_id u32) bool {
 		flat.source_type_byteptr, flat.source_type_charptr, transform_identity_ierror] {
 		return true
 	}
-	clean_text := flat.source_type_name(clean)
-	if clean_text in t.enum_types || clean_text in t.structs || t.sum_types.contains(clean_text) {
+	if clean in t.enum_types || clean in t.structs || t.sum_types.contains(clean) {
 		return true
 	}
 	if _ := t.generic_struct_info_for_stringify(clean) {
@@ -11061,8 +11039,8 @@ fn (t &Transformer) map_str_type_has_transform_conversion(typ_id u32) bool {
 	}
 	if !flat.source_type_shape(clean).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
-		qname := flat.source_type_name(flat.source_type_composition_two(.qualified,
-			flat.source_type_id(t.cur_module), clean))
+		qname := flat.source_type_composition_two(.qualified,
+			flat.source_type_id(t.cur_module), clean)
 		if qname in t.enum_types || qname in t.structs || t.sum_types.contains(qname) {
 			return true
 		}
@@ -11259,13 +11237,13 @@ fn (t &Transformer) flag_enum_has_backing_type(typ_id u32) bool {
 	normalized := transform_trimmed_type_id(t.normalize_type_alias(clean))
 	for candidate in [normalized, clean] {
 		if candidate == 0 { continue }
-		if _ := t.enum_backing_types.type_id(flat.source_type_name(candidate)) { return true }
+		if _ := t.enum_backing_types.type_id(candidate) { return true }
 		if !flat.source_type_shape(candidate).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
 			'main',
 			'builtin',
 		] {
 			qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), candidate)
-			if _ := t.enum_backing_types.type_id(flat.source_type_name(qualified)) { return true }
+			if _ := t.enum_backing_types.type_id(qualified) { return true }
 		}
 	}
 	return false
@@ -12079,7 +12057,7 @@ fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ_id u32, seen
 			return true
 		}
 	}
-	if name in t.structs || t.sum_types.contains(name) {
+	if clean in t.structs || t.sum_types.contains(clean) {
 		clone_name := '${name}.clone'
 		if t.fn_ret_types.contains(clone_name) || (!isnil(t.tc) && clone_name in t.tc.fn_ret_types) {
 			return true
@@ -12761,7 +12739,7 @@ fn (mut t Transformer) mark_fixed_array_element_drops(typ_id u32, seen_ids []u32
 	}
 	if t.is_sum_type_name(clean) {
 		resolved := t.resolve_sum_name(clean)
-		for variant in t.sum_types.type_ids(flat.source_type_name(resolved)) or { []u32{} } {
+		for variant in t.sum_types.type_ids(resolved) or { []u32{} } {
 			t.mark_fixed_array_element_drops(t.resolve_variant(resolved, variant), visited)
 		}
 		return
@@ -14295,27 +14273,29 @@ fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name s
 	})
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(struct_id, module_name, t.cur_file)
+	name_id := flat.source_type_id(name)
 	info := StructInfo{
-		name:   flat.source_type_id(name)
+		name:   name_id
 		module: module_name
 		fields: transform_fields
 	}
-	t.structs[name] = info
+	t.structs[name_id] = info
 	t.generated_capture_contexts << name
 	if !isnil(t.tc) {
-		t.tc.structs[flat.source_type_id(name)] = semantic_fields
-		t.tc.struct_modules[flat.source_type_id(name)] = module_name
-		t.tc.struct_files[flat.source_type_id(name)] = t.cur_file
+		t.tc.structs[name_id] = semantic_fields
+		t.tc.struct_modules[name_id] = module_name
+		t.tc.struct_files[name_id] = t.cur_file
 		t.tc.register_short_type_name(name)
 	}
 	if module_name != '' && module_name !in ['main', 'builtin'] {
-		qualified := '${module_name}.${name}'
-		t.structs[qualified] = info
+		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), name_id)
+		qualified := flat.source_type_name(qualified_id)
+		t.structs[qualified_id] = info
 		t.generated_capture_contexts << qualified
 		if !isnil(t.tc) {
-			t.tc.structs[flat.source_type_id(qualified)] = semantic_fields
-			t.tc.struct_modules[flat.source_type_id(qualified)] = module_name
-			t.tc.struct_files[flat.source_type_id(qualified)] = t.cur_file
+			t.tc.structs[qualified_id] = semantic_fields
+			t.tc.struct_modules[qualified_id] = module_name
+			t.tc.struct_files[qualified_id] = t.cur_file
 			t.tc.register_short_type_name(qualified)
 		}
 	}
@@ -16543,8 +16523,7 @@ fn (mut t Transformer) smartcast_sum_str_call(base_id flat.NodeId) ?flat.NodeId 
 	key := t.expr_key(base_id)
 	sc := t.find_smartcast(key) or { return none }
 	sum_name_source_id := t.resolve_sum_name(sc.sum_type_name)
-	sum_name := flat.source_type_name(sum_name_source_id)
-	if sum_name_source_id == 0 || !t.sum_types.contains(sum_name) {
+	if sum_name_source_id == 0 || !t.sum_types.contains(sum_name_source_id) {
 		return none
 	}
 	target_type_source_id_3 := t.trim_pointer_type(t.smartcast_target_type(sc))
@@ -17991,9 +17970,9 @@ fn (t &Transformer) embedded_receiver_path(base_type_id u32, receiver_type_id u3
 			}
 		}
 	}
-	if flat.source_type_name(lookup_type) !in t.structs && flat.source_type_shape(lookup_type).has(.dotted) {
+	if lookup_type !in t.structs && flat.source_type_shape(lookup_type).has(.dotted) {
 		short_type := flat.source_type_syntax(lookup_type).unqualified()
-		if flat.source_type_name(short_type) in t.structs {
+		if short_type in t.structs {
 			lookup_type = short_type
 		}
 	}
@@ -18558,10 +18537,10 @@ fn (t &Transformer) sum_type_parents_for_variant(variant_id u32) []u32 {
 		if parents := t.sum_variant_parents[short] { return parents.clone() }
 	}
 	mut result := []u32{}
-	for sum_name, variants in t.sum_types.ids {
+	for sum_id, variants in t.sum_types.ids {
 		for variant in variants {
 			if variant == variant_id || t.variant_short_name(variant) == short {
-				result << flat.source_type_id(sum_name)
+				result << sum_id
 				break
 			}
 		}

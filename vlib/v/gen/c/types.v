@@ -776,19 +776,15 @@ fn (g &FlatGen) exact_known_import_type_text(typ_id u32) ?types.Type {
 			elem_type: types.new_type_reference(types.Type(g.exact_known_import_type_text(syntax.raw_base())?))
 		})
 	}
-	// These indexes are keyed by declaration names, so spelling access remains
-	// at the lookup boundary without inspecting the name's bytes.
-	clean := flat.source_type_name(clean_id)
 	if g.tc.type_aliases.contains(clean_id) { return *g.tc.parse_canonical_type_cached(clean_id) }
 	if clean_id in g.tc.structs { return types.Type(types.Struct{ name_id: clean_id }) }
 	if shape.has(.dotted) {
 		module_name := flat.source_type_name(syntax.qualifier())
-		short_name := flat.source_type_name(syntax.unqualified())
 		key := if syntax.qualifier() in [u32(0), cgen_main_module_source_type,
 			cgen_builtin_module_source_type] {
-			short_name
+			syntax.unqualified()
 		} else {
-			clean
+			clean_id
 		}
 		if info := g.struct_decl_infos[key] {
 			if info.module == module_name && info.node.source_value_id() == syntax.unqualified() {
@@ -967,8 +963,8 @@ fn (mut g FlatGen) optional_pointer_struct_forward_decls() {
 	for name in g.c_sum_decl_names() {
 		declared[g.cname(name)] = true
 	}
-	for name, _ in g.interfaces {
-		declared[g.cname(name)] = true
+	for name_id, _ in g.interfaces {
+		declared[g.cname(flat.source_type_name(name_id))] = true
 	}
 	mut names := g.optional_pointer_struct_tags.keys()
 	names.sort()
@@ -1074,8 +1070,7 @@ fn (mut g FlatGen) collect_specialized_declaration_signature_types() {
 	// their applications here as well so tuple and option return ABIs are defined
 	// before the wrapper forward declarations use them.
 	g.register_specialized_interface_applications()
-	for iface_name, methods in g.interfaces {
-		iface_id := flat.source_type_id(iface_name)
+	for iface_id, methods in g.interfaces {
 		_, _, is_specialized := parse_shared_generic_app_parts_id(iface_id)
 		if !is_specialized {
 			continue
@@ -2171,7 +2166,7 @@ fn (g &FlatGen) enum_type_codegen_name(name string) string {
 	if !g.tc.autofree_mode || name.contains('.') {
 		return name
 	}
-	if module_name := g.enum_modules[name] {
+	if module_name := g.enum_modules[flat.source_type_id(name)] {
 		if module_name in ['', 'main'] {
 			return 'main.${name}'
 		}
@@ -2189,7 +2184,7 @@ fn (g &FlatGen) enum_type_c_name(name string) string {
 // Its values and synthesized helpers keep their `<Enum>__` prefix.
 fn (g &FlatGen) enum_typedef_c_name(name string) string {
 	if !name.contains('.') {
-		if module_name := g.enum_modules[name] {
+		if module_name := g.enum_modules[flat.source_type_id(name)] {
 			if module_name in ['', 'main'] {
 				return g.cname('main.${name}')
 			}

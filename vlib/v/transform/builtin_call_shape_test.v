@@ -91,7 +91,7 @@ fn test_builtin_call_shape_preserves_static_assoc_with_generic_index_wrapper() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Box'] = StructInfo{ name: flat.source_type_id('Box'), module: 'main' }
+	t.structs[flat.source_type_id('Box')] = StructInfo{ name: flat.source_type_id('Box'), module: 'main' }
 	static_name := flat.encode_static_type_method_name('Box', 'make')
 	t.fn_ret_types.set_id(static_name, flat.source_type_int)
 	for generic in [false, true] {

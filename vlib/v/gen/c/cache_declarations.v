@@ -431,8 +431,8 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 			g.cache_require_declaration_type(types.Struct{ name_id: registry_name_id }, mut seen)
 		}
 	}
-	for name, _ in g.interfaces {
-		g.cache_require_declaration_type(types.Interface{ name_id: flat.source_type_id(name) }, mut seen)
+	for name_id, _ in g.interfaces {
+		g.cache_require_declaration_type(types.Interface{ name_id: name_id }, mut seen)
 	}
 	for registry_name_id, _ in g.tc.sum_types.ids {
 		name := flat.source_type_name(registry_name_id)

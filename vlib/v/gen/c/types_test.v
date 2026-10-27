@@ -437,7 +437,7 @@ fn test_struct_default_generic_args_preserve_caller_module() {
 		'&main.Local',
 		'fn (main.Local) main.Local',
 	]).ids
-	resolved := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], args[0])
+	resolved := g.struct_default_field_type_text(g.struct_decl_infos[flat.source_type_id('lib.Local')], args[0])
 	assert resolved.name() == 'main.Local'
 	// Builtin types are never program types, even with a builtin struct entry.
 	tc.structs[flat.source_type_id('string')] = []types.StructField{}
@@ -447,8 +447,40 @@ fn test_struct_default_generic_args_preserve_caller_module() {
 	]).ids) == flat.TypeTextList.from_names(['string', '[]int']).ids
 	// A bare field type of a `lib` struct still resolves in `lib` first, not to
 	// the program's same-named type.
-	lib_local := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], flat.source_type_id('Local'))
+	lib_local := g.struct_default_field_type_text(g.struct_decl_infos[flat.source_type_id('lib.Local')], flat.source_type_id('Local'))
 	assert lib_local.name() == 'lib.Local'
+}
+
+fn test_shared_alias_short_registry_preserves_qualified_identity_and_ambiguity() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.cur_module = 'main'
+	tc.type_aliases.set(flat.source_type_id('alpha.Duplicate'), 'shared int')
+	tc.type_aliases.set(flat.source_type_id('beta.Duplicate'), 'shared string')
+	tc.type_aliases.set(flat.source_type_id('alpha.Same'), 'shared int')
+	tc.type_aliases.set(flat.source_type_id('beta.Same'), 'shared int')
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	g.precompute_shared_alias_pointer_shorts()
+
+	duplicate_id := flat.source_type_id('Duplicate')
+	assert duplicate_id in g.shared_alias_pointer_shorts
+	assert g.shared_alias_pointer_shorts[duplicate_id] == 0
+	assert g.shared_alias_pointer_type_from_text(duplicate_id) == none
+	assert g.shared_alias_pointer_type_from_text(flat.source_type_id('Missing')) == none
+	alpha_type := g.shared_alias_pointer_type_from_text(flat.source_type_id('alpha.Duplicate')) or {
+		panic('qualified alias was lost')
+	}
+	beta_type := g.shared_alias_pointer_type_from_text(flat.source_type_id('beta.Duplicate')) or {
+		panic('qualified alias was conflated')
+	}
+	same_type := g.shared_alias_pointer_type_from_text(flat.source_type_id('Same')) or {
+		panic('matching short aliases became ambiguous')
+	}
+	assert alpha_type.source_type_id() == flat.source_type_id('&int')
+	assert beta_type.source_type_id() == flat.source_type_id('&string')
+	assert same_type.source_type_id() == flat.source_type_id('&int')
 }
 
 fn test_optional_scan_lanes_preserve_declaration_and_unresolved_call_types() {
@@ -1272,14 +1304,14 @@ fn test_promoted_root_declared_default_recovers_generic_source() {
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	g.struct_decl_infos['Outer'] = StructDeclInfo{
+	g.struct_decl_infos[flat.source_type_id('Outer')] = StructDeclInfo{
 		node:      outer_decl
 		node_id:   int(outer_id)
 		module:    'main'
 		file:      'main.v'
 		full_name: flat.source_type_id('Outer')
 	}
-	g.struct_decl_short_infos['Outer'] = g.struct_decl_infos['Outer']
+	g.struct_decl_short_infos[flat.source_type_id('Outer')] = g.struct_decl_infos[flat.source_type_id('Outer')]
 
 	// Outer[i64]{ b: 7 } promotes b into the embedded root. Only a is still
 	// owed by the root's declared initializer.

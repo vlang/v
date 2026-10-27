@@ -11,7 +11,7 @@ fn test_nested_generic_defaults_skip_pointer_aliases() {
 	mut t := new_transformer(mut a, &tc, {
 		'main': true
 	})
-	t.structs['Box'] = StructInfo{
+	t.structs[flat.source_type_id('Box')] = StructInfo{
 		name:   flat.source_type_id('Box')
 		fields: [FieldInfo{ name: 'value', typ: flat.source_type_int, default_expr: 0 }]
 	}

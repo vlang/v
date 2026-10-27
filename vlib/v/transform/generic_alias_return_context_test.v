@@ -10,8 +10,8 @@ fn test_imported_generic_alias_return_keeps_the_caller_type_argument() {
 	tc.type_alias_generic_params[flat.source_type_id('aliases.Values')] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.structs['Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'main' }
-	t.structs['aliases.Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'aliases' }
+	t.structs[flat.source_type_id('Item')] = StructInfo{ name: flat.source_type_id('Item'), module: 'main' }
+	t.structs[flat.source_type_id('aliases.Item')] = StructInfo{ name: flat.source_type_id('Item'), module: 'aliases' }
 	for ret in ['aliases.Values[T]', 'Values[T]'] {
 		for arg in ['Item', '[]Item'] {
 			mut node := flat.Node{ kind: .call }
@@ -57,8 +57,8 @@ fn test_specialized_callback_alias_keeps_its_nominal_signature() {
 	tc.type_aliases.set_id(flat.source_type_id('aliases.Mapper'), flat.source_type_id('fn (T) int'))
 	tc.type_alias_generic_params[flat.source_type_id('aliases.Mapper')] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'main' }
-	t.structs['aliases.Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'aliases' }
+	t.structs[flat.source_type_id('Item')] = StructInfo{ name: flat.source_type_id('Item'), module: 'main' }
+	t.structs[flat.source_type_id('aliases.Item')] = StructInfo{ name: flat.source_type_id('Item'), module: 'aliases' }
 	decl := GenericFnDecl{ module: 'aliases' }
 	for prefix in ['', '&', '[]', '?'] {
 		for arg in ['Item', 'main.Item'] {
@@ -79,8 +79,8 @@ fn test_module_local_generic_types_take_precedence_over_main_aliases() {
 	tc.interface_names[flat.source_type_id('dep.Reader')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.structs['dep.Box'] = StructInfo{ name: flat.source_type_id('Box'), module: 'dep' }
-	t.sum_types.set('dep.Choice', ['int', 'string'])
+	t.structs[flat.source_type_id('dep.Box')] = StructInfo{ name: flat.source_type_id('Box'), module: 'dep' }
+	t.sum_types.set(flat.source_type_id('dep.Choice'), ['int', 'string'])
 	for prefix in ['', '&', '[]', '?'] {
 		assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('${prefix}Box[int]'), 'dep')) == '${prefix}dep.Box[int]'
 		assert flat.source_type_name(t.normalize_type_in_module(flat.source_type_id('${prefix}Choice[int]'), 'dep')) == '${prefix}dep.Choice[int]'
@@ -124,8 +124,8 @@ fn test_multiple_generic_call_arguments_use_the_concrete_checker_result() {
 	tc.structs[flat.source_type_id('main.Item')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.structs['Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'main' }
-	t.structs['dep.Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'dep' }
+	t.structs[flat.source_type_id('Item')] = StructInfo{ name: flat.source_type_id('Item'), module: 'main' }
+	t.structs[flat.source_type_id('dep.Item')] = StructInfo{ name: flat.source_type_id('Item'), module: 'dep' }
 	for payload in ['', 'Item, string'] {
 		mut node := a.nodes[int(call)]
 		node.value = payload

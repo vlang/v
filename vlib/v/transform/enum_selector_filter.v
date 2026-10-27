@@ -1,5 +1,7 @@
 module transform
 
+import v.flat
+
 // The enum table is frozen after preparation. Record only bits, so workers do
 // not retain source strings or strings owned by a disposable worker arena.
 struct EnumSelectorNameFilter {
@@ -10,7 +12,8 @@ mut:
 
 fn (mut t Transformer) prepare_enum_selector_filter() {
 	mut filter := &EnumSelectorNameFilter{ count: t.enum_types.len }
-	for name, fields in t.enum_types {
+	for name_id, fields in t.enum_types {
+		name := flat.source_type_name(name_id)
 		// Qualified type selectors may retain several dotted segments in value.
 		// Include every suffix accepted by base + '.' + field_name resolution.
 		filter.add(name)

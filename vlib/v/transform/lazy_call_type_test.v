@@ -68,7 +68,7 @@ fn test_resolved_receiver_keeps_raw_alias_and_pointer_views() {
 		tc.type_aliases.set_id(flat.source_type_id('AliasThing'), flat.source_type_id('Thing'))
 		tc.structs[flat.source_type_id('Thing')] = []types.StructField{}
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.structs['Thing'] = StructInfo{ name: flat.source_type_id('Thing') }
+		t.structs[flat.source_type_id('Thing')] = StructInfo{ name: flat.source_type_id('Thing') }
 		t.set_var_type_with_raw('object', flat.source_type_id(spelling), flat.source_type_id(spelling))
 		result := t.receiver_base_for_resolved_method(base, 'Thing.run', [], flat.source_type_id(spelling))
 		assert a.node(result).kind == .ident

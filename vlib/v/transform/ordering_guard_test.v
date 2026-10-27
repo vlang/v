@@ -88,7 +88,7 @@ fn test_runtime_callee_base_is_still_spilled_into_an_ordering_temp() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.set_var_type('holder', flat.source_type_id('Holder'))
-	t.structs['Holder'] = StructInfo{
+	t.structs[flat.source_type_id('Holder')] = StructInfo{
 		name: flat.source_type_id('Holder')
 	}
 
@@ -105,7 +105,7 @@ fn test_untyped_but_bound_receiver_is_still_spilled_into_an_ordering_temp() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.set_var_type('cloned', flat.source_type_id('Holder'))
-	t.structs['Holder'] = StructInfo{
+	t.structs[flat.source_type_id('Holder')] = StructInfo{
 		name: flat.source_type_id('Holder')
 	}
 

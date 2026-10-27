@@ -20,14 +20,14 @@ fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node f
 		return [id]
 	}
 	// Check if current function returns a sum type
-	if t.cur_fn_ret_type == 0 || !t.sum_types.contains(t.cur_fn_ret_type_text()) {
+	if t.cur_fn_ret_type == 0 || !t.sum_types.contains(t.cur_fn_ret_type) {
 		return [id]
 	}
 	// Check if the return value is a struct init whose type is a variant
 	child_id := t.a.child(&node, 0)
 	child := t.a.nodes[int(child_id)]
 	if child.kind == .struct_init && child.source_value_id() != 0 {
-		variants := t.sum_types.type_ids(t.cur_fn_ret_type_text()) or { []u32{} }
+		variants := t.sum_types.type_ids(t.cur_fn_ret_type) or { []u32{} }
 		for v in variants {
 			if v == child.source_value_id() {
 				// This is a variant being returned as a sum type.

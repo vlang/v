@@ -2575,7 +2575,7 @@ fn (t &Transformer) comptime_sum_variants(base_type_id u32) []VariantMeta {
 		variants = t.tc.sum_types.type_ids(resolved) or { []u32{} }
 	}
 	if variants.len == 0 {
-		variants = t.sum_types.type_ids(flat.source_type_name(resolved)) or { []u32{} }
+		variants = t.sum_types.type_ids(resolved) or { []u32{} }
 	}
 	mut metas := []VariantMeta{cap: variants.len}
 	for variant in variants {
@@ -2590,7 +2590,7 @@ fn (t &Transformer) comptime_resolve_sum_type_name(base_type_id u32) u32 {
 	// Main-module locks use bare declaration storage keys.
 	if flat.source_type_query(base).has(.main_prefix) {
 		storage := flat.source_type_syntax(base).main_base()
-		if t.sum_types.contains(flat.source_type_name(storage)) || t.generic_checker_sum_name_known(storage) {
+		if t.sum_types.contains(storage) || t.generic_checker_sum_name_known(storage) {
 			return storage
 		}
 	}
@@ -2650,13 +2650,13 @@ fn (t &Transformer) comptime_enum_members(base_type_id u32) []EnumValueMeta {
 	} else {
 		base_type_id
 	}
-	storage_name := flat.source_type_name(storage_name_id)
+	storage_name := storage_name_id
 	mut resolved := storage_name_id
 	if got := t.enum_types[storage_name] {
 		names = got.clone()
 	} else {
 		qname := t.qualified_alias_name(storage_name_id)
-		if got := t.enum_types[flat.source_type_name(qname)] {
+		if got := t.enum_types[qname] {
 			names = got.clone()
 			resolved = qname
 		}
@@ -3604,7 +3604,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	}
 	if node.kind == .cast_expr && children.len == 1 {
 		target_sum_source_id := t.resolve_sum_name(node.source_value_id())
-		target_sum := flat.source_type_name(target_sum_source_id)
+		target_sum := target_sum_source_id
 		child := t.a.nodes[int(children[0])]
 		child_type_source_id := t.node_type(children[0])
 

@@ -73,7 +73,7 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.global_key_memo = map[string]string{}
 	g.nonlocal_name_type_memo = flat.TypeTextBindings{}
 	g.resolved_name_memo = map[string]string{}
-	g.declared_type_key_memo = map[string]FastcMemoEntry{}
+	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
 	g.type_memo = map[i64]u32{}
 	g.method_key_memo = map[u32]map[string]string{}
 	g.field_memo = map[u32]map[string]&FastcStructField{}
@@ -838,7 +838,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.next()
 	} else if receiver_type == u32(0) && g.tok == .dot {
 		type_key := fastc_type_key(g.module_name, name)
-		if type_key !in g.declared_types {
+		if !fastc_source_type_key_exists(g.declared_types, type_key) {
 			return g.unsupported('static method owner `${name}`')
 		}
 		receiver_type = flat.source_type_id(fastc_c_declared_type_name(type_key))

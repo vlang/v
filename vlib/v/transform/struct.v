@@ -1063,7 +1063,7 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 	main_shape := flat.source_type_shape(name_syntax.main_base())
 	if flat.source_type_query(name_id).has(.main_prefix) && !main_shape.has(.dotted)
 		&& !main_shape.has(.bracketed) {
-		bare := flat.source_type_name(name_syntax.main_base())
+		bare := name_syntax.main_base()
 		// The bare table is first-wins across modules, so it can hold an imported
 		// homonym: the explicit `main.` lock may only accept program-module entries.
 		if info := t.structs[bare] {
@@ -1186,11 +1186,11 @@ fn (t &Transformer) bare_struct_name_is_local_to_current_module(name_id u32) boo
 		return false
 	}
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
-		qname := flat.source_type_name(flat.source_type_composition_two(.qualified,
-			flat.source_type_id(t.cur_module), name_id))
-		return qname in t.structs || (!isnil(t.tc) && flat.source_type_id(qname) in t.tc.structs)
+		qname := flat.source_type_composition_two(.qualified,
+			flat.source_type_id(t.cur_module), name_id)
+		return qname in t.structs || (!isnil(t.tc) && qname in t.tc.structs)
 	}
-	name := flat.source_type_name(name_id)
+	name := name_id
 	if info := t.structs[name] {
 		return info.module.len == 0 || info.module in ['main', 'builtin']
 	}
@@ -1222,10 +1222,10 @@ fn (t &Transformer) checker_struct_lookup_name(name_id u32) u32 {
 	if name_id in t.tc.structs { return name_id }
 	if flat.source_type_shape(name_id).has(.dotted) {
 		syntax := flat.source_type_syntax(name_id)
-		short_name := flat.source_type_name(syntax.unqualified())
+		short_name := syntax.unqualified()
 		module_name := flat.source_type_name(syntax.qualifier())
-		short_module := t.tc.struct_modules[flat.source_type_id(short_name)] or { '' }
-		if flat.source_type_id(short_name) in t.tc.structs && short_module == module_name {
+		short_module := t.tc.struct_modules[short_name] or { '' }
+		if short_name in t.tc.structs && short_module == module_name {
 			return syntax.unqualified()
 		}
 		return 0
@@ -1249,7 +1249,7 @@ fn (t &Transformer) unique_qualified_struct_for_short(name_id u32) ?u32 {
 		return none
 	}
 	if t.struct_short_name_index_ready {
-		qualified_id := t.struct_short_name_index.type_id(flat.source_type_name(name_id)) or { return none }
+		qualified_id := t.struct_short_name_index.type_id(name_id) or { return none }
 		if qualified_id != flat.source_type_id(struct_short_name_ambiguous)
 			&& !flat.source_type_shape(qualified_id).has(.bracketed) {
 			return qualified_id
@@ -1339,14 +1339,14 @@ fn (t &Transformer) resolve_imported_type_name(name_id u32) ?u32 {
 }
 
 fn (t &Transformer) lookup_struct_info_preferred(name_id u32) ?StructInfo {
-	name := flat.source_type_name(name_id)
+	name := name_id
 	if flat.source_type_shape(name_id).has(.dotted) {
 		if info := t.structs[name] {
 			return info
 		}
 	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		qname := flat.source_type_name(flat.source_type_composition_two(.qualified,
-			flat.source_type_id(t.cur_module), name_id))
+		qname := flat.source_type_composition_two(.qualified,
+			flat.source_type_id(t.cur_module), name_id)
 		if info := t.structs[qname] {
 			return info
 		}
@@ -1357,14 +1357,14 @@ fn (t &Transformer) lookup_struct_info_preferred(name_id u32) ?StructInfo {
 }
 
 fn (t &Transformer) lookup_struct_info_direct(name_id u32) ?StructInfo {
-	name := flat.source_type_name(name_id)
+	name := name_id
 	if flat.source_type_shape(name_id).has(.dotted) {
 		if info := t.structs[name] {
 			return info
 		}
 	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		qname := flat.source_type_name(flat.source_type_composition_two(.qualified,
-			flat.source_type_id(t.cur_module), name_id))
+		qname := flat.source_type_composition_two(.qualified,
+			flat.source_type_id(t.cur_module), name_id)
 		if info := t.structs[qname] {
 			return info
 		}
@@ -1373,7 +1373,7 @@ fn (t &Transformer) lookup_struct_info_direct(name_id u32) ?StructInfo {
 		return info
 	}
 	if flat.source_type_shape(name_id).has(.dotted) {
-		short_name := flat.source_type_name(flat.source_type_syntax(name_id).unqualified())
+		short_name := flat.source_type_syntax(name_id).unqualified()
 		if info := t.structs[short_name] {
 			// The bare table is first-wins across modules: its entry may be another
 			// module's homonym, which must not answer for this qualified name.
@@ -1383,16 +1383,13 @@ fn (t &Transformer) lookup_struct_info_direct(name_id u32) ?StructInfo {
 		}
 	} else if t.struct_short_name_index_ready {
 		if qualified_source_id := t.struct_short_name_index.type_id(name) {
-			qualified := flat.source_type_name(qualified_source_id)
-
 			if qualified_source_id != flat.source_type_id(struct_short_name_ambiguous) {
-				return t.structs[qualified]
+				return t.structs[qualified_source_id]
 			}
 		}
 	} else {
 		mut matches := []StructInfo{}
-		for qualified, info in t.structs {
-			qualified_id := flat.source_type_id(qualified)
+		for qualified_id, info in t.structs {
 			if flat.source_type_shape(qualified_id).has(.dotted)
 				&& flat.source_type_syntax(qualified_id).unqualified() == name_id {
 				matches << info
@@ -1688,7 +1685,7 @@ fn (t &Transformer) struct_field_sum_type(field_type_id u32, owner_module string
 		return u32(0)
 	}
 	qname := flat.source_type_composition_two(.qualified, flat.source_type_id(owner_module), field_type_id)
-	if t.sum_types.contains(flat.source_type_name(qname)) {
+	if t.sum_types.contains(qname) {
 		return qname
 	}
 	return u32(0)
@@ -1703,9 +1700,7 @@ fn (t &Transformer) sum_type_for_union_text(field_type_id u32, owner_module stri
 	for raw in raw_variants {
 		variants << t.normalize_sum_variant_type(raw, owner_module, [])
 	}
-	for sum_name, sum_variants_id in t.sum_types.ids {
-		sum_variants := sum_variants_id
-		sum_name_id := flat.source_type_id(sum_name)
+	for sum_name_id, sum_variants in t.sum_types.ids {
 		if owner_module != '' && flat.source_type_shape(sum_name_id).has(.dotted)
 			&& flat.source_type_syntax(sum_name_id).qualifier() != flat.source_type_id(owner_module) {
 			continue

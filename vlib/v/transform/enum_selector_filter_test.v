@@ -9,6 +9,20 @@ fn enum_filter_selector(mut a flat.FlatAst, base flat.NodeId, name string) flat.
 	return flat.Node{ kind: .selector, value: name, children_start: start, children_count: 1 }
 }
 
+fn test_qualified_enum_selector_probe_does_not_intern_missing_names() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	missing := '__numeric_registry_missing_selector_boundary__.NoSuchEnum'
+	assert flat.source_type_existing_id(missing) == none
+	assert t.qualified_enum_type_selector_name_from_selector_name('__numeric_registry_missing_selector_boundary__',
+		'NoSuchEnum') == none
+	assert flat.source_type_existing_id(missing) == none
+	known_id := flat.source_type_id('enum_probe_module.Known')
+	t.enum_types[known_id] = ['ready']
+	assert t.qualified_enum_type_selector_name_from_selector_name('enum_probe_module', 'Known') == known_id
+}
+
 fn test_enum_selector_filter_keeps_alias_module_generated_and_regular_value_resolution() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -16,10 +30,10 @@ fn test_enum_selector_filter_keeps_alias_module_generated_and_regular_value_reso
 	tc.type_aliases.set_id(flat.source_type_id('NextAlias'), flat.source_type_id('Alias'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'model'
-	t.enum_types['model.Kind'] = ['ready', 'waiting']
-	t.enum_types['Kind'] = ['ready', 'waiting']
-	t.enum_types['model.generated'] = ['module', '@escaped', 'éclair']
-	t.enum_types['generated'] = ['module', '@escaped', 'éclair']
+	t.enum_types[flat.source_type_id('model.Kind')] = ['ready', 'waiting']
+	t.enum_types[flat.source_type_id('Kind')] = ['ready', 'waiting']
+	t.enum_types[flat.source_type_id('model.generated')] = ['module', '@escaped', 'éclair']
+	t.enum_types[flat.source_type_id('generated')] = ['module', '@escaped', 'éclair']
 	mut nodes := []flat.Node{}
 	for base in ['Kind', 'Alias', 'NextAlias', 'model.Kind', 'generated'] {
 		base_id := a.add_val(.ident, base)
@@ -50,7 +64,7 @@ fn test_enum_selector_filter_retains_non_enum_selector_results() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	tc.const_types['Config.limit'] = types.Type(types.int_)
-	t.structs['Record'] = StructInfo{ fields: [FieldInfo{ name: 'amount', typ: flat.source_type_string }] }
+	t.structs[flat.source_type_id('Record')] = StructInfo{ fields: [FieldInfo{ name: 'amount', typ: flat.source_type_string }] }
 	t.set_var_type('record', flat.source_type_id('Record'))
 	t.set_var_type('items', flat.source_type_id('[]int'))
 	base := a.add_val(.ident, 'items')
@@ -73,7 +87,7 @@ fn test_enum_selector_filter_rechecks_mutable_query_bytes_and_shares_only_frozen
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.enum_types['Kind'] = ['open', 'shut']
+	t.enum_types[flat.source_type_id('Kind')] = ['open', 'shut']
 	t.prepare_enum_selector_filter()
 	worker := t.fork_program_view(&a, &tc, map[string]bool{}, false)
 	scan := t.fork_scan_worker(&tc)
@@ -102,14 +116,14 @@ fn test_enum_selector_filter_falls_back_for_new_enums_and_rebuilds_without_stale
 	assert t.enum_selector_may_match('later')
 	t.prepare_enum_selector_filter()
 	assert !t.enum_selector_may_match('later')
-	t.enum_types['Added'] = ['later']
+	t.enum_types[flat.source_type_id('Added')] = ['later']
 	assert t.enum_selector_may_match('later')
 	base := a.add_val(.ident, 'Added')
 	node := enum_filter_selector(mut a, base, 'later')
 	assert t.resolve_selector_type_uncached(node) == flat.source_type_id('Added')
 	t.prepare_enum_selector_filter()
 	assert t.enum_selector_may_match('later')
-	t.enum_types = map[string][]string{}
+	t.enum_types = map[u32][]string{}
 	t.prepare_enum_selector_filter()
 	assert !t.enum_selector_may_match('later')
 	assert !t.enum_selector_may_match('Added')
@@ -119,7 +133,7 @@ fn test_enum_selector_filter_preserves_dotted_selector_values() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.enum_types['model.nested.Kind'] = ['ready', 'state.value']
+	t.enum_types[flat.source_type_id('model.nested.Kind')] = ['ready', 'state.value']
 	module_id := a.add_val(.ident, 'model')
 	enum_id := a.add_val(.ident, 'model.nested.Kind')
 	nodes := [enum_filter_selector(mut a, module_id, 'nested.Kind'),

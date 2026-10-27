@@ -1125,7 +1125,7 @@ fn (g &Parser) struct_type_has_initializer_defaults(c_type u32) bool {
 // (A missing key defaults to `.struct_`, the zero enum value, so the key must be present.)
 fn (g &Parser) fastc_type_is_declared_struct(c_type u32) bool {
 	key := g.semantic_type_key(c_type)
-	return flat.source_type_name(key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(key)] in [
+	return key in g.declared_kinds && g.declared_kinds[key] in [
 		.struct_,
 		.union_,
 	]
@@ -1775,8 +1775,8 @@ fn (g &Parser) borrowed_object_pointer_comparison_type(reference_tokens []FastcE
 	}
 	storage := g.underlying_alias_type(local.typ)
 	key := g.semantic_type_key(storage)
-	if !flat.source_type_query(storage).has(.c_pointer_suffix) || flat.source_type_name(key) !in g.declared_kinds
-		|| g.declared_kinds[flat.source_type_name(key)] !in [.struct_, .union_] {
+	if !flat.source_type_query(storage).has(.c_pointer_suffix) || key !in g.declared_kinds
+		|| g.declared_kinds[key] !in [.struct_, .union_] {
 		return none
 	}
 	other := fastc_strip_paren_tokens(other_tokens)
@@ -2189,7 +2189,7 @@ fn (g &Parser) primitive_member_comparison_operand_type(tokens []FastcExpression
 	if flat.source_type_query(base_type).has(.c_array_prefix) {
 		if member.lit !in ['len', 'cap'] { return u32(0) }
 	} else {
-		kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(local.typ))] or {
+		kind := g.declared_kinds[g.semantic_type_key(local.typ)] or {
 			return u32(0)
 		}
 		if kind != .struct_ { return u32(0) }
@@ -2673,7 +2673,7 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 				}
 			}
 		}
-		if g.declared_kinds[flat.source_type_name(g.semantic_type_key(receiver_type))] == .interface_ {
+		if g.declared_kinds[g.semantic_type_key(receiver_type)] == .interface_ {
 			if field := g.interface_fields['${flat.source_type_name(g.semantic_type_key(receiver_type))}.${tokens[i + 1].lit}'] {
 				receiver_source := g.render_member_receiver(receiver_tokens) or {
 					g.render_call_argument_expression(receiver_tokens, receiver_type) or { continue }
@@ -2984,7 +2984,7 @@ fn (g &Parser) render_refined_enum_logical_expression(left_tokens []FastcExpress
 		return none
 	})
 	enum_type := fastc_trim_pointer_type(fastc_normalize_inferred_type(target_type))
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(enum_type))] != .enum_ {
+	if g.declared_kinds[g.semantic_type_key(enum_type)] != .enum_ {
 		return none
 	}
 	right_start, right_end := fastc_trim_expression_parentheses_bounds(right_tokens)
@@ -3110,10 +3110,10 @@ fn (g &Parser) struct_equality_is_supported(typ u32, seen []u32) bool {
 		return false
 	}
 	type_key := g.semantic_type_key(layout_type)
-	if flat.source_type_name(type_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(type_key)] == .enum_ {
+	if type_key in g.declared_kinds && g.declared_kinds[type_key] == .enum_ {
 		return true
 	}
-	if flat.source_type_name(type_key) !in g.declared_kinds || g.declared_kinds[flat.source_type_name(type_key)] != .struct_ || flat.source_type_name(layout_type) !in g.struct_field_info {
+	if type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_ || flat.source_type_name(layout_type) !in g.struct_field_info {
 		return false
 	}
 	if layout_type in seen {
@@ -3193,10 +3193,10 @@ fn (g &Parser) struct_equality_source(left string, right string, typ u32, seen [
 		return '({ ${flat.source_type_name(layout_type)} ${left_array} = (${left}); ${flat.source_type_name(layout_type)} ${right_array} = (${right}); bool ${equal} = ${left_array}.len == ${right_array}.len; for (int ${index} = 0; ${equal} && ${index} < ${left_array}.len; ${index}++) { if (!(${element_equality})) { ${equal} = false; } } ${equal}; })'
 	}
 	type_key := g.semantic_type_key(layout_type)
-	if flat.source_type_name(type_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(type_key)] == .enum_ {
+	if type_key in g.declared_kinds && g.declared_kinds[type_key] == .enum_ {
 		return '((${left}) == (${right}))'
 	}
-	if flat.source_type_name(type_key) !in g.declared_kinds || g.declared_kinds[flat.source_type_name(type_key)] != .struct_ || layout_type in seen {
+	if type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_ || layout_type in seen {
 		return '((${left}) == (${right}))'
 	}
 	mut nested_seen := seen.clone()
@@ -3343,7 +3343,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 				}
 			}
 			left_key := g.semantic_type_key(left_layout_id)
-			if left_layout != right_layout || flat.source_type_name(left_key) !in g.declared_kinds || g.declared_kinds[flat.source_type_name(left_key)] != .struct_ || !g.struct_equality_is_supported(left_type, []u32{}) {
+			if left_layout != right_layout || left_key !in g.declared_kinds || g.declared_kinds[left_key] != .struct_ || !g.struct_equality_is_supported(left_type, []u32{}) {
 				return none
 			}
 			left := g.render_comparison_operand(left_tokens, left_type) or { return none }
@@ -3776,7 +3776,7 @@ fn (g &Parser) render_enum_comparison_expression(tokens []FastcExpressionToken) 
 				receiver_type := (g.infer_expression_type(right_tokens[..right_tokens.len - 2]) or { u32(0) })
 				right_type = g.struct_member_type(receiver_type, right_tokens.last().lit)
 			}
-			if g.declared_kinds[flat.source_type_name(g.semantic_type_key(left_type))] == .enum_ && right_tokens.len == 2 && right_tokens[0].tok == .dot && right_tokens[1].tok == .name {
+			if g.declared_kinds[g.semantic_type_key(left_type)] == .enum_ && right_tokens.len == 2 && right_tokens[0].tok == .dot && right_tokens[1].tok == .name {
 				enum_type := fastc_trim_pointer_type(left_type)
 				// A subject narrowed by `is` (`value is Kind && value == .one`) is typed and
 				// rendered as a pointer to its payload; the comparison needs the enum value.
@@ -3788,7 +3788,7 @@ fn (g &Parser) render_enum_comparison_expression(tokens []FastcExpressionToken) 
 					typ:    flat.source_type_bool
 				}
 			}
-			if g.declared_kinds[flat.source_type_name(g.semantic_type_key(right_type))] == .enum_ && left_tokens.len == 2 && left_tokens[0].tok == .dot && left_tokens[1].tok == .name {
+			if g.declared_kinds[g.semantic_type_key(right_type)] == .enum_ && left_tokens.len == 2 && left_tokens[0].tok == .dot && left_tokens[1].tok == .name {
 				enum_type := fastc_trim_pointer_type(right_type)
 				right := g.render_call_argument_expression(right_tokens, enum_type) or {
 					return none
@@ -4517,7 +4517,7 @@ fn (g &Parser) is_plain_aggregate_value_type(typ u32) bool {
 		|| type_name in g.sum_types || g.alias_base_types.type_id(type_name) != none {
 		return false
 	}
-	if kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(typ))] {
+	if kind := g.declared_kinds[g.semantic_type_key(typ)] {
 		return kind == .struct_
 	}
 	return flat.source_type_query(typ).has(.c_array_prefix) || flat.source_type_query(typ).has(.c_map_prefix)
@@ -4627,7 +4627,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		expected_key := g.semantic_type_key(fastc_trim_pointer_type(expected_type_source_id))
 		boxes := value_type != 0 && expected_type_source_id != 0
 			&& (g.should_box_variant(expected_type_source_id, value_type)
-				|| g.declared_kinds[flat.source_type_name(expected_key)] == .interface_
+				|| g.declared_kinds[expected_key] == .interface_
 				|| flat.source_type_name(fastc_trim_pointer_type(expected_type_source_id)) in g.sum_types)
 		if !boxes {
 			if propagation := g.render_option_propagation(tokens[..tokens.len - 1]) {
@@ -4660,7 +4660,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		// here, so resolve them now.
 		if g.selfhost && tokens[0].source_text().contains('.') {
 			enum_key := g.semantic_type_key(expected_type_source_id)
-			if g.declared_kinds[flat.source_type_name(enum_key)] == .enum_ {
+			if g.declared_kinds[enum_key] == .enum_ {
 				return fastc_resolve_enum_shorthands_in_source(tokens[0].source_text(), fastc_c_declared_type_name(flat.source_type_name(enum_key)), g.enum_field_names[flat.source_type_name(enum_key)])
 			}
 		}
@@ -4702,13 +4702,13 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		}
 		interface_type := fastc_trim_pointer_type(expected_type_source_id)
 		if g.selfhost && flat.source_type_query(expected_type_source_id).has(.c_pointer_suffix)
-			&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(interface_type))] == .interface_ {
+			&& g.declared_kinds[g.semantic_type_key(interface_type)] == .interface_ {
 			// `f(mut value)` for a `mut x Interface` parameter: the interface refers to the
 			// caller's value itself, so the callee's mutations reach it (never a boxed copy).
 			actual_type := fastc_normalize_inferred_type(g.infer_expression_type(tokens[1..]) or { u32(0) })
 			actual_key := g.semantic_type_key(actual_type)
 			if actual_type != u32(0) && !fastc_is_pointer_type(actual_type)
-				&& g.declared_kinds[flat.source_type_name(actual_key)] == .struct_ {
+				&& g.declared_kinds[actual_key] == .struct_ {
 				target := g.render_call_argument_expression(tokens[1..], actual_type) or {
 					return none
 				}
@@ -4791,10 +4791,10 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	if map_literal := g.render_map_literal_argument(tokens, expected_type_source_id) {
 		return map_literal.source
 	}
-	if tokens.len == 2 && tokens[0].tok == .dot && tokens[1].tok == .name && g.declared_kinds[flat.source_type_name(g.semantic_type_key(expected_type_source_id))] == .enum_ {
+	if tokens.len == 2 && tokens[0].tok == .dot && tokens[1].tok == .name && g.declared_kinds[g.semantic_type_key(expected_type_source_id)] == .enum_ {
 		return '${flat.source_type_name(fastc_trim_pointer_type(expected_type_source_id))}__${tokens[1].lit}'
 	}
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(expected_type_source_id))] == .enum_ {
+	if g.declared_kinds[g.semantic_type_key(expected_type_source_id)] == .enum_ {
 		if flag_combo := g.render_enum_flag_shorthand_combination(tokens, expected_type_source_id) {
 			return flag_combo
 		}
@@ -5266,7 +5266,7 @@ fn fastc_map_literal_entries(tokens []FastcExpressionToken, start int, end int) 
 // type is expected is boxed with its type id (see interface_value_expression).
 fn (g &Parser) is_boxed_type(c_type u32) bool {
 	if flat.source_type_name(fastc_trim_pointer_type(c_type)) in g.sum_types { return true }
-	return g.declared_kinds[flat.source_type_name(g.semantic_type_key(c_type))] == .interface_
+	return g.declared_kinds[g.semantic_type_key(c_type)] == .interface_
 }
 
 // sumtype_has_variant reports whether `sum_type` is a sum type that declares
@@ -5289,7 +5289,7 @@ fn (g &Parser) should_box_variant(expected_type u32, actual_type u32) bool {
 		return false
 	}
 	resolved_actual := g.underlying_alias_type(actual_type)
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(resolved_actual))] == .struct_ {
+	if g.declared_kinds[g.semantic_type_key(resolved_actual)] == .struct_ {
 		return true
 	}
 	if flat.source_type_name(fastc_trim_pointer_type(expected_type)) in g.sum_types {
@@ -5650,7 +5650,7 @@ fn fastc_map_runtime_functions(key_type_source_id u32, pointer_bits int) (string
 fn (g &Parser) map_runtime_functions(key_type_source_id u32) (string, string, string, string) {
 	mut resolved_type := g.underlying_alias_type(key_type_source_id)
 	if enum_key := g.underlying_enum_type_key(g.semantic_type_key(resolved_type)) {
-		resolved_type = if g.enum_flags[flat.source_type_name(enum_key)] {
+		resolved_type = if g.enum_flags[enum_key] {
 			flat.source_type_u64
 		} else {
 			flat.source_type_int
@@ -6459,7 +6459,7 @@ fn (g &Parser) fastc_interface_field_switch_source(receiver_type_source_id u32, 
 		if kind !in [.struct_, .union_] {
 			continue
 		}
-		c_type := fastc_c_declared_type_name(type_key)
+		c_type := fastc_c_declared_type_name(flat.source_type_name(type_key))
 		field := g.struct_field_metadata(flat.source_type_id(c_type), field_name) or { continue }
 		if field.storage_path.len > 0 || fastc_normalize_inferred_type(field.typ) != normalized_field_type {
 			continue
@@ -6847,7 +6847,7 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			i += 2
 			continue
 		}
-		if g.declared_kinds[flat.source_type_name(g.semantic_type_key(current_type))] == .interface_ {
+		if g.declared_kinds[g.semantic_type_key(current_type)] == .interface_ {
 			// An interface FIELD (`iface.file`) is not a member of the boxed `{_object,_typ,…}`
 			// struct; read it through a runtime `_typ` switch over the interface's implementers.
 			if iface_field := g.interface_fields['${flat.source_type_name(g.semantic_type_key(current_type))}.${tokens[i + 1].lit}'] {

@@ -72,8 +72,8 @@ fn test_lambda_capture_collector_scans_callee_and_range_bound() {
 fn test_decl_param_type_in_module_qualifies_fn_type_params() {
 	t := Transformer{
 		structs: {
-			'callee.S':      StructInfo{}
-			'callee.Result': StructInfo{}
+			flat.source_type_id('callee.S'):      StructInfo{}
+			flat.source_type_id('callee.Result'): StructInfo{}
 		}
 	}
 	assert flat.source_type_name(t.decl_param_type_in_module(flat.source_type_id('fn(S) int'), 'callee')) == 'fn(callee.S) int'

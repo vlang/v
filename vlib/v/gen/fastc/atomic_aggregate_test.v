@@ -27,13 +27,13 @@ fn fastc_atomic_aggregate_parser(source string) Parser {
 		last_multi_return_types:  flat.TypeTextList.from_names(['int', 'string'])
 		last_option_value_type:   flat.source_type_string
 		declared_kinds:           {
-			'Record':           .struct_
-			'Alias':            .alias_
-			'Iface':            .interface_
-			'Choice':           .alias_
-			'Option':           .struct_
-			'__v_result':       .struct_
-			'FixedArray_2_int': .struct_
+			flat.source_type_id('Record'):           .struct_
+			flat.source_type_id('Alias'):            .alias_
+			flat.source_type_id('Iface'):            .interface_
+			flat.source_type_id('Choice'):           .alias_
+			flat.source_type_id('Option'):           .struct_
+			flat.source_type_id('__v_result'):       .struct_
+			flat.source_type_id('FixedArray_2_int'): .struct_
 		}
 		alias_base_types:         aliases
 		sum_types:                {

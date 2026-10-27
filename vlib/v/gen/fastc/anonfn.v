@@ -324,7 +324,7 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 		return typ
 	}
 	key := g.semantic_type_key(typ_id)
-	if flat.source_type_name(key) !in g.declared_types {
+	if key !in g.declared_types {
 		return none
 	}
 	module_name := flat.source_type_name(flat.source_type_syntax(key).qualifier())

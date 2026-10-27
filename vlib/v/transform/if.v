@@ -957,7 +957,7 @@ fn (t &Transformer) if_expr_branch_overrides_sum_target(branch_type_id u32, targ
 		}
 	}
 	resolved_target := t.resolve_sum_name(target_type_id)
-	if resolved_target == 0 || !t.sum_types.contains(flat.source_type_name(resolved_target)) {
+	if resolved_target == 0 || !t.sum_types.contains(resolved_target) {
 		return false
 	}
 	clean_branch := t.trim_pointer_type(branch_type_id)
@@ -1071,14 +1071,14 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ_id u32, stale_typ_i
 	}
 	if stale_typ_id == flat.source_type_int {
 		local_branch := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), branch_typ_id)
-		if flat.source_type_name(branch_typ_id) in t.structs || flat.source_type_name(local_branch) in t.structs {
+		if branch_typ_id in t.structs || local_branch in t.structs {
 			return true
 		}
 	}
 	if t.is_optional_type_name(stale_typ_id) && !t.is_optional_type_name(branch_typ_id) {
 		return t.normalize_type_alias(t.optional_base_type(stale_typ_id)) == t.normalize_type_alias(branch_typ_id)
 	}
-	if flat.source_type_name(stale_typ_id) in t.enum_types && branch_typ_id == flat.source_type_int {
+	if stale_typ_id in t.enum_types && branch_typ_id == flat.source_type_int {
 		return false
 	}
 	stale_shape := flat.source_type_shape(stale_typ_id)
@@ -1128,7 +1128,7 @@ fn (t &Transformer) if_expr_branch_result_type(node flat.Node) u32 {
 fn (t &Transformer) translated_if_numeric_type(name_id u32) bool {
 	name_comparison_type_id := name_id
 	name_source_id := name_comparison_type_id
-	name := flat.source_type_name(name_source_id)
+	name := name_source_id
 	return is_numeric_type_name(name_source_id) || name_comparison_type_id in [
 		flat.source_type_i32,
 		flat.source_type_char,
@@ -2607,7 +2607,7 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type_id u32, variant_id u32) u32 {
 		}
 	}
 	resolved_expr_sum_source_id := t.resolve_sum_name(clean_expr_type_source_id)
-	resolved_expr_sum := flat.source_type_name(resolved_expr_sum_source_id)
+	resolved_expr_sum := resolved_expr_sum_source_id
 	if t.sum_types.contains(resolved_expr_sum) {
 		if _ := t.sum_variant_name(resolved_expr_sum_source_id, variant_id) {
 			return clean_expr_type_source_id
@@ -2625,10 +2625,9 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type_id u32, variant_id u32) u32 {
 fn (t &Transformer) find_sum_type_for_variant(variant_id u32) u32 {
 	mut best := u32(0)
 	if flat.source_type_shape(variant_id).has(.dotted) {
-		for sum_name, variants in t.sum_types.ids {
+		for sum_id, variants in t.sum_types.ids {
 			for v in variants {
 				if v == variant_id {
-					sum_id := flat.source_type_id(sum_name)
 					if flat.source_type_shape(sum_id).has(.dotted) { return sum_id }
 					if best == 0 { best = sum_id }
 				}
@@ -2636,10 +2635,9 @@ fn (t &Transformer) find_sum_type_for_variant(variant_id u32) u32 {
 		}
 		if best != 0 { return best }
 	}
-	for sum_name, variants in t.sum_types.ids {
+	for sum_id, variants in t.sum_types.ids {
 		for v in variants {
 			if t.variant_names_match(v, variant_id) {
-				sum_id := flat.source_type_id(sum_name)
 				if flat.source_type_shape(sum_id).has(.dotted) { return sum_id }
 				if best == 0 { best = sum_id }
 			}

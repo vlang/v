@@ -31,8 +31,8 @@ fn test_enum_default_keeps_type_id_and_emitted_member_spelling() {
 		tc.cur_module = module_name
 		tc.enum_names[flat.source_type_id(qualified)] = true
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.enum_types[expected] = ['first']
-		t.enum_explicit_first_values[expected] = true
+		t.enum_types[expected_id] = ['first']
+		t.enum_explicit_first_values[expected_id] = true
 		type_id, member := t.enum_nonzero_default_member(flat.source_type_id(qualified)) or {
 			assert false
 			return

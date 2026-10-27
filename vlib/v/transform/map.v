@@ -1115,7 +1115,7 @@ fn (t &Transformer) map_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 
 fn (t &Transformer) sum_default_may_expand(typ_id u32) bool {
 	resolved_source_id := t.resolve_sum_name(t.normalize_type_alias(typ_id))
-	resolved := flat.source_type_name(resolved_source_id)
+	resolved := resolved_source_id
 	return resolved_source_id != 0
 		&& (t.sum_types.contains(resolved) || (!isnil(t.tc) && t.tc.sum_types.contains(resolved_source_id)))
 }
@@ -1661,13 +1661,13 @@ fn (t &Transformer) map_key_backing_type(key_type_id u32) ?u32 {
 		if candidate_id == 0 {
 			continue
 		}
-		candidate := flat.source_type_name(candidate_id)
+		candidate := candidate_id
 		if backing_source_id := t.enum_backing_types.type_id(candidate) {
 			return backing_source_id
 		}
 		if !flat.source_type_shape(candidate_id).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
 			&& t.cur_module != 'builtin' {
-			qname := flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), candidate_id))
+			qname := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), candidate_id)
 			if backing_source_id := t.enum_backing_types.type_id(qname) {
 				return backing_source_id
 			}
@@ -1681,13 +1681,12 @@ fn (t &Transformer) map_key_backing_type(key_type_id u32) ?u32 {
 	// for unrelated modules, so only a checker-declared struct blocks this.
 	if !isnil(t.tc) && !flat.source_type_shape(clean_id).has(.dotted)
 		&& clean_id !in t.tc.structs {
-		clean := flat.source_type_name(clean_id)
 		mut alias_target := t.tc.type_aliases.type_id(clean_id) or { u32(0) }
 		if alias_target == 0 {
 			mut matches := 0
 			// Only module-qualified aliases, i.e. those ending in `.${clean}`.
-			for alias in t.type_aliases_with_short_name(clean) {
-				if flat.source_type_shape(flat.source_type_id(alias.name)).has(.dotted) {
+			for alias in t.type_aliases_with_short_name(clean_id) {
+				if flat.source_type_shape(alias.name).has(.dotted) {
 					alias_target = alias.target
 					matches++
 					if matches > 1 {
@@ -1869,8 +1868,7 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 	if !raw_value_shape.has(.dotted) && !raw_value_shape.has(.bracketed) && !raw_value_shape.has(.pointer)
 		&& t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), raw_value_type_source_id_2)
-		qualified := flat.source_type_name(qualified_id)
-		if t.sum_types.contains(qualified) || (!isnil(t.tc) && t.tc.sum_types.contains(qualified_id)) {
+		if t.sum_types.contains(qualified_id) || (!isnil(t.tc) && t.tc.sum_types.contains(qualified_id)) {
 			value_type = qualified_id
 		}
 	}
@@ -2633,8 +2631,8 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 		value_name := t.new_temp('map_val')
 		mut value := if flat.source_type_shape(info.value_type).has(.pointer) && t.is_sum_type_name(flat.source_type_syntax(info.value_type).raw_base()) {
 			t.transform_expr_for_type(rhs_id, info.value_type)
-		} else if t.sum_types.contains(info.value_type_text())
-			|| flat.source_type_name(t.resolve_sum_name(info.value_type)) in t.sum_types.ids {
+		} else if t.sum_types.contains(info.value_type)
+			|| t.resolve_sum_name(info.value_type) in t.sum_types.ids {
 			t.wrap_sum_value(rhs_id, info.value_type)
 		} else {
 			t.transform_expr_for_type(rhs_id, info.value_type)
@@ -2878,8 +2876,8 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 		mut inner_value := if flat.source_type_shape(inner_value_type_source_id).has(.pointer)
 			&& t.is_sum_type_name(flat.source_type_syntax(inner_value_type_source_id).raw_base()) {
 			t.transform_expr_for_type(rhs_id, inner_value_type_source_id)
-		} else if t.sum_types.contains(flat.source_type_name(inner_value_type_source_id))
-			|| flat.source_type_name(t.resolve_sum_name(inner_value_type_source_id)) in t.sum_types.ids {
+		} else if t.sum_types.contains(inner_value_type_source_id)
+			|| t.resolve_sum_name(inner_value_type_source_id) in t.sum_types.ids {
 			t.wrap_sum_value(rhs_id, inner_value_type_source_id)
 		} else {
 			t.transform_expr_for_type(rhs_id, inner_value_type_source_id)
@@ -3862,7 +3860,7 @@ fn (mut t Transformer) transform_map_entry_expr_for_type(id flat.NodeId, typ_id 
 	t.pending_stmts = []flat.NodeId{}
 	value := if flat.source_type_shape(typ_id).has(.pointer) && t.is_sum_type_name(flat.source_type_syntax(typ_id).raw_base()) {
 		t.transform_expr_for_type(id, typ_id)
-	} else if t.sum_types.contains(flat.source_type_name(typ_id)) || flat.source_type_name(t.resolve_sum_name(typ_id)) in t.sum_types.ids {
+	} else if t.sum_types.contains(typ_id) || t.resolve_sum_name(typ_id) in t.sum_types.ids {
 		t.transform_sum_value_for_type(id, typ_id)
 	} else {
 		t.transform_expr_for_type(id, typ_id)

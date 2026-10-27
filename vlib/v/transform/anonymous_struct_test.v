@@ -168,7 +168,7 @@ fn test_prepared_selfhost_transform_materializes_before_preparing() {
 	assert materialize_inferred_anonymous_structs_before_prepare(mut a, &tc)
 	name := 'AnonStruct_v3_inferred_${struct_id}'
 	mut prepared := prepare_selfhost_transform(&a, &tc, true)
-	assert name in prepared.transformer.structs
+	assert flat.source_type_id(name) in prepared.transformer.structs
 	_, _, errors, _, _ := transform_prepared_selfhost_owned(mut prepared, mut a, &tc, map[string]bool{}, unsafe { nil })
 	transform_worker_scope_free(prepared.take_scope())
 

@@ -89,7 +89,7 @@ fn test_owned_array_result_sum_storage_keeps_error_acquisition_inside_its_varian
 	configure_owned_array_storage_checker(mut tc)
 	tc.sum_types.set(flat.source_type_id('Storage'), ['ArrayResultAlias', 'int'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Storage', ['ArrayResultAlias', 'int'])
+	t.sum_types.set(flat.source_type_id('Storage'), ['ArrayResultAlias', 'int'])
 	t.set_var_type('source', flat.source_type_id('Storage'))
 	owned := t.clone_owned_array_value_for_capture(t.make_ident('source'), flat.source_type_id('Storage'))
 	assert t.is_owned_array_storage_value(owned)
@@ -280,7 +280,7 @@ fn test_owned_sum_reassignment_keeps_declared_storage_under_smartcast() {
 	tc.structs[flat.source_type_id('Second')] = tc.structs[flat.source_type_id('First')]
 	tc.sum_types.set(flat.source_type_id('Value'), ['First', 'Second'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Value', ['First', 'Second'])
+	t.sum_types.set(flat.source_type_id('Value'), ['First', 'Second'])
 	t.set_var_type('value', flat.source_type_id('Value'))
 	t.set_var_type('replacement', flat.source_type_id('Value'))
 	t.push_smartcast('value', flat.source_type_id('First'), flat.source_type_id('Value'))
@@ -335,7 +335,7 @@ fn test_owned_sum_array_pointer_variants_keep_the_mutable_caller_header() {
 			['ValueStorage', 'PointerStorage'], ['ArrayReference', 'int'], ['[]Res', 'PointerStorage']]
 		for index, name in names { tc.sum_types.set(flat.source_type_id(name), variants[index]) }
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		for index, name in names { t.sum_types.set(name, variants[index]) }
+		for index, name in names { t.sum_types.set(flat.source_type_id(name), variants[index]) }
 		t.set_var_type('values', flat.source_type_id('&[]Res'))
 		t.mut_param_values['values'] = true
 		wrapped := t.wrap_sum_value_for_storage(t.make_ident('values'), flat.source_type_id(target))

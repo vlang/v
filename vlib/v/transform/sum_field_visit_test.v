@@ -13,15 +13,15 @@ fn test_sum_field_visit_path_ignores_non_sums_and_restores_nested_paths() {
 		assert visited.len == 0
 	}
 	tc.structs[flat.source_type_id('Leaf')] = [types.StructField{ name: 'field', typ: types.Type(types.int_) }]
-	t.sum_types.set('Inner', ['Leaf'])
-	t.sum_types.set('Left', ['Inner'])
-	t.sum_types.set('Right', ['Inner'])
-	t.sum_types.set('Diamond', ['Left', 'Right'])
+	t.sum_types.set(flat.source_type_id('Inner'), ['Leaf'])
+	t.sum_types.set(flat.source_type_id('Left'), ['Inner'])
+	t.sum_types.set(flat.source_type_id('Right'), ['Inner'])
+	t.sum_types.set(flat.source_type_id('Diamond'), ['Left', 'Right'])
 	for _ in 0 .. 2 {
 		assert t.sum_shared_field_type_name_inner(flat.source_type_id('Diamond'), 'field', mut visited)? == flat.source_type_int
 		assert visited.len == 0
 	}
-	t.sum_types.set('Cycle', ['Cycle', 'Leaf'])
+	t.sum_types.set(flat.source_type_id('Cycle'), ['Cycle', 'Leaf'])
 	assert t.sum_shared_field_type_name_inner(flat.source_type_id('Cycle'), 'field', mut visited) == none
 	assert visited.len == 0
 	visited[flat.source_type_id('Inner')] = true

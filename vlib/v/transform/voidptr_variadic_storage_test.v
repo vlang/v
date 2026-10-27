@@ -24,12 +24,12 @@ fn test_voidptr_variadic_storage_widens_integers_narrower_than_the_target_int() 
 		}
 		tc.structs[flat.source_type_id('Point')] = []types.StructField{}
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.enum_backing_types.set_id('Tiny', flat.source_type_u8)
-		t.enum_backing_types.set_id('Short', flat.source_type_i16)
-		t.enum_backing_types.set_id('Half', flat.source_type_u32)
-		t.enum_backing_types.set_id('Whole', flat.source_type_int)
-		t.enum_backing_types.set_id('Wide', flat.source_type_u64)
-		t.enum_backing_types.set_id('dep.Tiny', flat.source_type_i64)
+		t.enum_backing_types.set_id(flat.source_type_id('Tiny'), flat.source_type_u8)
+		t.enum_backing_types.set_id(flat.source_type_id('Short'), flat.source_type_i16)
+		t.enum_backing_types.set_id(flat.source_type_id('Half'), flat.source_type_u32)
+		t.enum_backing_types.set_id(flat.source_type_id('Whole'), flat.source_type_int)
+		t.enum_backing_types.set_id(flat.source_type_id('Wide'), flat.source_type_u64)
+		t.enum_backing_types.set_id(flat.source_type_id('dep.Tiny'), flat.source_type_i64)
 		for typ in ['char', 'i8', 'u8', 'i16', 'u16', 'Tiny', 'Short'] {
 			assert voidptr_variadic_test_storage(mut t, typ) == 'int', '${bits}: ${typ}'
 		}

@@ -2160,7 +2160,7 @@ fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
 fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
 	for name, methods in worker.interfaces {
 		if name !in g.interfaces {
-			g.interfaces[name.clone()] = methods.clone()
+			g.interfaces[name] = methods.clone()
 		}
 	}
 	g.interface_boxed_types_done = worker.interface_boxed_types_done

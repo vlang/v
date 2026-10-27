@@ -43,6 +43,11 @@ interface Contract {
 	parent_id := flat.source_type_id('registryfixture.Parent')
 	contract_id := flat.source_type_id('registryfixture.Contract')
 
+	assert tc.source_declares_type_in_scope(flat.source_type_id('Item'), path, 'registryfixture')
+	assert tc.source_declares_type_in_scope(flat.source_type_id('Box'), path, 'registryfixture')
+	assert scope_type_key(path, 'registryfixture', flat.source_type_id('Item')) in tc.concrete_type_scope_keys
+	assert scope_type_key(path, 'registryfixture', flat.source_type_id('Box')) !in tc.concrete_type_scope_keys
+	assert scope_type_key(path, 'registryfixture', flat.source_type_id('Kind')) !in tc.concrete_type_scope_keys
 	assert tc.struct_modules[item_id] == 'registryfixture'
 	assert tc.struct_files[item_id] == path
 	assert tc.struct_generic_params[box_id] == ['T']
@@ -86,6 +91,9 @@ interface Contract {
 	worker.cur_module = tc.cur_module
 	assert worker.parse_resolution_type(flat.source_type_id('dep.Item')).source_type_id() == item_id
 	worker.clone_transform_metadata_owned()
+	worker.declared_type_scope_keys.delete(scope_type_key(path, 'registryfixture', flat.source_type_id('Item')))
+	assert !worker.source_declares_type_in_scope(flat.source_type_id('Item'), path, 'registryfixture')
+	assert tc.source_declares_type_in_scope(flat.source_type_id('Item'), path, 'registryfixture')
 	// Mutate existing list elements too: independent map headers alone cannot
 	// protect the master's collected fields and metadata from a worker write.
 	worker.structs[item_id][0].name = 'worker_value'

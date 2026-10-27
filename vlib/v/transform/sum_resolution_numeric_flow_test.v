@@ -16,7 +16,7 @@ fn test_numeric_sum_resolution_preserves_fallback_order_and_spelling() {
 	}
 	for name in ['Value', 'dep.tast.Value', 'local.Item', 'other.Item', 'left.alias.Ambiguous',
 		'local.Box[int, string]', 'other.Box[int, string]', 'dep.Unspecialized'] {
-		t.sum_types.set_ids(name, [flat.source_type_int])
+		t.sum_types.set_ids(flat.source_type_id(name), [flat.source_type_int])
 	}
 	cases := {
 		'':                          ''
@@ -61,7 +61,7 @@ fn test_numeric_sum_short_matches_and_interface_candidates_preserve_identity() {
 	tc.interface_names[flat.source_type_id('main.Readable')] = true
 	tc.interface_names[flat.source_type_id('local.Readable')] = true
 	mut t := Transformer{ tc: &tc }
-	t.sum_types.set_ids('dep.Parcel[int]', [flat.source_type_int])
+	t.sum_types.set_ids(flat.source_type_id('dep.Parcel[int]'), [flat.source_type_int])
 	short_id := flat.source_type_id('Parcel[int]')
 	concrete_id := flat.source_type_id('dep.Parcel[int]')
 	assert t.find_sum_type_with_short_name(short_id) == concrete_id

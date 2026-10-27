@@ -485,7 +485,7 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 	tc.params_structs[flat.source_type_id('OtherParams')] = true
 	tc.params_structs[flat.source_type_id('RequiredParams')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['RouteParams'] = StructInfo{
+	t.structs[flat.source_type_id('RouteParams')] = StructInfo{
 		name:      flat.source_type_id('RouteParams')
 		is_params: true
 		fields:    [
@@ -501,7 +501,7 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 			},
 		]
 	}
-	t.structs['OtherParams'] = StructInfo{
+	t.structs[flat.source_type_id('OtherParams')] = StructInfo{
 		name:      flat.source_type_id('OtherParams')
 		is_params: true
 		fields:    [
@@ -512,7 +512,7 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 			},
 		]
 	}
-	t.structs['RequiredParams'] = StructInfo{
+	t.structs[flat.source_type_id('RequiredParams')] = StructInfo{
 		name:      flat.source_type_id('RequiredParams')
 		is_params: true
 		fields:    [
@@ -579,7 +579,7 @@ fn test_comptime_method_attrs_index_cond_keeps_member_access_attached() {
 fn test_comptime_sum_variants_normalize_main_specialization_lock() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{ a: &a }
-	t.sum_types.set('Sum', ['int', 'string'])
+	t.sum_types.set(flat.source_type_id('Sum'), ['int', 'string'])
 	variants := t.comptime_sum_variants(flat.source_type_id('main.Sum'))
 	assert variants.len == 2
 	assert variants[0].typ_text() == 'int'
@@ -760,7 +760,7 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 			}
 		}
 		structs:                       {
-			'first.Config':  StructInfo{
+			flat.source_type_id('first.Config'):  StructInfo{
 				name:   flat.source_type_id('Config')
 				module: 'first'
 				fields: [
@@ -771,7 +771,7 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 					},
 				]
 			}
-			'second.Config': StructInfo{
+			flat.source_type_id('second.Config'): StructInfo{
 				name:   flat.source_type_id('Config')
 				module: 'second'
 				fields: [
@@ -812,7 +812,7 @@ fn test_comptime_field_metadata_cache_normalizes_main_qualified_name() {
 			}
 		}
 		structs:                       {
-			'main.Config': StructInfo{
+			flat.source_type_id('main.Config'): StructInfo{
 				name:   flat.source_type_id('main.Config')
 				module: 'main'
 				fields: [

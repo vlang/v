@@ -143,7 +143,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		g.type_from_expression_tokens(tokens[..open]) or { u32(0) }
 	}
 	if c_type == 0 && is_c_struct_literal {
-		c_type = flat.source_type_id(if '#Cstruct#${tokens[2].lit}' in g.declared_types {
+		c_type = flat.source_type_id(if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${tokens[2].lit}') {
 			'struct ${tokens[2].lit}'
 		} else {
 			tokens[2].lit
@@ -171,7 +171,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			typ:    c_type
 		}
 	}
-	if c_type == 0 || (!is_c_struct_literal && flat.source_type_name(layout_type) !in g.struct_fields && g.declared_kinds[flat.source_type_name(g.semantic_type_key(c_type))] !in [
+	if c_type == 0 || (!is_c_struct_literal && flat.source_type_name(layout_type) !in g.struct_fields && g.declared_kinds[g.semantic_type_key(c_type)] !in [
 		.struct_,
 		.union_,
 	]) {

@@ -183,7 +183,7 @@ fn check_optional_conversion(target string) ? {
 	tc.interface_names[flat.source_type_id('IError')] = true
 	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Value', ['int', 'string'])
+	t.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	source_type := target[..1] + 'string'
 	t.set_var_type('source', flat.source_type_id(source_type))
 	source := t.make_ident('source')
@@ -1377,7 +1377,7 @@ fn test_disabled_struct_operator_zero_value_expansion_is_reserved() {
 	tc.fn_param_types['Box.+'] = [box_type, box_type]
 	tc.fn_ret_types['Box.+'] = tc.parse_type(flat.source_type_id('[4096][]int'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Box'] = StructInfo{
+	t.structs[flat.source_type_id('Box')] = StructInfo{
 		name: flat.source_type_id('Box')
 	}
 
@@ -1402,7 +1402,7 @@ fn test_variant_types_metadata_expansion_is_reserved() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('WideSum', ['First', 'Second'])
+	t.sum_types.set(flat.source_type_id('WideSum'), ['First', 'Second'])
 
 	assert t.external_selector_expands_from_type_metadata(a.nodes[int(variant_types)])
 	assert t.fn_span_map_expansion_estimate(int(type_value), int(variant_types) + 1) > deferred_map_expansion_threshold
@@ -1499,7 +1499,7 @@ fn test_fn_span_map_expansion_estimate_defers_sum_type_map_index_zero_value() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Item', ['Wide', 'int'])
+	t.sum_types.set(flat.source_type_id('Item'), ['Wide', 'int'])
 
 	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
 }
@@ -1603,7 +1603,7 @@ fn test_fn_span_map_expansion_estimate_defers_struct_defaults() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
 		name:   flat.source_type_id('Wide')
 		fields: [
 			FieldInfo{
@@ -1622,7 +1622,7 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 	type_idx_call := add_runtime_metadata_call(mut metadata_ast, 'item', 'Item', 'type_idx', 'int')
 	mut metadata_tc := types.TypeChecker.new(&metadata_ast)
 	mut metadata_transformer := new_transformer(mut metadata_ast, &metadata_tc, map[string]bool{})
-	metadata_transformer.sum_types.set('Item', ['First', 'Second'])
+	metadata_transformer.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 	assert metadata_transformer.fn_span_map_expansion_estimate(0, int(type_idx_call) + 1) > deferred_map_expansion_threshold
 
 	mut equality_ast := flat.FlatAst.new()
@@ -1648,7 +1648,7 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 	})
 	mut equality_tc := types.TypeChecker.new(&equality_ast)
 	mut equality_transformer := new_transformer(mut equality_ast, &equality_tc, map[string]bool{})
-	equality_transformer.structs['Wide'] = StructInfo{
+	equality_transformer.structs[flat.source_type_id('Wide')] = StructInfo{
 		name: flat.source_type_id('Wide')
 	}
 	assert equality_transformer.fn_span_map_expansion_estimate(0, int(equality) + 1) > deferred_map_expansion_threshold
@@ -2295,7 +2295,7 @@ fn test_fn_span_expansion_defers_builtin_auto_stringification() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
 		name:   flat.source_type_id('Wide')
 		fields: [FieldInfo{
 			name: 'value'
@@ -2352,7 +2352,7 @@ fn test_fn_span_expansion_defers_direct_aggregate_membership() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
 		name: flat.source_type_id('Wide')
 	}
 
@@ -2484,7 +2484,7 @@ fn test_external_map_expansion_estimate_includes_string_interpolation() {
 	}
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
 		name:   flat.source_type_id('Wide')
 		fields: fields
 	}
@@ -2522,7 +2522,7 @@ fn test_external_map_expansion_estimate_defers_small_aggregate_interpolation() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Small'] = StructInfo{
+	t.structs[flat.source_type_id('Small')] = StructInfo{
 		name:   flat.source_type_id('Small')
 		fields: [
 			FieldInfo{
@@ -2740,7 +2740,7 @@ fn test_external_map_expansion_estimate_defers_runtime_type_metadata_calls() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Item', ['First', 'Second'])
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
@@ -2790,7 +2790,7 @@ fn test_external_map_expansion_estimate_defers_enum_from_string_calls() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.enum_types['Wide'] = ['v0', 'v1']
+	t.enum_types[flat.source_type_id('Wide')] = ['v0', 'v1']
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
@@ -2841,7 +2841,7 @@ fn external_map_equality_expansion_estimate(operand_type string, metadata_type s
 	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	if !is_interface {
-		t.structs[metadata_type] = StructInfo{
+		t.structs[flat.source_type_id(metadata_type)] = StructInfo{
 			name: flat.source_type_id(metadata_type)
 		}
 	}
@@ -3032,8 +3032,8 @@ fn test_external_map_expansion_estimate_defers_sum_shared_field_selector() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Item', ['First', 'Second'])
-	t.structs['First'] = StructInfo{
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
+	t.structs[flat.source_type_id('First')] = StructInfo{
 		name:   flat.source_type_id('First')
 		fields: [
 			FieldInfo{
@@ -3042,7 +3042,7 @@ fn test_external_map_expansion_estimate_defers_sum_shared_field_selector() {
 			},
 		]
 	}
-	t.structs['Second'] = StructInfo{
+	t.structs[flat.source_type_id('Second')] = StructInfo{
 		name:   flat.source_type_id('Second')
 		fields: [
 			FieldInfo{
@@ -3321,9 +3321,9 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_selectors() {
 		},
 	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Item', ['First', 'Second'])
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 	for variant in ['First', 'Second'] {
-		t.structs[variant] = StructInfo{
+		t.structs[flat.source_type_id(variant)] = StructInfo{
 			name:   flat.source_type_id(variant)
 			fields: [
 				FieldInfo{
@@ -3380,7 +3380,7 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_predicates() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.interface_names[flat.source_type_id('Value')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['WideRecord'] = StructInfo{
+	t.structs[flat.source_type_id('WideRecord')] = StructInfo{
 		name: flat.source_type_id('WideRecord')
 	}
 
@@ -3404,7 +3404,7 @@ fn test_string_interp_expansion_estimate_defers_runtime_type_metadata_calls() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.interface_names[flat.source_type_id('View')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Item', ['First', 'Second'])
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 
 	assert t.string_interp_expr_needs_deferred_lowering(sum_call)
 	assert t.string_interp_expr_needs_deferred_lowering(interface_call)
@@ -3772,7 +3772,7 @@ fn test_pointer_formatted_interp_skips_aggregate_stringify_expansion() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Large'] = StructInfo{
+	t.structs[flat.source_type_id('Large')] = StructInfo{
 		name:   flat.source_type_id('Large')
 		fields: [
 			FieldInfo{
@@ -3863,7 +3863,7 @@ fn test_pointer_formatted_interp_accounts_for_pointer_to_sum_cast_hoisting() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Item', ['First', 'Second'])
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 
 	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
 	assert t.string_interp_expr_may_hoist(cast)
@@ -4399,7 +4399,7 @@ fn test_external_map_expansion_estimate_defers_array_equality_calls() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
 		name: flat.source_type_id('Wide')
 	}
 
@@ -4457,7 +4457,7 @@ fn external_map_array_search_expansion_estimate(method string) int {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
 		name: flat.source_type_id('Wide')
 	}
 	assert t.compiler_array_search_call_expands(a.nodes[int(search_call)]), method
@@ -4702,7 +4702,7 @@ fn test_external_map_expansion_estimate_defers_compiler_collection_str_calls() {
 		mut tc := types.TypeChecker.new(&a)
 		tc.structs[flat.source_type_id('Wide')] = []
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.structs['Wide'] = StructInfo{
+		t.structs[flat.source_type_id('Wide')] = StructInfo{
 			name: flat.source_type_id('Wide')
 		}
 
@@ -5164,7 +5164,7 @@ fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
 	master.fn_ret_types.set_id('main.base', flat.source_type_int)
 	tc.fn_param_types['main.base'] = [types.Type(types.int_)]
-	master.structs['main.Base'] = StructInfo{
+	master.structs[flat.source_type_id('main.Base')] = StructInfo{
 		name: flat.source_type_id('main.Base')
 	}
 	tc.structs[flat.source_type_id('main.Base')] = []types.StructField{}
@@ -5187,8 +5187,8 @@ fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	assert 'main.master_generated' !in worker.tc.fn_param_types
 
 	master.add_fn_literal_capture_context('CaptureContext', 'main', []string{}, map[string]u32{})
-	assert 'CaptureContext' in master.structs
-	assert 'CaptureContext' !in worker.structs
+	assert flat.source_type_id('CaptureContext') in master.structs
+	assert flat.source_type_id('CaptureContext') !in worker.structs
 	assert flat.source_type_id('CaptureContext') in master.tc.structs
 	assert flat.source_type_id('CaptureContext') !in worker.tc.structs
 }
@@ -5338,12 +5338,12 @@ fn test_struct_lookup_name_prefers_selected_struct_over_imported_enum_short_name
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.cur_file = 'main.v'
-	t.structs['shapes.Lang'] = StructInfo{
+	t.structs[flat.source_type_id('shapes.Lang')] = StructInfo{
 		name:   flat.source_type_id('Lang')
 		module: 'shapes'
 	}
-	t.enum_types['Lang'] = ['en']
-	t.enum_types['other.Lang'] = ['en']
+	t.enum_types[flat.source_type_id('Lang')] = ['en']
+	t.enum_types[flat.source_type_id('other.Lang')] = ['en']
 
 	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Lang'))) == 'shapes.Lang'
 	t.cur_file = 'without_selective_import.v'
@@ -5357,13 +5357,13 @@ fn test_struct_lookup_name_resolves_alias_before_imported_enum_short_name() {
 	tc.type_aliases.set_id(flat.source_type_id('Count'), flat.source_type_id('other.Count'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.structs['Record'] = StructInfo{
+	t.structs[flat.source_type_id('Record')] = StructInfo{
 		name: flat.source_type_id('Record')
 	}
-	t.enum_types['Lang'] = ['en']
-	t.enum_types['other.Lang'] = ['en']
-	t.enum_types['Count'] = ['one']
-	t.enum_types['other.Count'] = ['one']
+	t.enum_types[flat.source_type_id('Lang')] = ['en']
+	t.enum_types[flat.source_type_id('other.Lang')] = ['en']
+	t.enum_types[flat.source_type_id('Count')] = ['one']
+	t.enum_types[flat.source_type_id('other.Count')] = ['one']
 
 	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Lang'))) == 'Record'
 	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Count'))) == ''
@@ -5377,17 +5377,17 @@ fn test_struct_lookup_name_preserves_builtin_struct_over_imported_enum_short_nam
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'sample'
 	t.cur_file = 'sample.v'
-	t.structs['SliceIndex'] = StructInfo{
+	t.structs[flat.source_type_id('SliceIndex')] = StructInfo{
 		name:   flat.source_type_id('SliceIndex')
 		module: 'builtin'
 	}
-	t.enum_types['SliceIndex'] = ['value']
-	t.enum_types['other.SliceIndex'] = ['value']
+	t.enum_types[flat.source_type_id('SliceIndex')] = ['value']
+	t.enum_types[flat.source_type_id('other.SliceIndex')] = ['value']
 
 	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == 'SliceIndex'
-	t.enum_types['sample.SliceIndex'] = ['local']
+	t.enum_types[flat.source_type_id('sample.SliceIndex')] = ['local']
 	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == ''
-	t.enum_types.delete('sample.SliceIndex')
+	t.enum_types.delete(flat.source_type_id('sample.SliceIndex'))
 	tc.file_selective_imports[file_import_key('sample.v', 'SliceIndex')] = [
 		'other.SliceIndex',
 	]

@@ -18,7 +18,7 @@ fn test_numeric_alias_normalization_preserves_one_step_and_recursive_results() {
 		cur_file:   'alias.v'
 		cur_module: 'current'
 	}
-	t.type_alias_suffixes['SuffixOnly'] = leaf_id
+	t.type_alias_suffixes[flat.source_type_id('SuffixOnly')] = leaf_id
 	// Bare, module-qualified fallback and suffix aliases return their direct target.
 	for name in ['Bare', 'Local', 'SuffixOnly'] {
 		assert t.normalize_type_alias_uncached(flat.source_type_id(name)) == leaf_id

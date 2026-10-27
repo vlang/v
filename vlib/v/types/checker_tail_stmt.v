@@ -3216,7 +3216,7 @@ fn (tc &TypeChecker) interface_match_pattern_candidates(pattern_id u32) []u32 {
 			candidates << flat.source_type_id(resolved)
 			has_scoped_candidate = true
 		}
-		if tc.source_declares_type_in_scope(pattern, tc.cur_file, tc.cur_module) {
+		if tc.source_declares_type_in_scope(pattern_id, tc.cur_file, tc.cur_module) {
 			candidates << pattern_id
 			has_scoped_candidate = true
 		}
@@ -13786,7 +13786,7 @@ fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope(name string,
 		name
 	}
 	if local_name == name && mod_name != 'builtin'
-		&& tc.source_declares_type_in_scope(name, file, mod_name) {
+		&& tc.source_declares_type_in_scope(flat.source_type_id(name), file, mod_name) {
 		return true
 	}
 	if local_name != name && tc.type_symbol_known(flat.source_type_id(local_name)) {
@@ -13811,19 +13811,29 @@ fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope(name string,
 	return false
 }
 
-fn (tc &TypeChecker) source_declares_type_in_scope(name string, file string, mod_name string) bool {
+fn (tc &TypeChecker) source_declares_type_in_scope(name_id u32, file string, mod_name string) bool {
 	if file == '' || isnil(tc.a) {
 		return false
 	}
-	return scope_type_key(file, mod_name, name) in tc.declared_type_scope_keys
+	return scope_type_key(file, mod_name, name_id) in tc.declared_type_scope_keys
 }
 
 // scope_type_key builds the lookup key used by `declared_type_scope_keys`.
 // The module is normalized so that '' and 'main' collapse to the same bucket,
 // matching the old `module_names_match` semantics.
-fn scope_type_key(file string, mod_name string, name string) string {
+fn scope_type_key(file string, mod_name string, name_id u32) u64 {
 	norm_mod := if mod_name == '' || mod_name == 'main' { 'main' } else { mod_name }
-	return '${file}\x01${norm_mod}\x01${name}'
+	context_id := flat.source_type_id('${file}\x01${norm_mod}')
+	return (u64(context_id) << 32) | u64(name_id)
+}
+
+// scope_unqualified_type_name keeps plain declaration names out of the syntax cache.
+fn scope_unqualified_type_name(name_id u32) u32 {
+	return if flat.source_type_shape(name_id).has(.dotted) {
+		flat.source_type_syntax(name_id).unqualified()
+	} else {
+		name_id
+	}
 }
 
 // qualify_type_name_at resolves an interned bare type identifier in a source node's caller scope,
@@ -14381,10 +14391,9 @@ fn (tc &TypeChecker) struct_fields_for_init(struct_name_id u32) []StructField {
 		}
 	}
 	raw_lookup_id := if is_generic { syntax.application_base() } else { struct_name_id }
-	raw_lookup_name := flat.source_type_name(raw_lookup_id)
 	short_lookup_id := flat.source_type_syntax(raw_lookup_id).unqualified()
-	scoped_c_name := c_struct_module_key(tc.cur_module, raw_lookup_name)
 	if flat.source_type_query(raw_lookup_id).has(.c_prefix) {
+		scoped_c_name := c_struct_module_key(tc.cur_module, raw_lookup_id)
 		if fields := tc.c_struct_scoped_fields[scoped_c_name] {
 			return fields
 		}
@@ -14538,8 +14547,7 @@ fn (tc &TypeChecker) struct_field_type_uncached(struct_name_id u32, field_name s
 // library); each module's code uses the fields as it declares them, as its struct
 // literals already do.
 fn (tc &TypeChecker) c_struct_module_field_type(struct_name_id u32, field_name string) ?Type {
-	struct_name := flat.source_type_name(struct_name_id)
-	fields := tc.c_struct_scoped_fields[c_struct_module_key(tc.cur_module, struct_name)] or {
+	fields := tc.c_struct_scoped_fields[c_struct_module_key(tc.cur_module, struct_name_id)] or {
 		return none
 	}
 	for field in fields {

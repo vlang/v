@@ -38,7 +38,7 @@ fn test_struct_field_recent_queries_keep_c_module_precedence() {
 	tc.cur_module = 'fallback'
 	assert tc.struct_field_type(owner_id, 'value')? == builtin_int_type
 	assert tc.struct_field_type(owner_id, 'value')? == builtin_int_type
-	tc.c_struct_scoped_fields[c_struct_module_key('local', 'C.RecentMirror')] = [
+	tc.c_struct_scoped_fields[c_struct_module_key('local', flat.source_type_id('C.RecentMirror'))] = [
 		StructField{ name: 'value', typ: builtin_string_type },
 	]
 	tc.cur_module = 'local'

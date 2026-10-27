@@ -46,7 +46,7 @@ fn test_node_type_memo_follows_smartcasts_and_module_context() {
 	tc.type_aliases.set_id(flat.source_type_id('one.Item'), flat.source_type_int)
 	tc.type_aliases.set_id(flat.source_type_id('two.Item'), flat.source_type_bool)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Collection', tc.sum_types.value(flat.source_type_id('Collection')))
+	t.sum_types.set_ids(flat.source_type_id('Collection'), tc.sum_types.type_ids(flat.source_type_id('Collection')) or { []u32{} })
 	t.set_var_type('value', flat.source_type_id('Collection'))
 	t.begin_node_type_memo(0, a.nodes.len - 1)
 	assert flat.source_type_name(t.node_type(value)) == 'Collection'

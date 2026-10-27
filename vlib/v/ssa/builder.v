@@ -106,8 +106,9 @@ mut:
 	const_exprs              map[string]flat.NodeId
 	native_initializers      map[string]NativeInitializer
 	native_initializer_order []string
-	// Declaration and emitted C names stay in their own symbol namespace.
-	struct_types             map[string]TypeID
+	// Exact declaration and tuple C spellings index SSA layouts; the values belong
+	// to this module's distinct semantic TypeID namespace.
+	struct_types             map[u32]TypeID
 	multi_return_types       map[u32]TypeID
 	multi_return_field_types map[u32]map[string]u32
 	struct_field_types       flat.TypeTextBindings
@@ -115,10 +116,10 @@ mut:
 	struct_embeds            map[TypeID][]int
 	default_struct_types     map[TypeID]bool
 	option_types             map[u32]TypeID
-	sum_type_variants        flat.TypeTextListBindings
-	sum_type_canonical       flat.TypeTextBindings
-	enum_types               map[string]bool
-	flag_enum_types          map[string]bool
+	sum_type_variants        flat.SourceTypeListBindings
+	sum_type_canonical       flat.SourceTypeBindings
+	enum_types               map[u32]bool
+	flag_enum_types          map[u32]bool
 	enum_values              map[string]int
 	enum_member_values       map[string]int
 	enum_member_dupes        map[string]bool
@@ -146,9 +147,9 @@ mut:
 	// When non-empty, all functions declared in these modules are skipped (dead
 	// code elimination for unused backends/modules).
 	skip_modules map[string]bool
-	// SSA-level type alias name -> resolved base TypeID. Supplements the checker's
+	// SSA-level source spelling ID -> resolved base TypeID. Supplements the checker's
 	// alias map (used when building without a checker).
-	type_aliases map[string]TypeID
+	type_aliases map[u32]TypeID
 	// File-scoped names preserve distinct nested modules that share a leaf name.
 	source_modules map[string]string
 	source_imports map[string]map[string]string
@@ -225,15 +226,15 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		fn_types:                 map[string]TypeID{}
 		fn_ids:                   map[string]int{}
 		const_exprs:              map[string]flat.NodeId{}
-		struct_types:             map[string]TypeID{}
+		struct_types:             map[u32]TypeID{}
 		multi_return_types:       map[u32]TypeID{}
 		multi_return_field_types: map[u32]map[string]u32{}
 		struct_field_types:       flat.TypeTextBindings{}
 		option_types:             map[u32]TypeID{}
-		sum_type_variants:        flat.TypeTextListBindings{}
-		sum_type_canonical:       flat.TypeTextBindings{}
-		enum_types:               map[string]bool{}
-		flag_enum_types:          map[string]bool{}
+		sum_type_variants:        flat.SourceTypeListBindings{}
+		sum_type_canonical:       flat.SourceTypeBindings{}
+		enum_types:               map[u32]bool{}
+		flag_enum_types:          map[u32]bool{}
 		enum_values:              map[string]int{}
 		enum_member_values:       map[string]int{}
 		enum_member_dupes:        map[string]bool{}
@@ -243,7 +244,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		defer_body_ids:           []flat.NodeId{}
 		loop_targets:             []LoopTargets{}
 		skip_modules:             map[string]bool{}
-		type_aliases:             map[string]TypeID{}
+		type_aliases:             map[u32]TypeID{}
 		source_modules:           opts.source_modules
 		source_imports:           opts.source_imports
 		exact_used_fns:           opts.exact_used_fns
@@ -392,12 +393,12 @@ fn (mut b Builder) register_types() {
 			typ_id := b.m.type_store.register(Type{
 				kind: .struct_t
 			})
-			b.register_struct_type_name(node.value_text(), cur_module, typ_id)
+			b.register_struct_type_name(node.source_value_id(), cur_module, typ_id)
 		} else if node.kind == .type_decl && node.children_count > 0 {
 			typ_id := b.m.type_store.register(Type{
 				kind: .struct_t
 			})
-			b.register_sum_type_name(node.value_text(), cur_module, typ_id)
+			b.register_sum_type_name(node.source_value_id(), cur_module, typ_id)
 		} else if node.kind == .enum_decl {
 			b.register_enum_values(node, cur_module)
 		}
@@ -451,7 +452,7 @@ fn (mut b Builder) register_types() {
 				b.struct_field_types.set('C.tm.tm_zone', '&char')
 				b.struct_field_types.set('tm.tm_zone', '&char')
 			}
-			typ_id := b.struct_type_id_for_decl(node.value_text(), cur_module)
+			typ_id := b.struct_type_id_for_decl(node.source_value_id(), cur_module)
 			b.struct_embeds[typ_id] = embeds
 			b.m.type_store.types[typ_id] = Type{
 				kind:        .struct_t
@@ -471,7 +472,7 @@ fn (mut b Builder) register_types() {
 		if node.kind != .type_decl || node.children_count == 0 {
 			continue
 		}
-		sum_typ_id := b.struct_type_id_for_decl(node.value_text(), cur_module)
+		sum_typ_id := b.struct_type_id_for_decl(node.source_value_id(), cur_module)
 		mut field_types := []TypeID{}
 		mut field_names := []string{}
 		mut has_pointer_variant := false
@@ -620,15 +621,16 @@ fn (mut b Builder) register_multi_return_types() {
 // register_multi_return_type updates register multi return type state for ssa.
 fn (mut b Builder) register_multi_return_type(ret types.MultiReturn) TypeID {
 	name := b.multi_return_c_type(ret)
+	name_id := flat.source_type_id(name)
 	source_id := types.Type(ret).source_type_id()
-	if typ := b.struct_types[name] {
+	if typ := b.struct_types[name_id] {
 		b.multi_return_types[source_id] = typ
 		return typ
 	}
 	typ_id := b.m.type_store.register(Type{
 		kind: .struct_t
 	})
-	b.struct_types[name] = typ_id
+	b.struct_types[name_id] = typ_id
 	b.multi_return_types[source_id] = typ_id
 	b.multi_return_field_types[source_id] = map[string]u32{}
 	mut field_types := []TypeID{}
@@ -747,18 +749,22 @@ fn (mut b Builder) ssa_type_from_checker_type(typ types.Type) TypeID {
 
 // register_enum_values updates register enum values state for ssa.
 fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
-	short_name := node.value_text().all_after('.')
-	mut enum_names := []string{}
-	enum_names << node.value_text()
-	if short_name != node.value_text() {
-		enum_names << short_name
+	name_id := node.source_value_id()
+	short_id := if flat.source_type_shape(name_id).has(.dotted) {
+		flat.source_type_syntax(name_id).first_dot_suffix()
+	} else {
+		name_id
+	}
+	mut enum_names := [name_id]
+	if short_id != name_id {
+		enum_names << short_id
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		enum_names << module_name + '.' + short_name
+		enum_names << flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), short_id)
 	}
 	mut is_flag_enum := false
 	for enum_name in enum_names {
-		if b.checker_has_flag_enum(flat.source_type_id(enum_name)) {
+		if b.checker_has_flag_enum(enum_name) {
 			is_flag_enum = true
 			break
 		}
@@ -776,12 +782,12 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 			continue
 		}
 		if field.children_count > 0 {
-			if explicit := b.enum_field_expr_value(b.a.child(field, 0), flat.source_type_id(enum_names.last())) {
+			if explicit := b.enum_field_expr_value(b.a.child(field, 0), enum_names.last()) {
 				value = explicit
 			}
 		}
 		for enum_name in enum_names {
-			enum_key := enum_name + '.' + field.value
+			enum_key := flat.source_type_name(enum_name) + '.' + field.value
 			b.enum_values[enum_key] = value
 		}
 		if existing := b.enum_member_values[field.value] {
@@ -796,56 +802,63 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 }
 
 // register_struct_type_name updates register struct type name state for ssa.
-fn (mut b Builder) register_struct_type_name(name string, module_name string, typ_id TypeID) {
+fn (mut b Builder) register_struct_type_name(name u32, module_name string, typ_id TypeID) {
 	b.struct_types[name] = typ_id
-	short_name := name.all_after('.')
+	short_name := if flat.source_type_shape(name).has(.dotted) {
+		flat.source_type_syntax(name).first_dot_suffix()
+	} else {
+		name
+	}
 	if short_name !in b.struct_types {
 		b.struct_types[short_name] = typ_id
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		qualified_name := module_name + '.' + short_name
+		qualified_name := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), short_name)
 		b.struct_types[qualified_name] = typ_id
 	}
 }
 
 // register_sum_type_name updates register sum type name state for ssa.
-fn (mut b Builder) register_sum_type_name(name string, module_name string, typ_id TypeID) {
-	qualified_name := qualify_type_name(name, module_name)
-	qualified_id := flat.source_type_id(qualified_name)
+fn (mut b Builder) register_sum_type_name(name u32, module_name string, typ_id TypeID) {
+	qualified_id := qualify_type_name(name, module_name)
 	b.register_struct_type_name(name, module_name, typ_id)
 	mut variants := []u32{}
 	if b.tc != unsafe { nil } {
-		if tc_variants := b.tc.sum_types.type_ids(flat.source_type_id(qualified_name)) {
+		if tc_variants := b.tc.sum_types.type_ids(qualified_id) {
 			variants = tc_variants.clone()
 		}
 	}
 	if variants.len == 0 {
 		for node in b.a.nodes {
-			if node.kind != .type_decl || node.value_text() != name || node.children_count == 0 {
+			if node.kind != .type_decl || node.source_value_id() != name || node.children_count == 0 {
 				continue
 			}
 			variants = b.sum_type_variants_for_decl(node, module_name)
 			break
 		}
 	}
-	b.sum_type_variants.set_ids(qualified_name, variants)
-	b.sum_type_canonical.set_id(qualified_name, qualified_id)
-	if name != qualified_name {
+	b.sum_type_variants.set_ids(qualified_id, variants)
+	b.sum_type_canonical.set_id(qualified_id, qualified_id)
+	if name != qualified_id {
 		b.sum_type_variants.set_ids(name, variants)
 		b.sum_type_canonical.set_id(name, qualified_id)
 	}
-	short_name := qualified_name.all_after('.')
+	short_name := if flat.source_type_shape(qualified_id).has(.dotted) {
+		flat.source_type_syntax(qualified_id).first_dot_suffix()
+	} else {
+		qualified_id
+	}
 	b.sum_type_variants.set_ids(short_name, variants)
 	b.sum_type_canonical.set_id(short_name, qualified_id)
 }
 
 // qualify_type_name supports qualify type name handling for ssa.
-fn qualify_type_name(name string, module_name string) string {
-	if name.contains('.') || module_name.len == 0 || module_name == 'main'
+fn qualify_type_name(name u32, module_name string) u32 {
+	if flat.source_type_shape(name).has(.dotted) || module_name.len == 0 || module_name == 'main'
 		|| module_name == 'builtin' {
 		return name
 	}
-	return '${module_name}.${name}'
+	return flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), name)
 }
 
 // qualify_type_ref_name supports qualify type ref name handling for ssa.
@@ -930,9 +943,9 @@ fn (mut b Builder) register_sum_field_type(name string, module_name string, fiel
 	}
 }
 
-// registered_struct_type looks up an existing layout without resolving aliases or
-// changing module precedence. Source composites use spelling IDs; declaration and
-// emitted C names remain in the symbol index.
+// registered_struct_type looks up an existing layout by spelling identity without
+// resolving aliases or changing module precedence. Tuple C spellings are indexed
+// exactly at their naming boundary.
 fn (b &Builder) registered_struct_type(name_id u32) ?TypeID {
 	if typ := b.option_types[name_id] {
 		return typ
@@ -940,17 +953,21 @@ fn (b &Builder) registered_struct_type(name_id u32) ?TypeID {
 	if typ := b.multi_return_types[name_id] {
 		return typ
 	}
-	if typ := b.struct_types[flat.source_type_name(name_id)] {
+	if typ := b.struct_types[name_id] {
 		return typ
 	}
 	return none
 }
 
 // struct_type_id_for_decl supports struct type id for decl handling for Builder.
-fn (b &Builder) struct_type_id_for_decl(name string, module_name string) TypeID {
-	short_name := name.all_after('.')
+fn (b &Builder) struct_type_id_for_decl(name u32, module_name string) TypeID {
+	short_name := if flat.source_type_shape(name).has(.dotted) {
+		flat.source_type_syntax(name).first_dot_suffix()
+	} else {
+		name
+	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		qualified_name := module_name + '.' + short_name
+		qualified_name := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), short_name)
 		if typ := b.struct_types[qualified_name] {
 			return typ
 		}
@@ -7224,8 +7241,9 @@ fn (mut b Builder) register_type_aliases() {
 		if node.kind == .type_decl && node.children_count == 0 && node.typ != 0 {
 			base := b.resolve_type_in_module(node.typ, cur_module)
 			if base > 0 {
-				b.type_aliases[node.value_text()] = base
-				qualified := qualify_type_name(node.value_text(), cur_module)
+				name_id := node.source_value_id()
+				b.type_aliases[name_id] = base
+				qualified := qualify_type_name(name_id, cur_module)
 				b.type_aliases[qualified] = base
 			}
 		}
@@ -9352,12 +9370,11 @@ fn (b &Builder) enum_field_value_for_type(type_name_id u32, member string, as_fl
 // is_flag_enum_type_name reports whether is flag enum type name applies in ssa.
 fn (b &Builder) is_flag_enum_type_name(type_name_id u32) bool {
 	clean_id := ssa_pointer_base_source_type(type_name_id)
-	clean := flat.source_type_name(clean_id)
-	if clean in b.flag_enum_types { return true }
-	short_name := flat.source_type_name(flat.source_type_syntax(clean_id).first_dot_suffix())
-	if short_name in b.flag_enum_types { return true }
+	if clean_id in b.flag_enum_types { return true }
+	short_id := flat.source_type_syntax(clean_id).first_dot_suffix()
+	if short_id in b.flag_enum_types { return true }
 	if b.tc != unsafe { nil } {
-		if clean_id in b.tc.flag_enums || flat.source_type_id(short_name) in b.tc.flag_enums {
+		if clean_id in b.tc.flag_enums || short_id in b.tc.flag_enums {
 			return true
 		}
 		if !flat.source_type_shape(clean_id).has(.dotted) {
@@ -10629,11 +10646,11 @@ fn (b &Builder) canonical_sum_type_name(name_id u32) ?u32 {
 	dotted := flat.source_type_shape(name_id).has(.dotted)
 	if !dotted && b.cur_module.len > 0 && b.cur_module !in ['main', 'builtin'] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), name_id)
-		if canonical_source_id := b.sum_type_canonical.type_id(flat.source_type_name(qualified)) {
+		if canonical_source_id := b.sum_type_canonical.type_id(qualified) {
 			return canonical_source_id
 		}
 	}
-	if canonical_source_id := b.sum_type_canonical.type_id(flat.source_type_name(name_id)) {
+	if canonical_source_id := b.sum_type_canonical.type_id(name_id) {
 		return canonical_source_id
 	}
 	return none
@@ -10656,7 +10673,7 @@ fn (mut b Builder) sum_variant_for_expr(sum_name_id u32, expr_id flat.NodeId, va
 		return variant
 	}
 	value_type := b.value_type(value)
-	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} }
+	variants := b.sum_type_variants.type_ids(sum_name_id) or { []u32{} }
 	for variant in variants {
 		if b.resolve_type(variant) == value_type {
 			return variant
@@ -10666,7 +10683,7 @@ fn (mut b Builder) sum_variant_for_expr(sum_name_id u32, expr_id flat.NodeId, va
 }
 
 fn (b &Builder) find_sum_variant(sum_name_id u32, type_name_id u32) ?u32 {
-	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { return none }
+	variants := b.sum_type_variants.type_ids(sum_name_id) or { return none }
 	if type_name_id in variants { return type_name_id }
 	if type_name_id == 0 || flat.source_type_shape(type_name_id).has(.dotted) { return none }
 	base := ssa_pointer_base_source_type(type_name_id)
@@ -10685,7 +10702,7 @@ fn (b &Builder) find_sum_variant(sum_name_id u32, type_name_id u32) ?u32 {
 
 fn (b &Builder) sum_variant_index(sum_name_id u32, variant_id u32) int {
 	resolved := b.find_sum_variant(sum_name_id, variant_id) or { return 0 }
-	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { return 0 }
+	variants := b.sum_type_variants.type_ids(sum_name_id) or { return 0 }
 	return variants.index(resolved) + 1
 }
 
@@ -12054,7 +12071,7 @@ fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) u32 {
 		if node.value_text() == 'flags' {
 			for _ in 0 .. 32 {
 				if base_type == ssa_array_source_type || base_type == ssa_builtin_array_source_type
-					|| flat.source_type_shape(base_type).has(.array_type) || b.type_aliases[flat.source_type_name(base_type)] == b.array_type {
+					|| flat.source_type_shape(base_type).has(.array_type) || b.type_aliases[base_type] == b.array_type {
 					return ssa_array_flags_source_type
 				}
 				if target_source_id := b.type_alias_target(base_type) {
@@ -12917,9 +12934,7 @@ fn (b &Builder) selector_type_name(node flat.Node) ?u32 {
 		return none
 	}
 	if sum_name_source_id := b.canonical_sum_type_name(base_type_source_id_2) {
-		sum_name := flat.source_type_name(sum_name_source_id)
-
-		if variants_source_ids := b.sum_type_variants.type_ids(sum_name) {
+		if variants_source_ids := b.sum_type_variants.type_ids(sum_name_source_id) {
 			for variant_source_id in variants_source_ids {
 				variant := flat.source_type_name(variant_source_id)
 
@@ -13262,7 +13277,7 @@ fn (b &Builder) sum_name_for_type_id(typ_id TypeID) ?u32 {
 		if canonical_source_id := b.sum_type_canonical.type_id(sum_name) {
 			if sum_typ := b.registered_struct_type(canonical_source_id) {
 				if sum_typ == typ_id {
-					return flat.source_type_id(sum_name)
+					return sum_name
 				}
 			}
 		}
@@ -13347,7 +13362,7 @@ fn (mut b Builder) native_utsname_field_value(struct_typ_id TypeID, field_ptr Va
 			&& b.m.type_store.types[base_type].kind == .ptr_t {
 			base_type = b.m.type_store.types[base_type].elem_type
 		}
-		if uname_type := b.struct_types['C.utsname'] {
+		if uname_type := b.struct_types[flat.source_type_id('C.utsname')] {
 			field_type := b.deref_type(field_ptr)
 			if base_type == uname_type && field_type > 0
 				&& field_type < b.m.type_store.types.len
@@ -13947,10 +13962,10 @@ fn (b &Builder) struct_literal_type(name_id u32) (TypeID, u32) {
 	if !flat.source_type_shape(name_id).has(.dotted) && b.cur_module.len > 0
 		&& b.cur_module !in ['main', 'builtin'] {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), short_id)
-		if typ := b.struct_types[flat.source_type_name(qualified_id)] { return typ, qualified_id }
+		if typ := b.struct_types[qualified_id] { return typ, qualified_id }
 	}
 	if typ := b.registered_struct_type(name_id) { return typ, name_id }
-	if typ := b.struct_types[flat.source_type_name(short_id)] { return typ, short_id }
+	if typ := b.struct_types[short_id] { return typ, short_id }
 	return TypeID(0), name_id
 }
 
@@ -14143,7 +14158,7 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 		}
 	}
 	// SSA-level alias fallback (used when building without a checker).
-	if alias_typ := b.type_aliases[flat.source_type_name(name_id)] {
+	if alias_typ := b.type_aliases[name_id] {
 		if alias_typ > 0 {
 			return alias_typ
 		}
@@ -14155,11 +14170,11 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	// Nominal compiler descriptors can use these names without being runtime containers.
 	if name_id in [ssa_nominal_array_source_type, ssa_nominal_map_source_type] {
 		if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin' {
-			if typ := b.struct_types[flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), name_id))] {
+			if typ := b.struct_types[flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), name_id)] {
 				return typ
 			}
 		}
-		if typ := b.struct_types[flat.source_type_name(name_id)] {
+		if typ := b.struct_types[name_id] {
 			return typ
 		}
 	}
@@ -14180,11 +14195,11 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 			return typ
 		}
 	}
-	short_name := flat.source_type_name(syntax.first_dot_suffix())
+	short_name := syntax.first_dot_suffix()
 	if !shape.has(.dotted) && b.cur_module.len > 0 && b.cur_module != 'main'
 		&& b.cur_module != 'builtin' {
-		qualified_name := flat.source_type_name(flat.source_type_composition_two(.qualified,
-			flat.source_type_id(b.cur_module), syntax.first_dot_suffix()))
+		qualified_name := flat.source_type_composition_two(.qualified,
+			flat.source_type_id(b.cur_module), short_name)
 		if qualified_name in b.enum_types {
 			return b.i32_type
 		}
@@ -14355,8 +14370,8 @@ fn (b &Builder) is_option_type(typ_id TypeID) bool {
 
 fn (b &Builder) is_enum_type_name(name_id u32) bool {
 	if name_id == 0 { return false }
-	if flat.source_type_name(name_id) in b.enum_types { return true }
-	return flat.source_type_name(flat.source_type_syntax(name_id).first_dot_suffix()) in b.enum_types
+	if name_id in b.enum_types { return true }
+	return flat.source_type_syntax(name_id).first_dot_suffix() in b.enum_types
 }
 
 fn (b &Builder) enum_autostr_fn_name(type_name_id u32) ?string {
@@ -14389,9 +14404,8 @@ fn (mut b Builder) resolve_type_in_module(name_id u32, module_name string) TypeI
 	}
 	if !shape.has(.dotted) && module_name.len > 0 && module_name !in ['main', 'builtin'] {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), name_id)
-		qualified_name := flat.source_type_name(qualified_id)
-		if qualified_name in b.enum_types { return b.i32_type }
-		if typ := b.struct_types[qualified_name] { return typ }
+		if qualified_id in b.enum_types { return b.i32_type }
+		if typ := b.struct_types[qualified_id] { return typ }
 		if alias_source_id := b.type_alias_target(qualified_id) {
 			if alias_source_id != qualified_id {
 				return b.resolve_type_in_module(alias_source_id, module_name)

@@ -13,7 +13,7 @@ const fastc_type_ptrdiff_t = flat.source_type_id('ptrdiff_t')
 // `c_type` is not a struct/union.
 fn (g &Parser) can_generate_default_struct_str(c_type u32) bool {
 	key := g.semantic_type_key(fastc_trim_pointer_type(c_type))
-	return flat.source_type_name(key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(key)] in [
+	return key in g.declared_kinds && g.declared_kinds[key] in [
 		.struct_,
 		.union_,
 	]
@@ -23,7 +23,7 @@ fn (mut g Parser) fastc_default_struct_str_name(c_type u32) ?string {
 	key := g.semantic_type_key(c_type)
 	// A missing key defaults to `.struct_` (the zero enum value), so require it to be
 	// present before treating `c_type` as a struct.
-	if flat.source_type_name(key) !in g.declared_kinds || g.declared_kinds[flat.source_type_name(key)] !in [
+	if key !in g.declared_kinds || g.declared_kinds[key] !in [
 		.struct_,
 		.union_,
 	] {
@@ -139,8 +139,8 @@ fn (mut g Parser) fastc_struct_field_str_needs_indent(field_c_type u32) bool {
 	if '${flat.source_type_name(key)}.str' in g.functions {
 		return false
 	}
-	return flat.source_type_name(key) in g.declared_kinds
-		&& g.declared_kinds[flat.source_type_name(key)] in [.struct_, .union_]
+	return key in g.declared_kinds
+		&& g.declared_kinds[key] in [.struct_, .union_]
 }
 
 // fastc_fixed_array_str_name returns a helper that renders a fixed array in V's
@@ -235,7 +235,7 @@ fn fastc_wrapped_str_expression(prefix string, value string, suffix string) stri
 fn (mut g Parser) fastc_sumtype_type_name_helper(c_type u32) ?string {
 	base_id := fastc_trim_pointer_type(fastc_normalize_inferred_type(c_type))
 	base := flat.source_type_name(base_id)
-	if base !in g.sum_types && g.declared_kinds[flat.source_type_name(g.semantic_type_key(base_id))] != .interface_ {
+	if base !in g.sum_types && g.declared_kinds[g.semantic_type_key(base_id)] != .interface_ {
 		return none
 	}
 	fn_name := 'v_fastc_typename_${base}'
@@ -376,7 +376,7 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 		method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(flat.source_type_name(key)), 'str'))
 		return '${method_c_name}(${receiver})'
 	}
-	if g.declared_kinds[flat.source_type_name(key)] == .enum_ {
+	if g.declared_kinds[key] == .enum_ {
 		return 'v_fastc_enum_str_${fastc_c_declared_type_name(flat.source_type_name(key))}(${value_c})'
 	}
 	if nested := g.fastc_default_struct_str_name(ft) {
@@ -464,7 +464,7 @@ fn (mut g Parser) fastc_reference_str_expression(value string, value_type_id u32
 	if fastc_primitive_c_type_id(pointee_id) != none {
 		return none
 	}
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(pointee_id))] == .enum_ {
+	if g.declared_kinds[g.semantic_type_key(pointee_id)] == .enum_ {
 		return g.fastc_struct_field_str_expression('(*(${value}))', pointee_id)
 	}
 	helper := g.fastc_pointer_str_name(value_type_id) or { return none }
@@ -494,7 +494,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 		value_tokens := g.last_expression.clone()
 		value_type := fastc_normalize_inferred_type(g.last_expression_type)
 		value_key := g.semantic_type_key(value_type)
-		alias_has_str_method := g.declared_kinds[flat.source_type_name(value_key)] == .alias_ && '${flat.source_type_name(value_key)}.str' in g.functions
+		alias_has_str_method := g.declared_kinds[value_key] == .alias_ && '${flat.source_type_name(value_key)}.str' in g.functions
 		mut interpolation_type_id := if alias_has_str_method {
 			value_type
 		} else {
@@ -600,9 +600,9 @@ fn (mut g Parser) read_interpolated_string() !string {
 				return g.unsupported('interpolation format `+` for `${flat.source_type_name(value_type)}`')
 			}
 			parts << '({ ${interpolation_type} __vf_signed = (${value}); string __vf_signed_str = ${integer_str}; __vf_signed >= 0 ? builtin__string_plus(_S("+"), __vf_signed_str) : __vf_signed_str; })'
-		} else if g.declared_kinds[flat.source_type_name(g.semantic_type_key(interpolation_type_id))] == .enum_ {
+		} else if g.declared_kinds[g.semantic_type_key(interpolation_type_id)] == .enum_ {
 			enum_key := g.semantic_type_key(interpolation_type_id)
-			is_unsigned := g.enum_flags[flat.source_type_name(enum_key)]
+			is_unsigned := g.enum_flags[enum_key]
 			enum_value := if flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
 				'(*(${value}))'
 			} else {

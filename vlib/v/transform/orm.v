@@ -1117,8 +1117,8 @@ fn (t &Transformer) sql_dynamic_value_type(tokens []string) u32 {
 	if token.contains('.') {
 		root := token.all_before('.')
 		field_name := token.all_after('.')
-		root_type := flat.source_type_name(t.var_type(root))
-		fields := t.tc.structs[flat.source_type_id(root_type)] or { return u32(0) }
+		root_type := t.var_type(root)
+		fields := t.tc.structs[root_type] or { return u32(0) }
 		for field in fields {
 			if field.name == field_name {
 				return field.typ.source_type_id()
@@ -3960,22 +3960,23 @@ fn sql_transform_field_type(table SqlTransformTableInfo, field_name string) u32 
 }
 
 fn (t &Transformer) sql_transform_type_is_enum(typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
+	typ := typ_id
 	if typ in t.enum_types {
 		return true
 	}
 	if t.tc.cur_module.len > 0 && t.tc.cur_module !in ['', 'main', 'builtin'] {
-		return '${t.tc.cur_module}.${typ}' in t.enum_types
+		return flat.source_type_composition_two(.qualified, flat.source_type_id(t.tc.cur_module), typ_id) in t.enum_types
 	}
 	return false
 }
 
 fn (t &Transformer) sql_token_root_is_enum_type(root string) bool {
-	if root in t.enum_types {
+	root_id := flat.source_type_id(root)
+	if root_id in t.enum_types {
 		return true
 	}
 	if t.tc.cur_module.len > 0 && t.tc.cur_module !in ['', 'main', 'builtin'] {
-		return '${t.tc.cur_module}.${root}' in t.enum_types
+		return flat.source_type_composition_two(.qualified, flat.source_type_id(t.tc.cur_module), root_id) in t.enum_types
 	}
 	return false
 }

@@ -321,7 +321,7 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 		right_type := (g.type_from_expression_tokens(tokens[operator_index + 1..end]) or {
 			return g.unsupported('type test `${operator.str()}` with an undeclared target type')
 		})
-		if flat.source_type_name(g.semantic_type_key(right_type)) !in g.declared_types && !flat.source_type_query(right_type).has(.c_array_prefix) && !flat.source_type_query(right_type).has(.c_map_prefix) && fastc_primitive_c_type_id(right_type) == none {
+		if g.semantic_type_key(right_type) !in g.declared_types && !flat.source_type_query(right_type).has(.c_array_prefix) && !flat.source_type_query(right_type).has(.c_map_prefix) && fastc_primitive_c_type_id(right_type) == none {
 			// Composite variants (`x is []string` / `x is map[…]`) and primitive variants
 			// (`x is u64`) are not declared types but do get generated `__v_typeid_` tags,
 			// so allow them.
@@ -359,9 +359,9 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 		return flat.source_type_bool
 	}
 	if operator in [.eq, .ne] {
-		if g.declared_kinds[flat.source_type_name(g.semantic_type_key(left_type))] == .enum_ && right_type == u32(0) && fastc_expression_range_is_enum_shorthand(tokens, operator_index + 1, end) {
+		if g.declared_kinds[g.semantic_type_key(left_type)] == .enum_ && right_type == u32(0) && fastc_expression_range_is_enum_shorthand(tokens, operator_index + 1, end) {
 			right_type = left_type
-		} else if g.declared_kinds[flat.source_type_name(g.semantic_type_key(right_type))] == .enum_ && left_type == u32(0) && fastc_expression_range_is_enum_shorthand(tokens, start, operator_index) {
+		} else if g.declared_kinds[g.semantic_type_key(right_type)] == .enum_ && left_type == u32(0) && fastc_expression_range_is_enum_shorthand(tokens, start, operator_index) {
 			left_type = right_type
 		}
 		if !fastc_is_pointer_type(left_type) && !fastc_is_pointer_type(right_type) {
@@ -369,7 +369,7 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 			right_layout := fastc_trim_pointer_type(g.underlying_alias_type(right_type))
 			left_key := g.semantic_type_key(left_layout)
 			if left_layout == right_layout && left_layout !in [fastc_type_option,
-				fastc_type_legacy_option, fastc_type_legacy_result] && flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .struct_ && !g.struct_equality_is_supported(left_type, []u32{}) {
+				fastc_type_legacy_option, fastc_type_legacy_result] && left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_ && !g.struct_equality_is_supported(left_type, []u32{}) {
 				return g.unsupported('struct equality for `${flat.source_type_name(left_type)}` with unsupported fields')
 			}
 		}
@@ -653,8 +653,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	if end - start == 5 && tokens[start].tok == .name && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name && tokens[start + 3].tok == .dot && tokens[start + 4].tok == .name {
 		if imported_module := g.imports[tokens[start].lit] {
 			type_key := fastc_type_key(imported_module, tokens[start + 2].lit)
-			if enum_type_key := g.underlying_enum_type_key(flat.source_type_id(type_key)) {
-				return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(enum_type_key)))
+			if type_key_id := flat.source_type_existing_id(type_key) {
+				if enum_type_key := g.underlying_enum_type_key(type_key_id) {
+					return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(enum_type_key)))
+				}
 			}
 		}
 	}
@@ -677,12 +679,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	if end - start == 3 && tokens[start].tok == .name && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name {
 		if imported_module := g.imports[tokens[start].lit] {
 			type_key := fastc_type_key(imported_module, tokens[start + 2].lit)
-			if type_key in g.declared_types {
+			if fastc_source_type_key_exists(g.declared_types, type_key) {
 				return flat.source_type_id(fastc_c_declared_type_name(type_key))
 			}
 		}
 		if type_key := g.resolve_declared_type_key(tokens[start].lit) {
-			if enum_type_key := g.underlying_enum_type_key(flat.source_type_id(type_key)) {
+			if enum_type_key := g.underlying_enum_type_key(type_key) {
 				return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(enum_type_key)))
 			}
 		}
@@ -759,7 +761,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if close := fastc_matching_delimiter_before(tokens, start + 1, end, .lcbr, .rcbr) {
 			if close == end - 1 {
 				if type_key := g.resolve_declared_type_key(tokens[start].lit) {
-					return flat.source_type_id(fastc_c_declared_type_name(type_key))
+					return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(type_key)))
 				}
 			}
 		}
@@ -777,7 +779,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			if close := fastc_matching_delimiter_before(tokens, start + 3, end, .lcbr, .rcbr) {
 				if close == end - 1 {
 					type_key := fastc_type_key(imported_module, tokens[start + 2].lit)
-					if type_key in g.declared_types {
+					if fastc_source_type_key_exists(g.declared_types, type_key) {
 						return flat.source_type_id(fastc_c_declared_type_name(type_key))
 					}
 				}
@@ -826,21 +828,21 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 						return flat.source_type_id(primitive)
 					}
 					if type_key := g.resolve_declared_type_key(name) {
-						return flat.source_type_id(fastc_c_declared_type_name(type_key))
+						return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(type_key)))
 					}
 				}
 				if call_name_index == start + 2 && tokens[start].lit in g.imports {
 					module_name := g.imports[tokens[start].lit]
 					type_key := fastc_type_key(module_name, name)
-					if type_key in g.declared_types {
+					if fastc_source_type_key_exists(g.declared_types, type_key) {
 						return flat.source_type_id(fastc_c_declared_type_name(type_key))
 					}
 				}
 				if call_name_index == start + 2 && tokens[start].lit == 'C' {
-					if '#Cstruct#${name}' in g.declared_types {
+					if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${name}') {
 						return flat.source_type_id('struct ${name}')
 					}
-					if name.len > 0 && (name[0].is_capital() || '#Ctypedef#${name}' in g.declared_types) {
+					if name.len > 0 && (name[0].is_capital() || fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${name}')) {
 						return flat.source_type_id(name)
 					}
 				}
@@ -966,7 +968,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if tokens[i].lit == 'str' && g.can_generate_default_struct_str(receiver_type) {
 			return flat.source_type_string
 		}
-		if tokens[i].lit == 'str' && g.declared_kinds[flat.source_type_name(g.semantic_type_key(receiver_type))] == .enum_ {
+		if tokens[i].lit == 'str' && g.declared_kinds[g.semantic_type_key(receiver_type)] == .enum_ {
 			return flat.source_type_string
 		}
 		if tokens[i].lit == 'str' && (flat.source_type_query(receiver_type).has(.c_array_prefix)
@@ -1191,13 +1193,13 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			if g.selfhost && tokens[i].tok in [.plus, .minus] && fastc_is_pointer_type(left_type) && fastc_is_integer_expression_type(right_type) {
 				return left_type
 			}
-			if g.selfhost && tokens[i].tok in [.amp, .pipe, .xor] && left_type == right_type && g.declared_kinds[flat.source_type_name(g.semantic_type_key(left_type))] == .enum_ {
+			if g.selfhost && tokens[i].tok in [.amp, .pipe, .xor] && left_type == right_type && g.declared_kinds[g.semantic_type_key(left_type)] == .enum_ {
 				return left_type
 			}
-			if g.selfhost && tokens[i].tok in [.amp, .pipe, .xor] && g.declared_kinds[flat.source_type_name(g.semantic_type_key(left_type))] == .enum_ && right_type == u32(0) {
+			if g.selfhost && tokens[i].tok in [.amp, .pipe, .xor] && g.declared_kinds[g.semantic_type_key(left_type)] == .enum_ && right_type == u32(0) {
 				return left_type
 			}
-			if g.selfhost && tokens[i].tok in [.amp, .pipe, .xor] && g.declared_kinds[flat.source_type_name(g.semantic_type_key(right_type))] == .enum_ && left_type == u32(0) {
+			if g.selfhost && tokens[i].tok in [.amp, .pipe, .xor] && g.declared_kinds[g.semantic_type_key(right_type)] == .enum_ && left_type == u32(0) {
 				return right_type
 			}
 			if g.selfhost && fastc_is_numeric_expression_type(left_type)
@@ -1217,13 +1219,13 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			if g.selfhost && left_type == flat.source_type_voidptr && fastc_is_numeric_expression_type(right_type) {
 				return right_type
 			}
-			if g.selfhost && fastc_is_numeric_expression_type(left_type) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(right_type))] == .alias_ {
+			if g.selfhost && fastc_is_numeric_expression_type(left_type) && g.declared_kinds[g.semantic_type_key(right_type)] == .alias_ {
 				return left_type
 			}
-			if g.selfhost && fastc_is_numeric_expression_type(right_type) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(left_type))] == .alias_ {
+			if g.selfhost && fastc_is_numeric_expression_type(right_type) && g.declared_kinds[g.semantic_type_key(left_type)] == .alias_ {
 				return right_type
 			}
-			if g.selfhost && left_type == right_type && g.declared_kinds[flat.source_type_name(g.semantic_type_key(left_type))] == .alias_ {
+			if g.selfhost && left_type == right_type && g.declared_kinds[g.semantic_type_key(left_type)] == .alias_ {
 				return left_type
 			}
 			if g.selfhost && left_type == u32(0) && right_type == u32(0) {
@@ -1254,7 +1256,11 @@ fn (g &Parser) infer_c_pointer_cast_member_type(tokens []FastcExpressionToken, s
 		return none
 	}
 	c_name := tokens[start + 3].lit
-	c_type := if '#Cstruct#${c_name}' in g.declared_types { 'struct ${c_name}' } else { c_name }
+	c_type := if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${c_name}') {
+		'struct ${c_name}'
+	} else {
+		c_name
+	}
 	field_type := g.struct_member_type(flat.source_type_id(c_type + '*'), tokens[close + 2].lit)
 	if field_type == u32(0) {
 		return none
@@ -1923,10 +1929,10 @@ fn (g &Parser) selfhost_types_share_lowering_representation(actual u32, expected
 	if fastc_selfhost_types_share_lowering_representation(actual, expected) {
 		return true
 	}
-	if fastc_is_numeric_expression_type(actual) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(expected))] == .alias_ {
+	if fastc_is_numeric_expression_type(actual) && g.declared_kinds[g.semantic_type_key(expected)] == .alias_ {
 		return true
 	}
-	if fastc_is_numeric_expression_type(expected) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(actual))] == .alias_ {
+	if fastc_is_numeric_expression_type(expected) && g.declared_kinds[g.semantic_type_key(actual)] == .alias_ {
 		return true
 	}
 	return false

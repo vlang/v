@@ -19,7 +19,7 @@ fn test_registered_options_keep_source_ids_and_existing_layout_queries() {
 		id := flat.source_type_id(spelling)
 		layout := b.option_type_id(flat.source_type_i64, result)
 		assert b.option_types[id] == layout
-		assert spelling !in b.struct_types
+		assert id !in b.struct_types
 		assert b.registered_struct_type(id)? == layout
 		assert b.resolve_type(id) == layout
 		assert b.resolve_type_in_module(id, 'other') == layout
@@ -52,8 +52,8 @@ fn test_registered_tuple_source_ids_preserve_c_names_and_option_payloads() {
 	c_name := b.multi_return_c_type(ret)
 	layout := b.register_multi_return_type(ret)
 	assert b.multi_return_types[source_id] == layout
-	assert flat.source_type_name(source_id) !in b.struct_types
-	assert b.struct_types[c_name] == layout
+	assert source_id !in b.struct_types
+	assert b.struct_types[flat.source_type_id(c_name)] == layout
 	assert b.register_multi_return_type(ret) == layout
 	assert b.registered_struct_type(source_id)? == layout
 	assert b.resolve_type(source_id) == layout
@@ -84,28 +84,56 @@ fn test_source_layout_queries_preserve_nominal_module_sum_and_alias_precedence()
 	fallback := m.type_store.register(Type{ kind: .struct_t })
 	local := m.type_store.register(Type{ kind: .struct_t })
 	replaced := m.type_store.register(Type{ kind: .struct_t })
-	b.struct_types['Record'] = fallback
-	b.struct_types['feature.Record'] = local
+	b.struct_types[flat.source_type_id('Record')] = fallback
+	b.struct_types[flat.source_type_id('feature.Record')] = local
 	id := flat.source_type_id('Record')
 	assert b.resolve_type(id) == local
 	literal_layout, literal_owner := b.struct_literal_type(id)
 	assert literal_layout == local
 	assert literal_owner == flat.source_type_id('feature.Record')
 	// Direct declaration-index updates must remain visible; no numeric mirror can go stale.
-	b.struct_types['feature.Record'] = replaced
+	b.struct_types[flat.source_type_id('feature.Record')] = replaced
 	assert b.resolve_type(id) == replaced
 	assert b.registered_struct_type(flat.source_type_id('feature.Record'))? == replaced
-	b.sum_type_canonical.set('Choice', 'feature.Record')
-	b.sum_type_variants.set('Choice', ['int'])
+	b.sum_type_canonical.set(flat.source_type_id('Choice'), 'feature.Record')
+	b.sum_type_variants.set(flat.source_type_id('Choice'), ['int'])
 	assert b.resolve_type(flat.source_type_id('Choice')) == replaced
 	assert b.is_sum_type_id(replaced)
 	assert b.sum_name_for_type_id(replaced)? == flat.source_type_id('Choice')
-	b.type_aliases['Alias'] = fallback
+	b.type_aliases[flat.source_type_id('Alias')] = fallback
 	assert b.resolve_type(flat.source_type_id('Alias')) == fallback
 	mut tc := types.TypeChecker.new(&a)
 	tc.type_aliases.set_id(flat.source_type_id('Alias'), flat.source_type_i32)
 	b.tc = &tc
 	assert b.resolve_type(flat.source_type_id('Alias')) == b.i32_type
+}
+
+fn test_enum_registry_ids_preserve_short_module_and_flag_lookups() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut m := Module.new()
+	qualified := flat.source_type_id('feature.Mode')
+	short := flat.source_type_id('Mode')
+	tc.flag_enums[qualified] = true
+	mut b := Builder{
+		a:          &a
+		tc:         &tc
+		m:          m
+		i32_type:   m.type_store.get_int(32)
+		cur_module: 'feature'
+	}
+	b.register_enum_values(flat.Node{ kind: .enum_decl, value: 'feature.Mode' }, 'feature')
+	assert qualified in b.enum_types
+	assert short in b.enum_types
+	assert qualified in b.flag_enum_types
+	assert short in b.flag_enum_types
+	assert b.is_enum_type_name(flat.source_type_id('other.Mode'))
+	assert b.is_flag_enum_type_name(flat.source_type_id('&feature.Mode'))
+	assert b.is_flag_enum_type_name(flat.source_type_id('&other.Mode'))
+	assert b.resolve_type(short) == b.i32_type
+	assert b.resolve_type_in_module(short, 'feature') == b.i32_type
+	assert !b.is_enum_type_name(flat.source_type_id('Missing'))
+	assert !b.is_flag_enum_type_name(flat.source_type_id('Missing'))
 }
 
 fn test_source_field_queries_keep_nominal_exact_short_and_empty_bindings() {

@@ -11462,8 +11462,7 @@ fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg_id u32) u32 {
 			tc.explicit_generic_concrete_arg_text(syntax.bracket_base()))
 	}
 	if !shape.has(.dotted) {
-		clean := flat.source_type_name(clean_id)
-		if tc.source_declares_type_in_scope(clean, tc.cur_file, tc.cur_module) {
+		if tc.source_declares_type_in_scope(clean_id, tc.cur_file, tc.cur_module) {
 			module_id := if tc.cur_module !in ['', 'main'] {
 				flat.source_type_id(tc.cur_module)
 			} else {
@@ -16634,7 +16633,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 						if callee.kind == .selector && callee.children_count > 0 {
 							base := tc.a.child_node(callee, 0)
 							if base.kind == .ident
-								&& tc.source_declares_type_in_scope(base.value, tc.cur_file, tc.cur_module) {
+								&& tc.source_declares_type_in_scope(base.source_value_id(), tc.cur_file, tc.cur_module) {
 								target_name = '${base.value}__static__${callee.value}'
 							}
 							if info.has_receiver {

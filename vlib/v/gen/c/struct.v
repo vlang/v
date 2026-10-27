@@ -2474,7 +2474,7 @@ fn (g &FlatGen) struct_default_type_key_known(name string) bool {
 	name_id := flat.source_type_id(name)
 	return name_id in g.tc.structs || g.tc.type_aliases.contains(name_id) || name_id in g.tc.interface_names
 		|| g.tc.sum_types.contains(name_id) || name_id in g.tc.enum_names || name_id in g.tc.flag_enums
-		|| name in g.struct_decl_infos
+		|| name_id in g.struct_decl_infos
 }
 
 fn promoted_struct_init_has_descendant(set_fields map[string]bool, designator string) bool {
@@ -3328,7 +3328,6 @@ fn (g &FlatGen) shared_alias_pointer_type_from_text(raw_id u32) ?types.Type {
 		return types.Type(types.Pointer{ base_type: g.tc.parse_type(inner) })
 	}
 	if g.shared_alias_index_ready && g.shared_alias_pointer_shorts.len == 0 { return none }
-	clean := flat.source_type_name(clean_id)
 	for candidate_id in [clean_id, g.tc.qualify_type_name(clean_id)] {
 		if target_source_id := g.tc.type_aliases.type_id(candidate_id) {
 			if inner := shared_inner_type_text(target_source_id) {
@@ -3337,7 +3336,7 @@ fn (g &FlatGen) shared_alias_pointer_type_from_text(raw_id u32) ?types.Type {
 		}
 	}
 	if !clean_shape.has(.dotted) {
-		if found := g.shared_alias_pointer_shorts[clean] {
+		if found := g.shared_alias_pointer_shorts[clean_id] {
 			if found == 0 { return none }
 			return types.Type(types.Pointer{ base_type: g.tc.parse_type(found) })
 		}
@@ -3348,9 +3347,12 @@ fn (g &FlatGen) shared_alias_pointer_type_from_text(raw_id u32) ?types.Type {
 fn (mut g FlatGen) precompute_shared_alias_pointer_shorts() {
 	g.shared_alias_index_ready = true
 	for registry_name_id, target_id in g.tc.type_aliases.ids {
-		name := flat.source_type_name(registry_name_id)
 		inner := shared_inner_type_text(target_id) or { continue }
-		short := name.all_after_last('.')
+		short := if flat.source_type_shape(registry_name_id).has(.dotted) {
+			flat.source_type_syntax(registry_name_id).unqualified()
+		} else {
+			registry_name_id
+		}
 		if existing := g.shared_alias_pointer_shorts[short] {
 			if existing != inner {
 				g.shared_alias_pointer_shorts[short] = 0
@@ -4835,7 +4837,7 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
 	if !flat.source_type_shape(type_name_id).has(.dotted) {
 		return type_name_id
 	}
-	if type_name in g.struct_decl_infos || type_name_id in g.tc.structs {
+	if type_name_id in g.struct_decl_infos || type_name_id in g.tc.structs {
 		return type_name_id
 	}
 	syntax := flat.source_type_syntax(type_name_id)
@@ -5018,22 +5020,23 @@ fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
 
 // find_struct_decl resolves find struct decl information for c.
 fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
-	type_name := flat.source_type_name(type_name_id)
 	// A bare name belongs to the file that wrote it: `import model { Context }`
 	// must select `model.Context` here even when another imported module declares
 	// a same-named struct, or that homonym's declarations (fields, defaults)
 	// leak into this file's literals. Checked before the per-module cache below,
 	// because two files of one module can import different homonyms.
 	if !flat.source_type_shape(type_name_id).has(.dotted) && g.tc.cur_file.len > 0 {
+		type_name := flat.source_type_name(type_name_id)
 		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_name) or {
 			[]string{}
 		} {
-			if info := g.struct_decl_infos[candidate] {
+			candidate_id := flat.source_type_id(candidate)
+			if info := g.struct_decl_infos[candidate_id] {
 				return info
 			}
 			// The selected name can be a type alias to a struct
 			// (`import iam { Alias }`, `type Alias = Real`).
-			if alias_target_source_id := g.struct_type_alias_target(flat.source_type_id(candidate)) {
+			if alias_target_source_id := g.struct_type_alias_target(candidate_id) {
 				if info := g.find_struct_decl_preferred(alias_target_source_id) {
 					return info
 				}
@@ -5267,22 +5270,21 @@ fn (g &FlatGen) find_struct_decl_preferred(type_name_id u32) ?StructDeclInfo {
 }
 
 fn (g &FlatGen) find_struct_decl_preferred_uncached(type_name_id u32) ?StructDeclInfo {
-	type_name := flat.source_type_name(type_name_id)
 	has_dot := flat.source_type_shape(type_name_id).has(.dotted)
-	short_name := flat.source_type_name(flat.source_type_syntax(type_name_id).unqualified())
-	preferred_name := if !has_dot && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
+	short_name_id := flat.source_type_syntax(type_name_id).unqualified()
+	preferred_name_id := if !has_dot && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
 		&& g.tc.cur_module != 'builtin' {
-		'${g.tc.cur_module}.${type_name}'
+		flat.source_type_composition_two(.qualified, flat.source_type_id(g.tc.cur_module), type_name_id)
 	} else {
-		type_name
+		type_name_id
 	}
-	if info := g.struct_decl_infos[preferred_name] {
-		if info.node.value == short_name {
+	if info := g.struct_decl_infos[preferred_name_id] {
+		if info.node.source_value_id() == short_name_id {
 			return info
 		}
 	}
 	if has_dot {
-		if info := g.struct_decl_infos[type_name] {
+		if info := g.struct_decl_infos[type_name_id] {
 			return info
 		}
 	}
@@ -5290,8 +5292,8 @@ fn (g &FlatGen) find_struct_decl_preferred_uncached(type_name_id u32) ?StructDec
 	// tables; resolve an explicit `main.X` reference to it, and only to a genuinely
 	// main-module declaration, so it never binds a same-named imported struct.
 	if flat.source_type_query(type_name_id).has(.main_prefix) {
-		if info := g.struct_decl_infos[short_name] {
-			if info.node.value == short_name && info.module in ['', 'main'] {
+		if info := g.struct_decl_infos[short_name_id] {
+			if info.node.source_value_id() == short_name_id && info.module in ['', 'main'] {
 				return info
 			}
 		}
@@ -5300,11 +5302,10 @@ fn (g &FlatGen) find_struct_decl_preferred_uncached(type_name_id u32) ?StructDec
 }
 
 fn (g &FlatGen) find_struct_decl_fallback(type_name_id u32) ?StructDeclInfo {
-	type_name := flat.source_type_name(type_name_id)
 	if flat.source_type_shape(type_name_id).has(.dotted) {
 		return none
 	}
-	if info := g.struct_decl_short_infos[type_name] {
+	if info := g.struct_decl_short_infos[type_name_id] {
 		return info
 	}
 	return none
@@ -6686,7 +6687,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		if g.inlined_c_typedef_names[name[2..]] {
 			return true
 		}
-		if info := g.struct_decl_infos[name] {
+		if info := g.struct_decl_infos[flat.source_type_id(name)] {
 			// Headerless vlib bindings supply their own complete C layouts.
 			// Keep externally supplied types opaque when headers own their definitions.
 			// A c_struct_header_guards type is V's to lay out: the generated C includes its
@@ -6711,8 +6712,8 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		return true
 	}
 	if name.starts_with('C.') {
-		for iface_name in g.interfaces.keys() {
-			if g.cname(iface_name) == resolved_name {
+		for iface_name_id in g.interfaces.keys() {
+			if g.cname(flat.source_type_name(iface_name_id)) == resolved_name {
 				return true
 			}
 		}
@@ -6991,9 +6992,9 @@ fn (mut g FlatGen) struct_decls() {
 		|| !g.cached_support_has_c_type(g.struct_cname(it)))
 	mut sum_names := g.c_sum_decl_names().filter(!incremental_support_only
 		|| !g.cached_support_has_c_type(g.cname(it)))
-	mut interface_names := g.interfaces.keys().filter(!g.interface_name_is_specialized(flat.source_type_id(it))
-		&& (!incremental_support_only || !g.cached_support_has_c_type(g.cname(it))))
-	interface_names.sort()
+	mut interface_names := g.interfaces.keys().filter(!g.interface_name_is_specialized(it)
+		&& (!incremental_support_only || !g.cached_support_has_c_type(g.cname(flat.source_type_name(it)))))
+	interface_names.sort_with_compare(compare_interface_source_type_ids)
 	for name in struct_names {
 		if g.skip_builtin_struct(name) {
 			continue
@@ -7022,8 +7023,8 @@ fn (mut g FlatGen) struct_decls() {
 		}
 		g.writeln('typedef struct ${cn} ${cn};')
 	}
-	for name in interface_names {
-		cn := g.cname(name)
+	for name_id in interface_names {
+		cn := g.cname(flat.source_type_name(name_id))
 		if cn == 'mach_timebase_info_data_t' {
 			continue
 		}
@@ -7039,10 +7040,10 @@ fn (mut g FlatGen) struct_decls() {
 	mut emitted := map[string]bool{}
 	mut remaining := map[string]bool{}
 	mut remaining_cnames := map[string]bool{}
-	mut iface_remaining := map[string]bool{}
-	for name in interface_names {
-		iface_remaining[name] = true
-		remaining_cnames[g.cname(name)] = true
+	mut iface_remaining := map[u32]bool{}
+	for name_id in interface_names {
+		iface_remaining[name_id] = true
+		remaining_cnames[g.cname(flat.source_type_name(name_id))] = true
 	}
 	for name in struct_names {
 		if g.skip_builtin_struct(name) {
@@ -7062,14 +7063,14 @@ fn (mut g FlatGen) struct_decls() {
 		remaining.delete('string')
 		remaining_cnames.delete('string')
 	}
-	for name in interface_names {
-		if name !in iface_remaining {
+	for name_id in interface_names {
+		if name_id !in iface_remaining {
 			continue
 		}
-		if g.is_ierror_type_name(flat.source_type_id(name)) {
-			g.emit_interface_struct(flat.source_type_id(name))
+		if g.is_ierror_type_name(name_id) {
+			g.emit_interface_struct(name_id)
 			emitted['IError'] = true
-			iface_remaining.delete(name)
+			iface_remaining.delete(name_id)
 			remaining_cnames.delete('IError')
 			break
 		}
@@ -7097,13 +7098,13 @@ fn (mut g FlatGen) struct_decls() {
 			break
 		}
 		mut progress := false
-		mut emitted_ifaces := []string{}
+		mut emitted_ifaces := []u32{}
 		mut remaining_iface_names := iface_remaining.keys()
-		remaining_iface_names.sort()
-		for name in remaining_iface_names {
-			cn := g.cname(name)
+		remaining_iface_names.sort_with_compare(compare_interface_source_type_ids)
+		for name_id in remaining_iface_names {
+			cn := g.cname(flat.source_type_name(name_id))
 			mut can_emit := true
-			if g.is_ierror_type_name(flat.source_type_id(name)) {
+			if g.is_ierror_type_name(name_id) {
 				if 'string' !in emitted && 'string' in remaining_cnames {
 					can_emit = false
 				}
@@ -7112,8 +7113,8 @@ fn (mut g FlatGen) struct_decls() {
 			// field types must be fully defined first (same constraint as structs).
 			// Option/result fields embed their payload by value in the __v_option_T
 			// typedef, so the dependency is the payload type, not the wrapper.
-			for field in g.tc.interface_field_list(flat.source_type_id(name)) {
-				if interface_field_type_contains_self_by_value(field.typ, flat.source_type_id(name)) {
+			for field in g.tc.interface_field_list(name_id) {
+				if interface_field_type_contains_self_by_value(field.typ, name_id) {
 					continue
 				}
 				if !g.fn_ptr_field_typedef_ready(field.typ) {
@@ -7130,10 +7131,10 @@ fn (mut g FlatGen) struct_decls() {
 				}
 			}
 			if can_emit {
-				g.emit_interface_struct(flat.source_type_id(name))
+				g.emit_interface_struct(name_id)
 				emitted[cn] = true
 				remaining_cnames.delete(cn)
-				emitted_ifaces << name
+				emitted_ifaces << name_id
 				progress = true
 			}
 		}
@@ -7217,10 +7218,10 @@ fn (mut g FlatGen) struct_decls() {
 		}
 	}
 	mut final_iface_names := iface_remaining.keys()
-	final_iface_names.sort()
-	for name in final_iface_names {
-		cn := g.cname(name)
-		g.emit_interface_struct(flat.source_type_id(name))
+	final_iface_names.sort_with_compare(compare_interface_source_type_ids)
+	for name_id in final_iface_names {
+		cn := g.cname(flat.source_type_name(name_id))
+		g.emit_interface_struct(name_id)
 		emitted[cn] = true
 	}
 	mut final_sum_names := sum_remaining.keys()
@@ -7344,10 +7345,10 @@ fn (mut g FlatGen) type_forward_decls() {
 		}
 		g.writeln('typedef struct ${cn} ${cn};')
 	}
-	mut interface_names := g.interfaces.keys().filter(!g.interface_name_is_specialized(flat.source_type_id(it)))
-	interface_names.sort()
-	for name in interface_names {
-		cn := g.cname(name)
+	mut interface_names := g.interfaces.keys().filter(!g.interface_name_is_specialized(it))
+	interface_names.sort_with_compare(compare_interface_source_type_ids)
+	for name_id in interface_names {
+		cn := g.cname(flat.source_type_name(name_id))
 		if cn == 'mach_timebase_info_data_t' {
 			continue
 		}
@@ -7615,12 +7616,13 @@ fn (g &FlatGen) struct_decl_pack_for_name(type_name_id u32) string {
 
 // is_generic_struct reports whether is generic struct applies in c.
 fn (g &FlatGen) is_generic_struct(name string) bool {
-	if info := g.struct_decl_infos[name] {
+	name_id := flat.source_type_id(name)
+	if info := g.struct_decl_infos[name_id] {
 		return flat.source_type_id('generic') in flat.source_type_syntax(info.node.typ).plain_comma_parts()
 	}
-	short_name := flat.source_type_name(flat.source_type_syntax(flat.source_type_id(name)).unqualified())
-	if info := g.struct_decl_short_infos[short_name] {
-		return info.full_name_text() == name && flat.source_type_id('generic') in flat.source_type_syntax(info.node.typ).plain_comma_parts()
+	short_name_id := flat.source_type_syntax(name_id).unqualified()
+	if info := g.struct_decl_short_infos[short_name_id] {
+		return info.full_name == name_id && flat.source_type_id('generic') in flat.source_type_syntax(info.node.typ).plain_comma_parts()
 	}
 	return false
 }
@@ -7647,7 +7649,7 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 	if g.inlined_c_structs[name[2..]] {
 		return true
 	}
-	if info := g.struct_decl_infos[name] {
+	if info := g.struct_decl_infos[flat.source_type_id(name)] {
 		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
 	}
 	return false
@@ -7658,7 +7660,7 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 // conflict with. Only the program's own directives decide this: V does not read C headers.
 fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 	if name != 'C.NSFont' || (g.target.os != 'macos' && !g.output_cross_c)
-		|| name !in g.struct_decl_infos {
+		|| flat.source_type_id(name) !in g.struct_decl_infos {
 		return false
 	}
 	mut directives := g.preinclude_directives.clone()
@@ -7719,7 +7721,7 @@ fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
 	if flat.source_type_id(c_decl_name) in g.tc.structs && flat.source_type_id(c_decl_name) !in g.tc.c_typedef_structs {
 		return true
 	}
-	if info := g.struct_decl_infos[c_decl_name] {
+	if info := g.struct_decl_infos[flat.source_type_id(c_decl_name)] {
 		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
 	}
 	return false

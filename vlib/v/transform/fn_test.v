@@ -124,8 +124,8 @@ fn test_call_param_type_name_memo_preserves_composites_and_module_locks() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Cell'] = StructInfo{ name: flat.source_type_id('Cell'), module: 'main' }
-	t.structs['dep.Cell'] = StructInfo{ name: flat.source_type_id('Cell'), module: 'dep' }
+	t.structs[flat.source_type_id('Cell')] = StructInfo{ name: flat.source_type_id('Cell'), module: 'main' }
+	t.structs[flat.source_type_id('dep.Cell')] = StructInfo{ name: flat.source_type_id('Cell'), module: 'dep' }
 	cell := types.Type(types.Struct{ name_id: flat.source_type_id('Cell') })
 	compound := types.Type(types.Map{
 		key_type:   &types.Type(types.String{})
@@ -358,9 +358,9 @@ fn test_enum_autostr_keeps_checked_types_and_resolves_declaration_spellings() {
 		'main': true
 	})
 	t.cur_file = file
-	t.enum_types['a.Kind'] = ['from_a']
-	t.enum_types['b.Kind'] = ['from_b']
-	t.enum_types['toml.token.Kind'] = ['eof']
+	t.enum_types[flat.source_type_id('a.Kind')] = ['from_a']
+	t.enum_types[flat.source_type_id('b.Kind')] = ['from_b']
+	t.enum_types[flat.source_type_id('toml.token.Kind')] = ['eof']
 
 	assert flat.source_type_name(t.enum_autostr_type_name(flat.source_type_id('a.Kind'))) == 'a.Kind'
 	assert flat.source_type_name(t.enum_autostr_type_name(flat.source_type_id('b.Kind'))) == 'b.Kind'
@@ -554,9 +554,9 @@ fn test_or_payload_type_qualifies_imported_generic_base() {
 		name:   flat.source_type_id('QueryBuilder')
 		module: 'orm'
 	}
-	t.structs['QueryBuilder'] = info
-	t.structs['orm.QueryBuilder'] = info
-	t.qualified_types.set_id('QueryBuilder', flat.source_type_id('orm.QueryBuilder'))
+	t.structs[flat.source_type_id('QueryBuilder')] = info
+	t.structs[flat.source_type_id('orm.QueryBuilder')] = info
+	t.qualified_types.set_id(flat.source_type_id('QueryBuilder'), flat.source_type_id('orm.QueryBuilder'))
 	assert flat.source_type_name(t.normalize_or_expr_value_type(flat.source_type_id('&QueryBuilder[AggregateEntry]'))) == '&orm.QueryBuilder[AggregateEntry]'
 }
 
@@ -580,8 +580,8 @@ fn test_or_payload_type_qualifies_generic_base_in_own_module() {
 		name:   flat.source_type_id('QueryBuilder')
 		module: 'orm'
 	}
-	t.structs['QueryBuilder'] = info
-	t.structs['orm.QueryBuilder'] = info
+	t.structs[flat.source_type_id('QueryBuilder')] = info
+	t.structs[flat.source_type_id('orm.QueryBuilder')] = info
 	assert flat.source_type_name(t.normalize_or_expr_value_type(flat.source_type_id('&QueryBuilder[AggregateEntry]'))) == '&orm.QueryBuilder[AggregateEntry]'
 	expr_type_source_id, value_type_source_id := t.specialized_or_expr_types(flat.source_type_id('!QueryBuilder[sapp.Event]'))
 	expr_type := flat.source_type_name(expr_type_source_id)
@@ -603,9 +603,9 @@ fn test_specialized_receiver_method_qualifies_imported_generic_base() {
 		name:   flat.source_type_id('QueryBuilder')
 		module: 'orm'
 	}
-	t.structs['QueryBuilder'] = info
-	t.structs['orm.QueryBuilder'] = info
-	t.qualified_types.set_id('QueryBuilder', flat.source_type_id('orm.QueryBuilder'))
+	t.structs[flat.source_type_id('QueryBuilder')] = info
+	t.structs[flat.source_type_id('orm.QueryBuilder')] = info
+	t.qualified_types.set_id(flat.source_type_id('QueryBuilder'), flat.source_type_id('orm.QueryBuilder'))
 	t.fn_ret_types.set_id('orm.QueryBuilder_Foo.v_sql_insert', flat.source_type_id('!int'))
 	assert t.resolve_specialized_generic_receiver_method(flat.source_type_id('QueryBuilder[Foo]'), 'v_sql_insert') or {
 		''
@@ -620,8 +620,8 @@ fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
 	tc.type_aliases.set_id(flat.source_type_id('AliasContext'), flat.source_type_id('Context'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'veb'
-	t.structs['App'] = StructInfo{}
-	t.structs['Context'] = StructInfo{
+	t.structs[flat.source_type_id('App')] = StructInfo{}
+	t.structs[flat.source_type_id('Context')] = StructInfo{
 		name:   flat.source_type_id('Context')
 		fields: [
 			FieldInfo{
@@ -632,7 +632,7 @@ fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
 			},
 		]
 	}
-	t.structs['veb.Context'] = StructInfo{
+	t.structs[flat.source_type_id('veb.Context')] = StructInfo{
 		name:   flat.source_type_id('Context')
 		module: 'veb'
 		fields: [
@@ -693,14 +693,14 @@ fn test_embedded_field_path_specializes_each_owner() {
 	leaf := StructInfo{
 		fields: [FieldInfo{ name: 'payload', typ: flat.source_type_id('T') }]
 	}
-	t.structs['Outer'] = outer
-	t.structs['Outer[Choice]'] = outer
-	t.structs['Middle'] = middle
-	t.structs['Middle[T]'] = middle
-	t.structs['Middle[Choice]'] = middle
-	t.structs['Leaf'] = leaf
-	t.structs['Leaf[T]'] = leaf
-	t.structs['Leaf[Choice]'] = leaf
+	t.structs[flat.source_type_id('Outer')] = outer
+	t.structs[flat.source_type_id('Outer[Choice]')] = outer
+	t.structs[flat.source_type_id('Middle')] = middle
+	t.structs[flat.source_type_id('Middle[T]')] = middle
+	t.structs[flat.source_type_id('Middle[Choice]')] = middle
+	t.structs[flat.source_type_id('Leaf')] = leaf
+	t.structs[flat.source_type_id('Leaf[T]')] = leaf
+	t.structs[flat.source_type_id('Leaf[Choice]')] = leaf
 	path := t.struct_field_path_for_field(flat.source_type_id('Outer[Choice]'), 'payload') or { panic('missing embed path') }
 	assert path.map(it.typ_text()) == ['Middle[Choice]', 'Leaf[Choice]']
 	assert flat.source_type_name(t.lookup_struct_field_type(path.last().typ, 'payload') or { u32(0) }) == 'Choice'
@@ -715,17 +715,17 @@ fn test_embedded_field_path_uses_selected_struct_owner() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_file = 'main.v'
 	t.cur_module = 'main'
-	t.structs['Outer'] = StructInfo{
+	t.structs[flat.source_type_id('Outer')] = StructInfo{
 		name:   flat.source_type_id('Outer')
 		module: 'main'
 		fields: [FieldInfo{ name: 'Middle', typ: flat.source_type_id('other.Middle[int]'), is_embedded: true }]
 	}
-	t.structs['pkg.Outer'] = StructInfo{
+	t.structs[flat.source_type_id('pkg.Outer')] = StructInfo{
 		name:   flat.source_type_id('Outer')
 		module: 'pkg'
 		fields: [FieldInfo{ name: 'Middle', typ: flat.source_type_id('pkg.Middle[T]'), is_embedded: true }]
 	}
-	t.structs['pkg.Middle'] = StructInfo{
+	t.structs[flat.source_type_id('pkg.Middle')] = StructInfo{
 		name:   flat.source_type_id('Middle')
 		module: 'pkg'
 		fields: [FieldInfo{ name: 'payload', typ: flat.source_type_id('T') }]
@@ -997,7 +997,7 @@ fn test_program_sum_equality_helper_does_not_collide_with_cached_module_helper()
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('orm.Primitive', ['orm.Null', 'bool'])
+	t.sum_types.set(flat.source_type_id('orm.Primitive'), ['orm.Null', 'bool'])
 	t.cur_module = 'orm'
 	t.cur_file = 'orm.v'
 	lhs := t.make_ident('lhs')
@@ -1021,7 +1021,7 @@ fn test_sum_equality_helper_keeps_requesting_file_context() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('xml.Contents', ['string'])
+	t.sum_types.set(flat.source_type_id('xml.Contents'), ['string'])
 	t.cur_module = 'xml'
 	t.cur_file = 'parser_test.v'
 	t.sum_eq_helper_module = 'xml'
@@ -1057,7 +1057,7 @@ fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 		typ:     flat.source_type_id('&Root')
 		raw_typ: flat.source_type_id('&Root')
 	}
-	t.structs['Root'] = StructInfo{
+	t.structs[flat.source_type_id('Root')] = StructInfo{
 		name:   flat.source_type_id('Root')
 		fields: [
 			FieldInfo{
@@ -1067,11 +1067,11 @@ fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 			},
 		]
 	}
-	t.structs['Large'] = StructInfo{
+	t.structs[flat.source_type_id('Large')] = StructInfo{
 		name:   flat.source_type_id('Large')
 		fields: large_fields
 	}
-	t.structs['Small'] = StructInfo{
+	t.structs[flat.source_type_id('Small')] = StructInfo{
 		name:   flat.source_type_id('Small')
 		fields: [
 			FieldInfo{
@@ -1081,7 +1081,7 @@ fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 			},
 		]
 	}
-	t.structs['SmallRoot'] = StructInfo{
+	t.structs[flat.source_type_id('SmallRoot')] = StructInfo{
 		name:   flat.source_type_id('SmallRoot')
 		fields: [
 			FieldInfo{
@@ -1480,7 +1480,7 @@ fn test_non_veb_reflected_call_keeps_receiver_param_offset() {
 		types.Type(types.Struct{ name_id: flat.source_type_id('Config') }),
 	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Config'] = StructInfo{
+	t.structs[flat.source_type_id('Config')] = StructInfo{
 		name:      flat.source_type_id('Config')
 		is_params: true
 	}
@@ -1781,7 +1781,7 @@ fn test_numeric_sum_and_variant_caches_preserve_collisions_and_module_context() 
 	}
 	assert first != 0 && second != 0 && first != second
 	for id in [first, second] {
-		t.sum_types.set(flat.source_type_name(id), ['int', 'string'])
+		t.sum_types.set(id, ['int', 'string'])
 	}
 	for _ in 0 .. 3 {
 		for id in [first, second] {
@@ -1789,9 +1789,9 @@ fn test_numeric_sum_and_variant_caches_preserve_collisions_and_module_context() 
 			assert t.variant_short_name(id) == flat.source_type_id(flat.source_type_name(id).all_after_last('.'))
 		}
 	}
-	t.sum_types.set('one.Value', ['int'])
-	t.sum_types.set('two.Value', ['string'])
-	t.structs['one.Exact'] = StructInfo{ name: flat.source_type_id('one.Exact'), module: 'one' }
+	t.sum_types.set(flat.source_type_id('one.Value'), ['int'])
+	t.sum_types.set(flat.source_type_id('two.Value'), ['string'])
+	t.structs[flat.source_type_id('one.Exact')] = StructInfo{ name: flat.source_type_id('one.Exact'), module: 'one' }
 	value := flat.source_type_id('Value')
 	exact := flat.source_type_id('one.Exact')
 	for module_name in ['one', 'two', 'one'] {
@@ -1943,7 +1943,7 @@ fn test_sum_resolution_preserves_reference_and_container_types() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
 	mut t := new_transformer(mut ast, &tc, map[string]bool{})
-	t.sum_types.set('model.Value', ['int', 'string'])
+	t.sum_types.set(flat.source_type_id('model.Value'), ['int', 'string'])
 	assert t.is_sum_type_name(flat.source_type_id('model.Value'))
 	wrapped := [
 		'&model.Value',

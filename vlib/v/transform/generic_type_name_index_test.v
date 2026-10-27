@@ -31,12 +31,12 @@ fn test_generic_type_name_indexes_refresh_after_late_declarations() {
 	assert t.generic_checker_sum_name_known(flat.source_type_id('late.Choice'))
 	assert t.generic_checker_interface_name_known(flat.source_type_id('late.Reader'))
 
-	t.structs['Local'] = StructInfo{ name: flat.source_type_id('Local'), module: 'main' }
-	t.structs['foreign.Local'] = StructInfo{ name: flat.source_type_id('Local'), module: 'foreign' }
+	t.structs[flat.source_type_id('Local')] = StructInfo{ name: flat.source_type_id('Local'), module: 'main' }
+	t.structs[flat.source_type_id('foreign.Local')] = StructInfo{ name: flat.source_type_id('Local'), module: 'foreign' }
 	assert t.is_known_main_struct_type_name_id(flat.source_type_id('main.Local'))
 	assert !t.is_known_main_struct_type_name_id(flat.source_type_id('main.foreign.Local'))
-	t.sum_types.set('LocalChoice', ['int', 'string'])
-	t.enum_types['LocalKind'] = ['one']
+	t.sum_types.set(flat.source_type_id('LocalChoice'), ['int', 'string'])
+	t.enum_types[flat.source_type_id('LocalKind')] = ['one']
 	tc.type_aliases.set_id(flat.source_type_id('late.Alias'), flat.source_type_int)
 	assert t.generic_exact_alias_name_known(flat.source_type_id('late.Alias'))
 	assert !t.generic_exact_alias_name_known(flat.source_type_id('late.MoreAlias'))
@@ -85,7 +85,7 @@ fn test_generic_type_name_indexes_refresh_struct_enum_and_parameter_views() {
 	assert t.comptime_struct_type_known(flat.source_type_id('Other'))
 	assert t.generic_checker_struct_name_known(flat.source_type_id('second.Other'))
 
-	t.enum_types['LocalOnly'] = ['one']
+	t.enum_types[flat.source_type_id('LocalOnly')] = ['one']
 	assert t.generic_enum_type_name_known(flat.source_type_id('LocalOnly'))
 	assert !t.generic_main_arg_checker_declaration_known(flat.source_type_id('LocalOnly'))
 	assert !t.generic_enum_type_name_known(flat.source_type_id('LateKind'))
@@ -115,25 +115,25 @@ fn test_generic_type_name_indexes_refresh_after_template_erasure_and_same_size_g
 		mut tc := types.TypeChecker.new(&a)
 		tc.sum_types.set(flat.source_type_id('Template'), ['int', 'string'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.sum_types.set('Template', ['int', 'string'])
+		t.sum_types.set(flat.source_type_id('Template'), ['int', 'string'])
 		t.build_generic_alias_name_index()
 		if !prepared_only {
 			tc.sum_types.set(flat.source_type_id('Preserved'), ['int', 'string'])
-			t.sum_types.set('Preserved', ['int', 'string'])
+			t.sum_types.set(flat.source_type_id('Preserved'), ['int', 'string'])
 		}
 		old_count := t.generic_checker_concrete_name_count()
 		assert t.generic_concrete_name_known(flat.source_type_id('Template'))
 		assert t.generic_checker_sum_name_known(flat.source_type_id('Template'))
 		assert t.generic_transform_concrete_name_known(flat.source_type_id('Template'))
 		t.erase_generic_sum_templates({
-			'Template': GenericSumDecl{
+			flat.source_type_id('Template'): GenericSumDecl{
 				key:  'Template'
 				node: flat.Node{ kind: .type_decl, value: 'Template' }
 			}
 		})
 		assert t.generic_type_indexes_ready
 		tc.sum_types.set(flat.source_type_id('Replacement'), ['int', 'string'])
-		t.sum_types.set('Replacement', ['int', 'string'])
+		t.sum_types.set(flat.source_type_id('Replacement'), ['int', 'string'])
 		assert t.generic_checker_concrete_name_count() == old_count
 		assert !t.generic_concrete_name_known(flat.source_type_id('Template'))
 		assert !t.generic_checker_sum_name_known(flat.source_type_id('Template'))
@@ -178,7 +178,7 @@ fn test_generic_type_name_indexes_refresh_after_prepared_checker_replacement() {
 	assert t.generic_arg_is_alias_name_id(flat.source_type_id('OtherAlias'), 'main')
 	assert !t.generic_arg_is_alias_name_id(flat.source_type_id('Alias'), 'main')
 	assert !t.generic_exact_alias_name_known(flat.source_type_id('before.LateAlias'))
-	t.structs['Local'] = StructInfo{ name: flat.source_type_id('Local'), module: 'foreign' }
+	t.structs[flat.source_type_id('Local')] = StructInfo{ name: flat.source_type_id('Local'), module: 'foreign' }
 	t.build_generic_alias_name_index()
 	assert !t.is_known_main_struct_type_name_id(flat.source_type_id('main.Local'))
 	t.prepare()

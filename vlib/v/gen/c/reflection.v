@@ -572,7 +572,7 @@ fn (mut g FlatGen) gen_reflection_data() {
 	}
 
 	mut names := g.struct_decl_infos.keys()
-	names.sort()
+	names.sort_with_compare(compare_reflection_source_type_ids)
 	for name in names {
 		info := g.struct_decl_infos[name]
 		if types.builtin_type_index(info.full_name) > 0 {

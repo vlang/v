@@ -257,7 +257,7 @@ fn (g &FlatGen) interface_dispatch_method_is_required(concrete_key string) bool 
 fn (mut g FlatGen) precompute_required_interface_dispatch_methods() {
 	g.interface_dispatch_required.clear()
 	for iface_name_id, impls in g.iface_impls {
-		methods := g.interfaces[flat.source_type_name(iface_name_id)] or { g.tc.interface_abstract_method_names(iface_name_id) }
+		methods := g.interfaces[iface_name_id] or { g.tc.interface_abstract_method_names(iface_name_id) }
 		for method in methods {
 			if !g.should_emit_interface_dispatch(iface_name_id, method) {
 				continue
@@ -413,7 +413,8 @@ fn (g &FlatGen) sum_field_name(variant string) string {
 
 // register_interface_strings updates register interface strings state for c.
 fn (mut g FlatGen) register_interface_strings() {
-	for iface_name, methods in g.interfaces {
+	for iface_name_id, methods in g.interfaces {
+		iface_name := flat.source_type_name(iface_name_id)
 		cn := g.cname(iface_name)
 		for method in methods {
 			g.intern_string('interface method ${cn}.${method} not implemented')
@@ -460,13 +461,9 @@ fn (mut g FlatGen) collect_interface_impls() {
 			boxed_concrete_types[iface_id] = concrete_types
 		}
 	}
-	mut iface_names := []string{}
-	for name, _ in g.interfaces {
-		iface_names << name
-	}
-	iface_names.sort()
-	for iface in iface_names {
-		iface_id := flat.source_type_id(iface)
+	mut iface_names := g.interfaces.keys()
+	iface_names.sort_with_compare(compare_interface_source_type_ids)
+	for iface_id in iface_names {
 		mut impls := []u32{}
 		mut base_impls := []u32{}
 		if g.is_ierror_type_name(iface_id) {
@@ -592,11 +589,8 @@ fn (mut g FlatGen) register_specialized_interface_applications() {
 		g.interfaces = g.interfaces.clone()
 	}
 	for application_id, base_id in applications {
-		application := flat.source_type_name(application_id)
-		if application !in g.interfaces {
-			// `applications` is temporary. Own the key retained by the generator so
-			// ownership-mode cleanup cannot leave g.interfaces pointing at freed text.
-			g.interfaces[application.clone()] = g.tc.interface_abstract_method_names(base_id)
+		if application_id !in g.interfaces {
+			g.interfaces[application_id] = g.tc.interface_abstract_method_names(base_id)
 		}
 	}
 }
@@ -621,12 +615,12 @@ fn (g &FlatGen) collect_specialized_interface_application_text(type_text_id u32,
 		if codegen_generic_arg_is_unresolved(arg_id) { return }
 	}
 	base_id := syntax.cgen_raw_app_base()
-	resolved_base_id := if flat.source_type_name(base_id) in g.interfaces {
+	resolved_base_id := if base_id in g.interfaces {
 		base_id
 	} else {
 		g.tc.interface_metadata_name(base_id)
 	}
-	if flat.source_type_name(resolved_base_id) !in g.interfaces { return }
+	if resolved_base_id !in g.interfaces { return }
 	application_id := if resolved_base_id == base_id {
 		clean_id
 	} else {
@@ -642,12 +636,12 @@ fn (g &FlatGen) collect_specialized_interface_application(typ types.Type, mut ap
 			syntax := flat.source_type_syntax(typ_id)
 			if syntax.cgen_raw_app_valid() && !g.type_contains_generic_placeholder(typ) {
 				base_id := syntax.cgen_raw_app_base()
-				resolved_base_id := if flat.source_type_name(base_id) in g.interfaces {
+				resolved_base_id := if base_id in g.interfaces {
 					base_id
 				} else {
 					g.tc.interface_metadata_name(base_id)
 				}
-				if flat.source_type_name(resolved_base_id) in g.interfaces {
+				if resolved_base_id in g.interfaces {
 					application_id := if resolved_base_id == base_id {
 						typ_id
 					} else {
@@ -800,15 +794,15 @@ fn (g &FlatGen) iface_type_id_for_pattern(iface_id u32, pattern_id u32) int {
 
 // ierror_interface_name finds the registered IError source spelling ID.
 fn (g &FlatGen) ierror_interface_name() ?u32 {
-	if 'IError' in g.interfaces {
+	if cgen_ierror_type_name_id in g.interfaces {
 		return cgen_ierror_type_name_id
 	}
-	if 'builtin.IError' in g.interfaces {
+	if cgen_builtin_ierror_type_name_id in g.interfaces {
 		return cgen_builtin_ierror_type_name_id
 	}
 	for name, _ in g.interfaces {
-		if g.is_ierror_type_name(flat.source_type_id(name)) {
-			return flat.source_type_id(name)
+		if g.is_ierror_type_name(name) {
+			return name
 		}
 	}
 	return none
@@ -1436,14 +1430,13 @@ fn (g &FlatGen) interface_unknown_qualified_name_matches(actual_name_id u32, ifa
 fn (g &FlatGen) is_interface_type_name(name_id u32) bool {
 	syntax := flat.source_type_syntax(name_id)
 	clean_id := if syntax.cgen_raw_app_valid() { syntax.cgen_raw_app_base() } else { name_id }
-	clean := flat.source_type_name(clean_id)
-	return clean in g.interfaces || g.tc.qualify_name(clean) in g.interfaces
+	return clean_id in g.interfaces || g.tc.qualify_type_name(clean_id) in g.interfaces
 }
 
 // has_ierror_interface reports whether has ierror interface applies in c.
 fn (g &FlatGen) has_ierror_interface() bool {
 	for name, _ in g.interfaces {
-		if g.is_ierror_type_name(flat.source_type_id(name)) {
+		if g.is_ierror_type_name(name) {
 			return true
 		}
 	}
@@ -1453,11 +1446,11 @@ fn (g &FlatGen) has_ierror_interface() bool {
 // interface_init_typ_id computes the `_typ` dispatch id for a boxed interface
 // literal by recovering the concrete type from its `_object` field.
 fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
-	iface_text := node.value_text()
-	iface_id := if iface_text in g.interfaces {
-		node.source_value_id()
+	raw_iface_id := node.source_value_id()
+	iface_id := if raw_iface_id in g.interfaces {
+		raw_iface_id
 	} else {
-		g.tc.qualify_type_name(flat.source_type_id(iface_text))
+		g.tc.qualify_type_name(raw_iface_id)
 	}
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
@@ -1518,10 +1511,11 @@ fn (mut g FlatGen) interface_method_stubs() {
 	// Recomputing the declarations here can observe a different current-module
 	// context after `_vinit` generation and give a generic interface placeholder a
 	// different C signature from its specialized forward declaration.
-	for iface_name, methods in g.interfaces {
+	for iface_name_id, methods in g.interfaces {
+		iface_name := flat.source_type_name(iface_name_id)
 		cn := g.cname(iface_name)
 		for method in methods {
-			if !g.should_emit_interface_dispatch(flat.source_type_id(iface_name), method) {
+			if !g.should_emit_interface_dispatch(iface_name_id, method) {
 				continue
 			}
 			if g.cache_split {
@@ -1530,7 +1524,7 @@ fn (mut g FlatGen) interface_method_stubs() {
 				// source-stable object that owns the interface declaration.
 				g.writeln('/* V3CACHE_MODULE main */')
 			}
-			g.gen_interface_dispatch(flat.source_type_id(iface_name), cn, method)
+			g.gen_interface_dispatch(iface_name_id, cn, method)
 		}
 	}
 	g.interface_exports_table()
@@ -1540,23 +1534,24 @@ fn (mut g FlatGen) interface_method_stubs() {
 }
 
 fn (mut g FlatGen) interface_method_forward_decls() {
-	for iface_name, methods in g.interfaces {
+	for iface_name_id, methods in g.interfaces {
+		iface_name := flat.source_type_name(iface_name_id)
 		cn := g.cname(iface_name)
 		for method in methods {
-			if !g.should_emit_interface_dispatch(flat.source_type_id(iface_name), method) {
+			if !g.should_emit_interface_dispatch(iface_name_id, method) {
 				continue
 			}
 			if cn == 'IError' {
 				ret_ct := if method == 'code' { g.int_ct } else { 'string' }
 				g.writeln('${ret_ct} ${cn}__${method}(${cn}* i);')
 				if g.cache_split {
-					g.ierror_dispatch_target_forward_decls(flat.source_type_id(iface_name), method, ret_ct)
+					g.ierror_dispatch_target_forward_decls(iface_name_id, method, ret_ct)
 				}
 				continue
 			}
 			mname := '${iface_name}.${method}'
-			decl_key := g.interface_method_signature_key(flat.source_type_id(iface_name), method) or { mname }
-			impls := g.iface_impls[flat.source_type_id(iface_name)] or { []u32{} }
+			decl_key := g.interface_method_signature_key(iface_name_id, method) or { mname }
+			impls := g.iface_impls[iface_name_id] or { []u32{} }
 			mut sig_key := ''
 			for concrete_id in impls {
 				concrete := flat.source_type_name(concrete_id)
@@ -1566,9 +1561,9 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 					break
 				}
 			}
-			ret_type := g.interface_dispatch_return_type(flat.source_type_id(iface_name), decl_key, sig_key)
-			sig_params := g.interface_dispatch_param_types(flat.source_type_id(iface_name), decl_key, sig_key)
-			storage_cn := g.interface_storage_c_name(flat.source_type_id(iface_name))
+			ret_type := g.interface_dispatch_return_type(iface_name_id, decl_key, sig_key)
+			sig_params := g.interface_dispatch_param_types(iface_name_id, decl_key, sig_key)
+			storage_cn := g.interface_storage_c_name(iface_name_id)
 			g.write('${g.interface_dispatch_linkage()}${g.fn_return_type_name(ret_type)} ${cn}__${method}(${storage_cn}* i')
 			for pi := 1; pi < sig_params.len; pi++ {
 				pct := g.interface_dispatch_param_c_type(sig_params[pi])
@@ -2018,7 +2013,7 @@ fn (g &FlatGen) shared_exports_interface_table() bool {
 		return false
 	}
 	for name, _ in g.interfaces {
-		if !g.is_ierror_type_name(flat.source_type_id(name)) {
+		if !g.is_ierror_type_name(name) {
 			return true
 		}
 	}
@@ -2217,14 +2212,14 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 		if node.kind != .struct_init || node.children_count == 0 {
 			continue
 		}
-		iface_name_id := if node.typ_text() in g.interfaces {
+		iface_name_id := if node.typ in g.interfaces {
 			node.typ
-		} else if node.value_text() in g.interfaces {
+		} else if node.source_value_id() in g.interfaces {
 			node.source_value_id()
 		} else {
-			flat.source_type_id(g.tc.qualify_name(node.value_text()))
+			g.tc.qualify_type_name(node.source_value_id())
 		}
-		if flat.source_type_name(iface_name_id) !in g.interfaces {
+		if iface_name_id !in g.interfaces {
 			continue
 		}
 		for i in 0 .. node.children_count {
@@ -2285,8 +2280,7 @@ fn (g &FlatGen) interface_semantic_application_candidates(iface_name_id u32, _co
 		iface_name_id
 	}
 	base_short := flat.source_type_syntax(base).unqualified()
-	for candidate, _ in g.interfaces {
-		candidate_id := flat.source_type_id(candidate)
+	for candidate_id, _ in g.interfaces {
 		candidate_syntax := flat.source_type_syntax(candidate_id)
 		if !candidate_syntax.cgen_raw_app_valid()
 			|| flat.source_type_syntax(candidate_syntax.cgen_raw_app_base()).unqualified() != base_short {

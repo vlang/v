@@ -277,13 +277,13 @@ mut:
 	global_inits         []GlobalEntry
 	enum_inits           []EnumInitEntry
 	implicit_main        []TopLevelStmt
-	structs              map[string]StructInfo
-	enum_fields          map[string][]string
-	enum_types           map[string]TypeAliasInfo
-	sizeof_type_bindings map[string]TypeLayout
-	sum_types            flat.TypeTextListBindings
-	type_aliases         map[string]TypeAliasInfo
-	type_names           map[string]map[string]bool
+	structs              map[u32]StructInfo
+	enum_fields          map[u32][]string
+	enum_types           map[u32]TypeAliasInfo
+	sizeof_type_bindings map[u32]TypeLayout
+	sum_types            flat.SourceTypeListBindings
+	type_aliases         map[u32]TypeAliasInfo
+	type_names           map[string]map[u32]bool
 	module_imports       map[string][]string
 	module_order         []string
 	file_import_alias    map[string]map[string]string
@@ -367,13 +367,13 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.global_inits = []GlobalEntry{}
 	e.enum_inits = []EnumInitEntry{}
 	e.implicit_main = []TopLevelStmt{}
-	e.structs = map[string]StructInfo{}
-	e.enum_fields = map[string][]string{}
-	e.enum_types = map[string]TypeAliasInfo{}
-	e.sizeof_type_bindings = map[string]TypeLayout{}
-	e.sum_types = flat.TypeTextListBindings{}
-	e.type_aliases = map[string]TypeAliasInfo{}
-	e.type_names = map[string]map[string]bool{}
+	e.structs = map[u32]StructInfo{}
+	e.enum_fields = map[u32][]string{}
+	e.enum_types = map[u32]TypeAliasInfo{}
+	e.sizeof_type_bindings = map[u32]TypeLayout{}
+	e.sum_types = flat.SourceTypeListBindings{}
+	e.type_aliases = map[u32]TypeAliasInfo{}
+	e.type_names = map[string]map[u32]bool{}
 	e.module_imports = map[string][]string{}
 	e.module_order = []string{}
 	e.file_import_alias = map[string]map[string]string{}
@@ -412,7 +412,7 @@ fn (mut e Eval) ensure_module_maps(module_name string) {
 		e.global_types[module_name] = map[string]u32{}
 	}
 	if module_name !in e.type_names {
-		e.type_names[module_name] = map[string]bool{}
+		e.type_names[module_name] = map[u32]bool{}
 	}
 }
 
@@ -541,8 +541,8 @@ fn (mut e Eval) register_files() ! {
 					}
 				}
 				.enum_decl {
-					e.type_names[module_name][child.value] = true
-					enum_name := e.qualify_type_name(module_name, flat.source_type_id(child.value))
+					e.type_names[module_name][child.source_value_id()] = true
+					enum_name := e.qualify_type_name(module_name, child.source_value_id())
 					mut enum_fields := []string{}
 					for field_id in e.children(child) {
 						field := e.node(field_id)
@@ -552,7 +552,7 @@ fn (mut e Eval) register_files() ! {
 						enum_fields << field.value
 					}
 					backing := child.enum_backing_type_id()
-					e.enum_types[flat.source_type_name(enum_name)] = TypeAliasInfo{
+					e.enum_types[enum_name] = TypeAliasInfo{
 						module_name: module_name
 						file_name:   file_name
 						target:      (if backing != 0 {
@@ -561,9 +561,9 @@ fn (mut e Eval) register_files() ! {
 							flat.source_type_i32
 						})
 					}
-					e.enum_fields[flat.source_type_name(enum_name)] = enum_fields
+					e.enum_fields[enum_name] = enum_fields
 					if module_name in ['main', 'builtin'] {
-						e.enum_fields[child.value] = enum_fields
+						e.enum_fields[child.source_value_id()] = enum_fields
 					}
 					e.enum_inits << EnumInitEntry{
 						node:        child_id
@@ -575,7 +575,7 @@ fn (mut e Eval) register_files() ! {
 					e.register_function(module_name, file_name, child_id, child)
 				}
 				.struct_decl {
-					e.type_names[module_name][child.value] = true
+					e.type_names[module_name][child.source_value_id()] = true
 					mut fields := []FieldInfo{}
 					for field_id in e.children(child) {
 						field := e.node(field_id)
@@ -614,27 +614,27 @@ fn (mut e Eval) register_files() ! {
 						is_union:    'union' in child.typ_text().split(',')
 						pack:        pack
 						align:       align
-						name:        flat.source_type_id(child.value)
+						name:        child.source_value_id()
 						fields:      fields
 					}
-					qualified_name := flat.source_type_name(e.qualify_type_name(module_name, flat.source_type_id(child.value)))
+					qualified_name := e.qualify_type_name(module_name, child.source_value_id())
 					e.structs[qualified_name] = info
 					if module_name in ['main', 'builtin'] {
-						e.structs[child.value] = info
+						e.structs[child.source_value_id()] = info
 					}
 				}
 				.type_decl {
-					e.type_names[module_name][child.value] = true
+					e.type_names[module_name][child.source_value_id()] = true
 					if child.children_count > 0 {
 						mut variants := []u32{}
 						for variant_id in e.children(child) {
 							variant := e.node(variant_id)
 							variants << e.qualify_type_name(module_name, variant.source_value_id())
 						}
-						qualified_name := flat.source_type_name(e.qualify_type_name(module_name, flat.source_type_id(child.value)))
+						qualified_name := e.qualify_type_name(module_name, child.source_value_id())
 						e.sum_types.set_ids(qualified_name, variants)
 						if module_name in ['main', 'builtin'] {
-							e.sum_types.set_ids(child.value, variants)
+							e.sum_types.set_ids(child.source_value_id(), variants)
 						}
 					} else if child.typ != 0 {
 						info := TypeAliasInfo{
@@ -643,10 +643,10 @@ fn (mut e Eval) register_files() ! {
 							file_name:   file_name
 							target:      child.typ
 						}
-						qualified_name := flat.source_type_name(e.qualify_type_name(module_name, flat.source_type_id(child.value)))
+						qualified_name := e.qualify_type_name(module_name, child.source_value_id())
 						e.type_aliases[qualified_name] = info
 						if module_name in ['main', 'builtin'] {
-							e.type_aliases[child.value] = info
+							e.type_aliases[child.source_value_id()] = info
 						}
 					}
 				}
@@ -2980,17 +2980,16 @@ fn (e &Eval) resolve_module_name(name string) string {
 }
 
 fn (e &Eval) has_type_name(module_name string, name_id u32) bool {
-	name := flat.source_type_name(name_id)
-	if module_name in e.type_names && name in e.type_names[module_name] {
+	if module_name in e.type_names && name_id in e.type_names[module_name] {
 		return true
 	}
 	if flat.source_type_shape(name_id).has(.dotted) {
 		syntax := flat.source_type_syntax(name_id)
 		mod := flat.source_type_name(syntax.qualifier())
-		short := flat.source_type_name(syntax.unqualified())
+		short := syntax.unqualified()
 		return mod in e.type_names && short in e.type_names[mod]
 	}
-	return name in e.structs || e.sum_types.contains(name)
+	return name_id in e.structs || e.sum_types.contains(name_id)
 }
 
 fn (mut e Eval) lookup_const(module_name string, name string) ?Value {
@@ -3730,7 +3729,7 @@ fn (e &Eval) eval_sum_selector(value SumValue, field string) !Value {
 }
 
 fn (e &Eval) sum_variant_index(type_name_id u32, variant_name_id u32) int {
-	if variants := e.sum_types.type_ids(flat.source_type_name(type_name_id)) {
+	if variants := e.sum_types.type_ids(type_name_id) {
 		sum_module := if flat.source_type_shape(type_name_id).has(.dotted) {
 			flat.source_type_name(flat.source_type_syntax(type_name_id).qualifier())
 		} else {
@@ -5658,28 +5657,28 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name
 		}
 	}
 	enum_name := e.qualify_type_name(module_name, name)
-	if fields := e.enum_fields[flat.source_type_name(enum_name)] {
+	if fields := e.enum_fields[enum_name] {
 		if fields.len > 0 {
 			if value := e.lookup_enum_value(enum_name, fields[0]) { return value }
 		}
 		return EnumValue{ type_name: enum_name }
 	}
 	sum_name := e.qualify_type_name(module_name, name)
-	if e.sum_types.contains(flat.source_type_name(sum_name)) {
+	if e.sum_types.contains(sum_name) {
 		return SumValue{ type_name: sum_name, payload: &Value(void_value()) }
 	}
-	if e.sum_types.contains(flat.source_type_name(name)) {
+	if e.sum_types.contains(name) {
 		return SumValue{ type_name: name, payload: &Value(void_value()) }
 	}
 	struct_name := e.resolve_struct_type_name_in_module(name, module_name)
-	if flat.source_type_name(struct_name) in e.structs { return e.zero_struct_value(struct_name) }
+	if struct_name in e.structs { return e.zero_struct_value(struct_name) }
 	return void_value()
 }
 
 fn (e &Eval) qualify_nested_type_name(module_name string, type_name_id u32) u32 {
 	name := eval_trimmed_source_type_id(type_name_id)
 	if name == 0 { return 0 }
-	if e.sizeof_type_bindings.len > 0 && flat.source_type_name(name) in e.sizeof_type_bindings {
+	if e.sizeof_type_bindings.len > 0 && name in e.sizeof_type_bindings {
 		return name
 	}
 	shape := flat.source_type_shape(name)
@@ -5779,7 +5778,7 @@ fn (e &Eval) struct_info(type_name_id u32) StructInfo {
 		}
 	}
 	resolved := e.resolve_struct_type_name(name)
-	if info := e.structs[flat.source_type_name(resolved)] { return info }
+	if info := e.structs[resolved] { return info }
 	return StructInfo{}
 }
 
@@ -5790,11 +5789,10 @@ fn (e &Eval) resolve_struct_type_name(type_name_id u32) u32 {
 fn (e &Eval) resolve_struct_type_name_in_module(type_name_id u32, module_name string) u32 {
 	if flat.source_type_shape(type_name_id).has(.dotted) { return type_name_id }
 	qualified := e.qualify_type_name(module_name, type_name_id)
-	if flat.source_type_name(qualified) in e.structs { return qualified }
-	spelling := flat.source_type_name(type_name_id)
-	if spelling in e.structs { return type_name_id }
+	if qualified in e.structs { return qualified }
+	if type_name_id in e.structs { return type_name_id }
 	short := flat.source_type_syntax(type_name_id).unqualified()
-	if flat.source_type_name(short) in e.structs { return short }
+	if short in e.structs { return short }
 	return type_name_id
 }
 
@@ -5870,16 +5868,16 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name_id u32) Value {
 		return m
 	}
 	target_type_name := e.normalize_type_name(type_name_id)
-	if flat.source_type_name(target_type_name) in e.enum_fields {
+	if target_type_name in e.enum_fields {
 		return e.enum_value(target_type_name, value)
 	}
-	if flat.source_type_name(type_name_id) in e.enum_fields {
+	if type_name_id in e.enum_fields {
 		return e.enum_value(type_name_id, value)
 	}
-	if e.sum_types.contains(flat.source_type_name(target_type_name)) && !e.value_matches_type_name(value, target_type_name) {
+	if e.sum_types.contains(target_type_name) && !e.value_matches_type_name(value, target_type_name) {
 		return e.wrap_sum_value(target_type_name, value)
 	}
-	if e.sum_types.contains(flat.source_type_name(type_name_id)) && !e.value_matches_type_name(value, type_name_id) {
+	if e.sum_types.contains(type_name_id) && !e.value_matches_type_name(value, type_name_id) {
 		return e.wrap_sum_value(type_name_id, value)
 	}
 	return value
@@ -5929,10 +5927,10 @@ fn (e &Eval) cast_value_in_module(value Value, type_name_id u32, module_name str
 	}
 	if name == flat.source_type_bool { return Value(e.value_as_bool(source)!) }
 	if name == flat.source_type_string { return Value(e.value_string(source)) }
-	if flat.source_type_name(target_name) in e.enum_fields {
+	if target_name in e.enum_fields {
 		return e.enum_value(target_name, source)
 	}
-	if flat.source_type_name(name) in e.enum_fields { return e.enum_value(name, source) }
+	if name in e.enum_fields { return e.enum_value(name, source) }
 	if flat.source_type_shape(name).has(.option_type) {
 		if source is VoidValue { return source }
 		inner_type := flat.source_type_syntax(name).raw_base()
@@ -5949,8 +5947,8 @@ fn (e &Eval) cast_value_in_module(value Value, type_name_id u32, module_name str
 			}
 		}
 	}
-	if e.sum_types.contains(flat.source_type_name(target_name)) || e.sum_types.contains(flat.source_type_name(name)) {
-		sum_name := if e.sum_types.contains(flat.source_type_name(target_name)) {
+	if e.sum_types.contains(target_name) || e.sum_types.contains(name) {
+		sum_name := if e.sum_types.contains(target_name) {
 			target_name
 		} else {
 			name
@@ -5965,8 +5963,8 @@ fn (e &Eval) type_alias_info_in_module(type_name_id u32, module_name string) ?Ty
 	name := eval_pointer_base_type_id(type_name_id)
 	if name == 0 { return none }
 	qualified := e.qualify_type_name(module_name, name)
-	if alias := e.type_aliases[flat.source_type_name(qualified)] { return alias }
-	if alias := e.type_aliases[flat.source_type_name(name)] { return alias }
+	if alias := e.type_aliases[qualified] { return alias }
+	if alias := e.type_aliases[name] { return alias }
 	return none
 }
 
@@ -6051,7 +6049,7 @@ fn (e &Eval) declaration_type_context(module_name string, file_name string) Eval
 	mut context := *e
 	context.call_stack = [CallFrame{ module_name: module_name, file_name: file_name }]
 	context.scopes = []ScopeFrame{}
-	context.sizeof_type_bindings = map[string]TypeLayout{}
+	context.sizeof_type_bindings = map[u32]TypeLayout{}
 	return context
 }
 
@@ -6139,7 +6137,7 @@ fn sizeof_aligned_size(size i64, align i64) i64 {
 fn (e &Eval) sizeof_is_generic_aggregate(name_id u32, module_name string) bool {
 	if base, _ := sizeof_generic_parts(name_id) {
 		qualified := e.qualify_type_name(module_name, base)
-		if info := e.structs[flat.source_type_name(qualified)] { return info.params.len > 0 }
+		if info := e.structs[qualified] { return info.params.len > 0 }
 		if alias := e.type_alias_info_in_module(base, module_name) { return alias.params.len > 0 }
 	}
 	return false
@@ -6161,7 +6159,7 @@ fn (e &Eval) sizeof_generic_context(module_name string, file_name string, params
 	// Resolve each argument before entering the declaration's module. Layout bindings
 	// keep caller types distinct from same-named types in imported generic fields.
 	for i, param in params {
-		context.sizeof_type_bindings[param] = e.sizeof_type_layout(args_ids[i], caller_module, seen)
+		context.sizeof_type_bindings[flat.source_type_id(param)] = e.sizeof_type_layout(args_ids[i], caller_module, seen)
 	}
 	return context
 }
@@ -6169,10 +6167,9 @@ fn (e &Eval) sizeof_generic_context(module_name string, file_name string, params
 fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []TypeLayoutVisit) TypeLayout {
 	trimmed_id := eval_trimmed_source_type_id(raw_name_id)
 	if e.sizeof_type_bindings.len > 0 {
-		if layout := e.sizeof_type_bindings[flat.source_type_name(trimmed_id)] { return layout }
+		if layout := e.sizeof_type_bindings[trimmed_id] { return layout }
 	}
 	name_id := e.qualify_nested_type_name(module_name, trimmed_id)
-	name := flat.source_type_name(name_id)
 	shape := flat.source_type_shape(name_id)
 	if shape.has(.pointer) { return TypeLayout{ size: 8, align: 8 } }
 	for entry in seen {
@@ -6186,7 +6183,7 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 		context := e.declaration_type_context(alias.module_name, alias.file_name)
 		return context.sizeof_type_layout(alias.target, alias.module_name, visited)
 	}
-	if variants := e.sum_types.type_ids(name) {
+	if variants := e.sum_types.type_ids(name_id) {
 		return e.sizeof_sum_layout(variants, module_name, visited)
 	}
 	if shape.has(.map_type) || shape.has(.function_spaced) || shape.has(.channel_type)
@@ -6219,7 +6216,7 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 		}
 		return TypeLayout{ size: 8, align: 8 }
 	}
-	if backing := e.enum_types[name] {
+	if backing := e.enum_types[name_id] {
 		context := e.declaration_type_context(backing.module_name, backing.file_name)
 		return context.sizeof_type_layout(backing.target, backing.module_name, visited)
 	}
@@ -6240,7 +6237,7 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 		}
 	}
 	struct_name := e.resolve_struct_type_name_in_module(struct_type_name, module_name)
-	if info := e.structs[flat.source_type_name(struct_name)] {
+	if info := e.structs[struct_name] {
 		context := e.sizeof_generic_context(info.module_name, info.file_name, info.params, args, module_name, visited)
 		mut size := i64(0)
 		mut align := i64(1)
@@ -6595,7 +6592,7 @@ fn (e &Eval) struct_field_value_string(value Value) string {
 
 fn (e &Eval) enum_value_string(value EnumValue) string {
 	enum_name := e.normalize_type_name(value.type_name)
-	if fields := e.enum_fields[flat.source_type_name(enum_name)] {
+	if fields := e.enum_fields[enum_name] {
 		module_name := if flat.source_type_shape(enum_name).has(.dotted) {
 			flat.source_type_name(flat.source_type_syntax(enum_name).qualifier())
 		} else {

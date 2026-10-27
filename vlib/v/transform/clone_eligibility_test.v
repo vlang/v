@@ -10,20 +10,20 @@ fn test_default_clone_eligibility_includes_ordinary_struct_fields() {
 		tc.structs[flat.source_type_id(name)] = []types.StructField{}
 	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['MapValue'] = StructInfo{
+	t.structs[flat.source_type_id('MapValue')] = StructInfo{
 		fields: [FieldInfo{ name: 'm', typ: flat.source_type_id('map[string]i16') }]
 	}
-	t.structs['NestedValue'] = StructInfo{
+	t.structs[flat.source_type_id('NestedValue')] = StructInfo{
 		fields: [FieldInfo{ name: 'values', typ: flat.source_type_id('[2]MapValue') }]
 	}
-	t.structs['PlainValue'] = StructInfo{
+	t.structs[flat.source_type_id('PlainValue')] = StructInfo{
 		fields: [FieldInfo{ name: 'n', typ: flat.source_type_int }]
 	}
-	t.structs['ReferenceValue'] = StructInfo{
+	t.structs[flat.source_type_id('ReferenceValue')] = StructInfo{
 		fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('&MapValue') }]
 	}
 	// Even cyclic metadata must not make the classification recurse forever.
-	t.structs['RecursiveValue'] = StructInfo{
+	t.structs[flat.source_type_id('RecursiveValue')] = StructInfo{
 		fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('RecursiveValue') }]
 	}
 	assert t.compiler_default_clone_type_needs_work(flat.source_type_id('MapValue'))

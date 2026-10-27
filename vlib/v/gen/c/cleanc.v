@@ -754,7 +754,7 @@ mut:
 	enum_vals                      map[string]int
 	enum_value_exprs               map[string]string
 	enum_values_from_c             map[string]bool // C names of members valued from C (`a = C.FOO`); 0 in enum_vals
-	enum_modules                   map[string]string
+	enum_modules                   map[u32]string
 	defers                         []flat.NodeId
 	defer_cleanup_stack            []flat.NodeId // already emitted by the active cleanup path
 	scope_defer_starts             []int
@@ -767,7 +767,7 @@ mut:
 	program_recover                bool
 	cur_fn_panic_owner             bool   // the current function declared the `_v_unwind_owner` of its frames
 	cur_panic_frame                string // frame of the deferred block being emitted, which `recover()` asks for
-	interfaces                     map[string][]string
+	interfaces                     map[u32][]string
 	const_vals                     map[string]flat.NodeId
 	const_modules                  map[string]string
 	const_files                    map[string]string // const name -> declaring file (for import-alias type resolution)
@@ -891,8 +891,8 @@ mut:
 	generic_fn_keys_by_short      map[string][]string
 	generic_fn_keys_by_cname      map[string][]string
 	generic_fn_key_ordinal        map[string]int
-	struct_decl_infos             map[string]StructDeclInfo
-	struct_decl_short_infos       map[string]StructDeclInfo
+	struct_decl_infos             map[u32]StructDeclInfo
+	struct_decl_short_infos       map[u32]StructDeclInfo
 	decl_attrs                    map[int][]string
 	decl_attrs_by_source_position map[u64][]string
 	c_decl_abi_names              map[string]string
@@ -908,7 +908,7 @@ mut:
 	const_init_depth              int                             // >0 while a const initializer is inlined; see ident_is_local_binding
 	shared_type_names             map[string]SharedTypeInfo       // __shared__ wrapper name -> wrapped type metadata
 	shared_alias_pointer_cache    map[u32]map[string][]types.Type // source spelling -> file/module resolution results
-	shared_alias_pointer_shorts   map[string]u32                  // alias short name -> shared inner source ID; 0 means ambiguous
+	shared_alias_pointer_shorts   map[u32]u32                     // alias short spelling ID -> shared inner source ID; 0 means ambiguous
 	shared_alias_index_ready      bool
 	needs_shared_runtime          bool
 	needs_pthread_header          bool
@@ -1739,8 +1739,8 @@ pub fn FlatGen.new() FlatGen {
 		enum_vals:                          map[string]int{}
 		enum_value_exprs:                   map[string]string{}
 		enum_values_from_c:                 map[string]bool{}
-		enum_modules:                       map[string]string{}
-		interfaces:                         map[string][]string{}
+		enum_modules:                       map[u32]string{}
+		interfaces:                         map[u32][]string{}
 		const_vals:                         map[string]flat.NodeId{}
 		const_modules:                      map[string]string{}
 		const_files:                        map[string]string{}
@@ -1825,8 +1825,8 @@ pub fn FlatGen.new() FlatGen {
 		generic_fn_keys_by_short:           map[string][]string{}
 		generic_fn_keys_by_cname:           map[string][]string{}
 		generic_fn_key_ordinal:             map[string]int{}
-		struct_decl_infos:                  map[string]StructDeclInfo{}
-		struct_decl_short_infos:            map[string]StructDeclInfo{}
+		struct_decl_infos:                  map[u32]StructDeclInfo{}
+		struct_decl_short_infos:            map[u32]StructDeclInfo{}
 		qualified_struct_c_types_by_suffix: flat.TypeTextListBindings{}
 		decl_attrs:                         map[int][]string{}
 		decl_attrs_by_source_position:      map[u64][]string{}
@@ -1840,7 +1840,7 @@ pub fn FlatGen.new() FlatGen {
 		global_linker_sections:             map[string]string{}
 		global_cinit_names:                 map[string]bool{}
 		shared_type_names:                  map[string]SharedTypeInfo{}
-		shared_alias_pointer_shorts:        map[string]u32{}
+		shared_alias_pointer_shorts:        map[u32]u32{}
 		shared_alias_pointer_cache:         map[u32]map[string][]types.Type{}
 		default_value_stack:                map[u32]bool{}
 		cur_param_names:                    []string{}
@@ -5449,10 +5449,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			is_flag := enum_decl_is_flag(node)
 			mut val := 0
 			enum_name := qualify_name_in_module(cur_module, node.value)
-			g.enum_modules[enum_name] = cur_module
+			enum_name_id := flat.source_type_id(enum_name)
+			g.enum_modules[enum_name_id] = cur_module
 			backing := enum_decl_backing_type(node) or { u32(0) }
 			if backing != 0 {
-				g.register_enum_backing_info(flat.source_type_id(enum_name), backing)
+				g.register_enum_backing_info(enum_name_id, backing)
 			}
 			is_backed_enum := backing != 0
 			mut field_exprs := map[string]flat.NodeId{}
@@ -5498,8 +5499,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			continue
 		}
 		if kind_id == 70 {
-			iface_name := qualify_name_in_module(cur_module, node.value)
-			g.interfaces[iface_name] = g.tc.interface_abstract_method_names(flat.source_type_id(iface_name))
+			iface_name_id := flat.source_type_id(qualify_name_in_module(cur_module, node.value))
+			g.interfaces[iface_name_id] = g.tc.interface_abstract_method_names(iface_name_id)
 			continue
 		}
 		if kind_id == 65 {
@@ -12727,9 +12728,10 @@ fn (mut g FlatGen) register_struct_decl_info_at(node_id int, name string, full_n
 		full_name:     flat.source_type_id(full_name)
 		shared_fields: shared_fields
 	}
-	g.struct_decl_infos[full_name] = info
-	if name !in g.struct_decl_short_infos {
-		g.struct_decl_short_infos[name] = info
+	g.struct_decl_infos[info.full_name] = info
+	name_id := flat.source_type_id(name)
+	if name_id !in g.struct_decl_short_infos {
+		g.struct_decl_short_infos[name_id] = info
 	}
 }
 
@@ -24254,10 +24256,11 @@ fn (g &FlatGen) fixed_array_type_defined(typ0 &types.Type, emitted_structs map[s
 }
 
 fn (mut g FlatGen) fixed_array_typedef_type_module(name string, fallback string) string {
-	if info := g.struct_decl_infos[name] {
+	name_id := flat.source_type_id(name)
+	if info := g.struct_decl_infos[name_id] {
 		return info.module
 	}
-	if module_name := g.tc.struct_modules[flat.source_type_id(name)] {
+	if module_name := g.tc.struct_modules[name_id] {
 		return module_name
 	}
 	mod := module_from_qualified_name(name)
@@ -27245,8 +27248,7 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 // cast_target_is_interface reports whether a cast to `target_type_id` builds an
 // interface value.
 fn (mut g FlatGen) cast_target_is_interface(target_type_id u32) bool {
-	target_text := flat.source_type_name(target_type_id)
-	if target_text in g.interfaces || g.tc.qualify_name(target_text) in g.interfaces {
+	if target_type_id in g.interfaces || g.tc.qualify_type_name(target_type_id) in g.interfaces {
 		return true
 	}
 	return cgen_unalias_type(g.tc.parse_type(target_type_id)) is types.Interface
