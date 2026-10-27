@@ -13898,7 +13898,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	}
 	node := t.a.nodes[int(id)]
 
-	if t.live_reload_runtime {
+	if t.live_reload_runtime && t.cur_module == 'main' {
 		// Live reload: rewrite calls/references to @[live] functions into calls
 	// through their __live_<mangled> function pointers.
 	if node.kind == .call && node.children_count >= 1 {
