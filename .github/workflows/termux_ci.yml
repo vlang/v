@@ -174,13 +174,14 @@ jobs:
             git clone --depth 1 -b mob https://repo.or.cz/tinycc.git ~/tinycc
             cd ~/tinycc
             git log -n1 --format=%H
-            ./configure --cc=clang --prefix="$HOME/tcc-install" \
+            # Termux has no /bin/sh, so run configure and make with $PREFIX/bin/sh.
+            sh ./configure --cc=clang --prefix="$HOME/tcc-install" \
               --crtprefix="$PREFIX/lib" \
               --libpaths="$PREFIX/lib" \
               --sysincludepaths="{B}/include:$PREFIX/include" \
               --elfinterp=/system/bin/linker64
-            make -j2
-            make install
+            make -j2 SHELL="$PREFIX/bin/sh"
+            make install SHELL="$PREFIX/bin/sh"
             tcc="$HOME/tcc-install/bin/tcc"
             "$tcc" -v
             cd ~/vproject
