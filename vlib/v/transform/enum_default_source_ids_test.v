@@ -29,7 +29,7 @@ fn test_enum_default_keeps_type_id_and_emitted_member_spelling() {
 		expected_id := flat.source_type_id(expected)
 		mut tc := types.TypeChecker.new(&a)
 		tc.cur_module = module_name
-		tc.enum_names[qualified] = true
+		tc.enum_names[flat.source_type_id(qualified)] = true
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.enum_types[expected] = ['first']
 		t.enum_explicit_first_values[expected] = true

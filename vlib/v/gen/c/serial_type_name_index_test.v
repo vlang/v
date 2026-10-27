@@ -6,12 +6,13 @@ import v.types
 fn test_serial_collection_builds_complete_name_index_without_field_index() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['models.Record'] = []types.StructField{}
-	tc.type_aliases.set_id('models.Alias', flat.source_type_int)
-	tc.enum_names['models.State'] = true
-	tc.flag_enums['models.Flags'] = true
-	tc.sum_types.set_ids('models.Choice', [flat.source_type_int, flat.source_type_string])
-	tc.interface_names['models.Reader'] = true
+	tc.structs[flat.source_type_id('models.Record')] = []types.StructField{}
+	tc.type_aliases.set_id(flat.source_type_id('models.Alias'), flat.source_type_int)
+	tc.enum_names[flat.source_type_id('models.State')] = true
+	tc.flag_enums[flat.source_type_id('models.Flags')] = true
+	tc.sum_types.set_ids(flat.source_type_id('models.Choice'), [flat.source_type_int,
+		flat.source_type_string])
+	tc.interface_names[flat.source_type_id('models.Reader')] = true
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -35,7 +36,7 @@ fn test_serial_collection_builds_complete_name_index_without_field_index() {
 	assert g.name_may_be_type_alias('Unknown[int]')
 	assert g.name_may_reach_enum('Unknown[int]')
 	// A later full collection rebuilds membership.
-	tc.structs['later.Added'] = []types.StructField{}
+	tc.structs[flat.source_type_id('later.Added')] = []types.StructField{}
 	g.collect_gen_info(true)
 	assert g.ident_may_name_type('Added')
 	// Incremental collection keeps the existing conservative fallback.
@@ -54,7 +55,7 @@ fn test_value_c_type_alias_filter_preserves_c_spelling_main_prefix_and_long_keys
 			mut a := flat.FlatAst.new()
 			mut tc := types.TypeChecker.new(&a)
 			tc.cur_module = 'main'
-			tc.type_aliases.set_id('${prefix}model__${suffix}', flat.source_type_f64)
+			tc.type_aliases.set_id(flat.source_type_id('${prefix}model__${suffix}'), flat.source_type_f64)
 			mut g := FlatGen.new()
 			g.a = &a
 			g.tc = &tc
@@ -78,12 +79,13 @@ fn test_cast_name_resolution_keeps_bare_priority_qualification_and_local_shadowi
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_module = 'sample'
-	tc.structs['Record'] = []types.StructField{}
-	tc.type_aliases.set_id('sample.Record', flat.source_type_int)
-	tc.type_aliases.set_id('sample.Alias', flat.source_type_int)
-	tc.enum_names['sample.State'] = true
-	tc.sum_types.set_ids('sample.Choice', [flat.source_type_int, flat.source_type_string])
-	tc.interface_names['sample.Reader'] = true
+	tc.structs[flat.source_type_id('Record')] = []types.StructField{}
+	tc.type_aliases.set_id(flat.source_type_id('sample.Record'), flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('sample.Alias'), flat.source_type_int)
+	tc.enum_names[flat.source_type_id('sample.State')] = true
+	tc.sum_types.set_ids(flat.source_type_id('sample.Choice'), [flat.source_type_int,
+		flat.source_type_string])
+	tc.interface_names[flat.source_type_id('sample.Reader')] = true
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

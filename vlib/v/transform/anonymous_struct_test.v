@@ -74,10 +74,10 @@ fn test_inferred_anonymous_struct_uses_position_source_file() {
 
 	dep_name := 'dep.AnonStruct_v3_inferred_${dep_struct_id}'
 	main_name := 'AnonStruct_v3_inferred_${main_struct_id}'
-	assert tc.struct_files[dep_name] == dep_file
-	assert tc.struct_modules[dep_name] == 'dep'
-	assert tc.struct_files[main_name] == main_file
-	assert tc.struct_modules[main_name] == 'main'
+	assert tc.struct_files[flat.source_type_id(dep_name)] == dep_file
+	assert tc.struct_modules[flat.source_type_id(dep_name)] == 'dep'
+	assert tc.struct_files[flat.source_type_id(main_name)] == main_file
+	assert tc.struct_modules[flat.source_type_id(main_name)] == 'main'
 	assert a.nodes[int(dep_struct_id)].typ_text() == dep_name
 	assert a.nodes[int(main_struct_id)].typ_text() == main_name
 }
@@ -141,15 +141,15 @@ fn test_inferred_anonymous_struct_name_does_not_replace_user_struct() {
 	}]
 	mut tc := types.TypeChecker.new(&a)
 	tc.file_modules[main_file] = 'main'
-	tc.structs[colliding_name] = user_fields
+	tc.structs[flat.source_type_id(colliding_name)] = user_fields
 	tc.register_synth_type(value_id, types.Type(types.int_))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.materialize_inferred_anonymous_structs()
 
 	generated_name := '${colliding_name}_1'
 	assert a.nodes[int(struct_id)].typ_text() == generated_name
-	assert tc.structs[colliding_name] == user_fields
-	assert tc.structs[generated_name][0].name == 'item'
+	assert tc.structs[flat.source_type_id(colliding_name)] == user_fields
+	assert tc.structs[flat.source_type_id(generated_name)][0].name == 'item'
 }
 
 fn test_prepared_selfhost_transform_materializes_before_preparing() {
@@ -174,5 +174,5 @@ fn test_prepared_selfhost_transform_materializes_before_preparing() {
 
 	assert errors.len == 0
 	assert a.nodes[int(struct_id)].typ_text() == name
-	assert name in tc.structs
+	assert flat.source_type_id(name) in tc.structs
 }

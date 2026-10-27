@@ -373,8 +373,8 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		clean_detected := flat.source_type_syntax(detected_iter_type_source_id_2).pointer_raw_base()
 		detected_syntax := flat.source_type_syntax(clean_detected)
 		generic_base := detected_syntax.generic_app_base()
-		is_generic_interface := detected_syntax.generic_app_valid() && (flat.source_type_name(generic_base) in t.tc.interface_names
-			|| flat.source_type_name(t.tc.qualify_type_name(generic_base)) in t.tc.interface_names)
+		is_generic_interface := detected_syntax.generic_app_valid() && (generic_base in t.tc.interface_names
+			|| t.tc.qualify_type_name(generic_base) in t.tc.interface_names)
 		has_alias_next := flat.source_type_name(flat.source_type_composition_two(.qualified, clean_detected, flat.source_type_id('next'))) in t.tc.fn_ret_types
 			|| flat.source_type_name(flat.source_type_composition_two(.qualified, t.tc.qualify_type_name(clean_detected), flat.source_type_id('next'))) in t.tc.fn_ret_types
 		if is_generic_interface || has_alias_next {
@@ -993,8 +993,8 @@ fn (t &Transformer) iterator_for_in_info(iter_type_id u32) ?IteratorForInInfo {
 	mut next_method := info.name
 	syntax := flat.source_type_syntax(clean)
 	generic_base := syntax.generic_app_base()
-	is_generic_interface := syntax.generic_app_valid() && (flat.source_type_name(generic_base) in t.tc.interface_names
-		|| flat.source_type_name(t.tc.qualify_type_name(generic_base)) in t.tc.interface_names)
+	is_generic_interface := syntax.generic_app_valid() && (generic_base in t.tc.interface_names
+		|| t.tc.qualify_type_name(generic_base) in t.tc.interface_names)
 	// The method registry stores declaration names; a C module qualifier is not
 	// part of the receiver type. Receiver components themselves remain interned.
 	if !is_generic_interface && !info.name.contains('.C.')
@@ -1815,7 +1815,7 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 			container_type = t.trim_pointer_type(container_type)
 			continue
 		}
-		if target_source_id := t.tc.type_aliases.type_id(flat.source_type_name(container_type)) {
+		if target_source_id := t.tc.type_aliases.type_id(container_type) {
 			if target_source_id == container_type {
 				break
 			}
@@ -1824,7 +1824,7 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 		}
 		if !flat.source_type_shape(container_type).has(.dotted) {
 			qualified := flat.source_type_name(t.tc.qualify_type_name(container_type))
-			if target_source_id := t.tc.type_aliases.type_id(qualified) {
+			if target_source_id := t.tc.type_aliases.type_id(flat.source_type_id(qualified)) {
 				if target_source_id == container_type {
 					break
 				}

@@ -815,7 +815,7 @@ fn (mut b Builder) register_sum_type_name(name string, module_name string, typ_i
 	b.register_struct_type_name(name, module_name, typ_id)
 	mut variants := []u32{}
 	if b.tc != unsafe { nil } {
-		if tc_variants := b.tc.sum_types.type_ids(qualified_name) {
+		if tc_variants := b.tc.sum_types.type_ids(flat.source_type_id(qualified_name)) {
 			variants = tc_variants.clone()
 		}
 	}
@@ -9357,10 +9357,12 @@ fn (b &Builder) is_flag_enum_type_name(type_name_id u32) bool {
 	short_name := flat.source_type_name(flat.source_type_syntax(clean_id).first_dot_suffix())
 	if short_name in b.flag_enum_types { return true }
 	if b.tc != unsafe { nil } {
-		if clean in b.tc.flag_enums || short_name in b.tc.flag_enums { return true }
+		if clean_id in b.tc.flag_enums || flat.source_type_id(short_name) in b.tc.flag_enums {
+			return true
+		}
 		if !flat.source_type_shape(clean_id).has(.dotted) {
 			qualified := flat.source_type_composition_two(.qualified, flat.source_type_id('builtin'), clean_id)
-			if flat.source_type_name(qualified) in b.tc.flag_enums { return true }
+			if qualified in b.tc.flag_enums { return true }
 		}
 	}
 	return clean_id == flat.source_type_id('ArrayFlags')
@@ -9369,8 +9371,8 @@ fn (b &Builder) is_flag_enum_type_name(type_name_id u32) bool {
 // checker_has_flag_enum converts checker has flag enum data for ssa.
 fn (b &Builder) checker_has_flag_enum(type_name_id u32) bool {
 	if b.tc == unsafe { nil } { return false }
-	if flat.source_type_name(type_name_id) in b.tc.flag_enums { return true }
-	return flat.source_type_name(flat.source_type_syntax(type_name_id).first_dot_suffix()) in b.tc.flag_enums
+	if type_name_id in b.tc.flag_enums { return true }
+	return flat.source_type_syntax(type_name_id).first_dot_suffix() in b.tc.flag_enums
 }
 
 // build_enum_val_with_type builds enum val with type data for ssa.
@@ -14410,13 +14412,13 @@ fn (mut b Builder) resolve_c_decl_type(name_id u32) TypeID {
 
 fn (b &Builder) type_alias_target(name_id u32) ?u32 {
 	if b.tc == unsafe { nil } || name_id == 0 { return none }
-	if target_source_id := b.tc.type_aliases.type_id(flat.source_type_name(name_id)) {
+	if target_source_id := b.tc.type_aliases.type_id(name_id) {
 		return target_source_id
 	}
 	if !flat.source_type_shape(name_id).has(.dotted) && b.cur_module.len > 0
 		&& b.cur_module !in ['main', 'builtin'] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), name_id)
-		if target_source_id := b.tc.type_aliases.type_id(flat.source_type_name(qualified)) {
+		if target_source_id := b.tc.type_aliases.type_id(qualified) {
 			return target_source_id
 		}
 	}

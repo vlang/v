@@ -129,8 +129,8 @@ fn (t &Transformer) interface_array_literal_repeat_can_expand(base_id flat.NodeI
 	if isnil(t.tc) || !flat.source_type_shape(base_type_id).has(.array_type) {
 		return false
 	}
-	elem_type := flat.source_type_name(flat.source_type_syntax(base_type_id).raw_base())
-	if elem_type !in t.tc.interface_names && t.tc.qualify_name(elem_type) !in t.tc.interface_names {
+	elem_type_id := flat.source_type_syntax(base_type_id).raw_base()
+	if elem_type_id !in t.tc.interface_names && t.tc.qualify_type_name(elem_type_id) !in t.tc.interface_names {
 		return false
 	}
 	base := t.a.nodes[int(base_id)]
@@ -1113,16 +1113,16 @@ fn (t &Transformer) array_literal_local_struct_elem_name(node flat.Node) ?u32 {
 fn (t &Transformer) array_literal_qualified_alias_name(name_id u32) u32 {
 	clean := t.trimmed_type_id(name_id)
 	if clean == 0 || isnil(t.tc) { return clean }
-	if t.tc.type_aliases.contains(flat.source_type_name(clean)) { return clean }
+	if t.tc.type_aliases.contains(clean) { return clean }
 	if !flat.source_type_shape(clean).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qname := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean)
-		if t.tc.type_aliases.contains(flat.source_type_name(qname)) { return qname }
+		if t.tc.type_aliases.contains(qname) { return qname }
 	}
 	if flat.source_type_shape(clean).has(.dotted) { return clean }
 	mut found := u32(0)
-	for alias, _ in t.tc.type_aliases.ids {
-		alias_id := flat.source_type_id(alias)
+	for alias_source_id, _ in t.tc.type_aliases.ids {
+		alias_id := alias_source_id
 		if flat.source_type_syntax(alias_id).unqualified() != clean { continue }
 		if found != 0 && found != alias_id { return clean }
 		found = alias_id
@@ -3836,7 +3836,7 @@ fn (t &Transformer) array_append_elem_is_interface_uncached(elem_type_id u32) bo
 		candidates << flat.source_type_composition_two(.qualified, flat.source_type_id('builtin'), candidate)
 	}
 	for candidate in candidates {
-		if candidate != 0 && flat.source_type_name(candidate) in t.tc.interface_names {
+		if candidate != 0 && candidate in t.tc.interface_names {
 			return true
 		}
 	}
@@ -3922,17 +3922,16 @@ fn (t &Transformer) array_append_elem_types_match(rhs_elem_type_id u32, lhs_elem
 }
 
 fn (t &Transformer) array_append_interface_has_requirements(iface_name_id u32) bool {
-	iface_name := flat.source_type_name(iface_name_id)
 	if isnil(t.tc) {
 		return false
 	}
 	if t.tc.interface_abstract_method_names(iface_name_id).len > 0 {
 		return true
 	}
-	if (t.tc.interface_fields[iface_name] or { []types.StructField{} }).len > 0 {
+	if (t.tc.interface_fields[iface_name_id] or { []types.StructField{} }).len > 0 {
 		return true
 	}
-	for embed_source_id in t.tc.interface_embeds.type_ids(iface_name) or { []u32{} } {
+	for embed_source_id in t.tc.interface_embeds.type_ids(iface_name_id) or { []u32{} } {
 		if t.array_append_interface_has_requirements(embed_source_id) {
 			return true
 		}
@@ -7232,7 +7231,7 @@ fn (t &Transformer) add_static_fn_value_type_candidate(mut candidates []u32, nam
 	if name_id !in candidates {
 		candidates << name_id
 	}
-	if target_source_id := t.tc.type_aliases.type_id(flat.source_type_name(name_id)) {
+	if target_source_id := t.tc.type_aliases.type_id(name_id) {
 		if target_source_id !in candidates {
 			candidates << target_source_id
 		}

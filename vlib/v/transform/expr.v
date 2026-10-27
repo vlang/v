@@ -1616,7 +1616,7 @@ fn (t &Transformer) is_type_alias_name(type_id u32) bool {
 }
 
 fn (t &Transformer) is_type_alias_name_uncached(name_id u32) bool {
-	if t.tc.type_aliases.contains(flat.source_type_name(name_id)) { return true }
+	if t.tc.type_aliases.contains(name_id) { return true }
 	syntax := flat.source_type_syntax(name_id)
 	if syntax.generic_app_valid() && syntax.generic_app_base() != name_id {
 		return t.is_type_alias_name_uncached(syntax.generic_app_base())
@@ -1624,11 +1624,11 @@ fn (t &Transformer) is_type_alias_name_uncached(name_id u32) bool {
 	has_dot := flat.source_type_shape(name_id).has(.dotted)
 	if !has_dot && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), name_id)
-		return flat.source_type_name(qualified) in t.tc.type_aliases.ids
+		return qualified in t.tc.type_aliases.ids
 	}
 	if !has_dot {
-		for alias, _ in t.tc.type_aliases.ids {
-			if flat.source_type_syntax(flat.source_type_id(alias)).unqualified() == name_id {
+		for alias_source_id, _ in t.tc.type_aliases.ids {
+			if flat.source_type_syntax(alias_source_id).unqualified() == name_id {
 				return true
 			}
 		}
@@ -1956,19 +1956,19 @@ fn (t &Transformer) generic_struct_params_for_base(base string) ?[]string {
 
 fn (t &Transformer) generic_struct_params_for_base_id(base u32) ?[]string {
 	if isnil(t.tc) || base == 0 { return none }
-	if params := t.tc.struct_generic_params[flat.source_type_name(base)] { return params }
+	if params := t.tc.struct_generic_params[base] { return params }
 	short := flat.source_type_syntax(base).unqualified()
-	if params := t.tc.struct_generic_params[flat.source_type_name(short)] { return params }
+	if params := t.tc.struct_generic_params[short] { return params }
 	if !flat.source_type_shape(base).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
 		'main',
 		'builtin',
 	] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base)
-		if params := t.tc.struct_generic_params[flat.source_type_name(qualified)] { return params }
+		if params := t.tc.struct_generic_params[qualified] { return params }
 	}
 	mut found := []string{}
-	for name, params in t.tc.struct_generic_params {
-		if flat.source_type_syntax(flat.source_type_id(name)).unqualified() != short { continue }
+	for name_source_id, params in t.tc.struct_generic_params {
+		if flat.source_type_syntax(name_source_id).unqualified() != short { continue }
 		if found.len > 0 && found != params { return none }
 		found = params.clone()
 	}
@@ -2622,7 +2622,7 @@ fn (t &Transformer) selective_import_struct_lookup_name(name_id u32) ?u32 {
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
 		return none
 	} {
-		if candidate in t.structs || candidate in t.tc.structs {
+		if candidate in t.structs || flat.source_type_id(candidate) in t.tc.structs {
 			return flat.source_type_id(candidate)
 		}
 	}
@@ -2641,9 +2641,9 @@ fn (t &Transformer) selective_import_type_name_for_file(file string, name_id u32
 	name := flat.source_type_name(name_id)
 	for candidate in t.tc.file_selective_imports[file_import_key(file, name)] or { return none } {
 		if candidate in t.structs || t.sum_types.contains(candidate) || candidate in t.enum_types
-			|| candidate in t.tc.structs || t.tc.sum_types.contains(candidate)
-			|| candidate in t.tc.enum_names || candidate in t.tc.interface_names
-			|| t.tc.type_aliases.contains(candidate) {
+			|| flat.source_type_id(candidate) in t.tc.structs || t.tc.sum_types.contains(flat.source_type_id(candidate))
+			|| flat.source_type_id(candidate) in t.tc.enum_names || flat.source_type_id(candidate) in t.tc.interface_names
+			|| t.tc.type_aliases.contains(flat.source_type_id(candidate)) {
 			return flat.source_type_id(candidate)
 		}
 	}
@@ -2664,18 +2664,18 @@ fn (t &Transformer) visible_builtin_struct_lookup_name(name_id u32) ?u32 {
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		local_name := flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), name_id))
 		if local_name in t.structs || local_name in t.enum_types || t.sum_types.contains(local_name)
-			|| local_name in t.tc.structs || local_name in t.tc.enum_names
-			|| t.tc.sum_types.contains(local_name) || t.tc.type_aliases.contains(local_name)
-			|| local_name in t.tc.interface_names {
+			|| flat.source_type_id(local_name) in t.tc.structs || flat.source_type_id(local_name) in t.tc.enum_names
+			|| t.tc.sum_types.contains(flat.source_type_id(local_name)) || t.tc.type_aliases.contains(flat.source_type_id(local_name))
+			|| flat.source_type_id(local_name) in t.tc.interface_names {
 			return none
 		}
 	} else if t.cur_module != 'builtin'
-		&& (name in t.tc.enum_names || t.tc.sum_types.contains(name) || t.tc.type_aliases.contains(name)
-			|| name in t.tc.interface_names) {
+		&& (name_id in t.tc.enum_names || t.tc.sum_types.contains(name_id) || t.tc.type_aliases.contains(name_id)
+			|| name_id in t.tc.interface_names) {
 		return none
 	}
 	checker_name := t.checker_struct_lookup_name(name_id)
-	if checker_name != 0 && t.tc.struct_modules[flat.source_type_name(checker_name)] == 'builtin' {
+	if checker_name != 0 && t.tc.struct_modules[checker_name] == 'builtin' {
 		return checker_name
 	}
 	if info := t.structs[name] {
@@ -5172,17 +5172,16 @@ fn (t &Transformer) type_name_is_known_generic_app_base(base_id u32) bool {
 	if clean_id == 0 || isnil(t.tc) {
 		return false
 	}
-	clean := flat.source_type_name(clean_id)
-	if clean in t.tc.struct_generic_params || clean in t.tc.sum_generic_params {
+	if clean_id in t.tc.struct_generic_params || clean_id in t.tc.sum_generic_params {
 		return true
 	}
 	if flat.source_type_shape(clean_id).has(.dotted) {
 		short := flat.source_type_name(flat.source_type_syntax(clean_id).unqualified())
-		return short in t.tc.struct_generic_params || short in t.tc.sum_generic_params
+		return flat.source_type_id(short) in t.tc.struct_generic_params || flat.source_type_id(short) in t.tc.sum_generic_params
 	}
 	if t.cur_module.len > 0 {
 		qname := flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_id))
-		if qname in t.tc.struct_generic_params || qname in t.tc.sum_generic_params {
+		if flat.source_type_id(qname) in t.tc.struct_generic_params || flat.source_type_id(qname) in t.tc.sum_generic_params {
 			return true
 		}
 	}

@@ -4,8 +4,8 @@ import v.flat
 import v.types
 
 fn inferred_anonymous_struct_type_exists(tc &types.TypeChecker, name string) bool {
-	return name in tc.structs || tc.type_aliases.contains(name) || tc.sum_types.contains(name)
-		|| name in tc.enum_names || name in tc.interface_names
+	return flat.source_type_id(name) in tc.structs || tc.type_aliases.contains(flat.source_type_id(name)) || tc.sum_types.contains(flat.source_type_id(name))
+		|| flat.source_type_id(name) in tc.enum_names || flat.source_type_id(name) in tc.interface_names
 }
 
 // materialize_inferred_anonymous_structs_before_prepare gives unresolved
@@ -156,9 +156,9 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					children_count: flat.child_count(field_ids.len)
 					pos:            node.pos
 				})
-				t.tc.structs[semantic_name] = semantic_fields
-				t.tc.struct_modules[semantic_name] = cur_module
-				t.tc.struct_files[semantic_name] = cur_file
+				t.tc.structs[flat.source_type_id(semantic_name)] = semantic_fields
+				t.tc.struct_modules[flat.source_type_id(semantic_name)] = cur_module
+				t.tc.struct_files[flat.source_type_id(semantic_name)] = cur_file
 				t.tc.register_short_type_name(semantic_name)
 				semantic_name_id := flat.source_type_id(semantic_name)
 				inferred_by_shape[shape] = semantic_name_id

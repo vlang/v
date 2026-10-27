@@ -657,7 +657,7 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 	tc.collect(a)
 	assert tc.errors.len == 0, tc.errors.str()
 	tc.prepare_interface_requirement_indexes()
-	mut names := tc.interface_names.keys()
+	mut names := tc.interface_names.keys().map(flat.source_type_name(it))
 	names.sort()
 	assert names.len == expected.len
 	mut expected_ids := map[string]map[u32]int{}
@@ -997,7 +997,7 @@ fn test_disabled_resolution_views_reuse_warm_composite_type_parse_cache() {
 			tc.cur_module = 'items'
 			tc.fn_context.generic_params = ['T']
 			tc.resolution_type_mode = true
-			tc.structs['items.Item'] = []StructField{}
+			tc.structs[flat.source_type_id('items.Item')] = []StructField{}
 			assert tc.parse_resolution_type(flat.source_type_id('[]Item')).name() == '[]items.Item'
 			before := gc_heap_usage().total_bytes
 			for _ in 0 .. 128 {
@@ -1017,8 +1017,8 @@ fn test_disabled_resolution_views_keep_file_context_and_recursive_aliases() {
 	tc.disable_resolution_type_view_cache()
 	tc.cur_module = 'main'
 	tc.cur_file = 'one.v'
-	tc.structs['one.Item'] = []StructField{}
-	tc.structs['two.Item'] = []StructField{}
+	tc.structs[flat.source_type_id('one.Item')] = []StructField{}
+	tc.structs[flat.source_type_id('two.Item')] = []StructField{}
 	tc.register_file_import('dep', 'one')
 	assert tc.parse_resolution_type(flat.source_type_id('[]dep.Item')).name() == '[]one.Item'
 	tc.cur_file = 'two.v'
@@ -1033,7 +1033,7 @@ fn test_disabled_resolution_views_keep_file_context_and_recursive_aliases() {
 	assert tc.fn_context.generic_params == ['Item']
 	assert tc.resolution_type_mode
 
-	tc.type_aliases.set_id('Handlers', flat.source_type_id('map[string]fn (Handlers) int'))
+	tc.type_aliases.set_id(flat.source_type_id('Handlers'), flat.source_type_id('map[string]fn (Handlers) int'))
 	warm := tc.parse_resolution_type(flat.source_type_id('Handlers'))
 	assert warm is Alias
 	assert (warm as Alias).base_type is Map

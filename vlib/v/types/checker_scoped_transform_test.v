@@ -288,14 +288,14 @@ fn test_type_identity_is_shared_by_semantic_worker_views() {
 fn test_struct_fields_for_type_keeps_materialized_generic_fields_after_template_erasure() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.structs['Box'] = [StructField{ name: 'template_only', typ: *tc.parse_type(flat.source_type_id('bool')) }]
-	tc.structs['Box[int]'] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('int')), is_mut: true }]
+	tc.structs[flat.source_type_id('Box')] = [StructField{ name: 'template_only', typ: *tc.parse_type(flat.source_type_id('bool')) }]
+	tc.structs[flat.source_type_id('Box[int]')] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('int')), is_mut: true }]
 	before := tc.struct_fields_for_type(flat.source_type_id('Box[int]'))
 	assert before.len == 1
 	assert before[0].name == 'value'
 	assert before[0].typ.name() == 'int'
 	assert before[0].is_mut
-	tc.structs.delete('Box')
+	tc.structs.delete(flat.source_type_id('Box'))
 	after := tc.struct_fields_for_type(flat.source_type_id('Box[int]'))
 	assert after.len == 1
 	assert after[0].name == 'value'

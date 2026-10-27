@@ -22,7 +22,7 @@ mut:
 }
 
 fn (g &FlatGen) sum_has_pointer_variant(sum_name_id u32) bool {
-	for variant in g.tc.sum_types.type_ids(flat.source_type_name(g.resolve_sum_name(sum_name_id))) or { []u32{} } {
+	for variant in g.tc.sum_types.type_ids(g.resolve_sum_name(sum_name_id)) or { []u32{} } {
 		if unalias_type(g.tc.parse_canonical_type(variant)) is types.Pointer { return true }
 	}
 	return false
@@ -68,10 +68,10 @@ fn (mut g FlatGen) sum_pointer_slot_typedefs_for_array(arr types.ArrayFixed) {
 	mut modules := map[string]string{}
 	mut max_depth := 0
 	mut sum_names := g.tc.sum_types.keys()
-	sum_names.sort()
-	for name in sum_names {
-		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(flat.source_type_id(name)).generic_base())
-		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
+	sum_names.sort_with_compare(compare_reflection_source_type_ids)
+	for registry_name_id in sum_names {
+		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(registry_name_id).generic_base())
+		for variant in g.tc.sum_types.type_ids(registry_name_id) or { []u32{} } {
 			typ := g.tc.parse_canonical_type(variant)
 			if !sum_pointer_needs_erased_storage(typ) { continue }
 			mut target := unalias_type(typ)
@@ -114,10 +114,10 @@ fn (mut g FlatGen) sum_pointer_slot_c_type(typ &types.Type) ?string {
 	old_module := g.tc.cur_module
 	defer { g.tc.cur_module = old_module }
 	mut sum_names := g.tc.sum_types.keys()
-	sum_names.sort()
-	for name in sum_names {
-		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(flat.source_type_id(name)).generic_base())
-		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
+	sum_names.sort_with_compare(compare_reflection_source_type_ids)
+	for registry_name_id in sum_names {
+		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(registry_name_id).generic_base())
+		for variant in g.tc.sum_types.type_ids(registry_name_id) or { []u32{} } {
 			candidate := g.tc.parse_canonical_type(variant)
 			if cgen_types_equal_after_alias_erasure(base, candidate) {
 				return '${g.sum_pointer_slot_type(candidate)}*'
@@ -149,7 +149,7 @@ fn (mut g FlatGen) erased_sum_pointer_field_type(base_type &types.Type, field st
 	old_module := g.tc.cur_module
 	g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(sum).generic_base())
 	defer { g.tc.cur_module = old_module }
-	for variant in g.tc.sum_types.type_ids(flat.source_type_name(sum)) or { []u32{} } {
+	for variant in g.tc.sum_types.type_ids(sum) or { []u32{} } {
 		if sum_field_name(flat.source_type_name(variant)) != field { continue }
 		typ := g.tc.parse_canonical_type(variant)
 		if sum_pointer_needs_erased_storage(typ) { return typ }
@@ -186,7 +186,7 @@ fn (mut g FlatGen) gen_erased_sum_pointer_selector(node flat.Node, base_id flat.
 fn (mut g FlatGen) emit_sum_type(name_id u32) {
 	g.writeln('struct ${g.cname(flat.source_type_name(name_id))} {')
 	has_owned_flag := g.sum_has_pointer_variant(name_id)
-	variants := g.tc.sum_types.type_ids(flat.source_type_name(name_id)) or { []u32{} }
+	variants := g.tc.sum_types.type_ids(name_id) or { []u32{} }
 	// An `int` tag alone leaves padding before a union that holds pointers, and the C
 	// compiler may copy that padding together with the union, which puts the pointers
 	// at offsets that are not a multiple of the pointer size, where the conservative GC
@@ -232,7 +232,7 @@ fn (mut g FlatGen) gen_sum_variant_pointer_cast(id flat.NodeId, target types.Poi
 	if source_base !is types.SumType { return false }
 	target_base := unalias_type(target.base_type)
 	sum_name := g.resolve_sum_name(source_base.name_id)
-	variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name)) or { return false }
+	variants := g.tc.sum_types.type_ids(sum_name) or { return false }
 	variant := g.resolve_variant(sum_name, target_base.source_type_id())
 	if variant !in variants { return false }
 	sum_ct := g.tc.c_type(types.Type(source_base))
@@ -260,7 +260,7 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected &types.Type) bool
 		// A sum type can itself be a variant of a wider sum type (for example
 		// `ast.Stmt` inside `ast.Node`). Only skip wrapping when the value is
 		// already the expected sum.
-		if g.type_names_match(raw_actual_type, sum_type0) || g.resolve_sum_name(raw_actual_type.name_id) == g.resolve_sum_name(sum_type.name_id) || (!g.tc.sum_types.contains(raw_actual_type.name()) && flat.source_type_syntax(raw_actual_type.source_type_id()).unqualified() == flat.source_type_syntax(sum_type.source_type_id()).unqualified()) {
+		if g.type_names_match(raw_actual_type, sum_type0) || g.resolve_sum_name(raw_actual_type.name_id) == g.resolve_sum_name(sum_type.name_id) || (!g.tc.sum_types.contains(raw_actual_type.source_type_id()) && flat.source_type_syntax(raw_actual_type.source_type_id()).unqualified() == flat.source_type_syntax(sum_type.source_type_id()).unqualified()) {
 			return false
 		}
 	}
@@ -283,7 +283,7 @@ fn (g &FlatGen) sum_type_for_expected_value(expected &types.Type) ?types.SumType
 	}
 	if clean is types.Struct {
 		resolved := g.resolve_sum_name(clean.name_id)
-		if g.tc.sum_types.contains(flat.source_type_name(resolved)) {
+		if g.tc.sum_types.contains(resolved) {
 			return types.SumType{
 				name_id: resolved
 			}
@@ -358,7 +358,7 @@ fn (mut g FlatGen) gen_sum_variant_value(sum types.SumType, variant u32, value f
 
 fn (g &FlatGen) sum_unique_variant_field_info(base_type0 &types.Type, field string) ?SumUniqueFieldInfo {
 	sum_name := g.sum_type_name_for_type(base_type0) or { return none }
-	variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name)) or { return none }
+	variants := g.tc.sum_types.type_ids(sum_name) or { return none }
 	mut found := SumUniqueFieldInfo{}
 	mut found_count := 0
 	for variant0 in variants {
@@ -434,7 +434,7 @@ fn (mut g FlatGen) gen_sum_shared_field_switch(sum_var string, sum_name u32, fie
 	if sum_name in seen {
 		return
 	}
-	variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name)) or { return }
+	variants := g.tc.sum_types.type_ids(sum_name) or { return }
 	mut next_seen := seen.clone()
 	next_seen << sum_name
 	g.writeln('switch ((${sum_var}).typ) {')
@@ -462,7 +462,7 @@ fn (mut g FlatGen) gen_sum_shared_field_switch(sum_var string, sum_name u32, fie
 // gen_lowered_sum_init emits lowered sum init output for c.
 fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 	sum_name := g.lowered_sum_init_name(node)
-	if !g.tc.sum_types.contains(flat.source_type_name(sum_name)) || node.children_count == 0 {
+	if !g.tc.sum_types.contains(sum_name) || node.children_count == 0 {
 		return false
 	}
 	for i in 0 .. node.children_count {
@@ -493,7 +493,7 @@ fn (g &FlatGen) lowered_sum_field_variant(sum_name u32, field &flat.Node) ?u32 {
 			return resolved
 		}
 	}
-	for v in g.tc.sum_types.type_ids(flat.source_type_name(sum_name)) or { []u32{} } {
+	for v in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
 		if sum_field_name(flat.source_type_name(v)) == field.value || c_field_name(flat.source_type_name(v)) == field.value || flat.source_type_name(v) == field.value {
 			return v
 		}
@@ -518,7 +518,7 @@ fn (mut g FlatGen) gen_recursive_default_sum_value(sum_type types.SumType, mut s
 		g.write('(${ct}){0}')
 		return
 	}
-	variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name)) or {
+	variants := g.tc.sum_types.type_ids(sum_name) or {
 		g.write('(${ct}){0}')
 		return
 	}

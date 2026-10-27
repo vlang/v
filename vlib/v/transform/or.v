@@ -807,7 +807,7 @@ fn (t &Transformer) enum_type_from_name(name_id u32) ?u32 {
 fn (t &Transformer) enum_alias_target(name_id u32) ?u32 {
 	mut current := name_id
 	for _ in 0 .. 16 {
-		target := t.tc.type_aliases.type_id(flat.source_type_name(current)) or { return none }
+		target := t.tc.type_aliases.type_id(current) or { return none }
 		if target == current { return none }
 		if flat.source_type_name(target) in t.enum_types { return target }
 		current = target
@@ -1437,14 +1437,14 @@ fn (t &Transformer) qualify_type(name_id u32) u32 {
 		qname_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), name_id)
 		qname := flat.source_type_name(qname_id)
 		if t.sum_types.contains(qname) || qname in t.structs || qname in t.enum_types
-			|| (!isnil(t.tc) && (t.tc.type_aliases.contains(qname) || qname in t.tc.interface_names)) {
+			|| (!isnil(t.tc) && (t.tc.type_aliases.contains(qname_id) || qname_id in t.tc.interface_names)) {
 			return qname_id
 		}
 	}
 	// A bare type declared by main wins over an imported homonym. The global
 	// short-name index is intentionally lossy and may point at the import.
 	if name in t.structs || t.sum_types.contains(name) || name in t.enum_types { return name_id }
-	if !isnil(t.tc) && (t.tc.type_aliases.contains(name) || name in t.tc.interface_names) {
+	if !isnil(t.tc) && (t.tc.type_aliases.contains(name_id) || name_id in t.tc.interface_names) {
 		return name_id
 	}
 	if qualified := t.qualified_types.type_id(name) { return qualified }
@@ -2167,7 +2167,7 @@ fn (t &Transformer) shared_alias_storage_type(typ_id u32) u32 {
 		return typ_id
 	}
 	for candidate in [clean, t.qualify_type(clean)] {
-		if target := t.tc.type_aliases.type_id(flat.source_type_name(candidate)) {
+		if target := t.tc.type_aliases.type_id(candidate) {
 			inner := t.shared_alias_inner_type(target) or { continue }
 			return flat.source_type_composition_one(.pointer, inner)
 		}

@@ -103,7 +103,7 @@ fn test_source_layout_queries_preserve_nominal_module_sum_and_alias_precedence()
 	b.type_aliases['Alias'] = fallback
 	assert b.resolve_type(flat.source_type_id('Alias')) == fallback
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Alias', flat.source_type_i32)
+	tc.type_aliases.set_id(flat.source_type_id('Alias'), flat.source_type_i32)
 	b.tc = &tc
 	assert b.resolve_type(flat.source_type_id('Alias')) == b.i32_type
 }

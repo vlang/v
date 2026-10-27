@@ -56,7 +56,7 @@ fn test_expansion_type_memo_preserves_estimates_and_does_not_survive_context_cha
 	t.node_type_memo = unsafe { nil }
 	// Changing a smartcast after the scan must resolve against the new context,
 	// both in ordinary type queries and in the next expansion estimate.
-	tc.sum_types.set('Collection', [large_map, '[]int'])
+	tc.sum_types.set(flat.source_type_id('Collection'), [large_map, '[]int'])
 	t.sum_types.set('Collection', [large_map, '[]int'])
 	t.set_var_type('values', flat.source_type_id('Collection'))
 	for variant in [large_map, '[]int', large_map] {

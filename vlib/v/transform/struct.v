@@ -1188,16 +1188,16 @@ fn (t &Transformer) bare_struct_name_is_local_to_current_module(name_id u32) boo
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		qname := flat.source_type_name(flat.source_type_composition_two(.qualified,
 			flat.source_type_id(t.cur_module), name_id))
-		return qname in t.structs || (!isnil(t.tc) && qname in t.tc.structs)
+		return qname in t.structs || (!isnil(t.tc) && flat.source_type_id(qname) in t.tc.structs)
 	}
 	name := flat.source_type_name(name_id)
 	if info := t.structs[name] {
 		return info.module.len == 0 || info.module in ['main', 'builtin']
 	}
-	if isnil(t.tc) || name !in t.tc.structs {
+	if isnil(t.tc) || name_id !in t.tc.structs {
 		return false
 	}
-	module_name := t.tc.struct_modules[name] or { '' }
+	module_name := t.tc.struct_modules[name_id] or { '' }
 	return module_name.len == 0 || module_name in ['main', 'builtin']
 }
 
@@ -1209,30 +1209,30 @@ fn (t &Transformer) bare_sum_type_name_is_local_to_current_module(name_id u32) b
 		return false
 	}
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
-		return flat.source_type_name(flat.source_type_composition_two(.qualified,
-			flat.source_type_id(t.cur_module), name_id)) in t.tc.sum_types.ids
+		return flat.source_type_composition_two(.qualified,
+			flat.source_type_id(t.cur_module), name_id) in t.tc.sum_types.ids
 	}
 	// The checker keys main and builtin declarations by their bare name only.
-	return t.tc.sum_types.contains(flat.source_type_name(name_id))
+	return t.tc.sum_types.contains(name_id)
 }
 
 fn (t &Transformer) checker_struct_lookup_name(name_id u32) u32 {
 	if isnil(t.tc) || name_id == 0 { return 0 }
 	name := flat.source_type_name(name_id)
-	if name in t.tc.structs { return name_id }
+	if name_id in t.tc.structs { return name_id }
 	if flat.source_type_shape(name_id).has(.dotted) {
 		syntax := flat.source_type_syntax(name_id)
 		short_name := flat.source_type_name(syntax.unqualified())
 		module_name := flat.source_type_name(syntax.qualifier())
-		short_module := t.tc.struct_modules[short_name] or { '' }
-		if short_name in t.tc.structs && short_module == module_name {
+		short_module := t.tc.struct_modules[flat.source_type_id(short_name)] or { '' }
+		if flat.source_type_id(short_name) in t.tc.structs && short_module == module_name {
 			return syntax.unqualified()
 		}
 		return 0
 	}
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), name_id)
-		if flat.source_type_name(qualified_id) in t.tc.structs { return qualified_id }
+		if qualified_id in t.tc.structs { return qualified_id }
 	}
 	// A bare imported struct short name (e.g. `Vec2` from `import math.vec { Vec2 }`,
 	// keyed `vec.Vec2`). The bare name survives only as a generic-params shadow, so
@@ -1257,10 +1257,10 @@ fn (t &Transformer) unique_qualified_struct_for_short(name_id u32) ?u32 {
 		return none
 	}
 	mut found := u32(0)
-	for sname, _ in t.tc.structs {
+	for sname_source_id, _ in t.tc.structs {
 		// Match a module-qualified struct whose short name equals `name`, excluding
 		// generic instances (`vec.Vec2[int]`) — only the plain declaration counts.
-		sname_id := flat.source_type_id(sname)
+		sname_id := sname_source_id
 		shape := flat.source_type_shape(sname_id)
 		if !shape.has(.dotted) || shape.has(.bracketed)
 			|| flat.source_type_syntax(sname_id).unqualified() != name_id {
@@ -1280,8 +1280,7 @@ fn (t &Transformer) unique_qualified_struct_for_short(name_id u32) ?u32 {
 fn (t &Transformer) lookup_checker_struct_info(name_id u32) ?StructInfo {
 	lookup_id := t.checker_struct_lookup_name(name_id)
 	if lookup_id == 0 { return none }
-	lookup_name := flat.source_type_name(lookup_id)
-	checker_fields := t.tc.structs[lookup_name] or { return none }
+	checker_fields := t.tc.structs[lookup_id] or { return none }
 	mut fields := []FieldInfo{cap: checker_fields.len}
 	for field in checker_fields {
 		field_type := field.typ.source_type_id()
@@ -1294,7 +1293,7 @@ fn (t &Transformer) lookup_checker_struct_info(name_id u32) ?StructInfo {
 	}
 	return StructInfo{
 		name:   flat.source_type_syntax(lookup_id).unqualified()
-		module: t.tc.struct_modules[lookup_name] or { '' }
+		module: t.tc.struct_modules[lookup_id] or { '' }
 		fields: fields
 	}
 }

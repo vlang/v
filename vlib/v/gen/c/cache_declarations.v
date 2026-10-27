@@ -425,17 +425,19 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 	for typ in g.multi_return_types {
 		g.cache_require_declaration_type(typ, mut seen)
 	}
-	for name, _ in g.tc.structs {
+	for registry_name_id, _ in g.tc.structs {
+		name := flat.source_type_name(registry_name_id)
 		if g.cache_struct_declaration_needed(name) {
-			g.cache_require_declaration_type(types.Struct{ name_id: flat.source_type_id(name) }, mut seen)
+			g.cache_require_declaration_type(types.Struct{ name_id: registry_name_id }, mut seen)
 		}
 	}
 	for name, _ in g.interfaces {
 		g.cache_require_declaration_type(types.Interface{ name_id: flat.source_type_id(name) }, mut seen)
 	}
-	for name, _ in g.tc.sum_types.ids {
+	for registry_name_id, _ in g.tc.sum_types.ids {
+		name := flat.source_type_name(registry_name_id)
 		if g.cache_decl_refs[g.cname(name)] {
-			g.cache_require_declaration_type(types.SumType{ name_id: flat.source_type_id(name) }, mut seen)
+			g.cache_require_declaration_type(types.SumType{ name_id: registry_name_id }, mut seen)
 		}
 	}
 	g.collect_referenced_pruned_cache_functions()
@@ -475,7 +477,7 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[u
 	match typ {
 		types.Struct {
 			g.cache_decl_refs[g.struct_cname(typ.name())] = true
-			for field in g.tc.structs[typ.name()] or { []types.StructField{} } {
+			for field in g.tc.structs[typ.source_type_id()] or { []types.StructField{} } {
 				g.cache_require_declaration_type(field.typ, mut seen)
 			}
 		}
@@ -485,7 +487,7 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[u
 			}
 		}
 		types.SumType {
-			for variant_source_id in g.tc.sum_types.type_ids(typ.name()) or { []u32{} } {
+			for variant_source_id in g.tc.sum_types.type_ids(typ.source_type_id()) or { []u32{} } {
 				g.cache_require_declaration_type(g.tc.parse_type(variant_source_id), mut seen)
 			}
 		}

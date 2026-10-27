@@ -610,10 +610,10 @@ ${body}
 		tc.fn_ret_types['math.sin'] = types.Type(types.f64_)
 		tc.fn_ret_types['math.small'] = types.Type(types.f32_)
 		tc.fn_ret_types['math.values'] = types.Type(types.Array{ elem_type: types.Type(types.f64_) })
-		tc.type_aliases.set('dep.Number', 'f64')
-		tc.type_alias_modules['dep.Number'] = 'dep'
-		tc.type_aliases.set('other.Number', 'int')
-		tc.type_alias_modules['other.Number'] = 'other'
+		tc.type_aliases.set(flat.source_type_id('dep.Number'), 'f64')
+		tc.type_alias_modules[flat.source_type_id('dep.Number')] = 'dep'
+		tc.type_aliases.set(flat.source_type_id('other.Number'), 'int')
+		tc.type_alias_modules[flat.source_type_id('other.Number')] = 'other'
 		tc.fn_ret_types['math.alias_value'] = types.Type(types.Alias{
 			name_id:   flat.source_type_id('dep.Number')
 			base_type: types.Type(types.f64_)

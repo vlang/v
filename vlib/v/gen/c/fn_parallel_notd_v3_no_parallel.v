@@ -1348,8 +1348,8 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 	mut prep_g := unsafe { nil }
 	if fused {
 		if g.prep_alias_short_names.len == 0 {
-			for name, _ in g.tc.type_aliases.ids {
-				g.prep_alias_short_names[flat.source_type_syntax(flat.source_type_id(name)).unqualified()] = true
+			for registry_name_id, _ in g.tc.type_aliases.ids {
+				g.prep_alias_short_names[flat.source_type_syntax(registry_name_id).unqualified()] = true
 			}
 		}
 		prep_g = voidptr(g)
@@ -3015,12 +3015,11 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ_id u32) bool {
 	if flat.source_type_syntax(clean_id).function_fragment() {
 		return true
 	}
-	clean := flat.source_type_name(clean_id)
-	if g.tc.type_aliases.contains(clean) {
+	if g.tc.type_aliases.contains(clean_id) {
 		return true
 	}
-	qtyp := g.tc.qualify_name(clean)
-	return g.tc.type_aliases.contains(qtyp)
+	qualified_qtyp_id := g.tc.qualify_type_name(clean_id)
+	return g.tc.type_aliases.contains(qualified_qtyp_id)
 }
 
 // parallel_base_type_text supports parallel base type text handling for FlatGen.

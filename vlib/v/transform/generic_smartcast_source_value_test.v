@@ -16,7 +16,7 @@ fn test_generic_typeof_smartcast_consumes_source_backed_is_and_typeof_values() {
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types.set_ids('Choice', [flat.source_type_int, flat.source_type_string])
+	tc.sum_types.set_ids(flat.source_type_id('Choice'), [flat.source_type_int, flat.source_type_string])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sum_types.set_ids('Choice', [flat.source_type_int, flat.source_type_string])
 	t.active_generic_params = ['T']

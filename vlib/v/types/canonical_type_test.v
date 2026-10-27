@@ -7,12 +7,12 @@ fn test_parse_canonical_generic_type_ignores_source_import_aliases() {
 	mut tc := TypeChecker.new(&a)
 	tc.cur_file = 'main.v'
 	tc.cur_module = 'main'
-	tc.structs['foo.Box'] = []StructField{}
-	tc.structs['x.foo.Box'] = []StructField{}
-	tc.structs['item.Value'] = []StructField{}
-	tc.structs['x.item.Value'] = []StructField{}
-	tc.struct_generic_params['foo.Box'] = ['T']
-	tc.struct_generic_params['x.foo.Box'] = ['T']
+	tc.structs[flat.source_type_id('foo.Box')] = []StructField{}
+	tc.structs[flat.source_type_id('x.foo.Box')] = []StructField{}
+	tc.structs[flat.source_type_id('item.Value')] = []StructField{}
+	tc.structs[flat.source_type_id('x.item.Value')] = []StructField{}
+	tc.struct_generic_params[flat.source_type_id('foo.Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('x.foo.Box')] = ['T']
 	tc.register_file_import('foo', 'x.foo')
 	tc.register_file_import('item', 'x.item')
 
@@ -23,7 +23,7 @@ fn test_parse_canonical_generic_type_ignores_source_import_aliases() {
 fn test_parse_canonical_builtin_type_ignores_registered_struct() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.structs['string'] = []StructField{}
+	tc.structs[flat.source_type_id('string')] = []StructField{}
 
 	assert tc.parse_canonical_type(flat.source_type_string) is String
 }

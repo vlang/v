@@ -6,9 +6,9 @@ import v.types
 fn test_numeric_sum_resolution_preserves_fallback_order_and_spelling() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types.set_ids('dep.tast.Value', [flat.source_type_int])
-	tc.sum_types.set_ids('right.alias.Ambiguous', [flat.source_type_int])
-	tc.structs['exact.Value'] = []types.StructField{}
+	tc.sum_types.set_ids(flat.source_type_id('dep.tast.Value'), [flat.source_type_int])
+	tc.sum_types.set_ids(flat.source_type_id('right.alias.Ambiguous'), [flat.source_type_int])
+	tc.structs[flat.source_type_id('exact.Value')] = []types.StructField{}
 	mut t := Transformer{
 		tc:         &tc
 		cur_module: 'local'
@@ -56,17 +56,17 @@ fn test_numeric_sum_short_matches_and_interface_candidates_preserve_identity() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_module = 'local'
-	tc.sum_types.set_ids('dep.Parcel[int]', [flat.source_type_int])
-	tc.interface_names['Readable'] = true
-	tc.interface_names['main.Readable'] = true
-	tc.interface_names['local.Readable'] = true
+	tc.sum_types.set_ids(flat.source_type_id('dep.Parcel[int]'), [flat.source_type_int])
+	tc.interface_names[flat.source_type_id('Readable')] = true
+	tc.interface_names[flat.source_type_id('main.Readable')] = true
+	tc.interface_names[flat.source_type_id('local.Readable')] = true
 	mut t := Transformer{ tc: &tc }
 	t.sum_types.set_ids('dep.Parcel[int]', [flat.source_type_int])
 	short_id := flat.source_type_id('Parcel[int]')
 	concrete_id := flat.source_type_id('dep.Parcel[int]')
 	assert t.find_sum_type_with_short_name(short_id) == concrete_id
 	assert t.resolve_sum_name(short_id) == concrete_id
-	tc.sum_types.set_ids('other.Parcel[int]', [flat.source_type_int])
+	tc.sum_types.set_ids(flat.source_type_id('other.Parcel[int]'), [flat.source_type_int])
 	assert t.find_sum_type_with_short_name(short_id) == 0
 	// The general resolver still tries the transformer's own short-name fallback first.
 	assert t.resolve_sum_name(short_id) == concrete_id

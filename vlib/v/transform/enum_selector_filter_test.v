@@ -12,8 +12,8 @@ fn enum_filter_selector(mut a flat.FlatAst, base flat.NodeId, name string) flat.
 fn test_enum_selector_filter_keeps_alias_module_generated_and_regular_value_resolution() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Alias', flat.source_type_id('model.Kind'))
-	tc.type_aliases.set_id('NextAlias', flat.source_type_id('Alias'))
+	tc.type_aliases.set_id(flat.source_type_id('Alias'), flat.source_type_id('model.Kind'))
+	tc.type_aliases.set_id(flat.source_type_id('NextAlias'), flat.source_type_id('Alias'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'model'
 	t.enum_types['model.Kind'] = ['ready', 'waiting']

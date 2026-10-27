@@ -20,9 +20,9 @@ fn test_voidptr_variadic_storage_widens_integers_narrower_than_the_target_int() 
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		for name in ['Plain', 'Tiny', 'Short', 'Half', 'Whole', 'Wide', 'dep.Tiny'] {
-			tc.enum_names[name] = true
+			tc.enum_names[flat.source_type_id(name)] = true
 		}
-		tc.structs['Point'] = []types.StructField{}
+		tc.structs[flat.source_type_id('Point')] = []types.StructField{}
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.enum_backing_types.set_id('Tiny', flat.source_type_u8)
 		t.enum_backing_types.set_id('Short', flat.source_type_i16)

@@ -281,9 +281,9 @@ fn test_generic_method_metadata_routes_remain_independent() {
 		key := if route == 2 { 'Box[u8].read' } else { '${name}.read' }
 		tc.fn_ret_types[key] = tc.parse_type(flat.source_type_u64)
 		if route == 0 {
-			tc.struct_generic_params['Box'] = ['T']
+			tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
 		} else if route == 1 {
-			tc.type_alias_generic_params['Alias'] = ['T']
+			tc.type_alias_generic_params[flat.source_type_id('Alias')] = ['T']
 		} else {
 			tc.register_generated_fn_param_types(key, []Type{})
 		}
@@ -296,7 +296,7 @@ fn test_generic_method_metadata_routes_remain_independent() {
 fn test_plain_signatures_and_aliases_do_not_supply_generic_parameters() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases.set_id('Concrete', flat.source_type_id('Box'))
+	tc.type_aliases.set_id(flat.source_type_id('Concrete'), flat.source_type_id('Box'))
 	tc.fn_ret_types['Box.read'] = tc.parse_type(flat.source_type_u64)
 	tc.fn_param_types['Box.read'] = []Type{}
 	assert tc.resolve_generic_struct_method(flat.source_type_id('Box[u8]'), 'read') == none

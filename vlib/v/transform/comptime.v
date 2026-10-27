@@ -240,9 +240,9 @@ fn (t &Transformer) comptime_resolve_selective_import_type(raw_id u32) u32 {
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(clean_id))] or {
 		[]string{}
 	} {
-		if t.tc.type_aliases.contains(candidate) || candidate in t.tc.structs
-			|| candidate in t.tc.interface_names || candidate in t.tc.flag_enums
-			|| candidate in t.tc.enum_names || t.tc.sum_types.contains(candidate) {
+		if t.tc.type_aliases.contains(flat.source_type_id(candidate)) || flat.source_type_id(candidate) in t.tc.structs
+			|| flat.source_type_id(candidate) in t.tc.interface_names || flat.source_type_id(candidate) in t.tc.flag_enums
+			|| flat.source_type_id(candidate) in t.tc.enum_names || t.tc.sum_types.contains(flat.source_type_id(candidate)) {
 			return flat.source_type_id(candidate)
 		}
 	}
@@ -281,9 +281,9 @@ fn (t &Transformer) comptime_local_reflection_source(name string) ?string {
 	}
 	qualified := '${t.cur_module}.${name}'
 	if qualified in t.tc.fn_ret_types || qualified in t.tc.fn_param_types
-		|| t.tc.type_aliases.contains(qualified) || qualified in t.tc.structs
-		|| qualified in t.tc.interface_names || qualified in t.tc.flag_enums
-		|| qualified in t.tc.enum_names || t.tc.sum_types.contains(qualified) {
+		|| t.tc.type_aliases.contains(flat.source_type_id(qualified)) || flat.source_type_id(qualified) in t.tc.structs
+		|| flat.source_type_id(qualified) in t.tc.interface_names || flat.source_type_id(qualified) in t.tc.flag_enums
+		|| flat.source_type_id(qualified) in t.tc.enum_names || t.tc.sum_types.contains(flat.source_type_id(qualified)) {
 		return qualified
 	}
 	return none
@@ -2569,10 +2569,10 @@ fn (t &Transformer) comptime_sum_variants(base_type_id u32) []VariantMeta {
 	} else if isnil(t.tc) {
 		[]u32{}
 	} else {
-		t.tc.sum_types.type_ids(flat.source_type_name(resolved)) or { []u32{} }
+		t.tc.sum_types.type_ids(resolved) or { []u32{} }
 	}
 	if variants.len == 0 && !isnil(t.tc) {
-		variants = t.tc.sum_types.type_ids(flat.source_type_name(resolved)) or { []u32{} }
+		variants = t.tc.sum_types.type_ids(resolved) or { []u32{} }
 	}
 	if variants.len == 0 {
 		variants = t.sum_types.type_ids(flat.source_type_name(resolved)) or { []u32{} }
@@ -4057,8 +4057,7 @@ fn (mut t Transformer) collect_comptime_interface_field_metas(iface_name_id u32,
 		return
 	}
 	seen_ifaces[iface_name_id] = true
-	iface_name := flat.source_type_name(iface_name_id)
-	for embedded_source_id in t.tc.interface_embeds.type_ids(iface_name) or { []u32{} } {
+	for embedded_source_id in t.tc.interface_embeds.type_ids(iface_name_id) or { []u32{} } {
 		t.collect_comptime_interface_field_metas(embedded_source_id, mut seen_ifaces, mut seen_fields, mut metas)
 	}
 	decl_module := flat.source_type_name(if flat.source_type_shape(iface_name_id).has(.dotted) {
@@ -4066,7 +4065,7 @@ fn (mut t Transformer) collect_comptime_interface_field_metas(iface_name_id u32,
 	} else {
 		iface_name_id
 	})
-	for field in t.tc.interface_fields[iface_name] or { []types.StructField{} } {
+	for field in t.tc.interface_fields[iface_name_id] or { []types.StructField{} } {
 		if field.name in seen_fields {
 			continue
 		}
@@ -4515,7 +4514,7 @@ fn (mut t Transformer) comptime_zero_value(typ_id u32) flat.NodeId {
 	// program aliases are registered bare. Resolve it through its bare name, or its
 	// zero value is a zeroed struct (`(map){0}` for a map alias, which crashes on use).
 	if flat.source_type_query(typ_id).has(.main_prefix) && !t.ident_is_import_alias('main') && !isnil(t.tc) {
-		if target_source_id := t.tc.type_aliases.type_id(flat.source_type_name(flat.source_type_syntax(typ_id).main_base())) {
+		if target_source_id := t.tc.type_aliases.type_id(flat.source_type_syntax(typ_id).main_base()) {
 			zero_type = t.lock_colliding_main_generic_type_text(target_source_id, t.cur_module)
 		}
 	}

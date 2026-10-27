@@ -52,7 +52,7 @@ fn test_alias_cache_rebinds_equal_content_type_text_owners() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	alias_id := flat.source_type_id('CacheOwnerAlias')
-	tc.type_aliases.set_id('CacheOwnerAlias', flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('CacheOwnerAlias'), flat.source_type_int)
 	parent := &flat.TypeTextTable{}
 	fork := parent.fork()
 	assert voidptr(parent) != voidptr(fork)

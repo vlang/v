@@ -35,7 +35,7 @@ fn test_pruned_cached_pointer_wrappers_do_not_emit_unused_pointees() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
 	for name in ['Used', 'Unused'] {
-		tc.structs['payload.${name}'] = []types.StructField{}
+		tc.structs[flat.source_type_id('payload.${name}')] = []types.StructField{}
 		tc.const_types['payload.${name.to_lower()}'] = *tc.parse_type(flat.source_type_id('!&payload.${name}'))
 	}
 	mut g := FlatGen.new()
@@ -77,7 +77,7 @@ fn test_thread_pointer_wrappers_keep_the_existing_runtime_typedef() {
 fn test_optional_pointer_union_aliases_forward_the_union_tag() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.unions['payload.Missing'] = true
+	tc.unions[flat.source_type_id('payload.Missing')] = true
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc

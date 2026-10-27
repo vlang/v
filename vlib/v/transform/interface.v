@@ -170,10 +170,10 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 	raw_clean_source_id := t.trim_all_pointer_type(name_id)
 	raw_syntax := flat.source_type_syntax(raw_clean_source_id)
 	if raw_syntax.generic_app_valid()
-		&& flat.source_type_name(raw_syntax.generic_app_base()) in t.tc.interface_names {
+		&& raw_syntax.generic_app_base() in t.tc.interface_names {
 		return interface_type_application(raw_syntax.generic_app_base(), raw_syntax.generic_app_args(), true)
 	}
-	if flat.source_type_name(raw_clean_source_id) in t.tc.interface_names {
+	if raw_clean_source_id in t.tc.interface_names {
 		return raw_clean_source_id
 	}
 	mut clean_id := t.trim_all_pointer_type(t.normalize_type_alias(name_id))
@@ -184,12 +184,12 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 	}
 	clean := flat.source_type_name(clean_id)
 	if t.is_builtin_ierror_interface_name(clean_id) {
-		if 'builtin.IError' in t.tc.interface_names {
+		if flat.source_type_id('builtin.IError') in t.tc.interface_names {
 			return flat.source_type_id('builtin.IError')
 		}
 		return flat.source_type_id('IError')
 	}
-	if clean in t.tc.interface_names {
+	if clean_id in t.tc.interface_names {
 		return interface_type_application(clean_id, args, syntax.generic_app_valid())
 	}
 	qualified := flat.source_type_shape(clean_id).has(.dotted)
@@ -197,20 +197,20 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
 			[]string{}
 		} {
-			if candidate in t.tc.interface_names {
+			if flat.source_type_id(candidate) in t.tc.interface_names {
 				return interface_type_application(flat.source_type_id(candidate), args, syntax.generic_app_valid())
 			}
 		}
 	}
 	if !qualified && t.cur_module.len > 0 {
 		qname := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_id)
-		if flat.source_type_name(qname) in t.tc.interface_names {
+		if qname in t.tc.interface_names {
 			return interface_type_application(qname, args, syntax.generic_app_valid())
 		}
 	}
 	if !qualified {
 		main_name := flat.source_type_composition_two(.qualified, flat.source_type_id('main'), clean_id)
-		if flat.source_type_name(main_name) in t.tc.interface_names {
+		if main_name in t.tc.interface_names {
 			return interface_type_application(main_name, args, syntax.generic_app_valid())
 		}
 	}
@@ -823,13 +823,11 @@ fn (mut t Transformer) make_interface_target_is_check(source_expr flat.NodeId, s
 }
 
 fn (t &Transformer) interface_impl_satisfies_target(impl_id u32, target_iface_id u32) bool {
-	impl := flat.source_type_name(impl_id)
-	if impl in t.tc.interface_names {
+	if impl_id in t.tc.interface_names {
 		return t.tc.interface_implements_interface(impl_id, target_iface_id)
 	}
 	resolved_id := t.tc.interface_metadata_name(impl_id)
-	resolved := flat.source_type_name(resolved_id)
-	if resolved in t.tc.interface_names {
+	if resolved_id in t.tc.interface_names {
 		return t.tc.interface_implements_interface(resolved_id, target_iface_id)
 	}
 	if t.is_builtin_ierror_interface_name(target_iface_id) {
@@ -1168,9 +1166,9 @@ fn (t &Transformer) interface_box_object_cast_needs_raw_call(concrete_type_id u3
 	if isnil(t.tc) {
 		return false
 	}
-	target_source_id := t.tc.type_aliases.type_id(concrete_type) or {
+	target_source_id := t.tc.type_aliases.type_id(concrete_type_id) or {
 		(if !flat.source_type_shape(concrete_type_id).has(.dotted) {
-			(t.tc.type_aliases.type_id(t.tc.qualify_name(concrete_type)) or { return false })
+			(t.tc.type_aliases.type_id(flat.source_type_id(t.tc.qualify_name(concrete_type))) or { return false })
 		} else {
 			return false
 		})

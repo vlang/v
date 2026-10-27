@@ -6517,9 +6517,9 @@ fn type_has_generic_receiver_args(tc &types.TypeChecker, type_id u32) bool {
 	}
 	base := flat.source_type_syntax(type_id).generic_base()
 	short_base := flat.source_type_syntax(base).unqualified()
-	// Declaration tables retain textual keys; structural selection stays numeric.
-	return flat.source_type_name(base) in tc.struct_generic_params
-		|| flat.source_type_name(short_base) in tc.struct_generic_params
+	// Declaration lookup and structural selection share source spelling IDs.
+	return base in tc.struct_generic_params
+		|| short_base in tc.struct_generic_params
 }
 
 fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, generic_callees map[string]bool) bool {

@@ -6,8 +6,8 @@ import v.types
 fn test_nested_generic_defaults_skip_pointer_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('BoxPointer', flat.source_type_id('&Box[int]'))
-	tc.type_aliases.set_id('BoxPointerChain', flat.source_type_id('BoxPointer'))
+	tc.type_aliases.set_id(flat.source_type_id('BoxPointer'), flat.source_type_id('&Box[int]'))
+	tc.type_aliases.set_id(flat.source_type_id('BoxPointerChain'), flat.source_type_id('BoxPointer'))
 	mut t := new_transformer(mut a, &tc, {
 		'main': true
 	})
@@ -75,9 +75,9 @@ fn test_owned_field_index_survives_worker_arena_release() {
 fn test_foreign_generic_field_arguments_keep_instantiation_module() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.struct_generic_params['rt.Cell'] = ['T']
-	tc.structs['rt.Type'] = []types.StructField{}
-	tc.structs['ck.Type'] = []types.StructField{}
+	tc.struct_generic_params[flat.source_type_id('rt.Cell')] = ['T']
+	tc.structs[flat.source_type_id('rt.Type')] = []types.StructField{}
+	tc.structs[flat.source_type_id('ck.Type')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'ck'
 	assert flat.source_type_name(t.normalize_field_type(flat.source_type_id('T'), flat.source_type_id('rt.Cell[[]&Type]'))) == '[]&ck.Type'

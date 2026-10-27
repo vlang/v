@@ -105,7 +105,7 @@ fn forwarded_wrapper_clone_calls(wrapper types.Type, clone_borrowed bool) []stri
 		typ:   wrapper.source_type_id()
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['IError'] = true
+	tc.interface_names[flat.source_type_id('IError')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('source', wrapper.source_type_id())
 	payload := types.Type(types.string_)
@@ -180,8 +180,8 @@ fn test_optional_conversions_guard_error_reads() {
 fn check_optional_conversion(target string) ? {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['IError'] = true
-	tc.sum_types.set('Value', ['int', 'string'])
+	tc.interface_names[flat.source_type_id('IError')] = true
+	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sum_types.set('Value', ['int', 'string'])
 	source_type := target[..1] + 'string'
@@ -220,7 +220,7 @@ fn check_optional_conversion(target string) ? {
 fn test_optional_conversion_keeps_payload_statements_in_success_branch() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['IError'] = true
+	tc.interface_names[flat.source_type_id('IError')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('source', flat.source_type_id('!string'))
 	source := t.make_ident('source')
@@ -1372,7 +1372,7 @@ fn test_disabled_struct_operator_zero_value_expansion_is_reserved() {
 	})
 	a.disabled_fns['Box.+'] = true
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Box'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Box')] = []types.StructField{}
 	box_type := tc.parse_type(flat.source_type_id('Box'))
 	tc.fn_param_types['Box.+'] = [box_type, box_type]
 	tc.fn_ret_types['Box.+'] = tc.parse_type(flat.source_type_id('[4096][]int'))
@@ -1435,7 +1435,7 @@ fn test_interface_cast_metadata_expansion_is_reserved() {
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['WideInterface'] = true
+	tc.interface_names[flat.source_type_id('WideInterface')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.interface_cast_expands_from_type_metadata(a.nodes[int(cast)])
 	assert t.fn_span_map_expansion_estimate(int(value), int(cast) + 1) > deferred_map_expansion_threshold
@@ -1550,7 +1550,7 @@ fn test_fn_span_map_expansion_estimate_defers_dynamic_array_initialization() {
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Wide'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Wide')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.fn_span_map_expansion_estimate(int(length), int(default_root) + 1) > deferred_map_expansion_threshold
@@ -1582,8 +1582,8 @@ fn test_fn_span_map_expansion_estimate_defers_compiler_default_clone_calls() {
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Wide'] = []types.StructField{}
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.structs[flat.source_type_id('Wide')] = []types.StructField{}
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.fn_span_map_expansion_estimate(int(receiver), int(clone_call) + 1) > deferred_map_expansion_threshold
@@ -1669,7 +1669,7 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 		children_count: 1
 	})
 	mut predicate_tc := types.TypeChecker.new(&predicate_ast)
-	predicate_tc.interface_names['View'] = true
+	predicate_tc.interface_names[flat.source_type_id('View')] = true
 	mut predicate_transformer := new_transformer(mut predicate_ast, &predicate_tc, map[string]bool{})
 	assert predicate_transformer.fn_span_map_expansion_estimate(0, int(predicate) + 1) > deferred_map_expansion_threshold
 
@@ -1689,8 +1689,8 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 		children_count: 1
 	})
 	mut selector_tc := types.TypeChecker.new(&selector_ast)
-	selector_tc.interface_names['View'] = true
-	selector_tc.interface_fields['View'] = [types.StructField{
+	selector_tc.interface_names[flat.source_type_id('View')] = true
+	selector_tc.interface_fields[flat.source_type_id('View')] = [types.StructField{
 		name: 'value'
 		typ:  types.Type(types.int_)
 	}]
@@ -1727,11 +1727,11 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_collection_clones() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.fn_span_map_expansion_estimate(0, int(reverse_call) + 1) > deferred_map_expansion_threshold
@@ -1769,11 +1769,11 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_for_in_binding_clones() 
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_for_in_binding_clone_expands(a.nodes[int(loop)])
@@ -1829,11 +1829,11 @@ fn test_fn_span_map_expansion_estimate_defers_owned_map_delete_snapshot_clone() 
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert !t.ownership_for_in_binding_clone_expands(a.nodes[int(loop)])
@@ -1888,11 +1888,11 @@ fn test_fn_span_map_expansion_estimate_defers_nested_map_delete_key_clone() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_nested_map_delete_key_clone_expands(a.nodes[int(delete_call)])
@@ -1948,11 +1948,11 @@ fn test_fn_span_map_expansion_estimate_defers_overlapping_owned_map_assignment()
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_map_assignment_clone_expands(a.nodes[int(assignment)])
@@ -1999,11 +1999,11 @@ fn test_fn_span_map_expansion_estimate_defers_borrowed_owned_map_key_clone() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_map_assignment_clone_expands(a.nodes[int(assignment)])
@@ -2059,11 +2059,11 @@ fn test_fn_span_map_expansion_estimate_defers_nested_map_lvalue_key_clone() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_map_assignment_clone_expands(a.nodes[int(assignment)])
@@ -2124,11 +2124,11 @@ fn test_fn_span_map_expansion_estimate_defers_outer_nested_map_assignment_key_cl
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.map_assignment_lvalue_key_clone_expands(inner_index)
@@ -2158,11 +2158,11 @@ fn test_fn_span_map_expansion_estimate_defers_owned_method_value_receiver_clone(
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
 	wide_type := tc.parse_type(flat.source_type_id('Wide'))
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	tc.fn_param_types['Wide.consume'] = [wide_type]
 	tc.fn_ret_types['Wide.consume'] = tc.parse_type(flat.source_type_int)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -2213,7 +2213,7 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_array_append_clone() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
@@ -2264,7 +2264,7 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_map_index_append_clone()
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
@@ -2385,7 +2385,7 @@ fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Wide'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Wide')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
@@ -2837,7 +2837,7 @@ fn external_map_equality_expansion_estimate(operand_type string, metadata_type s
 	})
 	mut tc := types.TypeChecker.new(&a)
 	if is_interface {
-		tc.interface_names[metadata_type] = true
+		tc.interface_names[flat.source_type_id(metadata_type)] = true
 	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	if !is_interface {
@@ -3263,8 +3263,8 @@ fn test_string_interp_expansion_estimate_defers_interface_conversion_hoisting() 
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Source'] = true
-	tc.interface_names['Target'] = true
+	tc.interface_names[flat.source_type_id('Source')] = true
+	tc.interface_names[flat.source_type_id('Target')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.string_interp_expr_needs_deferred_lowering(cast)
@@ -3313,8 +3313,8 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_selectors() {
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['View'] = true
-	tc.interface_fields['View'] = [
+	tc.interface_names[flat.source_type_id('View')] = true
+	tc.interface_fields[flat.source_type_id('View')] = [
 		types.StructField{
 			name: 'value'
 			typ:  types.Type(types.int_)
@@ -3378,7 +3378,7 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_predicates() {
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Value'] = true
+	tc.interface_names[flat.source_type_id('Value')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['WideRecord'] = StructInfo{
 		name: flat.source_type_id('WideRecord')
@@ -3402,7 +3402,7 @@ fn test_string_interp_expansion_estimate_defers_runtime_type_metadata_calls() {
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['View'] = true
+	tc.interface_names[flat.source_type_id('View')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sum_types.set('Item', ['First', 'Second'])
 
@@ -3446,8 +3446,8 @@ fn test_string_interp_expansion_estimate_defers_compiler_clone_calls() {
 			children_count: 1
 		})
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Wide'] = []
-		tc.struct_implements.set('Wide', ['IClone'])
+		tc.structs[flat.source_type_id('Wide')] = []
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.string_interp_expr_needs_deferred_lowering(clone_call)
@@ -3713,7 +3713,7 @@ fn test_string_interp_expansion_estimate_defers_interface_auto_stringification()
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['View'] = true
+	tc.interface_names[flat.source_type_id('View')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.string_interp_expr_needs_deferred_lowering(value)
@@ -4123,8 +4123,8 @@ fn test_external_map_expansion_estimate_defers_compiler_default_clone_calls() {
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Wide'] = []
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.structs[flat.source_type_id('Wide')] = []
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
@@ -4169,8 +4169,8 @@ fn test_external_map_expansion_estimate_defers_ownership_collection_clone_calls(
 			children_count: 2
 		})
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Wide'] = []
-		tc.struct_implements.set('Wide', ['IClone'])
+		tc.structs[flat.source_type_id('Wide')] = []
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
@@ -4219,11 +4219,11 @@ fn test_external_map_expansion_estimate_defers_ownership_array_reverse_calls() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.compiler_collection_clone_call_expands(a.nodes[int(reverse_call)])
@@ -4286,11 +4286,11 @@ fn test_external_map_expansion_estimate_defers_ownership_array_sorted_calls() {
 		})
 		mut tc := types.TypeChecker.new(&a)
 		tc.collect(&a)
-		tc.structs['Wide'] = [types.StructField{
+		tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 			name: 'text'
 			typ:  tc.parse_type(flat.source_type_string)
 		}]
-		tc.struct_implements.set('Wide', ['IClone'])
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.compiler_collection_clone_call_expands(a.nodes[int(sorted_call)]), method
@@ -4341,11 +4341,11 @@ fn test_external_map_expansion_estimate_defers_owned_map_item_calls() {
 		})
 		mut tc := types.TypeChecker.new(&a)
 		tc.collect(&a)
-		tc.structs['Wide'] = [types.StructField{
+		tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 			name: 'text'
 			typ:  tc.parse_type(flat.source_type_string)
 		}]
-		tc.struct_implements.set('Wide', ['IClone'])
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.compiler_owned_map_items_call_expands(a.nodes[int(items_call)]), method
@@ -4514,11 +4514,11 @@ fn test_external_map_expansion_estimate_defers_owned_array_accessor_calls() {
 		})
 		mut tc := types.TypeChecker.new(&a)
 		tc.collect(&a)
-		tc.structs['Wide'] = [types.StructField{
+		tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 			name: 'text'
 			typ:  tc.parse_type(flat.source_type_string)
 		}]
-		tc.struct_implements.set('Wide', ['IClone'])
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.compiler_owned_array_accessor_call_expands(a.nodes[int(accessor_call)]), method
@@ -4575,11 +4575,11 @@ fn test_external_map_expansion_estimate_defers_owned_array_filter_calls() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.compiler_owned_array_filter_call_expands(a.nodes[int(filter_call)])
@@ -4642,11 +4642,11 @@ fn test_external_map_expansion_estimate_defers_owned_array_map_calls() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.compiler_owned_array_map_call_expands(a.nodes[int(map_call)])
@@ -4700,7 +4700,7 @@ fn test_external_map_expansion_estimate_defers_compiler_collection_str_calls() {
 			children_count: 2
 		})
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Wide'] = []
+		tc.structs[flat.source_type_id('Wide')] = []
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.structs['Wide'] = StructInfo{
 			name: flat.source_type_id('Wide')
@@ -4767,11 +4767,11 @@ fn test_external_map_expansion_estimate_defers_ownership_array_repeat_calls() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
 		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements.set('Wide', ['IClone'])
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_array_repeat_call_expands(a.nodes[int(repeat_call)])
@@ -4820,7 +4820,7 @@ fn test_expansion_estimate_defers_interface_array_literal_repeat_calls_without_o
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['IValue'] = true
+	tc.interface_names[flat.source_type_id('IValue')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.interface_array_literal_repeat_call_expands(a.nodes[int(repeat_call)])
@@ -5167,7 +5167,7 @@ fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	master.structs['main.Base'] = StructInfo{
 		name: flat.source_type_id('main.Base')
 	}
-	tc.structs['main.Base'] = []types.StructField{}
+	tc.structs[flat.source_type_id('main.Base')] = []types.StructField{}
 
 	mut worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
 	worker_tc := tc.fork_for_parallel_transform(worker_ast)
@@ -5189,8 +5189,8 @@ fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	master.add_fn_literal_capture_context('CaptureContext', 'main', []string{}, map[string]u32{})
 	assert 'CaptureContext' in master.structs
 	assert 'CaptureContext' !in worker.structs
-	assert 'CaptureContext' in master.tc.structs
-	assert 'CaptureContext' !in worker.tc.structs
+	assert flat.source_type_id('CaptureContext') in master.tc.structs
+	assert flat.source_type_id('CaptureContext') !in worker.tc.structs
 }
 
 fn test_transform_ast_clone_preserves_template_metadata() {
@@ -5332,8 +5332,8 @@ fn test_parallel_escape_precheck_preserves_candidate_across_local_type_decl() {
 fn test_struct_lookup_name_prefers_selected_struct_over_imported_enum_short_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['shapes.Lang'] = []types.StructField{}
-	tc.struct_modules['shapes.Lang'] = 'shapes'
+	tc.structs[flat.source_type_id('shapes.Lang')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('shapes.Lang')] = 'shapes'
 	tc.file_selective_imports[file_import_key('main.v', 'Lang')] = ['shapes.Lang']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
@@ -5353,8 +5353,8 @@ fn test_struct_lookup_name_prefers_selected_struct_over_imported_enum_short_name
 fn test_struct_lookup_name_resolves_alias_before_imported_enum_short_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Lang', flat.source_type_id('Record'))
-	tc.type_aliases.set_id('Count', flat.source_type_id('other.Count'))
+	tc.type_aliases.set_id(flat.source_type_id('Lang'), flat.source_type_id('Record'))
+	tc.type_aliases.set_id(flat.source_type_id('Count'), flat.source_type_id('other.Count'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.structs['Record'] = StructInfo{
@@ -5372,8 +5372,8 @@ fn test_struct_lookup_name_resolves_alias_before_imported_enum_short_name() {
 fn test_struct_lookup_name_preserves_builtin_struct_over_imported_enum_short_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['SliceIndex'] = []types.StructField{}
-	tc.struct_modules['SliceIndex'] = 'builtin'
+	tc.structs[flat.source_type_id('SliceIndex')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('SliceIndex')] = 'builtin'
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'sample'
 	t.cur_file = 'sample.v'

@@ -123,10 +123,10 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayF
 		if fixed := array_fixed_type(g.tc.parse_type(cur)) {
 			return fixed
 		}
-		mut next := g.tc.type_aliases.type_id(flat.source_type_name(cur)) or { u32(0) }
+		mut next := g.tc.type_aliases.type_id(cur) or { u32(0) }
 		if next == 0 {
 			qname := g.tc.qualify_type_name(cur)
-			next = g.tc.type_aliases.type_id(flat.source_type_name(qname)) or { u32(0) }
+			next = g.tc.type_aliases.type_id(qname) or { u32(0) }
 		}
 		if next == 0 || next == cur {
 			return none

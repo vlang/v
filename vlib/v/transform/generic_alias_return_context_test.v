@@ -6,8 +6,8 @@ import v.types
 fn test_imported_generic_alias_return_keeps_the_caller_type_argument() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('aliases.Values', flat.source_type_id('[]T'))
-	tc.type_alias_generic_params['aliases.Values'] = ['T']
+	tc.type_aliases.set_id(flat.source_type_id('aliases.Values'), flat.source_type_id('[]T'))
+	tc.type_alias_generic_params[flat.source_type_id('aliases.Values')] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.structs['Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'main' }
@@ -54,8 +54,8 @@ fn test_imported_generic_alias_return_keeps_the_caller_type_argument() {
 fn test_specialized_callback_alias_keeps_its_nominal_signature() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('aliases.Mapper', flat.source_type_id('fn (T) int'))
-	tc.type_alias_generic_params['aliases.Mapper'] = ['T']
+	tc.type_aliases.set_id(flat.source_type_id('aliases.Mapper'), flat.source_type_id('fn (T) int'))
+	tc.type_alias_generic_params[flat.source_type_id('aliases.Mapper')] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'main' }
 	t.structs['aliases.Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'aliases' }
@@ -70,13 +70,13 @@ fn test_specialized_callback_alias_keeps_its_nominal_signature() {
 fn test_module_local_generic_types_take_precedence_over_main_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Box', flat.source_type_id('[]T'))
-	tc.type_alias_generic_params['Box'] = ['T']
-	tc.type_aliases.set_id('Choice', flat.source_type_id('[]T'))
-	tc.type_alias_generic_params['Choice'] = ['T']
-	tc.type_aliases.set_id('Reader', flat.source_type_id('[]T'))
-	tc.type_alias_generic_params['Reader'] = ['T']
-	tc.interface_names['dep.Reader'] = true
+	tc.type_aliases.set_id(flat.source_type_id('Box'), flat.source_type_id('[]T'))
+	tc.type_alias_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.type_aliases.set_id(flat.source_type_id('Choice'), flat.source_type_id('[]T'))
+	tc.type_alias_generic_params[flat.source_type_id('Choice')] = ['T']
+	tc.type_aliases.set_id(flat.source_type_id('Reader'), flat.source_type_id('[]T'))
+	tc.type_alias_generic_params[flat.source_type_id('Reader')] = ['T']
+	tc.interface_names[flat.source_type_id('dep.Reader')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.structs['dep.Box'] = StructInfo{ name: flat.source_type_id('Box'), module: 'dep' }
@@ -121,7 +121,7 @@ fn test_multiple_generic_call_arguments_use_the_concrete_checker_result() {
 	tc.fn_type_modules['dep.first'] = 'dep'
 	tc.fn_generic_params['dep.first'] = ['T', 'U']
 	tc.fn_ret_type_texts.set_id('dep.first', flat.source_type_id('T'))
-	tc.structs['main.Item'] = []types.StructField{}
+	tc.structs[flat.source_type_id('main.Item')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.structs['Item'] = StructInfo{ name: flat.source_type_id('Item'), module: 'main' }

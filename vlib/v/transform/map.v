@@ -1117,7 +1117,7 @@ fn (t &Transformer) sum_default_may_expand(typ_id u32) bool {
 	resolved_source_id := t.resolve_sum_name(t.normalize_type_alias(typ_id))
 	resolved := flat.source_type_name(resolved_source_id)
 	return resolved_source_id != 0
-		&& (t.sum_types.contains(resolved) || (!isnil(t.tc) && t.tc.sum_types.contains(resolved)))
+		&& (t.sum_types.contains(resolved) || (!isnil(t.tc) && t.tc.sum_types.contains(resolved_source_id)))
 }
 
 fn (t &Transformer) zero_value_expansion_estimate(id flat.NodeId, type_name_id u32) int {
@@ -1680,9 +1680,9 @@ fn (t &Transformer) map_key_backing_type(key_type_id u32) ?u32 {
 	// alias. The transform's own struct mirror holds first-wins bare aliases
 	// for unrelated modules, so only a checker-declared struct blocks this.
 	if !isnil(t.tc) && !flat.source_type_shape(clean_id).has(.dotted)
-		&& flat.source_type_name(clean_id) !in t.tc.structs {
+		&& clean_id !in t.tc.structs {
 		clean := flat.source_type_name(clean_id)
-		mut alias_target := t.tc.type_aliases.type_id(clean) or { u32(0) }
+		mut alias_target := t.tc.type_aliases.type_id(clean_id) or { u32(0) }
 		if alias_target == 0 {
 			mut matches := 0
 			// Only module-qualified aliases, i.e. those ending in `.${clean}`.
@@ -1870,7 +1870,7 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 		&& t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), raw_value_type_source_id_2)
 		qualified := flat.source_type_name(qualified_id)
-		if t.sum_types.contains(qualified) || (!isnil(t.tc) && t.tc.sum_types.contains(qualified)) {
+		if t.sum_types.contains(qualified) || (!isnil(t.tc) && t.tc.sum_types.contains(qualified_id)) {
 			value_type = qualified_id
 		}
 	}

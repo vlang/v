@@ -7,7 +7,7 @@ fn test_struct_field_recent_queries_preserve_hits_misses_and_collisions() {
 	mut tc := TypeChecker.new(&a)
 	tc.set_fresh_type_cache(true)
 	owner_id := flat.source_type_id('RecentFields')
-	tc.structs['RecentFields'] = [
+	tc.structs[flat.source_type_id('RecentFields')] = [
 		StructField{ name: 'abax', typ: builtin_int_type },
 		StructField{ name: 'abbx', typ: builtin_string_type },
 	]
@@ -23,7 +23,7 @@ fn test_struct_field_recent_queries_preserve_hits_misses_and_collisions() {
 		assert tc.struct_field_type(owner_id, 'abbx')? == builtin_string_type
 	}
 	// Invalidating declarations also invalidates a remembered negative lookup.
-	tc.structs['RecentFields'] << StructField{ name: 'abzx', typ: builtin_bool_type }
+	tc.structs[flat.source_type_id('RecentFields')] << StructField{ name: 'abzx', typ: builtin_bool_type }
 	tc.clear_field_lookup_cache()
 	assert tc.struct_field_type(owner_id, 'abzx')? == builtin_bool_type
 	assert tc.struct_field_type(owner_id, 'abzx')? == builtin_bool_type
@@ -34,7 +34,7 @@ fn test_struct_field_recent_queries_keep_c_module_precedence() {
 	mut tc := TypeChecker.new(&a)
 	tc.set_fresh_type_cache(true)
 	owner_id := flat.source_type_id('C.RecentMirror')
-	tc.structs['C.RecentMirror'] = [StructField{ name: 'value', typ: builtin_int_type }]
+	tc.structs[flat.source_type_id('C.RecentMirror')] = [StructField{ name: 'value', typ: builtin_int_type }]
 	tc.cur_module = 'fallback'
 	assert tc.struct_field_type(owner_id, 'value')? == builtin_int_type
 	assert tc.struct_field_type(owner_id, 'value')? == builtin_int_type
@@ -52,11 +52,11 @@ fn test_struct_field_recent_miss_keeps_escaped_keyword_precedence() {
 	mut tc := TypeChecker.new(&a)
 	tc.set_fresh_type_cache(true)
 	owner_id := flat.source_type_id('RecentEscaped')
-	tc.structs['RecentEscaped'] = []StructField{}
+	tc.structs[flat.source_type_id('RecentEscaped')] = []StructField{}
 	assert tc.struct_field_type(owner_id, '@type') == none
 	assert tc.struct_field_type(owner_id, '@type') == none
 	// Exact escaped keyword fields are checked before a cached ordinary miss.
-	tc.structs['RecentEscaped'] << StructField{ name: '@type', typ: builtin_bool_type }
+	tc.structs[flat.source_type_id('RecentEscaped')] << StructField{ name: '@type', typ: builtin_bool_type }
 	assert tc.struct_field_type(owner_id, '@type')? == builtin_bool_type
 	assert tc.struct_field_type(owner_id, '@type')? == builtin_bool_type
 }
@@ -95,7 +95,7 @@ fn test_generic_method_owner_candidates_keep_qualification_context() {
 	}
 	tc.resolution_type_mode = true
 	assert tc.generic_struct_method_base_candidates(owner_id) == [owner_id]
-	tc.structs['one.RecentBox'] = []StructField{}
+	tc.structs[flat.source_type_id('one.RecentBox')] = []StructField{}
 	assert tc.generic_struct_method_base_candidates(owner_id) == [owner_id,
 		flat.source_type_id('one.RecentBox')]
 	assert tc.generic_struct_method_base_candidates(flat.source_type_int) == [flat.source_type_int]

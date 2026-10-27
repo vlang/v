@@ -7,7 +7,7 @@ fn test_default_clone_eligibility_includes_ordinary_struct_fields() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	for name in ['MapValue', 'NestedValue', 'PlainValue', 'ReferenceValue', 'RecursiveValue'] {
-		tc.structs[name] = []types.StructField{}
+		tc.structs[flat.source_type_id(name)] = []types.StructField{}
 	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['MapValue'] = StructInfo{

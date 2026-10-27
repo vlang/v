@@ -5735,8 +5735,9 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs 
 fn register_headerless_c_types(mut tc types.TypeChecker) {
 	// The C backend always supplies this platform-specific declaration in its
 	// headerless preamble, even when the program does not import `os`.
-	if 'C.stat' !in tc.structs {
-		tc.structs['C.stat'] = []types.StructField{}
+	stat_type_id := flat.source_type_id('C.stat')
+	if stat_type_id !in tc.structs {
+		tc.structs[stat_type_id] = []types.StructField{}
 	}
 }
 
@@ -9577,9 +9578,8 @@ fn incremental_type_is_generic_named_application_bytes(type_name string, module_
 }
 
 fn incremental_generic_type_base_is_known(base_id u32, module_name string, tc &types.TypeChecker) bool {
-	base := flat.source_type_name(base_id)
-	if base in tc.struct_generic_params || base in tc.sum_generic_params
-		|| base in tc.type_alias_generic_params {
+	if base_id in tc.struct_generic_params || base_id in tc.sum_generic_params
+		|| base_id in tc.type_alias_generic_params {
 		return true
 	}
 	if !flat.source_type_shape(base_id).has(.dotted) && module_name !in ['', 'main', 'builtin'] {
@@ -9587,9 +9587,8 @@ fn incremental_generic_type_base_is_known(base_id u32, module_name string, tc &t
 			flat.source_type_id(module_name),
 			base_id,
 		])
-		qualified := flat.source_type_name(qualified_id)
-		if qualified in tc.struct_generic_params || qualified in tc.sum_generic_params
-			|| qualified in tc.type_alias_generic_params {
+		if qualified_id in tc.struct_generic_params || qualified_id in tc.sum_generic_params
+			|| qualified_id in tc.type_alias_generic_params {
 			return true
 		}
 	}
@@ -21672,7 +21671,7 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 		rhs_type := tc.resolve_type(a.child(&node, 1))
 		lhs_name := wasm_type_without_main_prefix(lhs_type.source_type_id())
 		rhs_name := wasm_type_without_main_prefix(rhs_type.source_type_id())
-		if lhs_name == rhs_name && lhs_name != 0 && flat.source_type_name(lhs_name) in tc.structs
+		if lhs_name == rhs_name && lhs_name != 0 && lhs_name in tc.structs
 			&& !wasm_supported_struct(tc, lhs_name) {
 			operator := if node.op == .eq { '==' } else { '!=' }
 			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${flat.source_type_name(lhs_name)}` yet'
@@ -21841,7 +21840,7 @@ fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
 			flat.source_type_id('rune'), flat.source_type_id('string')] {
 			return true
 		}
-		if flat.source_type_name(inner) in tc.structs { return wasm_supported_struct(tc, inner) }
+		if inner in tc.structs { return wasm_supported_struct(tc, inner) }
 		return false
 	}
 	return wasm_struct_fields_supported(tc, type_id, 0)
@@ -21855,7 +21854,7 @@ fn wasm_struct_fields_supported(tc &types.TypeChecker, type_id u32, depth int) b
 	if name_id == 0 {
 		return false
 	}
-	st := tc.structs[flat.source_type_name(name_id)] or { return false }
+	st := tc.structs[name_id] or { return false }
 	for f in st {
 		if !wasm_struct_field_supported(tc, f.typ, depth) {
 			return false
@@ -21938,7 +21937,7 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 			rhs_type := tc.resolve_type(a.child(&node, 1))
 			lhs_name := wasm_type_without_main_prefix(lhs_type.source_type_id())
 			rhs_name := wasm_type_without_main_prefix(rhs_type.source_type_id())
-			if lhs_name == rhs_name && lhs_name != 0 && flat.source_type_name(lhs_name) in tc.structs {
+			if lhs_name == rhs_name && lhs_name != 0 && lhs_name in tc.structs {
 				operator := if node.op == .eq { '==' } else { '!=' }
 				return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${flat.source_type_name(lhs_name)}` yet'
 			}

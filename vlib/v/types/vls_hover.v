@@ -220,7 +220,7 @@ fn (tc &TypeChecker) vls_interface_decl(name_id u32) ?flat.Node {
 		keys << syntax.application_base()
 	}
 	for key in keys {
-		index := tc.first_type_declaration_ids[flat.source_type_name(key)] or { continue }
+		index := tc.first_type_declaration_ids[key] or { continue }
 		decl := tc.a.nodes[index]
 		if decl.kind == .interface_decl {
 			return decl
@@ -1181,7 +1181,7 @@ fn (tc &TypeChecker) vls_enum_receiver(receiver &flat.Node) ?string {
 		module_node := tc.a.child_node(receiver, 0)
 		if module_node.kind == .ident {
 			qualified := '${module_node.value}.${receiver.value}'
-			if qualified in tc.enum_names {
+			if flat.source_type_id(qualified) in tc.enum_names {
 				return qualified
 			}
 		}
@@ -1271,8 +1271,7 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 // vls_declared_field_type is the type of the field `name` as the struct or the
 // interface `type_name` declares it.
 fn (tc &TypeChecker) vls_declared_field_type(type_name_id u32, name string) ?Type {
-	type_name := flat.source_type_name(type_name_id)
-	fields := tc.structs[type_name] or { tc.interface_fields[type_name] or { return none } }
+	fields := tc.structs[type_name_id] or { tc.interface_fields[type_name_id] or { return none } }
 	for field in fields {
 		if field.name == name {
 			return field.typ
@@ -1344,7 +1343,8 @@ fn (tc &TypeChecker) vls_is_global(name string) bool {
 }
 
 fn (tc &TypeChecker) vls_is_enum(name string) bool {
-	return name in tc.enum_names || tc.qualify_name(name) in tc.enum_names
+	name_id := flat.source_type_id(name)
+	return name_id in tc.enum_names || tc.qualify_type_name(name_id) in tc.enum_names
 }
 
 // vls_enum_values is the value of each field of the enum `decl`, as its hover
@@ -1416,8 +1416,9 @@ fn (tc &TypeChecker) vls_enum_values(decl flat.Node) map[string]string {
 // value is not known.
 fn (tc &TypeChecker) vls_enum_value_hover(enum_name string, field string) string {
 	name := '${enum_name.all_after_last('.')}.${field}'
-	index := tc.first_type_declaration_ids[enum_name] or {
-		tc.first_type_declaration_ids[tc.qualify_name(enum_name)] or { return name }
+	enum_name_id := flat.source_type_id(enum_name)
+	index := tc.first_type_declaration_ids[enum_name_id] or {
+		tc.first_type_declaration_ids[tc.qualify_type_name(enum_name_id)] or { return name }
 	}
 	decl := tc.a.nodes[index]
 	if decl.kind != .enum_decl {
@@ -1433,9 +1434,9 @@ fn (tc &TypeChecker) vls_type_declaration(name string) ?string {
 	if name.len == 0 {
 		return none
 	}
-	qualified := tc.qualify_name(name)
+	name_id := flat.source_type_id(name)
 	short := name.all_after_last('.')
-	for key in [qualified, name] {
+	for key in [tc.qualify_type_name(name_id), name_id] {
 		if key in tc.structs {
 			return 'struct ${short}'
 		}
@@ -1788,7 +1789,7 @@ fn (tc &TypeChecker) vls_named_type_text(name string) string {
 	if name.contains('[') {
 		return name
 	}
-	index := tc.first_type_declaration_ids[name] or { return name }
+	index := tc.first_type_declaration_ids[flat.source_type_id(name)] or { return name }
 	node := tc.a.nodes[index]
 	file := tc.a.source_files[node.pos.id] or { return name }
 	// A file without a `module` line belongs to `main`.
