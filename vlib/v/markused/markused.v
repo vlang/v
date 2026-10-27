@@ -945,7 +945,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// Interface method values and other roots can enter the queue as abstract
 	// dispatch keys that have no function declaration of their own. Seed their
 	// concrete implementations before the declaration-driven BFS skips those keys.
-	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut reachable_helper_scan.interface_dispatch_methods)
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut reachable_helper_scan.interface_dispatch)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
 	// concrete methods are only referenced from the generated dispatch switch, so
@@ -1394,52 +1394,125 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	return used, uses_generics
 }
 
-// Each used dispatch method expands a fixed declaration graph during markused.
-// Remember completed methods while still discovering methods reached by later bodies.
-fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut processed map[string]bool) bool {
-	mut added := false
-	for iface_name_source_id in tc.interface_names.keys() {
-		iface_name := flat.source_type_name(iface_name_source_id)
-		iface_name_id := iface_name_source_id
+// InterfaceDispatchScan remembers the dispatch keys of every abstract interface method,
+// and which methods already had their implementers enqueued. The checker is fixed during
+// markused and `used` only grows, so the keys are built once per scan.
+struct InterfaceDispatchScan {
+mut:
+	processed            map[string]bool
+	groups               []InterfaceDispatchGroup
+	ierror_keys          []string
+	built                bool
+	ierror_keys_enqueued bool
+	// used.len after the last call that found nothing new; an unchanged len means an unchanged set.
+	settled_used_len int = -1
+}
+
+struct InterfaceDispatchGroup {
+	name_id   u32
+	is_ierror bool
+mut:
+	methods []InterfaceDispatchMethod
+	pending int
+}
+
+struct InterfaceDispatchMethod {
+	name      string
+	key       string
+	c_key     string
+	short_key string
+mut:
+	done bool
+}
+
+fn (mut scan InterfaceDispatchScan) build(tc &types.TypeChecker) {
+	scan.built = true
+	for iface_name_id in tc.interface_names.keys() {
+		iface_name := flat.source_type_name(iface_name_id)
+		is_ierror := markused_is_ierror_interface_name(iface_name_id)
+		if is_ierror {
+			for method in ['msg', 'code'] {
+				dispatch_key := '${iface_name}.${method}'
+				scan.ierror_keys << dispatch_key
+				scan.ierror_keys << markused_c_name(dispatch_key)
+			}
+		}
 		methods := tc.interface_abstract_method_names(iface_name_id)
 		if methods.len == 0 {
 			continue
 		}
-		mut used_methods := []string{cap: methods.len}
+		short_name := iface_name.all_after_last('.')
+		mut group := InterfaceDispatchGroup{
+			name_id:   iface_name_id
+			is_ierror: is_ierror
+			methods:   []InterfaceDispatchMethod{cap: methods.len}
+			pending:   methods.len
+		}
 		for method in methods {
 			dispatch_key := '${iface_name}.${method}'
-			if processed[dispatch_key] {
+			group.methods << InterfaceDispatchMethod{
+				name:      method
+				key:       dispatch_key
+				c_key:     markused_c_name(dispatch_key)
+				short_key: '${short_name}.${method}'
+			}
+		}
+		scan.groups << group
+	}
+}
+
+// Each used dispatch method expands a fixed declaration graph during markused.
+// Remember completed methods while still discovering methods reached by later bodies.
+fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut scan InterfaceDispatchScan) bool {
+	if !scan.built {
+		scan.build(tc)
+	}
+	start_len := used.len
+	if start_len == scan.settled_used_len {
+		return false
+	}
+	mut added := false
+	for mut group in scan.groups {
+		if group.pending == 0 {
+			continue
+		}
+		mut used_methods := []int{}
+		for i, method in group.methods {
+			if method.done || scan.processed[method.key] {
 				continue
 			}
-			dispatch_c_key := markused_c_name(dispatch_key)
-			short_dispatch_key := '${iface_name.all_after_last('.')}.${method}'
-			if dispatch_key in used || dispatch_c_key in used || short_dispatch_key in used {
-				used_methods << method
+			if method.key in used || method.c_key in used || method.short_key in used {
+				used_methods << i
 			}
 		}
 		if used_methods.len == 0 {
 			continue
 		}
-		impls := if markused_is_ierror_interface_name(iface_name_id) {
+		impls := if group.is_ierror {
 			tc.ierror_impl_names()
 		} else {
-			markused_interface_impl_names(iface_name_id, tc)
+			markused_interface_impl_names(group.name_id, tc)
 		}
 		if impls.len == 0 {
 			continue
 		}
-		for method in used_methods {
+		for i in used_methods {
+			method_name := group.methods[i].name
 			for impl in impls {
-				for alias in interface_implementer_method_aliases(impl, method, tc) {
+				for alias in interface_implementer_method_aliases(impl, method_name, tc) {
 					if enqueue(alias, mut used, mut queue) {
 						added = true
 					}
 				}
-				enqueue_implicit_interface_str_helpers_for_impl(iface_name_id, method, impl, tc, mut used, mut queue)
+				enqueue_implicit_interface_str_helpers_for_impl(group.name_id, method_name,
+					impl, tc, mut used, mut queue)
 			}
-			processed['${iface_name}.${method}'] = true
+			scan.processed[group.methods[i].key] = true
+			group.methods[i].done = true
+			group.pending--
 		}
 	}
+	scan.settled_used_len = if used.len == start_len { start_len } else { -1 }
 	return added
 }
 
@@ -2930,7 +3003,7 @@ mut:
 
 	channel_stringify_cache    map[string]&MarkusedTypeResults
 	ierror_equality_cache      map[u32]int
-	interface_dispatch_methods map[string]bool
+	interface_dispatch         InterfaceDispatchScan
 	map_type_cache             map[u32]int
 	unknown_map_type_cache     map[string]int
 	auto_str_skipped_fields    map[u32]&MarkusedSkippedFields
@@ -3483,7 +3556,7 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 		enqueue('f32__eq_epsilon', mut used, mut queue)
 	}
 	if scan.needs_ierror_equality_dispatch {
-		enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut scan.interface_dispatch_methods)
+		enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut scan.interface_dispatch)
 	}
 	if scan.needs_shared_runtime && !scan.enqueued_groups.has(.shared) {
 		scan.enqueued_groups.set(.shared)
@@ -3562,19 +3635,18 @@ fn markused_is_builtin_closure_global(a &flat.FlatAst, tc &types.TypeChecker, no
 		&& os.dir(file.name).replace('\\', '/').ends_with('vlib/builtin/closure')
 }
 
-fn enqueue_ierror_equality_dispatch_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut processed_dispatches map[string]bool) {
-	for iface_name_source_id in tc.interface_names.keys() {
-		iface_name := flat.source_type_name(iface_name_source_id)
-		if !markused_is_ierror_interface_name(iface_name_source_id) {
-			continue
-		}
-		for method in ['msg', 'code'] {
-			dispatch_key := '${iface_name}.${method}'
-			enqueue(dispatch_key, mut used, mut queue)
-			enqueue(markused_c_name(dispatch_key), mut used, mut queue)
+fn enqueue_ierror_equality_dispatch_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut scan InterfaceDispatchScan) {
+	if !scan.built {
+		scan.build(tc)
+	}
+	// `used` only grows, so the IError dispatch keys stay enqueued once added.
+	if !scan.ierror_keys_enqueued {
+		scan.ierror_keys_enqueued = true
+		for key in scan.ierror_keys {
+			enqueue(key, mut used, mut queue)
 		}
 	}
-	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed_dispatches)
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
 }
 
 fn markused_type_equality_uses_ierror(typ types.Type, tc &types.TypeChecker, mut cache map[u32]int) bool {

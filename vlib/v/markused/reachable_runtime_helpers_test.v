@@ -669,23 +669,23 @@ fn main() {}
 ')
 	mut used := map[string]bool{}
 	mut queue := []string{}
-	mut processed := map[string]bool{}
-	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
-	assert processed.len == 0
+	mut scan := InterfaceDispatchScan{}
+	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
+	assert scan.processed.len == 0
 	used['Reader.first'] = true
-	assert enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
+	assert enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
 	assert used['Item.first']
 	assert !used['Item.second']
-	assert processed['Reader.first']
-	assert !processed['Reader.second']
+	assert scan.processed['Reader.first']
+	assert !scan.processed['Reader.second']
 	first_len := queue.len
-	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
+	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
 	assert queue.len == first_len
 	// A later body can introduce a second abstract dispatch after the first one was cached.
 	used['Reader.second'] = true
-	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut processed)
+	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut scan)
 	assert used['Item.second']
-	assert processed['Reader.second']
+	assert scan.processed['Reader.second']
 }
 
 fn test_interface_dispatch_cache_keeps_implicit_stringification_dependencies() {
@@ -705,16 +705,16 @@ fn main() {
 ')
 	mut used := map[string]bool{}
 	mut queue := []string{}
-	mut processed := map[string]bool{}
-	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
-	assert !processed['Printable.str']
+	mut scan := InterfaceDispatchScan{}
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
+	assert !scan.processed['Printable.str']
 	used['Printable.str'] = true
-	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
-	assert processed['Printable.str']
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
+	assert scan.processed['Printable.str']
 	assert used['f64.str']
 	assert used['strconv__f64_to_str_l']
 	first_len := queue.len
-	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut processed)
+	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut scan)
 	assert queue.len == first_len
 }
 
