@@ -468,6 +468,36 @@ fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string,
 	}
 }
 
+// source_type_existing_id returns an interned spelling ID without inserting it.
+// The empty spelling is always present as zero. Borrowed input bytes are not retained.
+@[direct_array_access; inline]
+pub fn source_type_existing_id(text string) ?u32 {
+	if text.len == 0 {
+		return u32(0)
+	}
+	slot := source_type_recent_slot(text)
+	cached := source_type_recent_entry(slot)
+	if !isnil(cached) && cached.text() == text {
+		return cached.id
+	}
+	table := source_type_table_load()
+	if isnil(table) {
+		return none
+	}
+	id := source_type_find(table, source_type_index_load(table), text, u32(hash.sum64_string(text,
+		0)))
+	if id == 0 {
+		return none
+	}
+	entry := source_type_entry(table, id)
+	$if x32 {
+		C.atomic_store_u32(voidptr(&g_source_type_recent_entries[slot]), u32(voidptr(entry)))
+	} $else {
+		C.atomic_store_u64(voidptr(&g_source_type_recent_entries[slot]), u64(voidptr(entry)))
+	}
+	return id
+}
+
 // source_type_id interns an owned source spelling and returns its stable u32 ID.
 // Zero denotes an empty spelling. IDs are spelling identities, not checked types:
 // resolving an unqualified name still requires its module and import context.

@@ -2471,8 +2471,9 @@ fn (g &FlatGen) struct_default_canonical_leaf_type_text(name_id u32, module_name
 }
 
 fn (g &FlatGen) struct_default_type_key_known(name string) bool {
-	return flat.source_type_id(name) in g.tc.structs || g.tc.type_aliases.contains(flat.source_type_id(name)) || flat.source_type_id(name) in g.tc.interface_names
-		|| g.tc.sum_types.contains(flat.source_type_id(name)) || flat.source_type_id(name) in g.tc.enum_names || flat.source_type_id(name) in g.tc.flag_enums
+	name_id := flat.source_type_id(name)
+	return name_id in g.tc.structs || g.tc.type_aliases.contains(name_id) || name_id in g.tc.interface_names
+		|| g.tc.sum_types.contains(name_id) || name_id in g.tc.enum_names || name_id in g.tc.flag_enums
 		|| name in g.struct_decl_infos
 }
 
@@ -3638,11 +3639,11 @@ fn (g &FlatGen) shared_qualify_leaf_type_text(name_id u32, module_name string) u
 	clean := flat.source_type_name(clean_id)
 	mut imported := u32(0)
 	for candidate in g.file_selective_import_candidates(g.tc.cur_file, clean) or { []string{} } {
-		if flat.source_type_id(candidate) !in g.tc.structs && !g.tc.type_aliases.contains(flat.source_type_id(candidate)) && flat.source_type_id(candidate) !in g.tc.interface_names
-			&& !g.tc.sum_types.contains(flat.source_type_id(candidate)) && flat.source_type_id(candidate) !in g.tc.enum_names && flat.source_type_id(candidate) !in g.tc.flag_enums {
+		candidate_id := flat.source_type_id(candidate)
+		if candidate_id !in g.tc.structs && !g.tc.type_aliases.contains(candidate_id) && candidate_id !in g.tc.interface_names
+			&& !g.tc.sum_types.contains(candidate_id) && candidate_id !in g.tc.enum_names && candidate_id !in g.tc.flag_enums {
 			continue
 		}
-		candidate_id := flat.source_type_id(candidate)
 		if imported != 0 && imported != candidate_id { return name_id }
 		imported = candidate_id
 	}

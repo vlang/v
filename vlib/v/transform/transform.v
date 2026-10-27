@@ -4465,7 +4465,10 @@ fn (mut t Transformer) refresh_alias_receiver_fns() {
 			continue
 		}
 		// The receiver view is only probed while `name` owns its backing bytes.
-		if flat.source_type_id(unsafe { name.substr_unsafe(0, dot) }) in t.tc.type_aliases.ids {
+		receiver_id := flat.source_type_existing_id(unsafe { name.substr_unsafe(0, dot) }) or {
+			continue
+		}
+		if receiver_id in t.tc.type_aliases.ids {
 			by_method[name[dot + 1..]] << name
 		}
 	}
@@ -6786,8 +6789,12 @@ fn (t &Transformer) late_name_may_expand_interface(name string) bool {
 	generic_start := receiver.index_u8(`[`)
 	base_end := if generic_start > base_start { generic_start } else { receiver.len }
 	base := unsafe { receiver[base_start..base_end] }
-	return flat.source_type_id(base) in t.tc.interface_names || t.tc.type_aliases.contains(flat.source_type_id(base))
-		|| t.type_alias_suffixes[base] != 0 || base == 'IError' || base == 'builtin.IError'
+	if base_id := flat.source_type_existing_id(base) {
+		if base_id in t.tc.interface_names || t.tc.type_aliases.contains(base_id) {
+			return true
+		}
+	}
+	return t.type_alias_suffixes[base] != 0 || base == 'IError' || base == 'builtin.IError'
 }
 
 fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start int, names_end int, node_limit int) {

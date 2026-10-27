@@ -7791,11 +7791,12 @@ fn (g &FlatGen) call_ident_cast_type_name(name string, is_local_fn_value bool) ?
 	if is_local_fn_value || !g.ident_may_name_type(name) {
 		return none
 	}
-	if g.tc.type_aliases.contains(flat.source_type_id(name)) || flat.source_type_id(name) in g.tc.structs || flat.source_type_id(name) in g.tc.enum_names
-		|| g.tc.sum_types.contains(flat.source_type_id(name)) || flat.source_type_id(name) in g.tc.interface_names {
+	name_id := flat.source_type_id(name)
+	if g.tc.type_aliases.contains(name_id) || name_id in g.tc.structs || name_id in g.tc.enum_names
+		|| g.tc.sum_types.contains(name_id) || name_id in g.tc.interface_names {
 		return name
 	}
-	qualified_qname_id := g.tc.qualify_type_name(flat.source_type_id(name))
+	qualified_qname_id := g.tc.qualify_type_name(name_id)
 	qname := flat.source_type_name(qualified_qname_id)
 	if qname != name && (g.tc.type_aliases.contains(qualified_qname_id) || qualified_qname_id in g.tc.structs
 		|| qualified_qname_id in g.tc.enum_names || g.tc.sum_types.contains(qualified_qname_id)
