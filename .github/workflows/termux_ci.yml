@@ -144,3 +144,54 @@ jobs:
           name: termux-arm64-build-log
           path: ${{ runner.temp }}/termux-logs/build.log
           if-no-files-found: ignore
+
+  termux-tcc-bionic:
+    # Builds tcc from the tinycc `mob` branch inside Termux (bionic libc,
+    # aarch64), then runs hello_world with that tcc. Manual trigger only.
+    # The tcc install is uploaded so it can be published to vlang/tccbin
+    # once this passes.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build tcc and run hello_world in Termux (arm64)
+        run: |
+          set -o xtrace
+          mkdir -p "$RUNNER_TEMP/termux-logs"
+          chmod 777 "$RUNNER_TEMP/termux-logs"
+          docker run --rm --platform=linux/arm64 --mount type=bind,source=/home/runner/work/v/v,destination=/src --mount type=bind,source="$RUNNER_TEMP/termux-logs",destination=/logs -w /src termux/termux-docker:aarch64 bash -c '
+            set -e
+            set -o pipefail
+            set -o xtrace
+            uname -a
+            cp -r /src ~/vproject; cd ~/vproject
+            export TERMUX_VERSION=0.118.3
+            bash .github/workflows/retry.sh pkg update -y
+            bash .github/workflows/retry.sh pkg install -y clang make git libgc libgc-static
+            git clone --depth 1 -b mob https://repo.or.cz/tinycc.git ~/tinycc
+            cd ~/tinycc
+            git log -n1 --format=%H
+            ./configure --cc=clang --prefix="$HOME/tcc-install" \
+              --crtprefix="$PREFIX/lib" \
+              --libpaths="$PREFIX/lib" \
+              --sysincludepaths="{B}/include:$PREFIX/include" \
+              --elfinterp=/system/bin/linker64
+            make -j2
+            make install
+            tcc="$HOME/tcc-install/bin/tcc"
+            "$tcc" -v
+            cd ~/vproject
+            make
+            ./v -cc "$tcc" run examples/hello_world.v 2>&1 | tee /logs/hello_world.log
+            tar -C "$HOME" -czf /logs/tcc-install-aarch64-termux.tar.gz tcc-install
+          '
+      - name: Upload tcc build and log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: termux-arm64-tcc-bionic
+          path: ${{ runner.temp }}/termux-logs/
+          if-no-files-found: ignore
