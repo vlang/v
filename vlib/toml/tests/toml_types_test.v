@@ -73,12 +73,23 @@ open_sourced = "Jun 22 2019 20:20:28"'
 fn test_hex_values() {
 	// Regression test
 	// '0xb' is carefully chosen to include the 'b' character that also denotes binary via 0b prefix.
-	toml_txt := 'hex = 0xb'
+	// '0xbbbbbb' has repeating 'b' characters, which are valid hex digits.
+	toml_txt := 'hex = 0xb
+hex_repeating = 0xbbbbbb
+hex_mixed = 0xb0bb1e'
 	toml_doc := toml.parse_text(toml_txt) or { panic(err) }
 
 	value := toml_doc.value('hex')
 	assert value as i64 == 11
 	assert value.i64() == 11
+
+	value_repeating := toml_doc.value('hex_repeating')
+	assert value_repeating as i64 == 12303291
+	assert value_repeating.i64() == 12303291
+
+	value_mixed := toml_doc.value('hex_mixed')
+	assert value_mixed as i64 == 0xb0bb1e
+	assert value_mixed.i64() == 0xb0bb1e
 }
 
 fn test_comment_as_last_value() {
