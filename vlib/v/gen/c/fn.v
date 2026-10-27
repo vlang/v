@@ -17303,18 +17303,41 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_from_node(id flat.NodeId, mu
 	}
 	// Symbol collection does not grow the AST, so recursive calls can borrow nodes.
 	node := unsafe { &g.a.nodes[int(id)] }
-	if (node.kind == .ident && node.value.starts_with('C.'))
-		|| (node.kind == .selector && node.children_count > 0 && node.value.len > 0) {
-		g.collect_c_extern_ref_from_node_into(node, mut refs)
-	}
-	if node.children_count > 0 {
-		g.collect_c_extern_referenced_symbols_from_children(node, mut refs)
-	}
+	g.collect_c_extern_referenced_symbols_in(node, mut refs)
 }
 
-fn (g &FlatGen) collect_c_extern_referenced_symbols_from_children(node &flat.Node, mut refs map[string]bool) {
-	for i in 0 .. node.children_count {
-		g.collect_c_extern_referenced_symbols_from_node(g.a.child(node, i), mut refs)
+@[direct_array_access]
+fn (g &FlatGen) collect_c_extern_referenced_symbols_in(node &flat.Node, mut refs map[string]bool) {
+	if node.kind == .ident {
+		if node.value.len > 1 && node.value[0] == `C` && node.value[1] == `.` {
+			g.collect_c_extern_ref_from_node_into(node, mut refs)
+		}
+	} else if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
+		g.collect_c_extern_ref_from_node_into(node, mut refs)
+	}
+	if node.children_count <= 0 {
+		return
+	}
+	// Visit the children that `g.a.child` would return; out-of-range slots are empty there.
+	mut start := int(node.children_start)
+	mut end := start + int(node.children_count)
+	if start < 0 {
+		start = 0
+	}
+	if end > g.a.children.len {
+		end = g.a.children.len
+	}
+	for i in start .. end {
+		child_id := int(g.a.children[i])
+		if child_id < 0 || child_id >= g.a.nodes.len {
+			continue
+		}
+		child := unsafe { &g.a.nodes[child_id] }
+		// A leaf that is not an identifier can neither name C nor reach a node that does.
+		if child.children_count <= 0 && child.kind != .ident {
+			continue
+		}
+		g.collect_c_extern_referenced_symbols_in(child, mut refs)
 	}
 }
 
