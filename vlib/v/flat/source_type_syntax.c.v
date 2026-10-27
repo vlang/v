@@ -77,7 +77,6 @@ pub struct SourceTypeSyntax {
 	inferred_annotations_span           SourceTypeSyntaxSpan
 	inferred_expr_ids_span              SourceTypeSyntaxSpan
 	substitution_function_params_span   SourceTypeSyntaxSpan
-	flattened_receiver_parts_span       SourceTypeSyntaxSpan
 	written_applications_span           SourceTypeSyntaxSpan
 	written_application_offsets_span    SourceTypeSyntaxSpan
 	checker_raw_bracket_components_span SourceTypeSyntaxSpan
@@ -293,7 +292,6 @@ pub:
 	fastc_fixed_array_length          u32
 	contains_capital                  bool
 	first_bracket_source_inner        u32
-	mut_chars_base                    u32
 	c_function_pointer_hole           bool
 	channel_fragment                  bool
 	array_receiver_fragment           bool
@@ -326,6 +324,23 @@ fn source_type_syntax_empty_ids() []u32 {
 @[inline]
 fn source_type_syntax_empty_bools() []bool {
 	return unsafe { array{ element_size: sizeof(bool), flags: .managed } }
+}
+
+// Cold constructor singleton views borrow only immutable process-owned backing.
+// The syntax payload copies these values before publishing its own array views.
+__global g_source_type_syntax_zero_offset u32
+
+@[inline]
+fn source_type_syntax_singleton_ids(value &u32) []u32 {
+	return unsafe {
+		array{
+			data:         voidptr(value)
+			len:          1
+			cap:          1
+			element_size: sizeof(u32)
+			flags:        .nogrow | .nofree
+		}
+	}
 }
 
 @[inline]
@@ -600,10 +615,27 @@ pub fn (syntax &SourceTypeSyntax) substitution_function_params() []u32 {
 	return syntax.ids(syntax.substitution_function_params_span)
 }
 
-// flattened_receiver_parts returns a process-owned immutable array view.
+// flattened_receiver_parts returns a lazily cached process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) flattened_receiver_parts() []u32 {
-	return syntax.ids(syntax.flattened_receiver_parts_span)
+	if isnil(syntax.payload) { return syntax.ids(SourceTypeSyntaxSpan{}) }
+	if !syntax.underscored { return syntax.ids(SourceTypeSyntaxSpan{ len: 1 }) }
+	id := unsafe { *&u32(syntax.payload) }
+	return source_type_syntax_flattened_receiver_ids(id)
+}
+
+// mut_chars_base applies the legacy raw trim_left('mut ') character-set query lazily.
+// The numeric composition cache decodes the spelling only on its first query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) mut_chars_base() u32 {
+	if isnil(syntax.payload) {
+		return 0
+	}
+	id := unsafe { *&u32(syntax.payload) }
+	if id == 0 {
+		return 0
+	}
+	return source_type_composition_one(.legacy_mut_chars, id)
 }
 
 // written_applications returns a process-owned immutable array view.
@@ -889,7 +921,6 @@ struct SourceTypeSyntaxParsed {
 	transform_fixed_length            bool
 	receiver_collection_id            u32
 	ampersand_trimmed                 u32
-	flattened_receiver_parts          []u32 = source_type_syntax_empty_ids()
 	last_double_underscore_suffix     u32
 	contains_doubleunderscore         bool
 	parallel_preseed_fn               bool
@@ -944,7 +975,6 @@ struct SourceTypeSyntaxParsed {
 	contains_capital                  bool
 	markused_generic_components       []u32 = source_type_syntax_empty_ids()
 	first_bracket_source_inner        u32
-	mut_chars_base                    u32
 	c_function_pointer_hole           bool
 	channel_fragment                  bool
 	array_receiver_fragment           bool
@@ -1078,6 +1108,82 @@ fn source_type_syntax_underscore_find(slot int, id u32, suffix bool) &SourceType
 	mut entry := source_type_syntax_underscore_head(slot)
 	for !isnil(entry) {
 		if entry.id == id && entry.suffix == suffix { return entry }
+		entry = entry.next
+	}
+	return unsafe { nil }
+}
+
+// Flattened receiver components split single underscores while preserving pairs.
+// The cache is independent of ordinary underscore prefix and suffix views.
+struct SourceTypeFlattenedReceiverEntry {
+	id   u32
+	len  int
+	next &SourceTypeFlattenedReceiverEntry = unsafe { nil }
+}
+
+__global g_source_type_flattened_receivers [4096]voidptr
+
+fn source_type_syntax_flattened_receiver_ids(id u32) []u32 {
+	slot := int(id & 4095)
+	cached := source_type_syntax_flattened_receiver_find(slot, id)
+	if !isnil(cached) { return source_type_syntax_flattened_receiver_view(cached) }
+	return source_type_syntax_flattened_receiver_miss(slot, id)
+}
+
+fn source_type_syntax_flattened_receiver_miss(slot int, id u32) []u32 {
+	// Derived spellings must be interned before taking the spelling writer lock.
+	parts := source_type_syntax_flattened_receiver(id, source_type_name(id))
+	source_type_lock()
+	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
+	existing := source_type_syntax_flattened_receiver_find(slot, id)
+	if !isnil(existing) { return source_type_syntax_flattened_receiver_view(existing) }
+	payload_bytes := u64(sizeof(SourceTypeFlattenedReceiverEntry)) + u64(parts.len) * u64(sizeof(u32))
+	if payload_bytes > u64(0x7fffffff) {
+		panic('source type flattened receiver components exceed the allocation limit')
+	}
+	mut entry := unsafe { &SourceTypeFlattenedReceiverEntry(node_payload_alloc_zeroed(uint(payload_bytes))) }
+	if isnil(entry) { panic('could not allocate source type flattened receiver components') }
+	unsafe {
+		*entry = SourceTypeFlattenedReceiverEntry{
+			id:   id
+			len:  parts.len
+			next: source_type_syntax_flattened_receiver_head(slot)
+		}
+		if parts.len > 0 {
+			vmemcpy(voidptr(&u8(entry) + sizeof(SourceTypeFlattenedReceiverEntry)), parts.data,
+				parts.len * int(sizeof(u32)))
+		}
+	}
+	source_type_syntax_pointer_store(voidptr(&g_source_type_flattened_receivers[slot]), voidptr(entry))
+	return source_type_syntax_flattened_receiver_view(entry)
+}
+
+@[inline]
+fn source_type_syntax_flattened_receiver_view(entry &SourceTypeFlattenedReceiverEntry) []u32 {
+	return unsafe {
+		array{
+			data:         if entry.len == 0 {
+				nil
+			} else {
+				voidptr(&u8(entry) + sizeof(SourceTypeFlattenedReceiverEntry))
+			}
+			len:          entry.len
+			cap:          entry.len
+			element_size: sizeof(u32)
+			flags:        .nogrow | .nofree
+		}
+	}
+}
+
+@[direct_array_access; inline]
+fn source_type_syntax_flattened_receiver_head(slot int) &SourceTypeFlattenedReceiverEntry {
+	return unsafe { &SourceTypeFlattenedReceiverEntry(source_type_syntax_pointer_load(voidptr(&g_source_type_flattened_receivers[slot]))) }
+}
+
+fn source_type_syntax_flattened_receiver_find(slot int, id u32) &SourceTypeFlattenedReceiverEntry {
+	mut entry := source_type_syntax_flattened_receiver_head(slot)
+	for !isnil(entry) {
+		if entry.id == id { return entry }
 		entry = entry.next
 	}
 	return unsafe { nil }
@@ -1450,7 +1556,6 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 		source_type_syntax_packed_ids_len(parsed.inferred_annotations, id) +
 		source_type_syntax_packed_ids_len(parsed.inferred_expr_ids, id) +
 		source_type_syntax_packed_ids_len(parsed.substitution_function_params, id) +
-		source_type_syntax_packed_ids_len(parsed.flattened_receiver_parts, id) +
 		source_type_syntax_packed_ids_len(parsed.written_applications, id) +
 		source_type_syntax_packed_ids_len(parsed.written_application_offsets, id) +
 		source_type_syntax_packed_ids_len(parsed.checker_raw_bracket_components, id) +
@@ -1681,7 +1786,6 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 				transform_fixed_length:              parsed.transform_fixed_length
 				receiver_collection_id:              parsed.receiver_collection_id
 				ampersand_trimmed:                   parsed.ampersand_trimmed
-				flattened_receiver_parts_span:       source_type_syntax_owned_ids(parsed.flattened_receiver_parts, mut payload)
 				last_double_underscore_suffix:       parsed.last_double_underscore_suffix
 				contains_doubleunderscore:           parsed.contains_doubleunderscore
 				parallel_preseed_fn:                 parsed.parallel_preseed_fn
@@ -1736,7 +1840,6 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 				contains_capital:                    parsed.contains_capital
 				markused_generic_components_span:    source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload)
 				first_bracket_source_inner:          parsed.first_bracket_source_inner
-				mut_chars_base:                      parsed.mut_chars_base
 				c_function_pointer_hole:             parsed.c_function_pointer_hole
 				channel_fragment:                    parsed.channel_fragment
 				array_receiver_fragment:             parsed.array_receiver_fragment
@@ -1976,7 +2079,7 @@ fn source_type_syntax_receiver_collection(id u32, raw string) u32 {
 	return 0
 }
 
-fn source_type_syntax_flattened_receiver(raw string) []u32 {
+fn source_type_syntax_flattened_receiver(id u32, raw string) []u32 {
 	mut parts := source_type_syntax_empty_ids()
 	mut start := 0
 	mut i := 0
@@ -1986,14 +2089,14 @@ fn source_type_syntax_flattened_receiver(raw string) []u32 {
 				i += 2
 				continue
 			}
-			parts << source_type_id(raw[start..i])
+			parts << source_type_syntax_child_range_id(id, raw, start, i)
 			i++
 			start = i
 			continue
 		}
 		i++
 	}
-	parts << source_type_id(raw[start..])
+	parts << source_type_syntax_child_range_id(id, raw, start, raw.len)
 	return parts
 }
 
@@ -2295,22 +2398,30 @@ fn source_type_syntax_cgen_declaration(raw string) (bool, bool) {
 }
 
 fn source_type_syntax_open_generic_receiver_marker(raw string) bool {
-	if raw.contains('[') {
-		for marker in ['T', 'U', 'K', 'V', 'A', 'B', 'C', 'X', 'Y', 'Z'] {
-			if raw.contains('[${marker}]') || raw.contains('[${marker},')
-				|| raw.contains(', ${marker}]') || raw.contains(',${marker}]') {
-				return true
-			}
+	mut has_bracket := false
+	mut bracket_marker := false
+	for i, c in raw {
+		if c == `[` { has_bracket = true }
+		if !source_type_syntax_receiver_marker_byte(c) { continue }
+		if (i == 0 || raw[i - 1] == `_`)
+			&& (i + 1 == raw.len || raw[i + 1] == `_`) {
+			return true
+		}
+		if i + 1 >= raw.len { continue }
+		if i > 0 && raw[i - 1] == `[` && raw[i + 1] in [`]`, `,`] {
+			bracket_marker = true
+		} else if raw[i + 1] == `]` && ((i > 0 && raw[i - 1] == `,`)
+			|| (i > 1 && raw[i - 1] == ` ` && raw[i - 2] == `,`)) {
+			bracket_marker = true
 		}
 	}
-	if !raw.contains('_') { return source_type_syntax_receiver_marker(raw) }
-	for part in raw.split('_') { if source_type_syntax_receiver_marker(part) { return true } }
-	return false
+	// The legacy comma patterns require an opening bracket somewhere in the raw spelling.
+	return has_bracket && bracket_marker
 }
 
-fn source_type_syntax_receiver_marker(raw string) bool {
-	if raw.len != 1 { return false }
-	return match raw[0] {
+@[inline]
+fn source_type_syntax_receiver_marker_byte(c u8) bool {
+	return match c {
 		`T`, `U`, `K`, `V`, `A`, `B`, `C`, `X`, `Y`, `Z` { true }
 		else { false }
 	}
@@ -3036,7 +3147,6 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		} else {
 			source_type_syntax_child_id(id, raw, raw.trim('&'))
 		}
-		flattened_receiver_parts:           source_type_syntax_flattened_receiver(raw)
 		last_double_underscore_suffix:      if !contains_doubleunderscore {
 			id
 		} else {
@@ -3153,11 +3263,6 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		} else {
 			source_type_syntax_child_id(id, raw, raw.all_after('[').all_before(']'))
 		}
-		mut_chars_base:                     if raw.len == 0 || raw[0] !in [`m`, `u`, `t`, ` `] {
-			id
-		} else {
-			source_type_syntax_child_id(id, raw, raw.trim_left('mut '))
-		}
 		c_function_pointer_hole:            raw.contains('(*)')
 		channel_fragment:                   raw.contains('chan ')
 		array_receiver_fragment:            raw.contains('.[]')
@@ -3232,7 +3337,8 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	// Plain and qualified identifiers need no composite parser or parameter
 	// normalizer. Compute their dot views together without copying a second record.
 	qualified := first_dot >= 0
-	identity_ids := [id]
+	identity_entry := source_type_read_entry(id)
+	identity_ids := source_type_syntax_singleton_ids(&identity_entry.id)
 	integer_value := raw.int()
 	decimal := source_type_syntax_decimal(raw)
 	contains_capital := source_type_syntax_contains_capital(raw)
@@ -3414,7 +3520,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		prefix_dimension_tail:          id
 		prefix_dimensions_closed:       true
 		nested_option_result_marker:    -1
-		symbols_first_offsets:          [u32(0)]
+		symbols_first_offsets:          source_type_syntax_singleton_ids(&g_source_type_syntax_zero_offset)
 		c_pointer_raw_base:             id
 		voidptr_parts:                  if raw.contains('voidptr') {
 			source_type_syntax_plain_parts(raw, 'voidptr')
@@ -3439,11 +3545,6 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		}
 		transform_fixed_length:         source_type_syntax_transform_length(raw)
 		ampersand_trimmed:              id
-		flattened_receiver_parts:       if last_underscore >= 0 {
-			source_type_syntax_flattened_receiver(raw)
-		} else {
-			identity_ids
-		}
 		last_double_underscore_suffix:  if contains_doubleunderscore {
 			source_type_id(raw.all_after_last('__'))
 		} else {
@@ -3530,11 +3631,6 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 			source_type_syntax_empty_ids()
 		}
 		first_bracket_source_inner:     id
-		mut_chars_base:                 if raw[0] in [`m`, `u`, `t`] {
-			source_type_id(raw.trim_left('mut '))
-		} else {
-			id
-		}
 	}
 }
 

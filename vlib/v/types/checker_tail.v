@@ -6835,7 +6835,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_ordering_ops(call flat.Node, 
 					continue
 				}
 				receiver_param := tc.a.node(receiver_param_id)
-				param_type_id := flat.source_type_syntax(flat.source_type_syntax(trimmed_source_type_id(receiver_param.typ)).pointer_raw_base).mut_chars_base
+				param_type_id := flat.source_type_syntax(flat.source_type_syntax(trimmed_source_type_id(receiver_param.typ)).pointer_raw_base).mut_chars_base()
 				param_syntax := flat.source_type_syntax(param_type_id)
 				if !param_syntax.application_valid {
 					continue

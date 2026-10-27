@@ -34,6 +34,7 @@ pub enum SourceTypeComposition {
 	inferred_expression
 	fastc_thread_handle
 	fastc_composite_part
+	legacy_mut_chars
 }
 
 struct SourceTypeCompositionEntry {
@@ -58,6 +59,7 @@ __global g_source_type_compositions [4096]voidptr
 // inferred_expression takes raw expression-node bits instead of a spelling ID.
 // fastc_thread_handle encodes one source spelling into its FastC thread handle name.
 // fastc_composite_part applies FastC component escaping only when that spelling is requested.
+// legacy_mut_chars removes leading raw bytes from the character set `m`, `u`, `t`, and ASCII space.
 // Entries own only IDs, so borrowed type descriptors and worker arenas can change
 // or expire without invalidating a cached spelling.
 @[direct_array_access]
@@ -205,6 +207,7 @@ fn source_type_composition_text(kind SourceTypeComposition, parts []u32) string 
 		.thread { return 'thread ${source_type_name(parts[0])}' }
 		.named_parameter { return '${source_type_name(parts[0])} ${source_type_name(parts[1])}' }
 		.inferred_expression { return 'typeof(__expr_${int(parts[0])})' }
+		.legacy_mut_chars { return source_type_name(parts[0]).trim_left('mut ') }
 		.fastc_composite_part {
 			text := source_type_name(parts[0])
 			return if text.contains(' ') || text.contains('*') || text.contains('.') {

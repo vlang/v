@@ -1378,7 +1378,10 @@ fn (t &Transformer) normalize_type_alias_cached(type_id u32) u32 {
 // so the answer is file-independent). Any other shape falls through.
 @[direct_array_access; inline]
 fn (t &Transformer) normalize_dotted_canonical_fast(type_id u32) bool {
-	if !flat.source_type_syntax(type_id).canonical_dotted_name { return false }
+	if !flat.source_type_shape(type_id).has(.dotted)
+		|| !flat.source_type_syntax(type_id).canonical_dotted_name {
+		return false
+	}
 	typ := flat.source_type_name(type_id)
 	if t.tc.type_aliases.contains(typ) { return false }
 	return t.type_authority_has(typ)
@@ -1390,36 +1393,40 @@ fn (t &Transformer) normalize_type_alias_uncached(type_id u32) u32 {
 		return type_id
 	}
 	shape := flat.source_type_shape(type_id)
-	syntax := flat.source_type_syntax(type_id)
 	if shape.has(.mutable_type) {
-		return flat.source_type_composition_one(.pointer, t.normalize_type_alias(syntax.raw_base))
-	}
-	if syntax.void_pointer_postfix {
-		return flat.source_type_composition_two(.concat, flat.source_type_voidptr, syntax.bracket_from)
+		return flat.source_type_composition_one(.pointer, t.normalize_type_alias(flat.source_type_syntax(type_id).raw_base))
 	}
 	if shape.has(.pointer) {
+		syntax := flat.source_type_syntax(type_id)
+		if syntax.void_pointer_postfix {
+			return flat.source_type_composition_two(.concat, flat.source_type_voidptr, syntax.bracket_from)
+		}
 		return flat.source_type_composition_one(.pointer, t.normalize_type_alias(syntax.raw_base))
 	}
 	if shape.has(.array_type) {
-		return flat.source_type_composition_one(.array, t.normalize_type_alias(syntax.raw_base))
+		return flat.source_type_composition_one(.array, t.normalize_type_alias(flat.source_type_syntax(type_id).raw_base))
 	}
 	if shape.has(.channel_type) {
-		return flat.source_type_composition_one(.channel, t.normalize_type_alias(syntax.raw_base))
+		return flat.source_type_composition_one(.channel, t.normalize_type_alias(flat.source_type_syntax(type_id).raw_base))
 	}
 	if shape.has(.leading_bracket) {
+		syntax := flat.source_type_syntax(type_id)
 		if !syntax.first_bracket_closed { return type_id }
 		return flat.source_type_composition_two(.concat, syntax.first_bracket_prefix, t.normalize_type_alias(syntax.first_bracket_base))
 	}
-	if shape.has(.map_type) && syntax.bracket_closed {
-		key := t.normalize_type_alias(syntax.bracket_raw_inner)
-		value := t.normalize_type_alias(syntax.raw_base)
-		return flat.source_type_composition_two(.map, key, value)
+	if shape.has(.map_type) {
+		syntax := flat.source_type_syntax(type_id)
+		if syntax.bracket_closed {
+			key := t.normalize_type_alias(syntax.bracket_raw_inner)
+			value := t.normalize_type_alias(syntax.raw_base)
+			return flat.source_type_composition_two(.map, key, value)
+		}
 	}
 	if shape.has(.option_type) {
-		return flat.source_type_composition_one(.option, t.normalize_type_alias(syntax.raw_base))
+		return flat.source_type_composition_one(.option, t.normalize_type_alias(flat.source_type_syntax(type_id).raw_base))
 	}
 	if shape.has(.result_type) {
-		return flat.source_type_composition_one(.result, t.normalize_type_alias(syntax.raw_base))
+		return flat.source_type_composition_one(.result, t.normalize_type_alias(flat.source_type_syntax(type_id).raw_base))
 	}
 	typ := flat.source_type_name(type_id)
 	if expanded_source_id := t.expand_generic_type_alias(type_id) {
@@ -1548,6 +1555,7 @@ fn (t &Transformer) type_aliases_with_short_name(short string) []TypeAliasEntry 
 }
 
 fn (t &Transformer) expand_generic_type_alias(typ_id u32) ?u32 {
+	if !flat.source_type_shape(typ_id).has(.bracketed) { return none }
 	syntax := flat.source_type_syntax(typ_id)
 	if !syntax.generic_app_valid || syntax.generic_app_args().len == 0 { return none }
 	base := syntax.generic_app_base

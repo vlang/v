@@ -601,11 +601,21 @@ fn test_source_type_syntax_fixed_array_codec_metadata() {
 }
 
 fn test_source_type_syntax_legacy_mut_character_set_trim() {
-	assert source_type_syntax(source_type_id('mut Thing')).mut_chars_base == source_type_id('Thing')
-	assert source_type_syntax(source_type_id('tuple')).mut_chars_base == source_type_id('ple')
-	assert source_type_syntax(source_type_id('u8')).mut_chars_base == source_type_id('8')
-	assert source_type_syntax(source_type_id('mut')).mut_chars_base == 0
-	assert source_type_syntax(source_type_id('Thing')).mut_chars_base == source_type_id('Thing')
+	assert source_type_syntax(source_type_id('mut Thing')).mut_chars_base() == source_type_id('Thing')
+	assert source_type_syntax(source_type_id('tuple')).mut_chars_base() == source_type_id('ple')
+	assert source_type_syntax(source_type_id('u8')).mut_chars_base() == source_type_id('8')
+	assert source_type_syntax(source_type_id('mut')).mut_chars_base() == 0
+	assert source_type_syntax(source_type_id('Thing')).mut_chars_base() == source_type_id('Thing')
+	for raw in ['', ' ', 'mut', 'tumu  ', 'main.Foo', 'time.Time', 'tuple', 'u8', 'mut Thing',
+		' mut &Thing', 'mut\tThing', '\tmut Thing', '\nmut Thing', 'émut', 'mut[broken', 't!',
+		'u?T', 'm_t', 'mutmutThing', 'Thingmut'] {
+		syntax := source_type_syntax(source_type_id(raw))
+		expected := source_type_id(raw.trim_left('mut '))
+		assert syntax.mut_chars_base() == expected
+		assert syntax.mut_chars_base() == expected
+	}
+	zero := SourceTypeSyntax{}
+	assert zero.mut_chars_base() == 0
 }
 
 fn test_source_type_cached_pair_predicates_preserve_exact_queries() {
@@ -966,4 +976,188 @@ fn test_source_type_syntax_underscore_parts_outlive_the_creating_worker() {
 	syntax := source_type_syntax(id)
 	assert syntax.underscore_prefixes() == source_type_syntax_expected_underscore_parts(source_type_name(id), false)
 	assert syntax.underscore_suffixes() == source_type_syntax_expected_underscore_parts(source_type_name(id), true)
+}
+
+fn source_type_syntax_expected_flattened_receiver_parts(text string) []u32 {
+	mut parts := []u32{}
+	mut start := 0
+	mut i := 0
+	for i < text.len {
+		if text[i] == `_` {
+			if i + 1 < text.len && text[i + 1] == `_` {
+				i += 2
+				continue
+			}
+			parts << source_type_id(text[start..i])
+			start = i + 1
+		}
+		i++
+	}
+	parts << source_type_id(text[start..])
+	return parts
+}
+
+fn test_source_type_syntax_lazy_flattened_receiver_parts_preserve_pair_skipping() {
+	for text in ['', 'Name', '_', '__', '___', '____', '_____', '_A__B___C_', '__A_B__',
+		' leading_name__tail_ ', 'pkg.Foo__Bar_Baz', '&?map[_K]fn (a__b) c_d[bad_'] {
+		syntax := source_type_syntax(source_type_id(text))
+		parts := syntax.flattened_receiver_parts()
+		assert parts == source_type_syntax_expected_flattened_receiver_parts(text)
+		assert parts.data == syntax.flattened_receiver_parts().data
+		mut changed_header := parts
+		changed_header.trim(0)
+		assert syntax.flattened_receiver_parts() == source_type_syntax_expected_flattened_receiver_parts(text)
+	}
+	zero := SourceTypeSyntax{}
+	assert zero.flattened_receiver_parts().len == 0
+	assert source_type_syntax(0).flattened_receiver_parts() == [u32(0)]
+}
+
+fn test_source_type_syntax_flattened_receiver_parts_are_independently_lazy() {
+	id := source_type_id('syntax_lazy_flattened__receiver_fresh_')
+	syntax := source_type_syntax(id)
+	slot := int(id & 4095)
+	assert isnil(source_type_syntax_flattened_receiver_find(slot, id))
+	parts := syntax.flattened_receiver_parts()
+	assert !isnil(source_type_syntax_flattened_receiver_find(slot, id))
+	assert parts == source_type_syntax_expected_flattened_receiver_parts(source_type_name(id))
+	assert isnil(source_type_syntax_underscore_find(source_type_syntax_underscore_slot(id, false), id, false))
+	assert isnil(source_type_syntax_underscore_find(source_type_syntax_underscore_slot(id, true), id, true))
+	plain_id := source_type_id('SyntaxLazyFlattenedReceiverNoSeparatorFresh')
+	plain := source_type_syntax(plain_id)
+	assert plain.flattened_receiver_parts() == [plain_id]
+	assert isnil(source_type_syntax_flattened_receiver_find(int(plain_id & 4095), plain_id))
+}
+
+fn source_type_syntax_flattened_receiver_worker(id u32) []u32 {
+	mut result := []u32{}
+	for _ in 0 .. 64 { result = source_type_syntax(id).flattened_receiver_parts() }
+	return result
+}
+
+fn test_source_type_syntax_flattened_receiver_parallel_publication_is_stable() {
+	id := source_type_id('syntax_lazy_flattened__parallel_fresh_')
+	mut threads := []thread []u32{}
+	for _ in 0 .. 8 { threads << spawn source_type_syntax_flattened_receiver_worker(id) }
+	for handle in threads {
+		parts := handle.wait()
+		expected := source_type_syntax(id).flattened_receiver_parts()
+		assert parts == expected
+		assert parts.data == expected.data
+	}
+}
+
+fn source_type_syntax_flattened_receiver_in_disposable_scope() u32 {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		id := source_type_id('syntax_lazy_flattened__arena_fresh_'.clone())
+		source_type_syntax(id).flattened_receiver_parts()
+		unsafe {
+			prealloc_scope_leave(scope)
+			prealloc_scope_free_after(scope)
+			prealloc_thread_cleanup()
+		}
+		return id
+	} $else {
+		id := source_type_id('syntax_lazy_flattened__arena_fresh_'.clone())
+		source_type_syntax(id).flattened_receiver_parts()
+		return id
+	}
+}
+
+fn test_source_type_syntax_flattened_receiver_parts_outlive_the_creating_worker() {
+	handle := spawn source_type_syntax_flattened_receiver_in_disposable_scope()
+	id := handle.wait()
+	assert source_type_syntax(id).flattened_receiver_parts() == source_type_syntax_expected_flattened_receiver_parts(source_type_name(id))
+}
+
+fn test_source_type_syntax_name_builder_singletons_have_process_owned_backing() {
+	for text in ['Name', 'T', '_name', 'pkg.Name', 'main.pkg_Name'] {
+		id := source_type_id(text)
+		parsed := source_type_syntax_parse(id, text)
+		entry := source_type_read_entry(id)
+		assert parsed.symbols == [id]
+		assert parsed.symbols.data == voidptr(&entry.id)
+		assert parsed.symbol_is_name == [true]
+		assert parsed.symbols_first_offsets == [u32(0)]
+		assert parsed.symbols_first_offsets.data == voidptr(&g_source_type_syntax_zero_offset)
+		syntax := source_type_syntax(id)
+		assert syntax.symbols() == [id]
+		assert syntax.symbol_is_name() == [true]
+		assert syntax.symbols_first_offsets() == [u32(0)]
+		assert syntax.symbols().data != parsed.symbols.data
+		assert syntax.symbol_is_name().data != parsed.symbol_is_name.data
+		assert syntax.symbols_first_offsets().data != parsed.symbols_first_offsets.data
+	}
+	for text in ['123', '123T', '123_T'] {
+		id := source_type_id(text)
+		parsed := source_type_syntax_parse(id, text)
+		expected_parts, expected_names := source_type_syntax_symbol_parts(text)
+		assert parsed.symbol_parts == expected_parts
+		assert parsed.symbol_is_name == expected_names
+	}
+}
+
+fn source_type_syntax_name_singletons_in_disposable_scope() u32 {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		id := source_type_id('SyntaxNameSingletonArenaFresh'.clone())
+		parsed := source_type_syntax_parse(id, source_type_name(id))
+		assert parsed.symbols[0] == id
+		source_type_syntax(id)
+		unsafe {
+			prealloc_scope_leave(scope)
+			prealloc_scope_free_after(scope)
+			prealloc_thread_cleanup()
+		}
+		return id
+	} $else {
+		id := source_type_id('SyntaxNameSingletonArenaFresh'.clone())
+		source_type_syntax(id)
+		return id
+	}
+}
+
+fn test_source_type_syntax_name_singleton_payloads_outlive_creating_worker() {
+	handle := spawn source_type_syntax_name_singletons_in_disposable_scope()
+	id := handle.wait()
+	syntax := source_type_syntax(id)
+	assert syntax.symbols() == [id]
+	assert syntax.symbol_is_name() == [true]
+	assert syntax.symbols_first_offsets() == [u32(0)]
+}
+
+fn source_type_syntax_expected_open_receiver_marker(raw string) bool {
+	markers := ['T', 'U', 'K', 'V', 'A', 'B', 'C', 'X', 'Y', 'Z']
+	if raw.contains('[') {
+		for marker in markers {
+			if raw.contains('[${marker}]') || raw.contains('[${marker},')
+				|| raw.contains(', ${marker}]') || raw.contains(',${marker}]') {
+				return true
+			}
+		}
+	}
+	for part in raw.split('_') {
+		if part in markers { return true }
+	}
+	return false
+}
+
+fn test_source_type_syntax_open_receiver_marker_preserves_raw_patterns() {
+	for raw in ['', 'T', 'Q', 'TT', '_T_', '__T__', 'a__T__b', 'a_Tx', ' T ', '[T]', '[T,', ',T]',
+		', T]', ',  T]', ',T][', ', T][', 'T,][', '[Q]', 'Box[Q,T]', 'Box[Q, T]', 'Box[Q,  T]',
+		'[Tq]', '[T,broken', 'pkg.Name_T', 'pkg.T', 'pkg.Name__T_more', 'é_T_é', '\tT', 'a___T___b'] {
+		expected := source_type_syntax_expected_open_receiver_marker(raw)
+		assert source_type_syntax_open_generic_receiver_marker(raw) == expected
+		assert source_type_syntax(source_type_id(raw)).open_generic_receiver_marker == expected
+	}
+	for marker in ['T', 'U', 'K', 'V', 'A', 'B', 'C', 'X', 'Y', 'Z', 'Q', 't', 'é'] {
+		for prefix in ['', '_', '__', '[', ',', ', ', ',  ', 'pkg.', 'a_'] {
+			for suffix in ['', '_', '__', ']', ',', '][', '_b', 'x]'] {
+				raw := prefix + marker + suffix
+				assert source_type_syntax_open_generic_receiver_marker(raw) ==
+					source_type_syntax_expected_open_receiver_marker(raw)
+			}
+		}
+	}
 }

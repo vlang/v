@@ -16999,6 +16999,7 @@ fn inferred_anonymous_struct_placeholder_id(typ_id u32) bool {
 			return inferred_anonymous_struct_placeholder_id(syntax.raw_base)
 		}
 	}
+	if !shape.has(.dotted) { return clean_id == generic_anonymous_struct_type_id }
 	return flat.source_type_syntax(clean_id).unqualified == generic_anonymous_struct_type_id
 }
 

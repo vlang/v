@@ -17698,16 +17698,19 @@ fn (tc &TypeChecker) type_name_known(typ_id u32) bool {
 		return true
 	}
 	typ := flat.source_type_name(typ_id)
-	if flat.source_type_syntax(typ_id).c_qualified
+	if flat.source_type_query(typ_id).has(.c_prefix)
 		|| (tc.is_js_backend && typ_id == checker_source_js_number) || tc.active_generic_param(typ) {
 		return true
 	}
-	generic_base_id := flat.source_type_syntax(typ_id).generic_base
-	if !flat.source_type_shape(typ_id).has(.leading_bracket) && generic_base_id != typ_id {
-		return tc.type_name_known(generic_base_id)
+	shape := flat.source_type_shape(typ_id)
+	if shape.has(.bracketed) && !shape.has(.leading_bracket) {
+		generic_base_id := flat.source_type_syntax(typ_id).generic_base
+		if generic_base_id != typ_id {
+			return tc.type_name_known(generic_base_id)
+		}
 	}
 	qtyp := flat.source_type_name(tc.qualify_type_name(typ_id))
-	if !flat.source_type_shape(typ_id).has(.dotted) {
+	if !shape.has(.dotted) {
 		if resolved := tc.resolve_selective_import_type_symbol(typ) {
 			return tc.type_symbol_known(resolved)
 		}

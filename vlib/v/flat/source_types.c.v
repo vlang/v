@@ -544,9 +544,5 @@ pub fn source_type_shape(id u32) SourceTypeShape {
 @[inline]
 pub fn source_type_query(id u32) SourceTypeQuery {
 	if id == 0 { return .complete }
-	table := source_type_table_load()
-	if isnil(table) || id > C.atomic_load_u32(&table.count) {
-		panic('invalid source type ID')
-	}
-	return source_type_entry(table, id).query
+	return source_type_read_entry(id).query
 }
