@@ -259,6 +259,25 @@ fn fn_type_return_type_text(typ_id u32) ?u32 {
 
 // is_known_fn_name reports whether is known fn name applies in transform.
 fn (t &Transformer) is_known_fn_name(name string) bool {
+	if isnil(t.fn_return_name_cache) || name.len == 0 {
+		return t.is_known_fn_name_uncached(name)
+	}
+	mut cache := t.fn_return_name_cache
+	t.sync_fn_signature_snapshot(mut cache)
+	n := uint(name.len)
+	slot := int((n * 31 + uint(name[0]) * 7 + uint(name[n / 2]) * 3 + uint(name[n - 1]) +
+		(uint(name[(n * 3) / 4]) << 4)) & 511)
+	state := cache.known_states[slot]
+	if state != 0 && same_transform_text(cache.known_names[slot], name) {
+		return state > 0
+	}
+	known := t.is_known_fn_name_uncached(name)
+	cache.known_names[slot] = name
+	cache.known_states[slot] = if known { i8(1) } else { i8(-1) }
+	return known
+}
+
+fn (t &Transformer) is_known_fn_name_uncached(name string) bool {
 	if name in t.fn_ret_types.ids {
 		return true
 	}
@@ -266,6 +285,28 @@ fn (t &Transformer) is_known_fn_name(name string) bool {
 		return name in t.tc.fn_ret_types || name in t.tc.fn_param_types
 	}
 	return false
+}
+
+// sync_fn_signature_snapshot drops signature-membership memos when the
+// transformer or checker signature maps changed. Those maps only grow between
+// checker revision bumps, so their sizes identify a snapshot.
+@[inline]
+fn (t &Transformer) sync_fn_signature_snapshot(mut cache FnReturnNameCache) {
+	tc_ptr := voidptr(t.tc)
+	tc_revision := if isnil(t.tc) { u64(0) } else { t.tc.fn_ret_types_revision }
+	tc_rets := if isnil(t.tc) { 0 } else { t.tc.fn_ret_types.len }
+	tc_params := if isnil(t.tc) { 0 } else { t.tc.fn_param_types.len }
+	if cache.array_method_rets != t.fn_ret_types.ids.len || cache.array_method_tc != tc_ptr
+		|| cache.array_method_revision != tc_revision || cache.array_method_tc_rets != tc_rets
+		|| cache.array_method_params != tc_params {
+		cache.array_method_states = [32]i8{}
+		cache.known_states = [512]i8{}
+		cache.array_method_rets = t.fn_ret_types.ids.len
+		cache.array_method_tc = tc_ptr
+		cache.array_method_revision = tc_revision
+		cache.array_method_tc_rets = tc_rets
+		cache.array_method_params = tc_params
+	}
 }
 
 // resolve_receiver_method_name resolves resolve receiver method name information for transform.
@@ -413,6 +454,21 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type_id u32, metho
 			cache.fn_count = t.fn_ret_types.ids.len
 			cache.entries.clear()
 			cache.misses.clear()
+			cache.front_generation++
+		}
+		front_slot := if method.len == 0 {
+			int(receiver_type_id & 255)
+		} else {
+			int((receiver_type_id * 13 + u32(method.len) * 7 + u32(method[0]) +
+				u32(method[method.len - 1]) * 3) & 255)
+		}
+		if cache.front_generations[front_slot] == cache.front_generation
+			&& cache.front_types[front_slot] == receiver_type_id
+			&& same_transform_text(cache.front_methods[front_slot], method) {
+			if cache.front_states[front_slot] > 0 {
+				return cache.front_results[front_slot]
+			}
+			return none
 		}
 		method_id := cache.methods[method] or {
 			id := u32(cache.methods.len + 1)
@@ -420,16 +476,33 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type_id u32, metho
 			id
 		}
 		key := u64(receiver_type_id) << 32 | u64(method_id)
-		if cached := cache.entries[key] { return cached }
-		if cache.misses[key] { return none }
+		if cached := cache.entries[key] {
+			cache.set_front(front_slot, receiver_type_id, method, cached, true)
+			return cached
+		}
+		if cache.misses[key] {
+			cache.set_front(front_slot, receiver_type_id, method, '', false)
+			return none
+		}
 		if resolved := t.resolve_receiver_method_for_type_uncached(receiver_type_id, method) {
 			cache.entries[key] = resolved
+			cache.set_front(front_slot, receiver_type_id, method, resolved, true)
 			return resolved
 		}
 		cache.misses[key] = true
+		cache.set_front(front_slot, receiver_type_id, method, '', false)
 		return none
 	}
 	return t.resolve_receiver_method_for_type_uncached(receiver_type_id, method)
+}
+
+@[inline]
+fn (mut cache ReceiverMethodCache) set_front(slot int, receiver_type_id u32, method string, result string, found bool) {
+	cache.front_generations[slot] = cache.front_generation
+	cache.front_types[slot] = receiver_type_id
+	cache.front_methods[slot] = method
+	cache.front_results[slot] = result
+	cache.front_states[slot] = if found { i8(1) } else { i8(-1) }
 }
 
 fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type_id u32, method string) ?string {
@@ -13099,20 +13172,7 @@ fn (t &Transformer) array_builtin_method_name(method string) ?string {
 		return none
 	}
 	mut cache := t.fn_return_name_cache
-	tc_ptr := voidptr(t.tc)
-	tc_revision := if isnil(t.tc) { u64(0) } else { t.tc.fn_ret_types_revision }
-	tc_rets := if isnil(t.tc) { 0 } else { t.tc.fn_ret_types.len }
-	tc_params := if isnil(t.tc) { 0 } else { t.tc.fn_param_types.len }
-	if cache.array_method_rets != t.fn_ret_types.ids.len || cache.array_method_tc != tc_ptr
-		|| cache.array_method_revision != tc_revision || cache.array_method_tc_rets != tc_rets
-		|| cache.array_method_params != tc_params {
-		cache.array_method_states = [32]i8{}
-		cache.array_method_rets = t.fn_ret_types.ids.len
-		cache.array_method_tc = tc_ptr
-		cache.array_method_revision = tc_revision
-		cache.array_method_tc_rets = tc_rets
-		cache.array_method_params = tc_params
-	}
+	t.sync_fn_signature_snapshot(mut cache)
 	slot := int((uint(method.len) * 7 + uint(method[0]) + uint(method[method.len - 1])) & 31)
 	if cache.array_method_states[slot] != 0 && cache.array_methods[slot] == method {
 		if cache.array_method_states[slot] < 0 {

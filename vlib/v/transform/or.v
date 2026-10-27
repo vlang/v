@@ -77,18 +77,29 @@ fn (mut t Transformer) enum_from_string_member_value(info EnumFromStringInfo, me
 fn (t &Transformer) optional_base_type(typ_id u32) u32 {
 	if !flat.source_type_shape(typ_id).has(.optional) { return typ_id }
 	if !isnil(t.alias_cache) {
-		if base := t.alias_cache.optional_bases[typ_id] { return base }
+		mut cache := t.alias_cache
+		slot := typ_id & 255
+		if cache.optional_keys[slot] == typ_id {
+			return cache.optional_vals[slot]
+		}
+		base := cache.optional_bases[typ_id] or {
+			computed := if typ_id in [transform_identity_bare_result, transform_identity_bare_option] {
+				flat.source_type_void
+			} else {
+				flat.source_type_syntax(typ_id).raw_base()
+			}
+			cache.optional_bases[typ_id] = computed
+			computed
+		}
+		cache.optional_keys[slot] = typ_id
+		cache.optional_vals[slot] = base
+		return base
 	}
-	base := if typ_id in [transform_identity_bare_result, transform_identity_bare_option] {
+	return if typ_id in [transform_identity_bare_result, transform_identity_bare_option] {
 		flat.source_type_void
 	} else {
 		flat.source_type_syntax(typ_id).raw_base()
 	}
-	if !isnil(t.alias_cache) {
-		mut cache := t.alias_cache
-		cache.optional_bases[typ_id] = base
-	}
-	return base
 }
 
 // array_index_info supports array index info handling for Transformer.

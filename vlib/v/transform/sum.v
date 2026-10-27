@@ -38,14 +38,19 @@ fn (mut t Transformer) mark_sum_moving_read(source flat.NodeId, value flat.NodeI
 fn (t &Transformer) trim_pointer_type(typ_id u32) u32 {
 	if !flat.source_type_shape(typ_id).has(.pointer) { return typ_id }
 	if !isnil(t.alias_cache) {
-		if base := t.alias_cache.pointer_bases[typ_id] { return base }
-	}
-	base := flat.source_type_syntax(typ_id).raw_base()
-	if !isnil(t.alias_cache) {
 		mut cache := t.alias_cache
-		cache.pointer_bases[typ_id] = base
+		slot := typ_id & 1023
+		if cache.pointer_keys[slot] == typ_id { return cache.pointer_vals[slot] }
+		base := cache.pointer_bases[typ_id] or {
+			computed := flat.source_type_syntax(typ_id).raw_base()
+			cache.pointer_bases[typ_id] = computed
+			computed
+		}
+		cache.pointer_keys[slot] = typ_id
+		cache.pointer_vals[slot] = base
+		return base
 	}
-	return base
+	return flat.source_type_syntax(typ_id).raw_base()
 }
 
 fn (t &Transformer) trim_all_pointer_type(typ_id u32) u32 {

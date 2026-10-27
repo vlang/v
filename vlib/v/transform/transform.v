@@ -780,9 +780,15 @@ mut:
 	canonical_types    [1024]u32
 	optional_bases     map[u32]u32
 	pointer_bases      map[u32]u32
-	shared_bases       map[u32]u32
-	variadic_arrays    map[u32]u32
-	entries            map[u32]u32
+	// Direct-mapped fronts for the pure pointer/optional base maps above.
+	// Type id 0 is never stored, so zeroed keys mark empty slots.
+	pointer_keys    [1024]u32
+	pointer_vals    [1024]u32
+	optional_keys   [256]u32
+	optional_vals   [256]u32
+	shared_bases    map[u32]u32
+	variadic_arrays map[u32]u32
+	entries         map[u32]u32
 }
 
 // Field lookups alternate between owner modules within one source file. Keep
@@ -1183,6 +1189,14 @@ mut:
 	entries  map[u64]string
 	misses   map[u64]bool
 	methods  map[string]u32
+	// Direct-mapped front keyed by (type, borrowed method spelling). A slot is
+	// valid only while its generation matches front_generation.
+	front_generation  u32 = 1
+	front_types       [256]u32
+	front_methods     [256]string
+	front_results     [256]string
+	front_states      [256]i8
+	front_generations [256]u32
 }
 
 // PromoteTextCache short-circuits repeated promote_scoped_result_text calls on
@@ -1528,6 +1542,10 @@ mut:
 	array_method_rets     int = -1
 	array_method_tc_rets  int
 	array_method_params   int
+	// is_known_fn_name results, keyed by borrowed fn name spellings and
+	// invalidated with the same signature snapshot as the array methods.
+	known_names  [512]string
+	known_states [512]i8
 }
 
 fn new_fn_return_name_cache() &FnReturnNameCache {
@@ -1546,6 +1564,11 @@ fn (t &Transformer) clear_fn_return_name_cache() {
 		cache.states = [128]i8{}
 		cache.count = -1
 		cache.array_method_states = [32]i8{}
+		cache.known_states = [512]i8{}
+	}
+	if !isnil(t.receiver_method_cache) {
+		mut receiver_cache := t.receiver_method_cache
+		receiver_cache.front_generation++
 	}
 }
 
