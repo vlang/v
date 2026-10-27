@@ -11100,8 +11100,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		t.var_type_undo_active = previous_var_undo
 	}
 	// A nested reflected loop can append nodes while an ancestor is being scanned.
-	node_storage := t.a.nodes[int(id)]
-	node := &node_storage
+	node := t.a.nodes[int(id)]
 	if node.kind in [.if_expr, .comptime_if, .match_stmt, .match_branch, .for_stmt, .select_stmt] {
 		// These hold declarations scoped to them outside of a block: the statements of a
 		// match branch and of a `for i := 0; ...` or `for cond` loop, and the binding of an
@@ -11113,7 +11112,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		// The `else` of an `if x := res()` guard binds the error as `err`, which is only
 		// declared when the branch is lowered.
 		is_guard := node.kind == .if_expr && node.children_count > 0
-			&& t.a.node(t.a.child(node, 0)).kind == .decl_assign
+			&& t.a.node(t.a.child(&node, 0)).kind == .decl_assign
 		mut previous_err_depth := -1
 		if is_guard {
 			previous_err_depth = t.escape_decl_depths['err'] or { -1 }
@@ -11123,7 +11122,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 			&& node.children_count > 0 {
 			// `Expr.Node(n)` binds `n` in the branch. Its declaration is only synthesized
 			// when the branch is lowered (see named_variant_binding_decls).
-			binding := t.named_variant_binding_name(t.a.child(node, 0))
+			binding := t.named_variant_binding_name(t.a.child(&node, 0))
 			if binding.len > 0 {
 				t.escape_decl_depths[binding] = t.escape_scope_depth
 			}
@@ -11135,7 +11134,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 			if i == body_start {
 				t.escape_scope_depth++
 			}
-			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 		}
 		if body_start < node.children_count {
 			t.escape_scope_depth--
@@ -11156,7 +11155,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		}
 		mut body_start := if node.value == 'else' { 0 } else { 1 }
 		if node.children_count >= 2 {
-			second := t.a.node(t.a.child(node, 1))
+			second := t.a.node(t.a.child(&node, 1))
 			if second.kind == .prefix && second.op == .arrow {
 				body_start = 2
 			}
@@ -11165,17 +11164,17 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 			if node.value == 'recv' && body_start == 2 && i == 0 {
 				continue
 			}
-			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 		}
 		if node.value == 'recv' && body_start == 2 {
-			lhs := t.a.child_node(node, 0)
+			lhs := t.a.child_node(&node, 0)
 			if lhs.kind == .ident && lhs.value_text().len > 0 && lhs.value_text() != '_' {
 				add_escape_local_stack_name(lhs.value_text(), mut local_stack_names, mut local_stack_added)
 				t.escape_decl_depths[lhs.value_text()] = t.escape_scope_depth
 			}
 		}
 		for i in body_start .. node.children_count {
-			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 		}
 		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 		return
@@ -11184,14 +11183,14 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		scope_mark := local_stack_added.len
 		t.escape_scope_depth++
 		for i in 0 .. node.children_count {
-			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
 		}
 		t.escape_scope_depth--
 		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 		return
 	}
 	if node.kind == .for_in_stmt {
-		t.scan_for_in_escape_pass(node, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
+		t.scan_for_in_escape_pass(&node, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
 		return
 	}
 	// Nested function bodies have their own frame and escape analysis. Their
@@ -11218,22 +11217,22 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
 		mut declared_names := []string{}
 		if node.kind == .decl_assign {
-			for lhs_id in t.multi_assign_lhs_ids(*node) {
+			for lhs_id in t.multi_assign_lhs_ids(node) {
 				lhs := t.a.nodes[int(lhs_id)]
 				if lhs.kind == .ident && lhs.value_text().len > 0 && lhs.value_text() != '_' {
 					declared_names << lhs.value_text()
 				}
 			}
 		}
-		lhs_count := t.multi_assign_lhs_count(*node)
-		rhs_count := t.multi_assign_rhs_count(*node)
+		lhs_count := t.multi_assign_lhs_count(node)
+		rhs_count := t.multi_assign_rhs_count(node)
 		pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
 		for i in 0 .. pair_count {
-			lhs := t.a.nodes[int(t.multi_assign_lhs_id(*node, i))]
-			rhs_id := t.multi_assign_rhs_id(*node, i)
+			lhs := t.a.nodes[int(t.multi_assign_lhs_id(node, i))]
+			rhs_id := t.multi_assign_rhs_id(node, i)
 			rhs := t.a.nodes[int(rhs_id)]
 			if node.kind == .decl_assign || (node.kind == .assign && node.op == .assign) {
-				stores << t.multi_assign_lhs_id(*node, i)
+				stores << t.multi_assign_lhs_id(node, i)
 				stores << rhs_id
 			}
 			mut lhs_marks_interface_box := false
@@ -11290,7 +11289,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 	}
 	if node.kind == .return_stmt {
 		for i in 0 .. node.children_count {
-			child_id := t.a.child(node, i)
+			child_id := t.a.child(&node, i)
 			boxed_pointer := t.return_slot_is_boxed_pointer(child_id)
 			if !boxed_pointer
 				&& t.return_slot_consumes_pointer_value(child_id, i, int(node.children_count)) {
@@ -11308,10 +11307,10 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		}
 	}
 	if node.kind == .infix && node.op == .left_shift && node.children_count == 2
-		&& t.escape_append_target_is_array(t.a.child(node, 0)) {
+		&& t.escape_append_target_is_array(t.a.child(&node, 0)) {
 		// `vals << &char(&num)`: the array keeps the appended address, and can outlive this
 		// stack frame (a `mut` parameter, a field, a global, a returned array).
-		for value_id in t.escape_value_tails(t.a.child(node, 1)) {
+		for value_id in t.escape_value_tails(t.a.child(&node, 1)) {
 			t.collect_return_escape_idents(value_id, mut returned)
 			for source_name in t.escape_aggregate_address_sources(value_id, amp_sources, ptr_aliases) {
 				t.escaping_amp_sources[source_name] = true
@@ -11319,20 +11318,20 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		}
 	}
 	if node.kind == .spawn_expr {
-		t.mark_spawn_argument_address_escapes(*node, amp_sources, ptr_aliases, local_stack_names)
+		t.mark_spawn_argument_address_escapes(node, amp_sources, ptr_aliases, local_stack_names)
 	}
 	if node.kind == .call && node.children_count > 0 {
 		for i in 1 .. node.children_count {
-			t.mark_callback_method_value_receiver_escape(t.a.child(node, i), amp_sources, ptr_aliases, local_stack_names)
+			t.mark_callback_method_value_receiver_escape(t.a.child(&node, i), amp_sources, ptr_aliases, local_stack_names)
 		}
-		t.mark_call_provenance_argument_escapes(id, *node, amp_sources, ptr_aliases)
-		t.mark_implicit_voidptr_argument_escapes(id, *node, local_stack_names)
-		t.mark_fixed_array_reference_argument_escapes(id, *node, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
+		t.mark_call_provenance_argument_escapes(id, node, amp_sources, ptr_aliases)
+		t.mark_implicit_voidptr_argument_escapes(id, node, local_stack_names)
+		t.mark_fixed_array_reference_argument_escapes(id, node, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
 		&& node.children_count == 2 {
-		lhs_id := t.a.child(node, 0)
-		rhs_id := t.a.child(node, 1)
+		lhs_id := t.a.child(&node, 0)
+		rhs_id := t.a.child(&node, 1)
 		lhs_root := t.escape_address_root_name(lhs_id) or { '' }
 		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
 			if source_name == lhs_root && source_name in local_stack_names {
@@ -11357,7 +11356,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		}
 	}
 	for i in 0 .. node.children_count {
-		t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
+		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
 	}
 	for k, name in assigned_value_names {
 		for source_name in t.escape_aggregate_address_sources(assigned_value_ids[k], amp_sources, ptr_aliases) {
