@@ -13414,6 +13414,17 @@ pub fn run(args []string) {
 		[]string{}
 	}
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
+	if backend == 'arm64' {
+		live_reload_source := v3_live_reload_source(p.a, input_file, prefs.vexe, v3_live_rebuild_options(args, prefs.vexe, prefs.module_search_paths))
+		if live_reload_source != '' {
+			live_reload_file := os.join_path(os.vtmp_dir(), 'v3_live_reload_${os.getpid()}.v')
+			os.write_file(live_reload_file, live_reload_source) or {
+				eprintln(err)
+				exit(1)
+			}
+			parse_files_dispatch_profiled(mut p, [live_reload_file], false, mut parse_timing)
+		}
+	}
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
 		&& parsed_files_import_linux_gg(mut a, user_files) {

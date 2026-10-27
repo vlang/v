@@ -195,6 +195,11 @@ mut:
 	alias_method_candidates_ready bool
 	globals                       flat.TypeTextBindings
 	global_qualified_names        map[string][]string
+	// live reload metadata collected from @[live] function attributes.
+	live_fns                      map[string]string
+	live_methods                  map[string]string
+	live_source_file              string
+	live_reload_runtime           bool
 	sum_types                     flat.TypeTextListBindings
 	sum_variant_parents           map[u32][]u32
 	sum_variant_names             map[u32]bool
@@ -4479,7 +4484,50 @@ fn (t &Transformer) normalize_sum_variant_type(typ_id u32, mod string, generic_p
 fn (mut t Transformer) transform_all() {
 	mut has_entry_main := false
 	mut entry_module := ''
+	t.live_fns = map[string]string{}
+	t.live_methods = map[string]string{}
+	t.live_source_file = ''
+	t.live_reload_runtime = false
 	node_count := t.a.nodes.len
+	mut mutable_cur_file := ''
+	mut mutable_cur_module := ''
+	for i in 0 .. node_count {
+		node := t.a.nodes[i]
+		kind_id := int(node.kind)
+		if kind_id == 77 {
+			mutable_cur_file = node.value_text()
+			mutable_cur_module = ''
+		}
+		if kind_id == 73 {
+			mutable_cur_module = node.value_text()
+		}
+		if node.kind == .global_decl {
+			for ci in 0 .. node.children_count {
+				child := t.a.child_node(&node, ci)
+				if child.kind == .field_decl && child.value_text() == '__live_mtime' {
+					t.live_reload_runtime = true
+				}
+			}
+		}
+		if node.kind == .directive && node.value.starts_with('@attributes:') {
+			target_idx := node.value['@attributes:'.len..].int()
+			if target_idx >= 0 && target_idx < node_count && t.a.nodes[target_idx].kind == .fn_decl {
+				attrs := node.generic_params()
+				if 'live' in attrs {
+					decl_name := t.a.nodes[target_idx].value_text()
+					mangled := decl_name.replace('.', '__')
+					if decl_name.contains('.') {
+						t.live_methods[decl_name.all_after_last('.')] = mangled
+					} else {
+						t.live_fns[decl_name] = mangled
+					}
+					if t.live_source_file == '' {
+						t.live_source_file = mutable_cur_file
+					}
+				}
+			}
+		}
+	}
 	mut transformed_count := 0
 	for i in 0 .. node_count {
 		node := t.a.nodes[i]
@@ -13849,6 +13897,68 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		}
 	}
 	node := t.a.nodes[int(id)]
+
+	if t.live_reload_runtime {
+		// Live reload: rewrite calls/references to @[live] functions into calls
+	// through their __live_<mangled> function pointers.
+	if node.kind == .call && node.children_count >= 1 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .ident {
+			if mangled := t.live_fns[callee.value_text()] {
+				mut args := []flat.NodeId{}
+				for i in 1 .. node.children_count {
+					arg := t.a.child(&node, i)
+					mut arg_node := t.a.nodes[int(arg)]
+					arg_node.is_mut = false
+					args << t.transform_expr(t.a.add_node(arg_node))
+				}
+				lhs := t.make_ident('__live_${mangled}')
+				t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
+				start := t.a.children.len
+				t.a.children << lhs
+				for arg_id in args {
+					t.a.children << arg_id
+				}
+				return t.a.add_node(flat.Node{
+					kind:           .call
+					children_start: start
+					children_count: flat.child_count(1 + args.len)
+				})
+			}
+		} else if callee.kind == .selector {
+			method_name := callee.value_text()
+			if mangled := t.live_methods[method_name] {
+				mut args := []flat.NodeId{}
+				receiver_id := t.a.child(callee, 0)
+				args << t.make_prefix(.amp, t.transform_expr(receiver_id))
+				for i in 1 .. node.children_count {
+					arg := t.a.child(&node, i)
+					mut arg_node := t.a.nodes[int(arg)]
+					arg_node.is_mut = false
+					args << t.transform_expr(t.a.add_node(arg_node))
+				}
+				lhs := t.make_ident('__live_${mangled}')
+				t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
+				start := t.a.children.len
+				t.a.children << lhs
+				for arg_id in args {
+					t.a.children << arg_id
+				}
+				return t.a.add_node(flat.Node{
+					kind:           .call
+					children_start: start
+					children_count: flat.child_count(1 + args.len)
+				})
+			}
+		}
+	}
+	if node.kind == .ident {
+		if mangled := t.live_fns[node.value_text()] {
+			id2 := t.make_ident('__live_${mangled}')
+			t.set_node_typ(int(id2), flat.source_type_id('voidptr'))
+			return id2
+		}
+	}
 	if node.kind == .string_literal && node.children_count == 1
 		&& node.value_text() in ['__v3_comptime_zero', '__v3_comptime_new'] {
 		if target_source_id := t.comptime_type_expr_type(t.a.child(&node, 0)) {
@@ -13860,6 +13970,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 				t.comptime_zero_value(target_source_id_2)
 			}
 		}
+	}
 	}
 	if optional_wrapper_access_marker in node.generic_params()
 		|| transformed_option_unwrap_access_marker in node.generic_params() {
