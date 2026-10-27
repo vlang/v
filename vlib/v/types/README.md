@@ -79,6 +79,9 @@ refer to the caller's payload. An explicit pointer payload keeps its declared po
 Intern new source text with `flat.source_type_id(text)` at a parsing boundary. An AST annotation
 already carries that ID in `node.typ`. Parsing still observes imports, generic bindings, and the
 declaration context; identical spelling IDs can resolve to different semantic types.
+Imported generic signatures retain caller-owned types inside callback signatures, channel
+payloads, and nested generic arguments. A same-named type declared by the imported module
+does not replace those caller types.
 `Type.source_type_id()`, `TypeChecker.type_name(value)`, and `type_name_by_id(id)` return spelling
 IDs. Resolve bytes with `flat.source_type_name(id)` for diagnostics, spelling syntax, or emission.
 Builtin spelling constants in `v.flat` avoid repeated interning of scalar names.

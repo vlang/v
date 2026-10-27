@@ -11430,6 +11430,31 @@ fn (tc &TypeChecker) explicit_generic_concrete_arg_text_bytes(type_arg string) s
 	if clean.starts_with('[]') {
 		return '[]' + tc.explicit_generic_concrete_arg_text_bytes(clean[2..])
 	}
+	for prefix in ['mut ', 'shared ', 'atomic ', 'chan mut ', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) {
+			return prefix + tc.explicit_generic_concrete_arg_text_bytes(clean[prefix.len..])
+		}
+	}
+	if is_fn_type_text(clean) {
+		if params, ret := fn_type_text_parts(clean) {
+			mut qualified_params := []string{cap: params.len}
+			for param in params {
+				qualified_params << tc.explicit_generic_concrete_arg_text_bytes(normalize_fn_type_param_text_preserving_mut(param))
+			}
+			return 'fn (${qualified_params.join(', ')})' + if ret.len > 0 {
+				' ' + tc.explicit_generic_concrete_arg_text_bytes(ret)
+			} else {
+				''
+			}
+		}
+	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		mut qualified_parts := []string{}
+		for part in split_params(clean[1..clean.len - 1]) {
+			qualified_parts << tc.explicit_generic_concrete_arg_text_bytes(part)
+		}
+		return '(' + qualified_parts.join(', ') + ')'
+	}
 	if clean.starts_with('map[') {
 		close := find_matching_bracket(clean, 3)
 		if close > 3 && close + 1 < clean.len {
@@ -11443,6 +11468,14 @@ fn (tc &TypeChecker) explicit_generic_concrete_arg_text_bytes(type_arg string) s
 		if close > 0 && close + 1 < clean.len {
 			return clean[..close + 1] + tc.explicit_generic_concrete_arg_text_bytes(clean[close + 1..])
 		}
+	}
+	base, args, is_generic := generic_type_application_parts(clean)
+	if is_generic {
+		mut qualified_args := []string{cap: args.len}
+		for arg in args {
+			qualified_args << tc.explicit_generic_concrete_arg_text_bytes(arg)
+		}
+		return tc.explicit_generic_concrete_arg_text_bytes(base) + '[' + qualified_args.join(', ') + ']'
 	}
 	if !clean.contains('.') {
 		if tc.source_declares_type_in_scope(clean, tc.cur_file, tc.cur_module) {

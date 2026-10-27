@@ -21617,7 +21617,9 @@ fn (tc &TypeChecker) c_generic_struct_arg_name(arg string) string {
 			return fixed
 		}
 	}
-	if clean.contains('.') {
+	// A module separator inside a composite belongs to one of its components.
+	// Shortening the whole argument would turn `fn (mod.Row) mod.Row` into `Row`.
+	if clean.contains('.') && !clean.contains_any(' &?![](),') {
 		short := clean.all_after_last('.')
 		if target_source_id := tc.type_aliases.type_id(clean) {
 			target := flat.source_type_name(target_source_id)

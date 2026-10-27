@@ -10020,6 +10020,14 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg_id u32, call_module
 	arg_comparison_type_id_10 := arg_id
 	arg_source_id_8 := arg_comparison_type_id_10
 	arg := flat.source_type_name(arg_source_id_8)
+	if call_module in ['', 'main'] {
+		// Lock caller types inside composites before normalization in the callee
+		// module can bind their bare names to its own declarations.
+		locked := t.lock_colliding_main_generic_type_text(arg_id, decl_module)
+		if locked != arg_id {
+			return locked
+		}
+	}
 	if call_module in ['', 'main'] && !arg.contains('.') {
 		if info := t.structs[trimmed_transform_text(arg)] {
 			if info.module in ['', 'main'] {
@@ -15843,8 +15851,9 @@ fn (t &Transformer) lock_colliding_main_generic_type_text_bytes(typ string, modu
 			mut changed := false
 			mut locked_params := []string{cap: params.len}
 			for param in params {
-				locked := t.lock_colliding_main_generic_type_text_bytes(param, module_name)
-				if locked != trimmed_transform_text(param) {
+				payload := generic_fn_type_param_mode_payload(param)
+				locked := t.lock_colliding_main_generic_type_text_bytes(payload, module_name)
+				if locked != payload {
 					changed = true
 				}
 				locked_params << locked
@@ -16886,6 +16895,31 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 	}
 	if clean.starts_with('[]') {
 		return flat.source_type_id('[]' + flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id(clean[2..]))))
+	}
+	for prefix in ['chan ', 'thread '] {
+		if clean.starts_with(prefix) {
+			return flat.source_type_id(prefix + flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id(clean[prefix.len..]))))
+		}
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		params, ret := fn_type_text_parts(clean) or { return clean_id }
+		mut canonical_params := []string{cap: params.len}
+		for param in params {
+			canonical_params << flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id(generic_fn_type_param_mode_payload(param))))
+		}
+		canonical_ret := flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id(ret)))
+		return flat.source_type_id('fn (${canonical_params.join(', ')})' + if canonical_ret.len > 0 {
+			' ' + canonical_ret
+		} else {
+			''
+		})
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		mut parts := []string{}
+		for part in split_generic_args(clean[1..clean.len - 1]) {
+			parts << flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id(part)))
+		}
+		return flat.source_type_id('(' + parts.join(', ') + ')')
 	}
 	// A fixed array can reach a second inference pass through its lowered C-name
 	// spelling (`_3int`). Restore the source spelling before using it as a

@@ -1386,3 +1386,20 @@ fn test_forwarded_generic_call_keeps_caller_context_identity() {
 	t.substitute_cloned_generic_call_type_args(index, mut children, [flat.source_type_id('Context')])
 	assert t.a.node(children[1]).value_text() == 'main.Context'
 }
+
+fn test_composite_generic_arguments_keep_callback_shape_and_modes() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Row'] = []types.StructField{}
+	tc.structs['callee.Row'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Row'] = StructInfo{}
+	t.structs['callee.Row'] = StructInfo{ module: 'callee' }
+	t.qualified_types.set('Row', 'callee.Row')
+	assert flat.source_type_name(t.generic_arg_for_call_and_decl_module(flat.source_type_id('fn (row Row)'), 'main', 'callee')) == 'fn (main.Row)'
+	assert flat.source_type_name(t.generic_arg_for_call_and_decl_module(flat.source_type_id('fn (mut row Row, callee.Row) Row'), 'main', 'callee')) == 'fn (mut main.Row, callee.Row) main.Row'
+	assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id('fn (row callee.Row) callee.Row'))) == 'fn (callee.Row) callee.Row'
+	for spelling in ['fn (Row)', 'fn (mut Row)', 'fn (&Row)', 'chan Row', 'thread Row'] {
+		assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id(spelling))) == spelling
+	}
+}
