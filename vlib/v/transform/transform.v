@@ -4488,46 +4488,8 @@ fn (mut t Transformer) transform_all() {
 	t.live_methods = map[string]string{}
 	t.live_source_file = ''
 	t.live_reload_runtime = false
+	t.collect_live_functions()
 	node_count := t.a.nodes.len
-	mut mutable_cur_file := ''
-	mut mutable_cur_module := ''
-	for i in 0 .. node_count {
-		node := t.a.nodes[i]
-		kind_id := int(node.kind)
-		if kind_id == 77 {
-			mutable_cur_file = node.value_text()
-			mutable_cur_module = ''
-		}
-		if kind_id == 73 {
-			mutable_cur_module = node.value_text()
-		}
-		if node.kind == .global_decl {
-			for ci in 0 .. node.children_count {
-				child := t.a.child_node(&node, ci)
-				if child.kind == .field_decl && child.value_text() == 'live_mtime' {
-					t.live_reload_runtime = true
-				}
-			}
-		}
-		if node.kind == .directive && node.value.starts_with('@attributes:') {
-			target_idx := node.value['@attributes:'.len..].int()
-			if target_idx >= 0 && target_idx < node_count && t.a.nodes[target_idx].kind == .fn_decl {
-				attrs := node.generic_params()
-				if 'live' in attrs {
-					decl_name := t.a.nodes[target_idx].value_text()
-					mangled := decl_name.replace('.', '__')
-					if decl_name.contains('.') {
-						t.live_methods[decl_name.all_after_last('.')] = mangled
-					} else {
-						t.live_fns[decl_name] = mangled
-					}
-					if t.live_source_file == '' {
-						t.live_source_file = mutable_cur_file
-					}
-				}
-			}
-		}
-	}
 	mut transformed_count := 0
 	for i in 0 .. node_count {
 		node := t.a.nodes[i]
@@ -4736,6 +4698,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	dpsw.restart()
 	t.precompute_const_array_fixed_storage()
 	t.timing_profile('  [ttime]   dsp const fixed  ${f64(dpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	t.collect_live_functions()
 	dpsw.restart()
 	// Every forked worker checker otherwise lazily rebuilds the source-error
 	// embedding index by rescanning all struct declarations; build it once in
@@ -33052,4 +33015,49 @@ fn (mut cache EnumExpectedCache) key(typ u32, owner_module string, current_modul
 		id
 	}
 	return u64(typ) << 32 | u64(context)
+}
+
+// collect_live_functions records @[live] function metadata and whether the
+// generated native live-reload runtime is present in this AST.
+fn (mut t Transformer) collect_live_functions() {
+	t.live_fns = map[string]string{}
+	t.live_methods = map[string]string{}
+	t.live_source_file = ''
+	t.live_reload_runtime = false
+	node_count := t.a.nodes.len
+	mut mutable_cur_file := ''
+	mut mutable_cur_module := ''
+	for i in 0 .. node_count {
+		node := t.a.nodes[i]
+		kind_id := int(node.kind)
+		if kind_id == 77 {
+			mutable_cur_file = node.value_text()
+		}
+		if node.kind == .global_decl {
+			for ci in 0 .. node.children_count {
+				child := t.a.child_node(&node, ci)
+				if child.kind == .field_decl && child.value_text() == 'live_mtime' {
+					t.live_reload_runtime = true
+				}
+			}
+		}
+		if node.kind == .directive && node.value.starts_with('@attributes:') {
+			target_idx := node.value['@attributes:'.len..].int()
+			if target_idx >= 0 && target_idx < node_count && t.a.nodes[target_idx].kind == .fn_decl {
+				attrs := node.generic_params()
+				if 'live' in attrs {
+					decl_name := t.a.nodes[target_idx].value_text()
+					mangled := decl_name.replace('.', '__')
+					if decl_name.contains('.') {
+						t.live_methods[decl_name.all_after_last('.')] = mangled
+					} else {
+						t.live_fns[decl_name] = mangled
+					}
+					if t.live_source_file == '' {
+						t.live_source_file = mutable_cur_file
+					}
+				}
+			}
+		}
+	}
 }
