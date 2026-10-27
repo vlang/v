@@ -70,9 +70,9 @@ fn testsuite_begin() {
 	os.write_file(os.join_path(vtmp_folder, 'v.mod'), '')!
 	os.cp(os.join_path(os.dir(@FILE), 'live_test_template_main.vv'), os.join_path(vtmp_folder,
 		'main.v'))!
-	if os.user_os() !in ['linux', 'macos', 'solaris', 'windows'] && os.getenv('FORCE_LIVE_TEST').len == 0 {
+	if os.user_os() !in ['linux', 'macos', 'solaris'] && os.getenv('FORCE_LIVE_TEST').len == 0 {
 		eprintln('Testing the runtime behaviour of -live mode,')
-		eprintln('is reliable only on Linux/macOS/Windows for now.')
+		eprintln('is reliable only on Linux/macOS for now.')
 		eprintln('You can still do it by setting FORCE_LIVE_TEST=1 .')
 		exit(0)
 	}
