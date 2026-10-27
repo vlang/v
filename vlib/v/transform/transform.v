@@ -18888,14 +18888,14 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 			return t.make_optional_none_with_err(optional_target_id, expr)
 		}
 	}
-	if t.is_optional_type_name(optional_target_id) && int(expr) >= 0 && int(expr) < t.a.nodes.len {
+	if optional_target_shape.has(.optional) && int(expr) >= 0 && int(expr) < t.a.nodes.len {
 		raw_expr_type_source_id := t.a.nodes[int(expr)].typ
 
 		if t.is_optional_type_name(raw_expr_type_source_id) {
 			return expr
 		}
 	}
-	if t.is_optional_type_name(optional_target_id) && !t.is_optional_type_name(expr_type_id) {
+	if optional_target_shape.has(.optional) && !expr_shape.has(.optional) {
 		source := if int(source_id) >= 0 { t.a.nodes[int(source_id)] } else { flat.Node{} }
 		if source.kind != .none_expr {
 			payload_type_source_id := t.optional_base_type(optional_target_id)
@@ -18974,7 +18974,8 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 				return current
 			}
 		}
-		target_value_type_source_id := t.normalize_type_alias(flat.source_type_syntax(target_id).raw_base)
+		target_syntax := flat.source_type_syntax(target_id)
+		target_value_type_source_id := t.normalize_type_alias(target_syntax.raw_base)
 		expr_value_type := (if expr_shape.has(.pointer) {
 			t.normalize_type_alias(flat.source_type_syntax(expr_type_id).raw_base)
 		} else {
@@ -19004,7 +19005,7 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 			return t.heap_value(wrapped, target_value_type_source_id)
 		}
 		if expr_value_type == target_value_type_source_id
-			|| t.type_alias_targets_type(flat.source_type_syntax(target_id).raw_base, expr_value_type) {
+			|| t.type_alias_targets_type(target_syntax.raw_base, expr_value_type) {
 			if expr_shape.has(.pointer) {
 				return expr
 			}
@@ -19026,9 +19027,10 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		return t.make_cast(target_id, expr, target_id)
 	}
 	if expr_shape.has(.pointer) {
-		expr_value_type_comparison_type_id := t.normalize_type_alias(flat.source_type_syntax(expr_type_id).raw_base)
+		expr_syntax := flat.source_type_syntax(expr_type_id)
+		expr_value_type_comparison_type_id := t.normalize_type_alias(expr_syntax.raw_base)
 
-		if expr_value_type_comparison_type_id == target_comparison_type_id_2 || t.type_alias_targets_type(flat.source_type_syntax(expr_type_id).raw_base, target_comparison_type_id_2) {
+		if expr_value_type_comparison_type_id == target_comparison_type_id_2 || t.type_alias_targets_type(expr_syntax.raw_base, target_comparison_type_id_2) {
 			if nil_value := t.nil_pointer_address_value(expr, target_id) {
 				return nil_value
 			}

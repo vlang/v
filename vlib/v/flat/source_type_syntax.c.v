@@ -852,7 +852,8 @@ struct SourceTypeSyntaxParsed {
 	bracket_source_inner               u32
 	symbol_parts                       []u32  = source_type_syntax_empty_ids()
 	symbol_is_name                     []bool = source_type_syntax_empty_bools()
-	dotted_parts                       []u32  = source_type_syntax_empty_ids()
+	symbol_is_name_singleton           bool
+	dotted_parts                       []u32 = source_type_syntax_empty_ids()
 	c_fixed_typedef_element            u32
 	c_fixed_typedef_length             u32
 	c_fixed_typedef_valid              bool
@@ -1439,7 +1440,7 @@ fn source_type_predicate_find(slot int, actual u32, parameter u32, kind SourceTy
 
 // source_type_syntax returns process-owned numeric spelling components. A cache
 // hit addresses immutable components by ID without reading spelling bytes.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn source_type_syntax(id u32) &SourceTypeSyntax {
 	cached := source_type_syntax_find(id)
 	if !isnil(cached) {
@@ -1571,8 +1572,9 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 		source_type_syntax_packed_ids_len(parsed.markused_generic_components, id) +
 		source_type_syntax_packed_ids_len(parsed.raw_tuple_parse_components, id) +
 		source_type_syntax_packed_ids_len(parsed.union_parts, id)
+	bool_count := if parsed.symbol_is_name_singleton { 1 } else { parsed.symbol_is_name.len }
 	payload_bytes := u64(sizeof(SourceTypeSyntaxEntry)) + u64(id_count) * u64(sizeof(u32)) +
-		u64(parsed.symbol_is_name.len) * u64(sizeof(bool))
+		u64(bool_count) * u64(sizeof(bool))
 	if payload_bytes > u64(0x7fffffff) {
 		panic('source type syntax components exceed the allocation limit')
 	}
@@ -1717,7 +1719,7 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 				map_function_fragment:               parsed.map_function_fragment
 				bracket_source_inner:                parsed.bracket_source_inner
 				symbol_parts_span:                   source_type_syntax_owned_ids(parsed.symbol_parts, mut payload)
-				symbol_is_name_span:                 source_type_syntax_owned_bools(parsed.symbol_is_name, mut payload)
+				symbol_is_name_span:                 source_type_syntax_owned_bools(parsed.symbol_is_name, parsed.symbol_is_name_singleton, mut payload)
 				dotted_parts_span:                   source_type_syntax_owned_ids(parsed.dotted_parts, mut payload)
 				c_fixed_typedef_element:             parsed.c_fixed_typedef_element
 				c_fixed_typedef_length:              parsed.c_fixed_typedef_length
@@ -1900,13 +1902,19 @@ fn source_type_syntax_owned_ids(ids []u32, mut payload SourceTypeSyntaxPayload) 
 	return SourceTypeSyntaxSpan{ offset: offset, len: u32(ids.len) }
 }
 
-fn source_type_syntax_owned_bools(values []bool, mut payload SourceTypeSyntaxPayload) SourceTypeSyntaxSpan {
-	if values.len == 0 { return SourceTypeSyntaxSpan{} }
+fn source_type_syntax_owned_bools(values []bool, singleton bool, mut payload SourceTypeSyntaxPayload) SourceTypeSyntaxSpan {
+	value_count := if singleton { 1 } else { values.len }
+	if value_count == 0 { return SourceTypeSyntaxSpan{} }
 	offset := payload.bool_base_offset + u32(payload.bool_offset) * u32(sizeof(bool))
 	data := unsafe { voidptr(&u8(payload.ids) + offset) }
-	payload.bool_offset += values.len
-	unsafe { vmemcpy(data, values.data, values.len * int(sizeof(bool))) }
-	return SourceTypeSyntaxSpan{ offset: offset, len: u32(values.len) }
+	payload.bool_offset += value_count
+	if singleton {
+		value := true
+		unsafe { vmemcpy(data, &value, int(sizeof(bool))) }
+	} else {
+		unsafe { vmemcpy(data, values.data, values.len * int(sizeof(bool))) }
+	}
+	return SourceTypeSyntaxSpan{ offset: offset, len: u32(value_count) }
 }
 
 fn source_type_syntax_mangled_generic_marker(raw string) bool {
@@ -3406,8 +3414,9 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	c_fixed_typedef_element, c_fixed_typedef_length, c_fixed_typedef_valid := source_type_syntax_c_fixed_typedef(raw)
 	fastc_fixed_array_length_valid, fastc_fixed_array_length := source_type_syntax_fastc_fixed_length(raw)
 	mut symbol_parts := identity_ids
-	mut symbol_is_name := [raw[0].is_letter() || raw[0] == `_`]
-	if !symbol_is_name[0] {
+	symbol_is_name_singleton := raw[0].is_letter() || raw[0] == `_`
+	mut symbol_is_name := source_type_syntax_empty_bools()
+	if !symbol_is_name_singleton {
 		symbol_parts, symbol_is_name = source_type_syntax_symbol_parts(raw)
 	}
 	return SourceTypeSyntaxParsed{
@@ -3463,6 +3472,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		map_name_prefix:                raw.starts_with('map_')
 		symbol_parts:                   symbol_parts
 		symbol_is_name:                 symbol_is_name
+		symbol_is_name_singleton:       symbol_is_name_singleton
 		dotted_parts:                   dotted_parts
 		c_fixed_typedef_element:        c_fixed_typedef_element
 		c_fixed_typedef_length:         c_fixed_typedef_length
@@ -3543,7 +3553,9 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		} else {
 			0
 		}
-		transform_fixed_length:         source_type_syntax_transform_length(raw)
+		transform_fixed_length:         raw[0].is_digit()
+			|| (raw[last_dot + 1] >= `a` && raw[last_dot + 1] <= `z`
+				&& (qualified || !source_type_syntax_builtin(raw)))
 		ampersand_trimmed:              id
 		last_double_underscore_suffix:  if contains_doubleunderscore {
 			source_type_id(raw.all_after_last('__'))
@@ -3626,7 +3638,11 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		fastc_fixed_array_length:       fastc_fixed_array_length
 		contains_capital:               contains_capital
 		markused_generic_components:    if contains_capital {
-			source_type_syntax_markused_components(raw)
+			if raw[0].is_letter() || raw[0] == `_` {
+				identity_ids
+			} else {
+				source_type_syntax_markused_components(raw)
+			}
 		} else {
 			source_type_syntax_empty_ids()
 		}

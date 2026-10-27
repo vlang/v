@@ -1051,8 +1051,9 @@ fn (t &Transformer) checker_struct_field_type_name(type_name_id u32, field_name 
 	if checker_typ_source_id := t.tc.struct_field_type_name(lookup_type, field_name) {
 		return checker_typ_source_id
 	}
-	if flat.source_type_syntax(lookup_type).qualified_name_chars {
-		short := flat.source_type_syntax(lookup_type).unqualified
+	lookup_syntax := flat.source_type_syntax(lookup_type)
+	if lookup_syntax.qualified_name_chars {
+		short := lookup_syntax.unqualified
 		if checker_typ_source_id := t.tc.struct_field_type_name(short, field_name) {
 			return checker_typ_source_id
 		}
@@ -1088,7 +1089,11 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name_id u32, field_name st
 	}
 	// `main.Foo` locks a program-module type (see lookup_struct_info): its bare
 	// table key must not be requalified into a current module with its own `Foo`.
-	lookup_type_syntax := flat.source_type_syntax(lookup_type)
+	lookup_type_syntax := if lookup_syntax.generic_app_valid {
+		flat.source_type_syntax(lookup_type)
+	} else {
+		lookup_syntax
+	}
 	if flat.source_type_query(lookup_type).has(.main_prefix) && !flat.source_type_shape(lookup_type_syntax.main_base).has(.dotted) {
 		if info := t.structs[flat.source_type_name(lookup_type_syntax.main_base)] {
 			if info.module.len == 0 || info.module == 'main' {
@@ -1099,8 +1104,8 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name_id u32, field_name st
 			}
 		}
 	}
-	if flat.source_type_name(lookup_type) !in t.structs && flat.source_type_syntax(lookup_type).qualified_name_chars {
-		short_type := flat.source_type_syntax(lookup_type).unqualified
+	if flat.source_type_name(lookup_type) !in t.structs && lookup_type_syntax.qualified_name_chars {
+		short_type := lookup_type_syntax.unqualified
 		if flat.source_type_name(short_type) in t.structs {
 			lookup_type = short_type
 		}

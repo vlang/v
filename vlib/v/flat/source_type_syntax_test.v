@@ -1078,7 +1078,8 @@ fn test_source_type_syntax_name_builder_singletons_have_process_owned_backing() 
 		entry := source_type_read_entry(id)
 		assert parsed.symbols == [id]
 		assert parsed.symbols.data == voidptr(&entry.id)
-		assert parsed.symbol_is_name == [true]
+		assert parsed.symbol_is_name_singleton
+		assert parsed.symbol_is_name.len == 0
 		assert parsed.symbols_first_offsets == [u32(0)]
 		assert parsed.symbols_first_offsets.data == voidptr(&g_source_type_syntax_zero_offset)
 		syntax := source_type_syntax(id)
@@ -1094,7 +1095,9 @@ fn test_source_type_syntax_name_builder_singletons_have_process_owned_backing() 
 		parsed := source_type_syntax_parse(id, text)
 		expected_parts, expected_names := source_type_syntax_symbol_parts(text)
 		assert parsed.symbol_parts == expected_parts
+		assert !parsed.symbol_is_name_singleton
 		assert parsed.symbol_is_name == expected_names
+		assert source_type_syntax(id).symbol_is_name() == expected_names
 	}
 }
 
@@ -1159,5 +1162,46 @@ fn test_source_type_syntax_open_receiver_marker_preserves_raw_patterns() {
 					source_type_syntax_expected_open_receiver_marker(raw)
 			}
 		}
+	}
+}
+
+fn test_source_type_syntax_name_markused_components_reuse_identity_exactly() {
+	for raw in ['Name', 'pkg.Name', 'main.Some_Name', 'pkg.lower', '_Name', '_', 'T', 'C.T', 'JS.Value',
+		'123T', '123_T', '123name', '123', 'main.123', 'pkg..Name', 'pkg.Name@Other', ' Name',
+		'&pkg.Name', '[]pkg.Name', 'map[string]pkg.Name'] {
+		id := source_type_id(raw)
+		expected := source_type_syntax_markused_components(raw)
+		parsed := source_type_syntax_parse(id, raw)
+		assert parsed.markused_generic_components == expected
+		assert source_type_syntax(id).markused_generic_components() == expected
+		if raw in ['Name', 'pkg.Name', 'main.Some_Name', '_Name', 'T', 'C.T', 'JS.Value'] {
+			entry := source_type_read_entry(id)
+			assert parsed.markused_generic_components == [id]
+			assert parsed.markused_generic_components.data == voidptr(&entry.id)
+		}
+	}
+}
+
+fn test_source_type_syntax_name_fixed_length_specialization_matches_general_query() {
+	for raw in ['Name', 'name', '_name', '_Name', '_', 'T', 't', 'C', 'C.T', 'C.name', 'main.int',
+		'main.T', 'pkg.some_Length', 'u8', 'int', 'usize', 'void', 'bool', 'string', 'fn', 'chan',
+		'shared', 'mut', '123', '123T', '123_T', '0x10', 'pkg.123', 'pkg..name', ' pkg.name ',
+		'[]name', '&name', '(name)', 'A+B'] {
+		id := source_type_id(raw)
+		expected := source_type_syntax_transform_length(raw)
+		assert source_type_syntax_parse(id, raw).transform_fixed_length == expected
+		assert source_type_syntax(id).transform_fixed_length == expected
+	}
+}
+
+fn test_source_type_syntax_symbol_name_singleton_tag_stays_private_and_owned() {
+	for raw in ['Name', '_Name', 'pkg.Name', '123', '123T', '123_T', '', '&pkg.Name', 'pkg..Name',
+		'pkg.Name@Other', ' Name', '[]Name'] {
+		id := source_type_id(raw)
+		expected_parts, expected_names := source_type_syntax_symbol_parts(raw)
+		syntax := source_type_syntax(id)
+		assert syntax.symbol_parts() == expected_parts
+		assert syntax.symbol_is_name() == expected_names
+		assert source_type_syntax(id) == syntax
 	}
 }

@@ -5427,10 +5427,12 @@ fn is_pointer_arg_temp_rvalue(node flat.Node) bool {
 
 fn (t &Transformer) is_pointer_like_type_name(typ u32) bool {
 	mut clean := typ
-	if flat.source_type_shape(clean).has(.mutable_type) {
+	mut shape := flat.source_type_shape(clean)
+	if shape.has(.mutable_type) {
 		clean = flat.source_type_syntax(clean).raw_base
+		shape = flat.source_type_shape(clean)
 	}
-	return flat.source_type_shape(clean).has(.pointer)
+	return shape.has(.pointer)
 		|| clean in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr]
 }
 
@@ -6635,11 +6637,13 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 	for flat.source_type_shape(clean_type_id).has(.atomic_type) {
 		clean_type_id = t.trimmed_type_id(flat.source_type_syntax(clean_type_id).raw_base)
 	}
-	if flat.source_type_syntax(clean_type_id).builtin_prefix {
-		clean_type_id = flat.source_type_syntax(clean_type_id).builtin_base
+	mut clean_type_syntax := flat.source_type_syntax(clean_type_id)
+	if clean_type_syntax.builtin_prefix {
+		clean_type_id = clean_type_syntax.builtin_base
+		clean_type_syntax = flat.source_type_syntax(clean_type_id)
 	}
 	mut clean_typ := clean_type_id
-	if flat.source_type_syntax(clean_typ).named_variant {
+	if clean_type_syntax.named_variant {
 		return t.named_variant_str(expr, clean_type_id, is_ref)
 	}
 	if clean_typ in stringify_narrow_integer_types {
@@ -9551,8 +9555,9 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ_id
 	for flat.source_type_shape(clean_typ_id).has(.atomic_type) {
 		clean_typ_id = t.trimmed_type_id(flat.source_type_syntax(clean_typ_id).raw_base)
 	}
-	if flat.source_type_syntax(clean_typ_id).builtin_prefix {
-		clean_typ_id = flat.source_type_syntax(clean_typ_id).unqualified
+	clean_type_syntax := flat.source_type_syntax(clean_typ_id)
+	if clean_type_syntax.builtin_prefix {
+		clean_typ_id = clean_type_syntax.unqualified
 	}
 	mut normalized_typ_id := typ_id
 	for _ in 0 .. 1000 {

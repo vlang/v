@@ -70,10 +70,12 @@ fn (mut t Transformer) make_array_storage_call(name string, args []flat.NodeId, 
 
 fn (t &Transformer) shared_array_inner_type(raw_id u32) ?u32 {
 	mut clean := t.trimmed_type_id(raw_id)
-	for flat.source_type_shape(clean).has(.pointer) {
+	mut clean_shape := flat.source_type_shape(clean)
+	for clean_shape.has(.pointer) {
 		clean = t.trimmed_type_id(t.trim_pointer_type(clean))
+		clean_shape = flat.source_type_shape(clean)
 	}
-	if !flat.source_type_shape(clean).has(.array_type) {
+	if !clean_shape.has(.array_type) {
 		return none
 	}
 	elem := t.trimmed_type_id(t.array_elem_type(clean))
@@ -2682,8 +2684,9 @@ fn (mut t Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) 
 				for t.is_optional_type_name(source_type) {
 					source_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(source_type))
 				}
-				return flat.source_type_shape(source_type).has(.array_type)
-					|| (!flat.source_type_shape(source_type).has(.pointer) && t.is_sum_type_name(source_type))
+				source_type_shape := flat.source_type_shape(source_type)
+				return source_type_shape.has(.array_type)
+					|| (!source_type_shape.has(.pointer) && t.is_sum_type_name(source_type))
 			}
 			return false
 		}
@@ -2694,8 +2697,9 @@ fn (mut t Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) 
 		for t.is_optional_type_name(payload_type) {
 			payload_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(payload_type))
 		}
-		return flat.source_type_shape(payload_type).has(.array_type)
-			|| (!flat.source_type_shape(payload_type).has(.pointer) && t.is_sum_type_name(payload_type))
+		payload_shape := flat.source_type_shape(payload_type)
+		return payload_shape.has(.array_type)
+			|| (!payload_shape.has(.pointer) && t.is_sum_type_name(payload_type))
 	}
 	return false
 }
@@ -2753,13 +2757,14 @@ fn (mut t Transformer) clone_owned_array_storage_value_with_pointer_borrow(value
 	for t.is_optional_type_name(storage_type) {
 		storage_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(storage_type))
 	}
-	array_type := if flat.source_type_shape(storage_type).has(.pointer) {
+	storage_type_shape := flat.source_type_shape(storage_type)
+	array_type := if storage_type_shape.has(.pointer) {
 		t.trim_all_pointer_type(storage_type)
 	} else {
 		storage_type
 	}
-	storage_is_sum := !flat.source_type_shape(storage_type).has(.pointer) && t.is_sum_type_name(storage_type)
-	if (!flat.source_type_shape(array_type).has(.array_type) && !storage_is_sum) || flat.source_type_shape(storage_type).has(.pointer_chain) || isnil(t.tc)
+	storage_is_sum := !storage_type_shape.has(.pointer) && t.is_sum_type_name(storage_type)
+	if (!flat.source_type_shape(array_type).has(.array_type) && !storage_is_sum) || storage_type_shape.has(.pointer_chain) || isnil(t.tc)
 		|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type)) {
 		return value
 	}
