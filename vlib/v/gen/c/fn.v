@@ -2231,10 +2231,32 @@ fn (g &FlatGen) selector_base_module_for_member(name string, member string) ?str
 	return g.selector_base_module(name)
 }
 
+// selector_base_names_module reports whether `base` is `current`, its last
+// segment, or `current.<last segment>`, without building those strings.
+fn selector_base_names_module(base string, current string) bool {
+	if base == current {
+		return true
+	}
+	short_start := current.last_index_u8(`.`) + 1
+	short_len := current.len - short_start
+	if base.len == short_len {
+		return current.ends_with(base)
+	}
+	if base.len != current.len + 1 + short_len || !base.starts_with(current)
+		|| base[current.len] != `.` {
+		return false
+	}
+	for i in 0 .. short_len {
+		if base[current.len + 1 + i] != current[short_start + i] {
+			return false
+		}
+	}
+	return true
+}
+
 fn (g &FlatGen) current_module_selector_const_name(base string, member string) ?string {
 	current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-	short := current.all_after_last('.')
-	if base != current && base != short && base != '${current}.${short}' {
+	if !selector_base_names_module(base, current) {
 		return none
 	}
 	if g.selector_base_is_local_value(base) || g.current_module_global_type_for_ident(base) != none {
