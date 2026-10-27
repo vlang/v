@@ -15732,6 +15732,7 @@ pub fn run(args []string) {
 				thread_stack_size: prefs.thread_stack_size
 				test_files:        test_files
 				test_run_only:     run_only
+				hot_fn:            prefs.hot_fn
 			})
 			b.step('ssa build')
 			b.metric('SSA values before optimize', m.values.len, 'values')
@@ -15750,6 +15751,19 @@ pub fn run(args []string) {
 			mut g := arm64.Gen.new(m)
 			g.gen()
 			b.step('arm64 gen')
+
+			// Hot code reloading: write raw machine code for a single function
+			// instead of linking an executable.
+			if prefs.hot_fn.len > 0 {
+				code := g.extract_function(prefs.hot_fn)
+				if code.len == 0 {
+					eprintln('hot-fn: could not extract "${prefs.hot_fn}"')
+					exit(1)
+				}
+				os.write_file_array(bin_file, code) or { panic(err) }
+				println('hot-fn: wrote ${code.len} bytes for "${prefs.hot_fn}" to ${bin_file}')
+				return
+			}
 
 			g.write_and_link(bin_file)
 			b.step('link')
