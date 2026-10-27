@@ -64,6 +64,7 @@ fn main() {
 		eprintln('listen failed: ${err}')
 		exit(1)
 	}
+	listener.set_accept_timeout(10 * time.second)
 	addr := listener.addr() or {
 		eprintln('addr failed: ${err}')
 		exit(1)
@@ -72,8 +73,14 @@ fn main() {
 		eprintln('port failed: ${err}')
 		exit(1)
 	}
-	os.write_file(ready_path, port.str()) or {
+	// The client reads the port as soon as the ready file appears.
+	temporary_ready := '${ready_path}.tmp'
+	os.write_file(temporary_ready, port.str()) or {
 		eprintln('ready write failed: ${err}')
+		exit(1)
+	}
+	os.rename(temporary_ready, ready_path) or {
+		eprintln('ready rename failed: ${err}')
 		exit(1)
 	}
 
