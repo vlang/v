@@ -4964,8 +4964,10 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					}
 				}
 			}
-			// Without bodyless declarations there is no such method to find.
-			if tc.source_no_body_fns.len > 0 && !(receiver.kind == .ident && receiver.value == 'C') {
+			// Without a bodyless declaration of this method name there is no such
+			// method to find, so skip resolving the receiver and building its key.
+			if tc.source_no_body_fns.len > 0 && callee.value in tc.source_no_body_method_names
+				&& !(receiver.kind == .ident && receiver.value == 'C') {
 				receiver_name := resolve_type_name_for_method(unwrap_pointer(tc.resolve_type(receiver_id)))
 				method_name := '${flat.source_type_name(receiver_name)}.${callee.value}'
 				if method_name in tc.source_no_body_fns && !tc.v_source_fn_has_body(method_name) {

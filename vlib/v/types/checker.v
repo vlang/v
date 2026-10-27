@@ -1132,6 +1132,7 @@ pub mut:
 	mut_receiver_methods             map[string]bool
 	source_no_body_fns               map[string]bool
 	source_no_body_fn_suffixes       map[string]bool
+	source_no_body_method_names      map[string]bool
 	unsafe_fns                       map[string]bool
 	unsafe_c_fns                     map[string]bool
 	fn_ret_type_texts                flat.TypeTextBindings     // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
@@ -1609,6 +1610,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		mut_receiver_methods:                    map[string]bool{}
 		source_no_body_fns:                      map[string]bool{}
 		source_no_body_fn_suffixes:              map[string]bool{}
+		source_no_body_method_names:             map[string]bool{}
 		unsafe_fns:                              map[string]bool{}
 		unsafe_c_fns:                            map[string]bool{}
 		fn_ret_type_texts:                       flat.TypeTextBindings{}
@@ -1776,6 +1778,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		mut_receiver_methods:                  tc.mut_receiver_methods
 		source_no_body_fns:                    tc.source_no_body_fns
 		source_no_body_fn_suffixes:            tc.source_no_body_fn_suffixes
+		source_no_body_method_names:           tc.source_no_body_method_names
 		unsafe_fns:                            tc.unsafe_fns
 		unsafe_c_fns:                          tc.unsafe_c_fns
 		fn_ret_type_texts:                     tc.fn_ret_type_texts
@@ -4786,8 +4789,11 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 						tc.source_no_body_fn_suffixes[node.value.all_after_last('.')] = true
 					}
 					tc.source_no_body_fns[qname] = true
+					// Pass 2 never prunes the short names; a superset keeps the call prescreen exact.
+					tc.source_no_body_method_names[qname.all_after_last('.')] = true
 					if tc.cur_module in ['', 'main'] {
 						tc.source_no_body_fns[node.value] = true
+						tc.source_no_body_method_names[node.value.all_after_last('.')] = true
 					}
 				}
 			}
