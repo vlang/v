@@ -1439,3 +1439,159 @@ fn test_source_type_syntax_qualifier_scalar_and_singleton_queries_remain_lazy() 
 		assert isnil(source_type_syntax_lexical_find(single_slot, single_id, .qualifiers))
 	}
 }
+
+fn test_source_type_syntax_name_publication_preserves_all_packed_views() {
+	for raw, expected_name_packing in {
+		'Name':                         true
+		'T':                            true
+		'C':                            true
+		'Z':                            true
+		'pkg.Name':                     true
+		'T.Value':                      true
+		'pkg.T':                        true
+		'_Name':                        true
+		'123T':                         true
+		'123T456U':                     true
+		'123_T':                        true
+		'voidptr':                      true
+		'AvoidptrvoidptrTail':          true
+		'pkg.voidptrName':              true
+		'Map_voidptr_FASTC_ARRAY_OF_T': true
+		'':                             false
+		' Name ':                       false
+		'main.123':                     false
+		'pkg..Name':                    false
+		'.A':                           false
+		'A.':                           false
+		'map[T]U':                      false
+		'fn (T, U) V':                  false
+		'(T, U)':                       false
+		'Box[T':                        false
+		'[3]T':                         false
+		'T | U':                        false
+	} {
+		id := source_type_id(raw)
+		parsed := source_type_syntax_parse(id, raw)
+		assert parsed.name_packing == expected_name_packing
+		syntax := source_type_syntax(id)
+		assert syntax.args() == parsed.args
+		assert syntax.application_args() == parsed.application_args
+		assert syntax.generic_app_args() == parsed.generic_app_args
+		assert syntax.postfix_dims() == parsed.postfix_dims
+		assert syntax.function_params() == parsed.function_params
+		assert syntax.tuple_components() == parsed.tuple_components
+		assert syntax.cgen_app_args() == parsed.cgen_app_args
+		assert syntax.cgen_function_params() == parsed.cgen_function_params
+		assert syntax.checker_function_params() == parsed.checker_function_params
+		assert syntax.checker_tuple_components() == parsed.checker_tuple_components
+		assert syntax.cgen_raw_app_args() == parsed.cgen_raw_app_args
+		assert syntax.cgen_parts() == parsed.cgen_parts
+		assert syntax.checker_raw_tuple_components() == parsed.checker_raw_tuple_components
+		assert syntax.bracket_raw_parts() == parsed.bracket_raw_parts
+		assert syntax.bracket_generic_parts() == parsed.bracket_generic_parts
+		assert syntax.tuple_function_components() == parsed.tuple_function_components
+		assert syntax.plain_comma_parts() == parsed.plain_comma_parts
+		assert syntax.generic_mentions() == parsed.generic_mentions
+		assert syntax.receiver_app_args() == parsed.receiver_app_args
+		assert syntax.checker_bracket_components() == parsed.checker_bracket_components
+		assert syntax.voidptr_parts() == parsed.voidptr_parts
+		assert syntax.inferred_parts() == parsed.inferred_parts
+		assert syntax.inferred_annotations() == parsed.inferred_annotations
+		assert syntax.inferred_expr_ids() == parsed.inferred_expr_ids
+		assert syntax.substitution_function_params() == parsed.substitution_function_params
+		assert syntax.written_applications() == parsed.written_applications
+		assert syntax.written_application_offsets() == parsed.written_application_offsets
+		assert syntax.checker_raw_bracket_components() == parsed.checker_raw_bracket_components
+		assert syntax.cgen_placeholder_candidates() == parsed.cgen_placeholder_candidates
+		assert syntax.reflection_parts() == parsed.reflection_parts
+		assert syntax.reflection_tuple_parts() == parsed.reflection_tuple_parts
+		assert syntax.receiver_raw_app_args() == parsed.receiver_raw_app_args
+		assert syntax.vls_generic_words() == parsed.vls_generic_words
+		assert syntax.eval_tuple_parts() == parsed.eval_tuple_parts
+		assert syntax.implicit_tuple_components() == parsed.implicit_tuple_components
+		assert syntax.generic_application_heads() == parsed.generic_application_heads
+		assert syntax.markused_application_heads() == parsed.markused_application_heads
+		assert syntax.markused_generic_components() == parsed.markused_generic_components
+		assert syntax.raw_tuple_parse_components() == parsed.raw_tuple_parse_components
+		assert syntax.union_parts() == parsed.union_parts
+		if parsed.name_packing {
+			assert syntax.cgen_parts().data == syntax.payload
+			assert syntax.plain_comma_parts().data == syntax.payload
+			assert syntax.inferred_parts().data == syntax.payload
+			assert syntax.reflection_parts().data == syntax.payload
+			assert syntax.union_parts().data == syntax.payload
+			assert parsed.args.len == 0
+			assert parsed.application_args.len == 0
+			assert parsed.generic_app_args.len == 0
+			assert parsed.postfix_dims.len == 0
+			assert parsed.function_params.len == 0
+			assert parsed.tuple_components.len == 0
+			assert parsed.cgen_app_args.len == 0
+			assert parsed.cgen_function_params.len == 0
+			assert parsed.checker_function_params.len == 0
+			assert parsed.checker_tuple_components.len == 0
+			assert parsed.cgen_raw_app_args.len == 0
+			assert parsed.checker_raw_tuple_components.len == 0
+			assert parsed.bracket_raw_parts.len == 0
+			assert parsed.bracket_generic_parts.len == 0
+			assert parsed.tuple_function_components.len == 0
+			assert parsed.receiver_app_args.len == 0
+			assert parsed.checker_bracket_components.len == 0
+			assert parsed.inferred_annotations.len == 0
+			assert parsed.inferred_expr_ids.len == 0
+			assert parsed.substitution_function_params.len == 0
+			assert parsed.written_applications.len == 0
+			assert parsed.written_application_offsets.len == 0
+			assert parsed.checker_raw_bracket_components.len == 0
+			assert parsed.reflection_tuple_parts.len == 0
+			assert parsed.receiver_raw_app_args.len == 0
+			assert parsed.eval_tuple_parts.len == 0
+			assert parsed.implicit_tuple_components.len == 0
+			assert parsed.generic_application_heads.len == 0
+			assert parsed.markused_application_heads.len == 0
+			assert parsed.raw_tuple_parse_components.len == 0
+			assert parsed.generic_mentions.len == 0 || parsed.generic_mentions == [id]
+			assert parsed.cgen_placeholder_candidates.len == 0 || parsed.cgen_placeholder_candidates == [id]
+		}
+	}
+}
+
+fn test_source_type_syntax_composite_identity_parts_keep_legacy_bytes() {
+	for raw in ['', ' ', '\t', '\n', ' T ', '&T', '[]T', '?T', '!T', 'T*', 'T;', 'fn (T) U', 'Box[T]',
+		'Box[T]suffix', 'Box[', ')T', 'T)', 'T{U}', ' map[T]U ', 'T,', ',T', 'T, ', 'T,,U', 'Box[T, U]',
+		'fn (T, U) V', 'T | U', '|', ' | ', 'T|', 'T[U|V]', 'T{U|V}', 'voidptr', 'voidptrvoidptr',
+		'&voidptr', 'TvoidptrU', 'typeof(__expr_7)', 'A typeof(__expr_7) B', 'typeof(__expr_',
+		'typeof(__expr_7', 'typeof(__expr_7))', 'é[名]'] {
+		id := source_type_id(raw)
+		syntax := source_type_syntax(id)
+		assert syntax.plain_comma_parts() == source_type_syntax_plain_parts(raw, ',')
+		assert syntax.voidptr_parts() == source_type_syntax_plain_parts(raw, 'voidptr')
+		assert syntax.cgen_parts() == source_type_syntax_legacy_parts(raw)
+		assert syntax.reflection_parts() == source_type_syntax_reflection_parts(raw)
+		assert syntax.union_parts() == source_type_syntax_union_parts(raw)
+		inferred_parts, annotations, expressions := source_type_syntax_inferred(raw)
+		assert syntax.inferred_parts() == inferred_parts
+		assert syntax.inferred_annotations() == annotations
+		assert syntax.inferred_expr_ids() == expressions
+	}
+}
+
+fn test_source_type_syntax_composite_identity_parts_publish_independent_headers() {
+	id := source_type_id('&CompositeIdentityPartsFresh702')
+	syntax := source_type_syntax(id)
+	mut views := [syntax.plain_comma_parts(), syntax.voidptr_parts(), syntax.cgen_parts(),
+		syntax.reflection_parts(), syntax.union_parts(), syntax.inferred_parts()]
+	for mut view in views {
+		assert view == [id]
+		view.trim(0)
+		assert view.len == 0
+	}
+	assert syntax.plain_comma_parts() == [id]
+	assert syntax.voidptr_parts() == [id]
+	assert syntax.cgen_parts() == [id]
+	assert syntax.reflection_parts() == [id]
+	assert syntax.union_parts() == [id]
+	assert syntax.inferred_parts() == [id]
+	assert syntax.inferred_annotations().len == 0
+	assert syntax.inferred_expr_ids().len == 0
+}

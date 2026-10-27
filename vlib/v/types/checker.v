@@ -6749,12 +6749,17 @@ fn (tc &TypeChecker) qualify_type_name_uncached(name_id u32) u32 {
 	// bracket behavior from source qualification.
 	shape := flat.source_type_shape(name_id)
 	if shape.has(.array_type) {
-		return flat.source_type_composition_one(.array, tc.qualify_type_name(flat.source_type_syntax(name_id).raw_base))
+		raw_base := flat.source_type_syntax(name_id).raw_base
+		qualified_base := tc.qualify_type_name(raw_base)
+		if qualified_base == raw_base { return name_id }
+		return flat.source_type_composition_one(.array, qualified_base)
 	}
 	if shape.has(.leading_bracket) {
 		syntax := flat.source_type_syntax(name_id)
 		if syntax.first_bracket_closed {
-			return flat.source_type_composition_two(.concat, syntax.first_bracket_prefix, tc.qualify_type_name(syntax.first_bracket_base))
+			qualified_base := tc.qualify_type_name(syntax.first_bracket_base)
+			if qualified_base == syntax.first_bracket_base { return name_id }
+			return flat.source_type_composition_two(.concat, syntax.first_bracket_prefix, qualified_base)
 		}
 	}
 	if shape.has(.map_type) {
@@ -6765,7 +6770,12 @@ fn (tc &TypeChecker) qualify_type_name_uncached(name_id u32) u32 {
 			bracket_end := find_matching_bracket(name, 3)
 			return flat.source_type_composition_two(.map, tc.qualify_type_name(flat.source_type_id(name[4..bracket_end])), tc.qualify_type_name(flat.source_type_id(name[bracket_end + 1..])))
 		}
-		return flat.source_type_composition_two(.map, tc.qualify_type_name(syntax.bracket_raw_inner), tc.qualify_type_name(syntax.bracket_suffix))
+		qualified_key := tc.qualify_type_name(syntax.bracket_raw_inner)
+		qualified_value := tc.qualify_type_name(syntax.bracket_suffix)
+		if qualified_key == syntax.bracket_raw_inner && qualified_value == syntax.bracket_suffix {
+			return name_id
+		}
+		return flat.source_type_composition_two(.map, qualified_key, qualified_value)
 	}
 	if shape.has(.pointer) || shape.has(.option_type) || shape.has(.result_type) {
 		kind := if shape.has(.pointer) {
@@ -6775,7 +6785,10 @@ fn (tc &TypeChecker) qualify_type_name_uncached(name_id u32) u32 {
 		} else {
 			flat.SourceTypeComposition.result
 		}
-		return flat.source_type_composition_one(kind, tc.qualify_type_name(flat.source_type_syntax(name_id).raw_base))
+		raw_base := flat.source_type_syntax(name_id).raw_base
+		qualified_base := tc.qualify_type_name(raw_base)
+		if qualified_base == raw_base { return name_id }
+		return flat.source_type_composition_one(kind, qualified_base)
 	}
 	if shape.has(.dotted) { return tc.resolve_imported_type_text(name_id) }
 	if tc.cur_module.len == 0 || tc.cur_module == 'main' || tc.cur_module == 'builtin' {

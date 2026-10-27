@@ -822,6 +822,7 @@ struct SourceTypeSyntaxParsed {
 	pointer_base                       u32
 	pointer_depth                      int
 	function_has_result                bool
+	name_packing                       bool
 	raw_base                           u32
 	main_base                          u32
 	bare_generic                       bool
@@ -1734,46 +1735,52 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	}
 	// Pack eagerly required immutable ID components into one aligned allocation.
 	// Lexical views publish their own storage only when first requested.
-	id_count := 1 + source_type_syntax_packed_ids_len(parsed.args, id) +
-		source_type_syntax_packed_ids_len(parsed.application_args, id) +
-		source_type_syntax_packed_ids_len(parsed.generic_app_args, id) +
-		source_type_syntax_packed_ids_len(parsed.postfix_dims, id) +
-		source_type_syntax_packed_ids_len(parsed.function_params, id) +
-		source_type_syntax_packed_ids_len(parsed.tuple_components, id) +
-		source_type_syntax_packed_ids_len(parsed.cgen_app_args, id) +
-		source_type_syntax_packed_ids_len(parsed.cgen_function_params, id) +
-		source_type_syntax_packed_ids_len(parsed.checker_function_params, id) +
-		source_type_syntax_packed_ids_len(parsed.checker_tuple_components, id) +
-		source_type_syntax_packed_ids_len(parsed.cgen_raw_app_args, id) +
-		source_type_syntax_packed_ids_len(parsed.cgen_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.checker_raw_tuple_components, id) +
-		source_type_syntax_packed_ids_len(parsed.bracket_raw_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.bracket_generic_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.tuple_function_components, id) +
-		source_type_syntax_packed_ids_len(parsed.plain_comma_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.generic_mentions, id) +
-		source_type_syntax_packed_ids_len(parsed.receiver_app_args, id) +
-		source_type_syntax_packed_ids_len(parsed.checker_bracket_components, id) +
-		source_type_syntax_packed_ids_len(parsed.voidptr_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.inferred_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.inferred_annotations, id) +
-		source_type_syntax_packed_ids_len(parsed.inferred_expr_ids, id) +
-		source_type_syntax_packed_ids_len(parsed.substitution_function_params, id) +
-		source_type_syntax_packed_ids_len(parsed.written_applications, id) +
-		source_type_syntax_packed_ids_len(parsed.written_application_offsets, id) +
-		source_type_syntax_packed_ids_len(parsed.checker_raw_bracket_components, id) +
-		source_type_syntax_packed_ids_len(parsed.cgen_placeholder_candidates, id) +
-		source_type_syntax_packed_ids_len(parsed.reflection_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.reflection_tuple_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.receiver_raw_app_args, id) +
-		source_type_syntax_packed_ids_len(parsed.vls_generic_words, id) +
-		source_type_syntax_packed_ids_len(parsed.eval_tuple_parts, id) +
-		source_type_syntax_packed_ids_len(parsed.implicit_tuple_components, id) +
-		source_type_syntax_packed_ids_len(parsed.generic_application_heads, id) +
-		source_type_syntax_packed_ids_len(parsed.markused_application_heads, id) +
-		source_type_syntax_packed_ids_len(parsed.markused_generic_components, id) +
-		source_type_syntax_packed_ids_len(parsed.raw_tuple_parse_components, id) +
-		source_type_syntax_packed_ids_len(parsed.union_parts, id)
+	id_count := if parsed.name_packing {
+		1 + source_type_syntax_packed_ids_len(parsed.voidptr_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.vls_generic_words, id) +
+			source_type_syntax_packed_ids_len(parsed.markused_generic_components, id)
+	} else {
+		1 + source_type_syntax_packed_ids_len(parsed.args, id) +
+			source_type_syntax_packed_ids_len(parsed.application_args, id) +
+			source_type_syntax_packed_ids_len(parsed.generic_app_args, id) +
+			source_type_syntax_packed_ids_len(parsed.postfix_dims, id) +
+			source_type_syntax_packed_ids_len(parsed.function_params, id) +
+			source_type_syntax_packed_ids_len(parsed.tuple_components, id) +
+			source_type_syntax_packed_ids_len(parsed.cgen_app_args, id) +
+			source_type_syntax_packed_ids_len(parsed.cgen_function_params, id) +
+			source_type_syntax_packed_ids_len(parsed.checker_function_params, id) +
+			source_type_syntax_packed_ids_len(parsed.checker_tuple_components, id) +
+			source_type_syntax_packed_ids_len(parsed.cgen_raw_app_args, id) +
+			source_type_syntax_packed_ids_len(parsed.cgen_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.checker_raw_tuple_components, id) +
+			source_type_syntax_packed_ids_len(parsed.bracket_raw_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.bracket_generic_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.tuple_function_components, id) +
+			source_type_syntax_packed_ids_len(parsed.plain_comma_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.generic_mentions, id) +
+			source_type_syntax_packed_ids_len(parsed.receiver_app_args, id) +
+			source_type_syntax_packed_ids_len(parsed.checker_bracket_components, id) +
+			source_type_syntax_packed_ids_len(parsed.voidptr_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.inferred_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.inferred_annotations, id) +
+			source_type_syntax_packed_ids_len(parsed.inferred_expr_ids, id) +
+			source_type_syntax_packed_ids_len(parsed.substitution_function_params, id) +
+			source_type_syntax_packed_ids_len(parsed.written_applications, id) +
+			source_type_syntax_packed_ids_len(parsed.written_application_offsets, id) +
+			source_type_syntax_packed_ids_len(parsed.checker_raw_bracket_components, id) +
+			source_type_syntax_packed_ids_len(parsed.cgen_placeholder_candidates, id) +
+			source_type_syntax_packed_ids_len(parsed.reflection_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.reflection_tuple_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.receiver_raw_app_args, id) +
+			source_type_syntax_packed_ids_len(parsed.vls_generic_words, id) +
+			source_type_syntax_packed_ids_len(parsed.eval_tuple_parts, id) +
+			source_type_syntax_packed_ids_len(parsed.implicit_tuple_components, id) +
+			source_type_syntax_packed_ids_len(parsed.generic_application_heads, id) +
+			source_type_syntax_packed_ids_len(parsed.markused_application_heads, id) +
+			source_type_syntax_packed_ids_len(parsed.markused_generic_components, id) +
+			source_type_syntax_packed_ids_len(parsed.raw_tuple_parse_components, id) +
+			source_type_syntax_packed_ids_len(parsed.union_parts, id)
+	}
 	payload_bytes := u64(sizeof(SourceTypeSyntaxEntry)) + u64(id_count) * u64(sizeof(u32))
 	if payload_bytes > u64(0x7fffffff) {
 		panic('source type syntax components exceed the allocation limit')
@@ -1794,265 +1801,328 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	unsafe {
 		*entry = SourceTypeSyntaxEntry{
 			syntax: SourceTypeSyntax{
-				payload:                             payload.ids
-				kind:                                parsed.kind
-				trimmed:                             parsed.trimmed
-				base:                                parsed.base
-				args_span:                           source_type_syntax_owned_ids(parsed.args, mut payload)
-				unqualified:                         parsed.unqualified
-				qualifier:                           parsed.qualifier
-				generic_base:                        parsed.generic_base
-				pointer_base:                        parsed.pointer_base
-				pointer_depth:                       parsed.pointer_depth
-				function_has_result:                 parsed.function_has_result
-				raw_base:                            parsed.raw_base
-				main_base:                           parsed.main_base
-				bare_generic:                        parsed.bare_generic
-				application_base:                    parsed.application_base
-				application_args_span:               source_type_syntax_owned_ids(parsed.application_args, mut payload)
-				application_valid:                   parsed.application_valid
-				generic_app_base:                    parsed.generic_app_base
-				generic_app_args_span:               source_type_syntax_owned_ids(parsed.generic_app_args, mut payload)
-				generic_app_valid:                   parsed.generic_app_valid
-				postfix_base:                        parsed.postfix_base
-				postfix_dims_span:                   source_type_syntax_owned_ids(parsed.postfix_dims, mut payload)
-				parameter_type:                      parsed.parameter_type
-				parameter_mut_type:                  parsed.parameter_mut_type
-				bracket_closed:                      parsed.bracket_closed
-				bracket_base:                        parsed.bracket_base
-				bracket_inner:                       parsed.bracket_inner
-				bracket_raw_inner:                   parsed.bracket_raw_inner
-				bracket_prefix:                      parsed.bracket_prefix
-				function_closed:                     parsed.function_closed
-				function_params_span:                source_type_syntax_owned_ids(parsed.function_params, mut payload)
-				function_result:                     parsed.function_result
-				tuple_components_span:               source_type_syntax_owned_ids(parsed.tuple_components, mut payload)
-				tuple_like:                          parsed.tuple_like
-				function_space_prefix:               parsed.function_space_prefix
-				spaced:                              parsed.spaced
-				first_bracket_closed:                parsed.first_bracket_closed
-				first_bracket_base:                  parsed.first_bracket_base
-				last_space_word:                     parsed.last_space_word
-				named_type:                          parsed.named_type
-				c_qualified:                         parsed.c_qualified
-				first_dot_prefix:                    parsed.first_dot_prefix
-				first_dot_suffix:                    parsed.first_dot_suffix
-				builtin_prefix:                      parsed.builtin_prefix
-				main_fragment:                       parsed.main_fragment
-				function_prefix:                     parsed.function_prefix
-				fn_prefix:                           parsed.fn_prefix
-				shared_fragment:                     parsed.shared_fragment
-				pointer_raw_base:                    parsed.pointer_raw_base
-				qualifier_count:                     parsed.qualifier_count
-				builtin_base:                        parsed.builtin_base
-				cgen_app_base:                       parsed.cgen_app_base
-				cgen_app_args_span:                  source_type_syntax_owned_ids(parsed.cgen_app_args, mut payload)
-				cgen_app_valid:                      parsed.cgen_app_valid
-				cgen_function_params_span:           source_type_syntax_owned_ids(parsed.cgen_function_params, mut payload)
-				checker_function_params_span:        source_type_syntax_owned_ids(parsed.checker_function_params, mut payload)
-				checker_tuple_components_span:       source_type_syntax_owned_ids(parsed.checker_tuple_components, mut payload)
-				tuple_contains_comma:                parsed.tuple_contains_comma
-				top_space_head:                      parsed.top_space_head
-				top_space_tail:                      parsed.top_space_tail
-				top_space_valid:                     parsed.top_space_valid
-				typeof_expr_prefix:                  parsed.typeof_expr_prefix
-				bracket_suffix:                      parsed.bracket_suffix
-				bracket_from:                        parsed.bracket_from
-				bracket_inner_fixed_length:          parsed.bracket_inner_fixed_length
-				first_bracket_prefix:                parsed.first_bracket_prefix
-				void_pointer_postfix:                parsed.void_pointer_postfix
-				canonical_dotted_name:               parsed.canonical_dotted_name
-				decimal:                             parsed.decimal
-				contains_comma:                      parsed.contains_comma
-				function_fragment:                   parsed.function_fragment
-				dots_base:                           parsed.dots_base
-				cgen_raw_app_base:                   parsed.cgen_raw_app_base
-				cgen_raw_app_args_span:              source_type_syntax_owned_ids(parsed.cgen_raw_app_args, mut payload)
-				cgen_raw_app_valid:                  parsed.cgen_raw_app_valid
-				cgen_parts_span:                     source_type_syntax_owned_ids(parsed.cgen_parts, mut payload)
-				generic_parameter_payload:           parsed.generic_parameter_payload
-				legacy_parameter_type:               parsed.legacy_parameter_type
-				legacy_parameter_mut_type:           parsed.legacy_parameter_mut_type
-				first_bracket_length:                parsed.first_bracket_length
-				checker_raw_tuple_components_span:   source_type_syntax_owned_ids(parsed.checker_raw_tuple_components, mut payload)
-				bracket_raw_parts_span:              source_type_syntax_owned_ids(parsed.bracket_raw_parts, mut payload)
-				bracket_generic_parts_span:          source_type_syntax_owned_ids(parsed.bracket_generic_parts, mut payload)
-				tuple_function_components_span:      source_type_syntax_owned_ids(parsed.tuple_function_components, mut payload)
-				c_pointer_base:                      parsed.c_pointer_base
-				c_ptr_name_suffix:                   parsed.c_ptr_name_suffix
-				c_fn_type_fragment:                  parsed.c_fn_type_fragment
-				underscored:                         parsed.underscored
-				plain_comma_parts_span:              source_type_syntax_owned_ids(parsed.plain_comma_parts, mut payload)
-				source_wrapper_base:                 parsed.source_wrapper_base
-				declaration_head:                    parsed.declaration_head
-				fn_fragment:                         parsed.fn_fragment
-				compact_fn_spelling:                 parsed.compact_fn_spelling
-				first_bracket_raw_inner:             parsed.first_bracket_raw_inner
-				cgen_generic_placeholder:            parsed.cgen_generic_placeholder
-				fixed_array_type:                    parsed.fixed_array_type
-				typeof_valid:                        parsed.typeof_valid
-				typeof_inner:                        parsed.typeof_inner
-				postfix_index_base:                  parsed.postfix_index_base
-				last_bracket_prefix:                 parsed.last_bracket_prefix
-				last_bracket_length:                 parsed.last_bracket_length
-				trailing_bracket_prefix:             parsed.trailing_bracket_prefix
-				trailing_bracket_closed:             parsed.trailing_bracket_closed
-				array_chars_base:                    parsed.array_chars_base
-				lowercase_value_ident:               parsed.lowercase_value_ident
-				typeof_prefix:                       parsed.typeof_prefix
-				first_capital:                       parsed.first_capital
-				named_variant:                       parsed.named_variant
-				named_variant_valid:                 parsed.named_variant_valid
-				named_variant_owner:                 parsed.named_variant_owner
-				named_variant_name:                  parsed.named_variant_name
-				main_unlocked:                       parsed.main_unlocked
-				encoded_fixed_length:                parsed.encoded_fixed_length
-				encoded_fixed_base:                  parsed.encoded_fixed_base
-				map_name_prefix:                     parsed.map_name_prefix
-				suffix_bracket_length:               parsed.suffix_bracket_length
-				suffix_bracket_valid:                parsed.suffix_bracket_valid
-				map_function_fragment:               parsed.map_function_fragment
-				bracket_source_inner:                parsed.bracket_source_inner
-				c_fixed_typedef_element:             parsed.c_fixed_typedef_element
-				c_fixed_typedef_length:              parsed.c_fixed_typedef_length
-				c_fixed_typedef_valid:               parsed.c_fixed_typedef_valid
-				fixed_array_query_length:            parsed.fixed_array_query_length
-				last_bracket_span_valid:             parsed.last_bracket_span_valid
-				last_bracket_span_inner:             parsed.last_bracket_span_inner
-				plain_type_name:                     parsed.plain_type_name
-				generic_app_legacy_suffix:           parsed.generic_app_legacy_suffix
-				wrapper_prefix:                      parsed.wrapper_prefix
-				wrapper_base:                        parsed.wrapper_base
-				checker_fixed_array_may_be:          parsed.checker_fixed_array_may_be
-				dollar_prefix:                       parsed.dollar_prefix
-				define_prefix:                       parsed.define_prefix
-				define_fragment:                     parsed.define_fragment
-				paren_prefix:                        parsed.paren_prefix
-				fixed_length:                        parsed.fixed_length
-				qualified_modifiers:                 parsed.qualified_modifiers
-				plain_alias_target:                  parsed.plain_alias_target
-				c_array_payload:                     parsed.c_array_payload
-				c_fixed_array_payload:               parsed.c_fixed_array_payload
-				fastc_array_marker:                  parsed.fastc_array_marker
-				fastc_array_marker_payload:          parsed.fastc_array_marker_payload
-				c_map_payload:                       parsed.c_map_payload
-				c_ptr_name_base:                     parsed.c_ptr_name_base
-				c_tagged_type:                       parsed.c_tagged_type
-				backward_bracket_prefix:             parsed.backward_bracket_prefix
-				backward_bracket_closed:             parsed.backward_bracket_closed
-				generic_mentions_span:               source_type_syntax_owned_ids(parsed.generic_mentions, mut payload)
-				opening_paren:                       parsed.opening_paren
-				byte_len:                            parsed.byte_len
-				receiver_app_valid:                  parsed.receiver_app_valid
-				receiver_app_base:                   parsed.receiver_app_base
-				receiver_app_args_span:              source_type_syntax_owned_ids(parsed.receiver_app_args, mut payload)
-				checker_bracket_components_span:     source_type_syntax_owned_ids(parsed.checker_bracket_components, mut payload)
-				declaration_parameter_payload:       parsed.declaration_parameter_payload
-				declaration_parameter_mut:           parsed.declaration_parameter_mut
-				prefix_dimension_tail:               parsed.prefix_dimension_tail
-				prefix_dimensions_closed:            parsed.prefix_dimensions_closed
-				backward_bracket_after_prefix_dims:  parsed.backward_bracket_after_prefix_dims
-				backward_bracket_inner:              parsed.backward_bracket_inner
-				option_result_void_prefix:           parsed.option_result_void_prefix
-				nested_option_result_marker:         parsed.nested_option_result_marker
-				c_pointer_depth:                     parsed.c_pointer_depth
-				c_pointer_count:                     parsed.c_pointer_count
-				c_pointer_raw_base:                  parsed.c_pointer_raw_base
-				voidptr_parts_span:                  source_type_syntax_owned_ids(parsed.voidptr_parts, mut payload)
-				thread_value_prefix:                 parsed.thread_value_prefix
-				thread_value_payload:                parsed.thread_value_payload
-				thread_value_type_valid:             parsed.thread_value_type_valid
-				thread_value_type:                   parsed.thread_value_type
-				contains_closing_bracket:            parsed.contains_closing_bracket
-				atomic_val_fragment:                 parsed.atomic_val_fragment
-				inferred_parts_span:                 source_type_syntax_owned_ids(parsed.inferred_parts, mut payload)
-				inferred_annotations_span:           source_type_syntax_owned_ids(parsed.inferred_annotations, mut payload)
-				inferred_expr_ids_span:              source_type_syntax_owned_ids(parsed.inferred_expr_ids, mut payload)
-				expr_prefix:                         parsed.expr_prefix
-				expr_id:                             parsed.expr_id
-				substitution_function_params_span:   source_type_syntax_owned_ids(parsed.substitution_function_params, mut payload)
-				parameter_name:                      parsed.parameter_name
-				parameter_named:                     parsed.parameter_named
-				parameter_is_mut:                    parsed.parameter_is_mut
-				transform_fixed_length:              parsed.transform_fixed_length
-				receiver_collection_id:              parsed.receiver_collection_id
-				ampersand_trimmed:                   parsed.ampersand_trimmed
-				contains_doubleunderscore:           parsed.contains_doubleunderscore
-				parallel_preseed_fn:                 parsed.parallel_preseed_fn
-				parallel_preseed_short:              parsed.parallel_preseed_short
-				closing_bracket:                     parsed.closing_bracket
-				constraint_receiver_base:            parsed.constraint_receiver_base
-				written_applications_span:           source_type_syntax_owned_ids(parsed.written_applications, mut payload)
-				written_application_offsets_span:    source_type_syntax_owned_ids(parsed.written_application_offsets, mut payload)
-				checker_raw_bracket_components_span: source_type_syntax_owned_ids(parsed.checker_raw_bracket_components, mut payload)
-				cgen_placeholder_candidates_span:    source_type_syntax_owned_ids(parsed.cgen_placeholder_candidates, mut payload)
-				result_suffix:                       parsed.result_suffix
-				cgen_decl_unusable:                  parsed.cgen_decl_unusable
-				cgen_decl_authority:                 parsed.cgen_decl_authority
-				generic_encoded_fragment:            parsed.generic_encoded_fragment
-				fn_ptr_encoded_prefix:               parsed.fn_ptr_encoded_prefix
-				c_result_prefix:                     parsed.c_result_prefix
-				c_option_prefix:                     parsed.c_option_prefix
-				c_multi_return_prefix:               parsed.c_multi_return_prefix
-				c_lower_map_prefix:                  parsed.c_lower_map_prefix
-				open_generic_receiver_marker:        parsed.open_generic_receiver_marker
-				space_removed:                       parsed.space_removed
-				qualified_name_chars:                parsed.qualified_name_chars
-				field_owner_module:                  parsed.field_owner_module
-				const_name_prefix:                   parsed.const_name_prefix
-				reflection_parts_span:               source_type_syntax_owned_ids(parsed.reflection_parts, mut payload)
-				reflection_tuple_parts_span:         source_type_syntax_owned_ids(parsed.reflection_tuple_parts, mut payload)
-				pthread_prefix:                      parsed.pthread_prefix
-				thread_bracket_prefix:               parsed.thread_bracket_prefix
-				fixed_typedef_bracket:               parsed.fixed_typedef_bracket
-				receiver_raw_app_args_span:          source_type_syntax_owned_ids(parsed.receiver_raw_app_args, mut payload)
-				question_trimmed:                    parsed.question_trimmed
-				c_array_fixed_prefix:                parsed.c_array_fixed_prefix
-				vls_generic_words_span:              source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload)
-				function_space_result:               parsed.function_space_result
-				decimal_value:                       parsed.decimal_value
-				integer_value:                       parsed.integer_value
-				encoded_alnum_dotted:                parsed.encoded_alnum_dotted
-				internal_symbol_prefix:              parsed.internal_symbol_prefix
-				main_at_base:                        parsed.main_at_base
-				eval_tuple_parts_span:               source_type_syntax_owned_ids(parsed.eval_tuple_parts, mut payload)
-				implicit_tuple_components_span:      source_type_syntax_owned_ids(parsed.implicit_tuple_components, mut payload)
-				generic_application_heads_span:      source_type_syntax_owned_ids(parsed.generic_application_heads, mut payload)
-				incremental_generic_application:     parsed.incremental_generic_application
-				system_error_suffix:                 parsed.system_error_suffix
-				receiver_app_inner:                  parsed.receiver_app_inner
-				fastc_fixed_array_length_valid:      parsed.fastc_fixed_array_length_valid
-				fastc_fixed_array_length:            parsed.fastc_fixed_array_length
-				markused_application_heads_span:     source_type_syntax_owned_ids(parsed.markused_application_heads, mut payload)
-				contains_capital:                    parsed.contains_capital
-				markused_generic_components_span:    source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload)
-				first_bracket_source_inner:          parsed.first_bracket_source_inner
-				c_function_pointer_hole:             parsed.c_function_pointer_hole
-				channel_fragment:                    parsed.channel_fragment
-				array_receiver_fragment:             parsed.array_receiver_fragment
-				mangled_open_generic_marker:         parsed.mangled_open_generic_marker
-				array_suffix:                        parsed.array_suffix
-				empty_function_prefix:               parsed.empty_function_prefix
-				c_shared_fragment:                   parsed.c_shared_fragment
-				typ_suffix:                          parsed.typ_suffix
-				typ_suffix_base:                     parsed.typ_suffix_base
-				raw_tuple_parse_components_span:     source_type_syntax_owned_ids(parsed.raw_tuple_parse_components, mut payload)
-				checker_parse_function_result:       parsed.checker_parse_function_result
-				checker_parse_function_has_params:   parsed.checker_parse_function_has_params
-				top_level_dot_valid:                 parsed.top_level_dot_valid
-				top_level_dot_prefix:                parsed.top_level_dot_prefix
-				top_level_dot_suffix:                parsed.top_level_dot_suffix
-				parser_fn_decl_valid:                parsed.parser_fn_decl_valid
-				parser_fn_decl_params:               parsed.parser_fn_decl_params
-				parser_fn_decl_result:               parsed.parser_fn_decl_result
-				contains_question:                   parsed.contains_question
-				contains_union:                      parsed.contains_union
-				union_parts_span:                    source_type_syntax_owned_ids(parsed.union_parts, mut payload)
-				named_variant_dot_valid:             parsed.named_variant_dot_valid
-				named_variant_dot_prefix:            parsed.named_variant_dot_prefix
-				named_variant_dot_suffix:            parsed.named_variant_dot_suffix
+				payload:                            payload.ids
+				kind:                               parsed.kind
+				trimmed:                            parsed.trimmed
+				base:                               parsed.base
+				unqualified:                        parsed.unqualified
+				qualifier:                          parsed.qualifier
+				generic_base:                       parsed.generic_base
+				pointer_base:                       parsed.pointer_base
+				pointer_depth:                      parsed.pointer_depth
+				function_has_result:                parsed.function_has_result
+				raw_base:                           parsed.raw_base
+				main_base:                          parsed.main_base
+				bare_generic:                       parsed.bare_generic
+				application_base:                   parsed.application_base
+				application_valid:                  parsed.application_valid
+				generic_app_base:                   parsed.generic_app_base
+				generic_app_valid:                  parsed.generic_app_valid
+				postfix_base:                       parsed.postfix_base
+				parameter_type:                     parsed.parameter_type
+				parameter_mut_type:                 parsed.parameter_mut_type
+				bracket_closed:                     parsed.bracket_closed
+				bracket_base:                       parsed.bracket_base
+				bracket_inner:                      parsed.bracket_inner
+				bracket_raw_inner:                  parsed.bracket_raw_inner
+				bracket_prefix:                     parsed.bracket_prefix
+				function_closed:                    parsed.function_closed
+				function_result:                    parsed.function_result
+				tuple_like:                         parsed.tuple_like
+				function_space_prefix:              parsed.function_space_prefix
+				spaced:                             parsed.spaced
+				first_bracket_closed:               parsed.first_bracket_closed
+				first_bracket_base:                 parsed.first_bracket_base
+				last_space_word:                    parsed.last_space_word
+				named_type:                         parsed.named_type
+				c_qualified:                        parsed.c_qualified
+				first_dot_prefix:                   parsed.first_dot_prefix
+				first_dot_suffix:                   parsed.first_dot_suffix
+				builtin_prefix:                     parsed.builtin_prefix
+				main_fragment:                      parsed.main_fragment
+				function_prefix:                    parsed.function_prefix
+				fn_prefix:                          parsed.fn_prefix
+				shared_fragment:                    parsed.shared_fragment
+				pointer_raw_base:                   parsed.pointer_raw_base
+				qualifier_count:                    parsed.qualifier_count
+				builtin_base:                       parsed.builtin_base
+				cgen_app_base:                      parsed.cgen_app_base
+				cgen_app_valid:                     parsed.cgen_app_valid
+				tuple_contains_comma:               parsed.tuple_contains_comma
+				top_space_head:                     parsed.top_space_head
+				top_space_tail:                     parsed.top_space_tail
+				top_space_valid:                    parsed.top_space_valid
+				typeof_expr_prefix:                 parsed.typeof_expr_prefix
+				bracket_suffix:                     parsed.bracket_suffix
+				bracket_from:                       parsed.bracket_from
+				bracket_inner_fixed_length:         parsed.bracket_inner_fixed_length
+				first_bracket_prefix:               parsed.first_bracket_prefix
+				void_pointer_postfix:               parsed.void_pointer_postfix
+				canonical_dotted_name:              parsed.canonical_dotted_name
+				decimal:                            parsed.decimal
+				contains_comma:                     parsed.contains_comma
+				function_fragment:                  parsed.function_fragment
+				dots_base:                          parsed.dots_base
+				cgen_raw_app_base:                  parsed.cgen_raw_app_base
+				cgen_raw_app_valid:                 parsed.cgen_raw_app_valid
+				generic_parameter_payload:          parsed.generic_parameter_payload
+				legacy_parameter_type:              parsed.legacy_parameter_type
+				legacy_parameter_mut_type:          parsed.legacy_parameter_mut_type
+				first_bracket_length:               parsed.first_bracket_length
+				c_pointer_base:                     parsed.c_pointer_base
+				c_ptr_name_suffix:                  parsed.c_ptr_name_suffix
+				c_fn_type_fragment:                 parsed.c_fn_type_fragment
+				underscored:                        parsed.underscored
+				source_wrapper_base:                parsed.source_wrapper_base
+				declaration_head:                   parsed.declaration_head
+				fn_fragment:                        parsed.fn_fragment
+				compact_fn_spelling:                parsed.compact_fn_spelling
+				first_bracket_raw_inner:            parsed.first_bracket_raw_inner
+				cgen_generic_placeholder:           parsed.cgen_generic_placeholder
+				fixed_array_type:                   parsed.fixed_array_type
+				typeof_valid:                       parsed.typeof_valid
+				typeof_inner:                       parsed.typeof_inner
+				postfix_index_base:                 parsed.postfix_index_base
+				last_bracket_prefix:                parsed.last_bracket_prefix
+				last_bracket_length:                parsed.last_bracket_length
+				trailing_bracket_prefix:            parsed.trailing_bracket_prefix
+				trailing_bracket_closed:            parsed.trailing_bracket_closed
+				array_chars_base:                   parsed.array_chars_base
+				lowercase_value_ident:              parsed.lowercase_value_ident
+				typeof_prefix:                      parsed.typeof_prefix
+				first_capital:                      parsed.first_capital
+				named_variant:                      parsed.named_variant
+				named_variant_valid:                parsed.named_variant_valid
+				named_variant_owner:                parsed.named_variant_owner
+				named_variant_name:                 parsed.named_variant_name
+				main_unlocked:                      parsed.main_unlocked
+				encoded_fixed_length:               parsed.encoded_fixed_length
+				encoded_fixed_base:                 parsed.encoded_fixed_base
+				map_name_prefix:                    parsed.map_name_prefix
+				suffix_bracket_length:              parsed.suffix_bracket_length
+				suffix_bracket_valid:               parsed.suffix_bracket_valid
+				map_function_fragment:              parsed.map_function_fragment
+				bracket_source_inner:               parsed.bracket_source_inner
+				c_fixed_typedef_element:            parsed.c_fixed_typedef_element
+				c_fixed_typedef_length:             parsed.c_fixed_typedef_length
+				c_fixed_typedef_valid:              parsed.c_fixed_typedef_valid
+				fixed_array_query_length:           parsed.fixed_array_query_length
+				last_bracket_span_valid:            parsed.last_bracket_span_valid
+				last_bracket_span_inner:            parsed.last_bracket_span_inner
+				plain_type_name:                    parsed.plain_type_name
+				generic_app_legacy_suffix:          parsed.generic_app_legacy_suffix
+				wrapper_prefix:                     parsed.wrapper_prefix
+				wrapper_base:                       parsed.wrapper_base
+				checker_fixed_array_may_be:         parsed.checker_fixed_array_may_be
+				dollar_prefix:                      parsed.dollar_prefix
+				define_prefix:                      parsed.define_prefix
+				define_fragment:                    parsed.define_fragment
+				paren_prefix:                       parsed.paren_prefix
+				fixed_length:                       parsed.fixed_length
+				qualified_modifiers:                parsed.qualified_modifiers
+				plain_alias_target:                 parsed.plain_alias_target
+				c_array_payload:                    parsed.c_array_payload
+				c_fixed_array_payload:              parsed.c_fixed_array_payload
+				fastc_array_marker:                 parsed.fastc_array_marker
+				fastc_array_marker_payload:         parsed.fastc_array_marker_payload
+				c_map_payload:                      parsed.c_map_payload
+				c_ptr_name_base:                    parsed.c_ptr_name_base
+				c_tagged_type:                      parsed.c_tagged_type
+				backward_bracket_prefix:            parsed.backward_bracket_prefix
+				backward_bracket_closed:            parsed.backward_bracket_closed
+				opening_paren:                      parsed.opening_paren
+				byte_len:                           parsed.byte_len
+				receiver_app_valid:                 parsed.receiver_app_valid
+				receiver_app_base:                  parsed.receiver_app_base
+				declaration_parameter_payload:      parsed.declaration_parameter_payload
+				declaration_parameter_mut:          parsed.declaration_parameter_mut
+				prefix_dimension_tail:              parsed.prefix_dimension_tail
+				prefix_dimensions_closed:           parsed.prefix_dimensions_closed
+				backward_bracket_after_prefix_dims: parsed.backward_bracket_after_prefix_dims
+				backward_bracket_inner:             parsed.backward_bracket_inner
+				option_result_void_prefix:          parsed.option_result_void_prefix
+				nested_option_result_marker:        parsed.nested_option_result_marker
+				c_pointer_depth:                    parsed.c_pointer_depth
+				c_pointer_count:                    parsed.c_pointer_count
+				c_pointer_raw_base:                 parsed.c_pointer_raw_base
+				thread_value_prefix:                parsed.thread_value_prefix
+				thread_value_payload:               parsed.thread_value_payload
+				thread_value_type_valid:            parsed.thread_value_type_valid
+				thread_value_type:                  parsed.thread_value_type
+				contains_closing_bracket:           parsed.contains_closing_bracket
+				atomic_val_fragment:                parsed.atomic_val_fragment
+				expr_prefix:                        parsed.expr_prefix
+				expr_id:                            parsed.expr_id
+				parameter_name:                     parsed.parameter_name
+				parameter_named:                    parsed.parameter_named
+				parameter_is_mut:                   parsed.parameter_is_mut
+				transform_fixed_length:             parsed.transform_fixed_length
+				receiver_collection_id:             parsed.receiver_collection_id
+				ampersand_trimmed:                  parsed.ampersand_trimmed
+				contains_doubleunderscore:          parsed.contains_doubleunderscore
+				parallel_preseed_fn:                parsed.parallel_preseed_fn
+				parallel_preseed_short:             parsed.parallel_preseed_short
+				closing_bracket:                    parsed.closing_bracket
+				constraint_receiver_base:           parsed.constraint_receiver_base
+				result_suffix:                      parsed.result_suffix
+				cgen_decl_unusable:                 parsed.cgen_decl_unusable
+				cgen_decl_authority:                parsed.cgen_decl_authority
+				generic_encoded_fragment:           parsed.generic_encoded_fragment
+				fn_ptr_encoded_prefix:              parsed.fn_ptr_encoded_prefix
+				c_result_prefix:                    parsed.c_result_prefix
+				c_option_prefix:                    parsed.c_option_prefix
+				c_multi_return_prefix:              parsed.c_multi_return_prefix
+				c_lower_map_prefix:                 parsed.c_lower_map_prefix
+				open_generic_receiver_marker:       parsed.open_generic_receiver_marker
+				space_removed:                      parsed.space_removed
+				qualified_name_chars:               parsed.qualified_name_chars
+				field_owner_module:                 parsed.field_owner_module
+				const_name_prefix:                  parsed.const_name_prefix
+				pthread_prefix:                     parsed.pthread_prefix
+				thread_bracket_prefix:              parsed.thread_bracket_prefix
+				fixed_typedef_bracket:              parsed.fixed_typedef_bracket
+				question_trimmed:                   parsed.question_trimmed
+				c_array_fixed_prefix:               parsed.c_array_fixed_prefix
+				function_space_result:              parsed.function_space_result
+				decimal_value:                      parsed.decimal_value
+				integer_value:                      parsed.integer_value
+				encoded_alnum_dotted:               parsed.encoded_alnum_dotted
+				internal_symbol_prefix:             parsed.internal_symbol_prefix
+				main_at_base:                       parsed.main_at_base
+				incremental_generic_application:    parsed.incremental_generic_application
+				system_error_suffix:                parsed.system_error_suffix
+				receiver_app_inner:                 parsed.receiver_app_inner
+				fastc_fixed_array_length_valid:     parsed.fastc_fixed_array_length_valid
+				fastc_fixed_array_length:           parsed.fastc_fixed_array_length
+				contains_capital:                   parsed.contains_capital
+				first_bracket_source_inner:         parsed.first_bracket_source_inner
+				c_function_pointer_hole:            parsed.c_function_pointer_hole
+				channel_fragment:                   parsed.channel_fragment
+				array_receiver_fragment:            parsed.array_receiver_fragment
+				mangled_open_generic_marker:        parsed.mangled_open_generic_marker
+				array_suffix:                       parsed.array_suffix
+				empty_function_prefix:              parsed.empty_function_prefix
+				c_shared_fragment:                  parsed.c_shared_fragment
+				typ_suffix:                         parsed.typ_suffix
+				typ_suffix_base:                    parsed.typ_suffix_base
+				checker_parse_function_result:      parsed.checker_parse_function_result
+				checker_parse_function_has_params:  parsed.checker_parse_function_has_params
+				top_level_dot_valid:                parsed.top_level_dot_valid
+				top_level_dot_prefix:               parsed.top_level_dot_prefix
+				top_level_dot_suffix:               parsed.top_level_dot_suffix
+				parser_fn_decl_valid:               parsed.parser_fn_decl_valid
+				parser_fn_decl_params:              parsed.parser_fn_decl_params
+				parser_fn_decl_result:              parsed.parser_fn_decl_result
+				contains_question:                  parsed.contains_question
+				contains_union:                     parsed.contains_union
+				named_variant_dot_valid:            parsed.named_variant_dot_valid
+				named_variant_dot_prefix:           parsed.named_variant_dot_prefix
+				named_variant_dot_suffix:           parsed.named_variant_dot_suffix
 			}
 		}
+	}
+	// The strict name constructor proves that thirty views are empty. Their
+	// zeroed span fields need no generic length/copy work; identity views use slot 0.
+	if parsed.name_packing {
+		identity_span := SourceTypeSyntaxSpan{ len: 1 }
+		source_type_syntax_store_span(&entry.syntax.cgen_parts_span, identity_span)
+		source_type_syntax_store_span(&entry.syntax.plain_comma_parts_span, identity_span)
+		source_type_syntax_store_span(&entry.syntax.inferred_parts_span, identity_span)
+		source_type_syntax_store_span(&entry.syntax.reflection_parts_span, identity_span)
+		source_type_syntax_store_span(&entry.syntax.union_parts_span, identity_span)
+		if parsed.generic_mentions.len != 0 {
+			source_type_syntax_store_span(&entry.syntax.generic_mentions_span, identity_span)
+		}
+		if parsed.cgen_placeholder_candidates.len != 0 {
+			source_type_syntax_store_span(&entry.syntax.cgen_placeholder_candidates_span, identity_span)
+		}
+		source_type_syntax_store_span(&entry.syntax.voidptr_parts_span,
+			source_type_syntax_owned_ids(parsed.voidptr_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.vls_generic_words_span,
+			source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload))
+		source_type_syntax_store_span(&entry.syntax.markused_generic_components_span,
+			source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload))
+	} else {
+		source_type_syntax_store_span(&entry.syntax.args_span,
+			source_type_syntax_owned_ids(parsed.args, mut payload))
+		source_type_syntax_store_span(&entry.syntax.application_args_span,
+			source_type_syntax_owned_ids(parsed.application_args, mut payload))
+		source_type_syntax_store_span(&entry.syntax.generic_app_args_span,
+			source_type_syntax_owned_ids(parsed.generic_app_args, mut payload))
+		source_type_syntax_store_span(&entry.syntax.postfix_dims_span,
+			source_type_syntax_owned_ids(parsed.postfix_dims, mut payload))
+		source_type_syntax_store_span(&entry.syntax.function_params_span,
+			source_type_syntax_owned_ids(parsed.function_params, mut payload))
+		source_type_syntax_store_span(&entry.syntax.tuple_components_span,
+			source_type_syntax_owned_ids(parsed.tuple_components, mut payload))
+		source_type_syntax_store_span(&entry.syntax.cgen_app_args_span,
+			source_type_syntax_owned_ids(parsed.cgen_app_args, mut payload))
+		source_type_syntax_store_span(&entry.syntax.cgen_function_params_span,
+			source_type_syntax_owned_ids(parsed.cgen_function_params, mut payload))
+		source_type_syntax_store_span(&entry.syntax.checker_function_params_span,
+			source_type_syntax_owned_ids(parsed.checker_function_params, mut payload))
+		source_type_syntax_store_span(&entry.syntax.checker_tuple_components_span,
+			source_type_syntax_owned_ids(parsed.checker_tuple_components, mut payload))
+		source_type_syntax_store_span(&entry.syntax.cgen_raw_app_args_span,
+			source_type_syntax_owned_ids(parsed.cgen_raw_app_args, mut payload))
+		source_type_syntax_store_span(&entry.syntax.cgen_parts_span,
+			source_type_syntax_owned_ids(parsed.cgen_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.checker_raw_tuple_components_span,
+			source_type_syntax_owned_ids(parsed.checker_raw_tuple_components, mut payload))
+		source_type_syntax_store_span(&entry.syntax.bracket_raw_parts_span,
+			source_type_syntax_owned_ids(parsed.bracket_raw_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.bracket_generic_parts_span,
+			source_type_syntax_owned_ids(parsed.bracket_generic_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.tuple_function_components_span,
+			source_type_syntax_owned_ids(parsed.tuple_function_components, mut payload))
+		source_type_syntax_store_span(&entry.syntax.plain_comma_parts_span,
+			source_type_syntax_owned_ids(parsed.plain_comma_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.generic_mentions_span,
+			source_type_syntax_owned_ids(parsed.generic_mentions, mut payload))
+		source_type_syntax_store_span(&entry.syntax.receiver_app_args_span,
+			source_type_syntax_owned_ids(parsed.receiver_app_args, mut payload))
+		source_type_syntax_store_span(&entry.syntax.checker_bracket_components_span,
+			source_type_syntax_owned_ids(parsed.checker_bracket_components, mut payload))
+		source_type_syntax_store_span(&entry.syntax.voidptr_parts_span,
+			source_type_syntax_owned_ids(parsed.voidptr_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.inferred_parts_span,
+			source_type_syntax_owned_ids(parsed.inferred_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.inferred_annotations_span,
+			source_type_syntax_owned_ids(parsed.inferred_annotations, mut payload))
+		source_type_syntax_store_span(&entry.syntax.inferred_expr_ids_span,
+			source_type_syntax_owned_ids(parsed.inferred_expr_ids, mut payload))
+		source_type_syntax_store_span(&entry.syntax.substitution_function_params_span,
+			source_type_syntax_owned_ids(parsed.substitution_function_params, mut payload))
+		source_type_syntax_store_span(&entry.syntax.written_applications_span,
+			source_type_syntax_owned_ids(parsed.written_applications, mut payload))
+		source_type_syntax_store_span(&entry.syntax.written_application_offsets_span,
+			source_type_syntax_owned_ids(parsed.written_application_offsets, mut payload))
+		source_type_syntax_store_span(&entry.syntax.checker_raw_bracket_components_span,
+			source_type_syntax_owned_ids(parsed.checker_raw_bracket_components, mut payload))
+		source_type_syntax_store_span(&entry.syntax.cgen_placeholder_candidates_span,
+			source_type_syntax_owned_ids(parsed.cgen_placeholder_candidates, mut payload))
+		source_type_syntax_store_span(&entry.syntax.reflection_parts_span,
+			source_type_syntax_owned_ids(parsed.reflection_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.reflection_tuple_parts_span,
+			source_type_syntax_owned_ids(parsed.reflection_tuple_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.receiver_raw_app_args_span,
+			source_type_syntax_owned_ids(parsed.receiver_raw_app_args, mut payload))
+		source_type_syntax_store_span(&entry.syntax.vls_generic_words_span,
+			source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload))
+		source_type_syntax_store_span(&entry.syntax.eval_tuple_parts_span,
+			source_type_syntax_owned_ids(parsed.eval_tuple_parts, mut payload))
+		source_type_syntax_store_span(&entry.syntax.implicit_tuple_components_span,
+			source_type_syntax_owned_ids(parsed.implicit_tuple_components, mut payload))
+		source_type_syntax_store_span(&entry.syntax.generic_application_heads_span,
+			source_type_syntax_owned_ids(parsed.generic_application_heads, mut payload))
+		source_type_syntax_store_span(&entry.syntax.markused_application_heads_span,
+			source_type_syntax_owned_ids(parsed.markused_application_heads, mut payload))
+		source_type_syntax_store_span(&entry.syntax.markused_generic_components_span,
+			source_type_syntax_owned_ids(parsed.markused_generic_components, mut payload))
+		source_type_syntax_store_span(&entry.syntax.raw_tuple_parse_components_span,
+			source_type_syntax_owned_ids(parsed.raw_tuple_parse_components, mut payload))
+		source_type_syntax_store_span(&entry.syntax.union_parts_span,
+			source_type_syntax_owned_ids(parsed.union_parts, mut payload))
 	}
 	source_type_syntax_publish(id, entry)
 	return &entry.syntax
@@ -2063,6 +2133,13 @@ struct SourceTypeSyntaxPayload {
 	ids         voidptr
 mut:
 	id_offset int
+}
+
+// Only the owning writer calls this while constructing an unpublished entry.
+@[inline]
+fn source_type_syntax_store_span(target voidptr, span SourceTypeSyntaxSpan) {
+	// These process-owned fields are initialized before the release publication.
+	unsafe { *&SourceTypeSyntaxSpan(target) = span }
 }
 
 @[inline]
@@ -2667,6 +2744,11 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 	}
 	clean := source_type_query_trim(raw)
 	clean_id := source_type_syntax_child_id(id, raw, clean)
+	// No-split views borrow the immutable spelling entry until payload publication.
+	identity_ids := source_type_syntax_scalar_ids(id)
+	has_comma := raw.contains(',')
+	contains_union := raw.contains('|')
+	unpadded_nonempty := raw.len > 0 && clean_id == id
 	spaced := raw.contains(' ')
 	main_fragment := raw.contains('main.')
 	compact_fn_fragment := raw.contains('fn (')
@@ -2782,13 +2864,28 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 	}
 	mut c_pointer_end := raw.len
 	for c_pointer_end > 0 && raw[c_pointer_end - 1] == `*` { c_pointer_end-- }
-	mut voidptr_parts := source_type_syntax_empty_ids()
-	for part in raw.split('voidptr') { voidptr_parts << source_type_syntax_child_id(id, raw, part) }
-	inferred_parts, inferred_annotations, inferred_expr_ids := source_type_syntax_inferred(raw)
+	mut voidptr_parts := identity_ids
+	if raw.len == 0 || raw.contains('voidptr') {
+		voidptr_parts = source_type_syntax_empty_ids()
+		for part in raw.split('voidptr') {
+			voidptr_parts << source_type_syntax_child_id(id, raw, part)
+		}
+	}
+	mut inferred_parts := identity_ids
+	mut inferred_annotations := source_type_syntax_empty_ids()
+	mut inferred_expr_ids := source_type_syntax_empty_ids()
+	if raw.len == 0 || raw.contains('typeof(__expr_') {
+		inferred_parts, inferred_annotations, inferred_expr_ids = source_type_syntax_inferred(raw)
+	}
 	fastc_fixed_array_length_valid, fastc_fixed_array_length := source_type_syntax_fastc_fixed_length(raw)
 	parallel_preseed_fn, parallel_preseed_short := source_type_syntax_parallel_preseed(raw)
-	mut plain_comma_parts := source_type_syntax_empty_ids()
-	for part in raw.split(',') { plain_comma_parts << source_type_syntax_child_id(id, raw, part) }
+	mut plain_comma_parts := identity_ids
+	if raw.len == 0 || has_comma {
+		plain_comma_parts = source_type_syntax_empty_ids()
+		for part in raw.split(',') {
+			plain_comma_parts << source_type_syntax_child_id(id, raw, part)
+		}
+	}
 	mut source_wrapper_len := 0
 	for source_wrapper_len < raw.len && raw[source_wrapper_len] in [`&`, `?`, `!`] {
 		source_wrapper_len++
@@ -3053,7 +3150,11 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		cgen_raw_app_base:                  cgen_raw_app_base
 		cgen_raw_app_args:                  cgen_raw_app_args
 		cgen_raw_app_valid:                 cgen_raw_app_valid
-		cgen_parts:                         source_type_syntax_legacy_parts(raw)
+		cgen_parts:                         if unpadded_nonempty && !has_comma {
+			identity_ids
+		} else {
+			source_type_syntax_legacy_parts(raw)
+		}
 		generic_parameter_payload:          legacy_parameter_type
 		legacy_parameter_type:              legacy_parameter_type
 		legacy_parameter_mut_type:          legacy_parameter_mut_type
@@ -3346,7 +3447,11 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 			qualifier
 		}
 		const_name_prefix:                  raw.starts_with('const_')
-		reflection_parts:                   source_type_syntax_reflection_parts(raw)
+		reflection_parts:                   if unpadded_nonempty && !has_comma {
+			identity_ids
+		} else {
+			source_type_syntax_reflection_parts(raw)
+		}
 		reflection_tuple_parts:             if tuple_like {
 			source_type_syntax_reflection_parts(raw[1..raw.len - 1])
 		} else {
@@ -3422,8 +3527,12 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		checker_parse_function_result:      checker_parse_function_result
 		checker_parse_function_has_params:  checker_parse_function_has_params
 		contains_question:                  raw.contains('?')
-		contains_union:                     raw.contains('|')
-		union_parts:                        source_type_syntax_union_parts(raw)
+		contains_union:                     contains_union
+		union_parts:                        if unpadded_nonempty && !contains_union {
+			identity_ids
+		} else {
+			source_type_syntax_union_parts(raw)
+		}
 		named_variant_dot_valid:            named_variant_dot >= 0
 		named_variant_dot_prefix:           if named_variant_dot >= 0 {
 			source_type_syntax_child_range_id(id, raw, 0, named_variant_dot)
@@ -3526,6 +3635,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	c_fixed_typedef_element, c_fixed_typedef_length, c_fixed_typedef_valid := source_type_syntax_c_fixed_typedef(raw)
 	fastc_fixed_array_length_valid, fastc_fixed_array_length := source_type_syntax_fastc_fixed_length(raw)
 	return SourceTypeSyntaxParsed{
+		name_packing:                   true
 		kind:                           .name
 		trimmed:                        id
 		unqualified:                    unqualified
