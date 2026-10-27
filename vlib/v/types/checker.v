@@ -1522,6 +1522,10 @@ mut:
 	fn_check_costs              []i32
 	direct_parent_index_trusted bool
 	has_goto_nodes              bool
+	// Memo of comptime_methods_loop_exists for the AST at comptime_methods_scan_ast.
+	comptime_methods_scan_ast   voidptr
+	comptime_methods_scan_len   int
+	comptime_methods_loop_found bool
 	// Immutable declaration indexes shared by checker workers.
 	strings_builder_bindings          map[string]bool
 	strings_builder_candidates        []i32
@@ -1934,6 +1938,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		preflight_node_ids:                    tc.preflight_node_ids
 		preflight_index_nodes_len:             tc.preflight_index_nodes_len
 		has_goto_nodes:                        tc.has_goto_nodes
+		comptime_methods_scan_ast:             tc.comptime_methods_scan_ast
+		comptime_methods_scan_len:             tc.comptime_methods_scan_len
+		comptime_methods_loop_found:           tc.comptime_methods_loop_found
 		declaration_attributes:                tc.declaration_attributes
 		attribute_schemas:                     tc.attribute_schemas
 		type_declaration_ids:                  tc.type_declaration_ids
@@ -2490,6 +2497,7 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.has_goto_nodes = false
 	tc.preflight_node_ids = []i32{}
 	tc.preflight_index_nodes_len = -1
+	tc.comptime_methods_scan_ast = unsafe { nil }
 }
 
 struct DirectParentEdge {
@@ -2618,6 +2626,44 @@ fn (tc &TypeChecker) preflight_nodes(kind flat.NodeKind) []i32 {
 		}
 	}
 	return ids
+}
+
+// comptime_methods_loop_exists reports whether the AST has a `$for m in T.methods`
+// loop. Without one, no call can reach a reflected method call. Nodes appended
+// after an earlier answer are scanned on the next query.
+@[direct_array_access]
+fn (mut tc TypeChecker) comptime_methods_loop_exists() bool {
+	if tc.comptime_methods_scan_ast != voidptr(tc.a) {
+		tc.comptime_methods_scan_ast = voidptr(tc.a)
+		tc.comptime_methods_scan_len = 0
+		tc.comptime_methods_loop_found = false
+	}
+	n := tc.a.nodes.len
+	if tc.comptime_methods_loop_found || tc.comptime_methods_scan_len >= n {
+		return tc.comptime_methods_loop_found
+	}
+	mut found := false
+	if tc.comptime_methods_scan_len == 0 && tc.direct_parent_index_trusted
+		&& tc.preflight_index_nodes_len == n {
+		for id in tc.preflight_node_ids {
+			node := tc.a.nodes[id]
+			if node.kind == .comptime_for && node.value.ends_with('|methods') {
+				found = true
+				break
+			}
+		}
+	} else {
+		for id in tc.comptime_methods_scan_len .. n {
+			node := tc.a.nodes[id]
+			if node.kind == .comptime_for && node.value.ends_with('|methods') {
+				found = true
+				break
+			}
+		}
+	}
+	tc.comptime_methods_scan_len = n
+	tc.comptime_methods_loop_found = found
+	return found
 }
 
 fn (mut tc TypeChecker) collect_direct_parent_metadata(a &flat.FlatAst) {

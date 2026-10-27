@@ -21840,6 +21840,9 @@ fn clone_checked_comptime_method_calls(calls map[u64][]ComptimeMethodCallInstanc
 // check_instantiated_comptime_method_args checks reflection method arguments once
 // an unconstrained generic receiver is known at its call site.
 fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.NodeId, call flat.Node, info CallInfo) {
+	if !tc.comptime_methods_loop_exists() {
+		return
+	}
 	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
 	if !tc.generic_args_are_concrete(instantiation.concrete_args.ids) {
 		return
