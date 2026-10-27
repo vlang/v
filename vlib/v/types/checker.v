@@ -9416,15 +9416,50 @@ fn (mut tc TypeChecker) report_unused_private_declarations(used_fns map[string]b
 	// The diagnostic filter and recorded file both read tc.cur_file; replay each
 	// candidate's file so deferred emission matches the former in-walk emission.
 	walk_end_file := tc.cur_file
+	// record_notice_at finds a repeated notice by scanning every recorded one, which costs
+	// n^2 comparisons for n unused declarations. This batch looks repeats up in a set.
+	mut seen := map[string]bool{}
+	recorded := if tc.notes_are_errors { tc.errors } else { tc.notices }
+	for e in recorded {
+		seen[notice_repeat_key(e.kind, e.msg, e.pos)] = true
+	}
 	for cand in unused {
 		tc.cur_file = cand.file
 		if cand.is_fn {
-			tc.record_notice_at(.unknown_ident, 'unused function: `${cand.name}`', cand.node_id, tc.node_value_diagnostic_pos(cand.node_id))
+			tc.record_notice_once_at(.unknown_ident, 'unused function: `${cand.name}`', cand.node_id, tc.node_value_diagnostic_pos(cand.node_id), mut seen)
 		} else {
-			tc.record_notice_at(.unknown_ident, 'unused constant: `${cand.name}`', cand.node_id, cand.position)
+			tc.record_notice_once_at(.unknown_ident, 'unused constant: `${cand.name}`', cand.node_id, cand.position, mut seen)
 		}
 	}
 	tc.cur_file = walk_end_file
+}
+
+// notice_repeat_key identifies a notice by what record_notice_at compares: its kind,
+// message and position.
+fn notice_repeat_key(kind TypeErrorKind, msg string, pos token.Pos) string {
+	return '${int(kind)}:${pos.id}:${pos.offset}:${pos.end}:${pos.meta}:${msg}'
+}
+
+// record_notice_once_at is record_notice_at for a batch of notices. `seen` holds the
+// notice_repeat_key of every notice recorded so far, so a repeat is a lookup, not a scan.
+fn (mut tc TypeChecker) record_notice_once_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, mut seen map[string]bool) {
+	if !tc.should_diagnose_notice(node) {
+		return
+	}
+	key := notice_repeat_key(kind, msg, pos)
+	if key in seen {
+		return
+	}
+	seen[key] = true
+	base := tc.make_type_error_at(kind, msg, node, pos)
+	if tc.notes_are_errors {
+		tc.errors << TypeError{
+			...base
+			severity: 'error:'
+		}
+		return
+	}
+	tc.notices << base
 }
 
 // used_fns_without_markused returns what a check can take as the used functions
