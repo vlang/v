@@ -7605,6 +7605,9 @@ fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replac
 		payload:        if node.payload != 0 { node.clone_owned().payload } else { u32(0) }
 	})
 	t.note_fresh_child_parents(copy_id, new_children, fresh_start)
+	if !isnil(t.tc) {
+		t.tc.note_generated_borrowed_projection_copy(id, copy_id)
+	}
 	return copy_id
 }
 

@@ -92,6 +92,14 @@ hex_mixed = 0xb0bb1e'
 	assert value_mixed.i64() == 0xb0bb1e
 }
 
+fn test_repeated_hex_digits_do_not_allow_invalid_numbers() {
+	for literal in ['0bb', '0b10bb', '0xx', '0xbb__bb', '+0xbb', '-0xbb', '0xbb_', '0x_bb'] {
+		if _ := toml.parse_text('number = ${literal}') {
+			assert false, 'expected invalid number `${literal}` to be rejected'
+		}
+	}
+}
+
 fn test_comment_as_last_value() {
 	toml_txt := '
 test = 42
