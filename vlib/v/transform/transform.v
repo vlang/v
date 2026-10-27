@@ -5511,6 +5511,10 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		alias_receiver_fns_aliases:          t.alias_receiver_fns_aliases
 		globals:                             fork_prepared_type_bindings(t.globals)
 		global_qualified_names:              t.global_qualified_names
+		live_fns:                            t.live_fns
+		live_methods:                        t.live_methods
+		live_source_file:                    t.live_source_file
+		live_reload_runtime:                 t.live_reload_runtime
 		sum_types:                           t.sum_types
 		sum_variant_parents:                 t.sum_variant_parents
 		sum_variant_names:                   t.sum_variant_names
