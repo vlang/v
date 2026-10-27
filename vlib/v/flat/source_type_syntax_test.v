@@ -1074,29 +1074,18 @@ fn test_source_type_syntax_flattened_receiver_parts_outlive_the_creating_worker(
 fn test_source_type_syntax_name_builder_singletons_have_process_owned_backing() {
 	for text in ['Name', 'T', '_name', 'pkg.Name', 'main.pkg_Name'] {
 		id := source_type_id(text)
-		parsed := source_type_syntax_parse(id, text)
-		entry := source_type_read_entry(id)
-		assert parsed.symbols == [id]
-		assert parsed.symbols.data == voidptr(&entry.id)
-		assert parsed.symbol_is_name_singleton
-		assert parsed.symbol_is_name.len == 0
-		assert parsed.symbols_first_offsets == [u32(0)]
-		assert parsed.symbols_first_offsets.data == voidptr(&g_source_type_syntax_zero_offset)
 		syntax := source_type_syntax(id)
 		assert syntax.symbols() == [id]
 		assert syntax.symbol_is_name() == [true]
 		assert syntax.symbols_first_offsets() == [u32(0)]
-		assert syntax.symbols().data != parsed.symbols.data
-		assert syntax.symbol_is_name().data != parsed.symbol_is_name.data
-		assert syntax.symbols_first_offsets().data != parsed.symbols_first_offsets.data
+		assert syntax.symbols().data == syntax.payload
+		assert syntax.symbols_first_offsets().data == voidptr(&g_source_type_syntax_zero_offset)
+		assert syntax.symbol_is_name().data == syntax.symbol_is_name().data
 	}
 	for text in ['123', '123T', '123_T'] {
 		id := source_type_id(text)
-		parsed := source_type_syntax_parse(id, text)
 		expected_parts, expected_names := source_type_syntax_symbol_parts(text)
-		assert parsed.symbol_parts == expected_parts
-		assert !parsed.symbol_is_name_singleton
-		assert parsed.symbol_is_name == expected_names
+		assert source_type_syntax(id).symbol_parts() == expected_parts
 		assert source_type_syntax(id).symbol_is_name() == expected_names
 	}
 }
@@ -1105,9 +1094,9 @@ fn source_type_syntax_name_singletons_in_disposable_scope() u32 {
 	$if prealloc {
 		scope := unsafe { prealloc_scope_begin() }
 		id := source_type_id('SyntaxNameSingletonArenaFresh'.clone())
-		parsed := source_type_syntax_parse(id, source_type_name(id))
-		assert parsed.symbols[0] == id
-		source_type_syntax(id)
+		syntax := source_type_syntax(id)
+		assert syntax.symbols()[0] == id
+		syntax.symbol_is_name()
 		unsafe {
 			prealloc_scope_leave(scope)
 			prealloc_scope_free_after(scope)
@@ -1256,5 +1245,103 @@ fn test_source_type_syntax_lazy_name_views_parallel_publication() {
 		source_type_id('ptrmain.Parallel.Name')]
 	for worker in workers {
 		assert worker.wait() == expected
+	}
+}
+
+fn test_source_type_syntax_lexical_views_preserve_each_raw_grammar() {
+	for raw in ['', 'Name', 'pkg.Name', 'pkg.1T', 'A..B.', '123T', '123_T', '  fn (x Box[T], C.T) ![]T ',
+		'FooBar Bar Bar', '"T.name"+1U', 'map[Alias'] {
+		id := source_type_id(raw)
+		syntax := source_type_syntax(id)
+		symbols, offsets := source_type_syntax_symbols(raw)
+		parts, names := source_type_syntax_symbol_parts(raw)
+		mut dotted := []u32{}
+		for part in raw.split('.') { dotted << source_type_syntax_child_id(id, raw, part) }
+		assert syntax.symbols() == symbols
+		assert syntax.symbols_first_offsets() == offsets
+		assert syntax.words() == source_type_syntax_tokens(raw, false)
+		assert syntax.legacy_generic_words() == source_type_syntax_legacy_words(raw)
+		assert syntax.symbol_parts() == parts
+		assert syntax.symbol_is_name() == names
+		assert syntax.dotted_parts() == dotted
+	}
+	empty := SourceTypeSyntax{}
+	assert empty.symbols().len == 0
+	assert empty.symbols_first_offsets().len == 0
+	assert empty.words().len == 0
+	assert empty.legacy_generic_words().len == 0
+	assert empty.symbol_parts().len == 0
+	assert empty.symbol_is_name().len == 0
+	assert empty.dotted_parts().len == 0
+}
+
+fn test_source_type_syntax_lexical_views_publish_only_on_request() {
+	id := source_type_id('  LazyLexicalCheckpoint479.T, []U! ')
+	syntax := source_type_syntax(id)
+	for kind in [SourceTypeLexicalKind.symbols, .words, .legacy_words, .dotted, .parts] {
+		assert isnil(source_type_syntax_lexical_find(source_type_syntax_lexical_slot(id, kind), id, kind))
+	}
+	words := syntax.words()
+	assert words.len > 0
+	assert words.data == syntax.words().data
+	assert isnil(source_type_syntax_lexical_find(source_type_syntax_lexical_slot(id, .symbols), id, .symbols))
+	assert isnil(source_type_syntax_lexical_find(source_type_syntax_lexical_slot(id, .parts), id, .parts))
+	parts := syntax.symbol_parts()
+	names := syntax.symbol_is_name()
+	assert parts.len == names.len
+	assert parts.data == syntax.symbol_parts().data
+	assert names.data == syntax.symbol_is_name().data
+	zero_words := source_type_syntax_lexical(0, .words)
+	assert source_type_syntax_lexical_ids(zero_words, false).len == 0
+	assert zero_words == source_type_syntax_lexical(0, .words)
+}
+
+fn source_type_syntax_lexical_in_disposable_scope() u32 {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		id := source_type_id('  LazyLexicalWorker489.fn (T) []U '.clone())
+		syntax := source_type_syntax(id)
+		syntax.symbols()
+		syntax.symbols_first_offsets()
+		syntax.words()
+		syntax.legacy_generic_words()
+		syntax.dotted_parts()
+		syntax.symbol_parts()
+		syntax.symbol_is_name()
+		unsafe {
+			prealloc_scope_leave(scope)
+			prealloc_scope_free_after(scope)
+			prealloc_thread_cleanup()
+		}
+		return id
+	} $else {
+		id := source_type_id('  LazyLexicalWorker489.fn (T) []U '.clone())
+		syntax := source_type_syntax(id)
+		syntax.symbols()
+		syntax.symbols_first_offsets()
+		syntax.words()
+		syntax.legacy_generic_words()
+		syntax.dotted_parts()
+		syntax.symbol_parts()
+		syntax.symbol_is_name()
+		return id
+	}
+}
+
+fn test_source_type_syntax_lexical_views_outlive_parallel_workers() {
+	mut handles := []thread u32{}
+	for _ in 0 .. 4 { handles << spawn source_type_syntax_lexical_in_disposable_scope() }
+	ids := handles.wait()
+	for id in ids {
+		raw := source_type_name(id)
+		syntax := source_type_syntax(id)
+		symbols, offsets := source_type_syntax_symbols(raw)
+		parts, names := source_type_syntax_symbol_parts(raw)
+		assert syntax.symbols() == symbols
+		assert syntax.symbols_first_offsets() == offsets
+		assert syntax.symbol_parts() == parts
+		assert syntax.symbol_is_name() == names
+		assert syntax.words() == source_type_syntax_tokens(raw, false)
+		assert syntax.legacy_generic_words() == source_type_syntax_legacy_words(raw)
 	}
 }

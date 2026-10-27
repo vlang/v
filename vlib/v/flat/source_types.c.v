@@ -136,6 +136,108 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	return shape
 }
 
+// Classify plain raw names together: these have no wrappers, padding, or
+// delimiters. All other spellings retain the complete legacy classifiers.
+@[direct_array_access]
+fn source_type_spelling_flags(text string) (SourceTypeShape, SourceTypeQuery) {
+	mut shape := unsafe { SourceTypeShape(0) }
+	mut query := unsafe { SourceTypeQuery(0) }
+	if text.len == 0 {
+		shape = source_type_spelling_shape(text)
+		return shape, source_type_spelling_query(text, shape)
+	}
+	for i, c in text {
+		if c == `.` {
+			shape.set(.dotted)
+		} else if !source_type_query_ident(c) {
+			shape = source_type_spelling_shape(text)
+			return shape, source_type_spelling_query(text, shape)
+		}
+		if c >= `A` && c <= `Z`
+			&& (i == 0 || !source_type_query_ident(text[i - 1]))
+			&& (i + 1 == text.len || !source_type_query_ident(text[i + 1])) {
+			query.set(.generic_token)
+		}
+	}
+	query.set(.complete)
+	builtin := match text.len {
+		2 { text in ['i8', 'u8'] }
+		3 { text in ['int', 'i16', 'i32', 'i64', 'u16', 'u32', 'u64', 'f32', 'f64'] }
+		4 { text in ['bool', 'void', 'rune', 'uint'] }
+		5 { text in ['isize', 'usize'] }
+		6 { text == 'string' }
+		7 { text in ['voidptr', 'byteptr', 'charptr'] }
+		else { false }
+	}
+	if builtin {
+		shape.set(.builtin_alias)
+	} else {
+		query.set(.struct_candidate)
+	}
+	if builtin || text in ['char', 'nil', 'none', 'i128', 'u128'] {
+		shape.set(.context_independent)
+	}
+	if text.contains('typeof') { shape.set(.typeof_name) }
+	if text.contains('_T_') { shape.set(.generic_c_name) }
+	if text.contains('generic') { query.set(.generic_word) }
+	unknown := text.contains('unknown')
+	if unknown { query.set(.unknown_fragment) }
+	if unknown || text in ['array', 'map', 'struct']
+		|| (text.starts_with('Option') && (text.len == 'Option'.len || text['Option'.len] == `_`))
+		|| (text.starts_with('__v_option') && (text.len == '__v_option'.len
+			|| text['__v_option'.len] == `_`))
+		|| (text.starts_with('Result') && (text.len == 'Result'.len || text['Result'.len] == `_`)) {
+		shape.set(.unusable_decl)
+	}
+	if text.contains('Arc_') { query.set(.map_arc_key) }
+	last := text.len - 1
+	if (text.len == 1 || text[last - 1] == `.`) {
+		if text[last] >= `A` && text[last] <= `Z` { query.set(.generic_fn_name) }
+		if text[last] in [`T`, `U`, `V`, `K`] { query.set(.generic_name) }
+	}
+	if text.len == 1 && text[0] >= `A` && text[0] <= `Z` && text[0] != `C` {
+		shape.set(.bare_generic)
+	}
+	if text == 'chan' { query.set(.channel) }
+	if text == 'struct' || text.ends_with('.struct') { shape.set(.anonymous_struct) }
+	if text.ends_with('.thread') { query.set(.thread_suffix) }
+	if text.ends_with('_Ctx') { query.set(.ctx_suffix) }
+	match text[0] {
+		`.` {
+			if text.starts_with('...') { shape.set(.variadic) }
+		}
+		`s` { shape.set(.shared_parameter_candidate) }
+		`C` {
+			if text.starts_with('C.') { query.set(.c_prefix) }
+		}
+		`m` {
+			if text.starts_with('main.') { query.set(.main_prefix) }
+		}
+		`A` {
+			if text.starts_with('Array_') { query.set(.c_array_prefix) }
+			if text.starts_with('AnonStruct_') { query.set(.anon_struct_prefix) }
+			if text.starts_with('AnonUnion_') { query.set(.anon_union_prefix) }
+		}
+		`F` {
+			if text.starts_with('FixedArray_') { query.set(.c_fixed_array_prefix) }
+		}
+		`M` {
+			if text.starts_with('Map_') { query.set(.c_map_prefix) }
+		}
+		`t` {
+			if text.starts_with('thread') { query.set(.thread_prefix) }
+		}
+		`_` {
+			if text.starts_with('__vf_thread_') { query.set(.c_thread_prefix) }
+		}
+		`J` {
+			if text.starts_with('JS.') { query.set(.js_prefix) }
+		}
+		else {}
+	}
+	return shape, query
+}
+
 // Declaration fallback rejects these provisional spellings before alias resolution.
 // Only ASCII spaces are removed from wrapper names; raw-name checks stay exact.
 fn source_type_spelling_unusable_decl(text string, shape SourceTypeShape) bool {
@@ -429,8 +531,7 @@ fn source_type_id_uncached(text string) u32 {
 	}
 	// Spelling classification is independent of the shared table. Keep it out
 	// of the insertion critical section so other writers can publish meanwhile.
-	shape := source_type_spelling_shape(text)
-	query := source_type_spelling_query(text, shape)
+	shape, query := source_type_spelling_flags(text)
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
 	table = source_type_table_load()
@@ -509,6 +610,12 @@ fn source_type_read_entry(id u32) &SourceTypeEntry {
 	if !isnil(cached) && cached.id == id {
 		return cached
 	}
+	return source_type_read_entry_miss(id, slot)
+}
+
+// Keep publication validation and cache insertion out of the hot lookup body.
+@[direct_array_access; noinline]
+fn source_type_read_entry_miss(id u32, slot int) &SourceTypeEntry {
 	table := source_type_table_load()
 	if isnil(table) || id > C.atomic_load_u32(&table.count) {
 		panic('invalid source type ID')
