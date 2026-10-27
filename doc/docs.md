@@ -3272,6 +3272,8 @@ struct Settings {
 }
 ```
 
+The same rule applies to defaults such as `match` expressions, including fields named `or`.
+
 ### Required fields
 
 ```v
