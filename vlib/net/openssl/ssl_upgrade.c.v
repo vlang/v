@@ -7,9 +7,14 @@ import net
 // TLS handshake before returning. This enables protocols that upgrade a
 // plain connection to TLS (e.g. SMTP STARTTLS). The caller retains ownership of
 // tcp_conn and must keep it open until the returned TLS connection is shut down.
+// With validate enabled, verify supplies the CA certificates trusted for client
+// authentication. alpn_protocols configures the server's protocol selection.
 pub fn new_ssl_server_conn(mut tcp_conn net.TcpConn, config SSLConnectConfig) !&SSLConn {
 	if config.cert == '' || config.cert_key == '' {
 		return error('net.openssl new_ssl_server_conn, no certificate or key provided')
+	}
+	if config.validate && config.verify == '' {
+		return error('net.openssl new_ssl_server_conn, no root CA provided')
 	}
 
 	sslctx := C.SSL_CTX_new(C.v_net_openssl_TLS_server_method())
@@ -49,6 +54,46 @@ pub fn new_ssl_server_conn(mut tcp_conn net.TcpConn, config SSLConnectConfig) !&
 	if res != 1 {
 		C.SSL_CTX_free(sslctx)
 		return error('net.openssl new_ssl_server_conn, SSL_CTX_check_private_key failed')
+	}
+
+	if config.validate {
+		if config.in_memory_verification {
+			res = C.v_net_openssl_SSL_CTX_load_verify_memory(sslctx, config.verify.str,
+				uint(config.verify.len))
+			if res != 1 {
+				C.SSL_CTX_free(sslctx)
+				return error('net.openssl new_ssl_server_conn, could not load root CA from memory')
+			}
+		} else {
+			res = C.SSL_CTX_load_verify_locations(sslctx, &char(config.verify.str), unsafe { nil })
+			if res != 1 {
+				C.SSL_CTX_free(sslctx)
+				return error('net.openssl new_ssl_server_conn, SSL_CTX_load_verify_locations failed')
+			}
+			res = C.v_net_openssl_SSL_CTX_load_client_CA_file(sslctx, &char(config.verify.str))
+			if res != 1 {
+				C.SSL_CTX_free(sslctx)
+				return error('net.openssl new_ssl_server_conn, SSL_load_client_CA_file failed')
+			}
+		}
+		C.SSL_CTX_set_verify(sslctx, C.SSL_VERIFY_PEER | C.SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
+			unsafe { nil })
+	}
+
+	if config.alpn_protocols.len > 0 {
+		mut wire := []u8{cap: 64}
+		for proto in config.alpn_protocols {
+			if proto.len == 0 || proto.len > 255 {
+				C.SSL_CTX_free(sslctx)
+				return error('net.openssl new_ssl_server_conn, invalid ALPN protocol "${proto}"')
+			}
+			wire << u8(proto.len)
+			wire << proto.bytes()
+		}
+		if C.v_net_openssl_SSL_CTX_set_alpn_select_protos(sslctx, wire.data, u32(wire.len)) == unsafe { nil } {
+			C.SSL_CTX_free(sslctx)
+			return error('net.openssl new_ssl_server_conn, failed to configure ALPN protocols (requires OpenSSL >= 1.0.2)')
+		}
 	}
 
 	ssl := unsafe { &C.SSL(C.SSL_new(sslctx)) }
