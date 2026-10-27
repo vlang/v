@@ -69,6 +69,17 @@ Different build flags, program or test modes, and import sequences can require
 separate checks. Pass `v up -v` to see each checked configuration.
 Cached module headers preserve struct field attribute groups, so valid deprecation
 attributes do not introduce warnings during refresh.
+
+`make` also warms the default test configuration's builtin module bundle, including
+`strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
+when the program introduces new error types, retaining builtin error dispatch ID dependencies.
+Dispatch hash collisions retain the full error-type dependency. Without a bundled collector,
+the warmup uses `-gc none`; an explicit `-gc` setting takes precedence.
+A missing object for another module rebuilds that module while retaining compatible cached
+modules. Ignored local names remain stable when cached headers replace source files, so
+reparsed modules can reuse identical C objects. Compiler flags, source changes and dependency
+changes still invalidate the affected objects.
+
 Ordinary builds report cache progress on standard error. Refreshes retain absolute
 module search paths, resolved C compiler commands, and build modes. They omit
 linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
@@ -1590,6 +1601,7 @@ println(upper_fn) // ['HELLO', 'WORLD']
 `it` is a builtin variable which refers to the element currently being
 processed in filter/map methods.
 
+User-defined struct methods named `map` keep their declared return type, including when chained.
 Additionally, `.any()` and `.all()` can be used to conveniently test
 for elements that satisfy a condition.
 
@@ -3271,6 +3283,8 @@ struct Settings {
 	in      string
 }
 ```
+
+The same rule applies to defaults such as `match` expressions, including fields named `or`.
 
 ### Required fields
 
@@ -8333,7 +8347,8 @@ Call-style attributes can also use named arguments.
 The C backend emits `@[_constructor]` and `@[_destructor]` as GNU function attributes before the
 function declarator, so definitions compile with GCC and Clang. When supported by the C compiler,
 these hooks run before `main` and after it returns. They must not depend on V's runtime being
-initialized. MSVC ignores these attributes.
+initialized. Both are builtin attributes and require no user-defined attribute schema.
+MSVC ignores these attributes.
 
 ```v
 // @[flag] enables Enum types to be used as bitfields
@@ -11503,7 +11518,9 @@ functions. Numeric local labels such as `1:` with `1b` (backward) and `1f` (forw
 also useful for short branches. Do not use an ordinary global-looking label in a raw block unless
 it is deliberately exported: two instantiations of a function can otherwise define the same
 assembler symbol. In x86 and arm64 raw blocks, the compiler warns about such a label inside a
-function unless it is numeric, uses `%=`, or is exported with `.globl`, `.global`, or `.weak`.
+function unless it is an unquoted numeric label, uses `%=`, or is exported with `.globl`,
+`.global`, or `.weak`. Quoted symbol definitions are checked too: `"1":` is an ordinary symbol,
+not a numeric local label.
 
 For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
 the pointer inside the template, and decrement the count until it reaches zero:

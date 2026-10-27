@@ -1066,7 +1066,7 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	loop_name := if escaping_value {
 		t.new_temp('range_index')
 	} else if key.value == '_' {
-		'__discard_${key.pos.id}_${key.pos.offset}_${key.pos.end}'
+		t.a.discard_name(key.pos)
 	} else {
 		key.value
 	}

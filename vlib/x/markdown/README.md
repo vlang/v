@@ -23,6 +23,8 @@ extensions. Designed for feature parity with
 HTML output follows CommonMark block boundaries, including a newline before a
 nested list or code block inside a tight list. Image alt text flattens inline
 formatting, nested links, and images to their text content.
+Numeric character references follow CommonMark digit limits and replace invalid Unicode values
+with U+FFFD. URI autolinks allow empty scheme payloads and reject ASCII control characters.
 
 ### GFM Extensions (via `.gfm()` helper or individual extensions)
 - **Tables**: `| col | col |` with alignment (`:--`, `:--:`, `--:`)

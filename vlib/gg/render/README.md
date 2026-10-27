@@ -2,6 +2,11 @@
 
 V implementation of sokol-gl for gg.
 
+`Context.load_pipeline()` selects the pipeline for subsequent batches until another pipeline is
+loaded or a saved selection is restored with `Context.pop_pipeline()`. `Context.current_pipeline()`
+returns that selection so callers can save and restore it without consuming pipeline stack space.
+Ending a primitive batch preserves the selected pipeline.
+
 `Context.num_vertices()` and `Context.num_commands()` report the current recording queue.
 Vertex counts include the extra vertices used to turn quads into triangles. Command counts
 include viewport and scissor commands; compatible consecutive draws can share one command.

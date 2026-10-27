@@ -140,11 +140,10 @@ fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts 
 	// The atlas is r8: the font pipeline's shader reads its red channel as
 	// coverage. The generic alpha pipeline would multiply the sampled
 	// vec4(r, 0, 0, 1) into the vertex color, turning glyphs red.
-	// The font pipeline is for this batch only: load_pipeline overwrites the
-	// top of the stack, and nothing restores it, so the next shape drawn would
-	// sample its texture through the font shader. The alpha pipeline this
-	// replaced shared the generic shader, which is why the leak went unseen.
-	ctx.r.push_pipeline()
+	previous_pipeline := ctx.r.current_pipeline()
+	defer {
+		ctx.r.load_pipeline(previous_pipeline)
+	}
 	ctx.r.load_pipeline(ctx.pipeline.font)
 	// fontstash emits two triangles (six vertices) per glyph. A quad batch would
 	// make the render context insert a duplicate vertex every fourth input, which
@@ -161,7 +160,6 @@ fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts 
 		ctx.r.v2f(x, y)
 	}
 	ctx.r.end()
-	ctx.r.pop_pipeline()
 	ctx.r.disable_texture()
 }
 
@@ -341,7 +339,7 @@ pub fn (ctx &Context) text_atlas_pending_upload() bool {
 	return ctx.ft.rt.pending_upload
 }
 
-// set_text_cfg sets the current text configuration
+// set_text_cfg sets the current text configuration without changing the render pipeline.
 pub fn (ctx &Context) set_text_cfg(cfg TextCfg) {
 	if !ctx.font_inited {
 		return
@@ -375,9 +373,6 @@ pub fn (ctx &Context) set_text_cfg(cfg TextCfg) {
 	ctx.ft.fons.set_size(scale * f32(size))
 	ctx.ft.fons.set_align(int(cfg.align) | int(cfg.vertical_align))
 	color := u32(cfg.color.r) | (u32(cfg.color.g) << 8) | (u32(cfg.color.b) << 16) | (u32(cfg.color.a) << 24)
-	if cfg.color.a != 255 {
-		ctx.r.load_pipeline(ctx.pipeline.alpha)
-	}
 	ctx.ft.fons.set_color(color)
 	ascender := f32(0.0)
 	descender := f32(0.0)
@@ -418,7 +413,7 @@ pub fn (ctx &Context) draw_text2(p DrawTextParams) {
 }
 
 // draw_text draws the string in `text_` starting at top-left position `x`,`y`.
-// Text settings can be provided with `cfg`.
+// Text settings can be provided with `cfg`. Drawing preserves the selected render pipeline.
 pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg TextCfg) {
 	$if macos {
 		if ctx.native_rendering {

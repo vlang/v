@@ -71,6 +71,50 @@ fn main() {
 	assert tc.notices[0].msg.starts_with('label `private_symbol` in a raw assembly template has no `%=` suffix')
 }
 
+fn test_raw_labels_warn_for_quoted_definitions() {
+	for arch in ['amd64', 'arm64'] {
+		source := 'module main
+fn main() {
+ asm ${arch} raw {
+  "\\"quoted_label\\": \\"1\\": nop\\n"
+  "\\"escaped\\\\\\"quote\\": nop\\n"
+  ;
+ }
+}
+'
+		tc := raw_label_checker('quoted_${arch}', source)
+		assert tc.errors.len == 0, tc.errors.str()
+		// A quoted digit names an ordinary symbol, unlike the numeric local label `1:`.
+		assert tc.notices.len == 3, tc.notices.str()
+		for name in ['quoted_label', '1', 'escaped\\"quote'] {
+			assert tc.notices.any(it.msg.starts_with('label `${name}` in a raw assembly template'))
+		}
+		escaped_notices := tc.notices.filter(it.msg.starts_with('label `escaped'))
+		escaped := escaped_notices[0].pos
+		assert source[int(escaped.offset)..int(escaped.end)] == 'escaped\\\\\\"quote'
+	}
+}
+
+fn test_raw_labels_accept_safe_quoted_definitions() {
+	for arch in ['amd64', 'arm64'] {
+		tc := raw_label_checker('safe_quoted_${arch}', 'module main
+fn main() {
+ asm ${arch} raw {
+  ".globl exported\\n"
+  ".global \\"quoted export\\"\\n"
+  "\\"exported\\": \\"quoted export\\": \\"unique%=\\": 1: nop\\n"
+  ".ascii \\"text: inside a string\\"\\n"
+  ".weak \\"escaped\\\\\\"quote\\"\\n"
+  "\\"escaped\\\\\\"quote\\": nop\\n"
+  ;
+ }
+}
+')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.notices.len == 0, tc.notices.str()
+	}
+}
+
 // raw_template_of decodes the template section of a complete raw asm block, so the
 // tests exercise the same block offsets a checker diagnostic would use.
 fn raw_template_of(source string) InlineAsmRawTemplate {
@@ -418,6 +462,20 @@ fn test_raw_statement_can_define_several_labels_with_blanks_before_colons() {
 	assert instructions[0].labels.map(it.name) == ['.La%=', '.Lb']
 	assert instructions[1].labels.map(it.name) == ['spaced']
 	assert instructions[1].labels[0].end - instructions[1].labels[0].start == 'spaced'.len
+}
+
+fn test_raw_quoted_label_names_and_spans() {
+	block := 'asm amd64 raw { "\\"quoted;: label\\" \\t: \\"1\\": nop\\n" ; }'
+	template := raw_template_of(block)
+	instructions := inline_asm_raw_parse_instructions(&template, [])
+	assert instructions.len == 1
+	assert instructions[0].mnemonic == 'nop'
+	assert instructions[0].labels.map(it.name) == ['quoted;: label', '1']
+	for label in instructions[0].labels {
+		assert label.is_quoted
+		start, end := template.span(label.start, label.end)
+		assert block[start..end] == label.name
+	}
 }
 
 fn test_raw_template_masks_assembler_comments_per_arch() {

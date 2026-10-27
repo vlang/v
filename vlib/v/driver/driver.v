@@ -191,6 +191,7 @@ mut:
 	objects_only              bool // the program unit is compiled and linked with the objects directly: no dylib, no program plan
 	no_program_declarations   bool // nothing reads the declarations of the program unit on its own: no dev dylib, no generic or incremental plan
 	force_source              bool
+	force_source_modules      []string
 	bundle_valid              bool
 	calls_recover             bool // the code of a module of this build calls `recover()`, see cache_module_calls_recover
 	module_sources            map[string][]string
@@ -2220,14 +2221,20 @@ fn cleanup_c_build_dir(dir string) {
 	}
 }
 
-fn run_test_binary(bin_file string) int {
-	return run_binary(bin_file, []string{})
+fn run_test_binary(bin_file string, keep_binary bool) int {
+	return run_binary(bin_file, []string{}, !keep_binary)
 }
 
 fn ignore_run_signal(_ os.Signal) {
 }
 
-fn run_binary(bin_file string, args []string) int {
+fn run_binary(bin_file string, args []string, remove_after_run bool) int {
+	defer {
+		if remove_after_run {
+			os.rm(bin_file) or {}
+			v3_remove_macos_debug_symbols(bin_file)
+		}
+	}
 	// The build is published: the builds that wait to populate the cache need
 	// not wait for the program as well.
 	release_v3_cache_population_lock()
@@ -2316,7 +2323,7 @@ fn run_v_inline_source(args []string, option_index int, consumed int, source str
 	mut child_args := args[..option_index].clone()
 	child_args << ['run', temporary_source]
 	child_args << args[option_index + consumed..]
-	exit_code := run_binary(os.executable(), child_args)
+	exit_code := run_binary(os.executable(), child_args, false)
 	os.rm(temporary_source) or {
 		eprintln('cannot remove temporary inline source file: ${err.msg()}')
 		if exit_code == 0 {
@@ -8296,6 +8303,7 @@ fn clone_flat_ast_after_transform_from_scope(ast &flat.FlatAst, scope voidptr) &
 		source_files:                  ast.source_files
 		resolved_source_paths:         ast.resolved_source_paths.clone()
 		cached_header_sources:         clone_string_string_map(ast.cached_header_sources)
+		cached_header_module_sources:  ast.cached_header_module_sources.clone()
 		source_paths_frozen:           ast.source_paths_frozen
 		template_call_sites:           ast.template_call_sites.clone()
 		template_actions:              clone_int_string_map(ast.template_actions)
@@ -12357,8 +12365,8 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	binary_existed_before := os.exists(bin_file)
-	remove_binary_after_run := should_run && !is_crun && !is_direct_vsh && !explicit_output && !keep_c
-		&& !binary_existed_before
+	mut remove_binary_after_run := should_run && !explicit_output
+		&& (fastc_test_file || (!is_crun && !is_direct_vsh && !keep_c && !binary_existed_before))
 
 	// Decide which backend modules to compile into the output. Standalone compilers
 	// default to C; optional backends and their SSA dependencies can be skipped. This
@@ -12931,10 +12939,7 @@ pub fn run(args []string) {
 				}
 			}
 			if should_run {
-				run_result := run_binary(bin_file, run_args)
-				if remove_binary_after_run {
-					os.rm(bin_file) or {}
-				}
+				run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 				if run_result != 0 {
 					exit(run_result)
 				}
@@ -13180,6 +13185,7 @@ pub fn run(args []string) {
 		bundle_sources:            bundle_sources
 		bundle_source_paths:       module_cache_source_path_set(p.a, bundle_sources)
 		force_source:              force_cache_source
+		force_source_modules:      os.getenv(v3_internal_cache_force_source_env).split_into_lines()
 		module_sources:            map[string][]string{}
 		module_import_paths:       map[string]string{}
 		module_dependencies:       map[string][]string{}
@@ -13204,7 +13210,7 @@ pub fn run(args []string) {
 	cache_state.module_sources['builtin'] = builtin_files
 	mut files := []string{}
 	mut loaded_cached_bundle := false
-	if !force_cache_source {
+	if !force_cache_source && 'builtin' !in cache_state.force_source_modules {
 		if bundle_object := cache_manager.valid_object('builtin', bundle_sources) {
 			if builtin_header := cache_manager.valid_header('builtin', builtin_files) {
 				record_v3_cached_source_digests(mut cache_state, builtin_header.source_digests)
@@ -13409,6 +13415,9 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	test_files := test_input_files(user_files, backend, prefs.target)
+	if should_run && test_files.len > 0 && !explicit_output {
+		remove_binary_after_run = true
+	}
 	// A test binary keeps the harness counters (`__test_failures` and the
 	// setjmp buffer that `assert` longjmps out of) as `static` definitions inside
 	// the program body, so they live in whichever split unit the body lands in
@@ -13803,7 +13812,7 @@ pub fn run(args []string) {
 		}
 		if os.is_file(bin_file) && v3_crun_cache_matches(bin_file, crun_build_identity, input_file) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-			run_result := run_binary(bin_file, run_args)
+			run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 			if run_result != 0 {
 				exit(run_result)
 			}
@@ -13926,10 +13935,7 @@ pub fn run(args []string) {
 					b.step(if cache_with_tcc { 'tcc (cached)' } else { 'cc (cached)' })
 					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 					if should_run {
-						run_result := run_binary(bin_file, run_args)
-						if remove_binary_after_run {
-							os.rm(bin_file) or {}
-						}
+						run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 						if run_result != 0 {
 							exit(run_result)
 						}
@@ -15743,19 +15749,13 @@ pub fn run(args []string) {
 			b.step('link')
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if should_run {
-				run_result := run_binary(bin_file, run_args)
-				if remove_binary_after_run {
-					os.rm(bin_file) or {}
-					if (is_debug || race) && target.os == 'macos' {
-						v3_remove_macos_debug_symbols(bin_file)
-					}
-				}
+				run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 				if run_result != 0 {
 					exit(run_result)
 				}
 				b.step('run')
 			} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
-				test_result := run_test_binary(bin_file)
+				test_result := run_test_binary(bin_file, explicit_output)
 				if test_result != 0 {
 					exit(test_result)
 				}
@@ -16580,7 +16580,6 @@ pub fn run(args []string) {
 				compile_signature += program_suffix
 				objects := cache_state.manager.valid_cgen_prepared_objects(cgen_cache_entry, compile_signature) or {
 					if resolve_flag_specific_cache_objects(mut cache_state, a, object_flags_signature + program_suffix, parse_v3_interface_scopes(interface_impl_signature)) {
-						os.setenv(v3_internal_cache_force_source_env, '1', true)
 						restart_v3_after_cache_invalidation(cc_dir)
 					}
 					resolved_objects := cache_object_paths(cache_state.objects)
@@ -17590,22 +17589,16 @@ Please install the corresponding development package/libraries and make sure the
 		// The C compiler is done. What was set up for `cl` must not reach the program that runs next.
 		msvc_restore_environment(msvc_saved_environment)
 		if should_run {
-			if (is_crun || is_direct_vsh) && !explicit_output {
+			if (is_crun || is_direct_vsh) && !explicit_output && !remove_binary_after_run {
 				write_v3_crun_cache_marker(bin_file, crun_build_identity) or {}
 			}
-			run_result := run_binary(bin_file, run_args)
-			if remove_binary_after_run {
-				os.rm(bin_file) or {}
-				if (is_debug || race) && target.os == 'macos' {
-					v3_remove_macos_debug_symbols(bin_file)
-				}
-			}
+			run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 			if run_result != 0 {
 				exit(run_result)
 			}
 			b.step('run')
 		} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
-			test_result := run_test_binary(bin_file)
+			test_result := run_test_binary(bin_file, explicit_output)
 			if test_result != 0 {
 				exit(test_result)
 			}
@@ -18388,7 +18381,6 @@ fn v3_incremental_program_main_source(cached_prefix string, body_source string) 
 
 fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_declarations_path string, cached_prefix string, object_base string, interface_impl_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
-		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation(state.c_build_dir)
 	}
 	objects := cache_object_paths(state.objects)
@@ -18412,7 +18404,6 @@ fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string,
 		return error('v3 module cache directory is unavailable')
 	}
 	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
-		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation(state.c_build_dir)
 	}
 	incremental_c_function_sections(generated_source) or {
@@ -18460,7 +18451,6 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	mut has_declarations := false
 	scopes := parse_v3_interface_scopes(interface_impl_signature)
 	if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
-		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation(state.c_build_dir)
 	}
 	main_body := split.modules['main'] or { '' }
@@ -18645,7 +18635,6 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		// Refresh stops before the program link could discover that mismatch.
 		state.objects = object_paths.clone()
 		if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
-			os.setenv(v3_internal_cache_force_source_env, '1', true)
 			restart_v3_after_cache_invalidation(state.c_build_dir)
 		}
 	}
@@ -20045,9 +20034,44 @@ fn (scopes &V3InterfaceScopes) declaring_module(name_id u32) string {
 // An interface or an implementer that the signature says too little about makes
 // the module depend on every list, as all of them did before.
 fn (scopes &V3InterfaceScopes) module_signature(visible map[string]bool) string {
+	return scopes.object_signature(visible, false)
+}
+
+fn (scopes &V3InterfaceScopes) builtin_error_signature(name u32) ?string {
+	impls := scopes.impls[name]
+	ids := types.stable_interface_type_ids(impls)
+	mut builtin_ids := []string{}
+	for impl in impls {
+		// Retain the full dependency when hashes collide. The signature can also
+		// contain open generic types that code generation leaves out of dispatch.
+		seed := types.stable_interface_type_ids([impl])
+		if ids[impl] != seed[impl] {
+			return none
+		}
+		owner := scopes.declaring_module(impl)
+		if owner == '?' {
+			return none
+		}
+		if owner == 'builtin' {
+			builtin_ids << '${flat.source_type_name(impl)}=${ids[impl]}'
+		}
+	}
+	return '#builtin ${flat.source_type_name(name)}=${builtin_ids.join(',')}'
+}
+
+fn (scopes &V3InterfaceScopes) object_signature(visible map[string]bool, builtin_bundle bool) string {
 	mut in_scope := map[u32]bool{}
 	mut pending := []u32{cap: scopes.names.len}
+	mut lines := []string{cap: scopes.names.len}
 	for i, name in scopes.names {
+		// Dispatch stubs belong to the program, but builtin error boxing and the
+		// None__ check embed builtin dispatch IDs. Preserve those dependencies.
+		if builtin_bundle && flat.source_type_name(name) in ['IError', 'builtin.IError'] {
+			if signature := scopes.builtin_error_signature(name) {
+				lines << signature
+				continue
+			}
+		}
 		owner := scopes.owners[i]
 		// The code of a module cannot name an interface of the program.
 		if owner == 'main' {
@@ -20087,7 +20111,6 @@ fn (scopes &V3InterfaceScopes) module_signature(visible map[string]bool) string 
 			}
 		}
 	}
-	mut lines := []string{cap: pending.len}
 	for name in scopes.names {
 		if in_scope[name] {
 			lines << scopes.lines[name]
@@ -20135,7 +20158,8 @@ fn cache_object_visible_modules(state &V3ModuleCacheState, roots []string, commo
 // module from its header finds the object under this signature.
 fn v3_cached_object_alias_signature(object_base string, scopes &V3InterfaceScopes, state &V3ModuleCacheState, roots []string, common []string) string {
 	visible := cache_object_visible_modules(state, roots, common)
-	return '${object_base}\ninterfaces=${scopes.module_signature(visible)}'
+	builtin_bundle := 'builtin' in roots && roots.all(it in modulecache.builtin_bundle_modules)
+	return '${object_base}\ninterfaces=${scopes.object_signature(visible, builtin_bundle)}'
 }
 
 // v3_cached_object_content_signature identifies a module object by how it is
@@ -20456,6 +20480,7 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 		return false
 	}
 	common := cache_common_visible_modules(state, a)
+	mut missing := false
 	for object_name in state.objects.keys() {
 		roots := if object_name == 'builtin' {
 			cache_builtin_bundle_roots(state, a)
@@ -20472,7 +20497,9 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 			if os.getenv('V3_CACHE_TRACE') != '' {
 				eprintln('  V3 module cache object miss: module=${object_name} reason=no object for these C compilation flags and interface implementations')
 			}
-			return true
+			force_v3_cache_object_sources(object_name)
+			missing = true
+			continue
 		}
 		dependency_inputs := cache_object_dependency_signatures(state, a, roots)
 		if entry := state.manager.valid_object_for_compile_signature(object_name, source_files, v3_cached_object_content_signature(object_base, content_key), dependency_inputs) {
@@ -20481,10 +20508,26 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 			if os.getenv('V3_CACHE_TRACE') != '' {
 				eprintln('  V3 module cache object miss: module=${object_name}')
 			}
-			return true
+			force_v3_cache_object_sources(object_name)
+			missing = true
+			continue
 		}
 	}
-	return false
+	return missing
+}
+
+// force_v3_cache_object_sources reparses only the objects whose configuration
+// changed. Other cached modules keep their headers and objects on the retry.
+fn force_v3_cache_object_sources(object_name string) {
+	current := os.getenv(v3_internal_cache_force_source_env)
+	if current == '1' {
+		return
+	}
+	mut modules := current.split_into_lines().filter(it.len > 0)
+	if object_name !in modules {
+		modules << object_name
+	}
+	os.setenv(v3_internal_cache_force_source_env, modules.join('\n'), true)
 }
 
 fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
@@ -25239,6 +25282,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		if builtin_sources.len > 0 {
 			builtin_header := cache_state.manager.entry('builtin', builtin_sources).header
 			a.cached_header_sources[builtin_header] = builtin_sources[0]
+			a.cached_header_module_sources[builtin_header] = builtin_sources.clone()
 		}
 	}
 	mut was_parallel := false
@@ -25699,6 +25743,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 								parse_files = [header.header]
 								if mod_files.len > 0 {
 									a.cached_header_sources[header.header] = mod_files[0]
+									a.cached_header_module_sources[header.header] = mod_files.clone()
 								}
 							} else {
 								cache_state.source_body_modules[cache_module] = true
@@ -25719,7 +25764,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						cache_state.parsed_from_source[cache_module] = true
 						cache_state.source_body_modules[cache_module] = true
 					}
-				} else if !cache_state.force_source {
+				} else if !cache_state.force_source
+					&& cache_module !in cache_state.force_source_modules {
 					if cached := cache_state.manager.valid_entry_with_metadata_cache(cache_module, mod_files, mut cache_state.dependency_metadata) {
 						record_v3_cached_source_digests(mut cache_state, cached.source_digests)
 						cache_module_calls_recover(mut cache_state, modulecache.header_calls_recover(cached))
@@ -25728,6 +25774,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 							parse_files = [cached.header]
 							if mod_files.len > 0 {
 								a.cached_header_sources[cached.header] = mod_files[0]
+								a.cached_header_module_sources[cached.header] = mod_files.clone()
 							}
 						} else {
 							// Cached declaration headers omit local bindings. Project-owned

@@ -1858,7 +1858,7 @@ fn durable_git_child_failure(message string, code int) {
 		mut offset := 0
 		for offset < message.len {
 			remaining := unsafe { message.str + offset }
-			written := C.write(2, voidptr(remaining), usize(message.len - offset))
+			written := C.write(2, voidptr(remaining), uint(message.len - offset))
 			if written > 0 {
 				offset += written
 				continue
@@ -2109,7 +2109,7 @@ fn durable_git_read_pipe(fd int, mut output []u8, eof bool, limit int,
 	$if linux || macos || freebsd || openbsd {
 		mut buffer := [8192]u8{}
 		mut observed_combined := combined
-		read := C.read(fd, voidptr(&buffer[0]), usize(buffer.len))
+		read := C.read(fd, voidptr(&buffer[0]), uint(buffer.len))
 		if read > 0 {
 			observed_combined += read
 			if output.len + read > limit || observed_combined > limit + durable_git_stderr_max_bytes {

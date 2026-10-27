@@ -10361,11 +10361,10 @@ fn (mut g FlatGen) decl_lhs_str(id flat.NodeId) string {
 	return g.expr_to_string(id)
 }
 
-// discard_name derives ignored-local names from their source span. NodeIds for
-// generated AST nodes depend on parallel append-region sizes and are not stable.
+// discard_name derives ignored-local names from their source file and span.
+// NodeIds and file table indices both change when cached modules replace sources.
 fn (g &FlatGen) discard_name(id flat.NodeId) string {
-	pos := g.a.nodes[int(id)].pos
-	return '__discard_${pos.id}_${pos.offset}_${pos.end}'
+	return g.a.discard_name(g.a.nodes[int(id)].pos)
 }
 
 // The name a current parameter is read under. The identifier path reads one that
