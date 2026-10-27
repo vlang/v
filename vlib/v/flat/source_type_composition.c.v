@@ -43,12 +43,17 @@ pub enum SourceTypeComposition {
 }
 
 struct SourceTypeCompositionEntry {
-	kind  SourceTypeComposition
-	hash  u64
-	parts &u32 = unsafe { nil }
-	len   int
-	id    u32
-	next  &SourceTypeCompositionEntry = unsafe { nil }
+	hash u64
+	next &SourceTypeCompositionEntry = unsafe { nil }
+	len  int
+	kind SourceTypeComposition
+	id   u32
+}
+
+// Numeric tuple keys immediately follow the process-owned immutable header.
+@[inline]
+fn (entry &SourceTypeCompositionEntry) parts() &u32 {
+	return unsafe { &u32(&u8(entry) + sizeof(SourceTypeCompositionEntry)) }
 }
 
 __global g_source_type_compositions [4096]voidptr
@@ -146,7 +151,7 @@ fn source_type_composition_find(slot int, kind SourceTypeComposition, parts []u3
 		if entry.hash == hash && entry.kind == kind && entry.len == parts.len {
 			mut equal := true
 			for index, part in parts {
-				if unsafe { entry.parts[index] } != part {
+				if unsafe { entry.parts()[index] } != part {
 					equal = false
 					break
 				}
@@ -161,6 +166,17 @@ fn source_type_composition_find(slot int, kind SourceTypeComposition, parts []u3
 }
 
 fn source_type_composition_miss(slot int, kind SourceTypeComposition, parts []u32, hash u64) u32 {
+	// Temporary render buffers and numeric arrays have been copied before return.
+	mut scratch_scope := voidptr(unsafe { nil })
+	$if prealloc {
+		scratch_scope = unsafe { prealloc_scope_begin() }
+	}
+	defer {
+		$if prealloc {
+			unsafe { prealloc_scope_end(scratch_scope) }
+		}
+	}
+
 	// Rendering interns a spelling and must finish before taking its writer lock.
 	id := source_type_id(source_type_composition_text(kind, parts))
 	source_type_lock()
@@ -169,27 +185,26 @@ fn source_type_composition_miss(slot int, kind SourceTypeComposition, parts []u3
 	if !isnil(cached) {
 		return cached.id
 	}
-	mut entry := unsafe { &SourceTypeCompositionEntry(node_payload_alloc_zeroed(sizeof(SourceTypeCompositionEntry))) }
+	max_parts := (u64(0x7fffffff) - u64(sizeof(SourceTypeCompositionEntry))) / u64(sizeof(u32))
+	if u64(parts.len) > max_parts {
+		panic('could not allocate composite source type parts')
+	}
+	payload_bytes := u64(sizeof(SourceTypeCompositionEntry)) + u64(parts.len) * u64(sizeof(u32))
+	mut entry := unsafe { &SourceTypeCompositionEntry(node_payload_alloc_zeroed(uint(payload_bytes))) }
 	if isnil(entry) {
 		panic('could not allocate a composite source type')
 	}
-	mut owned := unsafe { &u32(nil) }
 	if parts.len > 0 {
-		owned = unsafe { &u32(node_payload_alloc_zeroed(uint(parts.len) * sizeof(u32))) }
-		if isnil(owned) {
-			panic('could not allocate composite source type parts')
-		}
-		unsafe { vmemcpy(owned, parts.data, parts.len * int(sizeof(u32))) }
+		unsafe { vmemcpy(entry.parts(), parts.data, parts.len * int(sizeof(u32))) }
 	}
 	// Process-owned immutable entries are visible only after the release store.
 	unsafe {
 		*entry = SourceTypeCompositionEntry{
-			kind:  kind
-			hash:  hash
-			parts: owned
-			len:   parts.len
-			id:    id
-			next:  source_type_composition_head(slot)
+			kind: kind
+			hash: hash
+			len:  parts.len
+			id:   id
+			next: source_type_composition_head(slot)
 		}
 	}
 	$if x32 {

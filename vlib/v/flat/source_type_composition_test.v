@@ -109,3 +109,76 @@ fn test_source_type_composition_lazy_name_queries_keep_numeric_keys() {
 		assert source_type_composition_one(.ptr_name_base, source_type_id('ptr')) == 0
 	}
 }
+
+fn test_source_type_composition_numeric_keys_share_immutable_entry_allocation() {
+	slot := 3985
+	hash := u64(0x7f31e004ab9c)
+	mut borrowed := [source_type_id('compact_composition_tail_a'), u32(0),
+		source_type_id('compact_composition_tail_b')]
+	original := borrowed.clone()
+	id := source_type_composition_miss(slot, .concat, borrowed, hash)
+	entry := source_type_composition_find(slot, .concat, original, hash)
+	assert !isnil(entry)
+	assert entry.id == id
+	assert entry.len == original.len
+	assert unsafe { &u8(entry.parts()) } == unsafe {
+		&u8(entry) + sizeof(SourceTypeCompositionEntry)
+	}
+	borrowed[0] = source_type_id('compact_composition_tail_changed')
+	for index, part in original {
+		assert unsafe { entry.parts()[index] } == part
+	}
+	assert source_type_composition_find(slot, .concat, original, hash) == entry
+	assert isnil(source_type_composition_find(slot, .concat, borrowed, hash))
+	empty := []u32{}
+	assert source_type_composition_miss(slot, .concat, empty, hash) == 0
+	empty_entry := source_type_composition_find(slot, .concat, empty, hash)
+	assert !isnil(empty_entry)
+	assert empty_entry.len == 0
+	assert source_type_composition_find(slot, .concat, original, hash) == entry
+}
+
+fn source_type_composition_in_recycled_scope() [3]u32 {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		left := source_type_id('composition_scratch_scope632.Left'.clone())
+		right := source_type_id('composition_scratch_scope632.Right'.clone())
+		mut parts := [left, right]
+		generic := source_type_composition(.generic, parts)
+		joined := source_type_composition(.multi_return, parts)
+		pointer := source_type_composition_one(.pointer, left)
+		for id in [generic, joined, pointer] {
+			assert !unsafe { prealloc_scope_owns(scope, source_type_name(id).str) }
+		}
+		parts[0] = right
+		assert source_type_composition(.generic, [left, right]) == generic
+		unsafe { prealloc_scope_end(scope) }
+		for _ in 0 .. 4 {
+			reused := unsafe { prealloc_scope_begin() }
+			mut overwrite := []u8{len: 192 * 1024}
+			for index in 0 .. overwrite.len { overwrite[index] = u8(0x65) }
+			unsafe { prealloc_scope_end(reused) }
+		}
+		unsafe { prealloc_thread_cleanup() }
+		return [generic, joined, pointer]!
+	} $else {
+		left := source_type_id('composition_scratch_scope632.Left')
+		right := source_type_id('composition_scratch_scope632.Right')
+		return [source_type_composition(.generic, [left, right]),
+			source_type_composition(.multi_return, [left, right]),
+			source_type_composition_one(.pointer, left)]!
+	}
+}
+
+fn test_source_type_composition_outlives_render_and_caller_scratch_arenas() {
+	handle := spawn source_type_composition_in_recycled_scope()
+	ids := handle.wait()
+	left := source_type_id('composition_scratch_scope632.Left')
+	right := source_type_id('composition_scratch_scope632.Right')
+	assert ids[0] == source_type_id('composition_scratch_scope632.Left[composition_scratch_scope632.Right]')
+	assert ids[1] == source_type_id('(composition_scratch_scope632.Left, composition_scratch_scope632.Right)')
+	assert ids[2] == source_type_id('&composition_scratch_scope632.Left')
+	assert source_type_composition(.generic, [left, right]) == ids[0]
+	assert source_type_composition(.multi_return, [left, right]) == ids[1]
+	assert source_type_composition_one(.pointer, left) == ids[2]
+}

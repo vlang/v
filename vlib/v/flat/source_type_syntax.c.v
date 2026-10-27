@@ -45,14 +45,77 @@ struct SourceTypeSyntaxSpan {
 // These components describe spelling syntax, not semantic TypeIds. Flags use two
 // bitsets; absent or identity scalars and array views need no payload slots.
 pub struct SourceTypeSyntax {
-	payload            voidptr
+	payload    voidptr
+	layout     &SourceTypeSyntaxLayout = source_type_syntax_zero_layout
+	bool_flags [2]u64
+}
+
+// Layouts describe payload positions, independently of owner IDs and values.
+// Boolean flags stay in each syntax header so their hot accessors need no indirection.
+struct SourceTypeSyntaxLayout {
 	scalar_present     [2]u64
 	scalar_identity    [2]u64
-	bool_flags         [2]u64
 	span_present       u64
 	span_identity      u64
 	scalar_count       u32
 	scalar_first_count u32
+}
+
+const source_type_syntax_empty_layout = SourceTypeSyntaxLayout{}
+const source_type_syntax_zero_layout = &source_type_syntax_empty_layout
+
+struct SourceTypeSyntaxLayoutEntry {
+	layout SourceTypeSyntaxLayout
+	hash   u64
+	next   &SourceTypeSyntaxLayoutEntry = unsafe { nil }
+}
+
+// This index is only read and changed while the spelling writer lock is held.
+// Published syntax headers point directly to immutable process-owned layouts.
+__global g_source_type_syntax_layouts [4096]voidptr
+
+// source_type_syntax_layout interns metadata while the caller holds the spelling writer lock.
+@[direct_array_access]
+fn source_type_syntax_layout(layout SourceTypeSyntaxLayout) &SourceTypeSyntaxLayout {
+	mut hash := u64(14_695_981_039_346_656_037)
+	for value in layout.scalar_present {
+		hash = (hash ^ value) * u64(1_099_511_628_211)
+	}
+	for value in layout.scalar_identity {
+		hash = (hash ^ value) * u64(1_099_511_628_211)
+	}
+	hash = (hash ^ layout.span_present) * u64(1_099_511_628_211)
+	hash = (hash ^ layout.span_identity) * u64(1_099_511_628_211)
+	hash = (hash ^ (u64(layout.scalar_count) | (u64(layout.scalar_first_count) << 32))) * u64(1_099_511_628_211)
+	hash ^= hash >> 32
+	slot := int(hash & 4095)
+	mut existing := unsafe { &SourceTypeSyntaxLayoutEntry(g_source_type_syntax_layouts[slot]) }
+	for !isnil(existing) {
+		candidate := &existing.layout
+		if existing.hash == hash
+			&& candidate.scalar_present[0] == layout.scalar_present[0]
+			&& candidate.scalar_present[1] == layout.scalar_present[1]
+			&& candidate.scalar_identity[0] == layout.scalar_identity[0]
+			&& candidate.scalar_identity[1] == layout.scalar_identity[1]
+			&& candidate.span_present == layout.span_present
+			&& candidate.span_identity == layout.span_identity
+			&& candidate.scalar_count == layout.scalar_count
+			&& candidate.scalar_first_count == layout.scalar_first_count {
+			return &existing.layout
+		}
+		existing = existing.next
+	}
+	mut entry := unsafe { &SourceTypeSyntaxLayoutEntry(node_payload_alloc_zeroed(sizeof(SourceTypeSyntaxLayoutEntry))) }
+	if isnil(entry) { panic('could not allocate source type syntax layout') }
+	unsafe {
+		*entry = SourceTypeSyntaxLayoutEntry{
+			layout: layout
+			hash:   hash
+			next:   &SourceTypeSyntaxLayoutEntry(g_source_type_syntax_layouts[slot])
+		}
+		g_source_type_syntax_layouts[slot] = voidptr(entry)
+	}
+	return &entry.layout
 }
 
 // Scalars store only nonzero values that differ from the owning spelling ID.
@@ -62,15 +125,15 @@ pub struct SourceTypeSyntax {
 fn (syntax &SourceTypeSyntax) scalar(index int) u64 {
 	word := index >> 6
 	bit := u64(1) << u32(index & 63)
-	if syntax.scalar_identity[word] & bit != 0 {
+	if syntax.layout.scalar_identity[word] & bit != 0 {
 		return unsafe { u64(*&u32(syntax.payload)) }
 	}
-	present := syntax.scalar_present[word]
+	present := syntax.layout.scalar_present[word]
 	if present & bit == 0 { return 0 }
 	offset := bits.ones_count_64(present & (bit - 1)) + if word == 0 {
 		0
 	} else {
-		int(syntax.scalar_first_count)
+		int(syntax.layout.scalar_first_count)
 	}
 	return unsafe { (&u64(syntax.payload))[1 + offset] }
 }
@@ -78,9 +141,9 @@ fn (syntax &SourceTypeSyntax) scalar(index int) u64 {
 @[inline]
 fn (syntax &SourceTypeSyntax) span(index int) SourceTypeSyntaxSpan {
 	bit := u64(1) << u32(index)
-	if syntax.span_identity & bit != 0 { return SourceTypeSyntaxSpan{ len: 1 } }
-	if syntax.span_present & bit == 0 { return SourceTypeSyntaxSpan{} }
-	offset := 2 + 2 * int(syntax.scalar_count) + 2 * bits.ones_count_64(syntax.span_present & (bit - 1))
+	if syntax.layout.span_identity & bit != 0 { return SourceTypeSyntaxSpan{ len: 1 } }
+	if syntax.layout.span_present & bit == 0 { return SourceTypeSyntaxSpan{} }
+	offset := 2 + 2 * int(syntax.layout.scalar_count) + 2 * bits.ones_count_64(syntax.layout.span_present & (bit - 1))
 	// The writer stores these two-u32 records at u32-aligned payload offsets.
 	return unsafe { *&SourceTypeSyntaxSpan(&(&u32(syntax.payload))[offset]) }
 }
@@ -2187,6 +2250,17 @@ fn source_type_syntax_underscore_ids(id u32, suffix bool) []u32 {
 }
 
 fn source_type_syntax_underscore_miss(slot int, id u32, suffix bool) []u32 {
+	// Temporary render buffers and numeric arrays have been copied before return.
+	mut scratch_scope := voidptr(unsafe { nil })
+	$if prealloc {
+		scratch_scope = unsafe { prealloc_scope_begin() }
+	}
+	defer {
+		$if prealloc {
+			unsafe { prealloc_scope_end(scratch_scope) }
+		}
+	}
+
 	// Interning can acquire the source spelling lock. Complete every spelling
 	// operation before taking that lock to publish the immutable result.
 	raw := source_type_name(id)
@@ -2314,6 +2388,17 @@ fn source_type_syntax_lexical(id u32, kind SourceTypeLexicalKind) &SourceTypeLex
 }
 
 fn source_type_syntax_lexical_miss(slot int, id u32, kind SourceTypeLexicalKind) &SourceTypeLexicalEntry {
+	// Temporary render buffers and numeric arrays have been copied before return.
+	mut scratch_scope := voidptr(unsafe { nil })
+	$if prealloc {
+		scratch_scope = unsafe { prealloc_scope_begin() }
+	}
+	defer {
+		$if prealloc {
+			unsafe { prealloc_scope_end(scratch_scope) }
+		}
+	}
+
 	// Lexing and interning may acquire the spelling lock: finish them before
 	// entering the publication critical section. No worker-backed slice escapes.
 	raw := source_type_name(id)
@@ -2424,6 +2509,17 @@ fn source_type_syntax_flattened_receiver_ids(id u32) []u32 {
 }
 
 fn source_type_syntax_flattened_receiver_miss(slot int, id u32) []u32 {
+	// Temporary render buffers and numeric arrays have been copied before return.
+	mut scratch_scope := voidptr(unsafe { nil })
+	$if prealloc {
+		scratch_scope = unsafe { prealloc_scope_begin() }
+	}
+	defer {
+		$if prealloc {
+			unsafe { prealloc_scope_end(scratch_scope) }
+		}
+	}
+
 	// Derived spellings must be interned before taking the spelling writer lock.
 	parts := source_type_syntax_flattened_receiver(id, source_type_name(id))
 	source_type_lock()
@@ -3169,7 +3265,7 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	}
 	unsafe { *&u32(payload.ids) = id }
 	for index in 0 .. scalar_count {
-		// The 80-byte header and 8-byte owner prefix align writer-owned u64 slots.
+		// The 32-byte header and 8-byte owner prefix align writer-owned u64 slots.
 		unsafe { (&u64(payload.ids))[1 + index] = values[index] }
 	}
 
@@ -3260,14 +3356,16 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	unsafe {
 		*entry = SourceTypeSyntaxEntry{
 			syntax: SourceTypeSyntax{
-				payload:            payload.ids
-				scalar_present:     scalar_present
-				scalar_identity:    scalar_identity
-				bool_flags:         bool_flags
-				span_present:       span_present
-				span_identity:      span_identity
-				scalar_count:       u32(scalar_count)
-				scalar_first_count: u32(scalar_first_count)
+				payload:    payload.ids
+				layout:     source_type_syntax_layout(SourceTypeSyntaxLayout{
+					scalar_present:     scalar_present
+					scalar_identity:    scalar_identity
+					span_present:       span_present
+					span_identity:      span_identity
+					scalar_count:       u32(scalar_count)
+					scalar_first_count: u32(scalar_first_count)
+				})
+				bool_flags: bool_flags
 			}
 		}
 	}
@@ -3430,25 +3528,29 @@ fn source_type_syntax_encoded_fixed(raw string) (u32, u32) {
 	mut end := 1
 	for end < raw.len && raw[end].is_digit() { end++ }
 	if end <= 1 || end >= raw.len { return 0, 0 }
-	return source_type_id(raw[1..end]), source_type_id(raw[end..])
+	return source_type_id(unsafe { raw.substr_unsafe(1, end) }), source_type_id(unsafe { raw.substr_unsafe(end, raw.len) })
 }
 
 fn source_type_syntax_c_tagged_type(id u32, raw string) u32 {
-	if raw.starts_with('struct_') { return source_type_id('struct ' + raw['struct_'.len..]) }
-	if raw.starts_with('union_') { return source_type_id('union ' + raw['union_'.len..]) }
-	if raw.starts_with('enum_') { return source_type_id('enum ' + raw['enum_'.len..]) }
+	if raw.starts_with('struct_') {
+		return source_type_id('struct ' + unsafe { raw.substr_unsafe('struct_'.len, raw.len) })
+	}
+	if raw.starts_with('union_') {
+		return source_type_id('union ' + unsafe { raw.substr_unsafe('union_'.len, raw.len) })
+	}
+	if raw.starts_with('enum_') {
+		return source_type_id('enum ' + unsafe { raw.substr_unsafe('enum_'.len, raw.len) })
+	}
 	if raw == 'unsigned_int' { return source_type_id('unsigned int') }
 	return id
 }
 
 fn source_type_syntax_c_fixed_typedef(raw string) (u32, u32, bool) {
 	if !raw.starts_with('Array_fixed_') { return 0, 0, false }
-	payload := raw['Array_fixed_'.len..]
-	if !payload.contains('_') { return 0, 0, false }
-	elem := payload.all_before_last('_')
-	length := payload.all_after_last('_')
-	if elem.len == 0 || length.len == 0 { return 0, 0, false }
-	return source_type_id(elem), source_type_id(length), true
+	payload_start := 'Array_fixed_'.len
+	separator := raw.last_index_u8(`_`)
+	if separator <= payload_start || separator + 1 >= raw.len { return 0, 0, false }
+	return source_type_id(unsafe { raw.substr_unsafe(payload_start, separator) }), source_type_id(unsafe { raw.substr_unsafe(separator + 1, raw.len) }), true
 }
 
 fn source_type_syntax_plain_parts(raw string, separator string) []u32 {
@@ -3687,9 +3789,14 @@ fn source_type_syntax_lower_hex(value u8) int {
 
 fn source_type_syntax_fastc_fixed_length(raw string) (bool, u32) {
 	if !raw.starts_with('FixedArray_') || !raw.contains('_FASTC_ARRAY_OF_') { return false, 0 }
-	part := raw['FixedArray_'.len..].all_before('_FASTC_ARRAY_OF_')
+	payload := unsafe { raw.substr_unsafe('FixedArray_'.len, raw.len) }
+	marker := payload.index_('_FASTC_ARRAY_OF_')
+	// A marker can overlap the prefix's final underscore and be absent from payload.
+	part := unsafe { payload.substr_unsafe(0, if marker < 0 { payload.len } else { marker }) }
 	if part.starts_with('EXPRHEX') {
-		decoded := hex.decode(part['EXPRHEX'.len..]) or { return false, 0 }
+		decoded := hex.decode(unsafe { part.substr_unsafe('EXPRHEX'.len, part.len) }) or {
+			return false, 0
+		}
 		return true, source_type_id(decoded.bytestr())
 	}
 	return true, source_type_id(part)
@@ -4760,8 +4867,13 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 			last_underscore = i
 		} else if c == `.` {
 			qualifier_count++
-			if field_owner_c < 0 && raw[i..].starts_with('.C.') { field_owner_c = i }
-			if field_owner_js < 0 && raw[i..].starts_with('.JS.') { field_owner_js = i }
+			if field_owner_c < 0 && i + 3 <= raw.len && raw[i + 1] == `C` && raw[i + 2] == `.` {
+				field_owner_c = i
+			}
+			if field_owner_js < 0 && i + 4 <= raw.len && raw[i + 1] == `J`
+				&& raw[i + 2] == `S` && raw[i + 3] == `.` {
+				field_owner_js = i
+			}
 		}
 	}
 	first_dot_prefix, first_dot_suffix, qualifier, unqualified := source_type_syntax_dot_edges(id, raw, first_dot, last_dot)
@@ -4793,6 +4905,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	encoded_fixed_length, encoded_fixed_base := source_type_syntax_encoded_fixed(raw)
 	c_fixed_typedef_element, c_fixed_typedef_length, c_fixed_typedef_valid := source_type_syntax_c_fixed_typedef(raw)
 	fastc_fixed_array_length_valid, fastc_fixed_array_length := source_type_syntax_fastc_fixed_length(raw)
+	fastc_array_marker := raw.index_('_FASTC_ARRAY_OF_')
 	return SourceTypeSyntaxParsed{
 		name_packing:                   true
 		kind:                           .name
@@ -4850,28 +4963,29 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		qualified_modifiers:            u32(0)
 		plain_alias_target:             true
 		c_array_payload:                if raw.starts_with('Array_') {
-			source_type_id(raw['Array_'.len..])
+			source_type_syntax_child_range_id(id, raw, 'Array_'.len, raw.len)
 		} else {
 			u32(0)
 		}
 		c_fixed_array_payload:          if raw.starts_with('FixedArray_') {
-			source_type_id(raw['FixedArray_'.len..])
+			source_type_syntax_child_range_id(id, raw, 'FixedArray_'.len, raw.len)
 		} else {
 			u32(0)
 		}
-		fastc_array_marker:             raw.contains('_FASTC_ARRAY_OF_')
-		fastc_array_marker_payload:     if raw.contains('_FASTC_ARRAY_OF_') {
-			source_type_id(raw.all_after('_FASTC_ARRAY_OF_'))
+		fastc_array_marker:             fastc_array_marker >= 0
+		fastc_array_marker_payload:     if fastc_array_marker >= 0 {
+			source_type_syntax_child_range_id(id, raw,
+				fastc_array_marker + '_FASTC_ARRAY_OF_'.len, raw.len)
 		} else {
 			u32(0)
 		}
 		c_map_payload:                  if raw.starts_with('Map_') {
-			source_type_id(raw['Map_'.len..])
+			source_type_syntax_child_range_id(id, raw, 'Map_'.len, raw.len)
 		} else {
 			u32(0)
 		}
 		c_ptr_name_base:                if raw.ends_with('_ptr') {
-			source_type_id(raw[..raw.len - 4])
+			source_type_syntax_child_range_id(id, raw, 0, raw.len - 4)
 		} else {
 			u32(0)
 		}
@@ -4898,7 +5012,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		thread_value_type:              thread_value_type
 		thread_value_prefix:            raw.starts_with('__vf_thread_k')
 		thread_value_payload:           if raw.starts_with('__vf_thread_k') {
-			source_type_id(raw['__vf_thread_k'.len..])
+			source_type_syntax_child_range_id(id, raw, '__vf_thread_k'.len, raw.len)
 		} else {
 			u32(0)
 		}
@@ -4906,7 +5020,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		inferred_parts:                 identity_ids
 		expr_prefix:                    raw.starts_with('__expr_')
 		expr_id:                        if raw.starts_with('__expr_') {
-			raw['__expr_'.len..].int()
+			unsafe { raw.substr_unsafe('__expr_'.len, raw.len) }.int()
 		} else {
 			0
 		}

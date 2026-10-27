@@ -1300,7 +1300,7 @@ fn test_source_type_syntax_lexical_views_publish_only_on_request() {
 fn source_type_syntax_lexical_in_disposable_scope() u32 {
 	$if prealloc {
 		scope := unsafe { prealloc_scope_begin() }
-		id := source_type_id('  LazyLexicalWorker489.ns.fn (T) []U '.clone())
+		id := source_type_id('  LazyLexicalWorker490__Part_one.ns.fn (T) []U '.clone())
 		syntax := source_type_syntax(id)
 		syntax.symbols()
 		syntax.symbols_first_offsets()
@@ -1311,6 +1311,13 @@ fn source_type_syntax_lexical_in_disposable_scope() u32 {
 		syntax.symbol_is_name()
 		syntax.qualifier_prefixes()
 		syntax.qualifier_suffixes()
+		syntax.underscore_prefixes()
+		syntax.underscore_suffixes()
+		syntax.flattened_receiver_parts()
+		for view in [syntax.underscore_prefixes(), syntax.underscore_suffixes(),
+			syntax.flattened_receiver_parts()] {
+			assert !unsafe { prealloc_scope_owns(scope, view.data) }
+		}
 		unsafe {
 			prealloc_scope_leave(scope)
 			prealloc_scope_free_after(scope)
@@ -1318,7 +1325,7 @@ fn source_type_syntax_lexical_in_disposable_scope() u32 {
 		}
 		return id
 	} $else {
-		id := source_type_id('  LazyLexicalWorker489.ns.fn (T) []U '.clone())
+		id := source_type_id('  LazyLexicalWorker490__Part_one.ns.fn (T) []U '.clone())
 		syntax := source_type_syntax(id)
 		syntax.symbols()
 		syntax.symbols_first_offsets()
@@ -1329,6 +1336,9 @@ fn source_type_syntax_lexical_in_disposable_scope() u32 {
 		syntax.symbol_is_name()
 		syntax.qualifier_prefixes()
 		syntax.qualifier_suffixes()
+		syntax.underscore_prefixes()
+		syntax.underscore_suffixes()
+		syntax.flattened_receiver_parts()
 		return id
 	}
 }
@@ -1351,6 +1361,17 @@ fn test_source_type_syntax_lexical_views_outlive_parallel_workers() {
 		prefixes, suffixes := source_type_syntax_expected_qualifier_parts(raw)
 		assert syntax.qualifier_prefixes() == prefixes
 		assert syntax.qualifier_suffixes() == suffixes
+		mut underscore_prefixes := []u32{}
+		mut underscore_suffixes := []u32{}
+		for index, c in raw {
+			if c == `_` {
+				underscore_prefixes << source_type_id(raw[..index])
+				underscore_suffixes << source_type_id(raw[index + 1..])
+			}
+		}
+		assert syntax.underscore_prefixes() == underscore_prefixes
+		assert syntax.underscore_suffixes() == underscore_suffixes
+		assert syntax.flattened_receiver_parts() == source_type_syntax_flattened_receiver(id, raw)
 	}
 }
 
@@ -1881,11 +1902,11 @@ fn test_source_type_syntax_sparse_scalars_and_flags_cross_word_boundaries() {
 	assert syntax.wrapper_base() == source_type_id('SparseBoundaryFresh703')
 	assert syntax.qualified_modifiers() == source_type_id('&')
 	// These adjacent numeric queries occupy the last and first slots of two words.
-	assert syntax.scalar_present[0] & (u64(1) << 63) != 0
-	assert syntax.scalar_present[1] & 1 != 0
+	assert syntax.layout.scalar_present[0] & (u64(1) << 63) != 0
+	assert syntax.layout.scalar_present[1] & 1 != 0
 	assert syntax.trimmed() == id
-	assert syntax.scalar_identity[0] != 0
-	assert syntax.scalar_identity[1] != 0
+	assert syntax.layout.scalar_identity[0] != 0
+	assert syntax.layout.scalar_identity[1] != 0
 	copied := *syntax
 	assert_source_type_syntax_scalar_views(&copied, source_type_syntax_parse(id, source_type_name(id)))
 	assert copied.cgen_parts().data == syntax.cgen_parts().data
@@ -1942,12 +1963,15 @@ fn test_source_type_syntax_sparse_full_width_integer_slots() {
 			u64(value), u64(value)]!
 		// This aligned stack storage stays alive for every accessor and copied header below.
 		payload_ptr := unsafe { voidptr(&payload[0]) }
-		syntax := SourceTypeSyntax{
-			payload:            payload_ptr
+		layout := SourceTypeSyntaxLayout{
 			scalar_present:     [u64(1) << 8, (u64(1) << 8) | (u64(1) << 13) | (u64(1) << 14) |
 				(u64(1) << 15) | (u64(1) << 19) | (u64(1) << 29) | (u64(1) << 30)]!
 			scalar_count:       8
 			scalar_first_count: 1
+		}
+		syntax := SourceTypeSyntax{
+			payload: payload_ptr
+			layout:  &layout
 		}
 		assert syntax.pointer_depth() == int(value)
 		assert syntax.byte_len() == int(value)
@@ -2101,5 +2125,107 @@ fn test_source_type_syntax_general_payloads_outlive_scratch_and_caller_arenas() 
 		assert source_type_syntax_general_payload_views(syntax) == expected
 		copied := *syntax
 		assert source_type_syntax_general_payload_views(&copied) == expected
+	}
+}
+
+fn test_source_type_syntax_shared_layout_keeps_owner_values_private() {
+	first_id := source_type_id('SharedLayoutOwnerFresh7701')
+	second_id := source_type_id('SharedLayoutOwnerFresh7702')
+	first := source_type_syntax(first_id)
+	second := source_type_syntax(second_id)
+	assert first.layout == second.layout
+	assert first.payload != second.payload
+	assert first.trimmed() == first_id
+	assert second.trimmed() == second_id
+	assert first.byte_len() == 'SharedLayoutOwnerFresh7701'.len
+	assert second.byte_len() == 'SharedLayoutOwnerFresh7702'.len
+	assert first.cgen_parts() == [first_id]
+	assert second.cgen_parts() == [second_id]
+	copied := *first
+	assert copied.layout == second.layout
+	assert copied.trimmed() == first_id
+	assert_source_type_syntax_scalar_views(&copied, source_type_syntax_parse(first_id,
+		'SharedLayoutOwnerFresh7701'))
+	$if x64 || arm64 {
+		assert sizeof(SourceTypeSyntax) == 32
+		assert sizeof(SourceTypeSyntaxLayout) == 56
+		assert sizeof(SourceTypeSyntaxLayoutEntry) == 72
+	}
+}
+
+fn test_source_type_syntax_borrowed_name_payload_boundaries() {
+	for payload in ['', 'BorrowedNamePayloadFresh8101', 'borrowed_name_payload8102.Node'] {
+		assert source_type_syntax(source_type_id('Array_' + payload)).c_array_payload() == source_type_id(payload)
+		assert source_type_syntax(source_type_id('FixedArray_' + payload)).c_fixed_array_payload() == source_type_id(payload)
+		assert source_type_syntax(source_type_id('Map_' + payload)).c_map_payload() == source_type_id(payload)
+		assert source_type_syntax(source_type_id(payload + '_ptr')).c_ptr_name_base() == source_type_id(payload)
+		assert source_type_syntax(source_type_id('__vf_thread_k' + payload)).thread_value_payload() == source_type_id(payload)
+	}
+	for pair in [['_FASTC_ARRAY_OF_', ''], ['Fresh_FASTC_ARRAY_OF_u8', 'u8'],
+		['Fresh_FASTC_ARRAY_OF_u8_FASTC_ARRAY_OF_u16', 'u8_FASTC_ARRAY_OF_u16']] {
+		syntax := source_type_syntax(source_type_id(pair[0]))
+		assert syntax.fastc_array_marker()
+		assert syntax.fastc_array_marker_payload() == source_type_id(pair[1])
+	}
+	assert !source_type_syntax(source_type_id('Fresh_FASTC_ARRAY_OF')).fastc_array_marker()
+	assert source_type_syntax(source_type_id('__expr_')).expr_id() == 0
+	assert source_type_syntax(source_type_id('__expr_7')).expr_id() == 7
+}
+
+fn test_source_type_syntax_borrowed_name_owner_boundaries() {
+	for pair in [['borrowed8103.C', 'borrowed8103'], ['borrowed8103.JS', 'borrowed8103'],
+		['borrowed8103.C.Node', 'borrowed8103'], ['borrowed8103.JS.Node', 'borrowed8103'],
+		['borrowed8103.Cx.Node', 'borrowed8103.Cx'], ['borrowed8103.JSx.Node', 'borrowed8103.JSx'],
+		['borrowed8103.JS.C.Node', 'borrowed8103.JS'], ['borrowed8103.C.JS.Node', 'borrowed8103'],
+		['borrowed8103.C.inner.C.Node', 'borrowed8103']] {
+		assert source_type_syntax(source_type_id(pair[0])).field_owner_module() == source_type_id(pair[1])
+	}
+}
+
+fn test_source_type_syntax_borrowed_backend_ranges_keep_exact_bytes() {
+	for triple in [['_12u8', '12', 'u8'], ['_0x10', '0', 'x10'], ['_12 ', '12', ' ']] {
+		length, base := source_type_syntax_encoded_fixed(triple[0])
+		assert length == source_type_id(triple[1])
+		assert base == source_type_id(triple[2])
+	}
+	for raw in ['_', '_12', '_x', ' _12u8'] {
+		length, base := source_type_syntax_encoded_fixed(raw)
+		assert length == 0
+		assert base == 0
+	}
+	for pair in [['struct_', 'struct '], ['union_', 'union '], ['enum_', 'enum '],
+		['struct_ Node ', 'struct  Node '], ['unsigned_int', 'unsigned int'],
+		['unsigned_int_extra', 'unsigned_int_extra']] {
+		id := source_type_id(pair[0])
+		assert source_type_syntax_c_tagged_type(id, pair[0]) == source_type_id(pair[1])
+	}
+	for triple in [['Array_fixed_mod_T_12', 'mod_T', '12'], ['Array_fixed___12', '_', '12'],
+		['Array_fixed_T_ 12 ', 'T', ' 12 ']] {
+		element, length, valid := source_type_syntax_c_fixed_typedef(triple[0])
+		assert valid
+		assert element == source_type_id(triple[1])
+		assert length == source_type_id(triple[2])
+	}
+	for raw in ['Array_fixed_', 'Array_fixed_T', 'Array_fixed__12', 'Array_fixed_T_',
+		' Array_fixed_T_12'] {
+		element, length, valid := source_type_syntax_c_fixed_typedef(raw)
+		assert !valid
+		assert element == 0
+		assert length == 0
+	}
+	for pair in [['FixedArray_12_FASTC_ARRAY_OF_u8', '12'], ['FixedArray__FASTC_ARRAY_OF_u8', ''],
+		['FixedArray_FASTC_ARRAY_OF_u8', 'FASTC_ARRAY_OF_u8'],
+		['FixedArray_12_FASTC_ARRAY_OF__FASTC_ARRAY_OF_u8', '12'],
+		['FixedArray_ 12 _FASTC_ARRAY_OF_u8', ' 12 '], ['FixedArray_EXPRHEX_FASTC_ARRAY_OF_u8',
+			''], ['FixedArray_EXPRHEX30_FASTC_ARRAY_OF_u8', '0']] {
+		valid, length := source_type_syntax_fastc_fixed_length(pair[0])
+		assert valid
+		assert length == source_type_id(pair[1])
+	}
+	for raw in ['FixedArray_12', ' FixedArray_12_FASTC_ARRAY_OF_u8',
+		'FixedArray_EXPRHEXg_FASTC_ARRAY_OF_u8'] {
+		valid, length := source_type_syntax_fastc_fixed_length(raw)
+		assert !valid
+		assert length == 0
 	}
 }
