@@ -23,6 +23,22 @@ fn exec_native(args []string) os.Result {
 	return os.exec(args.map(if it == @VEXE { native_test_compiler } else { it }))
 }
 
+fn test_native_live_reload_program_compiles() {
+	$if macos && arm64 {
+		path := os.join_path(os.vtmp_dir(), 'arm64_live_reload_${os.getpid()}.v')
+		output := os.join_path(os.vtmp_dir(), 'arm64_live_reload_${os.getpid()}')
+		defer {
+			os.rm(path) or {}
+			os.rm(output) or {}
+		}
+		os.cp(os.join_path(@VEXEROOT, 'examples', 'hot_reload', 'message.v'), path) or { panic(err) }
+		result := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+			'-nocache', '-b', 'arm64', '-os', 'macos', '-o', output, path])
+		assert result.exit_code == 0, result.output
+		assert os.exists(output), 'native live reload program must link'
+	}
+}
+
 fn test_native_run_forwards_arguments_and_exit_status() {
 	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'arm64_run_dispatch_${os.getpid()}.v')
