@@ -9098,6 +9098,37 @@ fn (mut t Transformer) escape_arg_value_contains_fixed_array(arg_id flat.NodeId)
 	return t.cached_escape_value_contains_fixed_array(value_type)
 }
 
+// escape_arg_may_mark_fixed_array_view mirrors the final test of
+// mark_fixed_array_reference_argument_escape: the referenced value must be
+// stack-local storage that holds an inline fixed array.
+fn (mut t Transformer) escape_arg_may_mark_fixed_array_view(arg_id flat.NodeId, local_stack_names map[string]bool, amp_ptrs map[string]bool, ptr_aliases map[string]string) bool {
+	mut value_id := arg_id
+	for int(value_id) >= 0 && int(value_id) < t.a.nodes.len {
+		node := t.a.nodes[int(value_id)]
+		if (node.kind in [.paren, .expr_stmt] || (node.kind == .prefix && node.op == .amp))
+			&& node.children_count == 1 {
+			value_id = t.a.child(&node, 0)
+			continue
+		}
+		break
+	}
+	if int(value_id) < 0 || int(value_id) >= t.a.nodes.len {
+		return false
+	}
+	value := t.a.nodes[int(value_id)]
+	if value.kind == .index && value.value == 'range' && value.children_count > 0 {
+		value_id = t.a.child(&value, 0)
+	}
+	if !t.escape_address_expr_is_stack_local(value_id, local_stack_names, amp_ptrs, ptr_aliases) {
+		return false
+	}
+	mut value_type := types.unalias_type(t.tc.resolve_type(value_id))
+	for value_type is types.Pointer {
+		value_type = types.unalias_type(value_type.base_type)
+	}
+	return t.cached_escape_value_contains_fixed_array(value_type)
+}
+
 fn (mut t Transformer) cached_escape_value_contains_fixed_array(value_type &types.Type) bool {
 	if value_type is types.Struct || value_type is types.SumType {
 		if cached := t.escape_fixed_array_nominal_cache[value_type.source_type_id()] {
@@ -11704,12 +11735,26 @@ fn (t &Transformer) escape_concrete_inline_field_type(base string, field_name st
 }
 
 fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.NodeId, call flat.Node, amp_ptrs map[string]bool, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
-	if isnil(t.tc) {
+	if isnil(t.tc) || call.children_count == 0 {
 		return
 	}
-	// Every mark below needs a receiver or argument holding an inline fixed
-	// array; check that before resolving the callee signature.
-	if !t.escape_call_args_contain_fixed_array(call, false) {
+	// Every mark below needs a stack-local receiver or argument holding an inline
+	// fixed array; check that before resolving the callee signature.
+	callee := t.a.child_node(&call, 0)
+	recv_may_mark := callee.kind == .selector && callee.children_count > 0
+		&& t.escape_arg_may_mark_fixed_array_view(t.a.child(callee, 0), local_stack_names, amp_ptrs, ptr_aliases)
+	mut arg_mask := u64(0)
+	for i in 1 .. call.children_count {
+		if i > 63 {
+			// Calls with this many arguments keep the full per-argument check.
+			arg_mask = max_u64
+			break
+		}
+		if t.escape_arg_may_mark_fixed_array_view(t.a.child(&call, i), local_stack_names, amp_ptrs, ptr_aliases) {
+			arg_mask |= u64(1) << u64(i)
+		}
+	}
+	if !recv_may_mark && arg_mask == 0 {
 		return
 	}
 	call_name := t.call_name_for_node(call_id, call)
@@ -11734,12 +11779,9 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 	} else {
 		t.call_param_offset_for_node(call_name, call, params)
 	}
-	if offset == 1 && params.len > 0 {
-		callee := t.a.child_node(&call, 0)
-		if callee.kind == .selector && callee.children_count > 0
-			&& !t.fixed_array_call_param_borrows(call_name, call, 0) {
-			t.mark_fixed_array_reference_argument_escape(t.a.child(callee, 0), params[0], amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
-		}
+	if offset == 1 && params.len > 0 && recv_may_mark
+		&& !t.fixed_array_call_param_borrows(call_name, call, 0) {
+		t.mark_fixed_array_reference_argument_escape(t.a.child(callee, 0), params[0], amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
 	variadic_idx := if is_variadic && params.len > 0 && params[params.len - 1] is types.Array {
 		params.len - 1
@@ -11747,6 +11789,9 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 		-1
 	}
 	for child_idx in 1 .. call.children_count {
+		if child_idx < 64 && arg_mask & (u64(1) << u64(child_idx)) == 0 {
+			continue
+		}
 		param_idx := child_idx - 1 + offset
 		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
 		if t.fixed_array_call_param_borrows(call_name, call, param_idx) {
