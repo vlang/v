@@ -14285,7 +14285,7 @@ fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name s
 		t.tc.structs[name_id] = semantic_fields
 		t.tc.struct_modules[name_id] = module_name
 		t.tc.struct_files[name_id] = t.cur_file
-		t.tc.register_short_type_name(name)
+		t.tc.register_short_type_name(name_id)
 	}
 	if module_name != '' && module_name !in ['main', 'builtin'] {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), name_id)
@@ -14296,7 +14296,7 @@ fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name s
 			t.tc.structs[qualified_id] = semantic_fields
 			t.tc.struct_modules[qualified_id] = module_name
 			t.tc.struct_files[qualified_id] = t.cur_file
-			t.tc.register_short_type_name(qualified)
+			t.tc.register_short_type_name(qualified_id)
 		}
 	}
 }

@@ -243,14 +243,14 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 		tc:                      tc
 		fn_decls:                map[string]FnDeclInfo{}
 		fn_suffixes:             map[string]bool{}
-		struct_decls:            map[string]StructDeclInfo{}
+		struct_decls:            map[u32]StructDeclInfo{}
 		const_decls:             const_decls
 		const_suffixes:          const_suffixes
 		const_suffixes_complete: true
 		import_contexts:         import_contexts
-		selective_alias_targets: map[string][]u32{}
+		selective_alias_targets: map[u32][]u32{}
 		iface_param_gate:        map[string]bool{}
-		generic_type_bases:      map[string]bool{}
+		generic_type_bases:      map[u32]bool{}
 	}
 	mut pending := []string{cap: 16}
 	for i, root_id in root_ids {
@@ -325,7 +325,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut cur_import_context := 0
 	mut fn_decls := map[string]FnDeclInfo{}
 	mut fn_decl_lists := map[string][]FnDeclInfo{}
-	mut struct_decls := map[string]StructDeclInfo{}
+	mut struct_decls := map[u32]StructDeclInfo{}
 	mut const_decls := map[string]ConstDeclInfo{}
 	mut fn_name_suffixes := map[string]bool{}
 	mut const_name_suffixes := map[string]bool{}
@@ -339,11 +339,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		fn_name_suffixes.reserve(u32(tc.fn_ret_types.len))
 		const_name_suffixes.reserve(u32(tc.const_types.len))
 	}
-	mut generic_type_bases := map[string]bool{}
+	mut generic_type_bases := map[u32]bool{}
 	if detect_reachable_generics {
 		for node in a.nodes {
 			if node.kind in [.struct_decl, .type_decl] && node.generic_params().len > 0 {
-				generic_type_bases[node.value] = true
+				generic_type_bases[node.source_value_id()] = true
 			}
 		}
 	}
@@ -422,18 +422,19 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			decl_module := tc.file_modules[decl_file] or { cur_module }
 			decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
 			if node.kind == .enum_decl && decl_file.ends_with('.vh') {
-				cached_header_enum_str_roots << flat.source_type_id(qualify_fn(decl_module, node.value))
+				cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 			}
 			if node.kind == .struct_decl {
-				full_name := qualify_fn(decl_module, node.value)
+				name_id := node.source_value_id()
+				full_name := markused_qualify_source_type(decl_module, name_id)
 				info := StructDeclInfo{
 					node_id:        flat.NodeId(node_idx)
 					module:         decl_module
 					import_context: decl_import_context
 				}
 				struct_decls[full_name] = info
-				if node.value !in struct_decls {
-					struct_decls[node.value] = info
+				if name_id !in struct_decls {
+					struct_decls[name_id] = info
 				}
 				continue
 			}
@@ -826,7 +827,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		selective_alias_targets:          if detect_reachable_generics {
 			markused_selective_alias_targets(tc)
 		} else {
-			map[string][]u32{}
+			map[u32][]u32{}
 		}
 		iface_param_gate:                 if detect_reachable_generics {
 			markused_interface_param_gate(tc)
@@ -2237,7 +2238,7 @@ pub struct PreparedMarkusedDecls {
 mut:
 	fn_decls                     map[string]FnDeclInfo
 	fn_decl_lists                map[string][]FnDeclInfo
-	struct_decls                 map[string]StructDeclInfo
+	struct_decls                 map[u32]StructDeclInfo
 	const_decls                  map[string]ConstDeclInfo
 	fn_name_suffixes             map[string]bool
 	const_name_suffixes          map[string]bool
@@ -2287,7 +2288,7 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 	mut result := &PreparedMarkusedDecls{
 		fn_decls:             map[string]FnDeclInfo{}
 		fn_decl_lists:        map[string][]FnDeclInfo{}
-		struct_decls:         map[string]StructDeclInfo{}
+		struct_decls:         map[u32]StructDeclInfo{}
 		const_decls:          map[string]ConstDeclInfo{}
 		fn_name_suffixes:     map[string]bool{}
 		const_name_suffixes:  map[string]bool{}
@@ -2337,18 +2338,19 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
 		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
-			result.cached_header_enum_str_roots << flat.source_type_id(qualify_fn(decl_module, node.value))
+			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
 		}
 		if node.kind == .struct_decl {
-			full_name := qualify_fn(decl_module, node.value)
+			name_id := node.source_value_id()
+			full_name := markused_qualify_source_type(decl_module, name_id)
 			info := StructDeclInfo{
 				node_id:        flat.NodeId(node_idx)
 				module:         decl_module
 				import_context: decl_import_context
 			}
 			result.struct_decls[full_name] = info
-			if node.value !in result.struct_decls {
-				result.struct_decls[node.value] = info
+			if name_id !in result.struct_decls {
+				result.struct_decls[name_id] = info
 			}
 			continue
 		}
@@ -2471,7 +2473,7 @@ struct CallCollector {
 	default_calls     &StructDefaultCalls = unsafe { nil }
 	fn_decls          map[string]FnDeclInfo
 	fn_suffixes       map[string]bool
-	struct_decls      map[string]StructDeclInfo
+	struct_decls      map[u32]StructDeclInfo
 	const_decls       map[string]ConstDeclInfo
 	const_suffixes    map[string]bool
 	// True only when the declaration scan indexed every constant/global key.
@@ -2481,7 +2483,7 @@ struct CallCollector {
 	// Unqualified selective-import symbol -> all known alias targets. This is
 	// global because generic detection only needs to know whether any target
 	// requires monomorphization.
-	selective_alias_targets map[string][]u32
+	selective_alias_targets map[u32][]u32
 	// Gate set for collect_interface_boxed_generic_methods: every fn_param_types
 	// key with at least one interface-typed parameter, plus its post-'.' and
 	// post-'__' short spellings (see markused_interface_param_gate). Lets the
@@ -2490,7 +2492,7 @@ struct CallCollector {
 	iface_param_gate map[string]bool
 	// Includes scoped local declarations, which are intentionally absent from
 	// the checker's top-level generic declaration maps.
-	generic_type_bases map[string]bool
+	generic_type_bases map[u32]bool
 	generic_calls      &GenericCalls = unsafe { nil }
 	// Shared read-only metadata for every script stringification in this pass.
 	auto_str_skipped_fields map[u32]&MarkusedSkippedFields
@@ -2546,16 +2548,20 @@ fn markused_interface_param_gate(tc &types.TypeChecker) map[string]bool {
 	return gate
 }
 
-fn markused_selective_alias_targets(tc &types.TypeChecker) map[string][]u32 {
-	mut result := map[string][]u32{}
+fn markused_selective_alias_targets(tc &types.TypeChecker) map[u32][]u32 {
+	mut result := map[u32][]u32{}
 	for key, candidates in tc.file_selective_imports {
-		name := key.all_after_last('\n')
+		mut name_id := u32(0)
 		for candidate in candidates {
-			target := tc.type_aliases.type_id(flat.source_type_id(candidate)) or { continue }
-			mut targets := result[name]
+			candidate_id := flat.source_type_existing_id(candidate) or { continue }
+			target := tc.type_aliases.type_id(candidate_id) or { continue }
+			if name_id == 0 {
+				name_id = flat.source_type_id(key.all_after_last('\n'))
+			}
+			mut targets := result[name_id]
 			if target !in targets {
 				targets << target
-				result[name] = targets
+				result[name_id] = targets
 			}
 		}
 	}
@@ -4641,8 +4647,8 @@ fn (c &CallCollector) type_text_uses_generics_depth(typ_id u32, cur_module strin
 fn (c &CallCollector) struct_fields_use_generics(name_id u32, cur_module string, imports map[string]string, depth int) bool {
 	info := c.struct_decl_info_with_imports(name_id, cur_module, imports) or { return false }
 	decl := c.a.node(info.node_id)
-	qualified_name := qualify_fn(info.module, decl.value)
-	fields := c.tc.structs[flat.source_type_id(qualified_name)] or { return false }
+	qualified_name := markused_qualify_source_type(info.module, decl.source_value_id())
+	fields := c.tc.structs[qualified_name] or { return false }
 	field_module := if info.module.len > 0 { info.module } else { cur_module }
 	field_imports := c.imports(info.import_context)
 	for field in fields {
@@ -4788,18 +4794,17 @@ fn (c &CallCollector) struct_decl_info_with_imports(name_id u32, cur_module stri
 }
 
 fn (c &CallCollector) generic_type_base_is_known(base_id u32, cur_module string, imports map[string]string) bool {
-	base := flat.source_type_name(base_id)
-	if base in c.generic_type_bases || base_id in c.tc.struct_generic_params || base_id in c.tc.sum_generic_params {
+	if base_id in c.generic_type_bases || base_id in c.tc.struct_generic_params || base_id in c.tc.sum_generic_params {
 		return true
 	}
 	if !flat.source_type_shape(base_id).has(.dotted) {
-		qualified := flat.source_type_name(markused_qualify_source_type(cur_module, base_id))
-		return flat.source_type_id(qualified) in c.tc.struct_generic_params || flat.source_type_id(qualified) in c.tc.sum_generic_params
+		qualified := markused_qualify_source_type(cur_module, base_id)
+		return qualified in c.tc.struct_generic_params || qualified in c.tc.sum_generic_params
 	}
 	syntax := flat.source_type_syntax(base_id)
 	if module_name := imports[flat.source_type_name(syntax.first_dot_prefix())] {
-		resolved := flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix()))
-		return flat.source_type_id(resolved) in c.tc.struct_generic_params || flat.source_type_id(resolved) in c.tc.sum_generic_params
+		resolved := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), syntax.first_dot_suffix())
+		return resolved in c.tc.struct_generic_params || resolved in c.tc.sum_generic_params
 	}
 	return false
 }
@@ -4821,7 +4826,7 @@ fn (c &CallCollector) selective_alias_uses_generics(name_id u32, cur_module stri
 	if c.selective_alias_targets.len == 0 || flat.source_type_shape(name_id).has(.dotted) {
 		return false
 	}
-	targets := c.selective_alias_targets[flat.source_type_name(name_id)] or { return false }
+	targets := c.selective_alias_targets[name_id] or { return false }
 	for target in targets {
 		if c.type_text_uses_generics_depth(markused_trimmed_source_type(target), cur_module, imports, depth) {
 			return true
@@ -9326,25 +9331,24 @@ fn (c &CallCollector) is_known_fn_name(name string) bool {
 // struct_lookup_name supports struct lookup name handling for CallCollector.
 fn (c &CallCollector) struct_lookup_name(type_name_id u32, cur_module string) u32 {
 	if type_name_id == 0 { return u32(0) }
-	type_name := flat.source_type_name(type_name_id)
 	if flat.source_type_shape(type_name_id).has(.dotted) {
-		if type_name in c.struct_decls { return type_name_id }
+		if type_name_id in c.struct_decls { return type_name_id }
 		syntax := flat.source_type_syntax(type_name_id)
 		type_mod := flat.source_type_name(syntax.qualifier())
-		if info := c.struct_decls[flat.source_type_name(syntax.unqualified())] {
+		if info := c.struct_decls[syntax.unqualified()] {
 			if info.module == type_mod { return syntax.unqualified() }
 		}
-		if info := c.struct_decls[type_name] {
+		if info := c.struct_decls[type_name_id] {
 			if info.module == type_mod { return type_name_id }
 		}
 		return u32(0)
 	}
-	if info := c.struct_decls[type_name] {
+	if info := c.struct_decls[type_name_id] {
 		if info.module.len == 0 || info.module == cur_module { return type_name_id }
 	}
 	if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(cur_module), type_name_id)
-		if flat.source_type_name(qualified) in c.struct_decls { return qualified }
+		if qualified in c.struct_decls { return qualified }
 	}
 	return u32(0)
 }
@@ -10529,7 +10533,7 @@ fn (c &CallCollector) struct_decl_info(type_name_id u32, cur_module string) ?Str
 	if struct_name == 0 {
 		return none
 	}
-	if info := c.struct_decls[flat.source_type_name(struct_name)] {
+	if info := c.struct_decls[struct_name] {
 		return info
 	}
 	return none

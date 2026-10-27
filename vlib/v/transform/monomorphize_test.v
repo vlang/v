@@ -6,6 +6,21 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_generic_method_receiver_index_separates_modules_and_preserves_order() {
+	decls := {
+		'alpha.Box.first':  GenericFnDecl{ key: 'alpha.Box.first' }
+		'beta.Box.first':   GenericFnDecl{ key: 'beta.Box.first' }
+		'alpha.Box.second': GenericFnDecl{ key: 'alpha.Box.second' }
+		'free_function':    GenericFnDecl{ key: 'free_function' }
+	}
+	indexed := generic_struct_methods_by_receiver(decls)
+	assert indexed.len == 2
+	alpha := indexed[flat.source_type_id('alpha.Box')]
+	beta := indexed[flat.source_type_id('beta.Box')]
+	assert alpha.map(it.key) == ['alpha.Box.first', 'alpha.Box.second']
+	assert beta.map(it.key) == ['beta.Box.first']
+}
+
 fn test_generic_declaration_index_preserves_appended_templates_and_erasure() {
 	path := os.join_path(os.vtmp_dir(), 'generic_decl_index_${os.getpid()}.v')
 	os.write_file(path, 'module source\nstruct Box[T] { value T }\ntype Choice[T] = T | string\n')!

@@ -13853,7 +13853,7 @@ pub fn (tc &TypeChecker) qualify_type_name_at(name_id u32, id flat.NodeId, modul
 	}
 	if module_name in ['', 'main'] && tc.type_symbol_known(name_id) {
 		owner := tc.struct_modules[name_id] or { tc.type_alias_modules[name_id] or { '' } }
-		if owner in ['', 'main'] && tc.main_type_name_has_non_main_collision(name) {
+		if owner in ['', 'main'] && tc.main_type_name_has_non_main_collision(name_id) {
 			return flat.source_type_id('main.${name}')
 		}
 	}
@@ -13866,63 +13866,62 @@ pub fn (tc &TypeChecker) qualify_type_name_at(name_id u32, id flat.NodeId, modul
 	return name_id
 }
 
-fn (tc &TypeChecker) main_type_name_has_non_main_collision(name string) bool {
-	mut seen := map[string]bool{}
-	return tc.main_type_name_has_non_main_collision_inner(name, mut seen)
+fn (tc &TypeChecker) main_type_name_has_non_main_collision(name_id u32) bool {
+	mut seen := map[u32]bool{}
+	return tc.main_type_name_has_non_main_collision_inner(name_id, mut seen)
 }
 
-fn (tc &TypeChecker) main_type_name_has_non_main_collision_inner(name string, mut seen map[string]bool) bool {
-	if seen[name] {
+fn (tc &TypeChecker) main_type_name_has_non_main_collision_inner(name_id u32, mut seen map[u32]bool) bool {
+	if seen[name_id] {
 		return false
 	}
-	seen[name] = true
-	if target_source_id := tc.type_aliases.type_id(flat.source_type_id(name)) {
+	seen[name_id] = true
+	if target_source_id := tc.type_aliases.type_id(name_id) {
 		if tc.main_alias_target_has_non_main_collision(target_source_id, mut seen) {
 			return true
 		}
 	}
-	if _ := tc.unique_qualified_type_name(name) {
+	if _ := tc.unique_qualified_type_name(name_id) {
 		return false
 	}
 	for candidate, _ in tc.structs {
-		if type_name_collides_with_main(candidate, name) { return true }
+		if type_name_collides_with_main(candidate, name_id) { return true }
 	}
 	for candidate, _ in tc.sum_types.ids {
-		if type_name_collides_with_main(candidate, name) { return true }
+		if type_name_collides_with_main(candidate, name_id) { return true }
 	}
 	for candidate, _ in tc.enum_names {
-		if type_name_collides_with_main(candidate, name) { return true }
+		if type_name_collides_with_main(candidate, name_id) { return true }
 	}
 	for candidate, _ in tc.type_aliases.ids {
-		if type_name_collides_with_main(candidate, name) { return true }
+		if type_name_collides_with_main(candidate, name_id) { return true }
 	}
 	for candidate, _ in tc.interface_names {
-		if type_name_collides_with_main(candidate, name) { return true }
+		if type_name_collides_with_main(candidate, name_id) { return true }
 	}
 	return false
 }
 
-fn (tc &TypeChecker) main_alias_target_has_non_main_collision(target_id u32, mut seen map[string]bool) bool {
+fn (tc &TypeChecker) main_alias_target_has_non_main_collision(target_id u32, mut seen map[u32]bool) bool {
 	syntax := flat.source_type_syntax(target_id)
 	for index, part_id in syntax.symbol_parts() {
 		if !syntax.symbol_is_name()[index] || flat.source_type_shape(part_id).has(.dotted)
 			|| is_builtin_type_name_id(part_id) {
 			continue
 		}
-		part := flat.source_type_name(part_id)
 		if !tc.type_symbol_known(part_id) { continue }
 		owner := tc.struct_modules[part_id] or { tc.type_alias_modules[part_id] or { '' } }
-		if owner in ['', 'main'] && tc.main_type_name_has_non_main_collision_inner(part, mut seen) {
+		if owner in ['', 'main'] && tc.main_type_name_has_non_main_collision_inner(part_id, mut seen) {
 			return true
 		}
 	}
 	return false
 }
 
-fn type_name_collides_with_main(candidate_id u32, name string) bool {
+fn type_name_collides_with_main(candidate_id u32, name_id u32) bool {
 	if !flat.source_type_shape(candidate_id).has(.dotted) { return false }
 	syntax := flat.source_type_syntax(candidate_id)
-	return syntax.unqualified() == flat.source_type_id(name)
+	return syntax.unqualified() == name_id
 		&& syntax.qualifier() !in [u32(0), flat.source_type_id('main'), flat.source_type_id('builtin')]
 }
 
@@ -15730,7 +15729,7 @@ fn (tc &TypeChecker) sum_base_name(sum_name_id u32) u32 {
 	if shape.has(.dotted) {
 		resolved_id := tc.resolve_imported_type_text(sum_name_id)
 		if tc.sum_types.contains(resolved_id) { return resolved_id }
-		if unique_id := tc.unique_qualified_type_name(flat.source_type_name(flat.source_type_syntax(sum_name_id).unqualified())) {
+		if unique_id := tc.unique_qualified_type_name(flat.source_type_syntax(sum_name_id).unqualified()) {
 			if tc.sum_types.contains(unique_id) { return unique_id }
 		}
 	}
@@ -16005,7 +16004,7 @@ fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name_id u32, variant
 		// `all_after_last('.')` on a container pattern (`map[string]ast.Value`)
 		// strips the container and would resolve to the sum type itself.
 		if !variant_shape.has(.bracketed) {
-			if unique := tc.unique_qualified_type_name(flat.source_type_name(flat.source_type_syntax(variant_name_id).unqualified())) {
+			if unique := tc.unique_qualified_type_name(flat.source_type_syntax(variant_name_id).unqualified()) {
 				candidates << unique
 			}
 		}
@@ -16057,7 +16056,7 @@ fn (tc &TypeChecker) alias_target_type_text(name_id u32) ?u32 {
 	if flat.source_type_shape(name_id).has(.dotted) {
 		resolved := tc.resolve_imported_type_text(name_id)
 		if target := tc.type_aliases.type_id(resolved) { return target }
-		if unique_id := tc.unique_qualified_type_name(flat.source_type_name(flat.source_type_syntax(name_id).unqualified())) {
+		if unique_id := tc.unique_qualified_type_name(flat.source_type_syntax(name_id).unqualified()) {
 			if target := tc.type_aliases.type_id(unique_id) { return target }
 		}
 	}
@@ -17989,7 +17988,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 		}
 	}
 	if allow_bare_symbol && !shape.has(.dotted) {
-		if resolved_source_id := tc.unique_qualified_type_name(typ) {
+		if resolved_source_id := tc.unique_qualified_type_name(source_id) {
 			if tc.type_aliases.contains(resolved_source_id) {
 				return Type(Alias{
 					name_id:   resolved_source_id
@@ -18059,7 +18058,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 				// lookup and c_type match `vec.Vec2[int]`, not a bogus bare `Vec2[int]`.
 				if resolved := tc.resolve_selective_import_type_symbol(resolved_base) {
 					sgp_base_id = flat.source_type_id(resolved)
-				} else if resolved_source_id := tc.unique_qualified_type_name(resolved_base) {
+				} else if resolved_source_id := tc.unique_qualified_type_name(resolved_base_source_id) {
 					sgp_base_id = resolved_source_id
 				}
 			}
@@ -18158,7 +18157,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 			// the fixed-array handler — its bracket is a const/expression length.
 			mut full := flat.source_type_composition_two(.concat, qbase_source_id, generic_suffix)
 			if allow_bare_generic_base && !flat.source_type_shape(resolved_base_source_id).has(.dotted) {
-				if resolved_source_id := tc.unique_qualified_type_name(resolved_base) {
+				if resolved_source_id := tc.unique_qualified_type_name(resolved_base_source_id) {
 					full = flat.source_type_composition_two(.concat, resolved_source_id, generic_suffix)
 				}
 			}
@@ -18591,12 +18590,11 @@ fn (tc &TypeChecker) is_known_type_text(typ_id u32) bool {
 // this to rebuild method/type C names when a receiver type carries only the
 // import-local module qualifier instead of the full module path.
 pub fn (tc &TypeChecker) canonical_qualified_type_name(name_id u32) ?u32 {
-	return tc.unique_qualified_type_name(flat.source_type_name(flat.source_type_syntax(name_id).unqualified()))
+	return tc.unique_qualified_type_name(flat.source_type_syntax(name_id).unqualified())
 }
 
 // unique_qualified_type_name supports unique qualified type name handling for TypeChecker.
-fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?u32 {
-	short_id := flat.source_type_id(short_name)
+fn (tc &TypeChecker) unique_qualified_type_name(short_id u32) ?u32 {
 	if short_id == 0 {
 		return none
 	}
@@ -18607,7 +18605,7 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?u32 {
 	// type_cache, so forked parallel workers each build their own).
 	mut cache := tc.type_cache
 	if isnil(cache) {
-		return tc.unique_qualified_type_name_scan(short_name)
+		return tc.unique_qualified_type_name_scan(short_id)
 	}
 	if !cache.short_type_name_index_built {
 		mut fallback := cache.base
@@ -18651,10 +18649,10 @@ pub fn (tc &TypeChecker) invalidate_short_type_name_index() {
 	}
 }
 
-// register_short_type_name extends an already-built short-name index after
-// monomorphization adds a concrete type. A scoped transform must not rebuild
-// the entire index from maps whose strings may belong to the checked arena.
-pub fn (tc &TypeChecker) register_short_type_name(name string) {
+// register_short_type_name extends an already-built short-name index with a
+// source spelling ID after monomorphization adds a concrete type. A scoped
+// transform copies the frozen index before extending its private entries.
+pub fn (tc &TypeChecker) register_short_type_name(name_id u32) {
 	mut cache := tc.type_cache
 	if isnil(cache) {
 		return
@@ -18670,13 +18668,13 @@ pub fn (tc &TypeChecker) register_short_type_name(name string) {
 		cache.short_type_name_index = fallback.short_type_name_index.clone()
 		cache.short_type_name_index_built = true
 	}
-	index_short_type_name(flat.source_type_id(name), mut cache.short_type_name_index)
+	index_short_type_name(name_id, mut cache.short_type_name_index)
 }
 
-// unregister_short_type_name removes an exact cached entry when a generic
-// template is erased. Ambiguous entries stay conservative until the next
-// compilation-wide index build.
-pub fn (tc &TypeChecker) unregister_short_type_name(name string) {
+// unregister_short_type_name removes an exact cached source spelling ID when a
+// generic template is erased. Ambiguous entries stay conservative until the
+// next compilation-wide index build.
+pub fn (tc &TypeChecker) unregister_short_type_name(name_id u32) {
 	mut cache := tc.type_cache
 	if isnil(cache) {
 		return
@@ -18692,7 +18690,6 @@ pub fn (tc &TypeChecker) unregister_short_type_name(name string) {
 		cache.short_type_name_index = fallback.short_type_name_index.clone()
 		cache.short_type_name_index_built = true
 	}
-	name_id := flat.source_type_id(name)
 	short := flat.source_type_syntax(name_id).unqualified()
 	if cached_source_id := cache.short_type_name_index.type_id(short) {
 		if cached_source_id == name_id {
@@ -18730,8 +18727,7 @@ fn index_short_type_name(id u32, mut index flat.SourceTypeBindings) {
 
 // unique_qualified_type_name_scan is the uncached fallback used when no
 // type_cache is attached to the checker.
-fn (tc &TypeChecker) unique_qualified_type_name_scan(short_name string) ?u32 {
-	short_id := flat.source_type_id(short_name)
+fn (tc &TypeChecker) unique_qualified_type_name_scan(short_id u32) ?u32 {
 	mut found := u32(0)
 	for name, _ in tc.type_aliases.ids {
 		name_id := name
@@ -21124,7 +21120,7 @@ fn (tc &TypeChecker) c_type_uncached(t &Type) string {
 		if shape.has(.dotted) && name_id !in tc.structs && name_id !in tc.type_aliases.ids {
 			// An import-alias prefix (`json.Any` for `import x.json2 as json`)
 			// can survive in recorded types; resolve by unique short name.
-			if resolved_source_id := tc.unique_qualified_type_name(flat.source_type_name(flat.source_type_syntax(name_id).unqualified())) {
+			if resolved_source_id := tc.unique_qualified_type_name(flat.source_type_syntax(name_id).unqualified()) {
 				return tc.c_struct_type_name(resolved_source_id)
 			}
 		}

@@ -507,7 +507,7 @@ fn test_omitted_parameter_defaults_skip_receiver_and_named_arguments() {
 			'consume': FnDeclInfo{ node_id: decl }
 		}
 		struct_decls:    {
-			'Config': StructDeclInfo{ node_id: config }
+			flat.source_type_id('Config'): StructDeclInfo{ node_id: config }
 		}
 		import_contexts: [map[string]string{}]
 	}
@@ -1110,7 +1110,7 @@ fn test_unindexed_generic_factory_uses_prior_local_type() {
 		a:            &a
 		tc:           &tc
 		struct_decls: {
-			'Payload': StructDeclInfo{ module: 'main' }
+			flat.source_type_id('Payload'): StructDeclInfo{ module: 'main' }
 		}
 	}
 	_, local_types, _ := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
@@ -1521,9 +1521,9 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 		a:               &a
 		tc:              &tc
 		struct_decls:    {
-			'A': StructDeclInfo{ module: 'main' }
-			'B': StructDeclInfo{ module: 'main' }
-			'C': StructDeclInfo{ module: 'main' }
+			flat.source_type_id('A'): StructDeclInfo{ module: 'main' }
+			flat.source_type_id('B'): StructDeclInfo{ module: 'main' }
+			flat.source_type_id('C'): StructDeclInfo{ module: 'main' }
 		}
 		import_contexts: [map[string]string{}]
 	}
@@ -1650,7 +1650,7 @@ fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
 				method: FnDeclInfo{ node_id: fn_id, module: 'gates' }
 			}
 			struct_decls:    {
-				'gates.Params': StructDeclInfo{ node_id: struct_id, module: 'gates' }
+				flat.source_type_id('gates.Params'): StructDeclInfo{ node_id: struct_id, module: 'gates' }
 			}
 			import_contexts: [map[string]string{}]
 		}
@@ -1821,8 +1821,8 @@ fn test_factory_local_inference_preserves_lexical_bindings() {
 			tc:              &tc
 			import_contexts: [map[string]string{}]
 			struct_decls:    {
-				'A': StructDeclInfo{ module: 'main' }
-				'B': StructDeclInfo{ module: 'main' }
+				flat.source_type_id('A'): StructDeclInfo{ module: 'main' }
+				flat.source_type_id('B'): StructDeclInfo{ module: 'main' }
 			}
 		}
 		mut calls := []string{}

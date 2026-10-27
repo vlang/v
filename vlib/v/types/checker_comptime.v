@@ -7141,7 +7141,7 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 		&& !tc.type_name_known(target_type_name_id) {
 		target_syntax := flat.source_type_syntax(target_type_name_id)
 		if target_syntax.qualifier() != 0 && target_syntax.unqualified() != 0 {
-			resolved_target_id := tc.unique_qualified_type_name(flat.source_type_name(target_syntax.qualifier())) or { target_syntax.qualifier() }
+			resolved_target_id := tc.unique_qualified_type_name(target_syntax.qualifier()) or { target_syntax.qualifier() }
 			qualified_target := if flat.source_type_shape(resolved_target_id).has(.dotted) {
 				flat.source_type_name(resolved_target_id)
 			} else {

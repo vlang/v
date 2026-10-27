@@ -5447,6 +5447,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 		out.writeln('')
 	}
 	mut seen := map[string]bool{}
+	mut seen_types := map[u64]bool{}
 	mut selected_imports := map[string]bool{}
 	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
 	for file_id in file_ids {
@@ -5461,8 +5462,9 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 				if node.kind == .module_decl {
 					continue
 				}
-				key := decl_key(a, node)
-				if key.len > 0 && seen[key] {
+				type_key := nominal_decl_key(node)
+				key := if type_key == 0 { decl_key(a, node) } else { '' }
+				if (type_key != 0 && seen_types[type_key]) || (key.len > 0 && seen[key]) {
 					continue
 				}
 				if node.kind == .import_decl {
@@ -5512,7 +5514,9 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 				if attrs_text.len > 0 && (!source_embedded || !text.trim_space().starts_with('@[')) {
 					text = '${attrs_text}\n${text}'
 				}
-				if key.len > 0 {
+				if type_key != 0 {
+					seen_types[type_key] = true
+				} else if key.len > 0 {
 					seen[key] = true
 				}
 				out.writeln(text)
@@ -6798,6 +6802,15 @@ fn file_module_name(a &flat.FlatAst, file_node flat.Node) string {
 	return ''
 }
 
+fn nominal_decl_key(node flat.Node) u64 {
+	return match node.kind {
+		.struct_decl, .enum_decl, .type_decl, .interface_decl {
+			(u64(node.kind) << 32) | u64(flat.source_type_id(node.value))
+		}
+		else { u64(0) }
+	}
+}
+
 fn decl_key(a &flat.FlatAst, node flat.Node) string {
 	return match node.kind {
 		.import_decl {
@@ -6807,7 +6820,7 @@ fn decl_key(a &flat.FlatAst, node flat.Node) string {
 			}
 			'import:${node.value}:${node.typ_text()}:${selected.join(',')}'
 		}
-		.fn_decl, .c_fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
+		.fn_decl, .c_fn_decl {
 			'${int(node.kind)}:${node.value}'
 		}
 		.directive {

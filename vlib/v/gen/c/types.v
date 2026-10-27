@@ -3105,7 +3105,7 @@ fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 
 fn (mut g FlatGen) type_alias_decls_at_phase(emit_fn_ptr_aliases bool, after_arrays bool) {
 	mut emitted := false
-	mut main_aliases := map[string]bool{}
+	mut main_aliases := map[u32]bool{}
 	old_module := g.tc.cur_module
 	defer { g.tc.cur_module = old_module }
 	if g.tc.autofree_mode {
@@ -3121,7 +3121,7 @@ fn (mut g FlatGen) type_alias_decls_at_phase(emit_fn_ptr_aliases bool, after_arr
 				}
 				.type_decl {
 					if cur_module in ['', 'main'] && node.children_count == 0 {
-						main_aliases[node.value] = true
+						main_aliases[flat.source_type_id(node.value)] = true
 					}
 				}
 				else {}
@@ -3129,20 +3129,20 @@ fn (mut g FlatGen) type_alias_decls_at_phase(emit_fn_ptr_aliases bool, after_arr
 		}
 	}
 	for registry_name_id, target_id in g.tc.type_aliases.ids {
-		name := flat.source_type_name(registry_name_id)
 		if flat.source_type_query(target_id).has(.fn_ptr_prefix) || flat.source_type_query(target_id).has(.c_prefix) {
 			continue
 		}
 		if g.has_builtins && !g.tc.autofree_mode {
 			continue
 		}
-		if g.tc.autofree_mode && !main_aliases[name] {
+		if g.tc.autofree_mode && !main_aliases[registry_name_id] {
 			continue
 		}
+		name := flat.source_type_name(registry_name_id)
 		alias_module := module_from_qualified_name(name)
 		g.tc.cur_module = if alias_module.len > 0 {
 			alias_module
-		} else if main_aliases[name] {
+		} else if main_aliases[registry_name_id] {
 			'main'
 		} else {
 			old_module

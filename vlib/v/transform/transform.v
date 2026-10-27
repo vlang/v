@@ -5871,7 +5871,7 @@ fn (mut t Transformer) merge_worker_capture_contexts(w &Transformer) {
 			master_tc.structs[name_id] = clone_struct_fields_owned(fields)
 			master_tc.struct_modules[name_id] = (w.tc.struct_modules[name_id] or { '' }).clone()
 			master_tc.struct_files[name_id] = (w.tc.struct_files[name_id] or { '' }).clone()
-			master_tc.register_short_type_name(name)
+			master_tc.register_short_type_name(name_id)
 		}
 	}
 }

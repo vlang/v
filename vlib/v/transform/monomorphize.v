@@ -1678,13 +1678,13 @@ fn (mut t Transformer) record_compound_assign_operator_fn_name(lhs_id flat.NodeI
 // `vec.Vec4[f32].one`, ...). It only handles methods whose generic parameters are
 // exactly the struct's parameters (no extra method-level `[U]`); those are left to
 // the call-driven path. Returns whether any new specialization was emitted.
-fn generic_struct_methods_by_receiver(decls map[string]GenericFnDecl) map[string][]GenericFnDecl {
-	mut methods_by_receiver := map[string][]GenericFnDecl{}
+fn generic_struct_methods_by_receiver(decls map[string]GenericFnDecl) map[u32][]GenericFnDecl {
+	mut methods_by_receiver := map[u32][]GenericFnDecl{}
 	for decl_key, decl in decls {
 		if !decl_key.contains('.') {
 			continue
 		}
-		receiver := decl_key.all_before_last('.')
+		receiver := flat.source_type_id(decl_key.all_before_last('.'))
 		mut methods := methods_by_receiver[receiver] or { []GenericFnDecl{} }
 		methods << decl
 		methods_by_receiver[receiver] = methods
@@ -1726,7 +1726,7 @@ fn (t &Transformer) used_generic_method_names() map[string]bool {
 	return methods
 }
 
-fn (mut t Transformer) specialize_generic_struct_methods(specs map[u32]u32, decls map[string]GenericFnDecl, methods_by_receiver map[string][]GenericFnDecl, method_level_params map[string]bool, interfaces_by_method map[string][]u32, mut interface_impl_cache map[u64]bool, mut emitted GenericFnSpecBoolMap) bool {
+fn (mut t Transformer) specialize_generic_struct_methods(specs map[u32]u32, decls map[string]GenericFnDecl, methods_by_receiver map[u32][]GenericFnDecl, method_level_params map[string]bool, interfaces_by_method map[string][]u32, mut interface_impl_cache map[u64]bool, mut emitted GenericFnSpecBoolMap) bool {
 	if !t.needs_generic_struct_method_specialization(decls) {
 		return false
 	}
@@ -1744,7 +1744,7 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[u32]u32, decl
 		if !ok || args.len == 0 {
 			continue
 		}
-		methods := methods_by_receiver[base] or { continue }
+		methods := methods_by_receiver[base_id] or { continue }
 		fixture_expand_regular_methods := t.fixture_should_expand_regular_generic_methods(args)
 			&& t.generic_struct_spec_has_emitted_method(base, args, decls, emitted)
 		concrete_args_source_ids := t.canonical_generic_specialization_args(args)
@@ -3253,11 +3253,11 @@ fn (mut t Transformer) materialize_generic_structs(erase_templates bool) {
 	t.materialize_generic_struct_specs(specs, decls)
 	t.monomorph_profile('mono materialize structs: ${time.ticks() - debug_started} ms')
 	if erase_templates {
-		for decl_id, decl in decls {
+		for decl_id, _ in decls {
 			t.tc.structs.delete(decl_id)
 			t.tc.unions.delete(decl_id)
 			t.tc.params_structs.delete(decl_id)
-			t.tc.unregister_short_type_name(decl.key)
+			t.tc.unregister_short_type_name(decl_id)
 		}
 		// Refresh once after both registries have finished removing templates.
 		t.erase_generic_sum_templates(sum_decls)
@@ -3317,7 +3317,7 @@ fn (mut t Transformer) erase_generic_sum_templates(sum_decls map[u32]GenericSumD
 		t.tc.sum_types.delete(decl_id)
 		t.sum_types.delete(decl_id)
 		t.tc.sum_generic_params.delete(decl_id)
-		t.tc.unregister_short_type_name(decl.key)
+		t.tc.unregister_short_type_name(decl_id)
 		if decl.key != decl.node.value {
 			t.tc.sum_generic_params.delete(flat.source_type_id(decl.node.value))
 		}
@@ -4206,14 +4206,13 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_id u32, decl GenericSum
 	if !syntax.generic_app_valid() || syntax.generic_app_args().len == 0 {
 		return
 	}
-	spec_name := flat.source_type_name(spec_id)
 	if variants_source_ids := t.tc.sum_types.type_ids(spec_id) {
 		t.sum_types.set_ids(spec_id, variants_source_ids)
 		return
 	}
 	if variants_source_ids := t.sum_types.type_ids(spec_id) {
 		t.tc.sum_types.set_ids(spec_id, variants_source_ids)
-		t.tc.register_short_type_name(spec_name)
+		t.tc.register_short_type_name(spec_id)
 		return
 	}
 	old_module := t.cur_module
@@ -4245,7 +4244,7 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_id u32, decl GenericSum
 	}
 	t.tc.sum_types.set_ids(spec_id, variants)
 	t.sum_types.set_ids(spec_id, variants)
-	t.tc.register_short_type_name(spec_name)
+	t.tc.register_short_type_name(spec_id)
 	if !isnil(t.sum_cache) {
 		t.sum_cache.entries.clear()
 		t.sum_cache.clear_recent()
@@ -4308,11 +4307,12 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_id u32, decl Generic
 		}
 	}
 	t.tc.structs[spec_id] = fields
-	t.tc.register_short_type_name(spec_name)
+	t.tc.register_short_type_name(spec_id)
 	cspec_name := c_name(spec_name)
 	if cspec_name != spec_name {
-		t.tc.structs[flat.source_type_id(cspec_name)] = fields
-		t.tc.register_short_type_name(cspec_name)
+		cspec_id := flat.source_type_id(cspec_name)
+		t.tc.structs[cspec_id] = fields
+		t.tc.register_short_type_name(cspec_id)
 		if decl.module.len > 0 {
 			t.tc.struct_modules[flat.source_type_id(cspec_name)] = decl.module
 		}

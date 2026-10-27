@@ -7441,7 +7441,7 @@ fn (tc &TypeChecker) wrapped_receiver_payload_diagnostic_name(payload &Type) str
 			return flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(import_path), syntax.first_dot_suffix()))
 		}
 	}
-	if qualified_source_id := tc.unique_qualified_type_name(flat.source_type_name(syntax.unqualified())) {
+	if qualified_source_id := tc.unique_qualified_type_name(syntax.unqualified()) {
 		qualified := flat.source_type_name(qualified_source_id)
 
 		return qualified

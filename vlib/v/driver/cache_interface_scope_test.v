@@ -23,6 +23,18 @@ const scope_signature = [
 	'#module Square=main',
 ].join('\n')
 
+fn test_interface_scope_module_facts_keep_exact_numeric_names_and_last_value() {
+	short_id := flat.source_type_id('DriverScopeNumeric')
+	generic_id := flat.source_type_id('DriverScopeNumeric[int]')
+	scopes := parse_v3_interface_scopes('#module DriverScopeNumeric=first\n#module DriverScopeNumeric=second\n#module DriverScopeNumeric[int]=generic\n#module EmptyOwner=')
+	assert scopes.modules[short_id] == 'second'
+	assert scopes.modules[generic_id] == 'generic'
+	assert scopes.declaring_module(short_id) == 'second'
+	assert scopes.declaring_module(generic_id) == 'generic'
+	assert scopes.declaring_module(flat.source_type_id('EmptyOwner')) == ''
+	assert scopes.declaring_module(flat.source_type_id('UnknownDriverScopeNumeric')) == '?'
+}
+
 fn visible_modules(names ...string) map[string]bool {
 	mut visible := map[string]bool{}
 	visible['builtin'] = true
