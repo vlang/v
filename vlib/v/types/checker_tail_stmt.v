@@ -2796,7 +2796,7 @@ fn (mut tc TypeChecker) check_duplicate_match_condition(branch &flat.Node, branc
 		}
 		return
 	}
-	if value := tc.match_condition_int_value(cond_id) {
+	if value := tc.match_condition_literal_int_value(cond_id) {
 		mut owner_branch := -1
 		if owner := seen_values[value] {
 			owner_branch = owner
@@ -2930,6 +2930,31 @@ fn (tc &TypeChecker) match_condition_int_value(id flat.NodeId) ?int {
 		return match_char_literal_value(node.value)
 	}
 	return tc.const_int_expr(id, tc.cur_module, []string{})
+}
+
+// A single value case is compared by number only when it is spelled as a literal.
+// Named consts are compared by name, so `bsp_char {}` before `0...0x1F {}` is the
+// usual "specific case first" idiom, and two consts that share a value stay distinct.
+fn (tc &TypeChecker) match_condition_literal_int_value(id flat.NodeId) ?int {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.int_literal, .char_literal, .enum_val {
+			return tc.match_condition_int_value(id)
+		}
+		.paren, .cast_expr, .prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			_ = tc.match_condition_literal_int_value(tc.a.child(node, 0)) or { return none }
+			return tc.match_condition_int_value(id)
+		}
+		else {
+			return none
+		}
+	}
 }
 
 fn match_char_literal_value(value string) ?int {
