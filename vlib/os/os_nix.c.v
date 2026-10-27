@@ -270,7 +270,10 @@ pub fn uname() Uname {
 	mut u := Uname{}
 	unsafe {
 		d := &C.utsname(malloc_noscan(int(sizeof(C.utsname))))
-		if C.uname(d) == 0 {
+		// illumos returns 1 on success (SysV heritage), Linux and the BSDs
+		// return 0, and both return -1 on error, so anything non-negative
+		// means the struct is filled.
+		if C.uname(d) >= 0 {
 			u.sysname = cstring_to_vstring(d.sysname)
 			u.nodename = cstring_to_vstring(d.nodename)
 			u.release = cstring_to_vstring(d.release)
