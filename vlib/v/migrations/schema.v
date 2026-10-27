@@ -61,6 +61,7 @@ pub:
 	id            bool   = true
 	id_name       string = 'id'
 	if_not_exists bool
+	options       string // Raw SQL appended verbatim after (...) in CREATE TABLE
 }
 
 // Index describes an index for Context.add_index.
@@ -158,7 +159,8 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 	}
 	guard := if table.if_not_exists { ' IF NOT EXISTS' } else { '' }
 	name := quote_identifier(ctx.dialect, table.name)
-	ctx.execute('CREATE TABLE${guard} ${name} (${definitions.join(', ')});')!
+	options := if table.options != '' { ' ${table.options}' } else { '' }
+	ctx.execute('CREATE TABLE${guard} ${name} (${definitions.join(', ')})${options};')!
 }
 
 // drop_table drops a table by name.
