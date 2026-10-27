@@ -402,6 +402,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			}
 			match node.kind {
 				.call {
+					if t.generic_call_spec_settled[i] {
+						continue
+					}
 					// Past this point a call carries a recorded specialization, names its
 					// callee's specialization exactly, or, in a source file, can name a
 					// generic declaration.
@@ -415,6 +418,15 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					}
 					if skip {
 						continue
+					}
+					if i !in t.generic_call_spec_cache {
+						input_signature := t.generic_call_inference_signature(flat.NodeId(i),
+							node, t.node_module_or(i, ''), false, false)
+						if t.generic_call_miss_shape_cache[input_signature] {
+							t.generic_call_spec_misses[i] = true
+							t.generic_call_miss_signatures[i] = input_signature
+							continue
+						}
 					}
 					if t.call_is_recorded_struct_operator(node)
 						|| t.record_lowered_generic_struct_operator_call(node, lowered_operator_uses) {
@@ -538,7 +550,10 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	t.monomorph_profile('mono driver rewrite: ${time.ticks() - debug_started} ms')
 	refresh_nodes := generic_refresh_nodes_for_calls(rewritten_call_sites,
 		generic_refresh_call_parents)
-	if t.refresh_decl_assign_types_after_generic_rewrite(refresh_nodes) {
+	refresh_changed, refresh_changed_decls := t.refresh_decl_assign_types_after_generic_rewrite(refresh_nodes)
+	if refresh_changed && refresh_changed_decls {
+		// Types changed, so a failed inference shape may now succeed.
+		t.generic_call_miss_shape_cache.clear()
 		t.monomorph_profile('mono driver refresh: ${time.ticks() - debug_started} ms')
 		mut missed_call_sites := []int{cap: t.generic_call_spec_misses.len}
 		for id, missed in t.generic_call_spec_misses {
@@ -559,7 +574,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			extra_rewrites << generic_refresh_alias_calls
 			extra_refresh_nodes := generic_refresh_nodes_for_calls(extra_rewrites,
 				generic_refresh_call_parents)
-			t.refresh_decl_assign_types_after_generic_rewrite(extra_refresh_nodes)
+			_, _ = t.refresh_decl_assign_types_after_generic_rewrite(extra_refresh_nodes)
 		}
 	}
 	t.monomorph_profile('mono driver extra: ${time.ticks() - debug_started} ms')
@@ -1113,6 +1128,7 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 		t.in_monomorphize_scan = old_in_scan
 	}
 	lowered_operator_uses := t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs, decls)
+	mut checked_refresh_signatures := map[string]bool{}
 	for i in candidate_ids {
 		if i < 0 || i >= t.a.nodes.len {
 			continue
@@ -1124,6 +1140,20 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 		node := t.a.nodes[i]
 		if node.kind != .call {
 			continue
+		}
+		if t.generic_call_spec_settled[i] {
+			continue
+		}
+		input_signature := t.generic_call_inference_signature(flat.NodeId(i), node,
+			t.node_module_or(i, ''), false, false)
+		if checked_refresh_signatures[input_signature] {
+			continue
+		}
+		checked_refresh_signatures[input_signature] = true
+		if recorded_signature := t.generic_call_miss_signatures[i] {
+			if input_signature == recorded_signature {
+				continue
+			}
 		}
 		if t.node_file_or(i, '').len == 0 && i !in t.generic_call_spec_cache && !t.synthetic_generic_call_has_exact_callee(node) {
 			continue
@@ -6307,8 +6337,9 @@ fn generic_refresh_nodes_for_calls(call_ids []int, parents map[int][]int) []int 
 	return nodes
 }
 
-fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []int) bool {
+fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []int) (bool, bool) {
 	mut changed := false
+	mut changed_decl_assigns := false
 	// Whether a callee returns a generic application depends on its name alone,
 	// and the same names are called over and over: remember, by the address of
 	// the name, those that do not.
@@ -6415,13 +6446,14 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []i
 
 		t.set_node_typ(i, decl_type_source_id_2)
 		changed = true
+		changed_decl_assigns = true
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident {
 			t.set_node_typ(int(lhs_id), decl_type_source_id_2)
 			t.set_var_type_with_raw(lhs.value_text(), concrete_rhs_type, decl_type_source_id_2)
 		}
 	}
-	return changed
+	return changed, changed_decl_assigns
 }
 
 // fn_ret_type_is_generic_app tells whether the checker's return type of the
@@ -7835,6 +7867,57 @@ fn (mut t Transformer) unregister_generic_fn_signature(decl GenericFnDecl) {
 	t.alias_receiver_fns_signatures = -1
 }
 
+// generic_call_inference_signature identifies a cloned call by its source
+// template and substituted semantic input types. Cloning creates many calls from
+// the same template, and they require exactly the same generic inference.
+fn (t &Transformer) generic_call_inference_signature(id flat.NodeId, node flat.Node, module_name string, include_result_context bool, include_receiver_context bool) string {
+	mut signature := strings.new_builder(96)
+	signature.write_string(module_name)
+	signature.write_u8(0)
+	signature.write_string(t.node_file_or(int(id), ''))
+	signature.write_u8(0)
+	signature.write_decimal(i64(node.pos.id))
+	signature.write_u8(`:`)
+	signature.write_decimal(i64(node.pos.offset))
+	if include_result_context {
+		signature.write_u8(0)
+		signature.write_decimal(i64(node.typ))
+	}
+	for child_idx in 0 .. node.children_count {
+		child_id := t.a.child(&node, child_idx)
+		child := t.a.nodes[int(child_id)]
+		signature.write_u8(1)
+		signature.write_decimal(i64(child.kind))
+		signature.write_u8(`:`)
+		signature.write_decimal(i64(child.typ))
+		signature.write_u8(`:`)
+		signature.write_decimal(i64(child.source_value))
+		if child.kind == .selector {
+			for selector_child_idx in 0 .. child.children_count {
+				selector_child := t.a.nodes[int(t.a.child(&child, selector_child_idx))]
+				signature.write_u8(2)
+				signature.write_decimal(i64(selector_child.typ))
+				signature.write_u8(`:`)
+				signature.write_decimal(i64(selector_child.source_value))
+			}
+		}
+	}
+	if node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		signature.write_u8(3)
+		signature.write_string(callee.value_text())
+		if include_receiver_context && callee.kind == .selector {
+			signature.write_u8(4)
+			signature.write_decimal(i64(t.generated_selector_receiver_type(callee)))
+		}
+	}
+	for type_arg in node.call_type_args() {
+		signature.write_u8(5)
+		signature.write_decimal(i64(type_arg))
+	}
+	return signature.str()
+}
+
 fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []u32) {
 	idx := int(id)
 	// Generated calls without source context cannot safely be re-inferred in the
@@ -8002,6 +8085,15 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 		}
 		return spec.decl_key, spec.args.ids.clone()
 	}
+	inference_signature := t.generic_call_inference_signature(id, node, module_name, true,
+		true)
+	if inferred := t.generic_call_inference_cache[inference_signature] {
+		t.generic_call_spec_cache[idx] = GenericCallSpec{
+			decl_key: inferred.decl_key
+			args:     inferred.args.clone()
+		}
+		return inferred.decl_key, inferred.args.ids.clone()
+	}
 	// A prior transform (notably a reflected `$for field`) can already replace
 	// the callee with an exact registered specialization. Re-inferring it from
 	// runtime arguments is both redundant and lossy: containers erase their
@@ -8134,6 +8226,12 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 		decl_key: decl_key
 		args:     flat.TypeTextList{ ids: args_source_ids.clone() }
 	}
+	t.generic_call_inference_cache[inference_signature] = GenericCallSpec{
+		decl_key: decl_key
+		args:     flat.TypeTextList{ ids: args_source_ids.clone() }
+	}
+	t.generic_call_spec_misses.delete(idx)
+	t.generic_call_miss_signatures.delete(idx)
 	return decl_key, args_source_ids.clone()
 }
 
@@ -8454,6 +8552,9 @@ fn (mut t Transformer) generic_call_specialization(id flat.NodeId, node flat.Nod
 	// after declaration-assignment types have been refreshed. Recording every
 	// ordinary call here makes that late pass scan most of a large program.
 	t.generic_call_spec_misses[int(id)] = true
+	t.generic_call_miss_signatures[int(id)] = t.generic_call_inference_signature(id,
+		node, module_name, false, false)
+	t.generic_call_miss_shape_cache[t.generic_call_miss_signatures[int(id)]] = true
 	return none
 }
 
@@ -12780,6 +12881,11 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		cloned_node.set_call_type_args(cloned_call_args)
 	}
 	clone_id := t.a.add_node(cloned_node)
+	if node.kind == .call && (retargeted_typ_source_id != 0 || static_assoc_typ_source_id != 0) {
+		// The clone-time retarget resolved this nested call with the live concrete
+		// scope. It no longer needs a later whole-program inference pass.
+		t.generic_call_spec_settled[int(clone_id)] = true
+	}
 	if node.kind == .map_init && !isnil(t.tc) {
 		map_type := (if flat.source_type_shape(cloned_source_value).has(.map_type) {
 			cloned_source_value
@@ -14147,6 +14253,7 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl, concrete_call_args_source_ids), concrete_call_args_source_ids)
 		}
 	}
+	t.generic_call_spec_settled[int(clone_id)] = true
 	if is_receiver {
 		t.rewrite_generic_method_call(clone_id, clone, decl, concrete_call_args_source_ids)
 	} else {

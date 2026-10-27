@@ -95,11 +95,15 @@ fn test_generic_refresh_revisits_existing_result_parents_after_late_rewrite() {
 		assert parents[int(call)] == [int(or_expr), int(decl)]
 		nodes := generic_refresh_nodes_for_calls([int(call)], parents)
 		assert nodes == [int(call), int(or_expr), int(decl)]
-		assert !t.refresh_decl_assign_types_after_generic_rewrite(nodes)
+		changed, changed_decls := t.refresh_decl_assign_types_after_generic_rewrite(nodes)
+		assert !changed
+		assert !changed_decls
 		node_count := a.nodes.len
 		// A later specialization can rewrite a call without appending its parents.
 		t.set_node_typ(int(call), flat.source_type_id('${prefix}string'))
-		assert t.refresh_decl_assign_types_after_generic_rewrite(nodes)
+		changed_after, changed_decls_after := t.refresh_decl_assign_types_after_generic_rewrite(nodes)
+		assert changed_after
+		assert changed_decls_after
 		assert a.nodes.len == node_count
 		assert a.nodes[int(or_expr)].typ == flat.source_type_id('string')
 		assert a.nodes[int(decl)].typ == flat.source_type_id('string')
