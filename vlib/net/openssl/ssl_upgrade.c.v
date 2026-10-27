@@ -20,13 +20,13 @@ pub fn new_ssl_server_conn(mut tcp_conn net.TcpConn, config SSLConnectConfig) !&
 
 	if config.in_memory_verification {
 		mut res := C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(sslctx,
-			config.cert.str, usize(config.cert.len))
+			config.cert.str, uint(config.cert.len))
 		if res != 1 {
 			C.SSL_CTX_free(sslctx)
 			return error('net.openssl new_ssl_server_conn, could not load certificate from memory')
 		}
 		res = C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(sslctx, config.cert_key.str,
-			usize(config.cert_key.len))
+			uint(config.cert_key.len))
 		if res != 1 {
 			C.SSL_CTX_free(sslctx)
 			return error('net.openssl new_ssl_server_conn, could not load private key from memory')
