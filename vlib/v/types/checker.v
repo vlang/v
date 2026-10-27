@@ -7320,10 +7320,23 @@ fn (tc &TypeChecker) selective_import_has_missing_value_symbol(node flat.Node, m
 	return false
 }
 
+// private_declaration returns the visibility of `name` when it is private to
+// another module. Regular test files see private declarations; that path test
+// runs only once a private declaration is found, since most lookups miss.
 fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
-	if name == '' || is_regular_v_test_file(tc.cur_file) {
+	if name == '' {
 		return none
 	}
+	visibility := tc.private_declaration_any_file(name)?
+	if is_regular_v_test_file(tc.cur_file) {
+		return none
+	}
+	return visibility
+}
+
+// private_declaration_any_file is `private_declaration` without the test-file
+// exemption.
+fn (tc &TypeChecker) private_declaration_any_file(name string) ?DeclarationVisibility {
 	// A module's own C declaration is its local view of the external type.
 	// The canonical visibility entry may belong to a different module's mirror.
 	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, name) in tc.c_struct_scoped_fields {
