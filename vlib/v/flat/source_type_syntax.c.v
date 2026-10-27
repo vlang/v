@@ -4987,8 +4987,10 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	identity_ids := source_type_syntax_singleton_ids(&identity_entry.id)
 	integer_value := if raw[0].is_digit() { raw.int() } else { 0 }
 	decimal := source_type_syntax_decimal(raw)
-	contains_capital := source_type_syntax_contains_capital(raw)
-	contains_doubleunderscore := raw.contains('__')
+	mut contains_capital := false
+	mut contains_doubleunderscore := false
+	mut open_generic_receiver_marker := false
+	mut mangled_generic_marker := false
 	cgen_decl_unusable, cgen_decl_authority := source_type_syntax_cgen_declaration(raw)
 	thread_value_type_valid, thread_value_type := source_type_syntax_thread_value(raw)
 	mut last_underscore := -1
@@ -4996,7 +4998,22 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 	mut field_owner_c := -1
 	mut field_owner_js := -1
 	for i, c in raw {
+		if c >= `A` && c <= `Z` {
+			contains_capital = true
+			// Strict names contain no bracket syntax; only raw underscore boundaries apply.
+			if !open_generic_receiver_marker && source_type_syntax_receiver_marker_byte(c)
+				&& (i == 0 || raw[i - 1] == `_`)
+				&& (i + 1 == raw.len || raw[i + 1] == `_`) {
+				open_generic_receiver_marker = true
+			}
+		}
 		if c == `_` {
+			if i + 1 < raw.len && raw[i + 1] == `_` { contains_doubleunderscore = true }
+			if !mangled_generic_marker && i + 3 < raw.len
+				&& raw[i + 1] >= `A` && raw[i + 1] <= `Z`
+				&& raw[i + 2] == `_` && raw[i + 3] == `_` {
+				mangled_generic_marker = true
+			}
 			last_underscore = i
 		} else if c == `.` {
 			qualifier_count++
@@ -5183,7 +5200,7 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		c_option_prefix:                raw.starts_with('__v_option_')
 		c_multi_return_prefix:          raw.starts_with('multi_return_')
 		c_lower_map_prefix:             raw.starts_with('map_') && !raw.starts_with('map__')
-		open_generic_receiver_marker:   source_type_syntax_open_generic_receiver_marker(raw)
+		open_generic_receiver_marker:   open_generic_receiver_marker
 		space_removed:                  id
 		qualified_name_chars:           qualified
 		field_owner_module:             field_owner_module
@@ -5203,10 +5220,10 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 			0
 		}
 		integer_value:                  integer_value
-		encoded_alnum_dotted:           !raw.contains('_')
+		encoded_alnum_dotted:           last_underscore < 0
 		internal_symbol_prefix:         raw.starts_with('__v3_internal_symbol_')
 		main_at_base:                   id
-		mangled_open_generic_marker:    source_type_syntax_mangled_generic_marker(raw)
+		mangled_open_generic_marker:    mangled_generic_marker
 		c_shared_fragment:              raw.contains('__shared__')
 		typ_suffix:                     typ_suffix
 		typ_suffix_base:                if typ_suffix { qualifier } else { u32(0) }

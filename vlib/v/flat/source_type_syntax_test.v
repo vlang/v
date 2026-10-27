@@ -1151,6 +1151,16 @@ fn test_source_type_syntax_open_receiver_marker_preserves_raw_patterns() {
 				raw := prefix + marker + suffix
 				assert source_type_syntax_open_generic_receiver_marker(raw) ==
 					source_type_syntax_expected_open_receiver_marker(raw)
+				id := source_type_id(raw)
+				syntax := source_type_syntax(id)
+				assert syntax.open_generic_receiver_marker() ==
+					source_type_syntax_expected_open_receiver_marker(raw)
+				assert syntax.contains_capital() == source_type_syntax_contains_capital(raw)
+				assert syntax.contains_doubleunderscore() == raw.contains('__')
+				assert syntax.mangled_open_generic_marker() ==
+					source_type_syntax_mangled_generic_marker(raw)
+				assert syntax.encoded_alnum_dotted() == source_type_syntax_encoded_alnum_dotted(raw)
+				assert source_type_syntax(id) == syntax
 			}
 		}
 	}

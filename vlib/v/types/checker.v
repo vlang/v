@@ -15184,8 +15184,7 @@ fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId, mu
 		}
 		node := tc.a.node(item.id)
 		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
-		if writes_reported_type_text(node.kind) && (flat.source_type_syntax(node.typ).nested_option_result_marker() >= 0
-			|| flat.source_type_syntax(node.source_value_id()).nested_option_result_marker() >= 0) {
+		if has_written_nested_option_result_type(node) {
 			tc.report_written_nested_option_types(*node, anchor)
 		}
 		for i in 0 .. node.children_count {
@@ -15194,21 +15193,34 @@ fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId, mu
 	}
 }
 
-// writes_reported_type_text reports whether report_written_nested_option_types
-// can find a type text in a node of `kind` (see written_type_texts); the walk
-// above skips the strings of the other nodes, such as string literals.
+// has_written_nested_option_result_type probes only operands consumed by
+// report_written_nested_option_types. Declaration names are not type operands.
 @[inline]
-fn writes_reported_type_text(kind flat.NodeKind) bool {
-	return match kind {
-		.param, .fn_decl, .interface_field, .field_decl, .type_decl, .global_decl, .const_field,
-		.fn_literal, .array_init, .decl_assign, .ident, .map_init, .cast_expr, .is_expr, .as_expr,
-		.sizeof_expr, .typeof_expr, .struct_init, .c_fn_decl {
-			true
-		}
-		else {
-			false
-		}
+fn has_written_nested_option_result_type(node &flat.Node) bool {
+	if node.typ != 0 && node.kind in [.param, .fn_decl, .interface_field, .field_decl, .type_decl,
+		.global_decl, .const_field, .fn_literal, .array_init, .decl_assign, .c_fn_decl] && flat.source_type_syntax(node.typ).nested_option_result_marker() >= 0 {
+		return true
 	}
+	uses_value_type := node.kind in [.ident, .struct_init, .map_init, .cast_expr, .is_expr, .as_expr,
+		.array_init]
+		|| (node.kind in [.sizeof_expr, .typeof_expr] && node.children_count == 0)
+		|| (node.kind == .interface_field && node.op != .dot && node.typ == 0
+			&& node.value.len > 0)
+	if !uses_value_type {
+		return false
+	}
+	// Raw names are a source/diagnostic boundary. Do not intern ordinary names
+	// solely for this diagnostic walk; indexed operands keep their numeric query.
+	if node.value.len > 0 {
+		return (node.kind != .interface_field || node.value.contains('['))
+			&& nested_option_result_marker(node.value) >= 0
+	}
+	value_id := node.source_value
+	if value_id == 0 || (node.kind == .interface_field
+		&& !flat.source_type_shape(value_id).has(.bracketed)) {
+		return false
+	}
+	return flat.source_type_syntax(value_id).nested_option_result_marker() >= 0
 }
 
 fn (mut tc TypeChecker) report_written_nested_option_types(node flat.Node, anchor flat.NodeId) {
@@ -15261,7 +15273,14 @@ fn (mut tc TypeChecker) report_written_nested_option_types(node flat.Node, ancho
 // in the type text `text` that directly wraps another one, as the first `?` of
 // `[]??int`, or -1.
 fn nested_option_result_marker(text string) int {
-	return flat.source_type_syntax(flat.source_type_id(text)).nested_option_result_marker()
+	// This helper consumes raw source operands and rendered diagnostic text.
+	// Routine spelling-ID queries use SourceTypeSyntax's cached marker instead.
+	for i := 0; i + 1 < text.len; i++ {
+		if text[i] in [`?`, `!`] && text[i + 1] in [`?`, `!`] {
+			return i
+		}
+	}
+	return -1
 }
 
 // nested_option_result_type_text is the type that starts at `idx` in the type

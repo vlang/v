@@ -761,6 +761,12 @@ fn written_type_ids(node flat.Node) []u32 {
 		|| node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init, .struct_init]
 		|| (node.kind in [.sizeof_expr, .typeof_expr] && node.children_count == 0)
 	if !uses_value_type { return type_ids }
+	// Uninterned names are source input. Ordinary identifiers cannot contain a
+	// written generic application, so retain them outside the type interner.
+	if node.value.len > 0 && node.kind in [.ident, .interface_field]
+		&& !node.value.contains('[') {
+		return type_ids
+	}
 	value_id := node.source_value_id()
 	// The variants of a sum type, `type Sum = Box[int] | string`.
 	if node.kind == .ident && flat.source_type_shape(value_id).has(.bracketed) && node.pos.end > 0 {

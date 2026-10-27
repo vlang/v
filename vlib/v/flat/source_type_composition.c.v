@@ -144,7 +144,7 @@ fn source_type_composition_head(slot int) &SourceTypeCompositionEntry {
 	}
 }
 
-@[direct_array_access]
+@[direct_array_access; inline]
 fn source_type_composition_find(slot int, kind SourceTypeComposition, parts []u32, hash u64) &SourceTypeCompositionEntry {
 	mut entry := source_type_composition_head(slot)
 	for !isnil(entry) {
