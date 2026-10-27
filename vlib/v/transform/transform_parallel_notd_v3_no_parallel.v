@@ -2281,33 +2281,41 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	if node.payload == 0 {
 		return
 	}
-	old_params := node.generic_params()
+	// Resolve the payload once instead of once per metadata accessor.
+	payload := flat.node_payload_at(node.payload)
+	old_params := payload.generic_params
+	call_args := payload.call_type_args.ids
+	has_debugger_types := node.kind == .debugger_stmt && payload.debugger_value_types.ids.len > 0
 	if old_params.len == 0 {
-		call_args := node.call_type_args()
-		if call_args.len > 0 && (transform_scope_owns(scope, node.payload_ptr()) || transform_scope_owns(scope, call_args.data)) {
+		if call_args.len > 0 && (transform_scope_owns(scope, payload)
+			|| transform_scope_owns(scope, call_args.data)) {
 			publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
 			node.set_call_type_args(call_args)
 			transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 			return
 		}
-		debugger_types := node.debugger_value_type_ids()
-		if (debugger_types.len > 0 && (transform_scope_owns(scope, node.payload_ptr()) || transform_scope_owns(scope, debugger_types.data))) || ((node.enum_backing_type_id() != 0 || node.has_lowered_type_metadata()) && transform_scope_owns(scope, node.payload_ptr())) {
+		enum_backing := if node.kind == .enum_decl { payload.enum_backing_type } else { u32(0) }
+		has_lowered := payload.fn_value_type != 0 || payload.generated_variant_type != 0
+			|| payload.mut_optional_arg_view_type != 0
+		if (has_debugger_types && (transform_scope_owns(scope, payload)
+			|| transform_scope_owns(scope, payload.debugger_value_types.ids.data)))
+			|| ((enum_backing != 0 || has_lowered) && transform_scope_owns(scope, payload)) {
 			publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
-			if debugger_types.len > 0 {
-				node.set_debugger_value_type_ids(debugger_types)
-			} else if node.enum_backing_type_id() != 0 {
-				node.set_enum_backing_type_id(node.enum_backing_type_id())
+			if has_debugger_types {
+				node.set_debugger_value_type_ids(payload.debugger_value_types.ids)
+			} else if enum_backing != 0 {
+				node.set_enum_backing_type_id(enum_backing)
 			} else {
-				node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
+				node.set_generic_params_and_constraint_ids([]string{}, payload.generic_constraints.ids)
 			}
 			transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 		}
 		return
 	}
-	old_constraints := node.payload_ptr().generic_constraints.ids
-	call_args := node.call_type_args()
-	debugger_types := node.debugger_value_type_ids()
-	mut needs_owned_params := (debugger_types.len > 0 && transform_scope_owns(scope, debugger_types.data)) || transform_scope_owns(scope, node.payload_ptr())
+	old_constraints := payload.generic_constraints.ids
+	mut needs_owned_params := (has_debugger_types
+		&& transform_scope_owns(scope, payload.debugger_value_types.ids.data))
+		|| transform_scope_owns(scope, payload)
 		|| transform_scope_owns(scope, old_params.data)
 		|| (old_constraints.len > 0 && transform_scope_owns(scope, old_constraints.data))
 		|| (call_args.len > 0 && transform_scope_owns(scope, call_args.data))
@@ -2445,7 +2453,17 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	// Setters record writes to every pre-existing node, including nodes reached
 	// indirectly by generic lowering. Publish those and the appended region;
 	// scanning the growing AST after each batch makes publication quadratic.
+	// A payload-less node whose value text lies outside the batch arena owns
+	// nothing there, so it needs no promotion.
+	scope_lo, scope_hi := transform_scope_address_range(scope)
 	for idx in new_node_start .. batch.a.nodes.len {
+		if idx >= 0 && idx < t.a.nodes.len {
+			node := unsafe { &t.a.nodes[idx] }
+			value_address := uint(node.value.str)
+			if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi) {
+				continue
+			}
+		}
 		t.promote_scoped_node_to_current(idx, scope)
 	}
 	for idx in batch.scoped_owned_base_nodes.keys() {
