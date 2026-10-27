@@ -3928,6 +3928,8 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 				// so a freestanding macOS program still links libSystem (which
 				// also provides pthread_create for vlibc threads).
 				after_inputs << ['-lSystem']
+			} else if options.target_os == 'android' {
+				after_inputs << ['-pie']
 			} else {
 				after_inputs << ['-static', '-nostdlib']
 			}
@@ -13169,6 +13171,7 @@ pub fn run(args []string) {
 				'netbsd' { 'netbsd_bare' }
 				'dragonfly' { 'dragonfly_bare' }
 				'macos', 'darwin' { 'macos_bare' }
+				'android', 'termux' { 'linux_bare' }
 				else { 'linux_bare' }
 			}
 			dir := os.join_path(builtin_dir, candidate)
