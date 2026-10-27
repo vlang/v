@@ -3703,6 +3703,10 @@ typedef struct {
   PFNGLXSWAPINTERVALEXTPROC SwapIntervalEXT;
   PFNGLXSWAPINTERVALMESAPROC SwapIntervalMESA;
   PFNGLXCREATECONTEXTATTRIBSARBPROC CreateContextAttribsARB;
+  // glXCreateContext's own typedef is absent from some older mesa glxext.h
+  // generations, so the pointer is spelled out like GetIntegerv above; it is
+  // the fallback path's entry point when the core-profile request fails.
+  GLXContext (*CreateContext)(Display *, XVisualInfo *, GLXContext, int);
 
   // special case glGetIntegerv
   void (*GetIntegerv)(uint32_t pname, int32_t *data);
@@ -3872,11 +3876,12 @@ static void _sapp_log(sapp_log_item log_item, uint32_t log_level,
 #endif
     _sapp.desc.logger.func("sapp", log_level, (uint32_t)log_item, msg, line_nr,
                            filename, _sapp.desc.logger.user_data);
-  } else {
-    // for log level PANIC it would be 'undefined behaviour' to continue
-    if (log_level == 0) {
-      abort();
-    }
+  }
+  // for log level PANIC it would be 'undefined behaviour' to continue —
+  // with or without a logger; the logger branch above used to return
+  // instead, and the run limped on to the first GL call's assertion
+  if (log_level == 0) {
+    abort();
   }
 }
 
@@ -13664,6 +13669,9 @@ _SOKOL_PRIVATE void _sapp_glx_init(void) {
             "glXCreateContextAttribsARB");
     _sapp.glx.ARB_create_context = 0 != _sapp.glx.CreateContextAttribsARB;
   }
+  _sapp.glx.CreateContext =
+      (GLXContext(*)(Display *, XVisualInfo *, GLXContext,
+                     int))_sapp_glx_getprocaddr("glXCreateContext");
   _sapp.glx.ARB_create_context_profile =
       _sapp_glx_extsupported("GLX_ARB_create_context_profile", exts);
 }
@@ -13790,6 +13798,28 @@ _SOKOL_PRIVATE void _sapp_glx_create_context(void) {
                          0};
   _sapp.glx.ctx = _sapp.glx.CreateContextAttribsARB(_sapp.x11.display, native,
                                                     NULL, True, attribs);
+  if (!_sapp.glx.ctx) {
+    // The core-profile request can fail on stacks whose server side never
+    // grew GLX_ARB_create_context (indirect GLX, older Xorg), while the
+    // legacy glXCreateContext path glxgears takes still works — and on
+    // llvmpipe the legacy context is a compatibility profile whose GL 4.x
+    // version string carries everything the core backend asks for. Fall
+    // back before giving up; only a total failure panics below.
+    // glXCreateContext wants the XVisualInfo, not the FBConfig the core
+    // path takes — get this FBConfig's own visual, the same pairing the
+    // GLX window below is built from.
+    _SAPP_WARN(LINUX_GLX_CREATE_CONTEXT_FAILED);
+    if (_sapp.glx.CreateContext) {
+      XVisualInfo *vi = _sapp.glx.GetVisualFromFBConfig(_sapp.x11.display,
+                                                        native);
+      if (vi) {
+        _sapp.glx.ctx = _sapp.glx.CreateContext(_sapp.x11.display, vi, NULL,
+                                                True);
+        XFree(vi);
+      }
+    }
+  }
+  _sapp_x11_release_error_handler();
   if (!_sapp.glx.ctx) {
     _SAPP_PANIC(LINUX_GLX_CREATE_CONTEXT_FAILED);
   }
