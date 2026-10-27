@@ -1342,6 +1342,7 @@ pub mut:
 	cur_fn_mut_local_binding_owners         map[string]ScopeBindingOwner
 	cur_fn_shared_binding_owners            map[string]ScopeBindingOwner
 	cur_comptime_variant_loop_vars          []string
+	comptime_attr_narrow_schemas           []string
 	expr_type_values                        []&Type // node_id -> complex/contextual resolved type
 	expr_type_set                           []bool
 	lexical_smartcast_misses                []bool
@@ -1940,6 +1941,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		direct_dependencies_by_fn:             direct_dependencies_by_fn
 		method_values_by_fn:                   tc.method_values_by_fn
 		cur_comptime_variant_loop_vars:        tc.cur_comptime_variant_loop_vars
+		comptime_attr_narrow_schemas:          tc.comptime_attr_narrow_schemas
 		expr_type_values:                      tc.expr_type_values
 		expr_type_set:                         tc.expr_type_set
 		lexical_smartcast_misses:              tc.lexical_smartcast_misses
@@ -22316,8 +22318,9 @@ fn (mut tc TypeChecker) check_comptime_attribute_members(id flat.NodeId, var_nam
 		return
 	}
 	node := tc.a.node(id)
+	members := tc.comptime_attribute_members_union()
 	if node.kind == .comptime_if {
-		if member := comptime_cond_unknown_member(node.value, var_name, comptime_attribute_members) {
+		if member := comptime_cond_unknown_member(node.value, var_name, members) {
 			mut pos := node.pos
 			if file := tc.a.source_files[node.pos.id] {
 				if source := tc.source_texts_by_file[file.name] {
@@ -22338,6 +22341,40 @@ fn (mut tc TypeChecker) check_comptime_attribute_members(id flat.NodeId, var_nam
 	for i in 0 .. node.children_count {
 		tc.check_comptime_attribute_members(tc.a.child(node, i), var_name)
 	}
+}
+
+// comptime_attribute_members_union is the member surface of an `attributes` loop
+// variable: VAttribute's four members plus every field name declared by a
+// registered `@[attribute]` schema (vlang/rfcs#35, union member resolution).
+fn (tc &TypeChecker) comptime_attribute_members_union() []string {
+	mut members := ['name', 'arg', 'has_arg', 'kind']
+	for _, schemas in tc.attribute_schemas {
+		for schema in schemas {
+			for field in schema.fields {
+				if field.name !in members {
+					members << field.name
+				}
+			}
+		}
+	}
+	return members
+}
+
+// comptime_attribute_union_member_type returns the type of a schema field that
+// is part of the attribute union, or none for VAttribute's own members and
+// unknown names.
+fn (tc &TypeChecker) comptime_attribute_union_member_type(member string) ?Type {
+	for _, schemas in tc.attribute_schemas {
+		for schema in schemas {
+			for field in schema.fields {
+				if field.name == member {
+					clean := unalias_type(tc.parse_type(field.type_id))
+					return *clean
+				}
+			}
+		}
+	}
+	return none
 }
 
 fn (tc &TypeChecker) fn_literal_directly_captures_ident(node flat.Node, var_name string) bool {
@@ -23086,6 +23123,42 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		}
 		return
 	}
+	if node.kind == .selector && node.children_count > 0 && loop_kind == 'attributes'
+		&& tc.comptime_subtree_references_var(id, var_name) {
+		base := tc.a.child_node(&node, 0)
+		if base.kind == .ident && base.value == var_name {
+			member := node.value
+			if member !in ['name', 'arg', 'has_arg', 'kind'] {
+				if _ := tc.comptime_attribute_union_member_type(member) {
+					if tc.comptime_attr_narrow_schemas.len == 0 {
+						tc.record_error_at(.unknown_field, 'attribute field `${member}` requires narrowing with `$if ${var_name} is Schema`', id, node.pos)
+						return
+					}
+					mut allowed := false
+					for s in tc.comptime_attr_narrow_schemas {
+						for _, schemas in tc.attribute_schemas {
+							for schema in schemas {
+								if schema.name == s.all_after_last('.') {
+									for field in schema.fields {
+										if field.name == member {
+											allowed = true
+										}
+									}
+								}
+							}
+						}
+					}
+					if !allowed {
+						tc.record_error_at(.unknown_field, 'attribute field `${member}` is not available on the narrowed schema', id, node.pos)
+						return
+					}
+				} else {
+					tc.record_error_at(.unknown_field, 'unknown field `${member}` from ${var_name}', id, node.pos)
+					return
+				}
+			}
+		}
+	}
 	// Reflection-dependent nodes without dedicated semantic handling are still
 	// unrolled later, so inspect all source bindings they contain.
 	tc.check_generic_body_node_global_shadowing(id)
@@ -23390,16 +23463,36 @@ fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Nod
 		}
 	}
 	if then_cases.len > 0 && node.children_count > 0 {
+		mut saved := tc.comptime_attr_narrow_schemas.clone()
+		if loop_kind == 'attributes' {
+			if schema, then_narrows := tc.comptime_attribute_narrow_from_condition(node.value, var_name) {
+				if then_narrows {
+					tc.comptime_attr_narrow_schemas = [schema]
+				}
+			}
+		}
 		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases, ComptimeStaticValueCases{
 			known: true
 			cases: then_cases
 		})
+		tc.comptime_attr_narrow_schemas = saved
 	}
 	if else_cases.len > 0 && node.children_count > 1 {
+		mut saved := tc.comptime_attr_narrow_schemas.clone()
+		if loop_kind == 'attributes' {
+			if schema, then_narrows := tc.comptime_attribute_narrow_from_condition(node.value, var_name) {
+				if !then_narrows {
+					tc.comptime_attr_narrow_schemas = [schema]
+				} else {
+					tc.comptime_attr_narrow_schemas = []
+				}
+			}
+		}
 		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases, ComptimeStaticValueCases{
 			known: true
 			cases: else_cases
 		})
+		tc.comptime_attr_narrow_schemas = saved
 	}
 }
 
@@ -23567,10 +23660,69 @@ fn comptime_static_subst_deferred_cond(cond string, var_name string, loop_kind s
 		result = comptime_static_replace_unquoted(result, '${var_name}.kind ==.', '${kind} == .')
 		result = comptime_static_replace_unquoted(result, '${var_name}.kind !=.', '${kind} != .')
 		result = comptime_static_replace_unquoted(result, '${var_name}.kind', kind)
+		result = comptime_static_subst_attribute_is_cond(result, var_name, item.name)
 	}
 	return result
 }
 
+fn comptime_static_subst_attribute_is_cond(cond string, var_name string, attr_name string) string {
+	if var_name == '' || !cond.contains(var_name) {
+		return cond
+	}
+	mut out := strings.new_builder(cond.len)
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			end := comptime_cond_skip_string(cond, offset)
+			out.write_string(cond[offset..end])
+			offset = end
+			continue
+		}
+		start := offset
+		if start + var_name.len <= cond.len && cond[start..start + var_name.len] == var_name
+			&& (start == 0 || !comptime_cond_name_char(cond[start - 1])) {
+			after_var := start + var_name.len
+			if after_var >= cond.len || (!comptime_cond_name_char(cond[after_var]) && cond[after_var] != `.`) {
+				mut i := after_var
+				for i < cond.len && cond[i] == ` ` {
+					i++
+				}
+				negated := false
+				mut is_neg := false
+				if i < cond.len && cond[i] == `!` {
+					is_neg = true
+					i++
+					for i < cond.len && cond[i] == ` ` {
+						i++
+					}
+				}
+				if cond[i..].starts_with('is')
+					&& (i + 2 >= cond.len || (!comptime_cond_name_char(cond[i + 2]) && cond[i + 2] != `.`)) {
+					i += 2
+					for i < cond.len && cond[i] == ` ` {
+						i++
+					}
+					rhs_start := i
+					for i < cond.len && (comptime_cond_name_char(cond[i]) || cond[i] == `.`) {
+						i++
+					}
+					if rhs_start < i {
+						rhs := cond[rhs_start..i]
+						match_val := attr_name == rhs
+						value := if is_neg { !match_val } else { match_val }
+						out.write_string(if value { 'true' } else { 'false' })
+						offset = i
+						continue
+					}
+				}
+				_ = negated
+			}
+		}
+		out.write_u8(cond[offset])
+		offset++
+	}
+	return out.str()
+}
 fn comptime_static_subst_method_param_cond(cond string, var_name string, item ComptimeStaticValueCase) string {
 	mut result := cond
 	for collection in ['args', 'params'] {
@@ -23631,6 +23783,72 @@ fn comptime_static_subst_method_param_cond(cond string, var_name string, item Co
 		}
 	}
 	return result
+}
+
+fn (tc &TypeChecker) comptime_attribute_narrow_from_condition(cond string, var_name string) ?(string, bool) {
+	clean := comptime_condition_strip_outer_parens(cond.trim_space())
+	mut i := 0
+	for i < clean.len && clean[i] == ` ` {
+		i++
+	}
+	if i < clean.len && clean[i] == `!` {
+		return none
+	}
+	if !clean[i..].starts_with(var_name) {
+		return none
+	}
+	i += var_name.len
+	if i < clean.len && comptime_cond_name_char(clean[i]) {
+		return none
+	}
+	for i < clean.len && clean[i] == ` ` {
+		i++
+	}
+	mut is_neg := false
+	if i < clean.len && clean[i] == `!` {
+		is_neg = true
+		i++
+		for i < clean.len && clean[i] == ` ` {
+			i++
+		}
+	}
+	if !clean[i..].starts_with('is') {
+		return none
+	}
+	i += 2
+	if i < clean.len && comptime_cond_name_char(clean[i]) {
+		return none
+	}
+	for i < clean.len && clean[i] == ` ` {
+		i++
+	}
+	rhs_start := i
+	for i < clean.len && (comptime_cond_name_char(clean[i]) || clean[i] == `.`) {
+		i++
+	}
+	if rhs_start >= i {
+		return none
+	}
+	if i < clean.len && comptime_cond_name_char(clean[i]) {
+		return none
+	}
+	schema_name := clean[rhs_start..i].trim_space()
+	if schema_name.len == 0 {
+		return none
+	}
+	mut known := false
+	short := schema_name.all_after_last('.')
+	for _, schemas in tc.attribute_schemas {
+		for schema in schemas {
+			if schema.name == short {
+				known = true
+			}
+		}
+	}
+	if !known {
+		return none
+	}
+	return schema_name, !is_neg
 }
 
 fn comptime_static_deferred_type(typ_id u32) string {

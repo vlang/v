@@ -686,7 +686,11 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 				*tc.parse_type(comptime_source_type_attribute_kind)
 			}
 			else {
-				none
+				if typ := tc.comptime_attribute_union_member_type(member) {
+					typ
+				} else {
+					none
+				}
 			}
 		}
 	}
