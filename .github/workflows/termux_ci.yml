@@ -185,6 +185,11 @@ jobs:
             # bionic's sys/cdefs.h rejects an unversioned target triple unless
             # __ANDROID_MIN_SDK_VERSION__ is set, and tcc's lib/ build is the
             # first place that includes it.
+            pwd
+            ls -la
+            # Dry run: prints the commands make would run, saved to the log.
+            make -n -j2 SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24" > /logs/make-dry-run.log 2>&1 || true
+            head -n 60 /logs/make-dry-run.log
             make -j2 SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24"
             make install SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24"
             echo "HOME=$HOME PWD=$PWD PREFIX=$PREFIX"
