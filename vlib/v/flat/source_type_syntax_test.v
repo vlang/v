@@ -1958,16 +1958,14 @@ fn test_source_type_syntax_sparse_full_width_integer_slots() {
 	for raw in ['-9223372036854775808', '-9223372036854775807', '-4294967296', '-1', '0', '1',
 		'4294967296', '9223372036854775807'] {
 		value := raw.i64()
-		// The owner occupies the first aligned slot; the remaining slots hold all int queries.
+		// The owner and padding occupy the first aligned slot; eight slots hold int queries.
 		payload := [u64(0), u64(value), u64(value), u64(value), u64(value), u64(value), u64(value),
 			u64(value), u64(value)]!
 		// This aligned stack storage stays alive for every accessor and copied header below.
 		payload_ptr := unsafe { voidptr(&payload[0]) }
 		layout := SourceTypeSyntaxLayout{
-			scalar_present:     [u64(1) << 8, (u64(1) << 8) | (u64(1) << 13) | (u64(1) << 14) |
-				(u64(1) << 15) | (u64(1) << 19) | (u64(1) << 29) | (u64(1) << 30)]!
-			scalar_count:       8
-			scalar_first_count: 1
+			integer_present: 0xff
+			span_offset:     18
 		}
 		syntax := SourceTypeSyntax{
 			payload: payload_ptr
@@ -1985,6 +1983,131 @@ fn test_source_type_syntax_sparse_full_width_integer_slots() {
 		assert copied.pointer_depth() == int(value)
 		assert copied.integer_value() == int(value)
 	}
+}
+
+fn test_source_type_syntax_integer_minus_one_needs_no_payload() {
+	// Integer identity bits encode -1, independently of owner IDs and narrow IDs.
+	// No accessor may touch the nil payload when its only values are sentinels.
+	layout := SourceTypeSyntaxLayout{
+		scalar_identity: [u64(1) << 8, (u64(1) << 8) | (u64(1) << 13) | (u64(1) << 14) |
+			(u64(1) << 15) | (u64(1) << 19) | (u64(1) << 29) | (u64(1) << 30)]!
+	}
+	syntax := SourceTypeSyntax{ layout: &layout }
+	assert syntax.pointer_depth() == -1
+	assert syntax.byte_len() == -1
+	assert syntax.nested_option_result_marker() == -1
+	assert syntax.c_pointer_depth() == -1
+	assert syntax.c_pointer_count() == -1
+	assert syntax.expr_id() == -1
+	assert syntax.decimal_value() == -1
+	assert syntax.integer_value() == -1
+	assert syntax.trimmed() == 0
+	assert syntax.args().len == 0
+
+	name := source_type_syntax(source_type_id('IntegerSentinelFresh8201'))
+	assert name.nested_option_result_marker() == -1
+	assert name.layout.integer_present & (u8(1) << 2) == 0
+	assert name.layout.scalar_identity[1] & (u64(1) << 13) != 0
+	assert name.byte_len() == 'IntegerSentinelFresh8201'.len
+	assert name.layout.integer_present & (u8(1) << 1) != 0
+}
+
+fn test_source_type_syntax_mixed_scalar_alignment_and_span_offsets() {
+	if sizeof(int) != sizeof(i64) { return }
+	owner := u32(0xeeeeeeee)
+	integer_indices := [8, 72, 77, 78, 79, 83, 93, 94]!
+	integer_values := [u64('-9223372036854775808'.i64()), u64('-4294967296'.i64()),
+		u64('9223372036854775807'.i64()), u64(owner), u64(0xffffffff), u64(0x100000000), u64(7),
+		u64(1)]!
+	// Both parities, both bitmap words, and the largest possible prefix are covered.
+	for count in [0, 1, 2, 3, 98, 99] {
+		mut payload := [66]u64{}
+		payload_ptr := unsafe { voidptr(&payload[0]) }
+		mut present := [2]u64{}
+		mut narrow_count := 0
+		mut first_count := 0
+		for index in 0 .. 107 {
+			if index in integer_indices || narrow_count == count { continue }
+			present[index >> 6] |= u64(1) << u32(index & 63)
+			// High-bit IDs are ordinary u32 values, including the all-ones pattern.
+			unsafe { (&u32(payload_ptr))[1 + narrow_count] = u32(0xffffffff) - u32(index) }
+			narrow_count++
+			if index < 64 { first_count++ }
+		}
+		assert narrow_count == count
+		integer_offset := (count + 2) >> 1
+		span_offset := 2 * integer_offset + 16
+		assert span_offset <= 116
+		unsafe { *&u32(payload_ptr) = owner }
+		for ordinal, value in integer_values {
+			unsafe { (&u64(payload_ptr))[integer_offset + ordinal] = value }
+		}
+		// Span metadata and its IDs immediately follow the aligned integer slots.
+		unsafe {
+			*&SourceTypeSyntaxSpan(&(&u32(payload_ptr))[span_offset]) = SourceTypeSyntaxSpan{
+				offset: u32(span_offset + 2) * u32(sizeof(u32))
+				len:    2
+			}
+			(&u32(payload_ptr))[span_offset + 2] = 41
+			(&u32(payload_ptr))[span_offset + 3] = 43
+		}
+		layout := SourceTypeSyntaxLayout{
+			scalar_present:     present
+			span_present:       1
+			span_identity:      u64(1) << 39
+			scalar_count:       u8(count)
+			scalar_first_count: u8(first_count)
+			integer_present:    0xff
+			span_offset:        u8(span_offset)
+		}
+		syntax := SourceTypeSyntax{ payload: payload_ptr, layout: &layout }
+		for index in 0 .. 107 {
+			if index in integer_indices { continue }
+			if present[index >> 6] & (u64(1) << u32(index & 63)) != 0 {
+				assert syntax.scalar(index) == u32(0xffffffff) - u32(index)
+			} else {
+				assert syntax.scalar(index) == 0
+			}
+		}
+		assert syntax.pointer_depth() == int(integer_values[0])
+		assert syntax.byte_len() == int(integer_values[1])
+		assert syntax.nested_option_result_marker() == int(integer_values[2])
+		assert syntax.c_pointer_depth() == int(owner)
+		assert syntax.c_pointer_count() == int(integer_values[4])
+		assert syntax.expr_id() == int(integer_values[5])
+		assert syntax.decimal_value() == 7
+		assert syntax.integer_value() == 1
+		assert syntax.args() == [u32(41), 43]
+		assert syntax.union_parts() == [owner]
+		copied := syntax
+		assert copied.args() == syntax.args()
+		assert copied.integer_value() == 1
+	}
+}
+
+fn test_source_type_syntax_sparse_integer_ranks_do_not_use_owner_identity() {
+	if sizeof(int) != sizeof(i64) { return }
+	// Ordinals 1 and 4 are -1, ordinals 2 and 6 are zero, and ordinal 5 equals
+	// the owner ID. Only the remaining four values occupy aligned payload slots.
+	payload := [u64(7), u64('-9223372036854775808'.i64()), u64('-4294967296'.i64()), u64(7),
+		u64('9223372036854775807'.i64())]!
+	layout := SourceTypeSyntaxLayout{
+		scalar_identity: [u64(0), (u64(1) << 8) | (u64(1) << 15)]!
+		integer_present: 0xa9
+		span_offset:     10
+	}
+	syntax := SourceTypeSyntax{
+		payload: unsafe { voidptr(&payload[0]) }
+		layout:  &layout
+	}
+	assert syntax.pointer_depth() == int('-9223372036854775808'.i64())
+	assert syntax.byte_len() == -1
+	assert syntax.nested_option_result_marker() == 0
+	assert syntax.c_pointer_depth() == int('-4294967296'.i64())
+	assert syntax.c_pointer_count() == -1
+	assert syntax.expr_id() == 7
+	assert syntax.decimal_value() == 0
+	assert syntax.integer_value() == int('9223372036854775807'.i64())
 }
 
 // Only these eager numeric views cross the general parser's scratch-scope boundary.

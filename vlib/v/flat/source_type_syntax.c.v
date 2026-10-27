@@ -51,14 +51,18 @@ pub struct SourceTypeSyntax {
 }
 
 // Layouts describe payload positions, independently of owner IDs and values.
+// Narrow scalar identity bits mean the owner ID; the eight int fields use them
+// for -1 instead. Integer presence bits have their own dense ordinal namespace.
 // Boolean flags stay in each syntax header so their hot accessors need no indirection.
 struct SourceTypeSyntaxLayout {
 	scalar_present     [2]u64
 	scalar_identity    [2]u64
 	span_present       u64
 	span_identity      u64
-	scalar_count       u32
-	scalar_first_count u32
+	scalar_count       u8
+	scalar_first_count u8
+	integer_present    u8
+	span_offset        u8
 }
 
 const source_type_syntax_empty_layout = SourceTypeSyntaxLayout{}
@@ -86,7 +90,8 @@ fn source_type_syntax_layout(layout SourceTypeSyntaxLayout) &SourceTypeSyntaxLay
 	}
 	hash = (hash ^ layout.span_present) * u64(1_099_511_628_211)
 	hash = (hash ^ layout.span_identity) * u64(1_099_511_628_211)
-	hash = (hash ^ (u64(layout.scalar_count) | (u64(layout.scalar_first_count) << 32))) * u64(1_099_511_628_211)
+	hash = (hash ^ (u64(layout.scalar_count) | (u64(layout.scalar_first_count) << 8) |
+		(u64(layout.integer_present) << 16) | (u64(layout.span_offset) << 24))) * u64(1_099_511_628_211)
 	hash ^= hash >> 32
 	slot := int(hash & 4095)
 	mut existing := unsafe { &SourceTypeSyntaxLayoutEntry(g_source_type_syntax_layouts[slot]) }
@@ -100,7 +105,9 @@ fn source_type_syntax_layout(layout SourceTypeSyntaxLayout) &SourceTypeSyntaxLay
 			&& candidate.span_present == layout.span_present
 			&& candidate.span_identity == layout.span_identity
 			&& candidate.scalar_count == layout.scalar_count
-			&& candidate.scalar_first_count == layout.scalar_first_count {
+			&& candidate.scalar_first_count == layout.scalar_first_count
+			&& candidate.integer_present == layout.integer_present
+			&& candidate.span_offset == layout.span_offset {
 			return &existing.layout
 		}
 		existing = existing.next
@@ -118,15 +125,14 @@ fn source_type_syntax_layout(layout SourceTypeSyntaxLayout) &SourceTypeSyntaxLay
 	return &entry.layout
 }
 
-// Scalars store only nonzero values that differ from the owning spelling ID.
-// Full-width slots retain signed int values when new_int uses 64-bit integers.
+// Narrow scalars store only nonzero values that differ from the owner ID.
 // Constant field indices let inlining fold the word and bit selection.
 @[direct_array_access; inline]
-fn (syntax &SourceTypeSyntax) scalar(index int) u64 {
+fn (syntax &SourceTypeSyntax) scalar(index int) u32 {
 	word := index >> 6
 	bit := u64(1) << u32(index & 63)
 	if syntax.layout.scalar_identity[word] & bit != 0 {
-		return unsafe { u64(*&u32(syntax.payload)) }
+		return unsafe { *&u32(syntax.payload) }
 	}
 	present := syntax.layout.scalar_present[word]
 	if present & bit == 0 { return 0 }
@@ -135,7 +141,22 @@ fn (syntax &SourceTypeSyntax) scalar(index int) u64 {
 	} else {
 		int(syntax.layout.scalar_first_count)
 	}
-	return unsafe { (&u64(syntax.payload))[1 + offset] }
+	return unsafe { (&u32(syntax.payload))[1 + offset] }
+}
+
+// Integer scalars retain all signed int bits. Zero and -1 need no payload slot;
+// owner-equal integers stay explicit so ID identity never changes their meaning.
+@[direct_array_access; inline]
+fn (syntax &SourceTypeSyntax) integer(index int, ordinal int) int {
+	word := index >> 6
+	bit := u64(1) << u32(index & 63)
+	if syntax.layout.scalar_identity[word] & bit != 0 { return -1 }
+	integer_bit := u8(1) << u32(ordinal)
+	present := syntax.layout.integer_present
+	if present & integer_bit == 0 { return 0 }
+	offset := ((int(syntax.layout.scalar_count) + 2) >> 1) +
+		bits.ones_count_8(present & (integer_bit - 1))
+	return unsafe { int((&u64(syntax.payload))[offset]) }
 }
 
 @[inline]
@@ -143,7 +164,7 @@ fn (syntax &SourceTypeSyntax) span(index int) SourceTypeSyntaxSpan {
 	bit := u64(1) << u32(index)
 	if syntax.layout.span_identity & bit != 0 { return SourceTypeSyntaxSpan{ len: 1 } }
 	if syntax.layout.span_present & bit == 0 { return SourceTypeSyntaxSpan{} }
-	offset := 2 + 2 * int(syntax.layout.scalar_count) + 2 * bits.ones_count_64(syntax.layout.span_present & (bit - 1))
+	offset := int(syntax.layout.span_offset) + 2 * bits.ones_count_64(syntax.layout.span_present & (bit - 1))
 	// The writer stores these two-u32 records at u32-aligned payload offsets.
 	return unsafe { *&SourceTypeSyntaxSpan(&(&u32(syntax.payload))[offset]) }
 }
@@ -199,7 +220,7 @@ pub fn (syntax &SourceTypeSyntax) pointer_base() u32 {
 // pointer_depth returns the cached pointer depth query.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) pointer_depth() int {
-	return int(syntax.scalar(8))
+	return syntax.integer(8, 0)
 }
 
 // raw_base returns the cached raw base query.
@@ -583,7 +604,7 @@ pub fn (syntax &SourceTypeSyntax) backward_bracket_prefix() u32 {
 // byte_len returns the cached byte len query.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) byte_len() int {
-	return int(syntax.scalar(72))
+	return syntax.integer(72, 1)
 }
 
 // receiver_app_base returns the cached receiver app base query.
@@ -613,19 +634,19 @@ pub fn (syntax &SourceTypeSyntax) backward_bracket_inner() u32 {
 // nested_option_result_marker returns the cached nested option result marker query.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) nested_option_result_marker() int {
-	return int(syntax.scalar(77))
+	return syntax.integer(77, 2)
 }
 
 // c_pointer_depth returns the cached c pointer depth query.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) c_pointer_depth() int {
-	return int(syntax.scalar(78))
+	return syntax.integer(78, 3)
 }
 
 // c_pointer_count returns the cached c pointer count query.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) c_pointer_count() int {
-	return int(syntax.scalar(79))
+	return syntax.integer(79, 4)
 }
 
 // c_pointer_raw_base returns the cached c pointer raw base query.
@@ -649,7 +670,7 @@ pub fn (syntax &SourceTypeSyntax) thread_value_type() u32 {
 // expr_id returns the cached expr id query.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) expr_id() int {
-	return int(syntax.scalar(83))
+	return syntax.integer(83, 5)
 }
 
 // parameter_name returns the cached parameter name query.
@@ -709,13 +730,13 @@ pub fn (syntax &SourceTypeSyntax) function_space_result() u32 {
 // decimal_value returns the cached decimal value query.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) decimal_value() int {
-	return int(syntax.scalar(93))
+	return syntax.integer(93, 6)
 }
 
 // integer_value returns the cached integer value query.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) integer_value() int {
-	return int(syntax.scalar(94))
+	return syntax.integer(94, 7)
 }
 
 // main_at_base returns the cached main at base query.
@@ -2964,114 +2985,106 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 			source_type_syntax_packed_ids_len(parsed.raw_tuple_parse_components, id) +
 			source_type_syntax_packed_ids_len(parsed.union_parts, id)
 	}
-	mut values := [107]u64{}
-	values[0] = u64(parsed.qualifier_count)
-	values[1] = u64(parsed.kind)
-	values[2] = u64(parsed.trimmed)
-	values[3] = u64(parsed.base)
-	values[4] = u64(parsed.unqualified)
-	values[5] = u64(parsed.qualifier)
-	values[6] = u64(parsed.generic_base)
-	values[7] = u64(parsed.pointer_base)
-	values[8] = u64(parsed.pointer_depth)
-	values[9] = u64(parsed.raw_base)
-	values[10] = u64(parsed.main_base)
-	values[11] = u64(parsed.application_base)
-	values[12] = u64(parsed.generic_app_base)
-	values[13] = u64(parsed.postfix_base)
-	values[14] = u64(parsed.parameter_type)
-	values[15] = u64(parsed.parameter_mut_type)
-	values[16] = u64(parsed.bracket_base)
-	values[17] = u64(parsed.bracket_inner)
-	values[18] = u64(parsed.bracket_raw_inner)
-	values[19] = u64(parsed.bracket_prefix)
-	values[20] = u64(parsed.function_result)
-	values[21] = u64(parsed.first_bracket_base)
-	values[22] = u64(parsed.last_space_word)
-	values[23] = u64(parsed.first_dot_prefix)
-	values[24] = u64(parsed.first_dot_suffix)
-	values[25] = u64(parsed.pointer_raw_base)
-	values[26] = u64(parsed.builtin_base)
-	values[27] = u64(parsed.cgen_app_base)
-	values[28] = u64(parsed.top_space_head)
-	values[29] = u64(parsed.top_space_tail)
-	values[30] = u64(parsed.bracket_suffix)
-	values[31] = u64(parsed.bracket_from)
-	values[32] = u64(parsed.first_bracket_prefix)
-	values[33] = u64(parsed.dots_base)
-	values[34] = u64(parsed.cgen_raw_app_base)
-	values[35] = u64(parsed.generic_parameter_payload)
-	values[36] = u64(parsed.legacy_parameter_type)
-	values[37] = u64(parsed.legacy_parameter_mut_type)
-	values[38] = u64(parsed.first_bracket_length)
-	values[39] = u64(parsed.c_pointer_base)
-	values[40] = u64(parsed.source_wrapper_base)
-	values[41] = u64(parsed.declaration_head)
-	values[42] = u64(parsed.compact_fn_spelling)
-	values[43] = u64(parsed.first_bracket_raw_inner)
-	values[44] = u64(parsed.typeof_inner)
-	values[45] = u64(parsed.postfix_index_base)
-	values[46] = u64(parsed.last_bracket_prefix)
-	values[47] = u64(parsed.last_bracket_length)
-	values[48] = u64(parsed.trailing_bracket_prefix)
-	values[49] = u64(parsed.array_chars_base)
-	values[50] = u64(parsed.named_variant_owner)
-	values[51] = u64(parsed.named_variant_name)
-	values[52] = u64(parsed.main_unlocked)
-	values[53] = u64(parsed.encoded_fixed_length)
-	values[54] = u64(parsed.encoded_fixed_base)
-	values[55] = u64(parsed.suffix_bracket_length)
-	values[56] = u64(parsed.bracket_source_inner)
-	values[57] = u64(parsed.c_fixed_typedef_element)
-	values[58] = u64(parsed.c_fixed_typedef_length)
-	values[59] = u64(parsed.fixed_array_query_length)
-	values[60] = u64(parsed.last_bracket_span_inner)
-	values[61] = u64(parsed.generic_app_legacy_suffix)
-	values[62] = u64(parsed.wrapper_prefix)
-	values[63] = u64(parsed.wrapper_base)
-	values[64] = u64(parsed.qualified_modifiers)
-	values[65] = u64(parsed.c_array_payload)
-	values[66] = u64(parsed.c_fixed_array_payload)
-	values[67] = u64(parsed.fastc_array_marker_payload)
-	values[68] = u64(parsed.c_map_payload)
-	values[69] = u64(parsed.c_ptr_name_base)
-	values[70] = u64(parsed.c_tagged_type)
-	values[71] = u64(parsed.backward_bracket_prefix)
-	values[72] = u64(parsed.byte_len)
-	values[73] = u64(parsed.receiver_app_base)
-	values[74] = u64(parsed.declaration_parameter_payload)
-	values[75] = u64(parsed.prefix_dimension_tail)
-	values[76] = u64(parsed.backward_bracket_inner)
-	values[77] = u64(parsed.nested_option_result_marker)
-	values[78] = u64(parsed.c_pointer_depth)
-	values[79] = u64(parsed.c_pointer_count)
-	values[80] = u64(parsed.c_pointer_raw_base)
-	values[81] = u64(parsed.thread_value_payload)
-	values[82] = u64(parsed.thread_value_type)
-	values[83] = u64(parsed.expr_id)
-	values[84] = u64(parsed.parameter_name)
-	values[85] = u64(parsed.receiver_collection_id)
-	values[86] = u64(parsed.ampersand_trimmed)
-	values[87] = u64(parsed.parallel_preseed_short)
-	values[88] = u64(parsed.constraint_receiver_base)
-	values[89] = u64(parsed.space_removed)
-	values[90] = u64(parsed.field_owner_module)
-	values[91] = u64(parsed.question_trimmed)
-	values[92] = u64(parsed.function_space_result)
-	values[93] = u64(parsed.decimal_value)
-	values[94] = u64(parsed.integer_value)
-	values[95] = u64(parsed.main_at_base)
-	values[96] = u64(parsed.receiver_app_inner)
-	values[97] = u64(parsed.fastc_fixed_array_length)
-	values[98] = u64(parsed.first_bracket_source_inner)
-	values[99] = u64(parsed.typ_suffix_base)
-	values[100] = u64(parsed.checker_parse_function_result)
-	values[101] = u64(parsed.top_level_dot_prefix)
-	values[102] = u64(parsed.top_level_dot_suffix)
-	values[103] = u64(parsed.parser_fn_decl_params)
-	values[104] = u64(parsed.parser_fn_decl_result)
-	values[105] = u64(parsed.named_variant_dot_prefix)
-	values[106] = u64(parsed.named_variant_dot_suffix)
+	mut values := [107]u32{}
+	values[0] = u32(parsed.qualifier_count)
+	values[1] = u32(parsed.kind)
+	values[2] = u32(parsed.trimmed)
+	values[3] = u32(parsed.base)
+	values[4] = u32(parsed.unqualified)
+	values[5] = u32(parsed.qualifier)
+	values[6] = u32(parsed.generic_base)
+	values[7] = u32(parsed.pointer_base)
+	values[9] = u32(parsed.raw_base)
+	values[10] = u32(parsed.main_base)
+	values[11] = u32(parsed.application_base)
+	values[12] = u32(parsed.generic_app_base)
+	values[13] = u32(parsed.postfix_base)
+	values[14] = u32(parsed.parameter_type)
+	values[15] = u32(parsed.parameter_mut_type)
+	values[16] = u32(parsed.bracket_base)
+	values[17] = u32(parsed.bracket_inner)
+	values[18] = u32(parsed.bracket_raw_inner)
+	values[19] = u32(parsed.bracket_prefix)
+	values[20] = u32(parsed.function_result)
+	values[21] = u32(parsed.first_bracket_base)
+	values[22] = u32(parsed.last_space_word)
+	values[23] = u32(parsed.first_dot_prefix)
+	values[24] = u32(parsed.first_dot_suffix)
+	values[25] = u32(parsed.pointer_raw_base)
+	values[26] = u32(parsed.builtin_base)
+	values[27] = u32(parsed.cgen_app_base)
+	values[28] = u32(parsed.top_space_head)
+	values[29] = u32(parsed.top_space_tail)
+	values[30] = u32(parsed.bracket_suffix)
+	values[31] = u32(parsed.bracket_from)
+	values[32] = u32(parsed.first_bracket_prefix)
+	values[33] = u32(parsed.dots_base)
+	values[34] = u32(parsed.cgen_raw_app_base)
+	values[35] = u32(parsed.generic_parameter_payload)
+	values[36] = u32(parsed.legacy_parameter_type)
+	values[37] = u32(parsed.legacy_parameter_mut_type)
+	values[38] = u32(parsed.first_bracket_length)
+	values[39] = u32(parsed.c_pointer_base)
+	values[40] = u32(parsed.source_wrapper_base)
+	values[41] = u32(parsed.declaration_head)
+	values[42] = u32(parsed.compact_fn_spelling)
+	values[43] = u32(parsed.first_bracket_raw_inner)
+	values[44] = u32(parsed.typeof_inner)
+	values[45] = u32(parsed.postfix_index_base)
+	values[46] = u32(parsed.last_bracket_prefix)
+	values[47] = u32(parsed.last_bracket_length)
+	values[48] = u32(parsed.trailing_bracket_prefix)
+	values[49] = u32(parsed.array_chars_base)
+	values[50] = u32(parsed.named_variant_owner)
+	values[51] = u32(parsed.named_variant_name)
+	values[52] = u32(parsed.main_unlocked)
+	values[53] = u32(parsed.encoded_fixed_length)
+	values[54] = u32(parsed.encoded_fixed_base)
+	values[55] = u32(parsed.suffix_bracket_length)
+	values[56] = u32(parsed.bracket_source_inner)
+	values[57] = u32(parsed.c_fixed_typedef_element)
+	values[58] = u32(parsed.c_fixed_typedef_length)
+	values[59] = u32(parsed.fixed_array_query_length)
+	values[60] = u32(parsed.last_bracket_span_inner)
+	values[61] = u32(parsed.generic_app_legacy_suffix)
+	values[62] = u32(parsed.wrapper_prefix)
+	values[63] = u32(parsed.wrapper_base)
+	values[64] = u32(parsed.qualified_modifiers)
+	values[65] = u32(parsed.c_array_payload)
+	values[66] = u32(parsed.c_fixed_array_payload)
+	values[67] = u32(parsed.fastc_array_marker_payload)
+	values[68] = u32(parsed.c_map_payload)
+	values[69] = u32(parsed.c_ptr_name_base)
+	values[70] = u32(parsed.c_tagged_type)
+	values[71] = u32(parsed.backward_bracket_prefix)
+	values[73] = u32(parsed.receiver_app_base)
+	values[74] = u32(parsed.declaration_parameter_payload)
+	values[75] = u32(parsed.prefix_dimension_tail)
+	values[76] = u32(parsed.backward_bracket_inner)
+	values[80] = u32(parsed.c_pointer_raw_base)
+	values[81] = u32(parsed.thread_value_payload)
+	values[82] = u32(parsed.thread_value_type)
+	values[84] = u32(parsed.parameter_name)
+	values[85] = u32(parsed.receiver_collection_id)
+	values[86] = u32(parsed.ampersand_trimmed)
+	values[87] = u32(parsed.parallel_preseed_short)
+	values[88] = u32(parsed.constraint_receiver_base)
+	values[89] = u32(parsed.space_removed)
+	values[90] = u32(parsed.field_owner_module)
+	values[91] = u32(parsed.question_trimmed)
+	values[92] = u32(parsed.function_space_result)
+	values[95] = u32(parsed.main_at_base)
+	values[96] = u32(parsed.receiver_app_inner)
+	values[97] = u32(parsed.fastc_fixed_array_length)
+	values[98] = u32(parsed.first_bracket_source_inner)
+	values[99] = u32(parsed.typ_suffix_base)
+	values[100] = u32(parsed.checker_parse_function_result)
+	values[101] = u32(parsed.top_level_dot_prefix)
+	values[102] = u32(parsed.top_level_dot_suffix)
+	values[103] = u32(parsed.parser_fn_decl_params)
+	values[104] = u32(parsed.parser_fn_decl_result)
+	values[105] = u32(parsed.named_variant_dot_prefix)
+	values[106] = u32(parsed.named_variant_dot_suffix)
 	mut scalar_present := [2]u64{}
 	mut scalar_identity := [2]u64{}
 	mut scalar_count := 0
@@ -3089,6 +3102,28 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 			values[scalar_count] = value
 			scalar_count++
 			if word == 0 { scalar_first_count++ }
+		}
+	}
+	// The other 99 fields fit u32. These eight int fields keep their full bits,
+	// with -1 represented by the otherwise unused identity bit for that field.
+	integer_indices := [8, 72, 77, 78, 79, 83, 93, 94]!
+	mut integers := [u64(parsed.pointer_depth), u64(parsed.byte_len),
+		u64(parsed.nested_option_result_marker), u64(parsed.c_pointer_depth),
+		u64(parsed.c_pointer_count), u64(parsed.expr_id), u64(parsed.decimal_value),
+		u64(parsed.integer_value)]!
+	mut integer_present := u8(0)
+	mut integer_count := 0
+	for ordinal in 0 .. integers.len {
+		value := integers[ordinal]
+		if value == 0 { continue }
+		if value == ~u64(0) {
+			index := integer_indices[ordinal]
+			scalar_identity[index >> 6] |= u64(1) << u32(index & 63)
+		} else {
+			integer_present |= u8(1) << u32(ordinal)
+			// As above, writes stay in the prefix already consumed by this loop.
+			integers[integer_count] = value
+			integer_count++
 		}
 	}
 	mut bool_flags := [2]u64{}
@@ -3247,9 +3282,12 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 			source_type_syntax_packed_span_len(parsed.raw_tuple_parse_components, id) +
 			source_type_syntax_packed_span_len(parsed.union_parts, id)
 	}
+	// The owner ID and narrow scalars precede an optional u32 padding slot.
+	// At most 99 narrow and eight integer fields put span_offset below 117.
+	integer_offset := (scalar_count + 2) >> 1
+	span_base := 2 * integer_offset + 2 * integer_count
 	payload_bytes := u64(sizeof(SourceTypeSyntaxEntry)) +
-		(u64(id_count) + 1 + 2 * u64(span_count)) * u64(sizeof(u32)) +
-		u64(scalar_count) * u64(sizeof(u64))
+		(u64(span_base) + 2 * u64(span_count) + u64(id_count) - 1) * u64(sizeof(u32))
 	if payload_bytes > u64(0x7fffffff) {
 		panic('source type syntax components exceed the allocation limit')
 	}
@@ -3260,13 +3298,16 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	}
 	mut payload := SourceTypeSyntaxPayload{
 		identity_id: id
-		id_offset:   2 + 2 * scalar_count + 2 * span_count
+		id_offset:   span_base + 2 * span_count
 		ids:         unsafe { voidptr(&u8(entry) + sizeof(SourceTypeSyntaxEntry)) }
 	}
 	unsafe { *&u32(payload.ids) = id }
 	for index in 0 .. scalar_count {
-		// The 32-byte header and 8-byte owner prefix align writer-owned u64 slots.
-		unsafe { (&u64(payload.ids))[1 + index] = values[index] }
+		unsafe { (&u32(payload.ids))[1 + index] = values[index] }
+	}
+	for index in 0 .. integer_count {
+		// The 32-byte header and rounded narrow prefix align these u64 slots.
+		unsafe { (&u64(payload.ids))[integer_offset + index] = integers[index] }
 	}
 
 	// Records and slices belong to the process, independently of parser workers
@@ -3335,7 +3376,7 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 	}
 	mut span_present := u64(0)
 	mut span_identity := u64(0)
-	mut span_offset := 2 + 2 * scalar_count
+	mut span_offset := span_base
 	// Strict names only populate these ten views, in the same rank order.
 	name_span_indices := [11, 16, 17, 20, 21, 28, 29, 32, 37, 39]!
 	span_limit := if parsed.name_packing { name_span_indices.len } else { spans.len }
@@ -3362,8 +3403,10 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 					scalar_identity:    scalar_identity
 					span_present:       span_present
 					span_identity:      span_identity
-					scalar_count:       u32(scalar_count)
-					scalar_first_count: u32(scalar_first_count)
+					scalar_count:       u8(scalar_count)
+					scalar_first_count: u8(scalar_first_count)
+					integer_present:    integer_present
+					span_offset:        u8(span_base)
 				})
 				bool_flags: bool_flags
 			}

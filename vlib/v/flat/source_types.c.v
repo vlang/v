@@ -40,11 +40,18 @@ pub const source_type_f32 = source_type_id('f32')
 pub const source_type_f64 = source_type_id('f64')
 
 struct SourceTypeEntry {
-	text  string
-	hash  u64
+	bytes &u8
+	len   int
+	hash  u32
 	shape SourceTypeShape
 	id    u32
 	query SourceTypeQuery
+}
+
+// The bytes are process-owned; the borrowed string needs no stored ownership flag.
+@[inline]
+fn (entry &SourceTypeEntry) text() string {
+	return unsafe { string{ str: entry.bytes, len: entry.len } }
 }
 
 // SourceTypeShape records spelling syntax once when a type is interned.
@@ -423,7 +430,7 @@ fn (mut table SourceTypeTable) grow() {
 	}
 	for id in u32(1) .. table.count + 1 {
 		entry := source_type_entry(table, id)
-		mut slot := u32(entry.hash) & (capacity - 1)
+		mut slot := entry.hash & (capacity - 1)
 		unsafe {
 			for slots[slot] != 0 {
 				slot = (slot + 1) & (capacity - 1)
@@ -442,11 +449,11 @@ fn (mut table SourceTypeTable) grow() {
 	source_type_index_publish(table, index)
 }
 
-fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string, hashed u64) u32 {
+fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string, hashed u32) u32 {
 	if isnil(index) {
 		return 0
 	}
-	mut slot := u32(hashed) & (index.capacity - 1)
+	mut slot := hashed & (index.capacity - 1)
 	for {
 		// An acquired slot makes the entry's bytes and chunk pointer visible.
 		id := unsafe { C.atomic_load_u32(&index.slots[slot]) }
@@ -454,7 +461,7 @@ fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string,
 			return 0
 		}
 		entry := source_type_entry(table, id)
-		if entry.hash == hashed && entry.text == text {
+		if entry.hash == hashed && entry.text() == text {
 			return id
 		}
 		slot = (slot + 1) & (index.capacity - 1)
@@ -474,7 +481,7 @@ pub fn source_type_id(text string) u32 {
 	// a disposable arena, so every hit still checks the canonical spelling.
 	slot := source_type_recent_slot(text)
 	cached := source_type_recent_entry(slot)
-	if !isnil(cached) && cached.text == text {
+	if !isnil(cached) && cached.text() == text {
 		return cached.id
 	}
 	id := source_type_id_uncached(text)
@@ -521,7 +528,8 @@ fn source_type_id_uncached(text string) u32 {
 	if text.len == 0 {
 		return 0
 	}
-	hashed := hash.sum64_string(text, 0)
+	// The fingerprint filters candidates; complete spelling equality resolves collisions.
+	hashed := u32(hash.sum64_string(text, 0))
 	mut table := source_type_table_load()
 	if !isnil(table) {
 		id := source_type_find(table, source_type_index_load(table), text, hashed)
@@ -551,14 +559,14 @@ fn source_type_id_uncached(text string) u32 {
 	}
 	// Another writer may have inserted the spelling, or grown the index, while
 	// this caller waited for the lock. Probe the current generation again.
-	mut slot := u32(hashed) & (index.capacity - 1)
+	mut slot := hashed & (index.capacity - 1)
 	for {
 		id := unsafe { C.atomic_load_u32(&index.slots[slot]) }
 		if id == 0 {
 			break
 		}
 		entry := source_type_entry(table, id)
-		if entry.hash == hashed && entry.text == text {
+		if entry.hash == hashed && entry.text() == text {
 			return id
 		}
 		slot = (slot + 1) & (index.capacity - 1)
@@ -586,7 +594,8 @@ fn source_type_id_uncached(text string) u32 {
 		vmemcpy(bytes, text.str, text.len)
 		entry := &SourceTypeEntry(chunk) + (idx & (source_type_chunk_size - 1))
 		*entry = SourceTypeEntry{
-			text:  tos(bytes, text.len)
+			bytes: &u8(bytes)
+			len:   text.len
 			hash:  hashed
 			shape: shape
 			id:    id
@@ -637,7 +646,7 @@ pub fn source_type_name(id u32) string {
 	if id == 0 {
 		return ''
 	}
-	return source_type_read_entry(id).text
+	return source_type_read_entry(id).text()
 }
 
 // source_type_shape returns syntax properties without resolving spelling bytes.

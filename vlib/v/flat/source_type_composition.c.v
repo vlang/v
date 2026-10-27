@@ -166,19 +166,11 @@ fn source_type_composition_find(slot int, kind SourceTypeComposition, parts []u3
 }
 
 fn source_type_composition_miss(slot int, kind SourceTypeComposition, parts []u32, hash u64) u32 {
-	// Temporary render buffers and numeric arrays have been copied before return.
-	mut scratch_scope := voidptr(unsafe { nil })
-	$if prealloc {
-		scratch_scope = unsafe { prealloc_scope_begin() }
+	// Short formatting-only spellings need no temporary arena. The interner
+	// copies their bytes before the stack buffer expires.
+	id := source_type_composition_small_id(kind, parts) or {
+		source_type_composition_scoped_id(kind, parts)
 	}
-	defer {
-		$if prealloc {
-			unsafe { prealloc_scope_end(scratch_scope) }
-		}
-	}
-
-	// Rendering interns a spelling and must finish before taking its writer lock.
-	id := source_type_id(source_type_composition_text(kind, parts))
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
 	cached := source_type_composition_find(slot, kind, parts, hash)
@@ -215,21 +207,84 @@ fn source_type_composition_miss(slot int, kind SourceTypeComposition, parts []u3
 	return id
 }
 
-fn source_type_composition_text(kind SourceTypeComposition, parts []u32) string {
+// Common renderings are five borrowed pieces, shared by short and long paths.
+fn source_type_composition_pieces(kind SourceTypeComposition, parts []u32) ?[5]string {
 	match kind {
-		.pointer { return '&${source_type_name(parts[0])}' }
-		.array { return '[]${source_type_name(parts[0])}' }
-		.option { return '?${source_type_name(parts[0])}' }
-		.result { return '!${source_type_name(parts[0])}' }
-		.channel { return 'chan ${source_type_name(parts[0])}' }
-		.mutable_channel { return 'chan mut ${source_type_name(parts[0])}' }
-		.mutable_parameter { return 'mut ${source_type_name(parts[0])}' }
-		.variadic_parameter { return '...${source_type_name(parts[0])}' }
-		.shared_type { return 'shared ${source_type_name(parts[0])}' }
-		.atomic_type { return 'atomic ${source_type_name(parts[0])}' }
-		.qualified { return '${source_type_name(parts[0])}.${source_type_name(parts[1])}' }
-		.thread { return 'thread ${source_type_name(parts[0])}' }
-		.named_parameter { return '${source_type_name(parts[0])} ${source_type_name(parts[1])}' }
+		.qualified {
+			return ['', source_type_name(parts[0]), '.', source_type_name(parts[1]), '']!
+		}
+		.named_parameter {
+			return ['', source_type_name(parts[0]), ' ', source_type_name(parts[1]), '']!
+		}
+		.map {
+			return ['map[', source_type_name(parts[0]), ']', source_type_name(parts[1]), '']!
+		}
+		.fixed_array {
+			return ['[', source_type_name(parts[0]), ']', source_type_name(parts[1]), '']!
+		}
+		.fixed_array_suffix {
+			return ['', source_type_name(parts[1]), '[', source_type_name(parts[0]), ']']!
+		}
+		else {}
+	}
+	prefix := match kind {
+		.pointer { '&' }
+		.array { '[]' }
+		.option { '?' }
+		.result { '!' }
+		.channel { 'chan ' }
+		.mutable_channel { 'chan mut ' }
+		.mutable_parameter { 'mut ' }
+		.variadic_parameter { '...' }
+		.shared_type { 'shared ' }
+		.atomic_type { 'atomic ' }
+		.thread { 'thread ' }
+		else { return none }
+	}
+	return [prefix, source_type_name(parts[0]), '', '', '']!
+}
+
+@[direct_array_access]
+fn source_type_composition_small_id(kind SourceTypeComposition, parts []u32) ?u32 {
+	pieces := source_type_composition_pieces(kind, parts) or { return none }
+	mut len := 0
+	for piece in pieces {
+		// Reserve the final byte for NUL and bound every addition before copying.
+		if piece.len > 255 - len { return none }
+		len += piece.len
+	}
+	mut buffer := [256]u8{}
+	mut offset := 0
+	for piece in pieces {
+		if piece.len > 0 {
+			unsafe { vmemcpy(&buffer[offset], piece.str, piece.len) }
+			offset += piece.len
+		}
+	}
+	return source_type_id(unsafe { tos(&buffer[0], len) })
+}
+
+fn source_type_composition_scoped_id(kind SourceTypeComposition, parts []u32) u32 {
+	// Temporary render buffers and numeric arrays have been copied before return.
+	mut scratch_scope := voidptr(unsafe { nil })
+	$if prealloc {
+		scratch_scope = unsafe { prealloc_scope_begin() }
+	}
+	defer {
+		$if prealloc {
+			unsafe { prealloc_scope_end(scratch_scope) }
+		}
+	}
+
+	// Rendering interns a spelling and must finish before taking its writer lock.
+	return source_type_id(source_type_composition_text(kind, parts))
+}
+
+fn source_type_composition_text(kind SourceTypeComposition, parts []u32) string {
+	if pieces := source_type_composition_pieces(kind, parts) {
+		return '${pieces[0]}${pieces[1]}${pieces[2]}${pieces[3]}${pieces[4]}'
+	}
+	match kind {
 		.inferred_expression { return 'typeof(__expr_${int(parts[0])})' }
 		.legacy_mut_chars { return source_type_name(parts[0]).trim_left('mut ') }
 		.last_double_underscore_prefix { return source_type_name(parts[0]).all_before_last('__') }
@@ -284,11 +339,6 @@ fn source_type_composition_text(kind SourceTypeComposition, parts []u32) string 
 			text.write_u8(`]`)
 			return text.str()
 		}
-		.map { return 'map[${source_type_name(parts[0])}]${source_type_name(parts[1])}' }
-		.fixed_array { return '[${source_type_name(parts[0])}]${source_type_name(parts[1])}' }
-		.fixed_array_suffix {
-			return '${source_type_name(parts[1])}[${source_type_name(parts[0])}]'
-		}
 		.fixed_array_size {
 			return '[${i64(u64(parts[0]) | (u64(parts[1]) << 32))}]${source_type_name(parts[2])}'
 		}
@@ -319,5 +369,6 @@ fn source_type_composition_text(kind SourceTypeComposition, parts []u32) string 
 			}
 			return text.str()
 		}
+		else { panic('unhandled source type composition') }
 	}
 }

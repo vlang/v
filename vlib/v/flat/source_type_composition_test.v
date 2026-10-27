@@ -182,3 +182,73 @@ fn test_source_type_composition_outlives_render_and_caller_scratch_arenas() {
 	assert source_type_composition(.multi_return, [left, right]) == ids[1]
 	assert source_type_composition_one(.pointer, left) == ids[2]
 }
+
+fn test_source_type_composition_small_render_preserves_raw_pieces() {
+	kinds := [SourceTypeComposition.pointer, .array, .option, .result, .channel, .mutable_channel,
+		.mutable_parameter, .variadic_parameter, .shared_type, .atomic_type, .thread]
+	prefixes := ['&', '[]', '?', '!', 'chan ', 'chan mut ', 'mut ', '...', 'shared ', 'atomic ',
+		'thread ']
+	raw_inputs := ['', ' int ', 'T[', 'é', [u8(0), 255].bytestr()]
+	for index, kind in kinds {
+		for raw in raw_inputs {
+			parts := [source_type_id(raw)]
+			expected := source_type_id(prefixes[index] + raw)
+			short := source_type_composition_small_id(kind, parts) or {
+				panic('short unary composition used the long rendering path')
+			}
+			assert short == expected
+			assert source_type_composition(kind, parts) == expected
+		}
+	}
+	for kind in [SourceTypeComposition.qualified, .named_parameter, .map, .fixed_array,
+		.fixed_array_suffix] {
+		for left in raw_inputs {
+			for right in raw_inputs {
+				parts := [source_type_id(left), source_type_id(right)]
+				expected := match kind {
+					.qualified { '${left}.${right}' }
+					.named_parameter { '${left} ${right}' }
+					.map { 'map[${left}]${right}' }
+					.fixed_array { '[${left}]${right}' }
+					.fixed_array_suffix { '${right}[${left}]' }
+					else { panic('unexpected binary test constructor') }
+				}
+				short := source_type_composition_small_id(kind, parts) or {
+					panic('short binary composition used the long rendering path')
+				}
+				assert short == source_type_id(expected)
+				assert source_type_composition(kind, parts) == short
+			}
+		}
+	}
+}
+
+fn test_source_type_composition_small_render_bounds_and_owned_bytes() {
+	retained := source_type_composition_small_id(.pointer,
+		[source_type_id('stack_composition_owned_729')]) or { panic('short rendering failed') }
+	for length in [0, 1, 253, 254, 255, 256, 1024] {
+		raw := 'x'.repeat(length)
+		parts := [source_type_id(raw)]
+		if short := source_type_composition_small_id(.pointer, parts) {
+			assert length < 255
+			assert short == source_type_id('&' + raw)
+		} else {
+			assert length >= 255
+		}
+		assert source_type_composition(.pointer, parts) == source_type_id('&' + raw)
+		left := 'l'.repeat(length / 2)
+		right := 'r'.repeat(length - length / 2)
+		binary := [source_type_id(left), source_type_id(right)]
+		if short := source_type_composition_small_id(.qualified, binary) {
+			assert length < 255
+			assert short == source_type_id('${left}.${right}')
+		} else {
+			assert length >= 255
+		}
+		assert source_type_composition(.qualified, binary) == source_type_id('${left}.${right}')
+	}
+	assert source_type_name(retained) == '&stack_composition_owned_729'
+	if _ := source_type_composition_small_id(.generic, [source_type_id('T')]) {
+		assert false, 'complex compositions must retain the scoped rendering path'
+	}
+}
