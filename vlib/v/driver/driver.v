@@ -4319,7 +4319,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -4762,8 +4762,8 @@ fn v3_fast_build_tree_signature_into(root string, mut entries strings.Builder) {
 fn v3_unchanged_build_key(prefs &pref.Preferences, c_compiler string, bin_file string) string {
 	mut output_args := []string{}
 	for arg in os.args[1..] {
-		if arg in ['-nocache', '--no-cache', '-v', '-show-timings', '-silent', '-showcc',
-			'-show-c-output', '-no-memory-limit'] || arg.starts_with('-v3-internal-') {
+		if arg in ['-nocache', '--no-cache', '-v', '-show-timings', '-show-instructions', '-silent',
+			'-showcc', '-show-c-output', '-no-memory-limit'] || arg.starts_with('-v3-internal-') {
 			continue
 		}
 		output_args << arg
@@ -11215,6 +11215,7 @@ pub fn run(args []string) {
 	mut ownership_mode := false
 	mut verbose := false
 	mut show_timings := false
+	mut show_instructions := false
 	mut silent := false
 	mut deferred_implicit_tcc_warning := ''
 	mut skip_notices := false
@@ -11804,6 +11805,10 @@ pub fn run(args []string) {
 			i += 2
 		} else if args[i] == '-show-timings' {
 			show_timings = true
+			i++
+		} else if args[i] == '-show-instructions' {
+			show_timings = true
+			show_instructions = true
 			i++
 		} else if args[i] in ['-new-generic-solver', '-progress', '-use-os-system-to-run'] {
 			// v3 uses its current generic solver without a legacy selection switch.
@@ -12430,6 +12435,8 @@ pub fn run(args []string) {
 	driver_sw := time.new_stopwatch()
 	if !(verbose || show_timings) || silent || c_to_stdout {
 		b.set_quiet()
+	} else if show_instructions {
+		b.enable_instruction_counts()
 	}
 	if no_memory_limit {
 		b.disable_memory_limit()
