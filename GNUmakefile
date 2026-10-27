@@ -291,7 +291,12 @@ endif
 	@echo "V has been successfully built"
 	@$(VEXE)$(EXE_EXT) -version
 	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler -gc none run .github/problem-matchers/register_all.vsh
-	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) $(VFLAGS) -new-compiler cmd/tools/cache_basic_modules_test.v
+	@set -e; \
+	cache_gcflags=; \
+	if [ ! -f "$(TMPTCC)/lib/libgc.a" ] && [ ! -f "$(TMPTCC)/lib/libgc.dylib" ]; then \
+		cache_gcflags='-gc none'; \
+	fi; \
+	$(VEXE)$(EXE_EXT) $$cache_gcflags $(VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler cmd/tools/cache_basic_modules_test.v
 
 v1:
 ifdef LEGACY

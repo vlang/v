@@ -20045,15 +20045,40 @@ fn (scopes &V3InterfaceScopes) module_signature(visible map[string]bool) string 
 	return scopes.object_signature(visible, false)
 }
 
+fn (scopes &V3InterfaceScopes) builtin_error_signature(name u32) ?string {
+	impls := scopes.impls[name]
+	ids := types.stable_interface_type_ids(impls)
+	mut builtin_ids := []string{}
+	for impl in impls {
+		// Retain the full dependency when hashes collide. The signature can also
+		// contain open generic types that code generation leaves out of dispatch.
+		seed := types.stable_interface_type_ids([impl])
+		if ids[impl] != seed[impl] {
+			return none
+		}
+		owner := scopes.declaring_module(impl)
+		if owner == '?' {
+			return none
+		}
+		if owner == 'builtin' {
+			builtin_ids << '${flat.source_type_name(impl)}=${ids[impl]}'
+		}
+	}
+	return '#builtin ${flat.source_type_name(name)}=${builtin_ids.join(',')}'
+}
+
 fn (scopes &V3InterfaceScopes) object_signature(visible map[string]bool, builtin_bundle bool) string {
 	mut in_scope := map[u32]bool{}
 	mut pending := []u32{cap: scopes.names.len}
+	mut lines := []string{cap: scopes.names.len}
 	for i, name in scopes.names {
-		// The builtin bundle only dispatches IError methods and checks None__.
-		// Dispatch stubs belong to the program, so new error implementers do not
-		// change the bundle's code or require parsing its sources again.
+		// Dispatch stubs belong to the program, but builtin error boxing and the
+		// None__ check embed builtin dispatch IDs. Preserve those dependencies.
 		if builtin_bundle && flat.source_type_name(name) in ['IError', 'builtin.IError'] {
-			continue
+			if signature := scopes.builtin_error_signature(name) {
+				lines << signature
+				continue
+			}
 		}
 		owner := scopes.owners[i]
 		// The code of a module cannot name an interface of the program.
@@ -20094,7 +20119,6 @@ fn (scopes &V3InterfaceScopes) object_signature(visible map[string]bool, builtin
 			}
 		}
 	}
-	mut lines := []string{cap: pending.len}
 	for name in scopes.names {
 		if in_scope[name] {
 			lines << scopes.lines[name]
