@@ -180,8 +180,11 @@ jobs:
               --libpaths="$PREFIX/lib" \
               --sysincludepaths="{B}/include:$PREFIX/include" \
               --elfinterp=/system/bin/linker64
-            make -j2 SHELL="$PREFIX/bin/sh"
-            make install SHELL="$PREFIX/bin/sh"
+            # bionic's sys/cdefs.h rejects an unversioned target triple unless
+            # __ANDROID_MIN_SDK_VERSION__ is set, and tcc's lib/ build is the
+            # first place that includes it.
+            make -j2 SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24"
+            make install SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24"
             tcc="$HOME/tcc-install/bin/tcc"
             "$tcc" -v
             cd ~/vproject
