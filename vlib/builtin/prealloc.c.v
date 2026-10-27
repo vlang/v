@@ -78,6 +78,7 @@ const prealloc_default_align = sizeof(voidptr) * 2
 __global g_memory_block &VMemoryBlock
 __global g_prealloc_allocation_count i64
 __global g_prealloc_allocated_bytes i64
+__global g_prealloc_keep_at_exit bool
 
 // prealloc_recyclable_block_size reports whether a block belongs to one of
 // the scope size classes (256K..1M, the geometric scope growth ladder) that
@@ -714,9 +715,20 @@ fn prealloc_vcleanup() {
 			C.fprintf(C.stderr, c'prealloc_vcleanup total dump size in bytes: %lld\n', total_used)
 		}
 	}
+	if g_prealloc_keep_at_exit {
+		return
+	}
 	unsafe {
 		prealloc_thread_cleanup()
 	}
+}
+
+// prealloc_keep_memory_at_exit makes the exit handler leave the arenas of the
+// main thread mapped. The OS reclaims them at process exit with less work than
+// unmapping each block. Only call it from programs that end with the process.
+@[unsafe]
+pub fn prealloc_keep_memory_at_exit() {
+	g_prealloc_keep_at_exit = true
 }
 
 // prealloc_scope_begin starts a nested arena on the current thread. All V
