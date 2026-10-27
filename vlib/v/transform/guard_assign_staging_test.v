@@ -6,7 +6,7 @@ import v.types
 fn test_guard_staging_ends_error_scope_before_pointer_backed_destination() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['IError'] = true
+	tc.interface_names[flat.source_type_id('IError')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('err', flat.source_type_id('&string'))
 	t.heaped_amp_locals['err'] = true
@@ -47,7 +47,7 @@ fn test_owned_guard_staging_preserves_moves_through_branch_tails() {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		tc.collect(tc.a)
-		tc.interface_names['IError'] = true
+		tc.interface_names[flat.source_type_id('IError')] = true
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.set_var_type('err', flat.source_type_id('IError'))
 		t.set_var_type('value', flat.source_type_id('string'))
@@ -115,7 +115,7 @@ fn test_owned_guard_staging_distinguishes_success_bindings() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(tc.a)
-	tc.interface_names['IError'] = true
+	tc.interface_names[flat.source_type_id('IError')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('err', flat.source_type_id('IError'))
 	t.set_var_type('value', flat.source_type_id('string'))

@@ -67,7 +67,7 @@ fn (tc &TypeChecker) value_allocation_layout(typ &Type,
 		return tc.struct_allocation_layout(name_id, mut seen)
 	}
 	base := tc.sum_base_name(name_id)
-	variants := tc.sum_types.type_ids(flat.source_type_name(base)) or { return .scanned }
+	variants := tc.sum_types.type_ids(base) or { return .scanned }
 	for raw in variants {
 		variant := tc.concrete_sum_variant_name(name_id, raw)
 		parsed := tc.parse_canonical_type_cached(variant)
@@ -82,11 +82,11 @@ fn (tc &TypeChecker) struct_allocation_layout(name_id u32,
 		return .aligned | .scanned
 	}
 	syntax := flat.source_type_syntax(name_id)
-	key := flat.source_type_name(if syntax.application_valid() {
+	key := if syntax.application_valid() {
 		syntax.application_base()
 	} else {
 		name_id
-	})
+	}
 	// Zero is the valid empty layout flag set.
 	mut layout := unsafe { AllocationLayout(0) }
 	if index := tc.first_type_declaration_ids[key] {

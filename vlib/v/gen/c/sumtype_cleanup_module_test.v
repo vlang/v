@@ -9,8 +9,8 @@ import v.gen.c.naming { sum_field_name }
 fn test_direct_packed_sum_cleanup_evaluates_storage_once_and_copies_back() ! {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types.set('Choice', ['int', 'string', '&string'])
-	tc.type_aliases.set('AliasChoice', 'Choice')
+	tc.sum_types.set(flat.source_type_id('Choice'), ['int', 'string', '&string'])
+	tc.type_aliases.set(flat.source_type_id('AliasChoice'), 'Choice')
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -127,8 +127,8 @@ int main(void) {
 fn test_packed_sum_cleanup_preserves_alignment_and_updates_storage() ! {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types.set('Choice', ['int', 'string'])
-	tc.structs['Packed'] = [types.StructField{
+	tc.sum_types.set(flat.source_type_id('Choice'), ['int', 'string'])
+	tc.structs[flat.source_type_id('Packed')] = [types.StructField{
 		name: 'prefix'
 		typ:  tc.parse_type(flat.source_type_id('u8'))
 	}, types.StructField{
@@ -197,8 +197,8 @@ fn test_sum_cleanup_helpers_use_declaration_module_for_autofree_methods() {
 		mut tc := types.TypeChecker.new(&a)
 		sum_name := if module_name == '' { 'Choice' } else { '${module_name}.Choice' }
 		method_name := if module_name == '' { 'Item.free' } else { '${module_name}.Item.free' }
-		tc.sum_types.set(sum_name, ['int', '&Item'])
-		tc.structs['Item'] = []types.StructField{}
+		tc.sum_types.set(flat.source_type_id(sum_name), ['int', '&Item'])
+		tc.structs[flat.source_type_id('Item')] = []types.StructField{}
 		tc.fn_ret_types[method_name] = types.Type(types.void_)
 		tc.autofree_mode = true
 		tc.cur_module = 'builtin'
@@ -236,10 +236,10 @@ fn check_canonical_sum_cleanup(sum_name string) {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.sum_types.set(sum_name, ['int', '&foo.Item'])
-	tc.sum_types.set('x.foo.Choice', ['bool', 'f64'])
-	tc.structs['foo.Item'] = []types.StructField{}
-	tc.structs['x.foo.Item'] = []types.StructField{}
+	tc.sum_types.set(flat.source_type_id(sum_name), ['int', '&foo.Item'])
+	tc.sum_types.set(flat.source_type_id('x.foo.Choice'), ['bool', 'f64'])
+	tc.structs[flat.source_type_id('foo.Item')] = []types.StructField{}
+	tc.structs[flat.source_type_id('x.foo.Item')] = []types.StructField{}
 	tc.fn_ret_types['foo.Item.free'] = types.Type(types.void_)
 	tc.fn_ret_types['x.foo.Item.free'] = types.Type(types.void_)
 	tc.autofree_mode = true
@@ -276,9 +276,9 @@ fn test_synthetic_sum_cleanup_preserves_canonical_type_despite_file_aliases() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.sum_types.set('foo.Choice', ['int', '&foo.Item'])
-	tc.sum_types.set('x.foo.Choice', ['bool', 'f64'])
-	tc.structs['foo.Item'] = []types.StructField{}
+	tc.sum_types.set(flat.source_type_id('foo.Choice'), ['int', '&foo.Item'])
+	tc.sum_types.set(flat.source_type_id('x.foo.Choice'), ['bool', 'f64'])
+	tc.structs[flat.source_type_id('foo.Item')] = []types.StructField{}
 	tc.cur_module = 'builtin'
 	tc.cur_file = 'ambient.v'
 	sum_id := flat.source_type_id('foo.Choice')
@@ -311,7 +311,7 @@ fn test_sum_cleanup_helper_uses_sum_c_type_for_fixed_array_generic_argument() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	sum_id := flat.source_type_id('Box[[2]string]')
-	tc.sum_types.set('Box[[2]string]', ['[2]string', 'int'])
+	tc.sum_types.set(flat.source_type_id('Box[[2]string]'), ['[2]string', 'int'])
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

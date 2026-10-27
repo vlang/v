@@ -189,7 +189,7 @@ fn (g &Parser) condition_brace_opens_struct_literal(tokens []FastcExpressionToke
 		module_alias := tokens[tokens.len - 3].lit
 		if imported_module := g.imports[module_alias] {
 			type_key := fastc_type_key(imported_module, previous_lit)
-			type_resolves = type_key in g.declared_types
+			type_resolves = fastc_source_type_key_exists(g.declared_types, type_key)
 		}
 		before_index = tokens.len - 4
 	} else if previous_lit in g.locals {
@@ -431,7 +431,7 @@ fn (mut g Parser) try_read_atomic_member_expression(stops []token.Token, allow_m
 	if flat.source_type_query(base_type).has(.c_array_prefix) {
 		if field_name !in ['len', 'cap'] { return FastcAtomicExpression{} }
 	} else {
-		kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(local.typ))] or {
+		kind := g.declared_kinds[g.semantic_type_key(local.typ)] or {
 			return FastcAtomicExpression{}
 		}
 		if kind != .struct_ { return FastcAtomicExpression{} }
@@ -1559,7 +1559,7 @@ fn (mut g Parser) rewrite_expression_cast(mut result strings.Builder, expression
 		result.go_back(rendered_previous.len + 2)
 		piece = '((${array_type})('
 		cast_depths << paren_depth + 1
-	} else if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 4].tok == .name && expression_tokens[expression_tokens.len - 4].lit == 'C' && expression_tokens[expression_tokens.len - 3].tok == .dot && previous_lit.len > 0 && 'C.${previous_lit}' !in g.functions && g.current_call_has_one_argument() && (previous_lit[0].is_capital() || '#Cstruct#${previous_lit}' in g.declared_types || '#Ctypedef#${previous_lit}' in g.declared_types) {
+	} else if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 4].tok == .name && expression_tokens[expression_tokens.len - 4].lit == 'C' && expression_tokens[expression_tokens.len - 3].tok == .dot && previous_lit.len > 0 && 'C.${previous_lit}' !in g.functions && g.current_call_has_one_argument() && (previous_lit[0].is_capital() || fastc_source_type_key_exists(g.declared_types, '#Cstruct#${previous_lit}') || fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${previous_lit}')) {
 		c_pointer_token := if expression_tokens.len >= 5 && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 5) {
 			expression_tokens[expression_tokens.len - 5].tok
 		} else {
@@ -1572,7 +1572,7 @@ fn (mut g Parser) rewrite_expression_cast(mut result strings.Builder, expression
 		} else {
 			0
 		}
-		c_cast_type := if '#Cstruct#${previous_lit}' in g.declared_types {
+		c_cast_type := if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${previous_lit}') {
 			'struct ${previous_lit}'
 		} else {
 			previous_lit
@@ -1589,7 +1589,7 @@ fn (mut g Parser) rewrite_expression_cast(mut result strings.Builder, expression
 		// instead of the default `mod__Type(value)` call-style spelling.
 		module_lit := expression_tokens[expression_tokens.len - 4].lit
 		qualified_key := fastc_type_key(g.imports[module_lit], previous_lit)
-		if qualified_key in g.declared_types {
+		if fastc_source_type_key_exists(g.declared_types, qualified_key) {
 			cast_type := fastc_c_declared_type_name(qualified_key)
 			// The pointer prefix (`&mod.Type(x)` / `&&mod.Type(x)`) sits BEFORE the module
 			// name (`… & ast . File (`), i.e. at len-5, not the len-3 the bare-type case
@@ -1625,7 +1625,7 @@ fn (mut g Parser) rewrite_expression_cast(mut result strings.Builder, expression
 		}
 	} else if type_key := g.resolve_declared_type_key(previous_lit) {
 		if !name_is_member {
-			cast_type := fastc_c_declared_type_name(type_key)
+			cast_type := fastc_c_declared_type_name(flat.source_type_name(type_key))
 			rendered_previous := g.resolved_expression_name(previous_lit, .unknown)
 			result.go_back(rendered_previous.len + pointer_prefix_len)
 			piece = '((${cast_type}${pointer_suffix})('
@@ -1684,7 +1684,7 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 		is_struct_literal = true
 	} else if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 4].tok == .name && expression_tokens[expression_tokens.len - 4].lit == 'C' && expression_tokens[expression_tokens.len - 3].tok == .dot && expression_tokens[expression_tokens.len - 2].tok == .name {
 		raw_c_type := expression_tokens[expression_tokens.len - 2].lit
-		c_type := if '#Cstruct#${raw_c_type}' in g.declared_types {
+		c_type := if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${raw_c_type}') {
 			'struct ${raw_c_type}'
 		} else {
 			raw_c_type
@@ -1701,7 +1701,7 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 		if imported_module := g.imports[module_alias] {
 			raw_type := expression_tokens[expression_tokens.len - 2].lit
 			type_key := fastc_type_key(imported_module, raw_type)
-			if type_key in g.declared_types {
+			if fastc_source_type_key_exists(g.declared_types, type_key) {
 				c_type := fastc_c_declared_type_name(type_key)
 				result.go_back(c_type.len)
 				piece = '(${c_type}){'
@@ -1714,7 +1714,7 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 		}
 	} else if previous_token == .name {
 		if type_key := g.resolve_declared_type_key(previous_lit) {
-			c_type := fastc_c_declared_type_name(type_key)
+			c_type := fastc_c_declared_type_name(flat.source_type_name(type_key))
 			result.go_back(c_type.len)
 			piece = '(${c_type}){'
 			brace_depth++
@@ -1768,10 +1768,10 @@ fn (mut g Parser) rewrite_contextual_enum_shorthand(expression_tokens []FastcExp
 		// An unqualified same-module field type (`Show`) must resolve to its declared C
 		// type so the shorthand becomes `flag__Show__name`, not a raw unqualified name.
 		if resolved_enum_key := g.resolve_declared_type_key(flat.source_type_name(fastc_trim_pointer_type(contextual_type))) {
-			contextual_type = flat.source_type_id(fastc_c_declared_type_name(resolved_enum_key))
+			contextual_type = flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(resolved_enum_key)))
 		}
 	}
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(contextual_type))] != .enum_ {
+	if g.declared_kinds[g.semantic_type_key(contextual_type)] != .enum_ {
 		contextual_type = u32(0)
 	}
 	if contextual_type == 0 {
@@ -1812,7 +1812,7 @@ fn (mut g Parser) rewrite_contextual_enum_shorthand(expression_tokens []FastcExp
 			contextual_type = inferred_type
 		}
 	}
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(contextual_type))] == .enum_ {
+	if g.declared_kinds[g.semantic_type_key(contextual_type)] == .enum_ {
 		piece = ''
 		enum_shorthand_type = contextual_type
 	}
@@ -2045,7 +2045,7 @@ fn (mut g Parser) read_compound_expression_atom(expression_tokens []FastcExpress
 			// A parenthesized if-expression takes its type from its branches, not the
 			// surrounding call. Preserve an enum parameter type for branch shorthands.
 			arg_type := g.streaming_call_argument_type(expression_tokens)
-			if arg_type != 0 && g.declared_kinds[flat.source_type_name(g.semantic_type_key(arg_type))] == .enum_ {
+			if arg_type != 0 && g.declared_kinds[g.semantic_type_key(arg_type)] == .enum_ {
 				g.expected_expression_type = arg_type
 			} else {
 				g.expected_expression_type = u32(0)
@@ -3812,7 +3812,7 @@ fn (mut g Parser) read_inferred_map_literal() !string {
 		if lookahead.scan() == .dot {
 			if type_key := g.resolve_declared_type_key(g.lit) {
 				if g.declared_kinds[type_key] == .enum_ {
-					key_enum_type = flat.source_type_id(fastc_c_declared_type_name(type_key))
+					key_enum_type = flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(type_key)))
 				}
 			}
 		}
@@ -4298,7 +4298,7 @@ fn (g &Parser) render_boolean_is_expression(tokens []FastcExpressionToken) ?Fast
 	mut variant_c := ''
 	if is_idx + 2 == inner.len && inner[is_idx + 1].tok == .name {
 		if type_key := g.resolve_declared_type_key(inner[is_idx + 1].lit) {
-			variant_c = fastc_c_declared_type_name(type_key)
+			variant_c = fastc_c_declared_type_name(flat.source_type_name(type_key))
 		} else if fastc_primitive_c_type(inner[is_idx + 1].lit) != none {
 			variant_c = inner[is_idx + 1].lit
 		}
@@ -4380,7 +4380,7 @@ fn (g &Parser) render_call_is_narrowing(tokens []FastcExpressionToken) ?FastcCal
 	mut variant_c := u32(0)
 	if is_idx + 2 == inner.len && inner[is_idx + 1].tok == .name {
 		if type_key := g.resolve_declared_type_key(inner[is_idx + 1].lit) {
-			variant_c = flat.source_type_id(fastc_c_declared_type_name(type_key))
+			variant_c = flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(type_key)))
 		} else if fastc_primitive_c_type(inner[is_idx + 1].lit) != none {
 			variant_c = flat.source_type_id(inner[is_idx + 1].lit)
 		}
@@ -4568,7 +4568,7 @@ fn (g &Parser) type_test_narrowing(tokens []FastcExpressionToken, test token.Tok
 	mut variant_value_type := u32(0)
 	if is_idx + 2 == inner.len && inner[is_idx + 1].tok == .name {
 		if type_key := g.resolve_declared_type_key(inner[is_idx + 1].lit) {
-			variant_c = flat.source_type_id(fastc_c_declared_type_name(type_key))
+			variant_c = flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(type_key)))
 		} else if fastc_primitive_c_type(inner[is_idx + 1].lit) != none {
 			variant_c = flat.source_type_id(inner[is_idx + 1].lit)
 		}
@@ -5496,7 +5496,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 		mut variant_c := ''
 		if tokens.len == 3 && tokens[2].tok == .name {
 			if type_key := g.resolve_declared_type_key(tokens[2].lit) {
-				variant_c = fastc_c_declared_type_name(type_key)
+				variant_c = fastc_c_declared_type_name(flat.source_type_name(type_key))
 			} else if fastc_primitive_c_type(tokens[2].lit) != none {
 				// A primitive sum-type variant (`v is u64`) is not a declared type; its
 				// own spelling is the `__v_typeid_` suffix (see decl.v's primitive ids).
@@ -5743,7 +5743,7 @@ fn (g &Parser) plain_local_direct_member_field(tokens []FastcExpressionToken) ?&
 		|| g.alias_base_types.type_id(type_name) != none {
 		return none
 	}
-	kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(local.typ))] or {
+	kind := g.declared_kinds[g.semantic_type_key(local.typ)] or {
 		return none
 	}
 	if kind != .struct_ { return none }

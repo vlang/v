@@ -5735,8 +5735,9 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs 
 fn register_headerless_c_types(mut tc types.TypeChecker) {
 	// The C backend always supplies this platform-specific declaration in its
 	// headerless preamble, even when the program does not import `os`.
-	if 'C.stat' !in tc.structs {
-		tc.structs['C.stat'] = []types.StructField{}
+	stat_type_id := flat.source_type_id('C.stat')
+	if stat_type_id !in tc.structs {
+		tc.structs[stat_type_id] = []types.StructField{}
 	}
 }
 
@@ -9577,9 +9578,8 @@ fn incremental_type_is_generic_named_application_bytes(type_name string, module_
 }
 
 fn incremental_generic_type_base_is_known(base_id u32, module_name string, tc &types.TypeChecker) bool {
-	base := flat.source_type_name(base_id)
-	if base in tc.struct_generic_params || base in tc.sum_generic_params
-		|| base in tc.type_alias_generic_params {
+	if base_id in tc.struct_generic_params || base_id in tc.sum_generic_params
+		|| base_id in tc.type_alias_generic_params {
 		return true
 	}
 	if !flat.source_type_shape(base_id).has(.dotted) && module_name !in ['', 'main', 'builtin'] {
@@ -9587,9 +9587,8 @@ fn incremental_generic_type_base_is_known(base_id u32, module_name string, tc &t
 			flat.source_type_id(module_name),
 			base_id,
 		])
-		qualified := flat.source_type_name(qualified_id)
-		if qualified in tc.struct_generic_params || qualified in tc.sum_generic_params
-			|| qualified in tc.type_alias_generic_params {
+		if qualified_id in tc.struct_generic_params || qualified_id in tc.sum_generic_params
+			|| qualified_id in tc.type_alias_generic_params {
 			return true
 		}
 	}
@@ -19873,13 +19872,13 @@ fn v3_cached_object_compile_signature(compiler V3CachedObjectCompiler, c_standar
 struct V3InterfaceScopes {
 mut:
 	signature string
-	names     []u32             // interface spelling IDs, in signature order
-	owners    []string          // the module that declares each of them
-	lines     map[u32]string    // interface spelling ID -> raw `name=impl,impl`
-	impls     map[u32][]u32     // interface spelling ID -> implementer spelling IDs
-	modules   map[string]string // name without a module prefix -> declaring module
-	outside   map[u32]string    // implementer spelling ID -> declaring module, `` for a generic one
-	reach     map[u32][]u32     // implementer spelling ID -> interfaces among its fields
+	names     []u32          // interface spelling IDs, in signature order
+	owners    []string       // the module that declares each of them
+	lines     map[u32]string // interface spelling ID -> raw `name=impl,impl`
+	impls     map[u32][]u32  // interface spelling ID -> implementer spelling IDs
+	modules   map[u32]string // type spelling ID without a module prefix -> declaring module
+	outside   map[u32]string // implementer spelling ID -> declaring module, `` for a generic one
+	reach     map[u32][]u32  // implementer spelling ID -> interfaces among its fields
 }
 
 fn parse_v3_interface_scopes(signature string) V3InterfaceScopes {
@@ -19889,7 +19888,7 @@ fn parse_v3_interface_scopes(signature string) V3InterfaceScopes {
 	for line in signature.split_into_lines() {
 		if line.starts_with('#module ') {
 			fact := line['#module '.len..]
-			scopes.modules[fact.all_before_last('=')] = fact.all_after_last('=')
+			scopes.modules[flat.source_type_id(fact.all_before_last('='))] = fact.all_after_last('=')
 			continue
 		}
 		if line.starts_with('#reach ') {
@@ -19988,7 +19987,7 @@ fn (scopes &V3InterfaceScopes) declaring_module(name_id u32) string {
 	if flat.source_type_shape(base).has(.dotted) {
 		return flat.source_type_name(flat.source_type_syntax(base).qualifier())
 	}
-	return scopes.modules[flat.source_type_name(name_id)] or { '?' }
+	return scopes.modules[name_id] or { '?' }
 }
 
 // module_signature returns the implementer lists that the code of a module can
@@ -21672,7 +21671,7 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 		rhs_type := tc.resolve_type(a.child(&node, 1))
 		lhs_name := wasm_type_without_main_prefix(lhs_type.source_type_id())
 		rhs_name := wasm_type_without_main_prefix(rhs_type.source_type_id())
-		if lhs_name == rhs_name && lhs_name != 0 && flat.source_type_name(lhs_name) in tc.structs
+		if lhs_name == rhs_name && lhs_name != 0 && lhs_name in tc.structs
 			&& !wasm_supported_struct(tc, lhs_name) {
 			operator := if node.op == .eq { '==' } else { '!=' }
 			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${flat.source_type_name(lhs_name)}` yet'
@@ -21841,7 +21840,7 @@ fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
 			flat.source_type_id('rune'), flat.source_type_id('string')] {
 			return true
 		}
-		if flat.source_type_name(inner) in tc.structs { return wasm_supported_struct(tc, inner) }
+		if inner in tc.structs { return wasm_supported_struct(tc, inner) }
 		return false
 	}
 	return wasm_struct_fields_supported(tc, type_id, 0)
@@ -21855,7 +21854,7 @@ fn wasm_struct_fields_supported(tc &types.TypeChecker, type_id u32, depth int) b
 	if name_id == 0 {
 		return false
 	}
-	st := tc.structs[flat.source_type_name(name_id)] or { return false }
+	st := tc.structs[name_id] or { return false }
 	for f in st {
 		if !wasm_struct_field_supported(tc, f.typ, depth) {
 			return false
@@ -21938,7 +21937,7 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 			rhs_type := tc.resolve_type(a.child(&node, 1))
 			lhs_name := wasm_type_without_main_prefix(lhs_type.source_type_id())
 			rhs_name := wasm_type_without_main_prefix(rhs_type.source_type_id())
-			if lhs_name == rhs_name && lhs_name != 0 && flat.source_type_name(lhs_name) in tc.structs {
+			if lhs_name == rhs_name && lhs_name != 0 && lhs_name in tc.structs {
 				operator := if node.op == .eq { '==' } else { '!=' }
 				return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${flat.source_type_name(lhs_name)}` yet'
 			}
@@ -22442,10 +22441,10 @@ fn skipped_backend_modules(prefs &pref.Preferences) map[string]bool {
 
 struct ImplicitFieldScanIndex {
 mut:
-	aliases     flat.TypeTextBindings
+	aliases     flat.SourceTypeBindings
 	imports     map[string]bool
-	fields      map[string]flat.TypeTextBindings
-	enum_fields map[string]map[string]bool
+	fields      map[u32]flat.TypeTextBindings
+	enum_fields map[u32]map[string]bool
 	fn_returns  flat.TypeTextBindings
 	globals     flat.TypeTextBindings
 	// record, when set, notes the writes to this index, and the keys asked of
@@ -22463,17 +22462,28 @@ mut:
 @[heap]
 struct ImplicitIndexRecord {
 mut:
-	with_reads bool
-	with_ops   bool
-	reads      map[string]bool
-	writes     map[string]bool
-	ops        []ImplicitIndexOp
+	with_reads  bool
+	with_ops    bool
+	reads       map[string]bool
+	type_reads  map[u64]bool
+	name_writes map[string]bool
+	type_writes map[u64]bool
+	writes      []ImplicitIndexKey
+	ops         []ImplicitIndexOp
+}
+
+// ImplicitIndexKey keeps nominal type identities distinct from the other names.
+struct ImplicitIndexKey {
+	kind    ImplicitIndexOpKind
+	key     string
+	type_id u32
 }
 
 // ImplicitIndexOp is a write of implicit_field_scan_index_append, to repeat it.
 struct ImplicitIndexOp {
 	kind        ImplicitIndexOpKind
 	key         string
+	type_id     u32
 	value       u32
 	fields      flat.TypeTextBindings
 	enum_fields map[string]bool
@@ -22486,6 +22496,42 @@ enum ImplicitIndexOpKind {
 	enum_fields
 	fn_return
 	global
+}
+
+fn (kind ImplicitIndexOpKind) prefix() string {
+	return match kind {
+		.import_alias { 'i:' }
+		.alias { 'a:' }
+		.fields { 'f:' }
+		.enum_fields { 'e:' }
+		.fn_return { 'r:' }
+		.global { 'g:' }
+	}
+}
+
+fn (kind ImplicitIndexOpKind) is_type_key() bool {
+	return kind in [.alias, .fields, .enum_fields]
+}
+
+fn implicit_type_index_key(kind ImplicitIndexOpKind, type_id u32) u64 {
+	return (u64(kind) << 32) | u64(type_id)
+}
+
+// type_name_id borrows existing spellings for probes. A prepared scan must retain
+// unknown names too: a later program declaration can change the answer it read.
+fn (index &ImplicitFieldScanIndex) type_name_id(name string) ?u32 {
+	if !isnil(index.record) && index.record.with_reads {
+		return flat.source_type_id(name)
+	}
+	return flat.source_type_existing_id(name)
+}
+
+fn (index &ImplicitFieldScanIndex) read_type(kind ImplicitIndexOpKind, type_id u32) {
+	if isnil(index.record) || !index.record.with_reads {
+		return
+	}
+	mut record := unsafe { index.record }
+	record.type_reads[implicit_type_index_key(kind, type_id)] = true
 }
 
 // read notes that a scan asked this index for `key` of the map `prefix` names,
@@ -22504,15 +22550,19 @@ fn (index &ImplicitFieldScanIndex) write(op ImplicitIndexOp) {
 		return
 	}
 	mut record := unsafe { index.record }
-	prefix := match op.kind {
-		.import_alias { 'i:' }
-		.alias { 'a:' }
-		.fields { 'f:' }
-		.enum_fields { 'e:' }
-		.fn_return { 'r:' }
-		.global { 'g:' }
+	if op.kind.is_type_key() {
+		key := implicit_type_index_key(op.kind, op.type_id)
+		if key !in record.type_writes {
+			record.type_writes[key] = true
+			record.writes << ImplicitIndexKey{ kind: op.kind, type_id: op.type_id }
+		}
+	} else {
+		key := op.kind.prefix() + op.key
+		if key !in record.name_writes {
+			record.name_writes[key] = true
+			record.writes << ImplicitIndexKey{ kind: op.kind, key: op.key }
+		}
 	}
-	record.writes[prefix + op.key] = true
 	if record.with_ops {
 		record.ops << op
 	}
@@ -22525,13 +22575,13 @@ fn (mut index ImplicitFieldScanIndex) apply(op ImplicitIndexOp) {
 			index.imports[op.key] = true
 		}
 		.alias {
-			index.aliases.set_id(op.key, op.value)
+			index.aliases.set_id(op.type_id, op.value)
 		}
 		.fields {
-			index.fields[op.key] = op.fields.clone()
+			index.fields[op.type_id] = op.fields.clone()
 		}
 		.enum_fields {
-			index.enum_fields[op.key] = op.enum_fields.clone()
+			index.enum_fields[op.type_id] = op.enum_fields.clone()
 		}
 		.fn_return {
 			if old := index.fn_returns.type_id(op.key) {
@@ -22623,10 +22673,11 @@ fn (mut scan ImplicitImportScan) add_flags(flags ImplicitScanFlags) {
 // no index: nothing else of the program reaches that scan.
 struct PreparedScan {
 mut:
-	ready bool
-	after []ImplicitScanFlags
-	ops   []ImplicitIndexOp
-	reads map[string]bool
+	ready      bool
+	after      []ImplicitScanFlags
+	ops        []ImplicitIndexOp
+	reads      map[string]bool
+	type_reads map[u64]bool
 }
 
 // prepare_region_scan scans `regions` of `a` for implicit imports with the field
@@ -22651,6 +22702,7 @@ fn prepare_region_scan(a &flat.FlatAst, regions []PreparedModule, builtin_index 
 	}
 	prepared.ops = record.ops
 	prepared.reads = record.reads.clone()
+	prepared.type_reads = record.type_reads.clone()
 	return prepared
 }
 
@@ -22667,9 +22719,13 @@ fn (prepared &PreparedScan) replay_conflict(scan &ImplicitImportScan, regions in
 	if isnil(scan.field_index.record) {
 		return 'the program was scanned without a record'
 	}
-	for key, _ in scan.field_index.record.writes {
-		if key in prepared.reads {
-			return 'the program writes `${key}`'
+	for key in scan.field_index.record.writes {
+		if key.kind.is_type_key() {
+			if implicit_type_index_key(key.kind, key.type_id) in prepared.type_reads {
+				return 'the program writes `${key.kind.prefix()}${flat.source_type_name(key.type_id)}`'
+			}
+		} else if key.kind.prefix() + key.key in prepared.reads {
+			return 'the program writes `${key.kind.prefix()}${key.key}`'
 		}
 	}
 	return ''
@@ -23659,10 +23715,12 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				continue
 			}
 			if base.kind == .ident {
-				index.read('e:', base.value)
-				if enum_fields := index.enum_fields[base.value] {
-					if selector.value in enum_fields {
-						selectors[int(selector_id)] = true
+				if type_id := index.type_name_id(base.value) {
+					index.read_type(.enum_fields, type_id)
+					if enum_fields := index.enum_fields[type_id] {
+						if selector.value in enum_fields {
+							selectors[int(selector_id)] = true
+						}
 					}
 				}
 				if !local_names[base.value] {
@@ -23731,12 +23789,13 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			}
 			.type_decl {
 				if node.value.len > 0 && node.typ != 0 {
+					type_id := flat.source_type_id(node.value)
 					index.write(ImplicitIndexOp{
-						kind:  .alias
-						key:   node.value
-						value: node.typ
+						kind:    .alias
+						type_id: type_id
+						value:   node.typ
 					})
-					index.aliases.set_id(node.value, node.typ)
+					index.aliases.set_id(type_id, node.typ)
 				}
 			}
 			.struct_decl {
@@ -23748,12 +23807,13 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 					}
 				}
 				if declared.ids.len > 0 {
+					type_id := flat.source_type_id(node.value)
 					index.write(ImplicitIndexOp{
-						kind:   .fields
-						key:    node.value
-						fields: declared.clone()
+						kind:    .fields
+						type_id: type_id
+						fields:  declared.clone()
 					})
-					index.fields[node.value] = declared.move()
+					index.fields[type_id] = declared.move()
 				}
 			}
 			.enum_decl {
@@ -23765,12 +23825,13 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 					}
 				}
 				if declared.len > 0 {
+					type_id := flat.source_type_id(node.value)
 					index.write(ImplicitIndexOp{
 						kind:        .enum_fields
-						key:         node.value
+						type_id:     type_id
 						enum_fields: declared.clone()
 					})
-					index.enum_fields[node.value] = declared.move()
+					index.enum_fields[type_id] = declared.move()
 				}
 			}
 			.fn_decl, .c_fn_decl {
@@ -23846,10 +23907,12 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 			if typ_source_id := index.globals.type_id(node.value_text()) {
 				return typ_source_id
 			}
-			index.read('f:', node.value_text())
-			index.read('e:', node.value_text())
-			if node.value_text() in index.fields || node.value_text() in index.enum_fields {
-				return node.source_value_id()
+			if type_id := index.type_name_id(node.value_text()) {
+				index.read_type(.fields, type_id)
+				index.read_type(.enum_fields, type_id)
+				if type_id in index.fields || type_id in index.enum_fields {
+					return type_id
+				}
 			}
 			return u32(0)
 		}
@@ -24033,9 +24096,11 @@ fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings flat.TypeTextB
 			}
 			cond := a.child_node(branch, 0)
 			if value.kind == .ident && value.value == subject.value && cond.kind == .ident {
-				index.read('f:', cond.value_text())
-				if cond.value_text() in index.fields {
-					branch_type = cond.source_value_id()
+				if type_id := index.type_name_id(cond.value_text()) {
+					index.read_type(.fields, type_id)
+					if type_id in index.fields {
+						branch_type = type_id
+					}
 				}
 			}
 		}
@@ -24127,9 +24192,8 @@ fn implicit_field_type(raw_type_id u32, field string, index ImplicitFieldScanInd
 			else { u32(0) }
 		}
 	}
-	name := flat.source_type_name(typ)
-	index.read('f:', name)
-	if declared := index.fields[name] {
+	index.read_type(.fields, typ)
+	if declared := index.fields[typ] {
 		if field_type := declared.type_id(field) {
 			return implicit_normalize_type(field_type, index)
 		}
@@ -24163,9 +24227,8 @@ fn implicit_normalize_type(raw_id u32, index ImplicitFieldScanIndex) u32 {
 				changed = true
 			}
 		}
-		typ := flat.source_type_name(typ_id)
-		index.read('a:', typ)
-		if target_id := index.aliases.type_id(typ) {
+		index.read_type(.alias, typ_id)
+		if target_id := index.aliases.type_id(typ_id) {
 			typ_id = implicit_trimmed_type_id(target_id)
 			changed = true
 		}
@@ -24774,10 +24837,11 @@ mut:
 	imports []string
 }
 
-// scan reads the file into memory of the C allocator, which outlives the
-// arenas of the pool tasks, and extracts its imports.
+// scan keeps source text in managed storage, so borrowed parser preloads stay
+// valid and the compilation's memory owner can reclaim it. These scan tasks do
+// not enter disposable parser arenas.
 fn (mut scan EagerSelfhostScanArgs) scan() {
-	scan.source = parser.read_batch_source(scan.path)
+	scan.source = os.read_file(scan.path) or { '' }
 	if scan.source.len > 0 {
 		scan.imports = source_imports_from(scan.source)
 	} else {

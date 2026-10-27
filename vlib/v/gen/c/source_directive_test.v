@@ -486,7 +486,7 @@ fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	assert !g.skip_builtin_struct('C.Local')
 
 	g.register_struct_decl_info('C.Alias', 'C.Alias', 'main', headerless_file, flat.Node{})
-	tc.c_typedef_structs['C.Alias'] = true
+	tc.c_typedef_structs[flat.source_type_id('C.Alias')] = true
 	assert g.skip_builtin_struct('C.Alias')
 }
 

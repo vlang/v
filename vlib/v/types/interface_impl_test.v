@@ -18,8 +18,8 @@ fn test_interface_fixed_array_callback_lengths_resolve_constants() {
 fn test_empty_interface_impl_names_deduplicate_builtin_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases.set_id('byte', flat.source_type_u8)
-	tc.type_aliases.set_id('builtin.byte', flat.source_type_u8)
+	tc.type_aliases.set_id(flat.source_type_id('byte'), flat.source_type_u8)
+	tc.type_aliases.set_id(flat.source_type_id('builtin.byte'), flat.source_type_u8)
 
 	impls := flat.TypeTextList{ ids: tc.interface_impl_names(flat.source_type_id('Any')) }.names()
 	assert impls.filter(it == 'byte').len == 1
@@ -29,7 +29,7 @@ fn test_empty_interface_impl_names_deduplicate_builtin_aliases() {
 fn test_empty_interface_impl_names_include_enums() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.enum_names['Color'] = true
+	tc.enum_names[flat.source_type_id('Color')] = true
 
 	impls := flat.TypeTextList{ ids: tc.interface_impl_names(flat.source_type_id('Any')) }.names()
 	assert 'Color' in impls
@@ -41,7 +41,7 @@ fn test_interface_impl_cache_is_explicitly_invalidated_after_type_table_growth()
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	assert 'LateType' !in flat.TypeTextList{ ids: tc.interface_impl_names(flat.source_type_id('Any')) }.names()
-	tc.structs['LateType'] = []StructField{}
+	tc.structs[flat.source_type_id('LateType')] = []StructField{}
 	tc.invalidate_short_type_name_index()
 	tc.clear_interface_impl_cache()
 	assert 'LateType' in flat.TypeTextList{ ids: tc.interface_impl_names(flat.source_type_id('Any')) }.names()
@@ -50,14 +50,14 @@ fn test_interface_impl_cache_is_explicitly_invalidated_after_type_table_growth()
 fn test_prepared_interface_indexes_do_not_stale_late_implementers() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.interface_names['Any'] = true
+	tc.interface_names[flat.source_type_id('Any')] = true
 	tc.prepare_interface_query_indexes()
 	pre_transform := flat.TypeTextList{
 		ids: tc.pre_transform_interface_impl_names(flat.source_type_id('Any')) or {
 			panic('missing prepared interface implementer index')
 		}
 	}.names()
-	tc.structs['LateType'] = []StructField{}
+	tc.structs[flat.source_type_id('LateType')] = []StructField{}
 	tc.freeze_pre_transform_interface_impl_names()
 	assert 'LateType' !in pre_transform
 	assert 'LateType' in flat.TypeTextList{ ids: tc.interface_impl_names(flat.source_type_id('Any')) }.names()
@@ -81,14 +81,14 @@ fn test_stable_interface_type_ids_preserve_existing_ids_after_late_collisions() 
 fn test_codegen_fork_keeps_frozen_interface_ids_after_late_collision() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.interface_names['Any'] = true
-	tc.structs['Twvlzleh'] = []StructField{}
+	tc.interface_names[flat.source_type_id('Any')] = true
+	tc.structs[flat.source_type_id('Twvlzleh')] = []StructField{}
 	tc.prepare_interface_query_indexes()
 	tc.freeze_pre_transform_interface_impl_names()
 	before := tc.interface_type_ids(flat.source_type_id('Any'))
 
 	// The late name sorts first, but must not take the frozen type's ID.
-	tc.structs['Tnndxrxb'] = []StructField{}
+	tc.structs[flat.source_type_id('Tnndxrxb')] = []StructField{}
 	tc.invalidate_short_type_name_index()
 	tc.clear_interface_impl_cache()
 	expected := tc.interface_type_ids(flat.source_type_id('Any'))
@@ -100,19 +100,19 @@ fn test_codegen_fork_keeps_frozen_interface_ids_after_late_collision() {
 }
 
 fn test_short_type_name_ambiguity_remains_sticky() {
-	mut index := flat.TypeTextBindings{}
-	index_short_type_name('first.Event', mut index)
-	index_short_type_name('second.Event', mut index)
-	index_short_type_name('third.Event', mut index)
-	assert index.contains('Event')
-	assert index.value('Event') == ''
+	mut index := flat.SourceTypeBindings{}
+	index_short_type_name(flat.source_type_id('first.Event'), mut index)
+	index_short_type_name(flat.source_type_id('second.Event'), mut index)
+	index_short_type_name(flat.source_type_id('third.Event'), mut index)
+	assert index.contains(flat.source_type_id('Event'))
+	assert index.value_id(flat.source_type_id('Event')) == 0
 }
 
 fn test_interface_concrete_method_keys_include_dispatch_methods() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.interface_names['orm.TransactionalConnection'] = true
-	tc.interface_abstract_methods['orm.TransactionalConnection'] = ['select']
+	tc.interface_names[flat.source_type_id('orm.TransactionalConnection')] = true
+	tc.interface_abstract_methods[flat.source_type_id('orm.TransactionalConnection')] = ['select']
 
 	keys := tc.interface_concrete_method_keys()
 	assert 'orm.TransactionalConnection.select' in keys
@@ -121,7 +121,7 @@ fn test_interface_concrete_method_keys_include_dispatch_methods() {
 fn test_generic_interface_signature_substitutes_named_return_types() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.interface_generic_params['BoxedValue'] = ['T']
+	tc.interface_generic_params[flat.source_type_id('BoxedValue')] = ['T']
 	tc.fn_param_types['BoxedValue.get'] = [
 		Type(Interface{
 			name_id: flat.source_type_id('BoxedValue[T]')
@@ -151,10 +151,10 @@ fn test_generic_interface_signature_substitutes_named_return_types() {
 fn test_interface_metadata_name_keeps_same_named_structs_out_of_interfaces() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.interface_names['io.Reader'] = true
-	tc.structs['csv.Reader'] = []StructField{}
-	tc.enum_names['colors.Reader'] = true
-	tc.sum_types.set('nodes.Reader', ['nodes.A', 'nodes.B'])
+	tc.interface_names[flat.source_type_id('io.Reader')] = true
+	tc.structs[flat.source_type_id('csv.Reader')] = []StructField{}
+	tc.enum_names[flat.source_type_id('colors.Reader')] = true
+	tc.sum_types.set(flat.source_type_id('nodes.Reader'), ['nodes.A', 'nodes.B'])
 	assert flat.source_type_name(tc.interface_metadata_name(flat.source_type_id('io.Reader'))) == 'io.Reader'
 	// https://github.com/vlang/v/issues/28834
 	assert flat.source_type_name(tc.interface_metadata_name(flat.source_type_id('csv.Reader'))) == 'csv.Reader'
@@ -169,14 +169,14 @@ fn test_interface_metadata_name_keeps_same_named_structs_out_of_interfaces() {
 fn test_interface_metadata_name_keeps_composite_types_out_of_interfaces() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.interface_names['baz.MyData'] = true
-	tc.structs['bar.MyData'] = []StructField{}
+	tc.interface_names[flat.source_type_id('baz.MyData')] = true
+	tc.structs[flat.source_type_id('bar.MyData')] = []StructField{}
 	// https://github.com/vlang/v/issues/28952
 	// The text after the last `.` of an array, option, pointer or function type is
 	// its element type, not the name of a same-named interface in another module.
 	for name in ['[]bar.MyData', '?bar.MyData', '&bar.MyData', '[2]bar.MyData', '[][]bar.MyData',
 		'?[]bar.MyData', '[]baz.MyData', 'map[string]bar.MyData', 'fn (bar.MyData) bar.MyData'] {
-		assert flat.source_type_name(tc.interface_metadata_name(flat.source_type_id(name))) !in tc.interface_names, name
+		assert tc.interface_metadata_name(flat.source_type_id(name)) !in tc.interface_names, name
 	}
 	assert flat.source_type_name(tc.interface_metadata_name(flat.source_type_id('baz.MyData'))) == 'baz.MyData'
 }
@@ -187,7 +187,7 @@ fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
 	// requirements, but that must not turn plain values into error payloads.
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.enum_names['Foo'] = true
+	tc.enum_names[flat.source_type_id('Foo')] = true
 	assert !tc.type_compatible_with_ierror_payload(Type(Enum{
 		name_id: flat.source_type_id('Foo')
 	}))
@@ -195,7 +195,7 @@ fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
 	assert !tc.named_type_compatible_with_ierror(flat.source_type_id('Foo'))
 	// A module-local `IError` is not the builtin one, even when it is the only
 	// interface with that short name.
-	tc.interface_names['pkg.IError'] = true
+	tc.interface_names[flat.source_type_id('pkg.IError')] = true
 	assert !tc.type_compatible_with_ierror_payload(Type(Enum{
 		name_id: flat.source_type_id('Foo')
 	}))
@@ -206,20 +206,20 @@ fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
 fn test_prepared_interface_requirements_keep_exact_source_spelling_keys() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.interface_names['pkg.Parent'] = true
-	tc.interface_names['pkg.Contract'] = true
+	tc.interface_names[flat.source_type_id('pkg.Parent')] = true
+	tc.interface_names[flat.source_type_id('pkg.Contract')] = true
 	// Preparation publishes both the source table spelling and its resolved
 	// metadata name; the concrete application remains an exact additional key.
-	tc.interface_names['pkg.Contract[int]'] = true
-	tc.interface_generic_params['pkg.Contract'] = ['T']
-	tc.interface_embeds.set('pkg.Contract', ['pkg.Parent'])
-	tc.interface_abstract_methods['pkg.Parent'] = ['parent']
-	tc.interface_abstract_methods['pkg.Contract'] = ['required']
+	tc.interface_names[flat.source_type_id('pkg.Contract[int]')] = true
+	tc.interface_generic_params[flat.source_type_id('pkg.Contract')] = ['T']
+	tc.interface_embeds.set(flat.source_type_id('pkg.Contract'), ['pkg.Parent'])
+	tc.interface_abstract_methods[flat.source_type_id('pkg.Parent')] = ['parent']
+	tc.interface_abstract_methods[flat.source_type_id('pkg.Contract')] = ['required']
 	tc.fn_ret_types['pkg.Parent.parent'] = Type(int_)
 	tc.fn_ret_types['pkg.Contract[T].required'] = Type(int_)
 	tc.fn_ret_types['pkg.Contract[T].defaulted'] = Type(int_)
-	tc.interface_fields['pkg.Parent'] = [StructField{ name: 'parent_field', typ: Type(int_) }]
-	tc.interface_fields['pkg.Contract'] = [StructField{ name: 'own_field', typ: Type(int_) }]
+	tc.interface_fields[flat.source_type_id('pkg.Parent')] = [StructField{ name: 'parent_field', typ: Type(int_) }]
+	tc.interface_fields[flat.source_type_id('pkg.Contract')] = [StructField{ name: 'own_field', typ: Type(int_) }]
 	queries := flat.TypeTextList.from_names(['pkg.Parent', 'pkg.Contract', 'pkg.Contract[int]',
 		'pkg.Contract[string]', '&pkg.Contract', '&pkg.Contract[int]', '[]pkg.Contract', '',
 		'unknown.Contract']).ids
@@ -254,7 +254,7 @@ fn test_prepared_interface_requirements_keep_exact_source_spelling_keys() {
 	}
 	// Rebuilding replaces the published maps; prior worker views retain the
 	// immutable snapshot instead of sharing the new index under construction.
-	tc.interface_fields['pkg.Contract'] = [StructField{ name: 'replacement', typ: Type(int_) }]
+	tc.interface_fields[flat.source_type_id('pkg.Contract')] = [StructField{ name: 'replacement', typ: Type(int_) }]
 	tc.prepare_interface_requirement_indexes()
 	assert tc.interface_field_list(application_id).map(it.name) == ['parent_field', 'replacement']
 	assert worker.interface_field_list(application_id).map(it.name) == ['parent_field', 'own_field']

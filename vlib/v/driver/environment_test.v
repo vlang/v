@@ -737,13 +737,13 @@ fn test_scoped_type_metadata_preserves_generic_interface_parameters() {
 	}
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Store'] = true
+	tc.interface_names[flat.source_type_id('Store')] = true
 	tc.fn_ret_types['Store[T].get'] = types.Type(types.int_)
 	scope := prealloc_scope_begin_for_v3()
-	tc.interface_generic_params['Store'.clone()] = ['T'.clone()]
+	tc.interface_generic_params[flat.source_type_id('Store'.clone())] = ['T'.clone()]
 	prealloc_scope_leave_for_v3(scope)
 	promote_scoped_type_metadata(mut tc)
-	params := tc.interface_generic_params['Store']
+	params := tc.interface_generic_params[flat.source_type_id('Store')]
 	assert !scoped_value_owned(scope, params.data)
 	assert !scoped_value_owned(scope, params[0].str)
 	prealloc_scope_free_for_v3(scope)

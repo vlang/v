@@ -167,7 +167,7 @@ fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type,
 		}
 	}
 	mut expanding := false
-	for variant_source_id in tc.sum_types.type_ids(flat.source_type_name(base)) or { []u32{} } {
+	for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
 		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.source_type_id(), variant_source_id))
 		inner := unalias_type(concrete)
 		if inner is SumType {
@@ -451,7 +451,7 @@ fn (tc &TypeChecker) generic_type_decl(name_id u32) ?flat.Node {
 		name_id
 	}
 	for candidate in [qualified_id, name_id, main_base] {
-		if idx := tc.first_type_declaration_ids[flat.source_type_name(candidate)] {
+		if idx := tc.first_type_declaration_ids[candidate] {
 			node := tc.a.nodes[idx]
 			if node.kind in [.struct_decl, .interface_decl, .type_decl] {
 				return node
@@ -2457,7 +2457,7 @@ fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool
 	if clean is Channel && member in ['len', 'cap', 'closed'] {
 		return true
 	}
-	if builtin_id != 0 && (tc.structs[flat.source_type_name(builtin_id)] or { []StructField{} }).any(it.name == member) {
+	if builtin_id != 0 && (tc.structs[builtin_id] or { []StructField{} }).any(it.name == member) {
 		return true
 	}
 	return name_id != 0 && tc.struct_field_type(name_id, member) != none

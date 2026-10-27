@@ -194,7 +194,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 	return FastcComptimeBlock{}
 }
 
-fn fastc_collect_selected_comptime_function_signatures(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn fastc_collect_selected_comptime_function_signatures(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[u32]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -384,17 +384,18 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	if g.tok != .name {
 		return g.unsupported('`\$for` iterable member')
 	}
-	mut type_key := ''
+	mut c_type := ''
 	mut member := g.lit
 	if member in ['fields', 'values'] {
-		type_key = g.resolve_declared_type_key(first) or {
+		type_key := g.resolve_declared_type_key(first) or {
 			return g.unsupported('`\$for` over unknown type `${first}`')
 		}
+		c_type = fastc_c_declared_type_name(flat.source_type_name(type_key))
 		g.next()
 	} else {
 		// Qualified `mod.Type.fields` / `mod.Type.values`.
 		module_name := g.imports[first] or { first }
-		type_key = fastc_type_key(module_name, g.lit)
+		c_type = fastc_c_declared_type_name(fastc_type_key(module_name, g.lit))
 		g.next()
 		g.expect(.dot)!
 		if g.tok != .name || g.lit !in ['fields', 'values'] {
@@ -404,7 +405,6 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		g.next()
 	}
 	g.expect(.lcbr)!
-	c_type := fastc_c_declared_type_name(type_key)
 	// Capture the body source (from the first body token up to the matching `}`).
 	body_start := g.s.pos
 	mut depth := 0
@@ -791,7 +791,7 @@ fn (g &Parser) resolve_type_name_c(name string) string {
 		return name
 	}
 	key := g.resolve_declared_type_key(name) or { return name }
-	return fastc_c_declared_type_name(key)
+	return fastc_c_declared_type_name(flat.source_type_name(key))
 }
 
 fn (mut g Parser) parse_comptime_or() !bool {
@@ -989,7 +989,7 @@ fn (g &Parser) comptime_named_type(name string) u32 {
 	if local := g.locals[name] { return local.typ }
 	if primitive := fastc_primitive_c_type(name) { return flat.source_type_id(primitive) }
 	if key := g.resolve_declared_type_key(name) {
-		return flat.source_type_id(fastc_c_declared_type_name(key))
+		return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(key)))
 	}
 	if name.len <= 3 && name[0].is_capital() { return flat.source_type_voidptr }
 	return flat.source_type_id(name)
@@ -1025,16 +1025,16 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 			left in [flat.source_type_f32, flat.source_type_f64]
 		}
 		'struct' {
-			flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .struct_
+			left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
 		}
 		'enum' {
-			flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .enum_
+			left_key in g.declared_kinds && g.declared_kinds[left_key] == .enum_
 		}
 		'interface' {
-			flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .interface_
+			left_key in g.declared_kinds && g.declared_kinds[left_key] == .interface_
 		}
 		'alias' {
-			flat.source_type_name(original_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(original_key)] == .alias_
+			original_key in g.declared_kinds && g.declared_kinds[original_key] == .alias_
 		}
 		else {
 			false

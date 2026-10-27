@@ -709,7 +709,6 @@ fn (mut t Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStrin
 	}
 	enum_id := t.a.child(&fn_node, 0)
 	enum_type_source_id := t.enum_type_from_node(enum_id) or { return none }
-	enum_type := flat.source_type_name(enum_type_source_id)
 	arg_id := t.a.child(&expr, 1)
 	arg_node := t.a.nodes[int(arg_id)]
 	mut arg_type := if arg_node.kind in [.string_literal, .string_interp] {
@@ -723,7 +722,7 @@ fn (mut t Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStrin
 	if fn_node.value == 'from' && arg_type != flat.source_type_string {
 		return none
 	}
-	fields := t.enum_types[enum_type] or { return none }
+	fields := t.enum_types[enum_type_source_id] or { return none }
 	if fields.len == 0 {
 		return none
 	}
@@ -785,18 +784,19 @@ fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?u32 {
 
 fn (t &Transformer) enum_type_from_name(name_id u32) ?u32 {
 	name := flat.source_type_name(name_id)
-	if name in t.enum_types { return name_id }
+	if name_id in t.enum_types { return name_id }
 	mut qname_id := name_id
 	dotted := flat.source_type_shape(name_id).has(.dotted)
 	if !dotted && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		qname_id = flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), name_id)
-		if flat.source_type_name(qname_id) in t.enum_types { return qname_id }
+		if qname_id in t.enum_types { return qname_id }
 	}
 	if !isnil(t.tc) {
 		if !dotted && t.cur_file.len > 0 {
 			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or { []string{} } {
-				if candidate in t.enum_types { return flat.source_type_id(candidate) }
-				if target := t.enum_alias_target(flat.source_type_id(candidate)) { return target }
+				candidate_id := flat.source_type_id(candidate)
+				if candidate_id in t.enum_types { return candidate_id }
+				if target := t.enum_alias_target(candidate_id) { return target }
 			}
 		}
 		if target := t.enum_alias_target(name_id) { return target }
@@ -805,8 +805,7 @@ fn (t &Transformer) enum_type_from_name(name_id u32) ?u32 {
 		}
 	}
 	mut found := u32(0)
-	for key, _ in t.enum_types {
-		key_id := flat.source_type_id(key)
+	for key_id, _ in t.enum_types {
 		if flat.source_type_syntax(key_id).unqualified() != name_id { continue }
 		if found != 0 && found != key_id { return none }
 		found = key_id
@@ -818,9 +817,9 @@ fn (t &Transformer) enum_type_from_name(name_id u32) ?u32 {
 fn (t &Transformer) enum_alias_target(name_id u32) ?u32 {
 	mut current := name_id
 	for _ in 0 .. 16 {
-		target := t.tc.type_aliases.type_id(flat.source_type_name(current)) or { return none }
+		target := t.tc.type_aliases.type_id(current) or { return none }
 		if target == current { return none }
-		if flat.source_type_name(target) in t.enum_types { return target }
+		if target in t.enum_types { return target }
 		current = target
 	}
 	return none
@@ -1360,10 +1359,10 @@ fn (t &Transformer) qualify_or_expr_generic_base(base_id u32) u32 {
 	if flat.source_type_shape(base_id).has(.dotted) { return base_id }
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		local_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base_id)
-		if t.type_authority_has(flat.source_type_name(local_id)) { return local_id }
+		if t.type_authority_has(local_id) { return local_id }
 	}
 	if !t.bare_struct_name_is_local_to_current_module(base_id) {
-		if qualified := t.qualified_types.type_id(flat.source_type_name(base_id)) {
+		if qualified := t.qualified_types.type_id(base_id) {
 			return qualified
 		}
 	}
@@ -1443,19 +1442,19 @@ fn (t &Transformer) qualify_optional_type(typ_id u32) u32 {
 // qualify_type supports qualify type handling for Transformer.
 fn (t &Transformer) qualify_type(name_id u32) u32 {
 	if flat.source_type_shape(name_id).has(.dotted) || name_id == 0 { return name_id }
-	name := flat.source_type_name(name_id)
+	name := name_id
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		qname_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), name_id)
-		qname := flat.source_type_name(qname_id)
+		qname := qname_id
 		if t.sum_types.contains(qname) || qname in t.structs || qname in t.enum_types
-			|| (!isnil(t.tc) && (t.tc.type_aliases.contains(qname) || qname in t.tc.interface_names)) {
+			|| (!isnil(t.tc) && (t.tc.type_aliases.contains(qname_id) || qname_id in t.tc.interface_names)) {
 			return qname_id
 		}
 	}
 	// A bare type declared by main wins over an imported homonym. The global
 	// short-name index is intentionally lossy and may point at the import.
 	if name in t.structs || t.sum_types.contains(name) || name in t.enum_types { return name_id }
-	if !isnil(t.tc) && (t.tc.type_aliases.contains(name) || name in t.tc.interface_names) {
+	if !isnil(t.tc) && (t.tc.type_aliases.contains(name_id) || name_id in t.tc.interface_names) {
 		return name_id
 	}
 	if qualified := t.qualified_types.type_id(name) { return qualified }
@@ -1549,7 +1548,7 @@ fn (mut t Transformer) zero_value_for_type(typ_id u32) flat.NodeId {
 		flat.source_type_char] {
 		return t.make_int_literal(0)
 	}
-	if flat.source_type_name(clean) in t.enum_types {
+	if clean in t.enum_types {
 		// An enum defaults to its first member, for example for a missing map key.
 		if default_value := t.enum_nonzero_default_value(clean) {
 			return default_value
@@ -2178,7 +2177,7 @@ fn (t &Transformer) shared_alias_storage_type(typ_id u32) u32 {
 		return typ_id
 	}
 	for candidate in [clean, t.qualify_type(clean)] {
-		if target := t.tc.type_aliases.type_id(flat.source_type_name(candidate)) {
+		if target := t.tc.type_aliases.type_id(candidate) {
 			inner := t.shared_alias_inner_type(target) or { continue }
 			return flat.source_type_composition_one(.pointer, inner)
 		}
@@ -2186,7 +2185,7 @@ fn (t &Transformer) shared_alias_storage_type(typ_id u32) u32 {
 	if !flat.source_type_shape(clean).has(.dotted) {
 		mut found := u32(0)
 		// A bare spelling can match an alias declaration's short name.
-		for alias in t.type_aliases_with_short_name(flat.source_type_name(clean)) {
+		for alias in t.type_aliases_with_short_name(clean) {
 			inner := t.shared_alias_inner_type(alias.target) or { continue }
 			if found != 0 && found != inner {
 				return typ_id

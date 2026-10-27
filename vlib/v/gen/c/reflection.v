@@ -420,7 +420,7 @@ fn (g &FlatGen) reflection_sum_type_info(variants []u32, module_name string) str
 }
 
 fn (g &FlatGen) reflection_interface_methods(name string, module_name string) string {
-	methods := g.tc.interface_abstract_methods[name] or { []string{} }
+	methods := g.tc.interface_abstract_methods[flat.source_type_id(name)] or { []string{} }
 	if methods.len == 0 {
 		return reflection_empty_array('reflection__Function')
 	}
@@ -432,8 +432,9 @@ fn (g &FlatGen) reflection_interface_methods(name string, module_name string) st
 }
 
 fn (g &FlatGen) reflection_interface_info(name string, module_name string) string {
+	name_id := flat.source_type_id(name)
 	short_name := reflection_short_type_name(name)
-	value := '(reflection__Interface){.name = _S("${reflection_c_string(short_name)}"), .methods = ${g.reflection_interface_methods(name, module_name)}, .fields = ${reflection_empty_array('reflection__StructField')}, .is_generic = ${name in g.tc.interface_generic_params}}'
+	value := '(reflection__Interface){.name = _S("${reflection_c_string(short_name)}"), .methods = ${g.reflection_interface_methods(name, module_name)}, .fields = ${reflection_empty_array('reflection__StructField')}, .is_generic = ${name_id in g.tc.interface_generic_params}}'
 	return '(reflection__TypeInfo){.typ = 6, .reflection__Interface = ${value}}'
 }
 
@@ -571,7 +572,7 @@ fn (mut g FlatGen) gen_reflection_data() {
 	}
 
 	mut names := g.struct_decl_infos.keys()
-	names.sort()
+	names.sort_with_compare(compare_reflection_source_type_ids)
 	for name in names {
 		info := g.struct_decl_infos[name]
 		if types.builtin_type_index(info.full_name) > 0 {
@@ -583,39 +584,43 @@ fn (mut g FlatGen) gen_reflection_data() {
 	}
 
 	mut enum_names := g.tc.enum_names.keys()
-	enum_names.sort()
-	for name in enum_names {
+	enum_names.sort_with_compare(compare_reflection_source_type_ids)
+	for registry_name_id in enum_names {
+		name := flat.source_type_name(registry_name_id)
 		module_name := g.reflection_decl_module(name, .enum_decl)
-		g.gen_reflection_type(flat.source_type_id(name), module_name, 33, reflection_enum_info(g.tc.enum_fields[name] or {
+		g.gen_reflection_type(registry_name_id, module_name, 33, reflection_enum_info(g.tc.enum_fields[registry_name_id] or {
 			[]string{}
-		}, name in g.tc.flag_enums), g.reflection_methods(reflection_source_type_key(flat.source_type_id(name), module_name)),
+		}, registry_name_id in g.tc.flag_enums), g.reflection_methods(reflection_source_type_key(registry_name_id, module_name)),
 			mut seen_ids)
 	}
 
 	mut alias_names := g.tc.type_aliases.keys()
-	alias_names.sort()
-	for name in alias_names {
-		raw_module_name := g.tc.type_alias_modules[name] or {
+	alias_names.sort_with_compare(compare_reflection_source_type_ids)
+	for registry_name_id in alias_names {
+		name := flat.source_type_name(registry_name_id)
+		raw_module_name := g.tc.type_alias_modules[registry_name_id] or {
 			if name.contains('.') { name.all_before_last('.') } else { 'main' }
 		}
 		module_name := if raw_module_name.len > 0 { raw_module_name } else { 'main' }
-		g.gen_reflection_type(flat.source_type_id(name), module_name, 32, g.reflection_alias_info(g.tc.type_aliases.value_id(name),
-			module_name), g.reflection_methods(reflection_source_type_key(flat.source_type_id(name), module_name)), mut seen_ids)
+		g.gen_reflection_type(registry_name_id, module_name, 32, g.reflection_alias_info(g.tc.type_aliases.value_id(registry_name_id),
+			module_name), g.reflection_methods(reflection_source_type_key(registry_name_id, module_name)), mut seen_ids)
 	}
 
 	mut sum_names := g.tc.sum_types.keys()
-	sum_names.sort()
-	for name in sum_names {
+	sum_names.sort_with_compare(compare_reflection_source_type_ids)
+	for registry_name_id in sum_names {
+		name := flat.source_type_name(registry_name_id)
 		module_name := g.reflection_decl_module(name, .type_decl)
-		g.gen_reflection_type(flat.source_type_id(name), module_name, 31, g.reflection_sum_type_info(g.tc.sum_types.type_ids(name) or { []u32{} }, module_name), g.reflection_methods(reflection_source_type_key(flat.source_type_id(name), module_name)), mut seen_ids)
+		g.gen_reflection_type(registry_name_id, module_name, 31, g.reflection_sum_type_info(g.tc.sum_types.type_ids(registry_name_id) or { []u32{} }, module_name), g.reflection_methods(reflection_source_type_key(registry_name_id, module_name)), mut seen_ids)
 	}
 
 	mut interface_names := g.tc.interface_names.keys()
-	interface_names.sort()
-	for name in interface_names {
+	interface_names.sort_with_compare(compare_reflection_source_type_ids)
+	for registry_name_id in interface_names {
+		name := flat.source_type_name(registry_name_id)
 		module_name := g.reflection_decl_module(name, .interface_decl)
 		methods := g.reflection_interface_methods(name, module_name)
-		g.gen_reflection_type(flat.source_type_id(name), module_name, 35, g.reflection_interface_info(name,
+		g.gen_reflection_type(registry_name_id, module_name, 35, g.reflection_interface_info(name,
 			module_name), methods, mut seen_ids)
 	}
 
@@ -642,11 +647,12 @@ fn (mut g FlatGen) gen_reflection_data() {
 			}
 		}
 	}
-	for name, target_id in g.tc.type_aliases.ids {
-		module_name := g.tc.type_alias_modules[name] or { 'main' }
+	for registry_name_id, target_id in g.tc.type_aliases.ids {
+		module_name := g.tc.type_alias_modules[registry_name_id] or { 'main' }
 		reflection_collect_composite_type(target_id, module_name, mut composites)
 	}
-	for name, variants_id in g.tc.sum_types.ids {
+	for registry_name_id, variants_id in g.tc.sum_types.ids {
+		name := flat.source_type_name(registry_name_id)
 		module_name := g.reflection_decl_module(name, .type_decl)
 		for variant_id in variants_id {
 			reflection_collect_composite_type(variant_id, module_name, mut composites)

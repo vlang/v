@@ -1158,7 +1158,7 @@ fn (mut g Parser) read_match_type_key() ?string {
 		return fastc_type_key(module_name, type_name)
 	}
 	if key := g.resolve_declared_type_key(first) {
-		return key
+		return flat.source_type_name(key)
 	}
 	// A primitive variant (`int`, `bool`, ...) is not a declared type; its own
 	// spelling is the type-id suffix and the smart-cast C type.
@@ -1304,7 +1304,7 @@ fn (mut g Parser) parse_return() !bool {
 			}
 		}
 	}
-	if g.selfhost && actual_type == 0 && g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name && g.declared_kinds[flat.source_type_name(g.semantic_type_key(contextual_return_type))] == .enum_ {
+	if g.selfhost && actual_type == 0 && g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name && g.declared_kinds[g.semantic_type_key(contextual_return_type)] == .enum_ {
 		expression = '${flat.source_type_name(fastc_trim_pointer_type(contextual_return_type))}__${g.last_expression[1].lit}'
 		actual_type = contextual_return_type
 	}
@@ -1341,16 +1341,16 @@ fn (mut g Parser) parse_return() !bool {
 		expression = g.interface_value_expression(g.return_type, actual_type, expression)
 		actual_type = g.return_type
 	}
-	if g.selfhost && g.return_type !in [fastc_type_option, fastc_type_result, fastc_type_multi_return] && g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.return_type))] != .interface_ && !fastc_types_share_lowering_representation(actual_type, g.return_type) && !g.selfhost_types_share_lowering_representation(actual_type, g.return_type) {
+	if g.selfhost && g.return_type !in [fastc_type_option, fastc_type_result, fastc_type_multi_return] && g.declared_kinds[g.semantic_type_key(g.return_type)] != .interface_ && !fastc_types_share_lowering_representation(actual_type, g.return_type) && !g.selfhost_types_share_lowering_representation(actual_type, g.return_type) {
 		actual_type = g.return_type
 	}
-	if g.selfhost && g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.return_type))] == .interface_ && g.declared_kinds[flat.source_type_name(g.semantic_type_key(actual_type))] != .interface_ {
+	if g.selfhost && g.declared_kinds[g.semantic_type_key(g.return_type)] == .interface_ && g.declared_kinds[g.semantic_type_key(actual_type)] != .interface_ {
 		expression = g.interface_value_expression(g.return_type, actual_type, expression)
 		actual_type = g.return_type
 	}
 	if g.return_type == fastc_type_option && fastc_trim_pointer_type(actual_type) == fastc_type_ierror
 		&& fastc_trim_pointer_type(g.option_return_type) != fastc_type_ierror
-		&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] != .interface_
+		&& g.declared_kinds[g.semantic_type_key(g.option_return_type)] != .interface_
 		&& !g.should_box_variant(g.option_return_type, actual_type) {
 		return g.unsupported('an Option cannot carry an error as its failure state')
 	}
@@ -1375,7 +1375,7 @@ fn (mut g Parser) parse_return() !bool {
 			// type, so it is boxed as that type, which converts the value.
 			payload_type = g.option_return_type
 		}
-		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || ((g.option_return_type == fastc_type_ierror || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
+		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || ((g.option_return_type == fastc_type_ierror || g.declared_kinds[g.semantic_type_key(g.option_return_type)] == .interface_) && g.declared_kinds[g.semantic_type_key(payload_type)] != .interface_)) {
 			expression = g.interface_value_expression(g.option_return_type, payload_type, expression)
 			payload_type = g.option_return_type
 		}
@@ -1398,7 +1398,7 @@ fn (g &Parser) returns_error_value(actual_type u32) bool {
 		return false
 	}
 	value_type := fastc_trim_pointer_type(value_layout)
-	if value_type == 0 || g.declared_kinds[flat.source_type_name(g.semantic_type_key(value_type))] != .struct_ {
+	if value_type == 0 || g.declared_kinds[g.semantic_type_key(value_type)] != .struct_ {
 		return false
 	}
 	payload_type := fastc_trim_pointer_type(payload_layout)
@@ -1417,7 +1417,7 @@ fn (g &Parser) returns_error_value(actual_type u32) bool {
 // IError implementer is classified as a failure instead of a successful payload.
 fn (g &Parser) result_payload_interface_accepts(payload_type u32, value_type u32) bool {
 	payload_key := g.semantic_type_key(payload_type)
-	if g.declared_kinds[flat.source_type_name(payload_key)] != .interface_ {
+	if g.declared_kinds[payload_key] != .interface_ {
 		return false
 	}
 	prefix := flat.source_type_name(payload_key) + '.'
@@ -1480,8 +1480,8 @@ fn (g &Parser) interface_value_expression(interface_type_source_id u32, actual_t
 		return expression
 	}
 	actual_interface := fastc_trim_pointer_type(actual_layout)
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(interface_type_source_id))] == .interface_
-		&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(actual_interface))] == .interface_ {
+	if g.declared_kinds[g.semantic_type_key(interface_type_source_id)] == .interface_
+		&& g.declared_kinds[g.semantic_type_key(actual_interface)] == .interface_ {
 		value := if flat.source_type_query(actual_type_source_id).has(.c_pointer_suffix) {
 			'*(${expression})'
 		} else {
@@ -2771,7 +2771,7 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 	if tokens.len >= 4 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name && tokens[2].lit == 'from_string' && tokens[3].tok == .lpar {
 		if enum_key := g.resolve_declared_type_key(tokens[0].lit) {
 			if g.declared_kinds[enum_key] == .enum_ {
-				return flat.source_type_id(fastc_c_declared_type_name(enum_key))
+				return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(enum_key)))
 			}
 		}
 	}
@@ -3761,7 +3761,7 @@ fn (g &Parser) build_orm_insert(db_source string, value_source string, table_nam
 	type_key := g.resolve_declared_type_key(table_name) or {
 		return g.unsupported('ORM `sql`: unknown row type `${table_name}`')
 	}
-	c_type := fastc_c_declared_type_name(type_key)
+	c_type := fastc_c_declared_type_name(flat.source_type_name(type_key))
 	fields := g.struct_field_info[c_type]
 	if fields.len == 0 {
 		return g.unsupported('ORM `sql`: row type `${table_name}` has no fields')
@@ -3822,7 +3822,7 @@ fn (g &Parser) build_orm_create(db_source string, block_source string, trailing 
 	type_key := g.resolve_declared_type_key(table_name) or {
 		return g.unsupported('ORM `sql`: unknown row type `${table_name}`')
 	}
-	c_type := fastc_c_declared_type_name(type_key)
+	c_type := fastc_c_declared_type_name(flat.source_type_name(type_key))
 	fields := g.struct_field_info[c_type]
 	if fields.len == 0 {
 		return g.unsupported('ORM `sql`: row type `${table_name}` has no fields')
@@ -4014,7 +4014,7 @@ fn (g &Parser) build_orm_select_lowering(db_source string, block_source string, 
 	type_key := g.resolve_declared_type_key(table_name) or {
 		return g.unsupported('ORM `sql`: unknown row type `${table_name}`')
 	}
-	c_type := fastc_c_declared_type_name(type_key)
+	c_type := fastc_c_declared_type_name(flat.source_type_name(type_key))
 	fields := g.struct_field_info[c_type]
 	if fields.len == 0 {
 		return g.unsupported('ORM `sql`: row type `${table_name}` has no fields')

@@ -334,7 +334,7 @@ fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string
 	if previous == .dot {
 		if imported_module := g.imports[qualified_name_owner] {
 			type_key := fastc_type_key(imported_module, g.lit)
-			if type_key in g.declared_types && !g.declared_types[type_key] {
+			if fastc_source_type_key_exists(g.declared_types, type_key) && !fastc_source_type_key_value(g.declared_types, type_key) {
 				return g.unsupported('private type `${g.lit}` from imported module `${imported_module}`')
 			}
 			constant_key := fastc_constant_key(imported_module, g.lit)
@@ -452,7 +452,7 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 		return g.c_function_name_for_key(function_key)
 	}
 	if type_key := g.resolve_declared_type_key(name) {
-		return fastc_c_declared_type_name(type_key)
+		return fastc_c_declared_type_name(flat.source_type_name(type_key))
 	}
 	if primitive := fastc_primitive_c_type(name) {
 		return primitive
@@ -579,14 +579,15 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 	if owner_name.len == 0 || !owner_name[0].is_capital() {
 		return none
 	}
-	mut type_key := ''
+	mut owner_key := ''
 	if name_index >= 4 && tokens[name_index - 3].tok == .dot && tokens[name_index - 4].tok == .name {
 		module_name := g.imports[tokens[name_index - 4].lit] or { return none }
-		type_key = fastc_type_key(module_name, owner_name)
+		owner_key = fastc_type_key(module_name, owner_name)
 	} else {
-		type_key = g.resolve_declared_type_key(owner_name) or { return none }
+		type_key := g.resolve_declared_type_key(owner_name) or { return none }
+		owner_key = flat.source_type_name(type_key)
 	}
-	function_key := '${type_key}.${tokens[name_index].lit}'
+	function_key := '${owner_key}.${tokens[name_index].lit}'
 	return if function_key in g.functions { function_key } else { none }
 }
 
@@ -597,7 +598,7 @@ fn (g &Parser) local_is_pointer(name string) bool {
 
 fn (g &Parser) is_enum_type_name(name string) bool {
 	type_key := g.resolve_declared_type_key(name) or { return false }
-	return g.underlying_enum_type_key(flat.source_type_id(type_key)) != none
+	return g.underlying_enum_type_key(type_key) != none
 }
 
 fn (g &Parser) underlying_enum_type_key(type_key u32) ?u32 {
@@ -606,7 +607,7 @@ fn (g &Parser) underlying_enum_type_key(type_key u32) ?u32 {
 	}
 	resolved_type := g.underlying_alias_type(flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(type_key))))
 	resolved_key := g.semantic_type_key(resolved_type)
-	return if g.declared_kinds[flat.source_type_name(resolved_key)] == .enum_ {
+	return if g.declared_kinds[resolved_key] == .enum_ {
 		resolved_key
 	} else {
 		none
@@ -616,27 +617,27 @@ fn (g &Parser) underlying_enum_type_key(type_key u32) ?u32 {
 fn (g &Parser) flag_enum_type_key(c_type u32) ?string {
 	type_key := g.semantic_type_key(c_type)
 	enum_key := g.underlying_enum_type_key(type_key) or { return none }
-	return if g.enum_flags[flat.source_type_name(enum_key)] {
+	return if g.enum_flags[enum_key] {
 		flat.source_type_name(enum_key)
 	} else {
 		none
 	}
 }
 
-fn (g &Parser) enum_member_owner_type_key(tokens []FastcExpressionToken, owner_index int) ?string {
+fn (g &Parser) enum_member_owner_type_key(tokens []FastcExpressionToken, owner_index int) ?u32 {
 	if owner_index < 0 || owner_index + 2 >= tokens.len || tokens[owner_index].tok != .name || tokens[owner_index + 1].tok != .dot || tokens[owner_index + 2].tok != .name {
 		return none
 	}
-	mut type_key := ''
+	mut type_key := u32(0)
 	if owner_index >= 2 && tokens[owner_index - 1].tok == .dot && tokens[owner_index - 2].tok == .name {
 		imported_module := g.imports[tokens[owner_index - 2].lit] or { return none }
-		type_key = fastc_type_key(imported_module, tokens[owner_index].lit)
+		type_key = flat.source_type_existing_id(fastc_type_key(imported_module, tokens[owner_index].lit)) or { return none }
 	} else if owner_index > 0 && tokens[owner_index - 1].tok == .dot {
 		return none
 	} else {
 		type_key = g.resolve_declared_type_key(tokens[owner_index].lit) or { return none }
 	}
-	_ = g.underlying_enum_type_key(flat.source_type_id(type_key)) or { return none }
+	_ = g.underlying_enum_type_key(type_key) or { return none }
 	return type_key
 }
 
@@ -647,23 +648,23 @@ fn (g &Parser) render_enum_alias_member_references(tokens []FastcExpressionToken
 	mut rendered := source
 	for owner_index in 0 .. tokens.len - 2 {
 		type_key := g.enum_member_owner_type_key(tokens, owner_index) or { continue }
-		type_key_id := flat.source_type_id(type_key)
+		type_key_id := type_key
 		enum_type_key := g.underlying_enum_type_key(type_key_id) or { continue }
 		if enum_type_key == type_key_id {
 			continue
 		}
 		member := tokens[owner_index + 2].lit
-		alias_symbol := '${fastc_c_declared_type_name(type_key)}__${member}'
+		alias_symbol := '${fastc_c_declared_type_name(flat.source_type_name(type_key))}__${member}'
 		enum_symbol := '${fastc_c_declared_type_name(flat.source_type_name(enum_type_key))}__${member}'
 		rendered = rendered.replace(alias_symbol, enum_symbol)
 	}
 	return rendered
 }
 
-fn (g &Parser) declared_cast_type_key(tokens []FastcExpressionToken, name_index int) ?string {
+fn (g &Parser) declared_cast_type_key(tokens []FastcExpressionToken, name_index int) ?u32 {
 	if name_index >= 2 && tokens[name_index - 1].tok == .dot && tokens[name_index - 2].tok == .name {
 		module_name := g.imports[tokens[name_index - 2].lit] or { return none }
-		type_key := fastc_type_key(module_name, tokens[name_index].lit)
+		type_key := flat.source_type_existing_id(fastc_type_key(module_name, tokens[name_index].lit)) or { return none }
 		return if type_key in g.declared_types { type_key } else { none }
 	}
 	if name_index > 0 && tokens[name_index - 1].tok == .dot {
@@ -730,7 +731,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 					return g.unsupported('cast `${name}` with ${call_args.len} arguments')
 				}
 				if g.declared_kinds[type_key] == .interface_ {
-					g.validate_interface_cast_shape(type_key, call_args[0])!
+					g.validate_interface_cast_shape(flat.source_type_name(type_key), call_args[0])!
 				}
 				i = call_end + 1
 				continue
@@ -1014,7 +1015,7 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 			}
 		}
 	}
-	if g.selfhost && flat.source_type_name(actual_key) !in g.declared_kinds {
+	if g.selfhost && actual_key !in g.declared_kinds {
 		return
 	}
 	mut interface_field_keys := g.interface_fields.keys()
@@ -1034,7 +1035,7 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 }
 
 fn (g &Parser) interface_implementation_field(actual_type_source_id u32, actual_key string, field_name string) ?FastcInterfaceField {
-	if g.declared_kinds[actual_key] == .interface_ {
+	if fastc_declared_kind_value(g.declared_kinds, actual_key) == .interface_ {
 		return g.interface_fields['${actual_key}.${field_name}'] or { return none }
 	}
 	field := g.struct_field_metadata(actual_type_source_id, field_name) or { return none }
@@ -1184,7 +1185,7 @@ fn (g &Parser) struct_direct_member_type_uncached(receiver_type_id u32, field_na
 		return flat.source_type_int
 	}
 	interface_key := g.semantic_type_key(receiver_type_id)
-	if g.declared_kinds[flat.source_type_name(interface_key)] == .interface_ {
+	if g.declared_kinds[interface_key] == .interface_ {
 		if field := g.interface_fields['${flat.source_type_name(interface_key)}.${field_name}'] {
 			return field.typ
 		}

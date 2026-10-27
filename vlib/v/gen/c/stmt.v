@@ -1232,7 +1232,7 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 		// drop helper: only its concrete instantiations (`Printer[cli.Buffer]`)
 		// have emitted C types. `is_generic_struct` only matches the base decl
 		// name, so also reject names whose generic args still hold a placeholder.
-		if flat.source_type_query(name_id).has(.c_prefix) || name in g.tc.unions || g.is_generic_struct(name)
+		if flat.source_type_query(name_id).has(.c_prefix) || name_id in g.tc.unions || g.is_generic_struct(name)
 			|| g.type_contains_generic_placeholder(parsed)
 			|| g.type_name_contains_generic_placeholder(name_id) || g.skip_builtin_struct(name)
 			|| g.ownership_struct_destructor_method(name_id).len > 0 {
@@ -1330,7 +1330,7 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 		types.SumType {
 			sum_name_id := g.resolve_sum_name(typ.source_type_id())
 			names[sum_name_id] = true
-			for variant_source_id in g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} } {
+			for variant_source_id in g.tc.sum_types.type_ids(sum_name_id) or { []u32{} } {
 				resolved_variant := g.resolve_variant(sum_name_id, variant_source_id)
 				variant_type := unalias_type(g.tc.parse_canonical_type_cached(resolved_variant))
 				if variant_type is types.Pointer {
@@ -1410,7 +1410,7 @@ fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ &types.Type, ta
 		}
 		types.SumType {
 			sum_name_id := g.resolve_sum_name(typ.source_type_id())
-			for variant_source_id_2 in g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} } {
+			for variant_source_id_2 in g.tc.sum_types.type_ids(sum_name_id) or { []u32{} } {
 				resolved_variant := g.resolve_variant(sum_name_id, variant_source_id_2)
 				variant_type := unalias_type(g.tc.parse_type(resolved_variant))
 				if variant_type is types.Pointer {
@@ -1466,13 +1466,12 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 	helper_names.sort()
 	for helper_name in helper_names {
 		type_name_id := representatives[helper_name]
-		type_name := flat.source_type_name(type_name_id)
 		// Sums have no struct module entry. Derive their declaration context rather
 		// than inheriting the module left by parallel declaration generation.
-		g.tc.cur_module = g.tc.struct_modules[type_name] or {
+		g.tc.cur_module = g.tc.struct_modules[type_name_id] or {
 			module_from_source_type_name(flat.source_type_syntax(type_name_id).generic_base())
 		}
-		g.tc.cur_file = g.tc.struct_files[type_name] or { old_file }
+		g.tc.cur_file = g.tc.struct_files[type_name_id] or { old_file }
 		g.writeln('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(type_name_id)}* _value) {')
 		g.indent++
 		mut expanding := map[u64]bool{}
@@ -1768,7 +1767,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		}
 		types.SumType {
 			sum_name_id := g.resolve_sum_name(typ.source_type_id())
-			variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} }
+			variants := g.tc.sum_types.type_ids(sum_name_id) or { []u32{} }
 			g.writeln('switch ((${expr}).typ) {')
 			for variant in variants {
 				resolved_variant := g.resolve_variant(sum_name_id, variant)
@@ -2023,7 +2022,7 @@ fn (g &FlatGen) ownership_type_needs_drop(typ &types.Type, depth int) bool {
 				|| g.ownership_type_needs_drop(typ.value_type, depth + 1)
 		}
 		types.SumType {
-			for variant_source_id_3 in g.tc.sum_types.type_ids(flat.source_type_name(g.resolve_sum_name(typ.source_type_id()))) or { []u32{} } {
+			for variant_source_id_3 in g.tc.sum_types.type_ids(g.resolve_sum_name(typ.source_type_id())) or { []u32{} } {
 				variant_source_id_4 := variant_source_id_3
 
 				if g.ownership_type_needs_drop(g.tc.parse_type(variant_source_id_4), depth + 1) {
@@ -2786,7 +2785,7 @@ fn (mut g FlatGen) gen_select_receive_sum_value(expr string, actual types.Type, 
 	}
 	sum_type := sum_type0 as types.SumType
 	sum_name_id := g.resolve_sum_name(sum_type.source_type_id())
-	variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { return false }
+	variants := g.tc.sum_types.type_ids(sum_name_id) or { return false }
 	mut actual_type := raw_actual
 	mut variant_id := g.resolve_variant(sum_name_id, actual_type.source_type_id())
 	if variant_id !in variants {
@@ -3147,10 +3146,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 							} else {
 								''
 							}
-							expr_value_name := expr_value_type.name()
 							is_alias_value := expr_value_type is types.Alias
-								|| g.tc.type_aliases.contains(expr_value_name)
-								|| flat.source_type_name(g.tc.qualify_type_name(expr_value_type.source_type_id())) in g.tc.type_aliases.ids
+								|| g.tc.type_aliases.contains(expr_value_type.source_type_id())
+								|| g.tc.qualify_type_name(expr_value_type.source_type_id()) in g.tc.type_aliases.ids
 							pointer_value_expr := g.pointer_value_return_expr_string(ret_id, base) or {
 								''
 							}
@@ -4041,7 +4039,7 @@ fn (g &FlatGen) consume_assert_value_type_budget(typ &types.Type, mut budget Ass
 			if key in budget.stack {
 				return true
 			}
-			variants := g.tc.sum_types.type_ids(flat.source_type_name(name_id)) or { return true }
+			variants := g.tc.sum_types.type_ids(name_id) or { return true }
 			budget.remaining -= variants.len
 			if budget.remaining < 0 {
 				return false
@@ -7726,7 +7724,7 @@ fn (g &FlatGen) type_can_wrap_as_sum(actual &types.Type, expected &types.Type) b
 	sum_type := expected0 as types.SumType
 	sum_name_id := g.resolve_sum_name(sum_type.source_type_id())
 	variant_id := g.resolve_variant(sum_name_id, actual0.source_type_id())
-	variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { return false }
+	variants := g.tc.sum_types.type_ids(sum_name_id) or { return false }
 	return variant_id in variants
 }
 
@@ -9181,7 +9179,7 @@ fn (g &FlatGen) usable_resolved_sum_type(typ types.Type) types.Type {
 		} else {
 			g.resolve_sum_name(typ.source_type_id())
 		}
-		if g.tc.sum_types.contains(flat.source_type_name(sum_name)) {
+		if g.tc.sum_types.contains(sum_name) {
 			return types.Type(types.SumType{
 				name_id: sum_name
 			})
@@ -10599,8 +10597,17 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		}
 	}
 	cname := g.cname(name)
-	result := cname in v_runtime_typedef_names || cname in g.inlined_c_typedef_names
-		|| cname in g.tc.c_typedef_structs || 'C.${cname}' in g.tc.c_typedef_structs
+	mut result := cname in v_runtime_typedef_names || cname in g.inlined_c_typedef_names
+	if !result {
+		if type_id := flat.source_type_existing_id(cname) {
+			result = type_id in g.tc.c_typedef_structs
+		}
+	}
+	if !result {
+		if type_id := cgen_existing_qualified_type_id('C', cname) {
+			result = type_id in g.tc.c_typedef_structs
+		}
+	}
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
 		cache.put(name, if result { i8(1) } else { i8(-1) })
@@ -10625,7 +10632,8 @@ fn (mut g FlatGen) precompute_c_typedef_shadow_names() {
 	for name, _ in g.inlined_c_typedef_names {
 		g.c_typedef_shadow_names[name] = true
 	}
-	for name, _ in g.tc.c_typedef_structs {
+	for registry_name_id, _ in g.tc.c_typedef_structs {
+		name := flat.source_type_name(registry_name_id)
 		g.c_typedef_shadow_names[name] = true
 		if name.starts_with('C.') {
 			g.c_typedef_shadow_names[name[2..]] = true
@@ -11119,7 +11127,7 @@ fn (g &FlatGen) or_expr_source_type(expr_id flat.NodeId, expr_node flat.Node) ty
 				return *g.usable_expr_type(expr_id)
 			}
 			if enum_name := g.enum_from_selector_base_name(base_id) {
-				if flat.source_type_name(enum_name) in g.tc.flag_enums
+				if enum_name in g.tc.flag_enums
 					&& !g.selector_call_resolves_to_user_fn(expr_id, enum_name, call_node.value) {
 					return types.Type(types.ResultType{
 						base_type: g.tc.intern_type_reference(types.Type(types.Enum{ name_id: enum_name }))

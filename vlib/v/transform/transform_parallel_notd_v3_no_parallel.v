@@ -1236,8 +1236,8 @@ struct MonomorphChunkArgs {
 	base_children int
 	node_start    int
 	child_start   int
-	struct_decls  map[string]GenericStructDecl
-	sum_decls     map[string]GenericSumDecl
+	struct_decls  map[u32]GenericStructDecl
+	sum_decls     map[u32]GenericSumDecl
 mut:
 	roots         []flat.NodeId
 	emitted_specs []PendingGenericFnSpec
@@ -1469,7 +1469,7 @@ fn (mut t Transformer) run_serial_scoped_monomorphize_specs(specs []PendingGener
 	return t.run_scoped_monomorphize_specs(specs, mut emitted, mut generated)
 }
 
-fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnSpec, struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted GenericFnSpecBoolMap, mut generated []string) bool {
+fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnSpec, struct_decls map[u32]GenericStructDecl, sum_decls map[u32]GenericSumDecl, mut emitted GenericFnSpecBoolMap, mut generated []string) bool {
 	$if linux && arm64 {
 		// Shared append-only AST regions intermittently corrupt the heap on
 		// Linux/ARM64. Keep the safe serial monomorphizer on that target while
@@ -1503,7 +1503,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		mut generated, true)
 }
 
-fn (mut t Transformer) run_parallel_monomorphize_specs_impl(specs []PendingGenericFnSpec, struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted GenericFnSpecBoolMap, mut generated []string, allow_direct bool) bool {
+fn (mut t Transformer) run_parallel_monomorphize_specs_impl(specs []PendingGenericFnSpec, struct_decls map[u32]GenericStructDecl, sum_decls map[u32]GenericSumDecl, mut emitted GenericFnSpecBoolMap, mut generated []string, allow_direct bool) bool {
 	if specs.len == 0 {
 		return false
 	}

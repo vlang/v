@@ -64,12 +64,12 @@ fn test_runtime_helper_queries_keep_recursive_nominal_payloads_and_custom_str() 
 	channel := types.Type(types.Channel{ elem_type: types.int_ })
 	error_box := types.Type(types.Struct{ name_id: flat.source_type_id('support.int') })
 	channel_box := types.Type(types.Struct{ name_id: flat.source_type_id('support.string') })
-	tc.structs['support.int'] = [
+	tc.structs[flat.source_type_id('support.int')] = [
 		types.StructField{ name: 'recursive', typ: error_box },
 		types.StructField{ name: 'code', typ: types.int_ },
 		types.StructField{ name: 'cause', typ: error_type },
 	]
-	tc.structs['support.string'] = [
+	tc.structs[flat.source_type_id('support.string')] = [
 		types.StructField{ name: 'recursive', typ: channel_box },
 		types.StructField{ name: 'label', typ: types.string_ },
 		types.StructField{ name: 'events', typ: channel },
@@ -84,7 +84,7 @@ fn test_runtime_helper_queries_keep_recursive_nominal_payloads_and_custom_str() 
 		value_type: channel_box
 	}, 'support', &tc, mut channel_cache)
 	tc.fn_ret_types['support.Custom.str'] = types.string_
-	tc.structs['support.Custom'] = [types.StructField{ name: 'events', typ: channel }]
+	tc.structs[flat.source_type_id('support.Custom')] = [types.StructField{ name: 'events', typ: channel }]
 	assert !markused_type_stringifies_channel(types.Struct{ name_id: flat.source_type_id('support.Custom') }, 'support',
 		&tc, mut channel_cache)
 	assert markused_type_equality_uses_ierror(error_box, &tc, mut equality_cache)

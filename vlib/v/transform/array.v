@@ -129,8 +129,8 @@ fn (t &Transformer) interface_array_literal_repeat_can_expand(base_id flat.NodeI
 	if isnil(t.tc) || !flat.source_type_shape(base_type_id).has(.array_type) {
 		return false
 	}
-	elem_type := flat.source_type_name(flat.source_type_syntax(base_type_id).raw_base())
-	if elem_type !in t.tc.interface_names && t.tc.qualify_name(elem_type) !in t.tc.interface_names {
+	elem_type_id := flat.source_type_syntax(base_type_id).raw_base()
+	if elem_type_id !in t.tc.interface_names && t.tc.qualify_type_name(elem_type_id) !in t.tc.interface_names {
 		return false
 	}
 	base := t.a.nodes[int(base_id)]
@@ -689,7 +689,7 @@ fn (mut t Transformer) enum_nonzero_default_member(type_id u32) ?(u32, string) {
 	} else {
 		enum_type.name_id
 	}
-	enum_name := flat.source_type_name(enum_name_id)
+	enum_name := enum_name_id
 	// The first member of an enum without an explicit first value is 0.
 	if enum_name !in t.enum_explicit_first_values {
 		return none
@@ -741,7 +741,7 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type_id 
 			typ:          normalized_type_source_id
 		})
 	}
-	if flat.source_type_name(t.resolve_sum_name(struct_type_id)) in t.sum_types.ids {
+	if t.resolve_sum_name(struct_type_id) in t.sum_types.ids {
 		return none
 	}
 	// Name lookups can resolve cycles (e.g. same-named types across modules), so guard
@@ -870,8 +870,8 @@ fn (mut t Transformer) transform_owned_array_literal_element_from_source(elem_id
 	if value := t.owned_reference_for_type(elem_id, elem_type_id) {
 		return value
 	}
-	elem_type := flat.source_type_name(elem_type_id)
-	value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(elem_type_id)) in t.sum_types.ids {
+	elem_type := elem_type_id
+	value := if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type_id) in t.sum_types.ids {
 		t.wrap_sum_value(elem_id, elem_type_id)
 	} else {
 		t.transform_expr_for_type(elem_id, elem_type_id)
@@ -1113,16 +1113,16 @@ fn (t &Transformer) array_literal_local_struct_elem_name(node flat.Node) ?u32 {
 fn (t &Transformer) array_literal_qualified_alias_name(name_id u32) u32 {
 	clean := t.trimmed_type_id(name_id)
 	if clean == 0 || isnil(t.tc) { return clean }
-	if t.tc.type_aliases.contains(flat.source_type_name(clean)) { return clean }
+	if t.tc.type_aliases.contains(clean) { return clean }
 	if !flat.source_type_shape(clean).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qname := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean)
-		if t.tc.type_aliases.contains(flat.source_type_name(qname)) { return qname }
+		if t.tc.type_aliases.contains(qname) { return qname }
 	}
 	if flat.source_type_shape(clean).has(.dotted) { return clean }
 	mut found := u32(0)
-	for alias, _ in t.tc.type_aliases.ids {
-		alias_id := flat.source_type_id(alias)
+	for alias_source_id, _ in t.tc.type_aliases.ids {
+		alias_id := alias_source_id
 		if flat.source_type_syntax(alias_id).unqualified() != clean { continue }
 		if found != 0 && found != alias_id { return clean }
 		found = alias_id
@@ -1448,7 +1448,7 @@ fn (mut t Transformer) fixed_array_empty_init_needs_values_guarded(elem_type_id 
 }
 
 fn (mut t Transformer) struct_type_needs_runtime_default(struct_type_id u32, mut visited map[u32]bool) bool {
-	if flat.source_type_shape(struct_type_id).has(.pointer) || flat.source_type_name(t.resolve_sum_name(struct_type_id)) in t.sum_types.ids {
+	if flat.source_type_shape(struct_type_id).has(.pointer) || t.resolve_sum_name(struct_type_id) in t.sum_types.ids {
 		return false
 	}
 	if struct_type_id in visited {
@@ -1682,8 +1682,8 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 					push_many = true
 					converted_bulk_append = true
 				} else {
-					rhs = if t.sum_types.contains(flat.source_type_name(elem_type))
-						|| flat.source_type_name(t.resolve_sum_name(elem_type)) in t.sum_types.ids {
+					rhs = if t.sum_types.contains(elem_type)
+						|| t.resolve_sum_name(elem_type) in t.sum_types.ids {
 						t.wrap_sum_value(rhs_id, elem_type)
 					} else {
 						t.transform_expr_for_type(rhs_id, elem_type)
@@ -1691,7 +1691,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 				}
 			}
 		} else {
-			rhs = if t.sum_types.contains(flat.source_type_name(elem_type)) || flat.source_type_name(t.resolve_sum_name(elem_type)) in t.sum_types.ids {
+			rhs = if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type) in t.sum_types.ids {
 				t.wrap_sum_value(rhs_id, elem_type)
 			} else {
 				t.transform_expr_for_type(rhs_id, elem_type)
@@ -2035,8 +2035,8 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 					rhs = converted
 					converted_bulk_append = true
 				} else {
-					rhs = if t.sum_types.contains(flat.source_type_name(elem_type))
-						|| flat.source_type_name(t.resolve_sum_name(elem_type)) in t.sum_types.ids {
+					rhs = if t.sum_types.contains(elem_type)
+						|| t.resolve_sum_name(elem_type) in t.sum_types.ids {
 						t.wrap_sum_value(rhs_id, elem_type)
 					} else {
 						t.transform_expr_for_type(rhs_id, elem_type)
@@ -2044,7 +2044,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 				}
 			}
 		} else {
-			rhs = if t.sum_types.contains(flat.source_type_name(elem_type)) || flat.source_type_name(t.resolve_sum_name(elem_type)) in t.sum_types.ids {
+			rhs = if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type) in t.sum_types.ids {
 				t.wrap_sum_value(rhs_id, elem_type)
 			} else {
 				t.transform_expr_for_type(rhs_id, elem_type)
@@ -3179,7 +3179,7 @@ fn array_type_has_generic_placeholder(typ_id u32) bool {
 
 // lower_array_prepend_call builds lower array prepend call data for transform.
 fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Node, base_type_id u32, elem_type_id u32) ?flat.NodeId {
-	elem_type := flat.source_type_name(elem_type_id)
+	elem_type := elem_type_id
 	if node.children_count < 2 || fn_node.children_count == 0 {
 		return none
 	}
@@ -3262,7 +3262,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	}
 	// The clone decisions below read the source operand again.
 	t.inplace_rewrite_holds++
-	mut value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(elem_type_id)) in t.sum_types.ids {
+	mut value := if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type_id) in t.sum_types.ids {
 		t.wrap_sum_value(value_id, elem_type_id)
 	} else {
 		t.transform_expr_for_type(value_id, elem_type_id)
@@ -3290,7 +3290,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 
 // lower_array_insert_call builds lower array insert call data for transform.
 fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node, base_type_id u32, elem_type_id u32) ?flat.NodeId {
-	elem_type := flat.source_type_name(elem_type_id)
+	elem_type := elem_type_id
 	if node.children_count < 3 || fn_node.children_count == 0 {
 		return none
 	}
@@ -3383,7 +3383,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	}
 	// The clone decisions below read the source operand again.
 	t.inplace_rewrite_holds++
-	mut value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(elem_type_id)) in t.sum_types.ids {
+	mut value := if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type_id) in t.sum_types.ids {
 		t.wrap_sum_value(value_id, elem_type_id)
 	} else {
 		t.transform_expr_for_type(value_id, elem_type_id)
@@ -3409,7 +3409,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 }
 
 fn (mut t Transformer) lower_array_push_many_call(node flat.Node, fn_node flat.Node, base_type_id u32, elem_type_id u32) ?flat.NodeId {
-	elem_type := flat.source_type_name(elem_type_id)
+	elem_type := elem_type_id
 	if node.children_count < 3 || fn_node.children_count == 0 {
 		return none
 	}
@@ -3424,7 +3424,7 @@ fn (mut t Transformer) lower_array_push_many_call(node flat.Node, fn_node flat.N
 	base_addr := t.runtime_addr(base, base_type_id)
 	t.mark_fn_used('array__push_many')
 	if t.push_many_count_is_type_name(count_id) {
-		value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(elem_type_id)) in t.sum_types.ids {
+		value := if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type_id) in t.sum_types.ids {
 			t.wrap_sum_value(value_id, elem_type_id)
 		} else {
 			t.transform_expr_for_type(value_id, elem_type_id)
@@ -3740,7 +3740,7 @@ fn (t &Transformer) array_append_literal_should_push_many(rhs_id flat.NodeId, el
 }
 
 fn (t &Transformer) array_append_rhs_is_sum_array_variant(rhs_type_id u32, elem_type_id u32) bool {
-	resolved_sum := flat.source_type_name(t.resolve_sum_name(elem_type_id))
+	resolved_sum := t.resolve_sum_name(elem_type_id)
 	variants := t.sum_types.type_ids(resolved_sum) or { return false }
 	mut clean_rhs := t.trimmed_type_id(rhs_type_id)
 	if flat.source_type_shape(clean_rhs).has(.variadic) {
@@ -3776,7 +3776,7 @@ fn (t &Transformer) array_append_literal_sum_array_variant_type(rhs_id flat.Node
 	if node.kind != .array_literal || node.children_count == 0 {
 		return none
 	}
-	resolved_sum := flat.source_type_name(t.resolve_sum_name(elem_type_id))
+	resolved_sum := t.resolve_sum_name(elem_type_id)
 	variants := t.sum_types.type_ids(resolved_sum) or { return none }
 	first_id := t.a.child(&node, 0)
 	mut first_type := t.trimmed_type_id(t.original_expr_type(first_id))
@@ -3836,7 +3836,7 @@ fn (t &Transformer) array_append_elem_is_interface_uncached(elem_type_id u32) bo
 		candidates << flat.source_type_composition_two(.qualified, flat.source_type_id('builtin'), candidate)
 	}
 	for candidate in candidates {
-		if candidate != 0 && flat.source_type_name(candidate) in t.tc.interface_names {
+		if candidate != 0 && candidate in t.tc.interface_names {
 			return true
 		}
 	}
@@ -3922,17 +3922,16 @@ fn (t &Transformer) array_append_elem_types_match(rhs_elem_type_id u32, lhs_elem
 }
 
 fn (t &Transformer) array_append_interface_has_requirements(iface_name_id u32) bool {
-	iface_name := flat.source_type_name(iface_name_id)
 	if isnil(t.tc) {
 		return false
 	}
 	if t.tc.interface_abstract_method_names(iface_name_id).len > 0 {
 		return true
 	}
-	if (t.tc.interface_fields[iface_name] or { []types.StructField{} }).len > 0 {
+	if (t.tc.interface_fields[iface_name_id] or { []types.StructField{} }).len > 0 {
 		return true
 	}
-	for embed_source_id in t.tc.interface_embeds.type_ids(iface_name) or { []u32{} } {
+	for embed_source_id in t.tc.interface_embeds.type_ids(iface_name_id) or { []u32{} } {
 		if t.array_append_interface_has_requirements(embed_source_id) {
 			return true
 		}
@@ -3974,7 +3973,7 @@ fn (t &Transformer) array_append_elem_c_type(typ_id u32) string {
 	clean := transform_trimmed_type_id(typ_id)
 	if clean == 0 { return '' }
 	if !flat.source_type_shape(clean).has(.dotted) {
-		aliases := t.type_aliases_with_short_name(flat.source_type_name(clean))
+		aliases := t.type_aliases_with_short_name(clean)
 		if aliases.len > 0 { return t.tc.c_type(t.tc.parse_type(aliases[0].target)) }
 	}
 	return t.tc.c_type(t.tc.parse_type(clean))
@@ -7232,7 +7231,7 @@ fn (t &Transformer) add_static_fn_value_type_candidate(mut candidates []u32, nam
 	if name_id !in candidates {
 		candidates << name_id
 	}
-	if target_source_id := t.tc.type_aliases.type_id(flat.source_type_name(name_id)) {
+	if target_source_id := t.tc.type_aliases.type_id(name_id) {
 		if target_source_id !in candidates {
 			candidates << target_source_id
 		}

@@ -103,9 +103,9 @@ mut:
 	next_file_id                 int = 1
 	cur_module                   string
 	is_translated                bool
-	is_generated                 bool            // `@[generated] module x`: type names need not be capitalized
-	file_type_names              map[string]bool // types declared so far in the current file
-	file_type_names_indexed      int             // nodes before this index are in `file_type_names`
+	is_generated                 bool         // `@[generated] module x`: type names need not be capitalized
+	file_type_names              map[u32]bool // source spelling IDs of types declared so far in the current file
+	file_type_names_indexed      int          // nodes before this index are in `file_type_names`
 	cur_fn                       string
 	cur_fn_offset                int = -1
 	unclosed_fn_offset           int = -1 // cur_fn_offset of the last function reported as missing its `}`
@@ -129,7 +129,7 @@ mut:
 	comptime_string_imports      map[string]string
 	comptime_local_values        map[string]string
 	imported_module_names        map[string]bool // import aliases in the current file; not captured by inlined template closures
-	named_variant_import_types   map[string]bool
+	named_variant_import_types   map[u64]bool
 	named_variant_import_scans   map[string]bool
 	file_method_names            map[string]bool // qualified method names declared so far in the current file, for duplicate diagnostics
 	check_imports                bool            // enabled by the compiler driver, but not by syntax-only parser clients
@@ -140,17 +140,20 @@ mut:
 	local_binding_counts              map[string]int
 	global_names                      map[string]bool
 	parse_batch_paths                 []string
-	translated_sizeof_type_names      map[string]bool
+	translated_sizeof_type_names      map[u64]bool
 	translated_sizeof_const_names     map[string]bool
 	translated_sizeof_global_names    map[string]bool
 	translated_sizeof_scanned_modules map[string]bool
-	// The type declarations among the first parsed_type_decls_end nodes, by the key
-	// of translated_sizeof_declaration_key, and the directory and module of the file
-	// that node is in (see parsed_module_declares_type).
-	parsed_type_decls        map[string]bool
-	parsed_type_decls_end    int
-	parsed_type_decls_dir    string
-	parsed_type_decls_module string
+	// Context and type spelling IDs share the key layout of translated_sizeof_type_key.
+	// Earlier lookups never rescan nodes already indexed.
+	parsed_type_decls               map[u64]bool
+	parsed_type_decls_end           int
+	parsed_type_decls_dir           string
+	parsed_type_decls_module        string
+	parsed_type_decls_context       u32
+	type_declaration_context_file   string
+	type_declaration_context_module string
+	type_declaration_context        u32
 	// The sibling-file declarations the workers of one parse batch share (see
 	// scan_translated_sizeof_declarations), and this worker's place among them.
 	translated_sizeof_shared       &TranslatedSizeofShared = unsafe { nil }
@@ -325,7 +328,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		prefs:                          unsafe { prefs }
 		s:                              scanner.new_scanner(prefs, .normal)
 		local_type_names:               flat.TypeTextBindings{}
-		translated_sizeof_type_names:   map[string]bool{}
+		translated_sizeof_type_names:   map[u64]bool{}
 		translated_sizeof_const_names:  map[string]bool{}
 		translated_sizeof_global_names: map[string]bool{}
 		anonymous_struct_types:         AnonymousStructShapeCache{}
@@ -394,6 +397,9 @@ pub fn (mut p Parser) release_source_storage() {
 	p.lit = ''
 	p.peek_lit = ''
 	p.cur_module = ''
+	p.type_declaration_context_file = ''
+	p.type_declaration_context_module = ''
+	p.type_declaration_context = 0
 	p.is_translated = false
 	p.is_generated = false
 	p.cur_fn = ''
@@ -459,6 +465,9 @@ fn (mut p Parser) intern_parsed_node_texts(first_node int) {
 // same text parsed from memory produce the same AST.
 fn (mut p Parser) reset_file_state(path string) {
 	p.cur_file = path
+	p.type_declaration_context_file = ''
+	p.type_declaration_context_module = ''
+	p.type_declaration_context = 0
 	p.cur_file_id = p.next_file_id
 	p.next_file_id++
 	p.file_type_names.clear()
@@ -3751,7 +3760,7 @@ fn (mut p Parser) lowercase_type_name_starts_struct_init(name string) bool {
 	}
 	if p.prefs.is_fmt {
 		p.scan_formatter_type_declarations()
-		return p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(name)]
+		return p.translated_sizeof_has_type(name)
 	}
 	return p.resolve_local_type_name(name) != name || p.file_declares_type_name(name)
 }
@@ -3774,7 +3783,7 @@ fn (mut p Parser) scan_formatter_type_declarations() {
 			break
 		}
 		if kind == .name && expects_type_name {
-			p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(scan.lit)] = true
+			p.translated_sizeof_type_names[p.translated_sizeof_type_key(flat.source_type_id(scan.lit))] = true
 		}
 		// Dotted member names and assembly directives such as `.type` are not declarations.
 		expects_type_name = kind in [.key_struct, .key_type, .key_enum, .key_interface, .key_union]
@@ -3801,10 +3810,11 @@ fn (mut p Parser) file_declares_type_name(name string) bool {
 		p.file_type_names_indexed++
 		if node.pos.id == p.cur_file_id
 			&& node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl] {
-			p.file_type_names[node.value] = true
+			p.file_type_names[flat.source_type_id(node.value)] = true
 		}
 	}
-	return p.file_type_names[name]
+	name_id := flat.source_type_existing_id(name) or { return false }
+	return p.file_type_names[name_id]
 }
 
 // is_lowercase_type_name reports whether `name`, which does not start with a capital
@@ -3832,7 +3842,7 @@ fn (mut p Parser) is_lowercase_type_id(name u32) bool {
 	if p.prefs.is_fmt && p.is_generated {
 		p.scan_generated_sibling_files()
 	}
-	return p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(flat.source_type_name(name))]
+	return p.translated_sizeof_type_names[p.translated_sizeof_type_key(name)]
 }
 
 // scan_generated_sibling_files indexes the type declarations of every `.v` file next
@@ -16124,12 +16134,32 @@ fn (p &Parser) translated_sizeof_declaration_key(name string) string {
 	return '${os.dir(p.cur_file)}\x00${p.cur_module}\x00${name}'
 }
 
+// parser_type_declaration_key keeps context identities separate from type spellings.
+fn parser_type_declaration_key(context_id u32, name_id u32) u64 {
+	return (u64(context_id) << 32) | u64(name_id)
+}
+
+fn (mut p Parser) translated_sizeof_type_key(name_id u32) u64 {
+	if p.type_declaration_context == 0 || p.type_declaration_context_file != p.cur_file
+		|| p.type_declaration_context_module != p.cur_module {
+		p.type_declaration_context_file = p.cur_file
+		p.type_declaration_context_module = p.cur_module
+		p.type_declaration_context = flat.source_type_id('${os.dir(p.cur_file)}\x00${p.cur_module}')
+	}
+	return parser_type_declaration_key(p.type_declaration_context, name_id)
+}
+
+fn (mut p Parser) translated_sizeof_has_type(name string) bool {
+	name_id := flat.source_type_existing_id(name) or { return false }
+	return p.translated_sizeof_type_names[p.translated_sizeof_type_key(name_id)]
+}
+
 fn (mut p Parser) translated_sizeof_name_is_type(name string) bool {
 	if p.resolve_local_type_name(name) != name {
 		return true
 	}
 	p.scan_translated_sizeof_declarations()
-	return p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(name)]
+	return p.translated_sizeof_has_type(name)
 		|| p.has_prior_type_declaration(name)
 }
 
@@ -16166,7 +16196,7 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	key := p.translated_sizeof_declaration_key(name)
 	// Deferred branches can declare both candidates. Retain the existing named
 	// type form when a type is possible; later phases resolve the bare spelling.
-	return p.translated_sizeof_const_names[key] && !p.translated_sizeof_type_names[key]
+	return p.translated_sizeof_const_names[key] && !p.translated_sizeof_has_type(name)
 }
 
 // parsed_module_declares_type reports whether a file of the current module that
@@ -16181,18 +16211,25 @@ fn (mut p Parser) parsed_module_declares_type(name string) bool {
 			.file {
 				p.parsed_type_decls_dir = os.dir(node.value)
 				p.parsed_type_decls_module = ''
+				p.parsed_type_decls_context = 0
 			}
 			.module_decl {
 				p.parsed_type_decls_module = node.value
+				p.parsed_type_decls_context = 0
 			}
 			.struct_decl, .type_decl, .interface_decl, .enum_decl {
-				p.parsed_type_decls['${p.parsed_type_decls_dir}\x00${p.parsed_type_decls_module}\x00${node.value}'] = true
+				if p.parsed_type_decls_context == 0 {
+					p.parsed_type_decls_context = flat.source_type_id('${p.parsed_type_decls_dir}\x00${p.parsed_type_decls_module}')
+				}
+				p.parsed_type_decls[parser_type_declaration_key(p.parsed_type_decls_context,
+					flat.source_type_id(node.value))] = true
 			}
 			else {}
 		}
 	}
 	p.parsed_type_decls_end = p.a.nodes.len
-	return p.parsed_type_decls[p.translated_sizeof_declaration_key(name)]
+	name_id := flat.source_type_existing_id(name) or { return false }
+	return p.parsed_type_decls[p.translated_sizeof_type_key(name_id)]
 }
 
 fn (mut p Parser) translated_sizeof_name_is_global(name string) bool {
@@ -16210,7 +16247,7 @@ fn (mut p Parser) translated_sizeof_name_is_ambiguous(name string) bool {
 	p.scan_translated_sizeof_declarations()
 	key := p.translated_sizeof_declaration_key(name)
 	return (p.translated_sizeof_const_names[key] || p.translated_sizeof_global_names[key])
-		&& p.translated_sizeof_type_names[key]
+		&& p.translated_sizeof_has_type(name)
 }
 
 fn (mut p Parser) scan_translated_sizeof_declarations() {
@@ -16258,7 +16295,7 @@ mut:
 struct TranslatedSizeofFile {
 mut:
 	ready   bool
-	types   flat.TypeTextList
+	types   []u64
 	consts  []string
 	globals []string
 }
@@ -16279,8 +16316,8 @@ fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
 	if entry := shared_files.files[file_key] {
 		if entry.ready {
 			shared_files.mu.unlock()
-			for key_id in entry.types.ids {
-				p.translated_sizeof_type_names[flat.source_type_name(key_id)] = true
+			for key in entry.types {
+				p.translated_sizeof_type_names[key] = true
 			}
 			for key in entry.consts {
 				p.translated_sizeof_const_names[key] = true
@@ -16332,7 +16369,7 @@ fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
 		p.translated_sizeof_global_names[key] = true
 	}
 	shared_files.mu.lock()
-	entry.types = flat.TypeTextList.from_names(file_types)
+	entry.types = file_types
 	entry.consts = file_consts
 	entry.globals = file_globals
 	entry.ready = true
@@ -16612,7 +16649,7 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 		if kind in [.key_type, .key_struct, .key_enum, .key_interface, .key_union]
 			&& i + 1 < end && tokens[i + 1].kind == .name {
 			if !skip_decl {
-				p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(tokens[i + 1].lit)] = true
+				p.translated_sizeof_type_names[p.translated_sizeof_type_key(flat.source_type_id(tokens[i + 1].lit))] = true
 			}
 			skip_decl = false
 		}

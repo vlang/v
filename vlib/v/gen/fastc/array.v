@@ -910,7 +910,7 @@ fn (g &Parser) render_membership_candidate_source(tokens []FastcExpressionToken,
 		// spelling in `source`; use it verbatim rather than re-rendering its bare `lit`.
 		return tokens[0].source_text()
 	}
-	if tokens.len == 2 && tokens[0].tok == .dot && tokens[1].tok == .name && g.declared_kinds[flat.source_type_name(g.semantic_type_key(expected_type_source_id))] == .enum_ {
+	if tokens.len == 2 && tokens[0].tok == .dot && tokens[1].tok == .name && g.declared_kinds[g.semantic_type_key(expected_type_source_id)] == .enum_ {
 		return '${flat.source_type_name(fastc_trim_pointer_type(expected_type_source_id))}__${tokens[1].lit}'
 	}
 	if array_access := g.render_array_access_expression(tokens) {
@@ -1088,9 +1088,9 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			} else {
 				fastc_primitive_c_type(item.lit) or { '' }
 			}
-			is_c_cast := i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot && item.lit.len > 0 && 'C.${item.lit}' !in g.functions && fastc_call_has_one_argument(tokens, i + 1) && (item.lit[0].is_capital() || '#Cstruct#${item.lit}' in g.declared_types || '#Ctypedef#${item.lit}' in g.declared_types)
+			is_c_cast := i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot && item.lit.len > 0 && 'C.${item.lit}' !in g.functions && fastc_call_has_one_argument(tokens, i + 1) && (item.lit[0].is_capital() || fastc_source_type_key_exists(g.declared_types, '#Cstruct#${item.lit}') || fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${item.lit}'))
 			if is_c_cast {
-				cast_type = if '#Cstruct#${item.lit}' in g.declared_types {
+				cast_type = if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${item.lit}') {
 					'struct ${item.lit}'
 				} else {
 					item.lit
@@ -1098,7 +1098,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			}
 			if cast_type == '' && !is_member_call {
 				if type_key := g.resolve_declared_type_key(item.lit) {
-					cast_type = fastc_c_declared_type_name(type_key)
+					cast_type = fastc_c_declared_type_name(flat.source_type_name(type_key))
 				}
 			}
 			if cast_type != '' {
@@ -1256,8 +1256,8 @@ fn (g &Parser) expression_dot_is_module_separator(tokens []FastcExpressionToken,
 		return false
 	}
 	imported_module := g.imports[tokens[index - 3].lit] or { return false }
-	type_key := fastc_type_key(imported_module, previous_name)
-	return g.underlying_enum_type_key(flat.source_type_id(type_key)) != none
+	type_key := flat.source_type_existing_id(fastc_type_key(imported_module, previous_name)) or { return false }
+	return g.underlying_enum_type_key(type_key) != none
 }
 
 fn fastc_token_is_prefix_operator(tokens []FastcExpressionToken, index int) bool {
@@ -1426,17 +1426,17 @@ fn (g &Parser) type_from_expression_tokens_bytes(tokens []FastcExpressionToken) 
 		mut base := fastc_primitive_c_type(remaining[0].lit) or { '' }
 		if base == '' {
 			type_key := g.resolve_declared_type_key(remaining[0].lit) or { return none }
-			base = fastc_c_declared_type_name(type_key)
+			base = fastc_c_declared_type_name(flat.source_type_name(type_key))
 		}
 		return base + '*'.repeat(pointers)
 	}
 	if remaining.len == 3 && remaining[0].tok == .name && remaining[1].tok == .dot && remaining[2].tok == .name {
 		if remaining[0].lit == 'C' {
 			raw_type := remaining[2].lit
-			if '#Cstruct#${raw_type}' in g.declared_types {
+			if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${raw_type}') {
 				return 'struct ${raw_type}' + '*'.repeat(pointers)
 			}
-			if '#Ctypedef#${raw_type}' in g.declared_types {
+			if fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${raw_type}') {
 				return raw_type + '*'.repeat(pointers)
 			}
 			if 'C.${raw_type}' in g.functions {
@@ -1449,7 +1449,7 @@ fn (g &Parser) type_from_expression_tokens_bytes(tokens []FastcExpressionToken) 
 		}
 		module_name := g.imports[remaining[0].lit] or { return none }
 		type_key := fastc_type_key(module_name, remaining[2].lit)
-		if type_key !in g.declared_types {
+		if !fastc_source_type_key_exists(g.declared_types, type_key) {
 			return none
 		}
 		return fastc_c_declared_type_name(type_key) + '*'.repeat(pointers)

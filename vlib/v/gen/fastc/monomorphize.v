@@ -643,7 +643,7 @@ fn (g &Parser) erase_mono_generic_type_arguments(source_file FastcSourceFile, sr
 			continue
 		}
 		first_name := scan.lit
-		mut type_key := fastc_resolve_declared_type_key(src.module_name, first_name, src.imports, g.declared_types) or { '' }
+		mut type_key := fastc_resolve_declared_type_key(src.module_name, first_name, src.imports, g.declared_types) or { u32(0) }
 		tok = scan.scan()
 		if tok == .dot {
 			qualified_module := src.imports[first_name] or { '' }
@@ -651,10 +651,10 @@ fn (g &Parser) erase_mono_generic_type_arguments(source_file FastcSourceFile, sr
 			if qualified_module == '' || tok != .name {
 				continue
 			}
-			type_key = fastc_type_key(qualified_module, scan.lit)
+			type_key = flat.source_type_existing_id(fastc_type_key(qualified_module, scan.lit)) or { u32(0) }
 			tok = scan.scan()
 		}
-		if tok != .lsbr || type_key == '' || type_key !in g.declared_types {
+		if tok != .lsbr || type_key == 0 || type_key !in g.declared_types {
 			continue
 		}
 		bracket_start := scan.pos
@@ -1260,9 +1260,9 @@ fn fastc_scan_generic_fns(source string, path string, prefs &pref.Preferences, s
 // fastc_params_type_param_index returns the first parameter whose type contains a
 // generic type parameter, including composite uses such as `[]T` and `map[string]T`.
 fn fastc_params_type_param_index(params_source string, type_param string, prefs &pref.Preferences) int {
-	mut type_params := map[string]bool{}
+	mut type_params := map[u32]bool{}
 	for name in type_param.split(',') {
-		type_params[name] = true
+		type_params[flat.source_type_id(name)] = true
 	}
 	no_imports := map[string]string{}
 	file := token.File.unindexed('params', params_source.len)
@@ -1287,7 +1287,7 @@ fn fastc_params_type_param_index(params_source string, type_param string, prefs 
 		mut brackets := 0
 		mut parens := 0
 		for tok != .eof {
-			if tok == .name && s.lit in type_params {
+			if tok == .name && fastc_source_type_key_exists(type_params, s.lit) {
 				uses_type_param = true
 			}
 			if tok == .lsbr {
@@ -1621,7 +1621,7 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 // type that is itself a function type.
 fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]u32, mut locals map[string]bool, prefs &pref.Preferences) token.Token {
 	no_imports := map[string]string{}
-	no_declared_types := map[string]bool{}
+	no_declared_types := map[u32]bool{}
 	mut tok := s.scan()
 	if tok == .lsbr {
 		// A closure's captures `[a, mut b]`; its parameter list follows.

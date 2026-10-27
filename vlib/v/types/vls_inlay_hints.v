@@ -358,10 +358,9 @@ fn (tc &TypeChecker) vls_struct_fields(typ Type) ?[]StructField {
 		return none
 	}
 	name_id := base.source_type_id()
-	name := flat.source_type_name(name_id)
-	return tc.structs[name] or {
-		base_name := flat.source_type_name(flat.source_type_syntax(name_id).generic_base())
-		tc.structs[base_name] or { return none }
+	return tc.structs[name_id] or {
+		base_id := flat.source_type_syntax(name_id).generic_base()
+		tc.structs[base_id] or { return none }
 	}
 }
 

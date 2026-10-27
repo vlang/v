@@ -240,10 +240,11 @@ fn (t &Transformer) comptime_resolve_selective_import_type(raw_id u32) u32 {
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(clean_id))] or {
 		[]string{}
 	} {
-		if t.tc.type_aliases.contains(candidate) || candidate in t.tc.structs
-			|| candidate in t.tc.interface_names || candidate in t.tc.flag_enums
-			|| candidate in t.tc.enum_names || t.tc.sum_types.contains(candidate) {
-			return flat.source_type_id(candidate)
+		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+		if t.tc.type_aliases.contains(candidate_id) || candidate_id in t.tc.structs
+			|| candidate_id in t.tc.interface_names || candidate_id in t.tc.flag_enums
+			|| candidate_id in t.tc.enum_names || t.tc.sum_types.contains(candidate_id) {
+			return candidate_id
 		}
 	}
 	return clean_id
@@ -280,10 +281,13 @@ fn (t &Transformer) comptime_local_reflection_source(name string) ?string {
 		return none
 	}
 	qualified := '${t.cur_module}.${name}'
-	if qualified in t.tc.fn_ret_types || qualified in t.tc.fn_param_types
-		|| t.tc.type_aliases.contains(qualified) || qualified in t.tc.structs
-		|| qualified in t.tc.interface_names || qualified in t.tc.flag_enums
-		|| qualified in t.tc.enum_names || t.tc.sum_types.contains(qualified) {
+	if qualified in t.tc.fn_ret_types || qualified in t.tc.fn_param_types {
+		return qualified
+	}
+	qualified_id := flat.source_type_existing_id(qualified) or { return none }
+	if t.tc.type_aliases.contains(qualified_id) || qualified_id in t.tc.structs
+		|| qualified_id in t.tc.interface_names || qualified_id in t.tc.flag_enums
+		|| qualified_id in t.tc.enum_names || t.tc.sum_types.contains(qualified_id) {
 		return qualified
 	}
 	return none
@@ -2569,13 +2573,13 @@ fn (t &Transformer) comptime_sum_variants(base_type_id u32) []VariantMeta {
 	} else if isnil(t.tc) {
 		[]u32{}
 	} else {
-		t.tc.sum_types.type_ids(flat.source_type_name(resolved)) or { []u32{} }
+		t.tc.sum_types.type_ids(resolved) or { []u32{} }
 	}
 	if variants.len == 0 && !isnil(t.tc) {
-		variants = t.tc.sum_types.type_ids(flat.source_type_name(resolved)) or { []u32{} }
+		variants = t.tc.sum_types.type_ids(resolved) or { []u32{} }
 	}
 	if variants.len == 0 {
-		variants = t.sum_types.type_ids(flat.source_type_name(resolved)) or { []u32{} }
+		variants = t.sum_types.type_ids(resolved) or { []u32{} }
 	}
 	mut metas := []VariantMeta{cap: variants.len}
 	for variant in variants {
@@ -2590,7 +2594,7 @@ fn (t &Transformer) comptime_resolve_sum_type_name(base_type_id u32) u32 {
 	// Main-module locks use bare declaration storage keys.
 	if flat.source_type_query(base).has(.main_prefix) {
 		storage := flat.source_type_syntax(base).main_base()
-		if t.sum_types.contains(flat.source_type_name(storage)) || t.generic_checker_sum_name_known(storage) {
+		if t.sum_types.contains(storage) || t.generic_checker_sum_name_known(storage) {
 			return storage
 		}
 	}
@@ -2650,13 +2654,13 @@ fn (t &Transformer) comptime_enum_members(base_type_id u32) []EnumValueMeta {
 	} else {
 		base_type_id
 	}
-	storage_name := flat.source_type_name(storage_name_id)
+	storage_name := storage_name_id
 	mut resolved := storage_name_id
 	if got := t.enum_types[storage_name] {
 		names = got.clone()
 	} else {
 		qname := t.qualified_alias_name(storage_name_id)
-		if got := t.enum_types[flat.source_type_name(qname)] {
+		if got := t.enum_types[qname] {
 			names = got.clone()
 			resolved = qname
 		}
@@ -3604,7 +3608,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	}
 	if node.kind == .cast_expr && children.len == 1 {
 		target_sum_source_id := t.resolve_sum_name(node.source_value_id())
-		target_sum := flat.source_type_name(target_sum_source_id)
+		target_sum := target_sum_source_id
 		child := t.a.nodes[int(children[0])]
 		child_type_source_id := t.node_type(children[0])
 
@@ -4057,8 +4061,7 @@ fn (mut t Transformer) collect_comptime_interface_field_metas(iface_name_id u32,
 		return
 	}
 	seen_ifaces[iface_name_id] = true
-	iface_name := flat.source_type_name(iface_name_id)
-	for embedded_source_id in t.tc.interface_embeds.type_ids(iface_name) or { []u32{} } {
+	for embedded_source_id in t.tc.interface_embeds.type_ids(iface_name_id) or { []u32{} } {
 		t.collect_comptime_interface_field_metas(embedded_source_id, mut seen_ifaces, mut seen_fields, mut metas)
 	}
 	decl_module := flat.source_type_name(if flat.source_type_shape(iface_name_id).has(.dotted) {
@@ -4066,7 +4069,7 @@ fn (mut t Transformer) collect_comptime_interface_field_metas(iface_name_id u32,
 	} else {
 		iface_name_id
 	})
-	for field in t.tc.interface_fields[iface_name] or { []types.StructField{} } {
+	for field in t.tc.interface_fields[iface_name_id] or { []types.StructField{} } {
 		if field.name in seen_fields {
 			continue
 		}
@@ -4515,7 +4518,7 @@ fn (mut t Transformer) comptime_zero_value(typ_id u32) flat.NodeId {
 	// program aliases are registered bare. Resolve it through its bare name, or its
 	// zero value is a zeroed struct (`(map){0}` for a map alias, which crashes on use).
 	if flat.source_type_query(typ_id).has(.main_prefix) && !t.ident_is_import_alias('main') && !isnil(t.tc) {
-		if target_source_id := t.tc.type_aliases.type_id(flat.source_type_name(flat.source_type_syntax(typ_id).main_base())) {
+		if target_source_id := t.tc.type_aliases.type_id(flat.source_type_syntax(typ_id).main_base()) {
 			zero_type = t.lock_colliding_main_generic_type_text(target_source_id, t.cur_module)
 		}
 	}

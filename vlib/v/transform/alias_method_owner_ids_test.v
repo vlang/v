@@ -6,9 +6,9 @@ import v.types
 fn test_alias_method_index_keeps_numeric_owners_and_first_signature() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Count', flat.source_type_i64)
-	tc.type_aliases.set_id('OtherCount', flat.source_type_i64)
-	tc.type_aliases.set_id('Flag', flat.source_type_bool)
+	tc.type_aliases.set_id(flat.source_type_id('Count'), flat.source_type_i64)
+	tc.type_aliases.set_id(flat.source_type_id('OtherCount'), flat.source_type_i64)
+	tc.type_aliases.set_id(flat.source_type_id('Flag'), flat.source_type_bool)
 	tc.fn_param_types['Count.show'] = [types.Type(types.i64_)]
 	tc.fn_param_types['OtherCount.show'] = [types.Type(types.i64_)]
 	tc.fn_param_types['Count.other'] = [types.Type(types.Pointer{ base_type: types.Type(types.i64_) })]

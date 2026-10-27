@@ -96,7 +96,7 @@ fn test_detached_spawn_cleanup_uses_sum_type_and_variant_drops() {
 	for sum_name in ['Box[[2]string]', 'model.Box[[2]string]'] {
 		mut ast := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&ast)
-		tc.sum_types.set(sum_name, ['[2]string', 'int'])
+		tc.sum_types.set(flat.source_type_id(sum_name), ['[2]string', 'int'])
 		tc.cur_module = 'builtin'
 		tc.cur_file = 'builtin.v'
 		mut g := FlatGen.new()

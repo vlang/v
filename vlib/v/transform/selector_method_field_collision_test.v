@@ -26,7 +26,7 @@ fn test_known_struct_selector_does_not_inherit_unrelated_field_type() {
 				},
 			]
 			structs:        {
-				'Model': StructInfo{}
+				flat.source_type_id('Model'): StructInfo{}
 			}
 			unique_fields:  flat.TypeTextBindings.from_names({
 				'on_done': '?fn ()'
@@ -76,18 +76,18 @@ fn test_known_struct_selector_resolves_nested_promoted_fields_without_checker() 
 						},
 					]
 					structs:        {
-						'Foo': StructInfo{
+						flat.source_type_id('Foo'): StructInfo{
 							name:   flat.source_type_id('Foo')
 							fields: [FieldInfo{
 								name: 'x'
 								typ:  flat.source_type_id(field_type)
 							}]
 						}
-						'Bar': StructInfo{
+						flat.source_type_id('Bar'): StructInfo{
 							name:   flat.source_type_id('Bar')
 							fields: [foo_embed]
 						}
-						'Baz': StructInfo{
+						flat.source_type_id('Baz'): StructInfo{
 							name:   flat.source_type_id('Baz')
 							fields: [bar_embed]
 						}
@@ -102,7 +102,7 @@ fn test_known_struct_selector_resolves_nested_promoted_fields_without_checker() 
 				assert flat.source_type_name(t.raw_expr_type_without_smartcast(selector)) == field_type
 
 				// A nearer declaration shadows the field in a deeper embed.
-				t.structs['Bar'] = StructInfo{
+				t.structs[flat.source_type_id('Bar')] = StructInfo{
 					name:   flat.source_type_id('Bar')
 					fields: [foo_embed, FieldInfo{
 						name: 'x'
@@ -113,7 +113,7 @@ fn test_known_struct_selector_resolves_nested_promoted_fields_without_checker() 
 				assert t.raw_expr_type_without_smartcast(selector) == flat.source_type_string
 
 				// The receiver's own field still wins over all promoted fields.
-				t.structs['Baz'] = StructInfo{
+				t.structs[flat.source_type_id('Baz')] = StructInfo{
 					name:   flat.source_type_id('Baz')
 					fields: [bar_embed, FieldInfo{
 						name: 'x'

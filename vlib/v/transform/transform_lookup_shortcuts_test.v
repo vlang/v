@@ -70,7 +70,7 @@ fn test_var_type_scope_restores_like_a_copy() {
 fn test_late_scan_gate_rejects_only_names_no_published_name_ends_with() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Speaker'] = true
+	tc.interface_names[flat.source_type_id('Speaker')] = true
 	tc.fn_ret_types['Speaker.speak'] = types.Type(types.void_)
 	tc.fn_ret_types['os.getenv'] = types.Type(types.string_)
 	tc.fn_param_types['Dog.bark'] = []types.Type{}
@@ -102,7 +102,7 @@ fn test_late_scan_gate_rejects_only_names_no_published_name_ends_with() {
 	t.late_scan_gate = t.new_late_scan_gate(&candidates)
 	assert t.late_scan_gate_rejects('field', &candidates)
 	assert !t.late_scan_gate_rejects('sing', &candidates)
-	tc.interface_names['Singer'] = true
+	tc.interface_names[flat.source_type_id('Singer')] = true
 	assert !t.late_scan_gate_rejects('field', &candidates)
 }
 
@@ -176,8 +176,8 @@ fn test_generic_call_name_filter_keeps_every_spelling_of_a_declaration() {
 fn test_alias_receiver_candidates_follow_the_signature_tables() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Meters', flat.source_type_int)
-	tc.type_aliases.set_id('unit.Feet', flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('Meters'), flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('unit.Feet'), flat.source_type_int)
 	receiver := [types.Type(types.int_)]
 	tc.fn_param_types['Meters.double'] = receiver
 	tc.fn_param_types['os.double'] = receiver
@@ -198,7 +198,7 @@ fn test_alias_receiver_candidates_follow_the_signature_tables() {
 	tc.fn_param_types['Meters.pending'] = receiver
 	assert t.alias_receiver_method_candidates('pending') == ['Meters.pending']
 	// A new signature or alias is found by the scan until the list is taken again.
-	tc.type_aliases.set_id('Yards', flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('Yards'), flat.source_type_int)
 	tc.fn_param_types['Yards.double'] = receiver
 	expected := ['Meters.double', 'unit.Feet.double', 'Yards.double']
 	assert t.alias_receiver_method_candidates('double') == expected
@@ -210,7 +210,7 @@ fn test_alias_receiver_candidates_follow_the_signature_tables() {
 fn test_append_element_interface_answers_follow_the_type_tables() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Shape'] = true
+	tc.interface_names[flat.source_type_id('Shape')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.append_elem_interface_cache = &ElemInterfaceCache{}
@@ -219,9 +219,9 @@ fn test_append_element_interface_answers_follow_the_type_tables() {
 		assert !t.array_append_elem_is_interface(flat.source_type_int)
 		assert !t.array_append_elem_is_interface(flat.source_type_id('Later'))
 	}
-	tc.interface_names['Later'] = true
+	tc.interface_names[flat.source_type_id('Later')] = true
 	assert t.array_append_elem_is_interface(flat.source_type_id('Later'))
-	tc.interface_names['geometry.Solid'] = true
+	tc.interface_names[flat.source_type_id('geometry.Solid')] = true
 	assert !t.array_append_elem_is_interface(flat.source_type_id('Solid'))
 	t.cur_module = 'geometry'
 	assert t.array_append_elem_is_interface(flat.source_type_id('Solid')) == t.array_append_elem_is_interface_uncached(flat.source_type_id('Solid'))
@@ -230,10 +230,10 @@ fn test_append_element_interface_answers_follow_the_type_tables() {
 fn test_alias_chain_stops_at_plain_types_and_cycles() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Names', flat.source_type_id('Words'))
-	tc.type_aliases.set_id('Words', flat.source_type_id('[]string'))
-	tc.type_aliases.set_id('Ping', flat.source_type_id('Pong'))
-	tc.type_aliases.set_id('Pong', flat.source_type_id('Ping'))
+	tc.type_aliases.set_id(flat.source_type_id('Names'), flat.source_type_id('Words'))
+	tc.type_aliases.set_id(flat.source_type_id('Words'), flat.source_type_id('[]string'))
+	tc.type_aliases.set_id(flat.source_type_id('Ping'), flat.source_type_id('Pong'))
+	tc.type_aliases.set_id(flat.source_type_id('Pong'), flat.source_type_id('Ping'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	assert t.normalize_type_alias_chain(flat.source_type_int) == flat.source_type_int
@@ -272,11 +272,11 @@ fn test_trimmed_transform_text_is_trim_space() {
 fn test_equality_pointer_types_preserve_aliases_and_storage_wrappers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('Text', 'string')
-	tc.type_aliases.set('TextRef', '&string')
-	tc.type_aliases.set('ChainedTextRef', '&Text')
-	tc.type_aliases.set('Names', '[]string')
-	tc.type_aliases.set('Counts', 'map[string]int')
+	tc.type_aliases.set(flat.source_type_id('Text'), 'string')
+	tc.type_aliases.set(flat.source_type_id('TextRef'), '&string')
+	tc.type_aliases.set(flat.source_type_id('ChainedTextRef'), '&Text')
+	tc.type_aliases.set(flat.source_type_id('Names'), '[]string')
+	tc.type_aliases.set(flat.source_type_id('Counts'), 'map[string]int')
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	value := a.add_val(.ident, 'value')
 	for typ in ['&string', ' &string\t', 'shared &string', 'shared shared  &Text', 'TextRef'] {

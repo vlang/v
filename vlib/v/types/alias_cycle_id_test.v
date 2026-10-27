@@ -7,8 +7,8 @@ fn test_alias_cycle_ids_keep_scope_precedence_and_depth_order() {
 	mut tc := TypeChecker.new(&a)
 	first := flat.source_type_id('scope.First')
 	second := flat.source_type_id('Second')
-	tc.type_aliases.set('scope.First', 'Second')
-	tc.type_aliases.set('scope.Second', ' First \t')
+	tc.type_aliases.set(flat.source_type_id('scope.First'), 'Second')
+	tc.type_aliases.set(flat.source_type_id('scope.Second'), ' First \t')
 	assert tc.alias_chain_reaches(first, second, 0)
 	assert tc.alias_chain_reaches(first, flat.source_type_id('scope.Second'), 0)
 	assert !tc.alias_chain_reaches(first, flat.source_type_id('other.Second'), 0)
@@ -16,12 +16,12 @@ fn test_alias_cycle_ids_keep_scope_precedence_and_depth_order() {
 	assert tc.alias_chain_reaches(first, flat.source_type_id('First'), tc.type_aliases.ids.len)
 	assert !tc.alias_chain_reaches(first, second, tc.type_aliases.ids.len)
 	// An existing short binding takes precedence over scoped fallback.
-	tc.type_aliases.set_id('Second', flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('Second'), flat.source_type_int)
 	assert !tc.alias_chain_reaches(first, second, 0)
 	assert tc.alias_chain_reaches(first, flat.source_type_id('scope.Second'), 0)
 	// An unrelated cycle must still terminate at the same depth bound.
-	tc.type_aliases.set('Left', 'Right')
-	tc.type_aliases.set('Right', 'Left')
+	tc.type_aliases.set(flat.source_type_id('Left'), 'Right')
+	tc.type_aliases.set(flat.source_type_id('Right'), 'Left')
 	assert !tc.alias_chain_reaches(first, flat.source_type_id('Left'), 0)
 }
 
@@ -43,10 +43,10 @@ fn test_alias_cycle_ids_keep_diagnostic_and_replacement_order() {
 		typ:   flat.source_type_id('First')
 	})
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases.set('cycles.Recursive', '[]Recursive')
-	tc.type_aliases.set('cycles.First', 'Second')
-	tc.type_aliases.set('cycles.Second', 'First')
-	tc.type_aliases.set_id('Other', flat.source_type_int)
+	tc.type_aliases.set(flat.source_type_id('cycles.Recursive'), '[]Recursive')
+	tc.type_aliases.set(flat.source_type_id('cycles.First'), 'Second')
+	tc.type_aliases.set(flat.source_type_id('cycles.Second'), 'First')
+	tc.type_aliases.set_id(flat.source_type_id('Other'), flat.source_type_int)
 	// A repeated declaration is ignored, but replacements wait until every
 	// declaration has been checked so both aliases in the cycle are diagnosed.
 	tc.check_alias_declaration_cycles_of([i32(container), i32(first), i32(first), i32(second)],
@@ -58,7 +58,7 @@ fn test_alias_cycle_ids_keep_diagnostic_and_replacement_order() {
 	for name in ['Recursive', 'First', 'Second'] {
 		assert tc.recursive_alias_names[flat.source_type_id(name)]
 		assert tc.recursive_alias_names[flat.source_type_id('cycles.${name}')]
-		assert tc.type_aliases.value_id('cycles.${name}') == flat.source_type_void
+		assert tc.type_aliases.value_id(flat.source_type_id('cycles.${name}')) == flat.source_type_void
 	}
-	assert tc.type_aliases.value_id('Other') == flat.source_type_int
+	assert tc.type_aliases.value_id(flat.source_type_id('Other')) == flat.source_type_int
 }

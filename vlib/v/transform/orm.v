@@ -1117,7 +1117,7 @@ fn (t &Transformer) sql_dynamic_value_type(tokens []string) u32 {
 	if token.contains('.') {
 		root := token.all_before('.')
 		field_name := token.all_after('.')
-		root_type := flat.source_type_name(t.var_type(root))
+		root_type := t.var_type(root)
 		fields := t.tc.structs[root_type] or { return u32(0) }
 		for field in fields {
 			if field.name == field_name {
@@ -1492,7 +1492,7 @@ fn (t &Transformer) sql_transform_type_is_struct(field_type_id u32) bool {
 	if flat.source_type_shape(clean).has(.array_type) {
 		return false
 	}
-	return clean != 0 && flat.source_type_name(clean) in t.tc.structs
+	return clean != 0 && clean in t.tc.structs
 }
 
 fn (t &Transformer) sql_relation_struct_base_type(field_type_id u32) ?u32 {
@@ -1798,7 +1798,12 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 			}
 			if method := t.tc.concrete_method_signature_key(t.trim_all_pointer_type(receiver_type_source_id),
 				callee.value) {
-				if method.all_before_last('.') in t.tc.type_aliases.ids
+				is_alias_receiver := if receiver_id := flat.source_type_existing_id(method.all_before_last('.')) {
+					receiver_id in t.tc.type_aliases.ids
+				} else {
+					false
+				}
+				if is_alias_receiver
 					&& !t.receiver_method_name_is_open_generic(method)
 					&& !t.call_selector_base_is_namespace(receiver, callee.value, method) {
 					if t.tc.sql_orm_method_is_private(method, t.cur_file, t.cur_module) {
@@ -3479,14 +3484,12 @@ fn (t &Transformer) sql_table_info(table u32) ?SqlTransformTableInfo {
 	syntax := flat.source_type_syntax(table_name_id)
 	base_id := syntax.generic_app_base()
 	is_generic := syntax.generic_app_valid()
-	table_name := flat.source_type_name(table_name_id)
-	base := flat.source_type_name(base_id)
 	is_dotted := flat.source_type_shape(table_name_id).has(.dotted)
 	if t.tc.cur_module.len > 0 && t.tc.cur_module !in ['', 'main', 'builtin']
 		&& !is_dotted {
 		qualified := flat.source_type_composition_two(.qualified,
 			flat.source_type_id(t.tc.cur_module), table_name_id)
-		if fields := t.tc.structs[flat.source_type_name(qualified)] {
+		if fields := t.tc.structs[qualified] {
 			return SqlTransformTableInfo{
 				name:   qualified
 				fields: fields
@@ -3495,7 +3498,7 @@ fn (t &Transformer) sql_table_info(table u32) ?SqlTransformTableInfo {
 		if is_generic {
 			qualified_base := flat.source_type_composition_two(.qualified,
 				flat.source_type_id(t.tc.cur_module), base_id)
-			if fields := t.tc.structs[flat.source_type_name(qualified_base)] {
+			if fields := t.tc.structs[qualified_base] {
 				return SqlTransformTableInfo{
 					name:   qualified
 					fields: fields
@@ -3522,8 +3525,8 @@ fn (t &Transformer) sql_table_info(table u32) ?SqlTransformTableInfo {
 	if is_generic && !flat.source_type_shape(base_id).has(.dotted) {
 		mut found_name := u32(0)
 		mut found_fields := []types.StructField{}
-		for candidate, fields in t.tc.structs {
-			candidate_id := flat.source_type_id(candidate)
+		for candidate_source_id, fields in t.tc.structs {
+			candidate_id := candidate_source_id
 			candidate_syntax := flat.source_type_syntax(candidate_id)
 			if flat.source_type_shape(candidate_id).has(.dotted)
 				&& candidate_syntax.unqualified() == base_id && fields.len > 0 {
@@ -3544,14 +3547,14 @@ fn (t &Transformer) sql_table_info(table u32) ?SqlTransformTableInfo {
 			}
 		}
 	}
-	if fields := t.tc.structs[table_name] {
+	if fields := t.tc.structs[table_name_id] {
 		return SqlTransformTableInfo{
 			name:   table_name_id
 			fields: fields
 		}
 	}
 	if is_generic {
-		if fields := t.tc.structs[base] {
+		if fields := t.tc.structs[base_id] {
 			return SqlTransformTableInfo{
 				name:   table_name_id
 				fields: fields
@@ -3561,7 +3564,7 @@ fn (t &Transformer) sql_table_info(table u32) ?SqlTransformTableInfo {
 	if t.tc.cur_module.len > 0 && t.tc.cur_module !in ['', 'main', 'builtin'] {
 		qualified := flat.source_type_composition_two(.qualified,
 			flat.source_type_id(t.tc.cur_module), table_name_id)
-		if fields := t.tc.structs[flat.source_type_name(qualified)] {
+		if fields := t.tc.structs[qualified] {
 			return SqlTransformTableInfo{
 				name:   qualified
 				fields: fields
@@ -3570,7 +3573,7 @@ fn (t &Transformer) sql_table_info(table u32) ?SqlTransformTableInfo {
 		if is_generic {
 			qualified_base := flat.source_type_composition_two(.qualified,
 				flat.source_type_id(t.tc.cur_module), base_id)
-			if fields := t.tc.structs[flat.source_type_name(qualified_base)] {
+			if fields := t.tc.structs[qualified_base] {
 				return SqlTransformTableInfo{
 					name:   qualified
 					fields: fields
@@ -3962,22 +3965,30 @@ fn sql_transform_field_type(table SqlTransformTableInfo, field_name string) u32 
 }
 
 fn (t &Transformer) sql_transform_type_is_enum(typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
+	typ := typ_id
 	if typ in t.enum_types {
 		return true
 	}
 	if t.tc.cur_module.len > 0 && t.tc.cur_module !in ['', 'main', 'builtin'] {
-		return '${t.tc.cur_module}.${typ}' in t.enum_types
+		qualified_id := flat.source_type_existing_id('${t.tc.cur_module}.${flat.source_type_name(typ_id)}') or {
+			return false
+		}
+		return qualified_id in t.enum_types
 	}
 	return false
 }
 
 fn (t &Transformer) sql_token_root_is_enum_type(root string) bool {
-	if root in t.enum_types {
-		return true
+	if root_id := flat.source_type_existing_id(root) {
+		if root_id in t.enum_types {
+			return true
+		}
 	}
 	if t.tc.cur_module.len > 0 && t.tc.cur_module !in ['', 'main', 'builtin'] {
-		return '${t.tc.cur_module}.${root}' in t.enum_types
+		qualified_id := flat.source_type_existing_id('${t.tc.cur_module}.${root}') or {
+			return false
+		}
+		return qualified_id in t.enum_types
 	}
 	return false
 }

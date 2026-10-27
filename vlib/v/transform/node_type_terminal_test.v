@@ -14,7 +14,7 @@ fn test_terminal_node_types_ignore_annotations_and_checker_guesses() {
 		a.add_node(flat.Node{ kind: kind, value: 'value', typ: flat.source_type_id('Guess') })
 	}
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Guess'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Guess')] = []types.StructField{}
 	for i in 0 .. kinds.len {
 		tc.register_synth_type(flat.NodeId(i), types.Type(types.Struct{ name_id: flat.source_type_id('Guess') }))
 	}
@@ -40,8 +40,8 @@ fn test_terminal_queries_preserve_contextual_resolution_and_rewrites() {
 	character := a.add_val(.char_literal, 'c:hello')
 	optional := a.add_node(flat.Node{ kind: .none_expr, typ: flat.source_type_id('?string') })
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('one.Item', flat.source_type_int)
-	tc.type_aliases.set_id('two.Item', flat.source_type_bool)
+	tc.type_aliases.set_id(flat.source_type_id('one.Item'), flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('two.Item'), flat.source_type_bool)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'one'
 	t.set_var_type('value', flat.source_type_id('Item'))

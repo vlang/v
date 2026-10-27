@@ -122,9 +122,10 @@ fn (mut t Transformer) prepare_library_bodies() {
 			continue
 		}
 		receiver := key[..dot]
-		if receiver in t.tc.structs || t.tc.sum_types.contains(receiver) || t.tc.type_aliases.contains(receiver)
-			|| receiver in t.tc.enum_names {
-			t.library_bodies.methods[flat.source_type_id(receiver)] << key
+		receiver_id := flat.source_type_existing_id(receiver) or { continue }
+		if receiver_id in t.tc.structs || t.tc.sum_types.contains(receiver_id)
+			|| t.tc.type_aliases.contains(receiver_id) || receiver_id in t.tc.enum_names {
+			t.library_bodies.methods[receiver_id] << key
 		}
 	}
 }
@@ -305,33 +306,31 @@ fn (mut t Transformer) library_type_parts(text_id u32) ?[]u32 {
 		return none
 	}
 	// Checker declaration tables still use declaration names as keys.
-	name := flat.source_type_name(name_id)
-	text := flat.source_type_name(text_id)
 	mut parts := []u32{}
 	if is_app {
 		// A generic type of the program keeps the body; of a library one, what it
 		// holds of the program comes in through its type arguments.
-		file := t.tc.struct_files[name] or { return none }
+		file := t.tc.struct_files[name_id] or { return none }
 		if file in t.tc.diagnostic_files { return none }
 		for arg in syntax.generic_app_args() { parts << library_type_text(arg) }
 	}
-	if fields := t.tc.structs[text] {
+	if fields := t.tc.structs[text_id] {
 		for field in fields { parts << library_type_text(field.typ.source_type_id()) }
 	} else if is_app {
-		fields := t.tc.structs[name] or { return none }
-		params := t.tc.struct_generic_params[name] or { []string{} }
+		fields := t.tc.structs[name_id] or { return none }
+		params := t.tc.struct_generic_params[name_id] or { []string{} }
 		args_ids := syntax.generic_app_args()
 		for field in fields {
 			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.source_type_id(),
 				args_ids, params))
 		}
-	} else if variants_source_ids := t.tc.sum_types.type_ids(name) {
+	} else if variants_source_ids := t.tc.sum_types.type_ids(name_id) {
 		for variant_source_id in variants_source_ids {
 			parts << library_type_text(variant_source_id)
 		}
-	} else if target_source_id := t.tc.type_aliases.type_id(name) {
+	} else if target_source_id := t.tc.type_aliases.type_id(name_id) {
 		parts << library_type_text(target_source_id)
-	} else if name !in t.tc.enum_names {
+	} else if name_id !in t.tc.enum_names {
 		return none
 	}
 	for key in t.library_bodies.methods[name_id] {

@@ -293,6 +293,7 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 		}
 	}
 	key := '${p.cur_file}\x00${module_alias}'
+	context_id := flat.source_type_id(key)
 	if !p.named_variant_import_scans[key] {
 		p.named_variant_import_scans[key] = true
 		for node in p.a.nodes {
@@ -323,13 +324,14 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 				}
 				declarations.scan_translated_sizeof_source(source)
 				for type_key in declarations.translated_sizeof_type_names.keys() {
-					p.named_variant_import_types['${key}\x00${type_key.all_after_last('\x00')}'] = true
+					p.named_variant_import_types[parser_type_declaration_key(context_id, u32(type_key))] = true
 				}
 			}
 			break
 		}
 	}
-	return p.named_variant_import_types['${key}\x00${name}']
+	name_id := flat.source_type_existing_id(name) or { return false }
+	return p.named_variant_import_types[parser_type_declaration_key(context_id, name_id)]
 }
 
 // imported_named_variant_pattern_starts_here recognizes a generated owner

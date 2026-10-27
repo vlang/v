@@ -243,7 +243,7 @@ fn (g &Parser) typeof_display_name(typ_id u32) string {
 	}
 	key_id := g.semantic_type_key(typ_id)
 	key := flat.source_type_name(key_id)
-	if key in g.declared_types {
+	if key_id in g.declared_types {
 		syntax := flat.source_type_syntax(key_id)
 		if syntax.dotted_parts().len <= 1 { return key }
 		name := flat.source_type_name(syntax.unqualified())
@@ -458,15 +458,15 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		}
 	}
 	inner_type := g.infer_expression_type(inner_tokens) or { u32(0) }
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(c_type))] == .interface_ {
+	if g.declared_kinds[g.semantic_type_key(c_type)] == .interface_ {
 		inner := g.render_call_argument_expression(inner_tokens, inner_type) or { return none }
 		return FastcRenderedExpression{
 			source: g.interface_value_expression(c_type, inner_type, inner)
 			typ:    c_type
 		}
 	}
-	if flat.source_type_name(g.semantic_type_key(c_type)) in g.declared_kinds
-		&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(c_type))] in [
+	if g.semantic_type_key(c_type) in g.declared_kinds
+		&& g.declared_kinds[g.semantic_type_key(c_type)] in [
 			.struct_,
 			.union_,
 		]
@@ -537,7 +537,12 @@ fn (g &Parser) render_c_interface_object_address(tokens []FastcExpressionToken) 
 		return none
 	}
 	c_type := tokens[3].lit
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(flat.source_type_id(c_type)))] != .interface_ {
+	type_key := if c_type_id := flat.source_type_existing_id(c_type) {
+		g.semantic_type_key(c_type_id)
+	} else {
+		g.declared_type_c_names.type_id(c_type) or { return none }
+	}
+	if g.declared_kinds[type_key] != .interface_ {
 		return none
 	}
 	inner := g.render_call_argument_expression(tokens[5..6], flat.source_type_id('${c_type}*')) or { return none }
@@ -552,7 +557,7 @@ fn (g &Parser) render_c_struct_sizeof(tokens []FastcExpressionToken) ?FastcRende
 		return none
 	}
 	c_name := tokens[4].lit
-	if '#Cstruct#${c_name}' !in g.declared_types {
+	if !fastc_source_type_key_exists(g.declared_types, '#Cstruct#${c_name}') {
 		return none
 	}
 	return FastcRenderedExpression{
@@ -908,22 +913,22 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 	}
 	// The cast type may be unqualified (`Sum(value)`, type at token 0, `(` at 1) or
 	// qualified (`mod.Sum(value)`, type at token 2, `(` at 3).
-	mut type_key := ''
+	mut type_key := u32(0)
 	mut open_index := 0
 	if tokens[0].tok == .name && tokens[1].tok == .lpar {
 		type_key = g.resolve_declared_type_key(tokens[0].lit) or { return none }
 		open_index = 1
 	} else if tokens.len >= 6 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name && tokens[3].tok == .lpar && tokens[0].lit in g.imports {
 		qualified_key := fastc_type_key(g.imports[tokens[0].lit], tokens[2].lit)
-		if qualified_key !in g.declared_types {
+		if !fastc_source_type_key_exists(g.declared_types, qualified_key) {
 			return none
 		}
-		type_key = qualified_key
+		type_key = flat.source_type_id(qualified_key)
 		open_index = 3
 	} else {
 		return none
 	}
-	interface_type := fastc_c_declared_type_name(type_key)
+	interface_type := fastc_c_declared_type_name(flat.source_type_name(type_key))
 	// An explicit conversion to an interface or a sum type (`Animal(Dog{})`) boxes
 	// the concrete operand; both share the boxed representation.
 	if g.declared_kinds[type_key] != .interface_ && interface_type !in g.sum_types {
@@ -977,7 +982,7 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 	} else {
 		rendered_expression[prefix.len..rendered_expression.len - 2]
 	}
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(actual_type))] == .interface_ {
+	if g.declared_kinds[g.semantic_type_key(actual_type)] == .interface_ {
 		// A mutable interface parameter is stored by pointer. Resolve its storage
 		// before copying the carrier so the concrete object and tag survive the cast.
 		interface_source := g.render_call_argument_expression(inner_tokens, actual_type) or {

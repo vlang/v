@@ -4112,12 +4112,12 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		}
 	}
 	if raw_return_shape.has(.result_type) {
-		alias_name := flat.source_type_name(raw_return_syntax.raw_base())
-		alias_target_shape := flat.source_type_shape(tc.type_aliases.type_id(alias_name) or {
-			tc.type_aliases.type_id(tc.qualify_name(alias_name)) or { u32(0) }
+		alias_name_id := raw_return_syntax.raw_base()
+		alias_target_shape := flat.source_type_shape(tc.type_aliases.type_id(alias_name_id) or {
+			tc.type_aliases.type_id(tc.qualify_type_name(alias_name_id)) or { u32(0) }
 		})
 		if alias_target_shape.has(.option_type) {
-			tc.record_error_at(.return_mismatch, 'the fn returns type `${flat.source_type_name(raw_return_type_id)}`, but type `${alias_name}` is an Option alias, you can not mix them', id, tc.fn_return_type_diagnostic_pos(node))
+			tc.record_error_at(.return_mismatch, 'the fn returns type `${flat.source_type_name(raw_return_type_id)}`, but type `${flat.source_type_name(alias_name_id)}` is an Option alias, you can not mix them', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
 	operator := node.value.all_after_last('.')
@@ -4582,8 +4582,8 @@ fn (mut tc TypeChecker) record_unused_top_level_vars(node flat.Node) {
 			rhs_id := tc.a.child(child, j + 1)
 			rhs := tc.a.node(rhs_id)
 			generic_interface_cast := rhs.kind == .cast_expr
-				&& (rhs.value_text() in tc.interface_generic_params
-					|| tc.qualify_name(rhs.value_text()) in tc.interface_generic_params)
+				&& (rhs.source_value_id() in tc.interface_generic_params
+					|| tc.qualify_type_name(rhs.source_value_id()) in tc.interface_generic_params)
 			if tc.expr_subtree_has_error(rhs_id) && !tc.expr_contains_nil_deref(rhs_id)
 				&& !generic_interface_cast {
 				continue
@@ -5320,7 +5320,7 @@ fn (mut tc TypeChecker) prewarm_shared_type_cache() {
 	}
 	tc.prepare_tail_decl_ids()
 	_ = tc.local_fn_decl_exists('__v3_prewarm__')
-	_ = tc.unique_qualified_type_name('__V3Prewarm__') or { u32(0) }
+	_ = tc.unique_qualified_type_name(flat.source_type_id('__V3Prewarm__')) or { u32(0) }
 	_ = tc.source_struct_has_non_builtin_error_embed(flat.source_type_id('__V3Prewarm__'), '', '')
 }
 
