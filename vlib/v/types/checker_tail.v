@@ -7868,7 +7868,7 @@ fn (tc &TypeChecker) sum_constructor_call_name(node flat.Node) ?u32 {
 					}
 				}
 			}
-			if tc.name_names_no_sum_type(callee.source_value_id()) {
+			if tc.callee_names_no_sum_type(callee) {
 				return none
 			}
 			return tc.known_sum_constructor_name(callee.source_value_id())
@@ -7877,7 +7877,7 @@ fn (tc &TypeChecker) sum_constructor_call_name(node flat.Node) ?u32 {
 			base := tc.a.child_node(callee, 0)
 			if base.kind == .ident {
 				// `mod.Name` has the last segment of `Name`.
-				if tc.name_names_no_sum_type(callee.source_value_id()) {
+				if tc.callee_names_no_sum_type(callee) {
 					return none
 				}
 				mod_name := tc.resolve_import_alias(base.value) or { base.value }
@@ -7896,16 +7896,33 @@ fn (tc &TypeChecker) sum_constructor_call_name(node flat.Node) ?u32 {
 	return none
 }
 
+// callee_names_no_sum_type is name_names_no_sum_type for a called name. A name
+// without `.` or `[` is its own short generic base, and one that was never
+// interned cannot be a sum type short name, so plain calls are not interned.
+fn (tc &TypeChecker) callee_names_no_sum_type(callee flat.Node) bool {
+	if callee.value.len == 0 || tc.sum_type_short_names_count != tc.sum_types.ids.len {
+		return tc.name_names_no_sum_type(callee.source_value_id())
+	}
+	name_id := flat.source_type_existing_id(callee.value) or {
+		if callee.value.index_u8(`.`) < 0 && callee.value.index_u8(`[`) < 0 {
+			return true
+		}
+		flat.source_type_id(callee.value)
+	}
+	return tc.name_names_no_sum_type(name_id)
+}
+
 fn (tc &TypeChecker) generic_named_type_cast_call_type(node flat.Node) ?Type {
 	if node.children_count != 2 {
 		return none
 	}
 	callee := tc.a.child_node(&node, 0)
-	if callee.kind == .selector && !flat.source_type_query(flat.source_type_id(callee.value)).has(.bracket_suffix) {
+	// `.bracket_suffix` is exactly a raw `]` suffix; test the text instead of
+	// interning every called selector and identifier.
+	if callee.kind == .selector && !callee.value.ends_with(']') {
 		return none
 	}
-	if callee.kind == .ident && !flat.source_type_query(flat.source_type_id(callee.value)).has(.bracket_suffix)
-		&& tc.file_selective_imports.len == 0 {
+	if callee.kind == .ident && !callee.value.ends_with(']') && tc.file_selective_imports.len == 0 {
 		return none
 	}
 	target_id := tc.type_expr_name(tc.a.child(&node, 0))
@@ -11826,7 +11843,7 @@ fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
 	}
 	// Both aliases below, `clean` and `mod.clean`, end in the last segment of clean.
 	if tc.alias_short_names_count == tc.type_aliases.ids.len
-		&& flat.source_type_syntax(clean_id).unqualified() !in tc.alias_short_names {
+		&& scope_unqualified_type_name(clean_id) !in tc.alias_short_names {
 		return none
 	}
 	if tc.type_aliases.contains(clean_id) {

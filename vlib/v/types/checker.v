@@ -5970,13 +5970,13 @@ fn (mut tc TypeChecker) prepare_check_name_filters() {
 	tc.global_short_names_count = tc.global_names.len
 	mut sums := map[u32]bool{}
 	for name_id, _ in tc.sum_types.ids {
-		sums[flat.source_type_syntax(generic_base_type_id(name_id)).unqualified()] = true
+		sums[scope_unqualified_type_name(generic_base_type_id(name_id))] = true
 	}
 	tc.sum_type_short_names = sums.move()
 	tc.sum_type_short_names_count = tc.sum_types.ids.len
 	mut aliases := map[u32]bool{}
 	for name_id, _ in tc.type_aliases.ids {
-		aliases[flat.source_type_syntax(name_id).unqualified()] = true
+		aliases[scope_unqualified_type_name(name_id)] = true
 	}
 	tc.alias_short_names = aliases.move()
 	tc.alias_short_names_count = tc.type_aliases.ids.len
@@ -6177,7 +6177,7 @@ fn (tc &TypeChecker) selector_names_no_global(field string) bool {
 @[inline]
 fn (tc &TypeChecker) name_names_no_sum_type(name_id u32) bool {
 	return tc.sum_type_short_names_count == tc.sum_types.ids.len
-		&& flat.source_type_syntax(generic_base_type_id(name_id)).unqualified() !in tc.sum_type_short_names
+		&& scope_unqualified_type_name(generic_base_type_id(name_id)) !in tc.sum_type_short_names
 }
 
 // const_key_for_suffix returns the const key matching `.${name}` as a suffix,
@@ -7002,9 +7002,7 @@ fn (tc &TypeChecker) qualify_type_name_uncached(name_id u32) u32 {
 		return name_id
 	}
 	if is_builtin_type_name_id(name_id) || name_id == qualify_source_type_uint { return name_id }
-	// Declaration and import tables still use symbol strings at their boundary.
-	name := flat.source_type_name(name_id)
-	if tc.unqualified_type_symbol_is_builtin(name) { return name_id }
+	if tc.unqualified_type_id_is_builtin(name_id) { return name_id }
 	qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(tc.cur_module), name_id)
 	if qualified_id in tc.structs || qualified_id in tc.interface_names || tc.sum_types.contains(qualified_id)
 		|| qualified_id in tc.enum_names || qualified_id in tc.flag_enums || tc.type_aliases.contains(qualified_id) {
@@ -8588,18 +8586,30 @@ fn (tc &TypeChecker) qualify_candidate_type_spelling_exists(name string) bool {
 }
 
 fn (tc &TypeChecker) unqualified_type_symbol_is_builtin(name string) bool {
-	name_id := flat.source_type_id(name)
+	// A spelling that was never interned names no collected struct or enum.
+	name_id := flat.source_type_existing_id(name) or {
+		if name != 'IError' {
+			return false
+		}
+		flat.source_type_id(name)
+	}
+	return tc.unqualified_type_id_is_builtin(name_id)
+}
+
+fn (tc &TypeChecker) unqualified_type_id_is_builtin(name_id u32) bool {
 	if mod_name := tc.struct_modules[name_id] {
 		if mod_name != 'builtin' {
 			return false
 		}
-	} else if name != 'IError' && name_id !in tc.enum_names && name_id !in tc.flag_enums {
+	} else if name_id != ierror_source_interface_name && name_id !in tc.enum_names
+		&& name_id !in tc.flag_enums {
 		return false
 	}
 	// Builtin enum declarations use their unqualified source name, just like
 	// builtin structs. Keep that name visible from imported modules unless a
-	// declaration in the active scope shadows it.
-	return !tc.unqualified_type_symbol_has_scoped_shadow(name)
+	// declaration in the active scope shadows it. The shadow probe still uses
+	// declaration and import tables keyed by symbol strings.
+	return !tc.unqualified_type_symbol_has_scoped_shadow(flat.source_type_name(name_id))
 }
 
 fn (tc &TypeChecker) unqualified_type_symbol_has_scoped_shadow(name string) bool {
@@ -8994,26 +9004,28 @@ fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
 	// Probe the declaration name before entering the type interner; dotted
 	// semantic methods already install both their full and short suffixes.
 	if tc.method_suffix_prescreen && !name.contains('.') { return }
-	name_id := flat.source_type_id(name)
-	name_shape := flat.source_type_shape(name_id)
-	syntax := flat.source_type_syntax(name_id)
-	method_id := syntax.unqualified()
-	method := flat.source_type_name(method_id)
+	// Split the registered name at its last raw dot, exactly as the source-type
+	// syntax view does, instead of interning and parsing every declaration
+	// spelling. Map insertion owns these borrowed views of `name`.
+	last_dot := name.last_index_u8(`.`)
+	method := if last_dot < 0 {
+		name
+	} else {
+		unsafe { name.substr_unsafe(last_dot + 1, name.len) }
+	}
+	receiver := if last_dot < 0 { name } else { unsafe { name.substr_unsafe(0, last_dot) } }
 	tc.receiver_method_short_names[method] = true
 	if method.len > 1 && method[0] == `@` {
-		// Map insertion owns this borrowed suffix of the registered name.
 		tc.receiver_method_short_names[unsafe { method.substr_unsafe(1, method.len) }] = true
 	}
-	receiver_id := syntax.qualifier()
-	receiver := flat.source_type_name(receiver_id)
 	if receiver.contains('[]') || receiver.contains('map[') {
 		tc.collection_method_short_names[method] = true
 		if method.len > 1 && method[0] == `@` {
 			tc.collection_method_short_names[unsafe { method.substr_unsafe(1, method.len) }] = true
 		}
 	}
-	receiver_shape := flat.source_type_shape(receiver_id)
-	if receiver_shape.has(.bracketed) && flat.source_type_query(receiver_id).has(.bracket_suffix) {
+	receiver_bracket := receiver.index_u8(`[`)
+	if receiver_bracket >= 0 && receiver.ends_with(']') {
 		mut indexed := tc.generic_receiver_method_index[method] or { []string{} }
 		if name !in indexed {
 			indexed << name
@@ -9022,13 +9034,14 @@ fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
 		}
 	}
 	tc.set_receiver_method_suffix_index(name, name)
-	if name_shape.has(.dotted) && receiver_shape.has(.bracketed) && !receiver_shape.has(.leading_bracket) {
-		base_id := flat.source_type_syntax(receiver_id).generic_base()
-		tc.set_receiver_method_suffix_index(flat.source_type_name(flat.source_type_composition_two(.qualified, base_id, method_id)), name)
+	if last_dot >= 0 && receiver_bracket > 0 {
+		// `Foo[T].method` is also reachable as `Foo.method`.
+		receiver_base := unsafe { receiver.substr_unsafe(0, receiver_bracket) }
+		tc.set_receiver_method_suffix_index('${receiver_base}.${method}', name)
 	}
-	for suffix_id in syntax.qualifier_suffixes() {
-		if suffix_id != 0 {
-			tc.set_receiver_method_suffix_index(flat.source_type_name(suffix_id), name)
+	for i in 0 .. name.len - 1 {
+		if name[i] == `.` {
+			tc.set_receiver_method_suffix_index(unsafe { name.substr_unsafe(i + 1, name.len) }, name)
 		}
 	}
 }

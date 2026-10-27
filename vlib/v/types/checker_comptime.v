@@ -9724,6 +9724,21 @@ fn (tc &TypeChecker) shift_is_in_inactive_compact_else(id flat.NodeId) bool {
 	return false
 }
 
+// source_text_is_bare_generic is SourceTypeSyntax.bare_generic for raw text: one
+// ASCII uppercase letter after trimming. Checking the text first keeps plain
+// identifiers from being interned as type spellings.
+fn source_text_is_bare_generic(text string) bool {
+	mut start := 0
+	mut end := text.len
+	for start < end && text[start] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+		start++
+	}
+	for end > start && text[end - 1] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+		end--
+	}
+	return end - start == 1 && text[start] >= `A` && text[start] <= `Z`
+}
+
 fn (tc &TypeChecker) expr_has_unresolved_generic_name_ident(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -9731,7 +9746,7 @@ fn (tc &TypeChecker) expr_has_unresolved_generic_name_ident(id flat.NodeId) bool
 	node := tc.a.node(id)
 	if node.kind == .ident {
 		name := node.value_text()
-		if name !in ['C', 'JS'] && flat.source_type_syntax(node.source_value_id()).bare_generic()
+		if name !in ['C', 'JS'] && source_text_is_bare_generic(name)
 			&& !tc.type_name_known(node.source_value_id()) && name !in tc.fn_context.generic_params
 			&& !tc.active_generic_param(name)
 			&& !tc.node_has_enclosing_generic_param(id, name)
