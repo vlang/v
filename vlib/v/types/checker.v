@@ -1364,10 +1364,10 @@ pub mut:
 	sum_type_short_names         map[string]bool
 	sum_type_short_names_count   int = -1
 	alias_short_names            map[string]bool
-	alias_short_names_count      int = -1
-	const_suffix_key_count       int = -1
-	const_selector_bloom         NameBloom // of const_types and const_suffixes
-	const_selector_suffix_count  int = -1
+	alias_short_names_count      int                 = -1
+	const_suffix_key_count       int                 = -1
+	const_selector_bloom         &ConstSelectorBloom = unsafe { nil } // of const_types and const_suffixes
+	const_selector_suffix_count  int                 = -1
 	const_expr_short_names       map[string]bool
 	const_expr_short_names_count int = -1
 	global_name_bloom            NameBloom // of global_names
@@ -5863,14 +5863,7 @@ fn (mut tc TypeChecker) build_const_suffixes() {
 	}
 	tc.const_suffix_key_count = tc.const_types.len
 	// Include the complete existing suffix table, including ambiguous suffixes.
-	tc.const_selector_bloom = NameBloom{}
-	for name, _ in tc.const_types {
-		tc.const_selector_bloom.add(name)
-	}
-	for name, _ in tc.const_suffixes {
-		tc.const_selector_bloom.add(name)
-	}
-	tc.const_selector_bloom.count = u64(tc.const_types.len)
+	tc.const_selector_bloom = new_const_selector_bloom(tc.const_types, tc.const_suffixes)
 	tc.const_selector_suffix_count = tc.const_suffixes.len
 }
 
@@ -6038,10 +6031,77 @@ fn (tc &TypeChecker) selector_names_no_const(field string) bool {
 		return false
 	}
 	if tc.const_selector_suffix_count == tc.const_suffixes.len
-		&& tc.const_selector_bloom.excludes(field, u64(tc.const_types.len)) {
+		&& tc.const_selector_bloom.excludes(field, tc.const_types.len) {
 		return true
 	}
 	return field !in tc.const_suffixes && field !in tc.const_types
+}
+
+// ConstSelectorBloom is a two-probe bloom filter over the const keys and the
+// const suffixes, sized to about 16 bits per name. The const tables hold far
+// more names than a 4096-bit NameBloom can tell apart. It is never changed
+// after it is built, so forks share it.
+@[heap]
+struct ConstSelectorBloom {
+	count int // const_types.len when it was built
+	mask  u32
+	bits  []u64
+}
+
+// new_const_selector_bloom builds a ConstSelectorBloom over the keys of both tables.
+fn new_const_selector_bloom(const_types map[string]Type, const_suffixes map[string]string) &ConstSelectorBloom {
+	mut nbits := u32(4096)
+	for u64(nbits) < u64(const_types.len + const_suffixes.len) * 16 && nbits < (u32(1) << 24) {
+		nbits <<= 1
+	}
+	mask := nbits - 1
+	mut bits := []u64{len: int(nbits >> 6)}
+	for name, _ in const_types {
+		const_selector_bloom_add(mut bits, mask, name)
+	}
+	for name, _ in const_suffixes {
+		const_selector_bloom_add(mut bits, mask, name)
+	}
+	return &ConstSelectorBloom{
+		count: const_types.len
+		mask:  mask
+		bits:  bits
+	}
+}
+
+// const_selector_hash is FNV-1a over all bytes of `name`, with a final mix.
+@[direct_array_access; inline]
+fn const_selector_hash(name string) u32 {
+	mut h := u32(0x811c9dc5)
+	for i in 0 .. name.len {
+		h = (h ^ u32(name[i])) * 0x01000193
+	}
+	return h ^ (h >> 15)
+}
+
+@[direct_array_access]
+fn const_selector_bloom_add(mut bits []u64, mask u32, name string) {
+	h := const_selector_hash(name)
+	b1 := h & mask
+	b2 := ((h * 0x9e3779b1) >> 8) & mask
+	bits[b1 >> 6] |= u64(1) << (b1 & 63)
+	bits[b2 >> 6] |= u64(1) << (b2 & 63)
+}
+
+// excludes reports whether `name` is surely not in the tables, which must
+// still have `count` const keys.
+@[direct_array_access; inline]
+fn (bloom &ConstSelectorBloom) excludes(name string, count int) bool {
+	if isnil(bloom) || bloom.count != count {
+		return false
+	}
+	h := const_selector_hash(name)
+	b1 := h & bloom.mask
+	if bloom.bits[b1 >> 6] & (u64(1) << (b1 & 63)) == 0 {
+		return true
+	}
+	b2 := ((h * 0x9e3779b1) >> 8) & bloom.mask
+	return bloom.bits[b2 >> 6] & (u64(1) << (b2 & 63)) == 0
 }
 
 // selector_names_no_global reports that no global has the last name segment of
