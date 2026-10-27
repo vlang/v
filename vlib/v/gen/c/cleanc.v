@@ -24264,7 +24264,7 @@ fn module_from_source_type_name(name_id u32) string {
 		return flat.source_type_name(syntax.qualifier)
 	}
 	if syntax.contains_doubleunderscore {
-		return flat.source_type_name(flat.source_type_syntax(syntax.last_double_underscore_prefix).doubleunderscore_dotted)
+		return flat.source_type_name(flat.source_type_syntax(syntax.last_double_underscore_prefix()).doubleunderscore_dotted())
 	}
 	return ''
 }

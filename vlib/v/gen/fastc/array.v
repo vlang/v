@@ -890,14 +890,14 @@ fn (g &Parser) render_membership_candidate(tokens []FastcExpressionToken, expect
 }
 
 fn (g &Parser) render_membership_candidate_with_raw(tokens []FastcExpressionToken, expected_type_source_id u32, rendered_expression string, special_already_missed bool) ?string {
-	expected_type := flat.source_type_name(expected_type_source_id)
 	rendered := g.render_membership_candidate_source(tokens, expected_type_source_id, rendered_expression, special_already_missed)?
 	// A subject narrowed earlier in the same condition (`e is string && e !in xs`) reads
 	// through the variant pointer; the membership test compares its value.
-	if expected_type != '' && !flat.source_type_query(expected_type_source_id).has(.c_pointer_suffix) && g.member_smartcasts.len > 0
+	if expected_type_source_id != 0 && !flat.source_type_query(expected_type_source_id).has(.c_pointer_suffix) && g.member_smartcasts.len > 0
 		&& g.expression_uses_member_smartcast(tokens) {
 		actual := fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { u32(0) })
-		if flat.source_type_name(actual) == expected_type + '*' {
+		if flat.source_type_query(actual).has(.c_pointer_suffix)
+			&& flat.source_type_syntax(actual).c_pointer_base == expected_type_source_id {
 			return fastc_narrowed_variant_value(rendered, expected_type_source_id)
 		}
 	}

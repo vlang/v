@@ -6688,7 +6688,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 		arr := t.fixed_array_value_to_array(expr, clean_type_id, array_type)
 		return t.lower_fixed_array_str(arr, array_type)
 	}
-	if t.is_optional_type_name(clean_type_id) {
+	if clean_shape.has(.optional) {
 		mut optional_expr := expr
 		if is_ref {
 			expr_node := t.a.nodes[int(expr)]
@@ -9145,7 +9145,7 @@ fn generic_specialized_type_matches_flat_name(flat_name_id u32, base string, arg
 		base_syntax := flat.source_type_syntax(base_id)
 		module_name := flat.source_type_name(base_syntax.qualifier)
 		short_base := flat.source_type_name(base_syntax.unqualified)
-		if module_name == 'main' {
+		if base_syntax.qualifier == transform_source_type_main {
 			add_generic_specialized_type_candidate(mut candidates, '${short_base}_${suffix}')
 		}
 		add_generic_specialized_type_candidate(mut candidates, '${module_name}.${short_base}_${suffix}')
@@ -9578,13 +9578,14 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ_id
 			}
 		}
 	}
-	if format == 'p' && (flat.source_type_shape(normalized_typ_id).has(.pointer)
+	normalized_shape := flat.source_type_shape(normalized_typ_id)
+	if format == 'p' && (normalized_shape.has(.pointer)
 		|| clean_typ_id in [flat.source_type_voidptr, flat.source_type_byteptr,
 			flat.source_type_charptr]
 		|| t.expr_is_mut_param_pointer_value(expr)) {
 		return t.make_call_typed('ptr_str', [expr], flat.source_type_string)
 	}
-	if flat.source_type_shape(normalized_typ_id).has(.pointer) && format != 'p' {
+	if normalized_shape.has(.pointer) && format != 'p' {
 		elem_type := t.trim_pointer_type(normalized_typ_id)
 		if t.expr_is_shared_value(expr) {
 			return t.wrap_formatted_string_conversion(expr, elem_type, format)
@@ -9596,7 +9597,7 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ_id
 		t.set_node_typ(int(value), elem_type)
 		return t.wrap_formatted_string_conversion(value, elem_type, format)
 	}
-	if t.is_optional_type_name(normalized_typ_id) {
+	if normalized_shape.has(.optional) {
 		opt_type_source_id := t.qualify_optional_type(normalized_typ_id)
 
 		mut value_type := t.optional_base_type(opt_type_source_id)
@@ -10785,10 +10786,10 @@ fn (t &Transformer) recorded_array_call_elem_type(call_id flat.NodeId) ?u32 {
 	if callee.kind == .ident {
 		callee_syntax := flat.source_type_syntax(callee.source_value_id())
 		if callee_syntax.contains_doubleunderscore {
-			if callee_syntax.last_double_underscore_suffix != flat.source_type_id('array') {
+			if callee_syntax.last_double_underscore_suffix() != flat.source_type_id('array') {
 				return none
 			}
-			receiver := callee_syntax.last_double_underscore_prefix
+			receiver := callee_syntax.last_double_underscore_prefix()
 			if args_source_ids := t.recorded_type_specialization_args(receiver) {
 				if args_source_ids.len == 1 {
 					return args_source_ids[0]
@@ -10867,7 +10868,7 @@ fn (t &Transformer) current_fn_receiver_type() u32 {
 		return syntax.qualifier
 	}
 	if syntax.contains_doubleunderscore {
-		return syntax.last_double_underscore_prefix
+		return syntax.last_double_underscore_prefix()
 	}
 	return u32(0)
 }
@@ -18639,7 +18640,7 @@ fn flattened_generic_receiver_short_variants(receiver_type_id u32) []string {
 	for part in parts {
 		part_syntax := flat.source_type_syntax(part)
 		if part_syntax.contains_doubleunderscore {
-			short_parts << flat.source_type_name(part_syntax.last_double_underscore_suffix)
+			short_parts << flat.source_type_name(part_syntax.last_double_underscore_suffix())
 			changed = true
 		} else {
 			short_parts << flat.source_type_name(part)

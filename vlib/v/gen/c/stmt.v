@@ -8701,11 +8701,11 @@ fn (mut g FlatGen) gen_shared_local_decl(lhs_id flat.NodeId, rhs_id flat.NodeId,
 	inner := g.shared_qualify_type_text(value_type.source_type_id(), g.tc.cur_module)
 	mut wrapper := g.shared_wrapper_c_name(inner)
 	if wrapper !in g.shared_type_names {
-		short_inner := flat.source_type_name(flat.source_type_syntax(inner).unqualified)
+		short_inner := flat.source_type_syntax(inner).unqualified
 		mut matching_wrapper := ''
 		mut ambiguous := false
 		for candidate, info in g.shared_type_names {
-			if flat.source_type_name(flat.source_type_syntax(info.inner).unqualified) != short_inner {
+			if flat.source_type_syntax(info.inner).unqualified != short_inner {
 				continue
 			}
 			if matching_wrapper.len > 0 {

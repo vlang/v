@@ -4512,7 +4512,7 @@ fn (g &Parser) render_enum_flag_shorthand_combination(tokens []FastcExpressionTo
 // whose local values already have their ordinary by-value C representation.
 fn (g &Parser) is_plain_aggregate_value_type(typ u32) bool {
 	type_name := flat.source_type_name(typ)
-	if type_name == '' || fastc_is_pointer_type(typ)
+	if typ == 0 || fastc_is_pointer_type(typ)
 		|| typ in [fastc_type_option, fastc_type_result] || flat.source_type_query(typ).has(.c_fixed_array_prefix)
 		|| type_name in g.sum_types || g.alias_base_types.type_id(type_name) != none {
 		return false

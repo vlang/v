@@ -94,3 +94,18 @@ fn test_source_type_composition_fastc_component_preserves_raw_codec() {
 	raw := zero + ' *.' + last
 	assert source_type_composition_one(.fastc_composite_part, source_type_id(raw)) == source_type_id(zero + '__ptr__' + last)
 }
+
+fn test_source_type_composition_lazy_name_queries_keep_numeric_keys() {
+	id := source_type_id('ptrmain.A__B')
+	for _ in 0 .. 2 {
+		assert source_type_composition_one(.ptr_name_base, id) == source_type_id('main.A__B')
+		assert source_type_composition_one(.main_removed, id) == source_type_id('ptrA__B')
+		assert source_type_composition_one(.last_double_underscore_prefix, id) == source_type_id('ptrmain.A')
+		assert source_type_composition_one(.last_double_underscore_suffix, id) == source_type_id('B')
+		assert source_type_composition_one(.doubleunderscore_dotted, id) == source_type_id('ptrmain.A.B')
+		assert source_type_composition_one(.last_double_underscore_prefix, source_type_id('__')) == 0
+		assert source_type_composition_one(.last_double_underscore_suffix, source_type_id('__')) == 0
+		assert source_type_composition_one(.main_removed, source_type_id('main.')) == 0
+		assert source_type_composition_one(.ptr_name_base, source_type_id('ptr')) == 0
+	}
+}

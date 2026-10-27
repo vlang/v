@@ -2659,7 +2659,7 @@ fn (mut t Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) 
 		}
 		raw_type_source_id := t.comptime_normalize_type_alias_chain(t.raw_var_type(node.value))
 		raw_type_shape := flat.source_type_shape(raw_type_source_id)
-		if t.is_optional_type_name(raw_type_source_id) {
+		if raw_type_shape.has(.optional) {
 			// Local Option bindings carry synthetic pointer payloads. The declaration
 			// preserves whether the source payload itself was a pointer.
 			t.ensure_call_param_types_decl_index()
@@ -2678,13 +2678,15 @@ fn (mut t Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) 
 					continue
 				}
 				mut source_type := t.comptime_normalize_type_alias_chain(param.typ)
-				if flat.source_type_shape(source_type).has(.pointer) {
+				mut source_type_shape := flat.source_type_shape(source_type)
+				if source_type_shape.has(.pointer) {
 					source_type = t.trim_pointer_type(source_type)
+					source_type_shape = flat.source_type_shape(source_type)
 				}
-				for t.is_optional_type_name(source_type) {
+				for source_type_shape.has(.optional) {
 					source_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(source_type))
+					source_type_shape = flat.source_type_shape(source_type)
 				}
-				source_type_shape := flat.source_type_shape(source_type)
 				return source_type_shape.has(.array_type)
 					|| (!source_type_shape.has(.pointer) && t.is_sum_type_name(source_type))
 			}
@@ -2694,10 +2696,11 @@ fn (mut t Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) 
 			return false
 		}
 		mut payload_type := t.comptime_normalize_type_alias_chain(flat.source_type_syntax(raw_type_source_id).raw_base)
-		for t.is_optional_type_name(payload_type) {
+		mut payload_shape := flat.source_type_shape(payload_type)
+		for payload_shape.has(.optional) {
 			payload_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(payload_type))
+			payload_shape = flat.source_type_shape(payload_type)
 		}
-		payload_shape := flat.source_type_shape(payload_type)
 		return payload_shape.has(.array_type)
 			|| (!payload_shape.has(.pointer) && t.is_sum_type_name(payload_type))
 	}
@@ -2754,10 +2757,11 @@ fn (mut t Transformer) clone_owned_array_storage_value_with_pointer_borrow(value
 		return value
 	}
 	mut storage_type := resolved_type_source_id
-	for t.is_optional_type_name(storage_type) {
+	mut storage_type_shape := resolved_type_shape
+	for storage_type_shape.has(.optional) {
 		storage_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(storage_type))
+		storage_type_shape = flat.source_type_shape(storage_type)
 	}
-	storage_type_shape := flat.source_type_shape(storage_type)
 	array_type := if storage_type_shape.has(.pointer) {
 		t.trim_all_pointer_type(storage_type)
 	} else {
@@ -2768,7 +2772,7 @@ fn (mut t Transformer) clone_owned_array_storage_value_with_pointer_borrow(value
 		|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type)) {
 		return value
 	}
-	if storage_is_sum && !t.is_optional_type_name(resolved_type_source_id) {
+	if storage_is_sum && !resolved_type_shape.has(.optional) {
 		if owned := t.clone_owned_sum_literal_for_storage(value, typ_id, clone_owned_value) {
 			return owned
 		}
@@ -2778,7 +2782,7 @@ fn (mut t Transformer) clone_owned_array_storage_value_with_pointer_borrow(value
 	t.pending_stmts << t.make_decl_assign_typed(name, value, typ_id)
 	bound := t.make_ident(name)
 	t.set_node_typ(int(bound), resolved_type_source_id)
-	if t.is_optional_type_name(resolved_type_source_id) {
+	if resolved_type_shape.has(.optional) {
 		// Acquire only the active payload. A retained failed Result also needs
 		// an independent error owner, without reading its absent array value.
 		payload_type_source_id := t.optional_base_type(resolved_type_source_id)

@@ -6683,6 +6683,8 @@ const checker_source_orm_query_data = flat.source_type_id('orm.QueryData')
 const checker_source_chan = flat.source_type_id('chan')
 const checker_source_struct = flat.source_type_id('struct')
 const checker_source_js_number = flat.source_type_id('JS.Number')
+const checker_source_generic_t = flat.source_type_id('T')
+const checker_source_main_module = flat.source_type_id('main')
 
 // qualify_type_name resolves a source spelling ID in the current file, module,
 // and resolution context. Its cache is shared with qualify_name; spelling IDs
@@ -8426,7 +8428,7 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ_id u32) u32 {
 	// `main` (see explicit_generic_concrete_arg_text) resolves to that program
 	// type rather than staying a distinct `main.Foo` spelling or rebasing into
 	// the active module. Only applies when `main` is not itself an import alias.
-	if alias == 'main' {
+	if syntax.first_dot_prefix == checker_source_main_module {
 		if _ := tc.resolve_import_alias('main') {
 		} else {
 			rest_id := syntax.first_dot_suffix
@@ -15834,10 +15836,10 @@ fn (mut tc TypeChecker) check_implicit_generic_sumtype_decl(node_id flat.NodeId,
 fn (tc &TypeChecker) unmentioned_generic_names_in_type(typ_id u32, explicit_params map[string]bool) []string {
 	mut names := []string{}
 	for name_id in flat.source_type_syntax(typ_id).generic_mentions() {
-		name := flat.source_type_name(name_id)
-		if explicit_params.len == 0 && name != 'T' {
+		if explicit_params.len == 0 && name_id != checker_source_generic_t {
 			continue
 		}
+		name := flat.source_type_name(name_id)
 		if explicit_params[name] || tc.type_name_known(name_id) || tc.local_type_name_known(name)
 			|| name in names {
 			continue

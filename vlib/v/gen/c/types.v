@@ -7,6 +7,8 @@ import v.types { unalias_type }
 const cgen_c_namespace_source_type = flat.source_type_id('C')
 const cgen_js_namespace_source_type = flat.source_type_id('JS')
 const cgen_channel_source_type = flat.source_type_id('chan')
+const cgen_main_module_source_type = flat.source_type_id('main')
+const cgen_builtin_module_source_type = flat.source_type_id('builtin')
 
 fn enum_decl_is_flag(node flat.Node) bool {
 	return node.typ == flat.source_type_id('flag')
@@ -798,7 +800,12 @@ fn (g &FlatGen) exact_known_import_type_text(typ_id u32) ?types.Type {
 	if shape.has(.dotted) {
 		module_name := flat.source_type_name(syntax.qualifier)
 		short_name := flat.source_type_name(syntax.unqualified)
-		key := if module_name in ['', 'main', 'builtin'] { short_name } else { clean }
+		key := if syntax.qualifier in [u32(0), cgen_main_module_source_type,
+			cgen_builtin_module_source_type] {
+			short_name
+		} else {
+			clean
+		}
 		if info := g.struct_decl_infos[key] {
 			if info.module == module_name && info.node.source_value_id() == syntax.unqualified {
 				return types.Type(types.Struct{ name_id: clean_id })
@@ -1749,7 +1756,7 @@ fn (mut g FlatGen) optional_payload_holds_pointers(value_type u32) bool {
 	if typ := g.optional_payload_types[value_type_name] {
 		return g.type_holds_aligned_pointer(typ, 0)
 	}
-	return g.qualified_interface_c_types(flat.source_type_name(syntax.last_double_underscore_suffix)).contains(value_type_name)
+	return g.qualified_interface_c_types(flat.source_type_name(syntax.last_double_underscore_suffix())).contains(value_type_name)
 }
 
 // type_holds_aligned_pointer reports whether a value of type `t` holds a pointer at a

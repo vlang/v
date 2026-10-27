@@ -11307,7 +11307,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			} else {
 				b.receiver_type_name(base_id)
 			}
-			dotted_type := flat.source_type_syntax(receiver_type).doubleunderscore_dotted
+			dotted_type := flat.source_type_syntax(receiver_type).doubleunderscore_dotted()
 			receiver_syntax := flat.source_type_syntax(dotted_type)
 			primitive_type := if receiver_syntax.builtin_prefix {
 				receiver_syntax.builtin_base

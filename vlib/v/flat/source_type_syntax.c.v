@@ -211,7 +211,6 @@ pub:
 	fixed_length                       bool
 	qualified_modifiers                u32
 	plain_alias_target                 bool
-	main_removed                       u32
 	c_array_payload                    u32
 	c_fixed_array_payload              u32
 	fastc_array_marker                 bool
@@ -251,7 +250,6 @@ pub:
 	transform_fixed_length            bool
 	receiver_collection_id            u32
 	ampersand_trimmed                 u32
-	last_double_underscore_suffix     u32
 	contains_doubleunderscore         bool
 	parallel_preseed_fn               bool
 	parallel_preseed_short            u32
@@ -277,14 +275,11 @@ pub:
 	question_trimmed                  u32
 	c_array_fixed_prefix              bool
 	function_space_result             u32
-	doubleunderscore_dotted           u32
 	decimal_value                     int
 	integer_value                     int
-	ptr_name_base                     u32
 	encoded_alnum_dotted              bool
 	internal_symbol_prefix            bool
 	main_at_base                      u32
-	last_double_underscore_prefix     u32
 	incremental_generic_application   bool
 	system_error_suffix               bool
 	receiver_app_inner                u32
@@ -638,6 +633,76 @@ pub fn (syntax &SourceTypeSyntax) mut_chars_base() u32 {
 	return source_type_composition_one(.legacy_mut_chars, id)
 }
 
+// last_double_underscore_prefix returns the exact raw spelling before its final double underscore.
+// The numeric composition cache decodes a spelling only on its first query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) last_double_underscore_prefix() u32 {
+	if isnil(syntax.payload) {
+		return 0
+	}
+	id := unsafe { *&u32(syntax.payload) }
+	if !syntax.contains_doubleunderscore {
+		return id
+	}
+	return source_type_composition_one(.last_double_underscore_prefix, id)
+}
+
+// last_double_underscore_suffix returns the exact raw spelling after its final double underscore.
+// The numeric composition cache decodes a spelling only on its first query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) last_double_underscore_suffix() u32 {
+	if isnil(syntax.payload) {
+		return 0
+	}
+	id := unsafe { *&u32(syntax.payload) }
+	if !syntax.contains_doubleunderscore {
+		return id
+	}
+	return source_type_composition_one(.last_double_underscore_suffix, id)
+}
+
+// doubleunderscore_dotted replaces raw double underscores with dots only when requested.
+// The numeric composition cache decodes a spelling only on its first query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) doubleunderscore_dotted() u32 {
+	if isnil(syntax.payload) {
+		return 0
+	}
+	id := unsafe { *&u32(syntax.payload) }
+	if !syntax.contains_doubleunderscore {
+		return id
+	}
+	return source_type_composition_one(.doubleunderscore_dotted, id)
+}
+
+// ptr_name_base returns the raw suffix after a nonempty ptr prefix, or zero.
+// The numeric composition cache decodes a spelling only on its first query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) ptr_name_base() u32 {
+	if isnil(syntax.payload) {
+		return 0
+	}
+	id := unsafe { *&u32(syntax.payload) }
+	if syntax.byte_len <= 3 {
+		return 0
+	}
+	return source_type_composition_one(.ptr_name_base, id)
+}
+
+// main_removed removes every raw main. occurrence only when requested.
+// The numeric composition cache decodes a spelling only on its first query.
+@[inline]
+pub fn (syntax &SourceTypeSyntax) main_removed() u32 {
+	if isnil(syntax.payload) {
+		return 0
+	}
+	id := unsafe { *&u32(syntax.payload) }
+	if !syntax.main_fragment {
+		return id
+	}
+	return source_type_composition_one(.main_removed, id)
+}
+
 // written_applications returns a process-owned immutable array view.
 @[inline]
 pub fn (syntax &SourceTypeSyntax) written_applications() []u32 {
@@ -872,7 +937,6 @@ struct SourceTypeSyntaxParsed {
 	fixed_length                       bool
 	qualified_modifiers                u32
 	plain_alias_target                 bool
-	main_removed                       u32
 	c_array_payload                    u32
 	c_fixed_array_payload              u32
 	fastc_array_marker                 bool
@@ -922,7 +986,6 @@ struct SourceTypeSyntaxParsed {
 	transform_fixed_length            bool
 	receiver_collection_id            u32
 	ampersand_trimmed                 u32
-	last_double_underscore_suffix     u32
 	contains_doubleunderscore         bool
 	parallel_preseed_fn               bool
 	parallel_preseed_short            u32
@@ -956,14 +1019,11 @@ struct SourceTypeSyntaxParsed {
 	c_array_fixed_prefix              bool
 	vls_generic_words                 []u32 = source_type_syntax_empty_ids()
 	function_space_result             u32
-	doubleunderscore_dotted           u32
 	decimal_value                     int
 	integer_value                     int
-	ptr_name_base                     u32
 	encoded_alnum_dotted              bool
 	internal_symbol_prefix            bool
 	main_at_base                      u32
-	last_double_underscore_prefix     u32
 	eval_tuple_parts                  []u32 = source_type_syntax_empty_ids()
 	implicit_tuple_components         []u32 = source_type_syntax_empty_ids()
 	generic_application_heads         []u32 = source_type_syntax_empty_ids()
@@ -1739,7 +1799,6 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 				fixed_length:                        parsed.fixed_length
 				qualified_modifiers:                 parsed.qualified_modifiers
 				plain_alias_target:                  parsed.plain_alias_target
-				main_removed:                        parsed.main_removed
 				c_array_payload:                     parsed.c_array_payload
 				c_fixed_array_payload:               parsed.c_fixed_array_payload
 				fastc_array_marker:                  parsed.fastc_array_marker
@@ -1788,7 +1847,6 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 				transform_fixed_length:              parsed.transform_fixed_length
 				receiver_collection_id:              parsed.receiver_collection_id
 				ampersand_trimmed:                   parsed.ampersand_trimmed
-				last_double_underscore_suffix:       parsed.last_double_underscore_suffix
 				contains_doubleunderscore:           parsed.contains_doubleunderscore
 				parallel_preseed_fn:                 parsed.parallel_preseed_fn
 				parallel_preseed_short:              parsed.parallel_preseed_short
@@ -1822,14 +1880,11 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 				c_array_fixed_prefix:                parsed.c_array_fixed_prefix
 				vls_generic_words_span:              source_type_syntax_owned_ids(parsed.vls_generic_words, mut payload)
 				function_space_result:               parsed.function_space_result
-				doubleunderscore_dotted:             parsed.doubleunderscore_dotted
 				decimal_value:                       parsed.decimal_value
 				integer_value:                       parsed.integer_value
-				ptr_name_base:                       parsed.ptr_name_base
 				encoded_alnum_dotted:                parsed.encoded_alnum_dotted
 				internal_symbol_prefix:              parsed.internal_symbol_prefix
 				main_at_base:                        parsed.main_at_base
-				last_double_underscore_prefix:       parsed.last_double_underscore_prefix
 				eval_tuple_parts_span:               source_type_syntax_owned_ids(parsed.eval_tuple_parts, mut payload)
 				implicit_tuple_components_span:      source_type_syntax_owned_ids(parsed.implicit_tuple_components, mut payload)
 				generic_application_heads_span:      source_type_syntax_owned_ids(parsed.generic_application_heads, mut payload)
@@ -3046,11 +3101,6 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 			u32(0)
 		}
 		plain_alias_target:                 plain_alias_target
-		main_removed:                       if !main_fragment {
-			id
-		} else {
-			source_type_syntax_child_id(id, raw, raw.replace('main.', ''))
-		}
 		c_array_payload:                    if raw.starts_with('Array_') {
 			source_type_syntax_child_range_id(id, raw, 'Array_'.len, raw.len)
 		} else {
@@ -3155,11 +3205,6 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		} else {
 			source_type_syntax_child_id(id, raw, raw.trim('&'))
 		}
-		last_double_underscore_suffix:      if !contains_doubleunderscore {
-			id
-		} else {
-			source_type_syntax_child_id(id, raw, raw.all_after_last('__'))
-		}
 		contains_doubleunderscore:          contains_doubleunderscore
 		parallel_preseed_fn:                parallel_preseed_fn
 		parallel_preseed_short:             parallel_preseed_short
@@ -3223,29 +3268,14 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 		c_array_fixed_prefix:               raw.starts_with('Array_fixed_')
 		vls_generic_words:                  source_type_syntax_vls_generic_words(raw)
 		function_space_result:              function_space_result
-		doubleunderscore_dotted:            if contains_doubleunderscore {
-			source_type_syntax_child_id(id, raw, raw.replace('__', '.'))
-		} else {
-			id
-		}
 		decimal_value:                      if decimal { integer_value } else { 0 }
 		integer_value:                      integer_value
-		ptr_name_base:                      if raw.starts_with('ptr') && raw.len > 3 {
-			source_type_syntax_child_range_id(id, raw, 3, raw.len)
-		} else {
-			u32(0)
-		}
 		encoded_alnum_dotted:               source_type_syntax_encoded_alnum_dotted(raw)
 		internal_symbol_prefix:             raw.starts_with('__v3_internal_symbol_')
 		main_at_base:                       if raw.starts_with('main.@') {
 			source_type_syntax_child_range_id(id, raw, 6, raw.len)
 		} else {
 			id
-		}
-		last_double_underscore_prefix:      if !contains_doubleunderscore {
-			id
-		} else {
-			source_type_syntax_child_id(id, raw, raw.all_before_last('__'))
 		}
 		eval_tuple_parts:                   if tuple_like {
 			source_type_syntax_eval_parts(raw[1..raw.len - 1])
@@ -3481,11 +3511,6 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		fixed_length:                   (raw[0].is_digit() || raw[0] == `_`) && source_type_syntax_integer(raw)
 		qualified_modifiers:            u32(0)
 		plain_alias_target:             true
-		main_removed:                   if main_fragment {
-			source_type_id(raw.replace('main.', ''))
-		} else {
-			id
-		}
 		c_array_payload:                if raw.starts_with('Array_') {
 			source_type_id(raw['Array_'.len..])
 		} else {
@@ -3557,11 +3582,6 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 			|| (raw[last_dot + 1] >= `a` && raw[last_dot + 1] <= `z`
 				&& (qualified || !source_type_syntax_builtin(raw)))
 		ampersand_trimmed:              id
-		last_double_underscore_suffix:  if contains_doubleunderscore {
-			source_type_id(raw.all_after_last('__'))
-		} else {
-			id
-		}
 		contains_doubleunderscore:      contains_doubleunderscore
 		parallel_preseed_fn:            fn_prefix
 		parallel_preseed_short:         if !fn_prefix && raw[last_dot + 1].is_capital() {
@@ -3598,22 +3618,12 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		question_trimmed:               id
 		c_array_fixed_prefix:           raw.starts_with('Array_fixed_')
 		vls_generic_words:              vls_generic_words
-		doubleunderscore_dotted:        if contains_doubleunderscore {
-			source_type_id(raw.replace('__', '.'))
-		} else {
-			id
-		}
 		decimal_value:                  if decimal {
 			integer_value
 		} else {
 			0
 		}
 		integer_value:                  integer_value
-		ptr_name_base:                  if raw.starts_with('ptr') && raw.len > 3 {
-			source_type_id(raw[3..])
-		} else {
-			u32(0)
-		}
 		encoded_alnum_dotted:           !raw.contains('_')
 		internal_symbol_prefix:         raw.starts_with('__v3_internal_symbol_')
 		main_at_base:                   id
@@ -3628,11 +3638,6 @@ fn source_type_syntax_name(id u32, raw string, first_dot int, last_dot int) Sour
 		top_level_dot_prefix:           if qualified { first_dot_prefix } else { u32(0) }
 		top_level_dot_suffix:           if qualified { first_dot_suffix } else { u32(0) }
 		union_parts:                    identity_ids
-		last_double_underscore_prefix:  if contains_doubleunderscore {
-			source_type_id(raw.all_before_last('__'))
-		} else {
-			id
-		}
 		system_error_suffix:            raw.ends_with('SystemError')
 		fastc_fixed_array_length_valid: fastc_fixed_array_length_valid
 		fastc_fixed_array_length:       fastc_fixed_array_length

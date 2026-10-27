@@ -362,7 +362,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				// Initializing an embedded field by its type name:
 				// `Derived{ Base: Base{...} }` sets the `__embedded_N` field.
 				for embed_field in g.struct_field_info[flat.source_type_name(layout_type)] {
-					if embed_field.name.starts_with('__embedded_') && (embed_field.typ == flat.source_type_id(field_name) || flat.source_type_syntax(embed_field.typ).last_double_underscore_suffix == flat.source_type_id(field_name)) {
+					if embed_field.name.starts_with('__embedded_') && (embed_field.typ == flat.source_type_id(field_name) || flat.source_type_syntax(embed_field.typ).last_double_underscore_suffix() == flat.source_type_id(field_name)) {
 						c_field_name = embed_field.name
 						expected_type = embed_field.typ
 						break

@@ -10,6 +10,8 @@ import v.util
 
 const ierror_source_error_name = flat.source_type_id('Error')
 const ierror_source_message_error_name = flat.source_type_id('MessageError')
+const ierror_source_builtin_error_name = flat.source_type_id('builtin.Error')
+const ierror_source_builtin_message_error_name = flat.source_type_id('builtin.MessageError')
 const ierror_source_interface_name = flat.source_type_id('IError')
 const ierror_source_builtin_interface_name = flat.source_type_id('builtin.IError')
 const checker_source_slice_index = flat.source_type_id('SliceIndex')
@@ -13490,14 +13492,15 @@ fn (tc &TypeChecker) named_type_compatible_with_ierror_inner(concrete_name_id u3
 			lookup = qname
 		}
 	}
-	if lookup in ['Error', 'MessageError'] && tc.unqualified_type_name_shadows_builtin(lookup) {
+	if lookup_id in [ierror_source_error_name, ierror_source_message_error_name]
+		&& tc.unqualified_type_name_shadows_builtin(lookup) {
 		return false
 	}
 	if lookup_id in seen {
 		return false
 	}
 	seen[lookup_id] = true
-	if tc.is_builtin_error_struct_name(lookup) {
+	if tc.is_builtin_error_struct_type_id(lookup_id) {
 		return true
 	}
 	if tc.named_type_has_non_builtin_error_embed(lookup_id) {
@@ -13511,17 +13514,17 @@ fn (tc &TypeChecker) named_type_compatible_with_ierror_inner(concrete_name_id u3
 	for field in tc.structs[lookup] or { []StructField{} } {
 		embedded_type := embedded_field_type(field) or { continue }
 		embedded_name_id := method_type_name(unwrap_pointer(embedded_type))
-		embedded_name := flat.source_type_name(embedded_name_id)
-		if embedded_name.len == 0 {
+		if embedded_name_id == 0 {
 			continue
 		}
-		if tc.embedded_field_is_scoped_builtin_error(field, embedded_name, struct_file, struct_module) {
+		if tc.embedded_field_is_scoped_builtin_error(field, embedded_name_id, struct_file, struct_module) {
 			return true
 		}
-		if embedded_name in ['Error', 'MessageError'] && field.name == embedded_name {
+		if embedded_name_id in [ierror_source_error_name, ierror_source_message_error_name]
+			&& field.name == flat.source_type_name(embedded_name_id) {
 			continue
 		}
-		if tc.is_builtin_error_struct_name(embedded_name) {
+		if tc.is_builtin_error_struct_type_id(embedded_name_id) {
 			return true
 		}
 		if tc.named_type_compatible_with_ierror_inner(embedded_name_id, mut seen) {
@@ -13577,18 +13580,18 @@ fn (tc &TypeChecker) named_type_has_non_builtin_error_embed(concrete_name_id u32
 		if embedded_name_id == 0 {
 			continue
 		}
-		embedded_name := flat.source_type_name(embedded_name_id)
-		if tc.embedded_field_is_scoped_builtin_error(field, embedded_name, struct_file, struct_module) {
+		if tc.embedded_field_is_scoped_builtin_error(field, embedded_name_id, struct_file, struct_module) {
 			continue
 		}
-		if embedded_name in ['Error', 'MessageError'] && field.name == embedded_name {
+		if embedded_name_id in [ierror_source_error_name, ierror_source_message_error_name]
+			&& field.name == flat.source_type_name(embedded_name_id) {
 			return true
 		}
 		if flat.source_type_syntax(embedded_name_id).unqualified in [
 			ierror_source_error_name,
 			ierror_source_message_error_name,
 		]
-			&& !tc.is_builtin_error_struct_name(embedded_name) {
+			&& !tc.is_builtin_error_struct_type_id(embedded_name_id) {
 			return true
 		}
 	}
@@ -13718,7 +13721,7 @@ fn (tc &TypeChecker) source_struct_decl_has_non_builtin_error_embed(node flat.No
 			ierror_source_error_name,
 			ierror_source_message_error_name,
 		]
-			&& !tc.is_builtin_error_struct_name_in_scope(flat.source_type_name(resolved_id), cur_file, cur_module) {
+			&& !tc.is_builtin_error_struct_type_id_in_scope(resolved_id, cur_file, cur_module) {
 			return true
 		}
 	}
@@ -13761,8 +13764,12 @@ fn source_field_decl_is_embed(field flat.Node, field_type_id u32) bool {
 			&& field_name_id == flat.source_type_syntax(field_type_id).unqualified))
 }
 
-fn (tc &TypeChecker) embedded_field_is_scoped_builtin_error(field StructField, embedded_name string, struct_file string, struct_module string) bool {
-	if embedded_name !in ['Error', 'MessageError'] || field.name != embedded_name {
+fn (tc &TypeChecker) embedded_field_is_scoped_builtin_error(field StructField, embedded_name_id u32, struct_file string, struct_module string) bool {
+	if embedded_name_id !in [ierror_source_error_name, ierror_source_message_error_name] {
+		return false
+	}
+	embedded_name := flat.source_type_name(embedded_name_id)
+	if field.name != embedded_name {
 		return false
 	}
 	return !tc.unqualified_type_name_shadows_builtin_in_scope(embedded_name, struct_file, struct_module)
@@ -13805,7 +13812,7 @@ fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope(name string,
 	}
 	if file_import_key(file, name) in tc.file_selective_imports {
 		if resolved := tc.resolve_selective_import_type_symbol_in_file(name, file) {
-			return !tc.is_builtin_error_struct_name(resolved)
+			return !tc.is_builtin_error_struct_type_id(flat.source_type_id(resolved))
 		}
 		return true
 	}
@@ -14028,15 +14035,16 @@ pub fn (tc &TypeChecker) resolve_imported_type_text_in_file(typ_id u32, file str
 	return typ_id
 }
 
-fn (tc &TypeChecker) is_builtin_error_struct_name(name string) bool {
-	return tc.is_builtin_error_struct_name_in_scope(name, tc.cur_file, tc.cur_module)
+fn (tc &TypeChecker) is_builtin_error_struct_type_id(name_id u32) bool {
+	return tc.is_builtin_error_struct_type_id_in_scope(name_id, tc.cur_file, tc.cur_module)
 }
 
-fn (tc &TypeChecker) is_builtin_error_struct_name_in_scope(name string, file string, mod_name string) bool {
-	if name in ['builtin.Error', 'builtin.MessageError'] {
+fn (tc &TypeChecker) is_builtin_error_struct_type_id_in_scope(name_id u32, file string, mod_name string) bool {
+	if name_id in [ierror_source_builtin_error_name, ierror_source_builtin_message_error_name] {
 		return true
 	}
-	if name in ['Error', 'MessageError'] {
+	if name_id in [ierror_source_error_name, ierror_source_message_error_name] {
+		name := flat.source_type_name(name_id)
 		if tc.unqualified_type_name_shadows_builtin_in_scope(name, file, mod_name) {
 			return false
 		}
@@ -15298,6 +15306,7 @@ fn trimmed_space(s string) string {
 }
 
 // trimmed_source_type_id keeps the original identity when no trimming is needed.
+@[inline]
 fn trimmed_source_type_id(id u32) u32 {
 	if !flat.source_type_shape(id).has(.padded) {
 		return id
@@ -15305,6 +15314,7 @@ fn trimmed_source_type_id(id u32) u32 {
 	return flat.source_type_syntax(id).trimmed
 }
 
+@[inline]
 fn trimmed_source_type_shape(id u32) flat.SourceTypeShape {
 	shape := flat.source_type_shape(id)
 	if !shape.has(.padded) {

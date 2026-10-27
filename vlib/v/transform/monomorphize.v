@@ -14461,32 +14461,38 @@ fn type_id_may_have_generic_placeholder(typ_id u32) bool {
 }
 
 fn (mut t Transformer) type_text_has_generic_placeholder(typ_id u32, module_name string) bool {
-	if t.skip_generics || !type_id_may_have_generic_placeholder(typ_id) { return false }
-	clean_id := t.trimmed_type_id(typ_id)
+	if t.skip_generics { return false }
+	input_query := flat.source_type_query(typ_id)
+	if !input_query.has(.generic_token) && !input_query.has(.generic_word) { return false }
+	input_shape := flat.source_type_shape(typ_id)
+	clean_id := if input_shape.has(.padded) {
+		flat.source_type_syntax(typ_id).trimmed
+	} else {
+		typ_id
+	}
 	if clean_id == 0 { return false }
 	if clean_id == flat.source_type_generic { return true }
-	if flat.source_type_query(clean_id).has(.generic_fn_name) && !t.concrete_type_name_known_id(clean_id, module_name) {
+	clean_query := if clean_id == typ_id { input_query } else { flat.source_type_query(clean_id) }
+	if clean_query.has(.generic_fn_name) && !t.concrete_type_name_known_id(clean_id, module_name) {
 		return true
 	}
-	shape := flat.source_type_shape(clean_id)
+	shape := if clean_id == typ_id { input_shape } else { flat.source_type_shape(clean_id) }
+	syntax := flat.source_type_syntax(clean_id)
 	if shape.has(.pointer) || shape.has(.mutable_type) || shape.has(.optional)
 		|| shape.has(.variadic) || shape.has(.array_type) {
-		return t.type_text_has_generic_placeholder(flat.source_type_syntax(clean_id).raw_base, module_name)
+		return t.type_text_has_generic_placeholder(syntax.raw_base, module_name)
 	}
 	if shape.has(.map_type) {
-		syntax := flat.source_type_syntax(clean_id)
 		if syntax.bracket_closed {
 			return t.type_text_has_generic_placeholder(syntax.bracket_raw_inner, module_name)
 				|| t.type_text_has_generic_placeholder(syntax.bracket_suffix, module_name)
 		}
 	}
 	if shape.has(.leading_bracket) {
-		syntax := flat.source_type_syntax(clean_id)
 		if syntax.bracket_closed {
 			return t.type_text_has_generic_placeholder(syntax.bracket_suffix, module_name)
 		}
 	}
-	syntax := flat.source_type_syntax(clean_id)
 	if syntax.generic_app_valid {
 		for arg in syntax.generic_app_args() {
 			if t.type_text_has_generic_placeholder(arg, module_name) { return true }

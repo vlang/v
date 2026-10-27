@@ -9,6 +9,9 @@ import v.scanner
 import v.ssa
 import v.token
 
+const fastc_arm64_fd_set_source_type = flat.source_type_id('C.fd_set')
+const fastc_arm64_timeval_source_type = flat.source_type_id('C.timeval')
+
 struct FastArm64Value {
 	id                   ssa.ValueID
 	typ                  ssa.TypeID
@@ -4994,7 +4997,7 @@ fn (mut p FastArm64Parser) parse_enum_shorthand(type_name_source_id u32) !FastAr
 	} else {
 		'${p.source_file.header.module_name}.'
 	}
-	short_type_name := flat.source_type_name(flat.source_type_syntax(flat.source_type_syntax(type_name_source_id).unqualified).last_double_underscore_suffix)
+	short_type_name := flat.source_type_name(flat.source_type_syntax(flat.source_type_syntax(type_name_source_id).unqualified).last_double_underscore_suffix())
 	key := '${module_prefix}${short_type_name}.${field}'
 	mut declaration := p.program.enum_values[key] or {
 		p.program.enum_values['${short_type_name}.${field}'] or { FastArm64ConstantDecl{} }
@@ -8138,9 +8141,8 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 }
 
 fn (mut p FastArm64Program) ensure_c_fd_type(name_source_id u32) {
-	name := flat.source_type_name(name_source_id)
 	if existing := p.type_ids[name_source_id] {
-		if name == 'C.fd_set' && p.m.type_store.types[existing].fields.len == 0 {
+		if name_source_id == fastc_arm64_fd_set_source_type && p.m.type_store.types[existing].fields.len == 0 {
 			mut fields := []ssa.TypeID{}
 			mut field_names := []string{}
 			for i in 0 .. 16 {
@@ -8158,7 +8160,7 @@ fn (mut p FastArm64Program) ensure_c_fd_type(name_source_id u32) {
 	}
 	mut fields := []ssa.TypeID{}
 	mut field_names := []string{}
-	if name == 'C.timeval' {
+	if name_source_id == fastc_arm64_timeval_source_type {
 		fields = [p.u64_type, p.u64_type]
 		field_names = ['tv_sec', 'tv_usec']
 	} else {
@@ -9627,7 +9629,7 @@ fn (mut p FastArm64Parser) resolve_method_key(value FastArm64Value, method strin
 			return array_key
 		}
 	}
-	for semantic_receiver in [receiver_id, receiver_syntax.doubleunderscore_dotted] {
+	for semantic_receiver in [receiver_id, receiver_syntax.doubleunderscore_dotted()] {
 		key := flat.source_type_name(flat.source_type_composition_two(.qualified, semantic_receiver, flat.source_type_id(method)))
 		if key in p.program.functions {
 			return key

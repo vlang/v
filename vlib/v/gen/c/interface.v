@@ -393,7 +393,7 @@ fn (g &FlatGen) resolve_variant(sum_name_id u32, variant_id u32) u32 {
 			return if resolved != 0 { resolved } else { variant_id }
 		}
 		if flat.source_type_syntax(variant_id).contains_doubleunderscore && !flat.source_type_shape(variant_id).has(.dotted) {
-			normalized := flat.source_type_syntax(variant_id).doubleunderscore_dotted
+			normalized := flat.source_type_syntax(variant_id).doubleunderscore_dotted()
 			if resolved := lookup[normalized] {
 				return if resolved != 0 { resolved } else { normalized }
 			}

@@ -379,7 +379,7 @@ fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_so
 	wait_name := g.fastc_unclaimed_generated_name(fastc_thread_wait_name(thread_type))
 	if wait_name !in g.spawn_helpers {
 		mut waiter := ''
-		if value_type == '' {
+		if value_type_source_id == 0 {
 			waiter = 'static void ${wait_name}(${thread_type} t) {
 	int join_code = pthread_join(t.handle, NULL);
 	if (join_code != 0) {
@@ -427,10 +427,10 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	args_struct := g.fastc_unclaimed_generated_name('__vf_spawn_args_${target_stem}')
 	run_name := g.fastc_unclaimed_generated_name('__vf_spawn_run_${target_stem}')
 	mut fields := ''
-	if value_type != '' {
+	if value_type_source_id != 0 {
 		fields += '\t${fastc_output_c_type(value_type)} result;\n'
 	}
-	if value_type == '' && parameter_types.len == 0 {
+	if value_type_source_id == 0 && parameter_types.len == 0 {
 		// C forbids empty struct definitions.
 		fields += '\tint unused;\n'
 	}
@@ -450,7 +450,7 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	if parameters == '' {
 		parameters = 'void'
 	}
-	call := if value_type == '' {
+	call := if value_type_source_id == 0 {
 		'\t${target}(${forwards});'
 	} else {
 		'\targs->result = ${target}(${forwards});'

@@ -201,7 +201,7 @@ fn (mut g Parser) fastc_sumtype_str_helper(c_type u32) ?string {
 	// V prints a sum value as `Sum(payload)`, with the sum type's short name, as the
 	// C backend's transform does: a string payload is quoted, a rune one is in
 	// backticks, and any other alias variant keeps its own wrapper (`Res(Ints([1]))`).
-	sum_display := flat.source_type_name(flat.source_type_syntax(base_id).last_double_underscore_suffix)
+	sum_display := flat.source_type_name(flat.source_type_syntax(base_id).last_double_underscore_suffix())
 	for variant_id in variant_ids {
 		variant := flat.source_type_name(variant_id)
 		payload := '(*(${variant} *)it._object)'
@@ -213,7 +213,7 @@ fn (mut g Parser) fastc_sumtype_str_helper(c_type u32) ?string {
 		if variant_base == flat.source_type_rune {
 			formatted = fastc_wrapped_str_expression('`', formatted, '`')
 		} else if variant_base != variant_id && variant_base != flat.source_type_string {
-			alias_display := flat.source_type_name(flat.source_type_syntax(variant_id).last_double_underscore_suffix)
+			alias_display := flat.source_type_name(flat.source_type_syntax(variant_id).last_double_underscore_suffix())
 			formatted = fastc_wrapped_str_expression('${alias_display}(', formatted, ')')
 		}
 		formatted = fastc_wrapped_str_expression('${sum_display}(', formatted, ')')
@@ -248,7 +248,7 @@ fn (mut g Parser) fastc_sumtype_type_name_helper(c_type u32) ?string {
 	variant_ids := g.sum_type_variant_keys(base_id)
 	for variant_id in variant_ids {
 		variant := flat.source_type_name(variant_id)
-		display := flat.source_type_name(flat.source_type_syntax(variant_id).doubleunderscore_dotted)
+		display := flat.source_type_name(flat.source_type_syntax(variant_id).doubleunderscore_dotted())
 		body += '\t\tcase __v_typeid_${variant}: return _S("${display}");\n'
 	}
 	body += '\t}\n\treturn _S("unknown");\n}'

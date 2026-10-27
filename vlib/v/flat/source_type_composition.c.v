@@ -35,6 +35,11 @@ pub enum SourceTypeComposition {
 	fastc_thread_handle
 	fastc_composite_part
 	legacy_mut_chars
+	last_double_underscore_prefix
+	last_double_underscore_suffix
+	doubleunderscore_dotted
+	ptr_name_base
+	main_removed
 }
 
 struct SourceTypeCompositionEntry {
@@ -60,9 +65,13 @@ __global g_source_type_compositions [4096]voidptr
 // fastc_thread_handle encodes one source spelling into its FastC thread handle name.
 // fastc_composite_part applies FastC component escaping only when that spelling is requested.
 // legacy_mut_chars removes leading raw bytes from the character set `m`, `u`, `t`, and ASCII space.
+// last_double_underscore_prefix and last_double_underscore_suffix query the final raw delimiter.
+// doubleunderscore_dotted replaces every raw double underscore with a dot.
+// ptr_name_base removes a leading ptr only when at least one raw byte follows it.
+// main_removed removes every raw main. occurrence without token or whitespace normalization.
 // Entries own only IDs, so borrowed type descriptors and worker arenas can change
 // or expire without invalidating a cached spelling.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn source_type_composition(kind SourceTypeComposition, parts []u32) u32 {
 	mut hash := u64(kind) + u64(14_695_981_039_346_656_037)
 	for part in parts {
@@ -208,6 +217,14 @@ fn source_type_composition_text(kind SourceTypeComposition, parts []u32) string 
 		.named_parameter { return '${source_type_name(parts[0])} ${source_type_name(parts[1])}' }
 		.inferred_expression { return 'typeof(__expr_${int(parts[0])})' }
 		.legacy_mut_chars { return source_type_name(parts[0]).trim_left('mut ') }
+		.last_double_underscore_prefix { return source_type_name(parts[0]).all_before_last('__') }
+		.last_double_underscore_suffix { return source_type_name(parts[0]).all_after_last('__') }
+		.doubleunderscore_dotted { return source_type_name(parts[0]).replace('__', '.') }
+		.ptr_name_base {
+			text := source_type_name(parts[0])
+			return if text.starts_with('ptr') && text.len > 3 { text[3..] } else { '' }
+		}
+		.main_removed { return source_type_name(parts[0]).replace('main.', '') }
 		.fastc_composite_part {
 			text := source_type_name(parts[0])
 			return if text.contains(' ') || text.contains('*') || text.contains('.') {

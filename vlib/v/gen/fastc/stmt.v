@@ -3225,7 +3225,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 		declaration_type = fastc_platform_int_c_type
 	} else if expression.starts_with('({')
 		&& (expression.contains('for (') || expression.contains('switch (')
-			|| expression.contains('return ')) && g.last_expression_type != u32(0) && local_type != '' {
+			|| expression.contains('return ')) && g.last_expression_type != u32(0) && local_type_id != 0 {
 		// TinyCC cannot take `__typeof__` of a statement expression that runs a `for` loop (as an
 		// array `{len:, init:}` initializer lowers to), a `switch` (as a sum-type common-field
 		// read lowers to), or a `return` (an `x or { return … }` propagation), so name the known

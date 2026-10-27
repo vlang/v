@@ -4519,7 +4519,7 @@ fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string)
 	for name_id in sorted_names {
 		name := flat.source_type_name(name_id)
 		parsed := g.tc.parse_canonical_type_cached(name_id)
-		if flat.source_type_query(name_id).has(.c_prefix) || name in g.tc.unions || name == 'thread'
+		if flat.source_type_query(name_id).has(.c_prefix) || name in g.tc.unions || name_id == cgen_thread_source_type
 			|| flat.source_type_query(name_id).has(.thread_suffix) || flat.source_type_shape(name_id).has(.thread_type)
 			|| g.is_generic_struct(name) || g.type_contains_generic_placeholder(parsed)
 			|| g.type_name_contains_generic_placeholder(name_id) || g.skip_builtin_struct(name)
@@ -10377,7 +10377,7 @@ fn (g &FlatGen) specialized_interface_name_for_method_call(node flat.Node, iface
 		if arg == 0 || flat.source_type_syntax(arg).cgen_generic_placeholder {
 			return iface_name_id
 		}
-		args << flat.source_type_syntax(arg).main_removed
+		args << flat.source_type_syntax(arg).main_removed()
 	}
 	application_base := if flat.source_type_name(raw_base_id) in g.interfaces {
 		raw_base_id
@@ -13533,7 +13533,12 @@ fn (g &FlatGen) field_type(base_type types.Type, field_name string) ?types.Type 
 	fields := g.tc.structs[struct_name] or {
 		// Checked generic arguments can retain `main.` to distinguish the caller's
 		// type from an imported namesake; materialized structs use bare main names.
-		g.tc.structs[strip_main_module_qualifier(struct_name)] or { return none }
+		unqualified := if clean is types.Struct {
+			flat.source_type_name(flat.source_type_syntax(clean.source_type_id()).main_unlocked)
+		} else {
+			struct_name
+		}
+		g.tc.structs[unqualified] or { return none }
 	}
 	for field in fields {
 		if field.name == field_name {

@@ -330,7 +330,7 @@ fn test_source_type_syntax_cached_qualification_stream_preserves_every_byte() {
 
 fn test_source_type_syntax_cached_query_variants_retain_legacy_grammar() {
 	assert source_type_syntax(source_type_id('main.Box[main.T, domain.T, main.main.U]')).main_unlocked == source_type_id('Box[T, domain.T, main.U]')
-	assert source_type_syntax(source_type_id('main.Box[main.T]')).main_removed == source_type_id('Box[T]')
+	assert source_type_syntax(source_type_id('main.Box[main.T]')).main_removed() == source_type_id('Box[T]')
 	encoded := source_type_syntax(source_type_id('_123int'))
 	assert encoded.encoded_fixed_length == source_type_id('123')
 	assert encoded.encoded_fixed_base == source_type_id('int')
@@ -435,7 +435,7 @@ fn test_source_type_syntax_cached_encoding_and_array_views() {
 		source_type_id('C'),
 		u32(0),
 	]
-	assert source_type_syntax(source_type_id('A__B')).doubleunderscore_dotted == source_type_id('A.B')
+	assert source_type_syntax(source_type_id('A__B')).doubleunderscore_dotted() == source_type_id('A.B')
 	assert source_type_syntax(source_type_id('Foo???')).question_trimmed == source_type_id('Foo')
 	assert source_type_syntax(source_type_id('42')).decimal_value == 42
 	assert source_type_syntax(source_type_id('4x')).decimal_value == 0
@@ -525,7 +525,7 @@ fn test_source_type_encoded_prefix_cache_preserves_dot_codec() {
 	}
 	assert source_type_syntax(source_type_id('pkg.Name2')).encoded_alnum_dotted
 	assert !source_type_syntax(source_type_id('pkg_Name')).encoded_alnum_dotted
-	assert source_type_syntax(source_type_id('ptrpkg.Name')).ptr_name_base == source_type_id('pkg.Name')
+	assert source_type_syntax(source_type_id('ptrpkg.Name')).ptr_name_base() == source_type_id('pkg.Name')
 }
 
 fn test_source_type_syntax_exact_eval_and_driver_tuple_views() {
@@ -768,7 +768,7 @@ fn test_source_type_syntax_qualified_name_fast_path_preserves_views() {
 		assert syntax.builtin_prefix == raw.starts_with('builtin.')
 		assert syntax.main_fragment == raw.contains('main.')
 		assert syntax.main_unlocked == source_type_syntax_main_unlocked(id, raw)
-		assert syntax.main_removed == source_type_id(raw.replace('main.', ''))
+		assert syntax.main_removed() == source_type_id(raw.replace('main.', ''))
 		assert syntax.canonical_dotted_name
 		assert syntax.qualified_name_chars
 		assert !syntax.plain_type_name
@@ -1203,5 +1203,58 @@ fn test_source_type_syntax_symbol_name_singleton_tag_stays_private_and_owned() {
 		assert syntax.symbol_parts() == expected_parts
 		assert syntax.symbol_is_name() == expected_names
 		assert source_type_syntax(id) == syntax
+	}
+}
+
+fn test_source_type_syntax_lazy_name_views_preserve_raw_queries() {
+	for raw in ['', 'Name', 'main.Name', 'main.main.Name', 'domain.Name', 'main.', '__', 'A__B',
+		'__A', 'A__', 'A___B', 'A____B', 'ptr', 'ptrName', 'ptrmain.Name', 'ptrA__B', ' ptrA__B ',
+		'\tmain.A__B\n', '&ptrpkg.Name', 'Box[main.A__B', 'fn (main.A__B) ptrC', 'émain.A__B'] {
+		id := source_type_id(raw)
+		syntax := source_type_syntax(id)
+		for _ in 0 .. 2 {
+			assert syntax.last_double_underscore_prefix() == source_type_id(raw.all_before_last('__'))
+			assert syntax.last_double_underscore_suffix() == source_type_id(raw.all_after_last('__'))
+			assert syntax.doubleunderscore_dotted() == source_type_id(raw.replace('__', '.'))
+			assert syntax.main_removed() == source_type_id(raw.replace('main.', ''))
+			expected_ptr := if raw.starts_with('ptr') && raw.len > 3 {
+				source_type_id(raw[3..])
+			} else {
+				u32(0)
+			}
+			assert syntax.ptr_name_base() == expected_ptr
+		}
+	}
+	mut bytes := 'ptrmain.Lazy__Name'.bytes()
+	borrowed := unsafe { tos(bytes.data, bytes.len) }
+	syntax := source_type_syntax(source_type_id(borrowed))
+	bytes[0] = 88
+	assert syntax.ptr_name_base() == source_type_id('main.Lazy__Name')
+	assert syntax.main_removed() == source_type_id('ptrLazy__Name')
+	assert syntax.last_double_underscore_prefix() == source_type_id('ptrmain.Lazy')
+	assert syntax.last_double_underscore_suffix() == source_type_id('Name')
+	assert syntax.doubleunderscore_dotted() == source_type_id('ptrmain.Lazy.Name')
+	zero := SourceTypeSyntax{}
+	assert zero.ptr_name_base() == 0
+	assert zero.main_removed() == 0
+	assert zero.last_double_underscore_prefix() == 0
+	assert zero.last_double_underscore_suffix() == 0
+	assert zero.doubleunderscore_dotted() == 0
+}
+
+fn source_type_syntax_lazy_name_views_worker() []u32 {
+	syntax := source_type_syntax(source_type_id('ptrmain.Parallel__Name'))
+	return [syntax.ptr_name_base(), syntax.main_removed(), syntax.last_double_underscore_prefix(),
+		syntax.last_double_underscore_suffix(), syntax.doubleunderscore_dotted()]
+}
+
+fn test_source_type_syntax_lazy_name_views_parallel_publication() {
+	mut workers := []thread []u32{}
+	for _ in 0 .. 4 { workers << spawn source_type_syntax_lazy_name_views_worker() }
+	expected := [source_type_id('main.Parallel__Name'), source_type_id('ptrParallel__Name'),
+		source_type_id('ptrmain.Parallel'), source_type_id('Name'),
+		source_type_id('ptrmain.Parallel.Name')]
+	for worker in workers {
+		assert worker.wait() == expected
 	}
 }

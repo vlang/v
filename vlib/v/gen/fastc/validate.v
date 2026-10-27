@@ -1304,7 +1304,7 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) 
 		}
 		// Accessing the embed itself by its type name (`d.SilentStreamingDownloader`):
 		// resolve to the `__embedded_N` field, keeping its concrete type.
-		if field.typ == flat.source_type_id(field_name) || flat.source_type_syntax(field.typ).last_double_underscore_suffix == flat.source_type_id(field_name) {
+		if field.typ == flat.source_type_id(field_name) || flat.source_type_syntax(field.typ).last_double_underscore_suffix() == flat.source_type_id(field_name) {
 			// The `__embedded_N` field IS the target; its name already renders the
 			// access, so return it as-is (no extra storage path).
 			return *field

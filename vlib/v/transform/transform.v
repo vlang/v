@@ -18221,7 +18221,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 	if int(id) >= 0 && target_type_id != u32(0) {
 		node := t.a.nodes[int(id)]
 		if node.kind == .paren && node.children_count == 1
-			&& (t.is_optional_type_name(target_type_id) || t.is_interface_type(target_type_id)) {
+			&& (target_shape.has(.optional) || t.is_interface_type(target_type_id)) {
 			// Apply option/interface conversion once, to the value inside the parentheses.
 			return t.transform_expr_for_type(t.a.child(&node, 0), target_type_id)
 		}
@@ -18242,13 +18242,13 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 		if storage := t.mut_optional_view_storage_for_target(id, target_type_id) {
 			return storage
 		}
-		if node.kind == .none_expr && t.is_optional_type_name(target_type_id) {
+		if node.kind == .none_expr && target_shape.has(.optional) {
 			return t.make_optional_none(t.qualify_optional_type(target_type_id))
 		}
 		if node.kind == .none_expr && t.is_ierror_type(target_type_id) {
 			return t.make_ierror_none()
 		}
-		if t.is_optional_type_name(target_type_id) && node.kind in [.lambda_expr, .fn_literal] {
+		if target_shape.has(.optional) && node.kind in [.lambda_expr, .fn_literal] {
 			optional_target_source_id := t.qualify_optional_type(target_type_id)
 
 			payload_type_source_id := t.optional_base_type(optional_target_source_id)
@@ -18258,7 +18258,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				return t.make_optional_some(value, optional_target_source_id)
 			}
 		}
-		if t.is_optional_type_name(target_type_id) && node.kind == .ident {
+		if target_shape.has(.optional) && node.kind == .ident {
 			optional_target_source_id_2 := t.qualify_optional_type(target_type_id)
 
 			payload_type_source_id_2 := t.optional_base_type(optional_target_source_id_2)
@@ -18299,7 +18299,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				return expr
 			}
 		}
-		if t.is_optional_type_name(target_type_id) && node.kind in [.array_init, .array_literal] {
+		if target_shape.has(.optional) && node.kind in [.array_init, .array_literal] {
 			optional_target_source_id_3 := t.qualify_optional_type(target_type_id)
 
 			payload_type_source_id_3 := t.optional_base_type(optional_target_source_id_3)
@@ -18309,7 +18309,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				return t.make_optional_some(value, optional_target_source_id_3)
 			}
 		}
-		if t.is_optional_type_name(target_type_id) && node.kind == .postfix && node.op == .not
+		if target_shape.has(.optional) && node.kind == .postfix && node.op == .not
 			&& node.children_count == 1 {
 			optional_target_source_id_4 := t.qualify_optional_type(target_type_id)
 
@@ -18323,7 +18323,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				return t.make_optional_some(value, optional_target_source_id_4)
 			}
 		}
-		if t.is_optional_type_name(target_type_id) {
+		if target_shape.has(.optional) {
 			optional_target_source_id_5 := t.qualify_optional_type(target_type_id)
 			target_payload_source_id := t.optional_base_type(optional_target_source_id_5)
 			target_payload_shape := flat.source_type_shape(target_payload_source_id)
@@ -18346,7 +18346,8 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				}
 			}
 			source_type_source_id_3 := t.optional_conversion_source_type(id)
-			same_option_source := t.is_optional_type_name(source_type_source_id_3)
+			source_is_optional := t.is_optional_type_name(source_type_source_id_3)
+			same_option_source := source_is_optional
 				&& t.qualify_optional_type(source_type_source_id_3) == optional_target_source_id_5
 			if same_option_source && node.kind !in [.block, .if_expr, .match_stmt] {
 				return t.transform_expr(id)
@@ -18367,14 +18368,14 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 					true
 				}
 			}
-			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3)
+			if payload_conversion && !source_is_optional
 				&& t.is_interface_type(target_payload_source_id) {
 				share_source := t.interface_target_should_share_source(id, target_payload_source_id)
 				if value := t.transform_interface_value_for_type(id, target_payload_source_id, share_source) {
 					return t.make_optional_some(value, optional_target_source_id_5)
 				}
 			}
-			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3)
+			if payload_conversion && !source_is_optional
 				&& t.is_sum_type_name(target_payload_source_id) {
 				value := t.transform_sum_value_for_type(id, target_payload_source_id)
 				return t.make_optional_some(value, optional_target_source_id_5)
@@ -18382,12 +18383,12 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 			// A `[]Item` stored as a `?[]Named` (or `?[]Shape`) is converted element by
 			// element, as for a plain `[]Named` target; wrapped as is, the option would
 			// hold concrete values where interface or sum values are read.
-			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3) {
+			if payload_conversion && !source_is_optional {
 				if value := t.transform_array_value_for_dynamic_target(id, target_payload_source_id) {
 					return t.make_optional_some(value, optional_target_source_id_5)
 				}
 			}
-			if payload_conversion && t.is_optional_type_name(source_type_source_id_3)
+			if payload_conversion && source_is_optional
 				&& t.is_sum_type_name(target_payload_source_id) {
 				if t.sum_target_accepts_variant_type(target_payload_source_id, source_type_source_id_3) {
 					value := t.wrap_sum_value(id, target_payload_source_id)
@@ -18399,7 +18400,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 					}
 				}
 			}
-			if t.is_optional_type_name(source_type_source_id_3) && target_payload_shape.has(.pointer)
+			if source_is_optional && target_payload_shape.has(.pointer)
 				&& !flat.source_type_shape(t.optional_base_type(source_type_source_id_3)).has(.pointer) {
 				if value := t.transform_optional_value_to_pointer(id, source_type_source_id_3, optional_target_source_id_5,
 					false) {
@@ -18509,7 +18510,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 		flat.Node{}
 	}
 	if int(expr) >= 0 && source_node.kind == .call && flat.source_type_shape(source_node.typ).has(.bracketed)
-		&& target_type_id != u32(0) && !t.is_optional_type_name(target_type_id) {
+		&& target_type_id != u32(0) && !target_shape.has(.optional) {
 		t.set_node_typ(int(expr), target_type_id)
 	}
 	return t.coerce_transformed_expr_to_type(expr, id, target_type_id)
@@ -18556,14 +18557,16 @@ fn (mut t Transformer) pointer_storage_expr_for_value_target(id flat.NodeId, tar
 fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_type_id u32) ?flat.NodeId {
 	if isnil(t.tc) || int(id) < 0 || target_type_id == 0 { return none }
 	mut expected_type_id := target_type_id
-	if !flat.source_type_shape(expected_type_id).has(.array_type) {
+	mut expected_shape := flat.source_type_shape(expected_type_id)
+	if !expected_shape.has(.array_type) {
 		for _ in 0 .. 8 {
 			next := t.normalize_type_alias(expected_type_id)
 			if next == expected_type_id { return none }
 			expected_type_id = next
-			if flat.source_type_shape(expected_type_id).has(.array_type) { break }
+			expected_shape = flat.source_type_shape(expected_type_id)
+			if expected_shape.has(.array_type) { break }
 		}
-		if !flat.source_type_shape(expected_type_id).has(.array_type) { return none }
+		if !expected_shape.has(.array_type) { return none }
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .index && node.value == 'range' {
@@ -28969,10 +28972,12 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				}
 			}
 			mut typ := t.var_type(node.value_text())
-			if typ != 0 && (flat.source_type_shape(typ).has(.option_type)
-				|| flat.source_type_shape(typ).has(.pointer_option)) {
-				if view_param := t.mut_optional_view_param(node.value_text()) {
-					return t.mut_optional_view_read(view_param)
+			if typ != 0 {
+				typ_shape := flat.source_type_shape(typ)
+				if typ_shape.has(.option_type) || typ_shape.has(.pointer_option) {
+					if view_param := t.mut_optional_view_param(node.value_text()) {
+						return t.mut_optional_view_read(view_param)
+					}
 				}
 			}
 			mut is_global := false

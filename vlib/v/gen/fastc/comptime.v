@@ -1759,7 +1759,7 @@ fn (g &Parser) fastc_veb_context_name() string {
 	}
 	for name, local in g.locals {
 		base := fastc_trim_pointer_type(local.typ)
-		if base == flat.source_type_id('Context') || flat.source_type_syntax(base).last_double_underscore_suffix == flat.source_type_id('Context') {
+		if base == flat.source_type_id('Context') || flat.source_type_syntax(base).last_double_underscore_suffix() == flat.source_type_id('Context') {
 			return name
 		}
 	}

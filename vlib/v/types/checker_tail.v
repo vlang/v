@@ -20574,7 +20574,7 @@ fn (tc &TypeChecker) is_params_struct_type(typ &Type) bool {
 				|| flat.source_type_name(flat.source_type_syntax(syntax.application_base).unqualified) in tc.params_structs) {
 			return true
 		}
-		qname := tc.qualify_name(typ.name())
+		qname := flat.source_type_name(tc.qualify_type_name(typ.source_type_id()))
 		return qname in tc.params_structs
 	}
 	if typ is Alias {

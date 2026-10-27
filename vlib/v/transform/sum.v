@@ -2106,14 +2106,14 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	}
 	mut clean_variant := variant
 	mut variant_source := variant
-	ptr_base := flat.source_type_syntax(variant_source).ptr_name_base
+	ptr_base := flat.source_type_syntax(variant_source).ptr_name_base()
 	if ptr_base != 0 && flat.source_type_shape(ptr_base).has(.dotted) {
 		variant_source = ptr_base
 		clean_variant = ptr_base
 	}
-	encoded_base := flat.source_type_syntax(variant_source).ptr_name_base
+	encoded_base := flat.source_type_syntax(variant_source).ptr_name_base()
 	if encoded_base != 0 && flat.source_type_syntax(encoded_base).contains_doubleunderscore {
-		clean_variant = flat.source_type_syntax(encoded_base).doubleunderscore_dotted
+		clean_variant = flat.source_type_syntax(encoded_base).doubleunderscore_dotted()
 	}
 
 	if has_expr_smartcast {

@@ -5,6 +5,8 @@ import os
 import v.scanner
 import v.token
 
+const fastc_capture_builtin_module_source_type = flat.source_type_id('builtin')
+
 // parse_anonymous_function hoists a function literal to C. Immutable captures use
 // builtin.closure's per-instance context and callable trampoline.
 //
@@ -305,7 +307,7 @@ fn (mut g Parser) add_local_closure_cleanup(name string) {
 fn (g &Parser) capture_type_source(typ_id u32) ?string {
 	typ := flat.source_type_name(typ_id)
 	if flat.source_type_query(typ_id).has(.c_pointer_suffix) {
-		return '&' + g.capture_type_source(flat.source_type_id(typ[..typ.len - 1]))?
+		return '&' + g.capture_type_source(flat.source_type_syntax(typ_id).c_pointer_base)?
 	}
 	if flat.source_type_query(typ_id).has(.c_array_prefix) {
 		element := g.array_element_type(typ_id)?
@@ -318,7 +320,7 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 
 		return 'map[' + g.capture_type_source(key)? + ']' + g.capture_type_source(value)?
 	}
-	if fastc_primitive_c_type(typ) != none {
+	if fastc_primitive_c_type_id(typ_id) != none {
 		return typ
 	}
 	key := g.semantic_type_key(typ_id)
@@ -327,7 +329,7 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 	}
 	module_name := flat.source_type_name(flat.source_type_syntax(key).qualifier)
 	name := flat.source_type_name(flat.source_type_syntax(key).unqualified)
-	if module_name == g.module_name || module_name == 'builtin' {
+	if module_name == g.module_name || flat.source_type_syntax(key).qualifier == fastc_capture_builtin_module_source_type {
 		return name
 	}
 	for alias, imported_module in g.imports {
