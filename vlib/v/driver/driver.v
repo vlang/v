@@ -13151,7 +13151,21 @@ pub fn run(args []string) {
 		bare_dir := if bare_builtin_dir.len > 0 {
 			bare_builtin_dir
 		} else {
-			os.join_path(builtin_dir, 'linux_bare')
+			// Per-OS freestanding runtime. Each OS has its own syscall ABI, so a
+			// dedicated bare directory is used when present; linux_bare is the
+			// reference implementation and the fallback for platforms without a
+			// dedicated one yet (experimental).
+			os_name := prefs.target.os
+			candidate := match os_name {
+				'freebsd' { 'freebsd_bare' }
+				'openbsd' { 'openbsd_bare' }
+				'netbsd' { 'netbsd_bare' }
+				'dragonfly' { 'dragonfly_bare' }
+				'macos', 'darwin' { 'macos_bare' }
+				else { 'linux_bare' }
+			}
+			dir := os.join_path(builtin_dir, candidate)
+			if os.is_dir(dir) { dir } else { os.join_path(builtin_dir, 'linux_bare') }
 		}
 		builtin_files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(bare_dir,
 			builtin_defines, prefs.backend, prefs.target))
