@@ -43,6 +43,28 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#elif defined(__sun)
+// Solaris and illumos give FILE the libc-private opaque `struct __FILE` and
+// expose the standard streams as macros over the libc-private `__iob` array,
+// and the system headers reach <stdio.h> on their own (Solaris <math.h>
+// pulls <floatingpoint.h>), so defer to them for FILE, the streams and the
+// libc prototypes — the same shape the NetBSD branch takes. The one
+// declaration after the includes only fills what the headers may guard out
+// (getline sits behind XPG guards); it is compatible with the real
+// prototype when the header declares it.
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+// Mesa's Solaris gl.h predates the glvnd-era behavior of pulling glext.h in
+// under GL_GLEXT_PROTOTYPES, and sokol_gfx.h asks the GL 1.1 core for GL 3
+// entry points, so bring the extension prototypes in here, ahead of every
+// user of them.
+#define GL_GLEXT_PROTOTYPES
+#include <GL/gl.h>
+#include <GL/glext.h>
+V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 #elif defined(__TINYC__) && (defined(__FreeBSD__) || defined(__OpenBSD__))
 // TinyCC reports a hard redefinition error if system OpenSSL pulls in
 // <stdarg.h> after V has provided its own va_start macro. Include it first,
@@ -216,13 +238,14 @@ typedef __builtin_va_list va_list;
 	#define va_copy(dest, src) __builtin_va_copy(dest, src)
 #endif
 #endif
-#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus) && !defined(__NetBSD__)
+#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus) && !defined(__NetBSD__) && !defined(__sun)
 // mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides
 // when __USE_MINGW_ANSI_STDIO is on. Skip them under gcc+mingw to avoid
 // static-after-extern conflicts; clang+mingw needs them because it builds
 // with -Werror=implicit-function-declaration and does not hit the conflict.
 // NetBSD pulls these prototypes from <stdio.h>/<stdlib.h>/<string.h> via
-// the include block above to avoid `__restrict` qualifier conflicts.
+// the include block above to avoid `__restrict` qualifier conflicts, and
+// Solaris defers to its system headers the same way.
 #if !((defined(__MINGW32__) || defined(__MINGW64__)) && !defined(__clang__))
 V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);
