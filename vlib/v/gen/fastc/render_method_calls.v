@@ -266,6 +266,10 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		if !flags_processed && tokens[i].lit in ['has', 'set', 'clear'] {
 			flags_processed = true
 			if flags := g.render_flag_method_expression(tokens, rendered) {
+				call_end := fastc_matching_rpar(tokens, i + 1) or { -1 }
+				if receiver_start == 0 && call_end == tokens.len - 1 {
+					return flags
+				}
 				rendered = flags.source
 				changed = true
 			}
