@@ -1205,14 +1205,19 @@ mut:
 // cheap content hash and a hit compares the full text, so a hit returns the
 // canonical string the map lookups below would have produced earlier in the same
 // window. The cache only serves lookups inside an explicit window
-// (absorb_scoped_batch); each window starts empty, so text interned into the
-// compilation table between windows is preferred again.
+// (absorb_scoped_batch); each window starts with empty results, so text interned
+// into the compilation table between windows is preferred again.
 struct PromoteTextCache {
 mut:
 	active      bool
 	generation  u32 = 1
 	generations [promote_text_cache_slots]u32
 	results     [promote_text_cache_slots]string
+	// table_ids outlives windows: it remembers compilation-table text ids,
+	// which stay unique per content and keep their value when the table is
+	// rebuilt. A hit re-reads the current table entry and compares it, so it
+	// returns exactly what the text_ids lookup would.
+	table_ids [promote_text_cache_slots]flat.TextId
 }
 
 const promote_text_cache_slots = 8192

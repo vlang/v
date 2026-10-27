@@ -2357,6 +2357,17 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 		if cache.generations[slot] == cache.generation && cache.results[slot] == value {
 			return cache.results[slot]
 		}
+		// The first lookup of a text in a window: a table id remembered from an
+		// earlier window still names the same content, so check it before hashing.
+		table_id := int(cache.table_ids[slot])
+		if table_id > 0 && table_id <= t.a.text_values.len {
+			table_text := t.a.text_values[table_id - 1]
+			if table_text == value {
+				cache.generations[slot] = cache.generation
+				cache.results[slot] = table_text
+				return table_text
+			}
+		}
 	}
 	// Scoped workers only read the compilation text table. Reuse its canonical
 	// strings before adding a worker-local entry; generic specialization clones
@@ -2364,6 +2375,9 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 	mut canonical := ''
 	if id := t.a.text_ids[value] {
 		canonical = t.a.text_values[int(id) - 1]
+		if use_cache {
+			cache.table_ids[slot] = id
+		}
 	} else if promoted := t.scoped_promoted_texts[value] {
 		canonical = promoted
 	} else {
