@@ -2578,7 +2578,6 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type_id u32, variant_id u32) u32 {
 	clean_expr_type_source_id := t.trim_all_pointer_type(expr_type_id)
 
 	clean_variant_source_id := t.trim_pointer_type(variant_id)
-	clean_variant_source_id_2 := clean_variant_source_id
 
 	if t.is_interface_type_name(clean_expr_type_source_id) {
 		if _ := t.resolve_interface_pattern(clean_variant_source_id, clean_expr_type_source_id) {

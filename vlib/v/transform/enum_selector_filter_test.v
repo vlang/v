@@ -20,7 +20,10 @@ fn test_qualified_enum_selector_probe_does_not_intern_missing_names() {
 	assert flat.source_type_existing_id(missing) == none
 	known_id := flat.source_type_id('enum_probe_module.Known')
 	t.enum_types[known_id] = ['ready']
-	assert t.qualified_enum_type_selector_name_from_selector_name('enum_probe_module', 'Known') == known_id
+	resolved_id := t.qualified_enum_type_selector_name_from_selector_name('enum_probe_module', 'Known') or {
+		panic('registered enum selector was not resolved')
+	}
+	assert resolved_id == known_id
 }
 
 fn test_enum_selector_filter_keeps_alias_module_generated_and_regular_value_resolution() {

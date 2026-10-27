@@ -1218,7 +1218,6 @@ fn (t &Transformer) bare_sum_type_name_is_local_to_current_module(name_id u32) b
 
 fn (t &Transformer) checker_struct_lookup_name(name_id u32) u32 {
 	if isnil(t.tc) || name_id == 0 { return 0 }
-	name := flat.source_type_name(name_id)
 	if name_id in t.tc.structs { return name_id }
 	if flat.source_type_shape(name_id).has(.dotted) {
 		syntax := flat.source_type_syntax(name_id)
