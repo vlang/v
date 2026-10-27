@@ -140,6 +140,11 @@ fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts 
 	// The atlas is r8: the font pipeline's shader reads its red channel as
 	// coverage. The generic alpha pipeline would multiply the sampled
 	// vec4(r, 0, 0, 1) into the vertex color, turning glyphs red.
+	// The font pipeline is for this batch only: load_pipeline overwrites the
+	// top of the stack, and nothing restores it, so the next shape drawn would
+	// sample its texture through the font shader. The alpha pipeline this
+	// replaced shared the generic shader, which is why the leak went unseen.
+	ctx.r.push_pipeline()
 	ctx.r.load_pipeline(ctx.pipeline.font)
 	// fontstash emits two triangles (six vertices) per glyph. A quad batch would
 	// make the render context insert a duplicate vertex every fourth input, which
@@ -156,6 +161,7 @@ fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts 
 		ctx.r.v2f(x, y)
 	}
 	ctx.r.end()
+	ctx.r.pop_pipeline()
 	ctx.r.disable_texture()
 }
 
