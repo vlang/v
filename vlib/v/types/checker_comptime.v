@@ -20065,10 +20065,45 @@ fn (tc &TypeChecker) decl_lhs_is_mut(node flat.Node, lhs_id flat.NodeId) bool {
 					line_start--
 				}
 				line_end := source.index_after('\n', start) or { source.len }
-				if last_index_between(source, 'mut ${lhs.value} :=', line_start, line_end) >= 0 {
+				if source_has_mut_decl_between(source, lhs.value, line_start, line_end) {
 					return true
 				}
 			}
+		}
+	}
+	return false
+}
+
+// source_has_mut_decl_between reports whether `mut <name> :=` lies within
+// source[lo..end]. It matches `last_index_between` with that needle, without
+// building the needle string for every declaration.
+fn source_has_mut_decl_between(source string, name string, lo int, end int) bool {
+	stop := int_min(end, source.len)
+	low := int_max(lo, 0)
+	needle_len := name.len + 7
+	if stop - low < needle_len {
+		return false
+	}
+	for i := stop - needle_len; i >= low; i-- {
+		if unsafe {
+			source.str[i] != `m` || source.str[i + 1] != `u` || source.str[i + 2] != `t`
+				|| source.str[i + 3] != ` `
+		} {
+			continue
+		}
+		mut k := 0
+		for k < name.len && unsafe { source.str[i + 4 + k] == name.str[k] } {
+			k++
+		}
+		if k < name.len {
+			continue
+		}
+		tail := i + 4 + name.len
+		if unsafe {
+			source.str[tail] == ` ` && source.str[tail + 1] == `:`
+				&& source.str[tail + 2] == `=`
+		} {
+			return true
 		}
 	}
 	return false
