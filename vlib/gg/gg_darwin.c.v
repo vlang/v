@@ -19,6 +19,7 @@ fn C.gg_darwin_stroke_ellipse(ctx voidptr, x f64, y f64, width f64, height f64)
 fn C.gg_darwin_mouse_in_rect(x f64, y f64, rx f64, ry f64, width f64, height f64, flipped bool) bool
 
 fn C.CGColorCreateGenericRGB(r f64, g f64, b f64, a f64) voidptr
+fn C.CGColorRelease(color voidptr)
 fn C.CGContextSetFillColorWithColor(ctx voidptr, color voidptr)
 fn C.CGContextSetStrokeColorWithColor(ctx voidptr, color voidptr)
 fn C.CGContextSetLineWidth(ctx voidptr, width f64)
@@ -108,15 +109,26 @@ fn darwin_text_width_with_attrs(s string, attrs macos.Id) int {
 }
 
 pub fn darwin_text_width(s string) int {
-	return darwin_text_width_with_attrs(s, darwin_measure_attrs())
+	attrs := darwin_measure_attrs()
+	defer {
+		macos.release(attrs)
+	}
+	return darwin_text_width_with_attrs(s, attrs)
 }
 
 pub fn darwin_text_width_with_cfg(s string, cfg TextCfg) int {
-	return darwin_text_width_with_attrs(s, darwin_text_attrs(cfg))
+	attrs := darwin_text_attrs(cfg)
+	defer {
+		macos.release(attrs)
+	}
+	return darwin_text_width_with_attrs(s, attrs)
 }
 
 pub fn darwin_draw_string(x int, y int, s string, cfg TextCfg) {
 	attr := darwin_text_attrs(cfg)
+	defer {
+		macos.release(attr)
+	}
 	n := macos.nsstring(s)
 	macos.msg_void_point_id(n, 'drawAtPoint:withAttributes:', macos.point(f64(x), f64(y - 15)), attr)
 }
@@ -130,7 +142,11 @@ pub fn darwin_draw_rect(x f32, y f32, width f32, height f32, c Color) {
 	if context == unsafe { nil } {
 		return
 	}
-	C.CGContextSetFillColorWithColor(context, cgcolor(c))
+	cg_color := cgcolor(c)
+	defer {
+		C.CGColorRelease(cg_color)
+	}
+	C.CGContextSetFillColorWithColor(context, cg_color)
 	C.gg_darwin_fill_rect(context, f64(x), f64(y), f64(width), f64(height))
 }
 
@@ -273,7 +289,11 @@ pub fn darwin_draw_circle(x f32, y f32, d f32, color Color) {
 	if context == unsafe { nil } {
 		return
 	}
-	C.CGContextSetFillColorWithColor(context, cgcolor(color))
+	cg_color := cgcolor(color)
+	defer {
+		C.CGColorRelease(cg_color)
+	}
+	C.CGContextSetFillColorWithColor(context, cg_color)
 	C.gg_darwin_fill_ellipse(context, f64(x), f64(y), f64(d * 2), f64(d * 2))
 }
 
@@ -287,7 +307,11 @@ pub fn darwin_draw_circle_empty(x f32, y f32, d f32, color Color) {
 		return
 	}
 	C.CGContextSaveGState(context)
-	C.CGContextSetStrokeColorWithColor(context, cgcolor(color))
+	cg_color := cgcolor(color)
+	defer {
+		C.CGColorRelease(cg_color)
+	}
+	C.CGContextSetStrokeColorWithColor(context, cg_color)
 	C.CGContextSetLineWidth(context, 1.0)
 	C.gg_darwin_stroke_ellipse(context, f64(x), f64(y), f64(d * 2), f64(d * 2))
 	C.CGContextRestoreGState(context)
