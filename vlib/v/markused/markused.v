@@ -486,9 +486,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					}
 				}
 				info := FnDeclInfo{
-					node_id:        flat.NodeId(node_idx)
-					module:         fn_decl_module
-					import_context: fn_decl_import_context
+					node_id:           flat.NodeId(node_idx)
+					module:            fn_decl_module
+					import_context:    fn_decl_import_context
+					positional_params: markused_positional_param_count(a, &node)
 				}
 				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, node.value, info)
 				if can_suffix_match {
@@ -2214,6 +2215,9 @@ struct FnDeclInfo {
 	node_id        flat.NodeId
 	module         string
 	import_context int
+	// positional_params counts the declared params a call passes positionally;
+	// -1 when it was not computed with the declaration.
+	positional_params int = -1
 }
 
 // StructDeclInfo stores struct decl info metadata used by markused.
@@ -2388,9 +2392,10 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		has_dot := node.value.index_u8(`.`) >= 0
 		can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 		info := FnDeclInfo{
-			node_id:        flat.NodeId(node_idx)
-			module:         fn_decl_module
-			import_context: fn_decl_import_context
+			node_id:           flat.NodeId(node_idx)
+			module:            fn_decl_module
+			import_context:    fn_decl_import_context
+			positional_params: markused_positional_param_count(a, &node)
 		}
 		add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info)
 		if can_suffix_match {
@@ -10554,6 +10559,23 @@ fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module s
 	c.collect_struct_default_calls_from_info(info, value_struct_default_type_name(init_type), set_fields, mut calls)
 }
 
+// markused_positional_param_count counts the declared positional params of a fn
+// decl. Params precede the body statements; the receiver (op == .dot) is the
+// selector base, not a positional argument.
+fn markused_positional_param_count(a &flat.FlatAst, fn_node &flat.Node) int {
+	mut npos := 0
+	for i in 0 .. fn_node.children_count {
+		p := a.child_node(fn_node, i)
+		if p.kind != .param {
+			break
+		}
+		if p.op != .dot {
+			npos++
+		}
+	}
+	return npos
+}
+
 // collect_omitted_params_default_calls marks the field-initializer calls of a
 // trailing struct parameter that the call site omitted (e.g. `zstd.compress(data)`
 // leaving out its `@[params] CompressParams` argument). The transformer synthesizes
@@ -10591,17 +10613,10 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 		c.fn_decls[callee_name] or { return }
 	}
 	fn_node := c.a.node(info.node_id)
-	// Count the declared positional params. Params precede the body statements;
-	// the receiver (op == .dot) is the selector base, not a positional argument.
-	mut npos := 0
-	for i in 0 .. fn_node.children_count {
-		p := c.a.child_node(fn_node, i)
-		if p.kind != .param {
-			break
-		}
-		if p.op != .dot {
-			npos++
-		}
+	npos := if info.positional_params >= 0 {
+		info.positional_params
+	} else {
+		markused_positional_param_count(c.a, fn_node)
 	}
 	if npos == 0 {
 		return
