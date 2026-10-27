@@ -11709,6 +11709,23 @@ before their definition.
 
 Right now it's not possible to modify types while the program is running.
 
+#### Native backend reloading (experimental, macOS ARM64)
+
+On macOS ARM64, `@[live]` functions can also be reloaded by patching
+the running binary instead of loading a shared library. Build with
+`-b arm64`; calls to `@[live]` functions go through a pointer that
+the reloader updates with freshly compiled machine code:
+
+```bash
+v -b arm64 run message.v
+```
+
+Single functions can be extracted as raw machine code with `-hot-fn`:
+
+```bash
+v -b arm64 -hot-fn print_message -o print_message.bin message.v
+```
+
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
 
