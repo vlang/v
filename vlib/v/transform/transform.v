@@ -3778,7 +3778,7 @@ struct ImplicitErrScope {
 // are hidden until leave_implicit_err_scope restores them.
 fn (mut t Transformer) enter_implicit_err_scope(has_error bool) ImplicitErrScope {
 	scope := ImplicitErrScope{
-		var_types:   t.var_types.clone()
+		var_types:   copy_var_types(t.var_types)
 		smartcasts:  t.smartcast_stack.clone()
 		invalidated: t.invalidated_smartcasts.clone()
 		heaped:      t.save_heaped_local_state()
@@ -3793,6 +3793,14 @@ fn (mut t Transformer) enter_implicit_err_scope(has_error bool) ImplicitErrScope
 		t.smartcast_stack = smartcasts_without_binding(t.smartcast_stack, 'err')
 	}
 	return scope
+}
+
+// copy_var_types returns an independent copy that has capacity only for the live
+// bindings; `.clone()` would copy the whole (often much larger) reserved capacity.
+fn copy_var_types(bindings []VarTypeBinding) []VarTypeBinding {
+	mut out := []VarTypeBinding{cap: bindings.len}
+	out << bindings
+	return out
 }
 
 // leave_implicit_err_scope restores the bindings and smartcasts saved by
