@@ -13417,6 +13417,8 @@ pub fn run(args []string) {
 	if backend == 'arm64' {
 		live_reload_source := v3_live_reload_source(p.a, input_file, prefs.vexe, v3_live_rebuild_options(args, prefs.vexe, prefs.module_search_paths))
 		if live_reload_source != '' {
+			enable_globals_compat = true
+			prefs.enable_globals = true
 			live_reload_file := os.join_path(os.vtmp_dir(), 'v3_live_reload_${os.getpid()}.v')
 			os.write_file(live_reload_file, live_reload_source) or {
 				eprintln(err)

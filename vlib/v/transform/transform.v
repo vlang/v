@@ -4504,7 +4504,7 @@ fn (mut t Transformer) transform_all() {
 		if node.kind == .global_decl {
 			for ci in 0 .. node.children_count {
 				child := t.a.child_node(&node, ci)
-				if child.kind == .field_decl && child.value_text() == '__live_mtime' {
+				if child.kind == .field_decl && child.value_text() == 'live_mtime' {
 					t.live_reload_runtime = true
 				}
 			}
@@ -13912,7 +13912,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 					arg_node.is_mut = false
 					args << t.transform_expr(t.a.add_node(arg_node))
 				}
-				lhs := t.make_ident('__live_${mangled}')
+				lhs := t.make_ident('live_${mangled}')
 				t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
 				start := t.a.children.len
 				t.a.children << lhs
@@ -13937,7 +13937,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 					arg_node.is_mut = false
 					args << t.transform_expr(t.a.add_node(arg_node))
 				}
-				lhs := t.make_ident('__live_${mangled}')
+				lhs := t.make_ident('live_${mangled}')
 				t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
 				start := t.a.children.len
 				t.a.children << lhs
@@ -13954,7 +13954,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	}
 	if node.kind == .ident {
 		if mangled := t.live_fns[node.value_text()] {
-			id2 := t.make_ident('__live_${mangled}')
+			id2 := t.make_ident('live_${mangled}')
 			t.set_node_typ(int(id2), flat.source_type_id('voidptr'))
 			return id2
 		}
