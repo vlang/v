@@ -2462,6 +2462,16 @@ fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?u3
 	if fn_node.kind != .selector || fn_node.value != 'map' || fn_node.children_count == 0 {
 		return none
 	}
+	// User-defined map methods retain their declared return type.
+	base_id := t.a.child(fn_node, 0)
+	mut base_type0 := t.node_type(base_id)
+	if !flat.source_type_shape(t.trim_pointer_type(base_type0)).has(.array_type) {
+		base_type0 = t.original_expr_type(base_id)
+	}
+	base_type := t.trim_pointer_type(base_type0)
+	if !flat.source_type_shape(base_type).has(.array_type) {
+		return none
+	}
 	map_expr_id := t.a.child(&node, 1)
 	if callback_ret_source_id := t.array_map_callback_return_type_name(map_expr_id) {
 		callback_ret := flat.source_type_name(callback_ret_source_id)
@@ -2474,15 +2484,6 @@ fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?u3
 		if checker_type_shape.has(.array_type) {
 			return checker_type_source_id
 		}
-	}
-	base_id := t.a.child(fn_node, 0)
-	mut base_type0 := t.node_type(base_id)
-	if !flat.source_type_shape(t.trim_pointer_type(base_type0)).has(.array_type) {
-		base_type0 = t.original_expr_type(base_id)
-	}
-	base_type := t.trim_pointer_type(base_type0)
-	if !flat.source_type_shape(base_type).has(.array_type) {
-		return none
 	}
 	mut elem_type_source_id := if callback_ret_source_id := t.array_map_callback_return_type_name(map_expr_id) {
 		callback_ret_source_id

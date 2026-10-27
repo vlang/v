@@ -1599,6 +1599,7 @@ println(upper_fn) // ['HELLO', 'WORLD']
 `it` is a builtin variable which refers to the element currently being
 processed in filter/map methods.
 
+User-defined struct methods named `map` keep their declared return type, including when chained.
 Additionally, `.any()` and `.all()` can be used to conveniently test
 for elements that satisfy a condition.
 
