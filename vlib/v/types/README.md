@@ -181,6 +181,8 @@ Concrete generic instances also report incompatible plain call arguments during 
 building. For example, passing a concrete `bool` field to a `string` parameter reports the
 argument mismatch at the call. Spread arguments, embedded struct conversions, and values narrowed
 by type tests or comptime field iteration retain their existing lowering and checking behavior.
+Loop bindings also retain the inferred types of their iterables, including local containers
+initialized from expressions whose types are resolved during lowering.
 
 Compiler integrations can prepare a `LibraryBodyFrontier` after the initial semantic check
 and pass reached declaration IDs to `TypeChecker.check_library_body_frontier_nodes`.
