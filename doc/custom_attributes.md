@@ -21,6 +21,31 @@ distance). An attribute call `@[Name(args)]` warns once, on its name, never per 
 Whole-string metadata such as `@['legacy']` does not warn. Independently written names,
 such as `@[foo; foo_bar]`, are checked separately, even when one name prefixes another.
 
+## Structured reflection on fields and enum values
+
+Struct fields and enum values expose the same typed `.attributes` view as
+declarations, alongside the legacy `.attrs` (`[]string`, kept working):
+
+```v
+struct Cfg {
+	user_name string @[json: 'userName'; required]
+}
+
+fn main() {
+	$for field in Cfg.fields {
+		$for a in field.attributes {
+			// user_name: json|true|userName, then user_name: required|false|
+			println('${field.name}: ${a.name}|${a.has_arg}|${a.arg}')
+		}
+	}
+}
+```
+
+Each element is a `VAttribute` with `name`/`has_arg`/`arg`/`kind`, exactly
+like `Type.attributes` on declarations: `@['x']` has the `.string` kind and
+`@[x]` the `.plain` kind. A runtime `for a in field.attributes` reads the same
+values.
+
 ## Reading attributes at compile time
 
 An attribute whose name matches a registered schema exposes its fields when a

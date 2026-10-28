@@ -73,15 +73,21 @@ struct FieldMeta {
 	is_mut             bool
 	is_pub             bool
 	attrs              []string
+	attributes         []AttributeMeta
+	attribute_data     RawAttributeData
+	attribute_module   string
 	indirections       int
 }
 
 struct EnumValueMeta {
-	name         string
-	value        i64
-	value_from_c bool
-	attrs        []string
-	enum_name    u32
+	name             string
+	value            i64
+	value_from_c     bool
+	attrs            []string
+	attributes       []AttributeMeta
+	attribute_data   RawAttributeData
+	attribute_module string
+	enum_name        u32
 }
 
 struct VariantMeta {
@@ -184,9 +190,10 @@ struct RawAttributeData {
 }
 
 struct EnumDeclFieldValue {
-	name    string
-	expr_id flat.NodeId
-	attrs   []string
+	name       string
+	expr_id    flat.NodeId
+	attrs      []string
+	attr_kinds u32
 }
 
 fn comptime_for_parts(value string) (string, string) {
@@ -691,6 +698,41 @@ fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source st
 	return out
 }
 
+// comptime_reflected_attributes_loop_var returns the loop variable of `$for a in <var>.attributes`
+// when `var` is the variable of the enclosing field or enum value loop, and '' otherwise.
+fn comptime_reflected_attributes_loop_var(node flat.Node, var_name string) string {
+	if node.kind != .comptime_for || node.children_count == 0 {
+		return ''
+	}
+	loop_var, kind := comptime_for_parts(node.value)
+	if kind != 'attributes' || trimmed_transform_text(node.typ_text()) != var_name {
+		return ''
+	}
+	return loop_var
+}
+
+// unroll_reflected_attributes_loop expands `$for a in field.attributes` (or `value.attributes`)
+// over the attributes of the field or enum value that is being unrolled. Its source names that
+// loop variable, not a declaration, so expand_comptime_for_attributes cannot resolve it. The
+// blocks are transformed with the rest of the enclosing iteration.
+fn (mut t Transformer) unroll_reflected_attributes_loop(loop_id flat.NodeId, attr_var string, data RawAttributeData, decl_module string, inner_vars []string) flat.NodeId {
+	t.ignore_comptime_for_subtree(loop_id)
+	schemas := t.comptime_attribute_schemas()
+	attrs := comptime_attribute_instances_from_raw(data, decl_module, schemas)
+	loop := t.a.nodes[int(loop_id)]
+	body := t.a.nodes[int(t.a.child(&loop, 0))]
+	body_stmts := t.a.children_of(&body).clone()
+	mut blocks := []flat.NodeId{cap: attrs.len}
+	for attr in attrs {
+		mut stmts := []flat.NodeId{cap: body_stmts.len}
+		for sid in body_stmts {
+			stmts << t.clone_attribute_subst_scoped(sid, attr_var, attr, inner_vars, schemas)
+		}
+		blocks << t.make_block(stmts)
+	}
+	return t.make_block(blocks)
+}
+
 fn (mut t Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId) []AttributeMeta {
 	decl_idx, _ := t.comptime_attribute_decl(source, loop_id) or { return []AttributeMeta{} }
 	return t.comptime_node_attribute_metas(decl_idx)
@@ -848,13 +890,19 @@ fn comptime_attribute_piece_named(raw string, name string) bool {
 // legacy `VAttribute` view. With no schemas registered the result matches
 // `comptime_attribute_metas` exactly.
 fn (mut t Transformer) comptime_attribute_instances(source string, loop_id flat.NodeId, schemas []AttributeSchemaInfo) []AttributeMeta {
-	if schemas.len == 0 {
-		return t.comptime_attribute_metas(source, loop_id)
-	}
 	decl_idx, decl_module := t.comptime_attribute_decl(source, loop_id) or {
 		return []AttributeMeta{}
 	}
 	data := t.comptime_node_raw_attribute_data(decl_idx)
+	return comptime_attribute_instances_from_raw(data, decl_module, schemas)
+}
+
+// comptime_attribute_instances_from_raw materializes declaration, field, and enum-value
+// attributes in the module where they were written, preserving their exact raw kinds.
+fn comptime_attribute_instances_from_raw(data RawAttributeData, decl_module string, schemas []AttributeSchemaInfo) []AttributeMeta {
+	if schemas.len == 0 {
+		return comptime_attribute_metas_from_raw(data.attrs, data.kinds)
+	}
 	mut out := []AttributeMeta{}
 	mut consumed := []bool{len: data.attrs.len}
 	for i in 0 .. data.attrs.len {
@@ -862,10 +910,18 @@ fn (mut t Transformer) comptime_attribute_instances(source string, loop_id flat.
 			continue
 		}
 		base := data.attrs[i].all_before(':').trim_space()
+		whole_string := i < data.kinds.len && data.kinds[i] >= 0
+			&& data.kinds[i] & flat.attribute_kind_no_arg != 0
 		if schema := comptime_attribute_use_schema(base, decl_module, schemas) {
+			if whole_string {
+				consumed[i] = true
+				out << comptime_attribute_metas_from_raw([data.attrs[i]], [data.kinds[i]])
+				continue
+			}
 			mut use_idx := []int{}
 			for j in i .. data.attrs.len {
-				if consumed[j] {
+				if consumed[j] || (j < data.kinds.len && data.kinds[j] >= 0
+					&& data.kinds[j] & flat.attribute_kind_no_arg != 0) {
 					continue
 				}
 				piece_base := data.attrs[j].all_before(':').trim_space()
@@ -945,7 +1001,12 @@ fn comptime_attribute_schema_instance(base string, schema AttributeSchemaInfo, d
 		raw := data.attrs[j]
 		name := raw.all_before(':').trim_space()
 		value := if raw.contains(':') { raw.all_after(':').trim_space() } else { '' }
-		kind := if j < data.kinds.len { data.kinds[j] } else { 0 }
+		recorded_kind := if j < data.kinds.len { data.kinds[j] } else { 0 }
+		kind := if recorded_kind >= 0 {
+			recorded_kind & flat.attribute_kind_mask
+		} else {
+			recorded_kind
+		}
 		names << name
 		values << value
 		kinds << kind
@@ -1348,16 +1409,17 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 			continue
 		}
 		recorded_kind := if attr_idx < raw_kinds.len { raw_kinds[attr_idx] } else { -1 }
+		whole_string := recorded_kind >= 0 && recorded_kind & flat.attribute_kind_no_arg != 0
+		value_kind := if recorded_kind >= 0 { recorded_kind & flat.attribute_kind_mask } else { -1 }
 		colon := clean.index_u8(`:`)
-		has_arg := colon >= 0 && !(recorded_kind == 1
-			&& !comptime_attr_is_string_literal(trimmed_transform_text(clean[colon + 1..])))
+		has_arg := colon >= 0 && !whole_string
 		if has_arg {
 			idx := colon
 			name := trimmed_transform_text(clean[..idx])
 			raw_arg := trimmed_transform_text(clean[idx + 1..])
 			arg := comptime_attr_unquote(raw_arg)
-			kind := if recorded_kind >= 0 {
-				recorded_kind
+			kind := if value_kind >= 0 {
+				value_kind
 			} else if raw_arg.len >= 2 && raw_arg[0] in [`'`, `\"`] {
 				1
 			} else if raw_arg == 'true' || raw_arg == 'false' {
@@ -1374,7 +1436,13 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 				kind:    kind
 			}
 		} else {
-			name := if recorded_kind == 1 {
+			name := if whole_string {
+				if recorded_kind & flat.attribute_kind_raw_string != 0 {
+					comptime_attr_unquote(clean)
+				} else {
+					comptime_cond_unescape(clean)
+				}
+			} else if value_kind == 1 {
 				if comptime_attr_is_string_literal(clean) {
 					comptime_attr_unquote(clean)
 				} else {
@@ -1385,7 +1453,7 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 			}
 			attrs << AttributeMeta{
 				name: name
-				kind: if recorded_kind >= 0 { recorded_kind } else { 0 }
+				kind: if value_kind >= 0 { value_kind } else { 0 }
 			}
 		}
 	}
@@ -3588,9 +3656,10 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 			}
 			expr_id := if f.children_count > 0 { t.a.child(f, 0) } else { flat.NodeId(-1) }
 			fields << EnumDeclFieldValue{
-				name:    f.value
-				expr_id: expr_id
-				attrs:   f.generic_params().clone()
+				name:       f.value
+				expr_id:    expr_id
+				attrs:      f.generic_params().clone()
+				attr_kinds: f.attribute_kinds_id()
 			}
 			if int(expr_id) >= 0 {
 				field_exprs[f.value] = expr_id
@@ -3628,18 +3697,25 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 			if !from_c {
 				field_values[f.name] = val
 			}
+			raw_attributes := RawAttributeData{
+				attrs: f.attrs
+				kinds: comptime_attribute_kinds(f.attr_kinds, f.attrs.len)
+			}
 			values << EnumValueMeta{
-				name:         f.name
-				value_from_c: from_c
-				value:        if has_materialized_value {
+				name:             f.name
+				value_from_c:     from_c
+				value:            if has_materialized_value {
 					materialized_value
 				} else if is_flag {
 					i64(u64(1) << u64(val))
 				} else {
 					val
 				}
-				attrs:        f.attrs.clone()
-				enum_name:    qualified_id
+				attrs:            f.attrs.clone()
+				attributes:       comptime_attribute_metas_from_raw(raw_attributes.attrs, raw_attributes.kinds)
+				attribute_data:   raw_attributes
+				attribute_module: cur_mod
+				enum_name:        qualified_id
 			}
 			next_val = val + 1
 			next_from_c = from_c
@@ -3897,6 +3973,11 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 		return id
 	}
 	node := t.a.nodes[int(id)]
+	attr_var := comptime_reflected_attributes_loop_var(node, var_name)
+	if attr_var == var_name {
+		// `$for value in value.attributes` shadows the enum value in its body.
+		return t.unroll_reflected_attributes_loop(id, attr_var, item.attribute_data, item.attribute_module, inner_vars)
+	}
 	if comptime_for_declares_var(node, var_name) {
 		return t.clone_node_preserving_children(node)
 	}
@@ -3915,6 +3996,9 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 				}
 				'attrs' {
 					return t.make_string_array_literal(item.attrs)
+				}
+				'attributes' {
+					return t.make_attribute_array_literal(item.attributes)
 				}
 				else {}
 			}
@@ -3968,6 +4052,9 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
+	if attr_var.len > 0 {
+		return t.unroll_reflected_attributes_loop(clone_id, attr_var, item.attribute_data, item.attribute_module, inner_vars)
+	}
 	return clone_id
 }
 
@@ -4650,17 +4737,19 @@ fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 	}
 	value_field := t.make_named_field_init('value', value, flat.source_type_i64)
 	attrs_field := t.make_named_field_init('attrs', t.make_string_array_literal(item.attrs), flat.source_type_id('[]string'))
+	attrs_attributes_field := t.make_named_field_init('attributes', t.make_attribute_array_literal(item.attributes), flat.source_type_id('[]VAttribute'))
 	start := t.a.children.len
 	t.a.children << name_field
 	t.a.children << value_field
 	t.a.children << attrs_field
+	t.a.children << attrs_attributes_field
 	literal_type_id := flat.source_type_id('EnumData')
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
 		source_value:   literal_type_id
 		typ:            literal_type_id
 		children_start: start
-		children_count: 3
+		children_count: 4
 	})
 }
 
@@ -4685,6 +4774,7 @@ fn (mut t Transformer) make_field_data_literal(fm FieldMeta) flat.NodeId {
 		t.make_named_field_init('typ', t.make_int_literal(fm.typ_id), flat.source_type_int),
 		t.make_named_field_init('unaliased_typ', t.make_int_literal(fm.unaliased_id), flat.source_type_int),
 		t.make_named_field_init('attrs', t.make_string_array_literal(fm.attrs), flat.source_type_id('[]string')),
+		t.make_named_field_init('attributes', t.make_attribute_array_literal(fm.attributes), flat.source_type_id('[]VAttribute')),
 		t.make_named_field_init('is_pub', t.make_bool_literal(fm.is_pub), flat.source_type_bool),
 		t.make_named_field_init('is_mut', t.make_bool_literal(fm.is_mut), flat.source_type_bool),
 		t.make_named_field_init('is_embed', t.make_bool_literal(fm.is_embed), flat.source_type_bool),
@@ -4842,9 +4932,10 @@ fn (t &Transformer) subtree_has_unsupported_late_generic(id flat.NodeId) bool {
 // FieldDeclMeta holds the per-field mutability/visibility/attributes recorded by the parser on a
 // `field_decl` node, keyed by field name (see struct_field_decl_metas).
 struct FieldDeclMeta {
-	is_mut bool
-	is_pub bool
-	attrs  []string
+	is_mut     bool
+	is_pub     bool
+	attrs      []string
+	attr_kinds u32 // see flat.Node.attribute_kinds_id
 }
 
 // comptime_field_metas derives FieldData for every field of the concrete struct type.
@@ -5021,10 +5112,25 @@ fn field_decl_meta(field flat.Node) FieldDeclMeta {
 	}
 	flags := params[0]
 	return FieldDeclMeta{
-		is_mut: flags.contains('m')
-		is_pub: flags.contains('p')
-		attrs:  params[1..].clone()
+		is_mut:     flags.contains('m')
+		is_pub:     flags.contains('p')
+		attrs:      params[1..].clone()
+		attr_kinds: field.attribute_kinds_id()
 	}
+}
+
+// comptime_attribute_kinds decodes the attribute kinds the parser recorded for a field or enum
+// value. It returns no kinds when they were not recorded or do not match the attributes; the
+// kinds are then derived from the attribute text.
+fn comptime_attribute_kinds(kinds_id u32, attr_count int) []int {
+	if kinds_id == 0 || attr_count == 0 {
+		return []int{}
+	}
+	kinds := flat.source_type_name(kinds_id).split(',').map(it.int())
+	if kinds.len != attr_count {
+		return []int{}
+	}
+	return kinds
 }
 
 // struct_field_decl_metas returns parser metadata for the declaration of `base_type`, resolving a
@@ -5148,6 +5254,10 @@ fn (t &Transformer) field_meta_for(name string, ftyp_id u32, resolved_typ_id u32
 	unaliased_core_id := comptime_strip_field_wrappers(unaliased_source_id)
 	unaliased_shape := flat.source_type_shape(unaliased_core_id)
 	is_alias := t.field_type_is_alias(core_id, decl_module)
+	raw_attributes := RawAttributeData{
+		attrs: extra.attrs
+		kinds: comptime_attribute_kinds(extra.attr_kinds, extra.attrs.len)
+	}
 	return FieldMeta{
 		name:               name
 		typ:                ftyp_id
@@ -5169,6 +5279,9 @@ fn (t &Transformer) field_meta_for(name string, ftyp_id u32, resolved_typ_id u32
 		is_mut:             extra.is_mut
 		is_pub:             extra.is_pub
 		attrs:              extra.attrs
+		attributes:         comptime_attribute_metas_from_raw(raw_attributes.attrs, raw_attributes.kinds)
+		attribute_data:     raw_attributes
+		attribute_module:   decl_module
 		indirections:       indir
 	}
 }
@@ -5432,6 +5545,16 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		} else {
 			t.comptime_zero_value(target)
 		}
+	}
+	attr_var := comptime_reflected_attributes_loop_var(node, var_name)
+	if attr_var.len > 0 {
+		// In `$for field in field.attributes` the attribute shadows the field in the body.
+		loop_id := if attr_var == var_name {
+			id
+		} else {
+			t.clone_field_subst_children(node, var_name, fm, inner_vars) or { return none }
+		}
+		return t.unroll_reflected_attributes_loop(loop_id, attr_var, fm.attribute_data, fm.attribute_module, inner_vars)
 	}
 	if comptime_for_declares_var(node, var_name) {
 		return t.clone_node_preserving_children_with_type(node, t.clone_field_subst_type(node, var_name, fm))
@@ -6166,6 +6289,7 @@ fn (mut t Transformer) field_member_value(member string, fm FieldMeta) ?flat.Nod
 		'is_pub' { t.make_bool_literal(fm.is_pub) }
 		'indirections' { t.make_int_literal(fm.indirections) }
 		'attrs' { t.make_string_array_literal(fm.attrs) }
+		'attributes' { t.make_attribute_array_literal(fm.attributes) }
 		'typ' { t.make_int_literal(fm.typ_id) }
 		'unaliased_typ' { t.make_int_literal(fm.unaliased_id) }
 		else {
