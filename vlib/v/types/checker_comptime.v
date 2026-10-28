@@ -1986,14 +1986,13 @@ fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
 		if op_idx >= 0 {
 			left := trimmed_space(clean[..op_idx])
 			right := trimmed_space(clean[op_idx + op.len..])
+			// The condition text is source input; both sides enter as spellings.
+			left_id := flat.source_type_id(left)
+			right_id := flat.source_type_id(right)
 			matches := if left.starts_with('$') && !right.starts_with('$') {
-				tc.comptime_type_matches(flat.source_type_id(right), flat.source_type_id(left)) or {
-					return none
-				}
+				tc.comptime_type_matches(right_id, left_id) or { return none }
 			} else {
-				tc.comptime_type_matches(flat.source_type_id(left), flat.source_type_id(right)) or {
-					return none
-				}
+				tc.comptime_type_matches(left_id, right_id) or { return none }
 			}
 			return if op == ' is ' { matches } else { !matches }
 		}
@@ -8517,14 +8516,13 @@ fn (tc &TypeChecker) comptime_type_condition_value(cond string) ?bool {
 		if op_idx >= 0 {
 			left := trimmed_space(clean[..op_idx])
 			right := trimmed_space(clean[op_idx + op.len..])
+			// The condition text is source input; both sides enter as spellings.
+			left_id := flat.source_type_id(left)
+			right_id := flat.source_type_id(right)
 			matches := if left.starts_with('$') && !right.starts_with('$') {
-				tc.comptime_type_matches(flat.source_type_id(right), flat.source_type_id(left)) or {
-					return none
-				}
+				tc.comptime_type_matches(right_id, left_id) or { return none }
 			} else {
-				tc.comptime_type_matches(flat.source_type_id(left), flat.source_type_id(right)) or {
-					return none
-				}
+				tc.comptime_type_matches(left_id, right_id) or { return none }
 			}
 			return if op == ' is ' { matches } else { !matches }
 		}
