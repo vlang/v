@@ -1637,3 +1637,16 @@ Boundaries, compared with a plain handler:
 * Without a live client transport (unit tests, `render_request`, the SSL
   path, which has no takeover support) `after` answers inline instead:
   the response and its timing stay correct, on the caller's thread.
+
+## In-process raw HTTP requests
+
+`veb.handle_raw[App, Context](mut app, request_bytes)` parses raw HTTP/1 request bytes and
+runs the normal dispatcher without opening a socket. It returns complete serialized responses,
+including file bodies. Pipelined requests produce concatenated responses in request order until
+EOF, a parse error, or `Connection: close`. Parse errors produce the corresponding HTTP error;
+invalid route configuration produces HTTP 500. A file that cannot be read while serializing also
+produces HTTP 500 and ends processing.
+
+This helper buffers requests and responses in memory, including static files. Use it for in-process
+wire-parser and routing tests. Socket takeover, live SSE streams, and WebSocket connections require
+a network transport. For an already parsed `http.Request`, use `veb.render_request` instead.
