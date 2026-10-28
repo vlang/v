@@ -5,24 +5,45 @@ module os
 // Note: symlinks are followed, and the resulting Stat for their target will be returned.
 // If this is not desired, call lstat/1 instead.
 pub fn stat(path string) !Stat {
-	mut s := C.stat{}
-	unsafe {
-		res := C.stat(&char(path.str), &s)
-		if res != 0 {
-			return error_posix()
+	$if vlibc ? {
+		vs, e := vlibc_stat(path)
+		if e != .enoerror {
+			return error_posix(code: int(e), msg: posix_get_error_msg(int(e)))
 		}
+		sz := if vs.size < 0 { u64(0) } else { u64(vs.size) }
 		return Stat{
-			dev:   u64(s.st_dev)
-			inode: s.st_ino
-			nlink: s.st_nlink
-			mode:  s.st_mode
-			uid:   s.st_uid
-			gid:   s.st_gid
-			rdev:  u64(s.st_rdev)
-			size:  u64(s.st_size)
-			atime: s.st_atime
-			mtime: s.st_mtime
-			ctime: s.st_ctime
+			dev:   0
+			inode: vs.ino
+			mode:  vs.mode
+			nlink: u64(vs.nlink)
+			uid:   vs.uid
+			gid:   vs.gid
+			rdev:  0
+			size:  sz
+			atime: vs.mtime
+			mtime: vs.mtime
+			ctime: vs.mtime
+		}
+	} $else {
+		mut s := C.stat{}
+		unsafe {
+			res := C.stat(&char(path.str), &s)
+			if res != 0 {
+				return error_posix()
+			}
+			return Stat{
+				dev:   u64(s.st_dev)
+				inode: s.st_ino
+				nlink: s.st_nlink
+				mode:  s.st_mode
+				uid:   s.st_uid
+				gid:   s.st_gid
+				rdev:  u64(s.st_rdev)
+				size:  u64(s.st_size)
+				atime: s.st_atime
+				mtime: s.st_mtime
+				ctime: s.st_ctime
+			}
 		}
 	}
 }
@@ -30,24 +51,47 @@ pub fn stat(path string) !Stat {
 // lstat is similar to stat/1 for normal files/folders.
 // Unlike stat/1, however, it will return the stat info for a symlink, instead of its target.
 pub fn lstat(path string) !Stat {
-	mut s := C.stat{}
-	unsafe {
-		res := C.lstat(&char(path.str), &s)
-		if res != 0 {
-			return error_posix()
+	$if vlibc ? {
+		// vlibc_stat passes AT_SYMLINK_NOFOLLOW, so it already has
+		// lstat semantics: the link itself is reported, not its target.
+		vs, e := vlibc_stat(path)
+		if e != .enoerror {
+			return error_posix(code: int(e), msg: posix_get_error_msg(int(e)))
 		}
+		sz := if vs.size < 0 { u64(0) } else { u64(vs.size) }
 		return Stat{
-			dev:   u64(s.st_dev)
-			inode: s.st_ino
-			nlink: s.st_nlink
-			mode:  s.st_mode
-			uid:   s.st_uid
-			gid:   s.st_gid
-			rdev:  u64(s.st_rdev)
-			size:  u64(s.st_size)
-			atime: s.st_atime
-			mtime: s.st_mtime
-			ctime: s.st_ctime
+			dev:   0
+			inode: vs.ino
+			mode:  vs.mode
+			nlink: u64(vs.nlink)
+			uid:   vs.uid
+			gid:   vs.gid
+			rdev:  0
+			size:  sz
+			atime: vs.mtime
+			mtime: vs.mtime
+			ctime: vs.mtime
+		}
+	} $else {
+		mut s := C.stat{}
+		unsafe {
+			res := C.lstat(&char(path.str), &s)
+			if res != 0 {
+				return error_posix()
+			}
+			return Stat{
+				dev:   u64(s.st_dev)
+				inode: s.st_ino
+				nlink: s.st_nlink
+				mode:  s.st_mode
+				uid:   s.st_uid
+				gid:   s.st_gid
+				rdev:  u64(s.st_rdev)
+				size:  u64(s.st_size)
+				atime: s.st_atime
+				mtime: s.st_mtime
+				ctime: s.st_ctime
+			}
 		}
 	}
 }
@@ -106,8 +150,16 @@ pub fn (st Stat) get_mode() FileMode {
 
 // is_dir returns a `bool` indicating whether the given `path` is a directory.
 pub fn is_dir(path string) bool {
-	attr := stat(path) or { return false }
-	return attr.get_filetype() == .directory
+	$if vlibc ? {
+		vs, e := vlibc_stat(path)
+		if e != .enoerror {
+			return false
+		}
+		return (vs.mode & u32(C.S_IFMT)) == u32(C.S_IFDIR)
+	} $else {
+		attr := stat(path) or { return false }
+		return attr.get_filetype() == .directory
+	}
 }
 
 // is_link returns a boolean indicating whether `path` is a link.

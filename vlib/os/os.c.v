@@ -250,11 +250,23 @@ pub fn truncate(path string, len u64) ! {
 // If an error occurs it returns 0.
 // Note that use of this on symbolic links on Windows returns always 0.
 pub fn file_size(path string) u64 {
-	attr := stat(path) or {
-		eprintln('os.file_size() Cannot determine file-size: ' + posix_get_error_msg(C.errno))
-		return 0
+	$if vlibc ? {
+		vs, e := vlibc_stat(path)
+		if e != .enoerror {
+			eprintln('os.file_size() Cannot determine file-size: ' + posix_get_error_msg(int(e)))
+			return 0
+		}
+		if vs.size < 0 {
+			return 0
+		}
+		return u64(vs.size)
+	} $else {
+		attr := stat(path) or {
+			eprintln('os.file_size() Cannot determine file-size: ' + posix_get_error_msg(C.errno))
+			return 0
+		}
+		return attr.size
 	}
-	return attr.size
 }
 
 // rename_dir renames the folder from `src` to `dst`.
@@ -693,9 +705,16 @@ pub fn rmdir(path string) ! {
 			)
 		}
 	} $else {
-		rc := C.rmdir(&char(path.str))
-		if rc == -1 {
-			return error_posix()
+		$if vlibc ? {
+			e := vlibc_rmdir(path)
+			if e != .enoerror {
+				return error_posix(msg: 'Failed to remove "${path}": ' + posix_get_error_msg(int(e)))
+			}
+		} $else {
+			rc := C.rmdir(&char(path.str))
+			if rc == -1 {
+				return error_posix()
+			}
 		}
 	}
 }

@@ -326,6 +326,13 @@ pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')
 	}
+	$if vlibc ? {
+		names, e := vlibc_list_dir(path)
+		if e != .enoerror {
+			return error_posix(code: int(e), msg: 'ls() couldnt open dir "${path}"')
+		}
+		return names
+	}
 	mut res := []string{cap: 50}
 	dir_ptr := unsafe { C.opendir(&char(path.str)) }
 	if isnil(dir_ptr) {
