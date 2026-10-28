@@ -216,7 +216,7 @@ jobs:
             export PATH="$HOME/tcc-install/bin:$PATH"
             # Diagnostic only: bionic headers need __ANDROID_MIN_SDK_VERSION__ on
             # every tcc compile, and V does not add it. Passing it here lets tcc
-            # compile V's C output. Users would need the same flag or a V change.
+            # compile the C output of V. Users would need the same flag or a V change.
             tcc_cflags="-cflags -D__ANDROID_MIN_SDK_VERSION__=24"
             V_ANDROID_TCC=1 VFLAGS="-cc tcc $tcc_cflags" make 2>&1 | tee /logs/v-bootstrap.log
             ./v -cc "$tcc" $tcc_cflags run examples/hello_world.v 2>&1 | tee /logs/hello_world.log
