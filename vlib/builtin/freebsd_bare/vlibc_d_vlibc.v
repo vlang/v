@@ -604,12 +604,12 @@ $if !i386 {
 			}
 			mut off := u64(0)
 			for off < u64(n) {
-				// freebsd dirent: ino u64, off i64, reclen u16@16, type u8@18, namlen u16@20, name@22
+				// FreeBSD dirent: reclen u16@16, namlen u16@20, padding u16@22, name@24.
 				reclen := *(&u16(&u8(buf.data) + off + 16))
 				if reclen == 0 {
 					break
 				}
-				nameptr := &u8(&u8(buf.data) + off + 22)
+				nameptr := &u8(&u8(buf.data) + off + 24)
 				mut name := ''
 				unsafe {
 					name = tos_clone(nameptr)

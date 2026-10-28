@@ -195,3 +195,56 @@ fn test_vlibc_freestanding_bsd() {
 		assert run.output == 'threads and atomics ok\ndescriptors and network order ok\nwaitpid and status ok\nfile=hello\n', run.output
 	}
 }
+
+// Exercise the exact FreeBSD parser on any host, with kernel-layout directory records.
+fn test_vlibc_freebsd_dirent_layout() {
+	root := os.join_path(os.vtmp_dir(), 'vlibc_freebsd_dirent_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	implementation := os.read_file(os.join_path(@VEXEROOT, 'vlib', 'builtin',
+		'freebsd_bare', 'vlibc_d_vlibc.v'))!
+	parser := '\tpub fn vlibc_list_dir' + implementation.all_after('\tpub fn vlibc_list_dir').all_before('\n\t// ---- env')
+	fixture := "__global directory_reads int
+
+enum VlibcErrno { enoerror }
+
+fn vlibc_open(path string, flags int, mode int) (i64, VlibcErrno) {
+	assert path == 'fixture'
+	return 3, .enoerror
+}
+
+fn vlibc_close(fd i64) VlibcErrno {
+	assert fd == 3
+	return .enoerror
+}
+
+fn vlibc_sys_getdirentries(fd i64, buf &u8, size u64, base &i64) (i64, VlibcErrno) {
+	assert fd == 3 && size >= 104
+	if directory_reads > 0 { return 0, .enoerror }
+	directory_reads++
+	mut records := []u8{len: 104}
+	// Current FreeBSD records: d_reclen at16, d_namlen at20, zero d_pad1 at22.
+	for index, name in ['.', '..', 'fixture.txt'] {
+		offset := index * 32
+		records[offset + 16] = if index == 2 { u8(40) } else { u8(32) }
+		records[offset + 20] = u8(name.len)
+		for i, c in name { records[offset + 24 + i] = c }
+	}
+	unsafe { vmemcpy(buf, records.data, records.len) }
+	return records.len, .enoerror
+}
+
+fn main() {
+	names, error := vlibc_list_dir('fixture')
+	assert error == .enoerror
+	assert names == ['fixture.txt'], names.str()
+	assert directory_reads == 1
+}
+"
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, fixture + '\n' + parser)!
+	build := os.exec([vexe, '-enable-globals', '-o', os.join_path(root, 'probe'), source])
+	assert build.exit_code == 0, build.output
+	run := os.exec([os.join_path(root, 'probe')])
+	assert run.exit_code == 0, run.output
+}
