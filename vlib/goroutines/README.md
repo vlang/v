@@ -51,6 +51,10 @@ Translated from Go's runtime source:
 | asm (gogo/gosave) | `context_nix.c.v` | Context switching (ucontext) |
 | asm (gogo/gosave) | `context_windows.c.v` | Context switching (Windows fibers) |
 
+On Windows, workers use native fibers. Completed fibers are deleted after returning to the
+worker's scheduler. The main thread uses a semaphore when a channel operation blocks, so
+it keeps every processor available to workers even on a single-core machine.
+
 ## References
 
 - [Go Scheduler Design Doc](https://golang.org/s/go11sched)

@@ -176,9 +176,10 @@ fn test_scheduler_init() {
 	assert gsched.allp.len > 0
 	assert gsched.allp.len == int(gomaxprocs)
 
-	// P0 should be running (attached to M0)
-	p0 := gsched.allp[0]
-	assert p0.status == .running
+	// Main never schedules goroutines itself. Workers can use every P, including
+	// P0 on a single-core machine, while main blocks waiting for a channel.
+	assert get_current_p() == unsafe { nil }
+	assert is_main_g(get_current_g())
 }
 
 // Test goroutine ID allocation

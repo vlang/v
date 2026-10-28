@@ -58,6 +58,20 @@ fn context_release_dead(fiber voidptr) {
 	}
 }
 
+// current_fiber returns the fiber the calling thread is currently executing on.
+pub fn current_fiber() voidptr {
+	return C.GetCurrentFiber()
+}
+
+// context_destroy deletes an inactive native fiber owned by ctx, if any.
+// The currently running fiber and converted thread fibers must not be destroyed.
+pub fn context_destroy(mut ctx Context) {
+	if ctx.uctx != unsafe { nil } && !ctx.is_thread_fiber {
+		C.DeleteFiber(ctx.uctx)
+		ctx.uctx = unsafe { nil }
+	}
+}
+
 // convert_thread_to_fiber must be called once per OS thread before using fibers.
 // If other code already made the thread a fiber, it returns that fiber, with
 // `is_thread_fiber` false, since the thread is not ours to convert back.

@@ -76,6 +76,7 @@ pub mut:
 	p          &Processor = unsafe { nil } // attached processor (nil if not executing Go code)
 	spinning   bool           // looking for work
 	blocked    bool           // blocked on a note
+	started    u32            // set to 1 by the M thread once it is running (atomic)
 	park       sync.Semaphore // for parking/unparking
 	sched_link &Machine = unsafe { nil } // linked list for idle Machine list
 	thread     thread // underlying OS thread handle
