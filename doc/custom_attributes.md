@@ -21,6 +21,44 @@ distance). An attribute call `@[Name(args)]` warns once, on its name, never per 
 Whole-string metadata such as `@['legacy']` does not warn. Independently written names,
 such as `@[foo; foo_bar]`, are checked separately, even when one name prefixes another.
 
+## Reading attributes at compile time
+
+An attribute whose name matches a registered schema exposes its fields when a
+`$for attr in X.attributes` loop is unrolled.
+Narrow with `$if attr is Schema` before touching schema fields; other names
+keep the `VAttribute` view (`name`/`has_arg`/`arg`/`kind`) exactly as before:
+
+```v
+@[attribute]
+struct Route {
+	path   string
+	method string
+}
+
+@[Route('/index', method: 'get')]
+@[deprecated: 'old']
+fn index() {}
+
+fn main() {
+	$for attr in index.attributes {
+		$if attr is Route {
+			println('route: ${attr.path} ${attr.method}')
+		} $else {
+			println('other: ${attr.name}')
+		}
+	}
+}
+```
+
+Supported schema field types are `string`, integer types (including `uint` and `rune`),
+`bool`, enums, and aliases of those types.
+A use the checker rejects (unknown field, wrong arity) keeps the legacy pieces
+so the checker diagnostic stays authoritative. Copies of the loop variable
+(`r := attr`) keep the `VAttribute` view; narrowing applies to direct `attr`
+uses. Inside that narrowed branch, schema fields named `name`, `arg`, `has_arg`, or
+`kind` take precedence over the metadata members. Outside narrowing, those members
+retain the `VAttribute` view.
+
 ## Checking schema field access
 
 Inside an `attributes` loop, read a schema field after narrowing the loop variable with
