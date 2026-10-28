@@ -1394,6 +1394,53 @@ fn (m &VMapData) clone() &VMapData {
 	return res
 }
 
+// map_clone_sharing_keys stores at `dest` a copy of the map at `src` whose keys
+// share their heap bytes with `src` instead of being cloned. Both pointers must
+// address maps of the same type. The copy's entries, index and later insertions
+// are its own; deleting from or freeing it never frees a key, so the keys of
+// `src` must outlive the copy.
+@[unsafe]
+pub fn map_clone_sharing_keys(dest voidptr, src voidptr) {
+	source := unsafe { &map(src) }
+	unsafe {
+		*(&map(dest)) = source.clone_with_shared_keys()
+	}
+}
+
+@[unsafe]
+fn (m &map) clone_with_shared_keys() map {
+	if m.data == unsafe { nil } || m.data == &map_empty_data || m.data.count == 0
+		|| m.data.metas == unsafe { nil } || m.data.key_bytes <= int(sizeof(voidptr))
+		|| (m.data.even_index >= 128 && u64(m.data.count) * 8 < u64(m.data.even_index)) {
+		return unsafe { m.clone() }
+	}
+	src := m.data
+	metasize := int(sizeof(u32) * (src.even_index + 2 + src.extra_metas))
+	res := &VMapData{
+		key_bytes:          src.key_bytes
+		value_bytes:        src.value_bytes
+		even_index:         src.even_index
+		cached_hashbits:    src.cached_hashbits
+		shift:              src.shift
+		hash_kind:          src.hash_kind
+		eq_kind:            src.eq_kind
+		key_values:         unsafe { src.key_values.clone() }
+		metas:              unsafe { &u32(malloc_noscan(metasize)) }
+		extra_metas:        src.extra_metas
+		count:              src.count
+		string_length_bits: src.string_length_bits
+		string_first_bits:  src.string_first_bits
+		hash_fn:            src.hash_fn
+		key_eq_fn:          src.key_eq_fn
+		clone_fn:           src.clone_fn
+		free_fn:            map_free_nop
+	}
+	unsafe { vmemcpy(res.metas, src.metas, metasize) }
+	return map{
+		data: res
+	}
+}
+
 // free releases all memory resources occupied by the `map`.
 @[unsafe]
 pub fn (m &map) free() {
