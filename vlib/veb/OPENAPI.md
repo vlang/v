@@ -34,6 +34,12 @@ missing-value checks for `int` and `bool`, independently of the declared schema 
 Methods outside OpenAPI's GET, PUT, POST, DELETE, OPTIONS, HEAD, PATCH and TRACE operation keys
 return an error.
 
+Applications serving a previously generated document can build with
+`-d veb_skip_route_metadata` to skip capturing controller metadata. Controller routes then
+do not appear in `route_info` or generated OpenAPI documents; root application routes still
+appear. Generate the document without this flag. Controller dispatch, nested mounts, host
+restrictions and middleware continue to work with the flag enabled.
+
 Use `operation(path, method, ...)` for summaries, multiline descriptions, tags, explicit
 operation IDs, path schemas and additional parameter objects. Generated IDs include the
 controller, handler, method and path, escaping punctuation as hexadecimal bytes so distinct
