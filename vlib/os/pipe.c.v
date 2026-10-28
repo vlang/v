@@ -17,7 +17,15 @@ pub fn fd_dup(fd int) int {
 // If `fd2` is already open, it is closed first before being reused.
 // Returns the new file descriptor on success, or -1 on error.
 pub fn fd_dup2(fd1 int, fd2 int) int {
-	return $if windows { C._dup2(fd1, fd2) } $else { C.dup2(fd1, fd2) }
+	$if vlibc ? {
+		rc, e := vlibc_dup2(fd1, fd2)
+		if e != .enoerror {
+			return -1
+		}
+		return int(rc)
+	} $else {
+		return $if windows { C._dup2(fd1, fd2) } $else { C.dup2(fd1, fd2) }
+	}
 }
 
 // Pipe represents a bidirectional communication channel
@@ -34,7 +42,14 @@ pub fn pipe() !Pipe {
 	// storage matches the C ABI (a V `[2]int` is two 64-bit slots and would be
 	// written out of bounds now that `int` is 64-bit).
 	mut fds := [2]i32{}
-	$if windows {
+	$if vlibc ? {
+		vfds, verr := vlibc_pipe()
+		if verr != .enoerror {
+			return error('Failed to create pipe')
+		}
+		fds[0] = i32(vfds[0])
+		fds[1] = i32(vfds[1])
+	} $else $if windows {
 		if C._pipe(&fds[0], 0, 0) == -1 {
 			return error('Failed to create pipe')
 		}

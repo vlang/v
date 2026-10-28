@@ -1207,7 +1207,9 @@ fn normalize_drive_letter(path string) {
 // fork will fork the current system process and return the pid of the fork.
 pub fn fork() int {
 	mut pid := -1
-	$if !windows {
+	$if vlibc ? {
+		pid = int(vlibc_fork())
+	} $else $if !windows {
 		pid = C.fork()
 	}
 	$if windows {
@@ -1347,7 +1349,15 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	cargv << &char(unsafe { nil })
 	cenvs << &char(unsafe { nil })
 	mut res := int(0)
-	$if windows {
+	$if vlibc ? {
+		// vlibc_execve takes argv as []string (argv[0] included) and never
+		// returns on success, so a returned value is always a failure code.
+		mut vargv := []string{cap: cmdargs.len + 1}
+		vargv << cmdpath
+		vargv << cmdargs
+		vres := vlibc_execve(cmdpath, vargv, child_envs)
+		return error('execve failed with code ${vres}')
+	} $else $if windows {
 		res = C._execve(&char(cmdpath.str), cargv.data, cenvs.data)
 	} $else {
 		res = C.execve(&char(cmdpath.str), cargv.data, cenvs.data)

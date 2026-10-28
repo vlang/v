@@ -146,15 +146,31 @@ fn (mut p Process) unix_spawn_process() int {
 	// implicitly where they are stored/closed.
 	mut pipeset := [6]i32{}
 	if p.use_stdio_ctl {
-		mut dont_care := 0
-		if !p.has_stdin_path {
-			dont_care = C.pipe(&pipeset[0]) // pipe read end 0 <- 1 pipe write end
+		$if vlibc ? {
+			if !p.has_stdin_path {
+				fds_in, _ := vlibc_pipe()
+				pipeset[0] = i32(fds_in[0])
+				pipeset[1] = i32(fds_in[1])
+			}
+			fds_out, _ := vlibc_pipe()
+			pipeset[2] = i32(fds_out[0])
+			pipeset[3] = i32(fds_out[1])
+			if !p.merge_stdio {
+				fds_err, _ := vlibc_pipe()
+				pipeset[4] = i32(fds_err[0])
+				pipeset[5] = i32(fds_err[1])
+			}
+		} $else {
+			mut dont_care := 0
+			if !p.has_stdin_path {
+				dont_care = C.pipe(&pipeset[0]) // pipe read end 0 <- 1 pipe write end
+			}
+			dont_care = C.pipe(&pipeset[2]) // pipe read end 2 <- 3 pipe write end
+			if !p.merge_stdio {
+				dont_care = C.pipe(&pipeset[4]) // pipe read end 4 <- 5 pipe write end
+			}
+			_ = dont_care // using `_` directly on each above `pipe` fails to avoid C compiler generate an `-Wunused-result` warning
 		}
-		dont_care = C.pipe(&pipeset[2]) // pipe read end 2 <- 3 pipe write end
-		if !p.merge_stdio {
-			dont_care = C.pipe(&pipeset[4]) // pipe read end 4 <- 5 pipe write end
-		}
-		_ = dont_care // using `_` directly on each above `pipe` fails to avoid C compiler generate an `-Wunused-result` warning
 	}
 	// Resolve the executable and build the C argv/envp vectors *before* forking;
 	// doing it in the child would allocate, and can deadlock there.
@@ -215,15 +231,15 @@ fn (mut p Process) unix_spawn_process() int {
 		}
 		// redirect the pipe fds to the child's in/out/err fds:
 		if p.has_stdin_path {
-			C.dup2(stdin_fd, 0)
+			fd_dup2(stdin_fd, 0)
 		} else {
-			C.dup2(pipeset[0], 0)
+			fd_dup2(pipeset[0], 0)
 		}
-		C.dup2(pipeset[3], 1)
+		fd_dup2(pipeset[3], 1)
 		if p.merge_stdio {
-			C.dup2(pipeset[3], 2)
+			fd_dup2(pipeset[3], 2)
 		} else {
-			C.dup2(pipeset[5], 2)
+			fd_dup2(pipeset[5], 2)
 		}
 		// close the pipe fdsx after the redirection
 		if !p.has_stdin_path {
@@ -234,7 +250,7 @@ fn (mut p Process) unix_spawn_process() int {
 			fd_close(pipeset[5])
 		}
 	} else if p.has_stdin_path {
-		C.dup2(stdin_fd, 0)
+		fd_dup2(stdin_fd, 0)
 	}
 	if stdin_fd > 0 {
 		fd_close(stdin_fd)
@@ -254,23 +270,43 @@ fn (mut p Process) unix_spawn_process() int {
 }
 
 fn (mut p Process) unix_stop_process() {
-	C.kill(p.pid, C.SIGSTOP)
+	$if vlibc ? {
+		vlibc_kill(i64(p.pid), C.SIGSTOP)
+	} $else {
+		C.kill(p.pid, C.SIGSTOP)
+	}
 }
 
 fn (mut p Process) unix_resume_process() {
-	C.kill(p.pid, C.SIGCONT)
+	$if vlibc ? {
+		vlibc_kill(i64(p.pid), C.SIGCONT)
+	} $else {
+		C.kill(p.pid, C.SIGCONT)
+	}
 }
 
 fn (mut p Process) unix_term_process() {
-	C.kill(p.pid, C.SIGTERM)
+	$if vlibc ? {
+		vlibc_kill(i64(p.pid), C.SIGTERM)
+	} $else {
+		C.kill(p.pid, C.SIGTERM)
+	}
 }
 
 fn (mut p Process) unix_kill_process() {
-	C.kill(p.pid, C.SIGKILL)
+	$if vlibc ? {
+		vlibc_kill(i64(p.pid), C.SIGKILL)
+	} $else {
+		C.kill(p.pid, C.SIGKILL)
+	}
 }
 
 fn (mut p Process) unix_kill_pgroup() {
-	C.kill(-p.pid, C.SIGKILL)
+	$if vlibc ? {
+		vlibc_kill(i64(-p.pid), C.SIGKILL)
+	} $else {
+		C.kill(-p.pid, C.SIGKILL)
+	}
 }
 
 fn (mut p Process) unix_wait() {

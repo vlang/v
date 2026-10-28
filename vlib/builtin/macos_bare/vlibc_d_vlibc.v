@@ -660,7 +660,16 @@ $if !i386 {
 	pub fn vlibc_pipe() ([2]int, VlibcErrno) {
 		mut fds := [0, 0]
 		e := vlibc_sys_pipe(&fds[0])
-		return fds, e
+		if e != .enoerror {
+			return fds, e
+		}
+		// The kernel writes two 32-bit C ints, which land packed in the
+		// first 64-bit slot (all vlibc targets are little-endian); split
+		// them so callers get one fd per element.
+		mut res := [2]int{}
+		res[0] = fds[0] & 0xffff_ffff
+		res[1] = (fds[0] >> 32) & 0xffff_ffff
+		return res, VlibcErrno.enoerror
 	}
 
 	pub fn vlibc_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
