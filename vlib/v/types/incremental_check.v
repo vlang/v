@@ -898,7 +898,7 @@ pub fn (mut tc TypeChecker) complete_incremental_check_for_instances() {
 	for i in state.skipped {
 		f := state.functions[i]
 		if state.earlier.entries[f.earlier].generic
-			|| tc.infer_decl_generic_param_names(tc.a.nodes[f.item.fn_idx]).len > 0 {
+			|| tc.infer_decl_generic_param_ids(tc.a.nodes[f.item.fn_idx]).len > 0 {
 			state.to_complete << i
 		}
 	}
@@ -1005,7 +1005,7 @@ fn (tc &TypeChecker) incremental_instances_reason(by_key map[string]int) string 
 // incremental_body_is_generic reports whether `f` is the body of a generic
 // function, or holds an anonymous generic function: its text makes instances.
 fn (tc &TypeChecker) incremental_body_is_generic(f IncrementalFunction) bool {
-	if tc.infer_decl_generic_param_names(tc.a.nodes[f.item.fn_idx]).len > 0 {
+	if tc.infer_decl_generic_param_ids(tc.a.nodes[f.item.fn_idx]).len > 0 {
 		return true
 	}
 	for idx in f.item.range_lo .. f.item.fn_idx {

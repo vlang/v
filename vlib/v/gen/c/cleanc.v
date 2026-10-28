@@ -292,28 +292,6 @@ fn (g &FlatGen) cached_file_import(file string, alias string) ?string {
 	return module_name
 }
 
-// file_selective_import_candidates returns the selective imports of `name` in
-// `file`, or none. Most names are not selectively imported; those misses are
-// memoized so they do not build the table's composite key again.
-fn (g &FlatGen) file_selective_import_candidates(file string, name string) ?[]string {
-	if !isnil(g.selective_import_key_cache) {
-		mut cache := g.selective_import_key_cache
-		state, _ := cache.get(file, name, '')
-		if state < 0 {
-			return none
-		}
-		candidates := g.tc.file_selective_imports['${file}\n${name}'] or {
-			cache.put(file, name, '', -1, '')
-			return none
-		}
-		if state == 0 {
-			cache.put(file, name, '', 1, '')
-		}
-		return candidates
-	}
-	return g.tc.file_selective_imports['${file}\n${name}'] or { return none }
-}
-
 fn cgen_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -1086,7 +1064,6 @@ mut:
 	lazy_param_abi_merge           bool
 	usable_expr_type_memo          &UsableExprTypeMemo  = unsafe { nil }
 	import_key_cache               &util.KeyRecentCache = unsafe { nil }
-	selective_import_key_cache     &util.KeyRecentCache = unsafe { nil }
 	needed_optional_types          flat.TypeTextBindings
 	optional_pointer_struct_tags   map[string]string
 	optional_payload_types         map[string]types.Type // C name -> struct or sum type, for option typedefs
@@ -1776,7 +1753,6 @@ pub fn FlatGen.new() FlatGen {
 	return FlatGen{
 		memo_usable_expr_types:             os.getenv('V3_NO_CGEN_EXPR_TYPE_MEMO') == ''
 		import_key_cache:                   &util.KeyRecentCache{}
-		selective_import_key_cache:         &util.KeyRecentCache{}
 		cache_struct_fields:                os.getenv('V3_NO_CGEN_STRUCT_FIELDS_CACHE') == ''
 		dedup_fn_decl_aliases:              os.getenv('V3_NO_DEDUP_FN_DECL_ALIASES') == ''
 		prefix_param_scan:                  os.getenv('V3_NO_PREFIX_PARAM_SCAN') == ''
@@ -3969,7 +3945,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// The import front caches memoize the previous program's import tables,
 	// including misses; the serial path never resets them otherwise.
 	g.import_key_cache = &util.KeyRecentCache{}
-	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.enum_selector_cache = &ContextSourceTypeLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
@@ -13064,9 +13039,8 @@ fn (g &FlatGen) enum_selector_base_name(name_id u32) ?u32 {
 }
 
 fn (g &FlatGen) enum_selector_base_name_uncached(name_id u32) ?u32 {
-	name := flat.source_type_name(name_id)
 	// Every resolution below (import alias, qualified name, selective import,
-	// alias chain) keeps the last name component of `name`.
+	// alias chain) keeps the last name component of the spelling.
 	if !g.type_id_may_reach_enum(name_id) {
 		return none
 	}
@@ -13098,12 +13072,12 @@ fn (g &FlatGen) enum_selector_base_name_uncached(name_id u32) ?u32 {
 	if flat.source_type_shape(name_id).has(.dotted) || g.tc.cur_file.len == 0 {
 		return none
 	}
-	candidates := g.file_selective_import_candidates(g.tc.cur_file, name) or { return none }
+	candidates := g.tc.file_selective_import_ids(g.tc.cur_file, name_id) or { return none }
 	for candidate in candidates {
-		if flat.source_type_id(candidate) in g.tc.enum_names || flat.source_type_id(candidate) in g.tc.flag_enums {
-			return flat.source_type_id(candidate)
+		if candidate in g.tc.enum_names || candidate in g.tc.flag_enums {
+			return candidate
 		}
-		if target := g.enum_selector_alias_target(flat.source_type_id(candidate)) {
+		if target := g.enum_selector_alias_target(candidate) {
 			return target
 		}
 	}

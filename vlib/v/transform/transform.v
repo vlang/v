@@ -14195,7 +14195,7 @@ fn (mut t Transformer) transform_sizeof_expr(id flat.NodeId, node flat.Node) fla
 	} else if node.value_text().len > 0 && node.children_count > 0 {
 		value_type := t.selected_sizeof_value_type(node.value_text()) or {
 			if t.tc.sizeof_arg_is_type(node) {
-				flat.source_type_id(t.tc.qualify_name(node.value_text()))
+				t.tc.qualify_type_name(node.source_value_id())
 			} else {
 				u32(0)
 			}
@@ -25857,7 +25857,7 @@ fn (t &Transformer) struct_info_matches_generic_base(base_id u32, info StructInf
 	return false
 }
 
-fn struct_info_uses_generic_params(info StructInfo, params []string) bool {
+fn struct_info_uses_generic_params(info StructInfo, params []u32) bool {
 	for field in info.fields {
 		if type_text_uses_any_generic_param(field.typ, params)
 			|| type_text_uses_any_generic_param(field.raw_typ, params) {
@@ -25867,11 +25867,10 @@ fn struct_info_uses_generic_params(info StructInfo, params []string) bool {
 	return false
 }
 
-fn type_text_uses_any_generic_param(typ_id u32, params []string) bool {
-	// Generic declaration parameters are identifiers; use their cached token IDs.
+fn type_text_uses_any_generic_param(typ_id u32, params []u32) bool {
 	words := flat.source_type_syntax(typ_id).words()
 	for param in params {
-		if param.len > 0 && flat.source_type_id(param) in words { return true }
+		if param != 0 && param in words { return true }
 	}
 	return false
 }
@@ -25915,17 +25914,17 @@ fn (t &Transformer) generic_struct_info_for_stringify(typ_id u32) ?StructInfo {
 
 fn (t &Transformer) generic_struct_params_for_stringify(base_id u32) []string {
 	if isnil(t.tc) { return []string{} }
-	if params := t.tc.struct_generic_params[base_id] { return params }
+	if params := t.tc.struct_generic_params[base_id] { return types.generic_param_texts(params) }
 	if !flat.source_type_shape(base_id).has(.dotted) && t.cur_module.len > 0
 		&& t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base_id)
 		if params := t.tc.struct_generic_params[qualified_id] {
-			return params
+			return types.generic_param_texts(params)
 		}
 	}
 	if flat.source_type_shape(base_id).has(.dotted) {
 		if params := t.tc.struct_generic_params[flat.source_type_syntax(base_id).unqualified()] {
-			return params
+			return types.generic_param_texts(params)
 		}
 	}
 	return []string{}
@@ -28881,7 +28880,7 @@ fn (t &Transformer) explicit_generic_call_return_type_for_typeof(id flat.NodeId,
 		}
 	}
 	for name in names {
-		params := t.tc.fn_generic_params[name] or { continue }
+		params := types.generic_param_texts(t.tc.fn_generic_params[name] or { continue })
 		if params.len == 0 {
 			continue
 		}
@@ -32686,10 +32685,7 @@ fn (t &Transformer) interface_pattern_candidates(pattern_id u32) []u32 {
 	if !flat.source_type_shape(pattern_id).has(.dotted) {
 		mut has_scoped_candidate := false
 		if t.cur_file.len > 0 {
-			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(pattern_id))] or {
-				[]string{}
-			} {
-				candidate_id := flat.source_type_id(candidate)
+			for candidate_id in t.tc.file_selective_import_ids(t.cur_file, pattern_id) or { []u32{} } {
 				if t.interface_pattern_candidate_known(candidate_id) {
 					candidates << candidate_id
 					has_scoped_candidate = true

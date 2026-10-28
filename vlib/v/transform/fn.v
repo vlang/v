@@ -96,9 +96,11 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 						}
 					}
 				}
-				for imported in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
-					[]string{}
+				for imported_id in t.tc.file_selective_import_ids_by_name(t.cur_file, name) or {
+					[]u32{}
 				} {
+					// Function tables are keyed by declaration names.
+					imported := flat.source_type_name(imported_id)
 					if t.is_known_fn_name(imported) {
 						return imported
 					}
@@ -4112,7 +4114,7 @@ fn (t &Transformer) decl_param_type_in_scope(typ_id u32, module_name string, fil
 	}
 	if file_name != '' && !isnil(t.tc) {
 		if selected := t.selective_signature_type_symbol_id(file_name, clean_id) {
-			return flat.source_type_id(selected)
+			return selected
 		}
 		if shape.has(.dotted) {
 			return t.tc.resolve_imported_type_text_in_file(clean_id, file_name)
@@ -5077,9 +5079,9 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 	if name == '' || name.contains('.') || isnil(t.tc) || t.cur_file.len == 0 {
 		return none
 	}
-	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
-		[]string{}
-	} {
+	for candidate_id in t.tc.file_selective_import_ids_by_name(t.cur_file, name) or { []u32{} } {
+		// Globals are keyed by declaration names.
+		candidate := flat.source_type_name(candidate_id)
 		if candidate in t.globals.ids {
 			return candidate
 		}
@@ -11423,13 +11425,12 @@ fn (t &Transformer) resolve_flag_enum_type_name(typ_id u32) ?u32 {
 			// A known ordinary enum must not inherit another module's flag methods.
 			return none
 		}
-		clean := flat.source_type_name(clean_id)
 		if clean_id in t.tc.flag_enums {
 			return clean_id
 		}
-		qualified := t.tc.qualify_name(clean)
-		if flat.source_type_id(qualified) in t.tc.flag_enums {
-			return flat.source_type_id(qualified)
+		qualified := t.tc.qualify_type_name(clean_id)
+		if qualified in t.tc.flag_enums {
+			return qualified
 		}
 		if !flat.source_type_shape(clean_id).has(.dotted) {
 			mut found := ''
@@ -15793,7 +15794,7 @@ fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?f
 	}
 	if fn_node.kind == .ident && !fn_node.value.ends_with(']')
 		&& !flat.source_type_shape(fn_node.typ).has(.map_type)
-		&& (isnil(t.tc) || t.tc.file_selective_imports.len == 0) {
+		&& (isnil(t.tc) || t.tc.selective_import_files.len == 0) {
 		return none
 	}
 	// A monomorphized method callee such as `Tree[int].size` contains a generic
@@ -19908,7 +19909,7 @@ fn (t &Transformer) generic_call_declared_return_type(id flat.NodeId, node flat.
 	if name.len == 0 {
 		return none
 	}
-	params := t.tc.fn_generic_params[name] or { return none }
+	params := types.generic_param_texts(t.tc.fn_generic_params[name] or { return none })
 	if params.len == 0 {
 		return none
 	}
@@ -20083,7 +20084,8 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
-	if params := t.tc.fn_generic_params[name] {
+	if param_ids := t.tc.fn_generic_params[name] {
+		params := types.generic_param_texts(param_ids)
 		if params == ['T'] {
 			if ret_text_source_id := t.tc.fn_ret_type_texts.type_id(name) {
 				syntax := flat.source_type_syntax(ret_text_source_id)

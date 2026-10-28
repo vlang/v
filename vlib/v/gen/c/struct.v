@@ -2451,12 +2451,11 @@ fn (g &FlatGen) struct_default_canonical_leaf_type_text(name_id u32, module_name
 		|| types.is_builtin_type_name_id(clean_id) {
 		return clean_id
 	}
-	// Declaration and selective-import indexes still use declaration-name text.
+	// Declaration indexes still use declaration-name text.
 	clean := flat.source_type_name(clean_id)
 	mut imported := u32(0)
-	for candidate in g.file_selective_import_candidates(file, clean) or { []string{} } {
-		if !g.struct_default_type_key_known(candidate) { continue }
-		candidate_id := flat.source_type_id(candidate)
+	for candidate_id in g.tc.file_selective_import_ids(file, clean_id) or { []u32{} } {
+		if !g.struct_default_type_id_known(candidate_id) { continue }
 		if imported != 0 && imported != candidate_id { return clean_id }
 		imported = candidate_id
 	}
@@ -2473,6 +2472,11 @@ fn (g &FlatGen) struct_default_canonical_leaf_type_text(name_id u32, module_name
 
 fn (g &FlatGen) struct_default_type_key_known(name string) bool {
 	name_id := flat.source_type_existing_id(name) or { return false }
+	return g.struct_default_type_id_known(name_id)
+}
+
+// struct_default_type_id_known reports whether a spelling ID names a declared type.
+fn (g &FlatGen) struct_default_type_id_known(name_id u32) bool {
 	return name_id in g.tc.structs || g.tc.type_aliases.contains(name_id) || name_id in g.tc.interface_names
 		|| g.tc.sum_types.contains(name_id) || name_id in g.tc.enum_names || name_id in g.tc.flag_enums
 		|| name_id in g.struct_decl_infos
@@ -3650,8 +3654,7 @@ fn (g &FlatGen) shared_qualify_leaf_type_text(name_id u32, module_name string) u
 	}
 	clean := flat.source_type_name(clean_id)
 	mut imported := u32(0)
-	for candidate in g.file_selective_import_candidates(g.tc.cur_file, clean) or { []string{} } {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	for candidate_id in g.tc.file_selective_import_ids(g.tc.cur_file, clean_id) or { []u32{} } {
 		if candidate_id !in g.tc.structs && !g.tc.type_aliases.contains(candidate_id) && candidate_id !in g.tc.interface_names
 			&& !g.tc.sum_types.contains(candidate_id) && candidate_id !in g.tc.enum_names && candidate_id !in g.tc.flag_enums {
 			continue
@@ -4840,13 +4843,12 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
 
 fn (g &FlatGen) struct_init_import_alias_type_name_uncached(type_name_id u32) u32 {
 	base_source_id, args_source_ids, is_generic := g.shared_generic_app_parts(type_name_id)
-	base := flat.source_type_name(base_source_id)
 	if is_generic && args_source_ids.len > 0 && !flat.source_type_shape(base_source_id).has(.dotted) {
-		mut resolved := []string{}
+		mut resolved := []u32{}
 		if g.tc.cur_file.len > 0 {
-			if candidates := g.file_selective_import_candidates(g.tc.cur_file, base) {
+			if candidates := g.tc.file_selective_import_ids(g.tc.cur_file, base_source_id) {
 				for candidate in candidates {
-					if candidate.len > 0 && candidate !in resolved {
+					if candidate != 0 && candidate !in resolved {
 						resolved << candidate
 					}
 				}
@@ -4856,20 +4858,17 @@ fn (g &FlatGen) struct_init_import_alias_type_name_uncached(type_name_id u32) u3
 			// Specialized function bodies can be emitted after the top-level file
 			// cursor has moved. Recover a selective type import only when its short
 			// name has one unambiguous target across the checked files.
-			suffix := '\n${base}'
-			for key, candidates in g.tc.file_selective_imports {
-				if !key.ends_with(suffix) {
-					continue
-				}
+			for _, info in g.tc.selective_import_files {
+				candidates := info.selective_imports[base_source_id] or { continue }
 				for candidate in candidates {
-					if candidate.len > 0 && candidate !in resolved {
+					if candidate != 0 && candidate !in resolved {
 						resolved << candidate
 					}
 				}
 			}
 		}
 		if resolved.len == 1 {
-			return cgen_compact_generic_type_id(flat.source_type_id(resolved[0]), args_source_ids)
+			return cgen_compact_generic_type_id(resolved[0], args_source_ids)
 		}
 	}
 	if !flat.source_type_shape(type_name_id).has(.dotted) {
@@ -5095,11 +5094,9 @@ fn (g &FlatGen) find_struct_decl_uncached(type_name_id u32) ?StructDeclInfo {
 	// leak into this file's literals. Checked before the per-module cache below,
 	// because two files of one module can import different homonyms.
 	if !flat.source_type_shape(type_name_id).has(.dotted) && g.tc.cur_file.len > 0 {
-		type_name := flat.source_type_name(type_name_id)
-		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_name) or {
-			[]string{}
+		for candidate_id in g.tc.file_selective_import_ids(g.tc.cur_file, type_name_id) or {
+			[]u32{}
 		} {
-			candidate_id := flat.source_type_existing_id(candidate) or { continue }
 			if info := g.struct_decl_infos[candidate_id] {
 				return info
 			}
@@ -5840,8 +5837,8 @@ fn (g &FlatGen) embedded_field_type_name(field types.StructField) u32 {
 	// alias name so promoted methods on the alias receive the embedded callback,
 	// rather than the outer struct.
 	if clean_type is types.FnType {
-		for candidate in [field.name, g.tc.qualify_name(field.name)] {
-			candidate_id := flat.source_type_existing_id(candidate) or { continue }
+		embedded_name_id := flat.source_type_id(field.name)
+		for candidate_id in [embedded_name_id, g.tc.qualify_type_name(embedded_name_id)] {
 			if !g.tc.type_aliases.contains(candidate_id) {
 				continue
 			}
@@ -7680,7 +7677,7 @@ fn (g &FlatGen) c_sum_decl_names() []string {
 		name_ids = name_ids.filter(g.cache_decl_refs[g.cname(flat.source_type_name(it))])
 	}
 	if g.skip_generics {
-		name_ids = name_ids.filter((g.tc.sum_generic_params[it] or { []string{} }).len == 0)
+		name_ids = name_ids.filter((g.tc.sum_generic_params[it] or { []u32{} }).len == 0)
 	}
 	mut names := name_ids.map(flat.source_type_name(it))
 	names.sort()
