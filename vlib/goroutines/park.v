@@ -28,6 +28,15 @@ pub fn gopark(reason string) {
 	gp.status = .waiting
 	gp.wait_reason = reason
 
+	if is_main_g(gp) {
+		// The main thread has no scheduler context: switching to m0.g0 would switch to
+		// the running context itself. Block the OS thread until goready posts.
+		gsched.main_park.wait()
+		gp.status = .running
+		gp.wait_reason = ''
+		return
+	}
+
 	// Dissociate G from M
 	mp.curg = unsafe { nil }
 	gp.m = unsafe { nil }
@@ -40,6 +49,12 @@ pub fn gopark(reason string) {
 // Translated from Go's goready() in proc.go.
 pub fn goready(gp &Goroutine) {
 	if gp == unsafe { nil } {
+		return
+	}
+	if is_main_g(gp) {
+		// Post before checking the status: the waker can run between the channel
+		// unlock and gopark setting .waiting, and the semaphore keeps that early wakeup.
+		gsched.main_park.post()
 		return
 	}
 	mut g := unsafe { gp }
@@ -72,6 +87,11 @@ pub fn gosched() {
 	if gp == unsafe { nil } {
 		return
 	}
+	if is_main_g(gp) {
+		// Goroutines run on worker threads, and the main thread has no scheduler
+		// context to yield to.
+		return
+	}
 	mut pp := mp.p
 	if pp == unsafe { nil } {
 		return
@@ -87,6 +107,13 @@ pub fn gosched() {
 
 	// Switch back to scheduler
 	context_switch(mut &gp.context, &mp.g0.context)
+}
+
+// is_main_g reports whether gp is the main goroutine. It compares pointers, since
+// `==` on two references compares the pointed-to structs when the pointers differ.
+@[inline]
+fn is_main_g(gp &Goroutine) bool {
+	return voidptr(gp) == voidptr(gsched.main_g)
 }
 
 // Sudog represents a G in a wait list (e.g., channel wait queue).

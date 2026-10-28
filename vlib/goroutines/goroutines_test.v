@@ -6,6 +6,16 @@ module goroutines
 
 import time
 
+// The Boehm GC cannot scan goroutine stacks yet: a collection while a goroutine runs
+// crashes in GC_mark_from. Keep collections off while these tests run goroutines.
+fn testsuite_begin() {
+	gc_disable()
+}
+
+fn testsuite_end() {
+	gc_enable()
+}
+
 // Helper function for test_goroutine_create (must be a plain function, not a closure).
 fn goroutine_test_worker(arg voidptr) {
 	// Signal that the goroutine ran by writing to the shared flag
@@ -177,4 +187,112 @@ fn test_goid_allocation() {
 	id2 := assign_goid()
 	// IDs should be unique and increasing
 	assert id2 > id1
+}
+
+fn delayed_sender(arg voidptr) {
+	time.sleep(100 * time.millisecond)
+	c := unsafe { &Chan(arg) }
+	mut val := 42
+	chan_send(c, voidptr(&val), true)
+}
+
+// Test a blocking receive on the main thread: it has no scheduler context to switch to,
+// so it must block the thread until the sender wakes it.
+fn test_main_thread_blocking_recv() {
+	c := chan_make(int(sizeof(int)), 0)
+	goroutine_create(voidptr(delayed_sender), voidptr(c), 0)
+	mut got := 0
+	received, ok := chan_recv(c, voidptr(&got), true)
+	assert received
+	assert ok
+	assert got == 42
+	gp := get_current_g()
+	assert is_main_g(gp)
+	assert gp.status == .running
+}
+
+struct DelayedRecv {
+mut:
+	c   &Chan = unsafe { nil }
+	got int
+}
+
+fn delayed_receiver(arg voidptr) {
+	time.sleep(100 * time.millisecond)
+	mut r := unsafe { &DelayedRecv(arg) }
+	chan_recv(r.c, voidptr(&r.got), true)
+}
+
+// Test a blocking send on the main thread, completed by a goroutine that receives later.
+fn test_main_thread_blocking_send() {
+	mut r := &DelayedRecv{
+		c: chan_make(int(sizeof(int)), 0)
+	}
+	goroutine_create(voidptr(delayed_receiver), voidptr(r), 0)
+	mut val := 42
+	assert chan_send(r.c, voidptr(&val), true)
+	// The receiver copies the value before it wakes the main thread.
+	assert r.got == 42
+	gp := get_current_g()
+	assert is_main_g(gp)
+	assert gp.status == .running
+}
+
+// Test that gosched on the main thread returns and keeps the main goroutine current.
+fn test_main_thread_gosched() {
+	gosched()
+	gp := get_current_g()
+	assert is_main_g(gp)
+	assert gp.status == .running
+}
+
+const chain_length = 1000
+
+struct Chain {
+mut:
+	ran  int
+	done &Chan = unsafe { nil }
+}
+
+// chain_link creates the next link before it exits. The next link usually runs on the
+// same M after this one exited, so it creates its own successor from the dead G of this
+// one: this repeats the exit/reuse cycle of goroutine contexts (fibers on Windows).
+fn chain_link(arg voidptr) {
+	mut st := unsafe { &Chain(arg) }
+	st.ran++
+	if st.ran < chain_length {
+		goroutine_create(voidptr(chain_link), arg, 0)
+		return
+	}
+	mut n := st.ran
+	chan_send(st.done, voidptr(&n), false)
+}
+
+// Test many goroutine lifetimes, with dead goroutines reused by goroutines.
+fn test_goroutine_reuse_chain() {
+	allgs_mu.acquire()
+	first := allgs.len
+	allgs_mu.release()
+	mut st := &Chain{
+		done: chan_make(int(sizeof(int)), 1)
+	}
+	goroutine_create(voidptr(chain_link), voidptr(st), 0)
+	mut n := 0
+	for _ in 0 .. 1000 {
+		received, _ := chan_recv(st.done, voidptr(&n), false)
+		if received {
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	assert n == chain_length
+	// Every link is recorded in allgs; reused goroutines appear there more than once.
+	mut distinct := map[u64]bool{}
+	allgs_mu.acquire()
+	assert allgs.len - first == chain_length
+	for i in first .. allgs.len {
+		distinct[u64(voidptr(allgs[i]))] = true
+	}
+	allgs_mu.release()
+	assert distinct.len < chain_length / 2
 }

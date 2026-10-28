@@ -51,11 +51,13 @@ fn newproc1(f voidptr, arg voidptr, arg_size int) &Goroutine {
 		gp = &Goroutine{}
 	}
 
-	// Allocate or reuse stack
-	if gp.stack == unsafe { nil } {
-		stack_size := default_stack_size
-		gp.stack = unsafe { malloc(stack_size) }
-		gp.stack_size = stack_size
+	// Allocate or reuse stack. Windows fibers allocate their own stacks.
+	$if !windows {
+		if gp.stack == unsafe { nil } {
+			stack_size := default_stack_size
+			gp.stack = unsafe { malloc(stack_size) }
+			gp.stack_size = stack_size
+		}
 	}
 
 	gp.fn_ptr = f
@@ -115,6 +117,10 @@ fn goexit0(mut gp Goroutine) {
 	// Dissociate G from M
 	if mp != unsafe { nil } {
 		mp.curg = unsafe { nil }
+		// The native context (a fiber on Windows) is still running, so it cannot be
+		// released here. Hand it to this M before the G can be reused; execute()
+		// releases it after switching back to g0.
+		mp.dead_context = context_detach_dead(mut gp.context)
 	}
 
 	// Put the dead G on the free list for reuse
@@ -204,6 +210,12 @@ fn execute(mut mp Machine, mut pp Processor, gp &Goroutine) {
 	context_switch(mut &mp.g0.context, &g.context)
 	// When we return here, the goroutine has yielded back to us
 	// The scheduler loop will be re-entered
+
+	// If the goroutine exited, release its context now that it no longer runs.
+	if mp.dead_context != unsafe { nil } {
+		context_release_dead(mp.dead_context)
+		mp.dead_context = unsafe { nil }
+	}
 }
 
 // wake_p tries to wake an idle P to run goroutines.
@@ -236,6 +248,13 @@ fn wake_p() {
 fn park_m(mut mp Machine) {
 	// Release P and add M to idle list under lock
 	gsched.mu.acquire()
+	// wake_p does nothing while an M is spinning. A goroutine queued after this M's last
+	// look at the global queue, but before it stopped spinning, would then never run:
+	// check again under the lock that glob_runq_put takes.
+	if mp.p != unsafe { nil } && !gsched.runq.empty() {
+		gsched.mu.release()
+		return
+	}
 	if mp.p != unsafe { nil } {
 		pid_put(mp.p)
 		mp.p = unsafe { nil }
@@ -310,15 +329,19 @@ fn new_m(id i64, pp &Processor) {
 
 // m_thread_entry is the entry point for new M (OS thread) goroutine scheduling loops.
 fn m_thread_entry(mut mp Machine) {
-	// Register this M as the current thread's Machine so that
-	// get_current_m()/get_current_p() work on worker threads.
-	// Convert this OS thread to a fiber on Windows before scheduling.
+	// Convert this OS thread to a fiber on Windows before scheduling, so that it
+	// can switch to goroutine fibers and back.
 	$if windows {
 		mp.g0.context = convert_thread_to_fiber()
 	}
+	// Register this M as the current thread's Machine so that
+	// get_current_m()/get_current_p() work on worker threads.
 	set_current_m(mp)
-	// Enter the scheduling loop - this never returns
+	// Enter the scheduling loop - this returns only after shutdown()
 	schedule_loop(mut mp)
+	$if windows {
+		convert_fiber_to_thread(mp.g0.context)
+	}
 }
 
 // schedule_loop is the main loop for an M. It repeatedly finds and runs goroutines.

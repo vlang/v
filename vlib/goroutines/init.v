@@ -56,11 +56,10 @@ fn init() {
 	}
 	m0.curg = main_g
 	main_g.m = m0
-
-	// Convert the main thread to a fiber on Windows before any context switch.
-	$if windows {
-		m0.g0.context = convert_thread_to_fiber()
-	}
+	// The main goroutine blocks on this semaphore instead of switching to m0.g0, so the
+	// main thread never switches contexts (and is not converted to a fiber on Windows).
+	gsched.main_g = main_g
+	gsched.main_park.init(0)
 
 	// Wire M0 to P0
 	mut p0 := gsched.allp[0]
