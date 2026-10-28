@@ -56,7 +56,11 @@ fn (entry &SourceTypeCompositionEntry) parts() &u32 {
 	return unsafe { &u32(&u8(entry) + sizeof(SourceTypeCompositionEntry)) }
 }
 
-__global g_source_type_compositions [4096]voidptr
+// Large programs intern hundreds of thousands of composite spellings; keep the
+// chains short. The table is zero-initialized process storage.
+const source_type_composition_slots = 65536
+
+__global g_source_type_compositions [source_type_composition_slots]voidptr
 
 // source_type_composition reuses a spelling built from an exact numeric tuple.
 // Unary constructors take one part; maps take key/value; fixed arrays take the
@@ -83,7 +87,7 @@ pub fn source_type_composition(kind SourceTypeComposition, parts []u32) u32 {
 		hash = (hash ^ u64(part)) * u64(1_099_511_628_211)
 	}
 	hash ^= hash >> 32
-	slot := int(hash & 4095)
+	slot := int(hash & u64(source_type_composition_slots - 1))
 	cached := source_type_composition_find(slot, kind, parts, hash)
 	if !isnil(cached) {
 		return cached.id
