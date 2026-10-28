@@ -1,5 +1,11 @@
 module veb
 
+import net.http
+
+struct CompressionEligibilityContext {
+	Context
+}
+
 // Pure unit tests for the compression eligibility helpers in middleware.v.
 // No network involved.
 fn test_client_accepts_encoding_plain() {
@@ -17,6 +23,8 @@ fn test_client_accepts_encoding_no_match() {
 fn test_client_accepts_encoding_q_zero_refuses() {
 	assert client_accepts_encoding('gzip;q=0', 'gzip') == false
 	assert client_accepts_encoding('gzip; q=0', 'gzip') == false
+	assert client_accepts_encoding('gzip;\tq=0', 'gzip') == false
+	assert client_accepts_encoding('gzip; \tq=0.00\t', 'gzip') == false
 	assert client_accepts_encoding('gzip;q=0.00', 'gzip') == false
 	assert client_accepts_encoding('gzip;q=0, zstd', 'gzip') == false
 	assert client_accepts_encoding('gzip;q=0, zstd', 'zstd') == true
@@ -70,9 +78,51 @@ fn test_response_allows_body() {
 	assert response_allows_body(500) == true
 	assert response_allows_body(101) == false
 	assert response_allows_body(204) == false
+	assert response_allows_body(205) == false
 	assert response_allows_body(304) == false
 }
 
 fn test_min_compression_body_bytes_is_viltrum_compatible() {
 	assert min_compression_body_bytes == 256
+}
+
+fn test_encode_auto_identity_preserves_vary_fields() {
+	for offer in ['', 'br', 'gzip;\tq=0, zstd;q=0'] {
+		mut ctx := CompressionEligibilityContext{}
+		ctx.req.header.set(.accept_encoding, offer)
+		ctx.res.body = 'compressible content '.repeat(100)
+		ctx.res.header.set(.content_type, 'text/plain')
+		ctx.res.header.add(.vary, 'Origin')
+		ctx.res.header.add(.vary, 'Accept-Language')
+		original := ctx.res.body
+		middleware := encode_auto[CompressionEligibilityContext]()
+		assert middleware.handler(mut ctx)
+		assert ctx.res.body == original
+		assert !ctx.res.header.contains(.content_encoding)
+		assert ctx.res.header.values(.vary) == ['Origin', 'Accept-Language', 'Accept-Encoding']
+	}
+}
+
+fn test_compression_preserves_existing_vary_and_avoids_duplicates() {
+	for vary in ['Origin', 'Origin, aCcEpT-EnCoDiNg', '*'] {
+		mut ctx := Context{}
+		ctx.req.header = http.new_header(key: .accept_encoding, value: 'gzip')
+		ctx.res.body = 'compressible content '.repeat(100)
+		ctx.res.header.set(.content_type, 'text/plain')
+		ctx.res.header.set(.vary, vary)
+		assert !send_compressed_response(mut ctx, .gzip)
+		expected := if vary == 'Origin' { [vary, 'Accept-Encoding'] } else { [vary] }
+		assert ctx.res.header.values(.vary) == expected
+	}
+}
+
+fn test_compression_weakens_identity_etag() {
+	for etag in ['"identity"', 'W/"identity"'] {
+		mut ctx := Context{}
+		ctx.req.header.set(.accept_encoding, 'gzip')
+		ctx.res.body = 'compressible content '.repeat(100)
+		ctx.res.header.set(.etag, etag)
+		assert !send_compressed_response(mut ctx, .gzip)
+		assert (ctx.res.header.get(.etag) or { '' }) == 'W/"identity"'
+	}
 }
