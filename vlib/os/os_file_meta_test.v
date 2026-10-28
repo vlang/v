@@ -145,3 +145,36 @@ fn test_disk_usage_reports_free_and_total_space() {
 	}
 	assert false, 'disk_usage() on a missing path should have failed'
 }
+
+// statvfs counts f_blocks in f_frsize units. f_bsize, the preferred I/O size, is
+// far larger on macOS, FreeBSD and Solaris, so a total computed from it overstates
+// the disk size. The total must match the 1024-blocks column of `df -Pk`.
+fn test_disk_usage_total_matches_df() {
+	$if windows {
+		return
+	}
+	dir := os.vtmp_dir()
+	res := os.exec(['df', '-Pk', dir])
+	if res.exit_code != 0 {
+		eprintln('skipping: `df -Pk` failed: ${res.output}')
+		return
+	}
+	lines := res.output.trim_space().split_into_lines()
+	fields := lines.last().fields()
+	// Find the capacity column (`NN%`); the 1024-blocks column is three before it.
+	// Searching for it keeps spaces in the file system name or mount point harmless.
+	mut df_total := u64(0)
+	for i, field in fields {
+		if i >= 3 && field.len > 1 && field.ends_with('%') && field#[..-1].is_int() {
+			df_total = fields[i - 3].u64() * 1024
+			break
+		}
+	}
+	if df_total == 0 {
+		eprintln('skipping: cannot parse `df -Pk` output: ${res.output}')
+		return
+	}
+	total := os.disk_usage(dir)!.total
+	diff := if total > df_total { total - df_total } else { df_total - total }
+	assert diff * 100 <= df_total, 'disk_usage total ${total} vs df ${df_total}'
+}

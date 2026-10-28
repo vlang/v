@@ -87,6 +87,19 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 	}
 	mut new_body := t.transform_scope_stmts(body_ids)
+	$if !skip_arm64 ? {
+		if t.live_reload_runtime && t.should_rewrite_live_calls() && t.cur_fn_name == 'main'
+			&& (t.live_metadata.fns.len > 0 || t.live_metadata.methods.len > 0) {
+			check_call := t.make_ident('live_reload_check')
+			start := t.a.children.len
+			t.a.children << check_call
+			check_call_node := t.a.add_node(flat.Node{ kind: .call, children_start: start, children_count: 1 })
+			check_stmt := t.make_expr_stmt(check_call_node)
+			mut nb := [check_stmt]
+			nb << new_body
+			new_body = nb.clone()
+		}
+	}
 	mut synthetic_continue_label := ''
 	if post_body.len > 0 {
 		mut continue_label := t.existing_for_continue_label(body_ids)

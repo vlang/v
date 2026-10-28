@@ -56,16 +56,17 @@ fn init() {
 	}
 	m0.curg = main_g
 	main_g.m = m0
-
-	// Wire M0 to P0
-	mut p0 := gsched.allp[0]
-	wire_p(mut m0, mut p0)
+	// The main goroutine blocks on this semaphore instead of switching to m0.g0, so the
+	// main thread never switches contexts (and is not converted to a fiber on Windows).
+	gsched.main_g = main_g
+	gsched.main_park.init(0)
 
 	// Set the current thread's M
 	set_current_m(m0)
 
-	// Put remaining P's on the idle list
-	for i in 1 .. gomaxprocs {
+	// The main thread does not run the scheduling loop. Keep every P available
+	// to workers, including on a machine with only one processor.
+	for i in 0 .. gomaxprocs {
 		pid_put(gsched.allp[i])
 	}
 }

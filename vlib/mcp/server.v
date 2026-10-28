@@ -3428,19 +3428,16 @@ fn normalize_response_error(err IError) ResponseError {
 }
 
 fn build_sse_response(message string) string {
-	mut lines := []string{}
-	for line in message.split('\n') {
-		lines << 'data: ${line}'
-	}
-	return lines.join('\n') + '\n\n'
+	return http.SSEEvent{
+		data: message
+	}.encode()
 }
 
 fn build_sse_event(event LoggedEvent) string {
-	mut lines := ['id: ${event.id}']
-	for line in event.body.split('\n') {
-		lines << 'data: ${line}'
-	}
-	return lines.join('\n') + '\n\n'
+	return http.SSEEvent{
+		id:   event.id.str()
+		data: event.body
+	}.encode()
 }
 
 fn build_sse_stream(events []LoggedEvent) string {

@@ -1,6 +1,7 @@
 module orm
 
 import db.sqlite
+import time
 
 struct MappingNumbers {
 	small    i8
@@ -52,4 +53,38 @@ fn test_row_mapping_shared_conversions_for_embedded_and_flat_models() {
 	assert flat_result.rate == f32(3)
 	assert !flat_result.enabled
 	assert flat_result.optional == none
+}
+
+struct MappingTimeFields {
+	created time.Time
+}
+
+struct MappingEmbeddedTimeFields {
+	MappingTimeFields
+}
+
+fn test_row_mapping_time_strings_preserve_parse_errors() {
+	mut db := sqlite.connect(':memory:')!
+	defer { db.close() or {} }
+	mut flat := new_query[MappingTimeFields](db)
+	flat.config.fields = ['created']
+	flat.meta[0].typ = type_string
+	expected := time.parse('2026-01-02 03:04:05')!
+	value := flat.map_row([Primitive('2026-01-02 03:04:05')])!
+	assert value.created == expected
+	if _ := flat.map_row([Primitive('invalid time')]) {
+		assert false, 'invalid flat time must return a parse error'
+	} else {
+		assert err.msg().len > 0
+	}
+	mut embedded := new_query[MappingEmbeddedTimeFields](db)
+	embedded.config.fields = ['MappingTimeFields.created']
+	embedded.meta[0].typ = type_string
+	embedded_value := embedded.map_row([Primitive('2026-01-02 03:04:05')])!
+	assert embedded_value.created == expected
+	if _ := embedded.map_row([Primitive('invalid time')]) {
+		assert false, 'invalid embedded time must return a parse error'
+	} else {
+		assert err.msg().len > 0
+	}
 }

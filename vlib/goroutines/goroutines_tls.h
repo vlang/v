@@ -13,7 +13,10 @@ int32_t goroutines_atomic_fetch_add_i32(volatile int32_t *ptr, int32_t val);
 int32_t goroutines_atomic_fetch_sub_i32(volatile int32_t *ptr, int32_t val);
 uint64_t goroutines_atomic_fetch_add_u64(volatile uint64_t *ptr, uint64_t val);
 int goroutines_atomic_cas_u32(volatile uint32_t *ptr, uint32_t *expected, uint32_t desired);
-int goroutines_atomic_cas_ptr(void *volatile *ptr, void **expected, void *desired);
+void *goroutines_atomic_load_ptr(void *volatile *ptr);
+void goroutines_atomic_store_ptr(void *volatile *ptr, void *value);
+void *goroutines_atomic_exchange_ptr(void *volatile *ptr, void *value);
+int goroutines_atomic_take_ptr(void *volatile *ptr, void *value);
 
 void grt_spinlock_lock(volatile int32_t *lock);
 void grt_spinlock_unlock(volatile int32_t *lock);
