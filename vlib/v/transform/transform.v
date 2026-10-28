@@ -14297,7 +14297,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	}
 	node := t.a.nodes[int(id)]
 
-	if t.should_rewrite_live_calls() {
+	if t.live_reload_runtime && t.should_rewrite_live_calls() {
 		// Live reload: rewrite calls/references to @[live] functions into calls
 		// through their __live_<mangled> function pointers.
 		if node.kind == .call && node.children_count >= 1 {
@@ -33300,8 +33300,6 @@ fn (mut cache EnumExpectedCache) key(typ u32, owner_module string, current_modul
 // collect_live_functions records @[live] function metadata and whether the
 // generated native live-reload runtime is present in this AST.
 fn (mut t Transformer) collect_live_functions() {
-	t.live_fns = map[string]string{}
-	t.live_methods = map[string]string{}
 	t.live_source_file = ''
 	t.live_reload_runtime = false
 	// The driver injects this global only for a native live-reload program.
@@ -33309,6 +33307,8 @@ fn (mut t Transformer) collect_live_functions() {
 	if !isnil(t.tc) && 'live_mtime' !in t.tc.global_names {
 		return
 	}
+	t.live_fns = map[string]string{}
+	t.live_methods = map[string]string{}
 	node_count := t.a.nodes.len
 	mut mutable_cur_file := ''
 	for i in 0 .. node_count {
