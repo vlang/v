@@ -1555,14 +1555,16 @@ reading the file in bounded chunks on every request, even when its body is strea
 change within one timestamp second still receive different ETags. `Last-Modified` has HTTP's
 second precision; prefer ETags for files that can change more frequently.
 
-`If-None-Match` takes precedence over `If-Modified-Since`. A matching validator returns 304
-without a body or Content-Length. Identity responses retain `Vary: Accept-Encoding` along with
+`If-None-Match` takes precedence over `If-Modified-Since`. A match returns 304 for GET and HEAD,
+without a body or Content-Length, and 412 for other methods. `If-Modified-Since` is ignored for
+other methods. Identity responses retain `Vary: Accept-Encoding` along with
 existing Vary fields. Encoded static responses currently omit these validators, so an identity
 ETag cannot suppress a compressed body. A takeover-mode 304 uses a weak ETag to preserve
 validators for bodies encoded by dynamic middleware. That weak tag can revalidate a cached body;
 a later `If-Range` request with it falls back to the full response.
 
-In-memory takeover responses support one byte range (`bytes=0-99`, `bytes=100-`, or `bytes=-100`).
+In-memory takeover GET responses support one byte range (`bytes=0-99`, `bytes=100-`, or
+`bytes=-100`). Range headers on other methods are ignored.
 A satisfiable range returns 206 and `Content-Range`; an out-of-bounds range returns 416. Invalid
 or multiple ranges are ignored. `If-Range` requires an exact strong ETag. Weak ETags, stale
 validators, and date validators fall back to the full response: filesystem dates have only second

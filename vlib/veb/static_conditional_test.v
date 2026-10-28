@@ -93,14 +93,57 @@ fn conditional_test_request(headers map[string]string) http.Request {
 }
 
 fn conditional_send_file(path string, headers map[string]string, use_takeover bool) &Context {
+	return conditional_send_file_method(path, headers, use_takeover, .get)
+}
+
+fn conditional_send_file_method(path string, headers map[string]string, use_takeover bool, method http.Method) &Context {
+	mut req := conditional_test_request(headers)
+	req.method = method
 	mut ctx := &Context{
-		req: conditional_test_request(headers)
+		req: req
 	}
 	if use_takeover {
 		ctx.takeover_mode = .manual
 	}
 	ctx.send_file('text/plain', path)
 	return ctx
+}
+
+fn test_static_preconditions_and_ranges_respect_request_method() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	first := conditional_send_file(path, {}, false)
+	etag := first.res.header.get(.etag) or { panic('missing etag') }
+	modified := first.res.header.get(.last_modified) or { panic('missing last-modified') }
+	for takeover in [false, true] {
+		matched := conditional_send_file_method(path, {
+			'If-None-Match': etag
+		}, takeover, .post)
+		assert matched.res.status_code == 412
+		assert matched.res.body == ''
+		for headers in [{
+			'If-Modified-Since': modified
+		}, {
+			'If-None-Match':     '"missing"'
+			'If-Modified-Since': modified
+		}] {
+			post := conditional_send_file_method(path, headers, takeover, .post)
+			assert post.res.status_code == 200
+		}
+	}
+	for method in [http.Method.head, .post] {
+		ctx := conditional_send_file_method(path, {
+			'Range': 'bytes=1-3'
+		}, true, method)
+		assert ctx.res.status_code == 200
+		assert !ctx.res.header.contains(.content_range)
+		assert ctx.res.header.get(.content_length) or { '' } == '15'
+	}
+	head := conditional_send_file_method(path, {
+		'If-None-Match': etag
+	}, true, .head)
+	assert head.res.status_code == 304
+	assert !head.res.header.contains(.content_length)
 }
 
 fn test_static_uncompressed_carries_validators() {

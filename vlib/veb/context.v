@@ -336,12 +336,17 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	// A validator the client already has skips the whole transfer (RFC 7232).
 	// If-None-Match takes precedence over If-Modified-Since.
 	if_none_match := ctx.req.header.get(.if_none_match) or { '' }
+	is_retrieval := ctx.req.method in [.get, .head]
 	if if_none_match != '' {
 		if etag_matches(if_none_match, etag) {
-			return ctx.send_not_modified(etag, last_modified)
+			if is_retrieval {
+				return ctx.send_not_modified(etag, last_modified)
+			}
+			ctx.res.set_status(.precondition_failed)
+			return ctx.send_response_to_client('text/plain', '')
 		}
 	} else if if_modified_since := ctx.req.header.get(.if_modified_since) {
-		if static_not_modified_since(if_modified_since, mtime) {
+		if is_retrieval && static_not_modified_since(if_modified_since, mtime) {
 			return ctx.send_not_modified(etag, last_modified)
 		}
 	}
@@ -354,7 +359,8 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 		// A satisfiable single range is served as 206 straight from the
 		// identity bytes, skipping the compression machinery below.
 		if range_header := ctx.req.header.get(.range) {
-			if if_range_holds(ctx.req.header.get(.if_range) or { '' }, etag, mtime) {
+			if ctx.req.method == .get
+				&& if_range_holds(ctx.req.header.get(.if_range) or { '' }, etag, mtime) {
 				if rng := parse_range_header(range_header, i64(data.len)) {
 					if rng.start >= i64(data.len) {
 						return ctx.send_range_not_satisfiable(i64(data.len))
