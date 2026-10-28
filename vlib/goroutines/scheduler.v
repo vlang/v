@@ -66,6 +66,12 @@ fn newproc1(f voidptr, arg voidptr, arg_size int) &Goroutine {
 	// Assign goroutine ID
 	gp.id = assign_goid()
 
+	// A reused goroutine still owns its old native fiber, which was abandoned
+	// when the goroutine completed. Delete it before replacing the handle,
+	// otherwise every reuse leaks a fiber and its stack (Windows).
+	$if windows {
+		context_destroy(mut &gp.context)
+	}
 	// Initialize context to run goroutine_entry
 	context_init(mut &gp.context, gp.stack, gp.stack_size, goroutine_trampoline, voidptr(gp))
 
@@ -232,6 +238,35 @@ fn wake_p() {
 	start_m(pp)
 }
 
+// wake_p_no_spawn wakes an idle P to run goroutines, but only by reusing
+// an already parked M. Unlike wake_p, it never spawns a new OS thread.
+// Used from the main thread pump path on Windows: spawning a thread there
+// risks the new thread still starting up when the process exits.
+fn wake_p_no_spawn() {
+	gsched.mu.acquire()
+	if gsched.npidle == 0 || gsched.nmspinning > 0 {
+		gsched.mu.release()
+		return
+	}
+	mut mp := gsched.midle
+	if mp == unsafe { nil } {
+		gsched.mu.release()
+		return
+	}
+	pp := pid_get()
+	if pp == unsafe { nil } {
+		gsched.mu.release()
+		return
+	}
+	gsched.midle = mp.sched_link
+	gsched.nmidle--
+	gsched.mu.release()
+	mut m := unsafe { mp }
+	mut p := unsafe { pp }
+	wire_p(mut m, mut p)
+	m.park.post()
+}
+
 // park_m parks the current M - it goes to sleep waiting for work.
 fn park_m(mut mp Machine) {
 	// Release P and add M to idle list under lock
@@ -305,7 +340,23 @@ fn new_m(id i64, pp &Processor) {
 	}
 	mut p := unsafe { pp }
 	wire_p(mut mp, mut p)
+	// Account for this M as spinning before spawning its thread, so that
+	// concurrent wakeups do not spawn additional Ms while this one is still
+	// starting up. The M skips its own increment (spinning is already set)
+	// and balances the count when it finds work or parks, like usual.
+	mp.spinning = true
+	C.goroutines_atomic_fetch_add_i32(&gsched.nmspinning, 1)
+	mp.park.init(0) // an uninitialized CONDITION_VARIABLE is undefined behavior on Windows
 	mp.thread = spawn m_thread_entry(mut mp)
+	// Wait until the new M thread is running before returning, so that a
+	// process exit cannot race with M thread startup. Bounded: if the
+	// thread never starts, proceed anyway rather than hanging here.
+	for _ in 0 .. 100000 {
+		if C.goroutines_atomic_load_u32(&mp.started) != 0 {
+			break
+		}
+		proc_yield(10)
+	}
 }
 
 // m_thread_entry is the entry point for new M (OS thread) goroutine scheduling loops.
@@ -317,7 +368,9 @@ fn m_thread_entry(mut mp Machine) {
 		mp.g0.context = convert_thread_to_fiber()
 	}
 	set_current_m(mp)
-	// Enter the scheduling loop - this never returns
+	// Signal that this M thread is running, so the spawner does not
+	// proceed (and potentially exit the process) while startup is in flight.
+	C.goroutines_atomic_store_u32(&mp.started, 1)
 	schedule_loop(mut mp)
 }
 
@@ -420,8 +473,21 @@ fn runq_steal(mut pp Processor, mut thisp Processor) &Goroutine {
 		}
 		return unsafe { nil }
 	}
-	// Steal half
-	steal := n - n / 2
+	// Steal half. Claim the batch with CAS before reading it, so the owner
+	// or another thief cannot take the same goroutines (that would run them
+	// twice). Slots are only read after a successful claim, at which point no
+	// one else can consume them.
+	mut steal := n - n / 2
+	if steal == 0 {
+		steal = 1
+	}
+	if steal > n {
+		steal = n
+	}
+	mut hh := h
+	if !C.goroutines_atomic_cas_u32(&pp.runq_head, &hh, h + steal) {
+		return unsafe { nil }
+	}
 	mut first := unsafe { &Goroutine(nil) }
 	for i := u32(0); i < steal; i++ {
 		mut gp := pp.runq[(h + i) % local_queue_size]
@@ -432,7 +498,6 @@ fn runq_steal(mut pp Processor, mut thisp Processor) &Goroutine {
 			runq_put(mut thisp, gp, false)
 		}
 	}
-	C.goroutines_atomic_fetch_add_u32(&pp.runq_head, steal)
 	return first
 }
 
@@ -457,9 +522,23 @@ fn glob_runq_get() &Goroutine {
 // Translated from Go's runqput() in proc.go.
 fn runq_put(mut pp Processor, gp &Goroutine, next bool) {
 	if next {
-		// Fast path: put as runnext
-		old := pp.runnext
-		pp.runnext = unsafe { gp }
+		// Fast path: put as runnext. Claim the slot with CAS, so a
+		// concurrent thief that steals runnext cannot cause double execution.
+		mut old := pp.runnext
+		for {
+			// The C CAS helper dereferences its expected argument, so it
+			// must never be called with a nil expected value. A nil slot has
+			// no concurrent thief (thieves only CAS non-nil slots), so a plain
+			// store is safe there.
+			if old == unsafe { nil } {
+				pp.runnext = unsafe { gp }
+				break
+			}
+			if C.goroutines_atomic_cas_ptr(voidptr(&pp.runnext), voidptr(&old), voidptr(gp)) {
+				break
+			}
+			old = pp.runnext
+		}
 		if old == unsafe { nil } {
 			return
 		}
@@ -482,14 +561,30 @@ fn runq_put(mut pp Processor, gp &Goroutine, next bool) {
 
 // runq_put_slow moves half the local queue to the global queue.
 // Translated from Go's runqputslow() in proc.go.
-fn runq_put_slow(mut pp Processor, gp &Goroutine, h u32, t u32) {
-	n := (t - h) / 2
+// The batch is claimed with a head CAS before reading it, so a concurrent
+// consumer (owner get or thief steal) cannot take the same goroutines.
+// A plain store is not enough here: CAS users would not observe it.
+fn runq_put_slow(mut pp Processor, gp &Goroutine, _h u32, _t u32) {
 	mut batch := GoroutineQueue{}
-	for i := u32(0); i < n; i++ {
-		g := pp.runq[(h + i) % local_queue_size]
-		batch.push_back(g)
+	for {
+		hh := C.goroutines_atomic_load_u32(&pp.runq_head)
+		tt := C.goroutines_atomic_load_u32(&pp.runq_tail)
+		n := (tt - hh) / 2
+		if n == 0 {
+			break
+		}
+		mut claimed := GoroutineQueue{}
+		for i := u32(0); i < n; i++ {
+			claimed.push_back(pp.runq[(hh + i) % local_queue_size])
+		}
+		mut expect := hh
+		if C.goroutines_atomic_cas_u32(&pp.runq_head, &expect, hh + n) {
+			for !claimed.empty() {
+				batch.push_back(claimed.pop())
+			}
+			break
+		}
 	}
-	C.goroutines_atomic_fetch_add_u32(&pp.runq_head, n)
 	batch.push_back(gp)
 
 	gsched.mu.acquire()
@@ -502,11 +597,14 @@ fn runq_put_slow(mut pp Processor, gp &Goroutine, h u32, t u32) {
 // runq_get gets a G from the local run queue.
 // Translated from Go's runqget() in proc.go.
 fn runq_get(mut pp Processor) (&Goroutine, bool) {
-	// Check runnext first (fast path)
+	// Check runnext first (fast path). Claim it with CAS, so a concurrent
+	// runq_put to this P cannot make us both take the same goroutine.
+	// On failure another thread won, fall through to the regular queue.
 	next := pp.runnext
 	if next != unsafe { nil } {
-		pp.runnext = unsafe { nil }
-		return next, true
+		if C.goroutines_atomic_cas_ptr(voidptr(&pp.runnext), voidptr(&next), unsafe { nil }) {
+			return next, true
+		}
 	}
 
 	// Regular queue

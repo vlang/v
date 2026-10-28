@@ -58,8 +58,11 @@ fn init() {
 	main_g.m = m0
 
 	// Convert the main thread to a fiber on Windows before any context switch.
+	// The thread fiber doubles as the pump user fiber (see pump_user): parking
+	// from main thread user code cannot switch fibers, so it pumps instead.
 	$if windows {
 		m0.g0.context = convert_thread_to_fiber()
+		pump_user = m0.g0.context
 	}
 
 	// Wire M0 to P0

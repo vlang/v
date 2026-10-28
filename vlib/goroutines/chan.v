@@ -99,6 +99,7 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 
 	// Block: enqueue ourselves on the send wait queue
 	gp := get_current_g()
+	pumped := park_setup(gp)
 	mut mysg := &Sudog{
 		g:    unsafe { gp }
 		elem: ep
@@ -109,6 +110,10 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 
 	// Park the goroutine until a receiver wakes us
 	gopark('chan send')
+	if pumped {
+		mut g := unsafe { gp }
+		g.pumped = false
+	}
 
 	return true
 }
@@ -167,6 +172,7 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 
 	// Block: enqueue ourselves on the recv wait queue
 	gp := get_current_g()
+	pumped := park_setup(gp)
 	mut mysg := &Sudog{
 		g:    unsafe { gp }
 		elem: ep
@@ -177,6 +183,10 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 
 	// Park until a sender wakes us
 	gopark('chan receive')
+	if pumped {
+		mut g := unsafe { gp }
+		g.pumped = false
+	}
 
 	return true, true
 }
