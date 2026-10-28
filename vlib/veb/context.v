@@ -351,10 +351,10 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	last_modified := time.unix(mtime).http_header_string()
 	// A validator the client already has skips the whole transfer (RFC 7232).
 	// If-None-Match takes precedence over If-Modified-Since.
-	if_none_match := ctx.req.header.values(.if_none_match).join(',')
+	if_none_match_values := ctx.req.header.values(.if_none_match)
 	is_retrieval := ctx.req.method in [.get, .head]
-	if if_none_match != '' {
-		if etag_matches(if_none_match, etag) {
+	if if_none_match_values.len > 0 {
+		if etag_matches(if_none_match_values.join(','), etag) {
 			if is_retrieval {
 				return ctx.send_not_modified(etag, last_modified)
 			}

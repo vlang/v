@@ -153,10 +153,12 @@ fn test_static_if_none_match_combines_repeated_fields() {
 	etag := first.res.header.get(.etag) or { panic('missing etag') }
 	for takeover in [false, true] {
 		for method in [http.Method.get, .head, .post] {
-			mut req := conditional_test_request({'If-None-Match': '"missing"'})
+			mut req := conditional_test_request({
+				'If-None-Match': '"missing"'
+			})
 			req.method = method
 			req.header.add(.if_none_match, 'W/' + etag)
-			mut ctx := &Context{req: req}
+			mut ctx := &Context{ req: req }
 			if takeover {
 				ctx.takeover_mode = .manual
 			}
@@ -165,6 +167,30 @@ fn test_static_if_none_match_combines_repeated_fields() {
 			assert ctx.res.body == ''
 			if method != .post {
 				assert !ctx.res.header.contains(.content_length)
+			}
+		}
+	}
+}
+
+fn test_static_empty_if_none_match_still_overrides_modified_since() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	future := time.unix(os.file_last_mod_unix(path) + 3600).http_header_string()
+	for takeover in [false, true] {
+		for method in [http.Method.get, .head] {
+			for field in ['', ' \t'] {
+				mut req := conditional_test_request({
+					'If-None-Match':     field
+					'If-Modified-Since': future
+				})
+				assert req.header.values(.if_none_match).len == 1
+				req.method = method
+				mut ctx := &Context{ req: req }
+				if takeover {
+					ctx.takeover_mode = .manual
+				}
+				ctx.send_file('text/plain', path)
+				assert ctx.res.status_code == 200
 			}
 		}
 	}
