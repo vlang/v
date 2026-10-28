@@ -16,6 +16,12 @@ pub const empty_node = NodeId(-1)
 pub const method_value_borrow_receiver_marker = '__v3_method_value_borrow_receiver'
 pub const method_value_clone_receiver_marker_prefix = '__v3_method_value_clone_receiver:'
 
+// Attribute kind sidecars preserve the public kind in the low bits and distinguish a
+// whole-string key from a keyed argument after legacy attribute strings are unquoted.
+pub const attribute_kind_mask = 7
+pub const attribute_kind_no_arg = 8
+pub const attribute_kind_raw_string = 16
+
 const static_type_method_name_marker = '@static@'
 
 // empty_node_ids returns `len` ids that are all empty_node. A single memset

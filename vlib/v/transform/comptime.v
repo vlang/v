@@ -883,16 +883,17 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 			continue
 		}
 		recorded_kind := if attr_idx < raw_kinds.len { raw_kinds[attr_idx] } else { -1 }
+		whole_string := recorded_kind >= 0 && recorded_kind & flat.attribute_kind_no_arg != 0
+		value_kind := if recorded_kind >= 0 { recorded_kind & flat.attribute_kind_mask } else { -1 }
 		colon := clean.index_u8(`:`)
-		has_arg := colon >= 0 && !(recorded_kind == 1
-			&& !comptime_attr_is_string_literal(trimmed_transform_text(clean[colon + 1..])))
+		has_arg := colon >= 0 && !whole_string
 		if has_arg {
 			idx := colon
 			name := trimmed_transform_text(clean[..idx])
 			raw_arg := trimmed_transform_text(clean[idx + 1..])
 			arg := comptime_attr_unquote(raw_arg)
-			kind := if recorded_kind >= 0 {
-				recorded_kind
+			kind := if value_kind >= 0 {
+				value_kind
 			} else if raw_arg.len >= 2 && raw_arg[0] in [`'`, `\"`] {
 				1
 			} else if raw_arg == 'true' || raw_arg == 'false' {
@@ -909,7 +910,13 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 				kind:    kind
 			}
 		} else {
-			name := if recorded_kind == 1 {
+			name := if whole_string {
+				if recorded_kind & flat.attribute_kind_raw_string != 0 {
+					comptime_attr_unquote(clean)
+				} else {
+					comptime_cond_unescape(clean)
+				}
+			} else if value_kind == 1 {
 				if comptime_attr_is_string_literal(clean) {
 					comptime_attr_unquote(clean)
 				} else {
@@ -920,7 +927,7 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 			}
 			attrs << AttributeMeta{
 				name: name
-				kind: if recorded_kind >= 0 { recorded_kind } else { 0 }
+				kind: if value_kind >= 0 { value_kind } else { 0 }
 			}
 		}
 	}

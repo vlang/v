@@ -4572,6 +4572,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 				continue
 			}
 			piece_kind := parsed_attribute_kind(p.tok)
+			is_raw_string_piece := piece_kind == 1 && (p.lit.starts_with("r'") || p.lit.starts_with('r"'))
 			// The formatter re-emits field attributes from these strings, so it must keep
 			// the quotes of a whole-string attribute (`@['C\x5cnD']`) - unquoted, the
 			// escape is no longer valid syntax. Reflection keeps the legacy unquoted form.
@@ -4659,6 +4660,12 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 				continue
 			}
 			mut kind := piece_kind
+			if piece_kind == 1 && p.tok != .colon {
+				kind |= flat.attribute_kind_no_arg
+				if is_raw_string_piece {
+					kind |= flat.attribute_kind_raw_string
+				}
+			}
 			if p.tok == .colon {
 				p.next()
 				if p.tok in [.rsbr, .colon, .lsbr, .rcbr] {

@@ -165,3 +165,72 @@ fn test_spellings_match_declaration() {
 	assert value_nested == fav_spellings
 	assert value_runtime == fav_spellings
 }
+
+// Identical legacy spellings still retain whole-string versus keyed identity.
+@["a: 'b'"; "'quoted'"; "r'text'"; r"raw: 'a\nb'"]
+struct FavWholeStrings {
+	whole int @["a: 'b'"; "'quoted'"; "r'text'"; r"raw: 'a\nb'"]
+	keyed int @[a: 'b']
+}
+
+enum FavWholeStringEnum {
+	whole  @["a: 'b'"; "'quoted'"; "r'text'"; r"raw: 'a\nb'"]
+	keyed  @[a: 'b']
+}
+
+fn test_whole_strings_with_quoted_tails_keep_identity() {
+	expected := ["a: 'b'|false||string", "'quoted'|false||string", "r'text'|false||string",
+		"raw: 'a\\nb'|false||string"]
+	mut decl := []string{}
+	$for a in FavWholeStrings.attributes {
+		decl << fav_text(a)
+		$if a.has_arg {
+			assert false
+		}
+	}
+	assert decl == expected
+	mut nested := []string{}
+	mut runtime := []string{}
+	mut legacy := [][]string{}
+	$for f in FavWholeStrings.fields {
+		legacy << f.attrs
+		$for a in f.attributes {
+			nested << fav_text(a)
+		}
+		for a in f.attributes {
+			runtime << fav_text(a)
+		}
+	}
+	assert legacy == [["a: 'b'", "'quoted'", "r'text'", 'r"raw: \'a\\nb\'"'], ["a: 'b'"]]
+	assert nested == [...expected, 'a|true|b|string']
+	assert runtime == nested
+	mut enum_nested := []string{}
+	mut enum_runtime := []string{}
+	$for value in FavWholeStringEnum.values {
+		$for a in value.attributes {
+			enum_nested << fav_text(a)
+		}
+		for a in value.attributes {
+			enum_runtime << fav_text(a)
+		}
+	}
+	assert enum_nested == nested
+	assert enum_runtime == nested
+}
+
+@[attribute]
+struct FavRequiredSchema {
+	value string
+}
+
+// The parser emits a wrapper block before this declaration's attribute directive.
+@['FavRequiredSchema']
+type FavQuotedSchemaSum = Number(int) | Empty
+
+fn test_quoted_schema_on_named_sum_keeps_no_argument_identity() {
+	mut got := []string{}
+	$for attr in FavQuotedSchemaSum.attributes {
+		got << fav_text(attr)
+	}
+	assert got == ['FavRequiredSchema|false||string']
+}
