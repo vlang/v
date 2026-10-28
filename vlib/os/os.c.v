@@ -77,29 +77,45 @@ fn C._chsize_s(i32, u64) i32
 // read_bytes returns all bytes read from file in `path`.
 @[manualfree]
 pub fn read_bytes(path string) ![]u8 {
-	mut fp := vfopen(path, 'rb')!
-	defer {
-		C.fclose(fp)
+	$if vlibc ? {
+		data, e := vlibc_read_file(path)
+		if e != .enoerror {
+			return error('read_bytes failed: ${e}')
+		}
+		return data
+	} $else {
+		mut fp := vfopen(path, 'rb')!
+		defer {
+			C.fclose(fp)
+		}
+		fsize := find_cfile_size(fp)!
+		if fsize == 0 {
+			mut sb := slurp_file_in_builder(fp)!
+			return unsafe { sb.reuse_as_plain_u8_array() }
+		}
+		mut res := []u8{len: fsize}
+		nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
+		if nr_read_elements == 0 && fsize > 0 {
+			return error('fread failed')
+		}
+		race_file_read()
+		res.trim(nr_read_elements)
+		return res
 	}
-	fsize := find_cfile_size(fp)!
-	if fsize == 0 {
-		mut sb := slurp_file_in_builder(fp)!
-		return unsafe { sb.reuse_as_plain_u8_array() }
-	}
-	mut res := []u8{len: fsize}
-	nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
-	if nr_read_elements == 0 && fsize > 0 {
-		return error('fread failed')
-	}
-	race_file_read()
-	res.trim(nr_read_elements)
-	return res
 }
 
 // write_bytes writes all the `bytes` to `path`.
 @[manualfree]
 pub fn write_bytes(path string, bytes []u8) ! {
-	write_file_array(path, bytes)!
+	$if vlibc ? {
+		e := vlibc_write_file(path, bytes)
+		if e != .enoerror {
+			return error('write_bytes failed: ${e}')
+		}
+		return
+	} $else {
+		write_file_array(path, bytes)!
+	}
 }
 
 fn find_cfile_size(fp &C.FILE) !int {
@@ -159,41 +175,49 @@ fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 // read_file reads the file in `path` and returns the contents.
 @[manualfree]
 pub fn read_file(path string) !string {
-	mode := 'rb'
-	mut fp := vfopen(path, mode)!
-	defer {
-		C.fclose(fp)
-	}
-	allocate := find_cfile_size(fp)!
-	if allocate == 0 {
-		mut sb := slurp_file_in_builder(fp)!
-		res := sb.str()
-		unsafe { sb.free() }
-		return res
-	}
-	unsafe {
-		mut str := malloc_noscan(allocate + 1)
-		nelements := int(C.fread(str, 1, allocate, fp))
-		is_eof := int(C.feof(fp))
-		is_error := int(C.ferror(fp))
-		if is_eof == 0 && is_error != 0 {
-			free(str)
-			return error('fread failed')
+	$if vlibc ? {
+		data, e := vlibc_read_file(path)
+		if e != .enoerror {
+			return error('read_file failed: ${e}')
 		}
-		race_file_read()
-		str[nelements] = 0
-		if nelements == 0 {
-			// It is highly likely that the file was a virtual file from
-			// /sys or /proc, with information generated on the fly, so
-			// fsize was not reliably reported. Using vstring() here is
-			// slower (it calls strlen internally), but will return more
-			// consistent results.
-			// For example reading from /sys/class/sound/card0/id produces
-			// a `PCH\n` string, but fsize is 4096, and otherwise you would
-			// get a V string with .len = 4096 and .str = "PCH\n\\000".
-			return str.vstring()
+		return data.bytestr()
+	} $else {
+		mode := 'rb'
+		mut fp := vfopen(path, mode)!
+		defer {
+			C.fclose(fp)
 		}
-		return str.vstring_with_len(nelements)
+		allocate := find_cfile_size(fp)!
+		if allocate == 0 {
+			mut sb := slurp_file_in_builder(fp)!
+			res := sb.str()
+			unsafe { sb.free() }
+			return res
+		}
+		unsafe {
+			mut str := malloc_noscan(allocate + 1)
+			nelements := int(C.fread(str, 1, allocate, fp))
+			is_eof := int(C.feof(fp))
+			is_error := int(C.ferror(fp))
+			if is_eof == 0 && is_error != 0 {
+				free(str)
+				return error('fread failed')
+			}
+			race_file_read()
+			str[nelements] = 0
+			if nelements == 0 {
+				// It is highly likely that the file was a virtual file from
+				// /sys or /proc, with information generated on the fly, so
+				// fsize was not reliably reported. Using vstring() here is
+				// slower (it calls strlen internally), but will return more
+				// consistent results.
+				// For example reading from /sys/class/sound/card0/id produces
+				// a `PCH\n` string, but fsize is 4096, and otherwise you would
+				// get a V string with .len = 4096 and .str = "PCH\n\\000".
+				return str.vstring()
+			}
+			return str.vstring_with_len(nelements)
+		}
 	}
 }
 
@@ -506,7 +530,10 @@ pub fn system(cmd string) int {
 // Consider using lstat() for a less ambiguous result about whether a path is occupied or not;
 // whether lstat returns any result or a "not exists" error gives a clear indication of whether the path is occupied.
 pub fn exists(path string) bool {
-	$if windows {
+	$if vlibc ? {
+		_, e := vlibc_stat(path)
+		return e == .enoerror
+	} $else $if windows {
 		// GetFileAttributesW is a Win32 call, so a longPathAware executable can use paths
 		// past MAX_PATH with it, where the CRT's _waccess cannot.
 		p := path.replace('/', '\\')
