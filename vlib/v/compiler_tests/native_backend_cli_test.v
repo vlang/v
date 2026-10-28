@@ -10,6 +10,7 @@ fn assert_native_backend_migration(args []string) {
 	assert result.output.contains('and `-b x64`'), result.output
 	assert result.output.contains('`v -compile-backend arm64 self`'), result.output
 	assert result.output.contains('`v -b arm64 -gc none file.v`'), result.output
+	assert result.output.contains('`v -compile-backend x64 self`'), result.output
 	assert result.output.contains('`v -b x64 file.v`'), result.output
 }
 

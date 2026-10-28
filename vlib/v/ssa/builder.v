@@ -1,7 +1,6 @@
 module ssa
 
 import math
-import os
 import v.flat
 import v.gen.c.naming { sum_field_name }
 import v.token
@@ -222,10 +221,6 @@ pub fn build_with_used(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.Typ
 
 // build_with_options builds with options data for ssa.
 pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, opts BuildOptions) &Module {
-	progress := os.getenv('V_SSA_PROGRESS') != ''
-	if progress {
-		eprintln('ssa: create builder')
-	}
 	mut b := Builder{
 		m:                        Module.new()
 		a:                        unsafe { a_ }
@@ -363,9 +358,6 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	}
 	b.prepare_used_fn_lookups()
 	b.m.name = b.main_module_name()
-	if progress {
-		eprintln('ssa: register declarations')
-	}
 	b.register_consts()
 	b.register_type_aliases()
 	b.register_types()
@@ -373,14 +365,8 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	b.register_globals()
 	b.global_vars = b.vars.clone()
 	b.register_functions()
-	if progress {
-		eprintln('ssa: build function bodies (${b.fn_ids.len} registered)')
-	}
 	if b.m.target.ptr_size == 8 { b.register_native_initializers() }
 	b.build_functions()
-	if progress {
-		eprintln('ssa: build native entrypoints')
-	}
 	if b.m.target.ptr_size == 8 {
 		b.build_native_test_main(opts.test_files, opts.test_run_only)
 		b.build_native_initialization()
@@ -444,7 +430,7 @@ fn (mut b Builder) register_types() {
 			if b.tc != unsafe { nil } && node.value.contains('[') {
 				checker_fields := b.tc.struct_fields_for_type(flat.source_type_id(node.value))
 				if checker_fields.len > 0 {
-					typ_id := b.struct_type_id_for_decl(node.value, cur_module)
+					typ_id := b.struct_type_id_for_decl(node.source_value_id(), cur_module)
 					mut concrete_fields := []TypeID{cap: checker_fields.len}
 					mut concrete_names := []string{cap: checker_fields.len}
 					for field in checker_fields {
@@ -562,7 +548,8 @@ fn (mut b Builder) register_types() {
 		b.register_sum_field_type(node.value_text(), cur_module, 'typ', flat.source_type_i32)
 	}
 	mut generic_struct_names := []string{}
-	for name, _ in b.struct_types {
+	for name_id, _ in b.struct_types {
+		name := flat.source_type_name(name_id)
 		if name.contains('[') {
 			generic_struct_names << name
 		}
@@ -866,9 +853,22 @@ fn checker_type_is_function(typ types.Type) bool {
 	return false
 }
 
+fn checker_type_contains_function(typ types.Type) bool {
+	if typ is types.FnType {
+		return true
+	}
+	if typ is types.Alias {
+		return checker_type_contains_function(typ.base_type)
+	}
+	if typ is types.Pointer {
+		return checker_type_contains_function(typ.base_type)
+	}
+	return false
+}
+
 fn (mut b Builder) register_checker_sum_type(name_id u32) TypeID {
 	name := flat.source_type_name(name_id)
-	existing_id := b.struct_types[name] or { TypeID(0) }
+	existing_id := b.struct_types[name_id] or { TypeID(0) }
 	if existing_id > 0 && existing_id < b.m.type_store.types.len
 		&& b.m.type_store.types[existing_id].fields.len > 0 {
 		return existing_id
@@ -883,12 +883,12 @@ fn (mut b Builder) register_checker_sum_type(name_id u32) TypeID {
 			kind: .struct_t
 		})
 	}
-	b.struct_types[name] = typ_id
+	b.struct_types[name_id] = typ_id
 	b.ssa_type_names[typ_id] = name
 	b.sum_types_registering[typ_id] = true
-	mut variants := b.sum_type_variants.type_ids(name) or { []u32{} }
+	mut variants := b.sum_type_variants.type_ids(flat.source_type_id(name)) or { []u32{} }
 	if variants.len == 0 {
-		variants = b.sum_type_variants.type_ids(name.all_after('.')) or { []u32{} }
+		variants = b.sum_type_variants.type_ids(flat.source_type_id(name.all_after('.'))) or { []u32{} }
 	}
 	if variants.len == 0 {
 		b.sum_types_registering.delete(typ_id)
@@ -917,18 +917,18 @@ fn (mut b Builder) register_checker_sum_type(name_id u32) TypeID {
 }
 
 fn (b &Builder) source_is_sum_type(name string) bool {
-	if (b.sum_type_variants.type_ids(name) or { []u32{} }).len > 0 {
+	if (b.sum_type_variants.type_ids(flat.source_type_id(name)) or { []u32{} }).len > 0 {
 		return true
 	}
 	short := name.all_after('.')
-	if short != name && (b.sum_type_variants.type_ids(short) or { []u32{} }).len > 0 {
+	if short != name && (b.sum_type_variants.type_ids(flat.source_type_id(short)) or { []u32{} }).len > 0 {
 		return true
 	}
 	if b.tc != unsafe { nil } {
-		if (b.tc.sum_types.type_ids(name) or { []u32{} }).len > 0 {
+		if (b.tc.sum_types.type_ids(flat.source_type_id(name)) or { []u32{} }).len > 0 {
 			return true
 		}
-		if short != name && (b.tc.sum_types.type_ids(short) or { []u32{} }).len > 0 {
+		if short != name && (b.tc.sum_types.type_ids(flat.source_type_id(short)) or { []u32{} }).len > 0 {
 			return true
 		}
 	}
@@ -1026,10 +1026,10 @@ fn (mut b Builder) register_checker_interface(name_id u32) ?TypeID {
 		return none
 	}
 	short_name := raw_name.all_after_last('.')
-	qualified_name := qualify_type_name(raw_name, b.cur_module)
+	qualified_name := flat.source_type_name(qualify_type_name(flat.source_type_id(raw_name), b.cur_module))
 	mut interface_name := ''
 	for candidate in [raw_name, qualified_name, short_name] {
-		if candidate in b.tc.interface_names {
+		if flat.source_type_id(candidate) in b.tc.interface_names {
 			interface_name = candidate
 			break
 		}
@@ -1089,12 +1089,12 @@ fn (b &Builder) interface_concrete_type_id(source_type_id u32) TypeID {
 	name := flat.source_type_name(source_type_id).trim_left('&')
 	short_name := name.all_after_last('.')
 	for candidate in [name, short_name] {
-		if typ_id := b.struct_types[candidate] {
+		if typ_id := b.struct_types[flat.source_type_id(candidate)] {
 			return typ_id
 		}
 	}
 	if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin' {
-		if typ_id := b.struct_types['${b.cur_module}.${short_name}'] {
+		if typ_id := b.struct_types[flat.source_type_id('${b.cur_module}.${short_name}')] {
 			return typ_id
 		}
 	}
@@ -2086,7 +2086,15 @@ fn (mut b Builder) register_functions() {
 		if node.kind != .c_fn_decl {
 			continue
 		}
-		ret_type := b.resolve_c_decl_type(node.typ)
+		checker_name := 'C.' + node.value_text().trim_string_left('C.')
+		mut ret_type := b.resolve_c_decl_type(node.typ)
+		if b.tc != unsafe { nil } {
+			if checked := b.tc.fn_ret_types[checker_name] {
+				if checker_type_contains_function(checked) {
+					ret_type = b.ssa_type_from_checker_type(checked)
+				}
+			}
+		}
 		mut param_types := []TypeID{}
 		mut variadic_start := -1
 		for i in 0 .. node.children_count {
@@ -2096,7 +2104,13 @@ fn (mut b Builder) register_functions() {
 					variadic_start = param_types.len
 					continue
 				}
-				param_types << b.resolve_c_decl_type(child.typ)
+				mut param_type := b.resolve_c_decl_type(child.typ)
+				if checked := b.checker_param_type(checker_name, '', param_types.len) {
+					if checker_type_contains_function(checked) {
+						param_type = b.ssa_type_from_checker_type(checked)
+					}
+				}
+				param_types << param_type
 			}
 		}
 		b.register_extern(node.value_text(), ret_type, param_types)
@@ -2529,6 +2543,7 @@ fn (mut b Builder) register_extern(name string, ret TypeID, params []TypeID) {
 	b.fn_types[name] = fn_type
 	b.fn_ids[name] = func_id
 	b.fn_types[extern_name] = fn_type
+	b.fn_ids[extern_name] = func_id
 	b.c_fn_types[name] = fn_type
 	b.c_fn_ids[name] = func_id
 	b.runtime_fn_types[name] = fn_type
@@ -2829,7 +2844,7 @@ fn (b &Builder) runtime_fn_lookup(name string) ?int {
 }
 
 fn (b &Builder) runtime_fn_id(name string) int {
-	return b.runtime_fn_lookup(name) or { 0 }
+	return b.runtime_fn_lookup(name) or { panic('missing SSA runtime function: ${name}') }
 }
 
 // func_add_argument supports func add argument handling for Builder.
@@ -3977,6 +3992,12 @@ fn (mut b Builder) register_array_runtime_stubs() {
 		b.generate_array_eq_array_body(array_eq_array_id)
 	}
 
+	mut p1 := []TypeID{}
+	p1 << b.array_type
+	if array_clone_id := b.register_runtime_function('array_clone', b.array_type, p1) {
+		b.generate_array_clone_body(array_clone_id)
+	}
+
 	p2 = []TypeID{}
 	p2 << ptr_array
 	p2 << ptr_i8
@@ -4007,12 +4028,6 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	if array_push_many_wrapper_id := b.register_runtime_function('array_push_many', b.void_type,
 		p2_push_many) {
 		b.generate_array_push_many_array_body(array_push_many_wrapper_id)
-	}
-
-	mut p1 := []TypeID{}
-	p1 << b.array_type
-	if array_clone_id := b.register_runtime_function('array_clone', b.array_type, p1) {
-		b.generate_array_clone_body(array_clone_id)
 	}
 
 	// The transformer lowers `arr.clone()` to `array__clone(&arr)`. Provide the
@@ -6571,8 +6586,23 @@ fn (mut b Builder) generate_const_body_with_params(func_id int, ret TypeID, valu
 // register_ierror_stubs updates register ierror stubs state for ssa.
 fn (mut b Builder) register_ierror_stubs() {
 	interface_type := b.resolve_type(flat.source_type_id('IError'))
-	message_error_type := b.resolve_type(flat.source_type_id('MessageError'))
 	ptr_ierror := b.m.type_store.get_ptr(interface_type)
+	if !b.is_interface_type_id(interface_type) {
+		// Parser-only fixtures omit builtin interface declarations. Preserve their
+		// placeholder helpers instead of treating the fallback integer as a box.
+		params := [ptr_ierror]
+		if msg_id := b.register_runtime_function('IError.msg', b.str_type, params) {
+			entry := b.m.add_block(msg_id, 'entry')
+			_ := b.func_add_argument(msg_id, ptr_ierror, 'err')
+			message := b.m.add_value(.string_literal, b.str_type, '', 0)
+			b.block_instr1(.ret, entry, b.void_type, message)
+		}
+		if code_id := b.register_runtime_function('IError.code', b.i64_type, params) {
+			b.generate_const_body_with_params(code_id, b.i64_type, '0', params)
+		}
+		return
+	}
+	message_error_type := b.resolve_type(flat.source_type_id('MessageError'))
 	mut p1 := []TypeID{}
 	p1 << ptr_ierror
 	if msg_id := b.register_runtime_function('IError.msg', b.str_type, p1) {
@@ -8720,8 +8750,6 @@ fn (b &Builder) c_variant_function_names() map[string]bool {
 // build_functions builds functions data for ssa.
 fn (mut b Builder) build_functions() {
 	c_variant_names := b.c_variant_function_names()
-	progress := os.getenv('V_SSA_PROGRESS') != ''
-	mut built_functions := 0
 	mut cur_module := ''
 	for node in b.a.nodes {
 		if node.kind == .file {
@@ -8765,10 +8793,6 @@ fn (mut b Builder) build_functions() {
 				continue
 			}
 			b.build_function(node, cur_module)
-			built_functions++
-			if progress && built_functions % 100 == 0 {
-				eprintln('ssa: built ${built_functions} function bodies (nodes=${b.m.values.len})')
-			}
 		}
 	}
 	if b.top_level_main && !b.skip_fn_bodies && b.hot_fn.len == 0 {
@@ -9407,7 +9431,7 @@ fn (b &Builder) is_result_type_id(typ_id TypeID) bool {
 	if typ_id <= 0 || typ_id >= b.m.type_store.types.len {
 		return false
 	}
-	return 'err' in b.m.type_store.types[typ_id].field_names
+	return b.is_option_type(typ_id) && 'err' in b.m.type_store.types[typ_id].field_names
 }
 
 fn (b &Builder) result_error_type(typ_id TypeID) TypeID {
@@ -9424,10 +9448,10 @@ fn (b &Builder) is_error_result_expr(id flat.NodeId, value ValueID, result_type 
 	if err_type == 0 {
 		return false
 	}
-	if b.value_type(value) == err_type {
+	if b.is_interface_type_id(err_type) && b.value_type(value) == err_type {
 		return true
 	}
-	if b.tc != unsafe { nil } {
+	if b.tc != unsafe { nil } && flat.source_type_id('IError') in b.tc.interface_names {
 		name_id := b.checked_expr_type_name(id)
 		name := flat.source_type_name(name_id).trim_left('&?!')
 		if name.len > 0 && b.tc.named_type_implements_interface(flat.source_type_id(name),
@@ -10864,7 +10888,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 	node := b.a.nodes[int(id)]
 	if node.kind in [.int_literal, .infix, .prefix, .paren, .cast_expr]
 		&& b.is_wide_integer_expr(id) {
-		if value := b.build_wide_integer_expr(id, node) {
+		if value := b.build_wide_integer_expr(node) {
 			return value
 		}
 	}
@@ -12115,7 +12139,7 @@ fn (mut b Builder) wide_integer_operand(id flat.NodeId) ValueID {
 	return b.wide_integer_from_scalar(value)
 }
 
-fn (mut b Builder) build_wide_integer_expr(id flat.NodeId, node flat.Node) ?ValueID {
+fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 	match node.kind {
 		.int_literal {
 			low := b.m.get_or_add_const(b.u64_type, node.value)
@@ -14177,6 +14201,12 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			&& !b.is_interface_related_type(param_types[param_idx]) {
 			arg = b.unbox_interface_value(arg, param_types[param_idx])
 		}
+		if is_c_call && resolved_name in b.c_fn_types && param_idx < param_types.len
+			&& b.m.type_store.types[param_types[param_idx]].kind == .func_t
+			&& b.value_type(arg) != param_types[param_idx] {
+			// Preserve the C callback contract through an otherwise untyped V function reference.
+			arg = b.emit1(.bitcast, param_types[param_idx], arg)
+		}
 		if b.m.target.ptr_size == 4 && resolved_name in ['print', 'println', 'eprint', 'eprintln'] {
 			arg = b.stringify_scalar(arg)
 		}
@@ -14673,16 +14703,16 @@ fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow
 	if b.is_sum_type_id(param_type) && value_type != param_type {
 		mut target_name := b.ssa_type_names[param_type] or { '' }
 		if target_name.len == 0 {
-			for name, typ_id in b.struct_types {
+			for name_id, typ_id in b.struct_types {
 				if typ_id == param_type
-					&& b.canonical_sum_type_name(flat.source_type_id(name)) != none {
-					target_name = name
+					&& b.canonical_sum_type_name(name_id) != none {
+					target_name = flat.source_type_name(name_id)
 					break
 				}
 			}
 		}
 		if target_name.len > 0 {
-			variants := b.sum_type_variants.type_ids(target_name) or { []u32{} }
+			variants := b.sum_type_variants.type_ids(flat.source_type_id(target_name)) or { []u32{} }
 			for index, variant in variants {
 				if b.resolve_type(variant) == value_type {
 					return b.wrap_sum_value(param_type, variant, index + 1, value)
@@ -15918,13 +15948,24 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 			return b.build_expr(expr_id)
 		}
 		if fn_idx := b.fn_ids[name] {
-			return b.m.add_value(.func_ref, b.i64_type, name, fn_idx)
+			// Keep C signatures on function values for native ABI validation.
+			reference_type := if b.m.funcs[fn_idx].is_c_extern {
+				b.fn_types[name] or { b.i64_type }
+			} else {
+				b.i64_type
+			}
+			return b.m.add_value(.func_ref, reference_type, name, fn_idx)
 		}
 	}
 	qualified_name := b.selector_qualified_name(node)
 	if qualified_name.len > 0 {
 		if fn_idx := b.fn_ids[qualified_name] {
-			return b.m.add_value(.func_ref, b.i64_type, qualified_name, fn_idx)
+			reference_type := if b.m.funcs[fn_idx].is_c_extern {
+				b.fn_types[qualified_name] or { b.i64_type }
+			} else {
+				b.i64_type
+			}
+			return b.m.add_value(.func_ref, reference_type, qualified_name, fn_idx)
 		}
 	}
 	base_id := b.a.child(&node, 0)
@@ -16848,7 +16889,8 @@ fn (b &Builder) source_name_for_ssa_type_id(typ_id TypeID) ?string {
 		}
 	}
 	mut short_name := ''
-	for name, candidate in b.struct_types {
+	for name_id, candidate in b.struct_types {
+		name := flat.source_type_name(name_id)
 		if candidate != typ_id || name.len == 0 || name.starts_with('[') || name.starts_with('[]')
 			|| name.starts_with('map[') || name.starts_with('?') || name.starts_with('!') {
 			continue
@@ -17042,19 +17084,20 @@ fn (mut b Builder) register_checker_generic_struct(name string) ?TypeID {
 		|| (name.starts_with('[') && b.is_fixed_array_type_name(flat.source_type_id(name))) {
 		return none
 	}
-	canonical_name := qualify_type_name(name, b.cur_module)
-	mut fields := b.tc.struct_fields_for_type(flat.source_type_id(canonical_name))
-	if fields.len == 0 && canonical_name != name {
+	name_id := flat.source_type_id(name)
+	canonical_id := qualify_type_name(name_id, b.cur_module)
+	mut fields := b.tc.struct_fields_for_type(canonical_id)
+	if fields.len == 0 && canonical_id != name_id {
 		fields = b.tc.struct_fields_for_type(flat.source_type_id(name))
 	}
 	if fields.len == 0 {
 		return none
 	}
-	existing_id := b.struct_types[canonical_name] or { b.struct_types[name] or { TypeID(0) } }
+	existing_id := b.struct_types[canonical_id] or { b.struct_types[name_id] or { TypeID(0) } }
 	if existing_id > 0 && existing_id < b.m.type_store.types.len
 		&& b.m.type_store.types[existing_id].fields.len > 0 {
-		b.struct_types[name] = existing_id
-		b.struct_types[canonical_name] = existing_id
+		b.struct_types[name_id] = existing_id
+		b.struct_types[canonical_id] = existing_id
 		return existing_id
 	}
 	typ_id := if existing_id > 0 {
@@ -17064,8 +17107,8 @@ fn (mut b Builder) register_checker_generic_struct(name string) ?TypeID {
 			kind: .struct_t
 		})
 	}
-	b.struct_types[name] = typ_id
-	b.struct_types[canonical_name] = typ_id
+	b.struct_types[name_id] = typ_id
+	b.struct_types[canonical_id] = typ_id
 	mut field_types := []TypeID{cap: fields.len}
 	mut field_names := []string{cap: fields.len}
 	for field in fields {
@@ -17246,7 +17289,7 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 fn (b &Builder) canonical_sum_field_name(sum_type TypeID, requested string) string {
 	sum_name_source_id := b.sum_name_for_type_id(sum_type) or { return requested }
 	sum_name := flat.source_type_name(sum_name_source_id)
-	variants := b.sum_type_variants.type_ids(sum_name) or { return requested }
+	variants := b.sum_type_variants.type_ids(sum_name_source_id) or { return requested }
 	module_name := sum_name.all_before_last('.')
 	for variant in variants {
 		variant_name := flat.source_type_name(variant)

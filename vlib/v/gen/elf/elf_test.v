@@ -1,9 +1,9 @@
-module x64
+module elf
 
 import os
 
 fn test_elf_object_has_x86_64_relocatable_header() {
-	mut object := ElfObject.new()
+	mut object := ElfObject.new(em_x86_64)
 	object.text_data << [u8(0xc3)]
 	object.add_symbol('main', 0, true, 1)
 	path := os.join_path(os.vtmp_dir(), 'v_x64_elf_${os.getpid()}.o')

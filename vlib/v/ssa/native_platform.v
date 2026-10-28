@@ -12,6 +12,9 @@ fn native_platform_constant(name string) ?i64 {
 
 fn native_linux_constant(name string) ?i64 {
 	match name {
+		'PTHREAD_CREATE_JOINABLE', 'PTHREAD_PROCESS_PRIVATE' { return i64(0) }
+		'PTHREAD_CREATE_DETACHED', 'PTHREAD_PROCESS_SHARED' { return i64(1) }
+		'PATH_MAX' { return i64(4096) }
 		'CLOCK_MONOTONIC' { return i64(1) }
 		'EAGAIN' { return i64(11) }
 		'ETIMEDOUT' { return i64(110) }
@@ -26,7 +29,7 @@ fn native_linux_constant(name string) ?i64 {
 		'O_DIRECTORY' { return i64(65536) }
 		'O_NOFOLLOW' { return i64(131072) }
 		'O_CLOEXEC' { return i64(524288) }
-		'O_SYNC' { return i64(1052672) }
+		'O_SYNC', 'O_FSYNC' { return i64(1052672) }
 		'MAP_ANON', 'MAP_ANONYMOUS' { return i64(32) }
 		'RTLD_LOCAL' { return i64(0) }
 		'RTLD_GLOBAL' { return i64(256) }

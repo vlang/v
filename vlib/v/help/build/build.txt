@@ -85,7 +85,7 @@ NB: the build flags are shared with the run command too:
                             Enable it with `v -compile-backend arm64 self`, then use
                             `v -b arm64 -gc none file.v` (EXPERIMENTAL).
     * `x64`               - V outputs a native AMD64 executable directly on Linux.
-                            It is included by ordinary Linux AMD64 self-builds.
+                            Enable it with `v -compile-backend x64 self`.
                             Use `v -b x64 file.v` (EXPERIMENTAL). Add `-prod`
                             to optimize generated runtime code.
     * `wasm`              - V outputs a WebAssembly module directly

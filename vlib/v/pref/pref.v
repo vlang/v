@@ -8,7 +8,7 @@ import v.cmdexec
 // native_backend_replacement_message explains how to replace the removed native backend option.
 pub const native_backend_replacement_message = '`-b native` has been replaced by `-b arm64` and `-b x64`.\n' +
 	'Enable ARM64 support with `v -compile-backend arm64 self`, then use `v -b arm64 -gc none file.v`.\n' +
-	'On Linux AMD64, compile directly with `v -b x64 file.v`; the backend is included by ordinary self-builds.'
+	'On Linux AMD64, first run `v -compile-backend x64 self`, then `v -b x64 file.v`.'
 
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'

@@ -7,7 +7,10 @@ module x64
 import os
 import v.cmdexec
 import v.ssa
+import v.gen.elf
 import encoding.binary
+
+const r_x86_64_plt32 = 4
 
 // GenOptions controls optional x64 code-generation optimizations.
 pub struct GenOptions {
@@ -18,7 +21,7 @@ pub:
 pub struct Gen {
 	m &ssa.Module
 mut:
-	elf              &ElfObject
+	elf              &elf.ElfObject
 	optimize_runtime bool
 
 	stack_map      map[int]int
@@ -64,8 +67,97 @@ pub fn Gen.new(m &ssa.Module) &Gen {
 pub fn Gen.new_with_options(m &ssa.Module, opts GenOptions) &Gen {
 	return &Gen{
 		m:                m
-		elf:              ElfObject.new()
+		elf:              elf.ElfObject.new(elf.em_x86_64)
 		optimize_runtime: opts.optimize_runtime
+	}
+}
+
+// validate_c_extern_calls rejects C calling conventions that this backend cannot yet lower.
+pub fn (g &Gen) validate_c_extern_calls() ! {
+	// Reject unsupported signatures before a function address is stored or passed
+	// elsewhere and its C provenance is lost by an indirect call.
+	for value in g.m.values {
+		if value.kind != .func_ref || value.index < 0 || value.index >= g.m.funcs.len {
+			continue
+		}
+		function := g.m.funcs[value.index]
+		if !function.is_c_extern {
+			continue
+		}
+		if g.is_aggregate_type(function.typ) {
+			return error('x64: C aggregate return values are not supported yet: ${function.name}')
+		}
+		g.validate_c_callback_type(function.typ, function.name)!
+		for param in function.params {
+			if g.is_aggregate_type(g.m.values[param].typ) {
+				return error('x64: C aggregate arguments are not supported yet: ${function.name}')
+			}
+		}
+		if value.typ > 0 && value.typ < g.m.type_store.types.len {
+			signature := g.m.type_store.types[value.typ]
+			if signature.kind == .func_t {
+				return_type := g.m.type_store.types[signature.ret_type]
+				if function.is_variadic || return_type.kind == .float_t
+					|| (return_type.kind == .int_t && return_type.width < 64) {
+					return error('x64: C function addresses with variadic, floating-point or narrow integer return conventions are not supported yet: ${function.name}')
+				}
+				for param_type in signature.params {
+					g.validate_c_callback_type(param_type, function.name)!
+					if g.is_aggregate_type(param_type) {
+						return error('x64: C aggregate arguments are not supported yet: ${function.name}')
+					}
+					if g.is_float_type(param_type) {
+						return error('x64: C function addresses with floating-point arguments are not supported yet: ${function.name}')
+					}
+				}
+			}
+		}
+	}
+	for instr in g.m.instrs {
+		if instr.op !in [.call, .call_sret, .call_indirect, .go_call, .spawn_call]
+			|| !g.call_is_c_extern(instr) {
+			continue
+		}
+		callee := g.m.values[instr.operands[0]]
+		g.validate_c_callback_type(instr.typ, callee.name)!
+		if g.is_aggregate_type(instr.typ) {
+			return error('x64: C aggregate return values are not supported yet: ${callee.name}')
+		}
+		for arg_index in 1 .. instr.operands.len {
+			param_type := g.call_param_type(instr, arg_index - 1)
+			g.validate_c_callback_type(param_type, callee.name)!
+			if g.is_aggregate_type(param_type) {
+				return error('x64: C aggregate arguments are not supported yet: ${callee.name}')
+			}
+		}
+	}
+}
+
+fn (g &Gen) validate_c_callback_type(typ_id ssa.TypeID, name string) ! {
+	if typ_id <= 0 || typ_id >= g.m.type_store.types.len {
+		return
+	}
+	typ := g.m.type_store.types[typ_id]
+	if typ.kind == .ptr_t {
+		g.validate_c_callback_type(typ.elem_type, name)!
+		return
+	}
+	if typ.kind != .func_t {
+		return
+	}
+	return_type := g.m.type_store.types[typ.ret_type]
+	if g.is_aggregate_type(typ.ret_type) || return_type.kind == .float_t
+		|| (return_type.kind == .int_t && return_type.width < 64) {
+		return error('x64: unsupported C callback return convention: ${name}')
+	}
+	g.validate_c_callback_type(typ.ret_type, name)!
+	for param_type in typ.params {
+		param := g.m.type_store.types[param_type]
+		if g.is_aggregate_type(param_type) || param.kind == .float_t
+			|| (param.kind == .int_t && param.width < 64) {
+			return error('x64: unsupported C callback argument convention: ${name}')
+		}
+		g.validate_c_callback_type(param_type, name)!
 	}
 }
 
@@ -1909,7 +2001,7 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 			asm_push(mut g, rax)
 		}
 	}
-	for arg in args {
+	for arg_index, arg in args {
 		if arg.on_stack {
 			continue
 		}
@@ -1922,7 +2014,7 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 				asm_movq_xmm_rax(mut g, u8(arg.reg))
 			}
 		} else {
-			g.load_call_arg_to_reg(arg.reg, arg.value_id, 0, instr)
+			g.load_call_arg_to_reg(arg.reg, arg.value_id, arg_index, instr)
 		}
 	}
 
@@ -2276,7 +2368,13 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 		asm_lea_rbp_disp(mut g, Reg(reg), base_offset)
 	} else if val.kind == .func_ref {
 		// Function pointer: load address of the function
-		sym_idx := g.elf.add_undefined(val.name)
+		name := if val.index >= 0 && val.index < g.m.funcs.len
+			&& g.m.funcs[val.index].is_c_extern {
+			val.name.trim_string_left('C.')
+		} else {
+			val.name
+		}
+		sym_idx := g.elf.add_undefined(name)
 		asm_lea_reg_rip(mut g, Reg(reg))
 		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
 		g.emit_u32(0)

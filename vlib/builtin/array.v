@@ -434,9 +434,6 @@ fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidp
 // It does so by copying the data to a new memory location (creating a clone),
 // unless `a.cap` is already large enough.
 pub fn (mut a array) ensure_cap(required int) {
-	$if x64_debug ? {
-		eprintln('ensure_cap start cap=${a.cap} len=${a.len} required=${required} flags=${a.flags}')
-	}
 	if required <= a.cap {
 		return
 	}
@@ -447,9 +444,6 @@ pub fn (mut a array) ensure_cap(required int) {
 	mut cap := if a.cap > 0 { i64(a.cap) } else { i64(2) }
 	for required > cap {
 		cap *= 2
-	}
-	$if x64_debug ? {
-		eprintln('ensure_cap grown cap=${cap} element_size=${a.element_size}')
 	}
 	if cap > max_int {
 		if a.cap < max_int {

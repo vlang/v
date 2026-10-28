@@ -395,17 +395,16 @@ Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in
 Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
 
 On macOS ARM64, first run `v -compile-backend arm64 self` to include the native backend in
-the current compiler. On Linux AMD64, the x64 backend is included by ordinary self-builds;
-compile directly with `v -b x64 file.v`. Use `v -b arm64 self` or `v -b x64 self` to rebuild
+the current compiler. On Linux AMD64, first run `v -compile-backend x64 self`, then
+compile with `v -b x64 file.v`. Use `v -b arm64 self` or `v -b x64 self` to rebuild
 the full compiler with the selected native backend. A backend-specific `self x2` replaces
 the compiler twice, so the second build runs the compiler produced by the first native
 build. Use `-o v_arm64` or `-o v_x64` to keep the current compiler and write a separate
 executable. Native self-builds use `-gc none` and retain commands such as `self`, `fmt`,
 and `version`. The native compiler includes the C backend and leaves out FastC by default.
-Add `-prod` when optimizing generated-code runtime performance is preferred over compiler
-latency. For very large native modules, the global SSA optimization pass may be skipped to
-bound compiler memory; native register allocation and optimized C helper compilation remain
-enabled.
+For x64, add `-prod` to enable SSA optimization, register allocation and optimized C helpers.
+Very large x64 modules may skip the global SSA pass to bound compiler memory. The ARM64
+backend retains its existing optimization behavior.
 
 ```bash
 cd examples

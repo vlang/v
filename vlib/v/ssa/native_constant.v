@@ -129,7 +129,8 @@ fn (mut b Builder) register_native_initializers() {
 
 fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.NodeId, module_name string) u32 {
 	expr := b.a.node(expr_id)
-	if expr.kind == .array_literal && expr.children_count > 0 {
+	if expr.kind == .array_literal && !b.is_fixed_array_type_name(expr.typ)
+		&& expr.children_count > 0 {
 		mut all_int_literals := true
 		for index in 0 .. expr.children_count {
 			if !b.is_integer_literal_expr(b.a.child(expr, index)) {

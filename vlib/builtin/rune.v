@@ -107,9 +107,6 @@ fn (c rune) map_to(mode MapMode) rune {
 	for start < end {
 		middle := (start + end) / 2
 		cur_map := unsafe { &rune_maps[middle * rune_maps_columns_in_row] }
-		$if x64_debug ? {
-			eprintln('rune.map_to c=${u32(c)} mode=${int(mode)} start=${start} end=${end} middle=${middle} row=${unsafe { *cur_map }},${unsafe { *(cur_map + 1) }},${unsafe { *(cur_map + 2) }},${unsafe { *(cur_map + 3) }}')
-		}
 		if c >= u32(unsafe { *cur_map }) && c <= u32(unsafe { *(cur_map + 1) }) {
 			offset := if mode in [.to_upper, .to_title] {
 				unsafe { *(cur_map + 2) }

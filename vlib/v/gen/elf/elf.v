@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module x64
+module elf
 
 import os
 
@@ -16,7 +16,7 @@ const elfclass64 = 2
 const elfdata2lsb = 1
 const ev_current = 1
 const et_rel = 1 // Relocatable file
-const em_x86_64 = 62
+pub const em_x86_64 = u16(62)
 
 const sht_progbits = 1
 const sht_symtab = 2
@@ -27,10 +27,9 @@ const shf_write = 0x1
 const shf_alloc = 0x2
 const shf_execinstr = 0x4
 
-// Relocation Types for x86_64
-const r_x86_64_plt32 = 4
-
+// ElfObject is a minimal ELF64 relocatable object shared by native backends.
 pub struct ElfObject {
+	machine u16
 pub mut:
 	text_data []u8
 	data_data []u8
@@ -64,9 +63,10 @@ struct ElfRela {
 	addend i64
 }
 
-// new creates an empty ELF64 relocatable object.
-pub fn ElfObject.new() &ElfObject {
+// new creates an empty ELF64 relocatable object for the specified ELF machine.
+pub fn ElfObject.new(machine u16) &ElfObject {
 	mut e := &ElfObject{
+		machine:        machine
 		symbol_by_name: map[string]int{}
 		str_table:      [u8(0)] // Starts with null byte
 		shstr_table:    [u8(0)]
@@ -253,7 +253,7 @@ pub fn (mut e ElfObject) write(path string) {
 	} // Pad
 
 	write_u16_le(mut buf, et_rel)
-	write_u16_le(mut buf, em_x86_64)
+	write_u16_le(mut buf, e.machine)
 	write_u32_le(mut buf, ev_current)
 	write_u64_le(mut buf, 0) // Entry
 	write_u64_le(mut buf, 0) // Phdr off

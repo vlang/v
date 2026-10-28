@@ -7517,6 +7517,10 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 
 				new_val := t.transform_const_or_expr(val_id, val, const_typ_source_id)
 				t.a.children[cf.children_start] = new_val
+			} else if val.kind == .postfix && val.op == .not && val.children_count == 1
+				&& t.a.child_node(&val, 0).kind == .array_literal {
+				new_val := t.transform_const_expr_no_pending(val_id)
+				t.a.children[cf.children_start] = new_val
 			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .array_init,
 				.map_init, .fn_literal, .lambda_expr, .sizeof_expr, .selector, .index, .prefix,
 				.paren] {

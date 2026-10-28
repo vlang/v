@@ -10666,14 +10666,22 @@ use `v help`, `v help build` and `v help build-c`.
 
 `-b native` has been replaced by `-b arm64` and `-b x64`. Enable the ARM64 backend with
 `v -compile-backend arm64 self`, then compile with `v -b arm64 file.v`. On Linux AMD64,
-the x64 backend is included by ordinary self-builds; compile directly with
+first enable the x64 backend with `v -compile-backend x64 self`, then compile with
 `v -b x64 file.v`. The native backends do not link a garbage collector yet, so they always
-build as if `-gc none` was passed. Add `-prod` to enable SSA optimization, scalar register
-allocation, and optimized compilation of linked native C helpers. Very large modules may
-skip the global SSA pass to bound compiler memory while retaining register allocation and
-optimized C helper compilation.
+build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
+allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
+bound compiler memory. The ARM64 backend retains its existing optimization behavior.
 The x64 backend is experimental. Calls without a native implementation fail compilation
 or linking rather than producing placeholder implementations.
+It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
+currently unsupported and produces a diagnostic; pass pointers to C aggregates instead.
+Stored C function values support integer and pointer arguments with 64-bit integer, pointer,
+or void returns. Taking the address of a variadic C function, one with floating-point arguments
+or returns, or one returning a narrower integer produces a diagnostic. Direct C calls retain
+their scalar calling convention.
+C callbacks passed to or returned from C functions support 64-bit integer and pointer
+arguments, and 64-bit integer, pointer, or void returns. Unsupported callback conventions,
+including floating-point, narrow integer, aggregate, and variadic signatures, produce a diagnostic.
 
 Currently there is no debugging support for binaries created by the native backends.
 

@@ -7,6 +7,69 @@ import v.ssa
 import v.transform
 import v.types
 
+fn test_native_fixed_integer_array_constants_preserve_their_storage_type() {
+	path := os.join_path(os.vtmp_dir(), 'x64_fixed_integer_constants_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'const fixed_values = [1, 2, 3]!
+const explicit_values = [3]int[4, 5, 6]
+const dynamic_values = [7, 8, 9]
+fn make_fixed() [3]int { return [11, 12, 13]! }
+fn main() { _ = fixed_values[1] + explicit_values[1] + dynamic_values[1] }
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, tc)
+	assert_native_integer_constant_storage(ssa.build_with_used(a, map[string]bool{}, tc))
+	// Function bodies lower fixed literals to typed array_literal nodes. Exercise
+	// that representation as a constant initializer as well as the source forms.
+	mut lowered_literal := -1
+	for index, node in a.nodes {
+		if node.kind == .array_literal && node.typ_text() == '[3]int' && node.children_count == 3
+			&& a.node(a.child(&node, 0)).value_text() == '11' {
+			assert node.children_count == 3
+			for child_index in 0 .. node.children_count {
+				assert a.node(a.child(&node, child_index)).kind == .int_literal
+			}
+			lowered_literal = index
+			break
+		}
+	}
+	assert lowered_literal >= 0
+	mut replaced := false
+	for node in a.nodes {
+		if node.kind != .const_decl { continue }
+		for index in 0 .. node.children_count {
+			field := a.node(a.child(&node, index))
+			if field.value_text() != 'fixed_values' { continue }
+			a.children[field.children_start] = lowered_literal
+			replaced = true
+		}
+	}
+	assert replaced
+	assert_native_integer_constant_storage(ssa.build_with_used(a, map[string]bool{}, tc))
+}
+
+fn assert_native_integer_constant_storage(m &ssa.Module) {
+	for name in ['fixed_values', 'explicit_values', 'dynamic_values'] {
+		globals := m.globals.filter(it.name == '__const_' + name)
+		assert globals.len == 1, name
+		typ := m.type_store.types[globals[0].typ]
+		if name == 'dynamic_values' {
+			assert typ.kind == .struct_t
+			assert m.type_size(globals[0].typ) == 32
+		} else {
+			assert typ.kind == .array_t, name
+			assert typ.len == 3
+			assert m.type_size(globals[0].typ) == 3 * m.type_size(typ.elem_type)
+		}
+	}
+}
+
 fn test_native_fixed_array_lengths_fold_in_runtime_constant_initializers() {
 	$if linux && amd64 {
 		result := native_constant_fixture('fixed_array_lengths', [
@@ -133,7 +196,7 @@ fn test_native_compiler_string_array_constants_reserve_full_headers_and_preserve
 		builder := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'ssa', 'builder.v')) or {
 			panic(err)
 		}
-		linker := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'gen', 'x64', 'linker.v')) or {
+		linker := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'gen', 'arm64', 'linker.v')) or {
 			panic(err)
 		}
 		bench_names := builder.all_after('const bench_runtime_stub_names =').all_before('// Builder stores')
@@ -189,8 +252,7 @@ fn native_constant_fixture(name string, sources []string) os.Result {
 		ssa.build_with_used(a, map[string]bool{}, tc)
 	}
 	if name == 'compiler_arrays' {
-		for global_name in ['__const_ssa__bench_runtime_stub_names', '__const_x64__force_external_syms',
-			'__const_neighboring'] {
+		for global_name in ['__const_ssa__bench_runtime_stub_names', '__const_neighboring'] {
 			globals := m.globals.filter(it.name == global_name)
 			assert globals.len == 1, global_name
 			assert m.type_size(globals[0].typ) == 32, global_name

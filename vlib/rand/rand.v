@@ -32,7 +32,8 @@ pub fn new_default(config_ config.PRNGConfigStruct) &PRNG {
 	mut rng := &wyrand.WyRandRNG{}
 	rng.seed(config_.seed_)
 	$if native ? {
-		// Native callers retain ownership of the configuration's seed array.
+		// Native lowering can share the field-default seed array between configurations.
+		// Freeing it here would invalidate later configurations using the same storage.
 	} $else {
 		unsafe { config_.seed_.free() }
 	}

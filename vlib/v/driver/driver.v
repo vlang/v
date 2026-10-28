@@ -2512,19 +2512,6 @@ fn v3_compiles_fastc_by_default(input_file string, output_cross_c bool, backend 
 	return !output_cross_c && backend !in ['arm64', 'x64'] && input_is_cmd_v(input_file)
 }
 
-// v3_includes_x64_by_default keeps the native AMD64 backend in ordinary Linux
-// compiler self-builds, so a later `v -b x64` does not require a second bootstrap.
-fn v3_includes_x64_by_default(cmd_v_build bool, output_cross_c bool) bool {
-	if !cmd_v_build || output_cross_c {
-		return false
-	}
-	$if linux && amd64 {
-		return true
-	} $else {
-		return false
-	}
-}
-
 // x64_prod_ssa_optimizer_max_values bounds the global optimizer's peak memory.
 // Larger modules retain production register allocation and optimized C inputs.
 const x64_prod_ssa_optimizer_max_values = 1_000_000
@@ -12450,6 +12437,12 @@ pub fn run(args []string) {
 		eprintln('the x64 backend currently supports only linux/amd64')
 		exit(1)
 	}
+	if backend == 'x64' {
+		$if !linux || !amd64 {
+			eprintln('the x64 backend currently requires a linux/amd64 host')
+			exit(1)
+		}
+	}
 	if backend == 'x64' && is_shared {
 		eprintln('the x64 backend does not support `-shared` yet')
 		exit(1)
@@ -12613,7 +12606,7 @@ pub fn run(args []string) {
 	// omit FastC's libtcc dependency. Explicit skip defines remove optional backends.
 	mut include_fastc := all_backends || v3_compiles_fastc_by_default(input_file, output_cross_c, backend)
 	mut include_arm64 := all_backends
-	mut include_x64 := all_backends || v3_includes_x64_by_default(cmd_v_build, output_cross_c)
+	mut include_x64 := all_backends
 	mut include_wasm := all_backends || (cmd_v_build && !output_cross_c)
 	mut include_eval := all_backends
 	for cb in compile_backends {
@@ -15884,21 +15877,12 @@ pub fn run(args []string) {
 	// here so the backend rebuilds views in the durable compilation arena. The
 	// generic dependency-cache path already resets it after annotation.
 	if !generic_cache_hit {
-		if verbose {
-			eprintln('  [ttime] reset backend caches')
-		}
 		pre_tc.reset_resolution_type_view_cache()
 	}
 	// Function-local smartcasts are not backend metadata. Their empty backing
 	// map may have been replaced inside a transform or specialization arena.
 	pre_tc.reset_codegen_smartcasts()
-	if verbose {
-		eprintln('  [ttime] backend caches reset')
-	}
 	if pre_tc.has_noalloc_contracts() {
-		if verbose {
-			eprintln('  [ttime] check noalloc contracts')
-		}
 		pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
 		if pre_tc.errors.len > 0 {
 			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
@@ -15919,9 +15903,6 @@ pub fn run(args []string) {
 		b.step('monomorphize')
 	} else {
 		b.step('finalize')
-	}
-	if verbose {
-		eprintln('  [ttime] backend generation begin')
 	}
 	mut cg_pre_sw := time.new_stopwatch()
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'backend code generation')
@@ -16021,6 +16002,10 @@ pub fn run(args []string) {
 			mut g := x64.Gen.new_with_options(m, x64.GenOptions{
 				optimize_runtime: is_prod
 			})
+			g.validate_c_extern_calls() or {
+				eprintln(err.msg())
+				exit(1)
+			}
 			g.gen()
 			b.step('x64 gen')
 
@@ -16077,16 +16062,13 @@ pub fn run(args []string) {
 			b.step('link')
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if should_run {
-				run_result := run_binary(bin_file, run_args)
-				if remove_binary_after_run {
-					os.rm(bin_file) or {}
-				}
+				run_result := run_binary(bin_file, run_args, remove_binary_after_run)
 				if run_result != 0 {
 					exit(run_result)
 				}
 				b.step('run')
 			} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
-				test_result := run_test_binary(bin_file)
+				test_result := run_test_binary(bin_file, explicit_output)
 				if test_result != 0 {
 					exit(test_result)
 				}
@@ -16094,7 +16076,7 @@ pub fn run(args []string) {
 			}
 		} $else {
 			eprintln('x64 support is not compiled into this executable')
-			eprintln('Rebuild with `v self` on Linux AMD64; x64 is included by default.')
+			eprintln('Rebuild with `v -compile-backend x64 self` on Linux AMD64.')
 			exit(1)
 		}
 	} else if backend == 'arm64' {
