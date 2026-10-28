@@ -930,7 +930,7 @@ pub:
 	msaa            bool // pixel format can be used as MSAA render target
 	depth           bool // pixel format is a depth format
 	compressed      bool // true if this is a hardware-compressed format
-	bytes_per_pixel int
+	bytes_per_pixel i32
 }
 
 pub type PixelFormatInfo = C.sg_pixelformat_info
