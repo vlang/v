@@ -244,6 +244,17 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 // utime changes the access and modification times of the inode specified by path.
 // It returns POSIX error message, if it can not do so.
 pub fn utime(path string, actime i64, modtime i64) ! {
+	$if vlibc ? {
+		$if linux {
+			// Hosted -d vlibc on Linux: utimensat(AT_FDCWD) via vlibc.
+			e := vlibc_utime(path, actime, modtime)
+			if e != .enoerror {
+				return error_with_code(posix_get_error_msg(int(e)), int(e))
+			}
+			return
+		}
+		// Other vlibc OSes: no SYS_utimensat in-tree; fall through to libc C.utime.
+	}
 	u := C.utimbuf{actime, modtime}
 	if C.utime(&char(path.str), &u) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
@@ -479,6 +490,14 @@ pub fn raw_execute(cmd string) Result {
 // symlink creates a symbolic link named link_name, which points to target.
 // It returns a POSIX error message, if it can not do so.
 pub fn symlink(target string, link_name string) ! {
+	$if vlibc ? {
+		// Hosted -d vlibc: symlinkat(AT_FDCWD)/symlink via vlibc (in-tree on all vlibc OSes).
+		e := vlibc_symlink(target, link_name)
+		if e != .enoerror {
+			return error(posix_get_error_msg(int(e)))
+		}
+		return
+	}
 	res := C.symlink(&char(target.str), &char(link_name.str))
 	if res == 0 {
 		return
@@ -494,6 +513,14 @@ pub fn symlink(target string, link_name string) ! {
 // to resolve as a path, nor to point to a path that exists.
 @[manualfree]
 pub fn readlink(path string) !string {
+	$if vlibc ? {
+		// Hosted -d vlibc: readlinkat(AT_FDCWD)/readlink via vlibc (in-tree on all vlibc OSes).
+		s, e := vlibc_readlink(path)
+		if e != .enoerror {
+			return error_posix(code: int(e))
+		}
+		return s
+	}
 	// Use a region of stack to get information into; we'll return new memory of more precise size later.
 	mut buf := [max_path_buffer_size]u8{}
 	// readlink returns the number of bytes written into buf, or -1 for errors.
@@ -534,6 +561,17 @@ pub fn readlink(path string) !string {
 // link creates a new link (also known as a hard link) to an existing file.
 // It returns a POSIX error message, if it can not do so.
 pub fn link(origin string, target string) ! {
+	$if vlibc ? {
+		$if linux {
+			// Hosted -d vlibc on Linux: linkat(AT_FDCWD) via vlibc.
+			e := vlibc_link(origin, target)
+			if e != .enoerror {
+				return error(posix_get_error_msg(int(e)))
+			}
+			return
+		}
+		// Other vlibc OSes: no SYS_link/SYS_linkat in-tree; fall through to libc C.link.
+	}
 	res := C.link(&char(origin.str), &char(target.str))
 	if res == 0 {
 		return

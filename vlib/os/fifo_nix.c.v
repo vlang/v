@@ -22,7 +22,24 @@ fn fifo_open_nix(path string, flags int, mode &char) !File {
 
 // fifo_server_nix creates the FIFO and blocks until a writer connects.
 fn fifo_server_nix(path string, mode u32) !&Fifo {
-	if C.mkfifo(&char(path.str), mode) != 0 { return error_posix() }
+	$if vlibc ? {
+		$if linux || dragonfly {
+			// Hosted -d vlibc: mknodat (linux) / mknod (dragonfly) via vlibc.
+			e := vlibc_mkfifo(path, mode)
+			if e != .enoerror {
+				return error_posix(code: int(e))
+			}
+		} $else {
+			// No SYS_mkfifo/SYS_mknod in-tree for this OS; hosted -d vlibc still links libc.
+			if C.mkfifo(&char(path.str), mode) != 0 {
+				return error_posix()
+			}
+		}
+	} $else {
+		if C.mkfifo(&char(path.str), mode) != 0 {
+			return error_posix()
+		}
+	}
 	f := fifo_open_nix(path, C.O_RDONLY, c'rb') or {
 		rm(path) or {}
 		return err

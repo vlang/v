@@ -20,6 +20,14 @@ $if !i386 {
 		const vlibc_sys_nr_unlinkat = u64(35)
 		const vlibc_sys_nr_mkdirat = u64(34)
 		const vlibc_sys_nr_renameat = u64(38)
+		const vlibc_sys_nr_fchownat = u64(54)
+		const vlibc_sys_nr_fchmodat = u64(53)
+		const vlibc_sys_nr_faccessat = u64(48)
+		const vlibc_sys_nr_utimensat = u64(88)
+		const vlibc_sys_nr_symlinkat = u64(36)
+		const vlibc_sys_nr_readlinkat = u64(78)
+		const vlibc_sys_nr_linkat = u64(37)
+		const vlibc_sys_nr_mknodat = u64(33)
 		const vlibc_sys_nr_getdents64 = u64(61)
 		const vlibc_sys_nr_clock_gettime = u64(113)
 		const vlibc_sys_nr_nanosleep = u64(101)
@@ -77,6 +85,14 @@ $if !i386 {
 		const vlibc_sys_nr_unlinkat = u64(263)
 		const vlibc_sys_nr_mkdirat = u64(258)
 		const vlibc_sys_nr_renameat = u64(264)
+		const vlibc_sys_nr_fchownat = u64(260)
+		const vlibc_sys_nr_fchmodat = u64(268)
+		const vlibc_sys_nr_faccessat = u64(269)
+		const vlibc_sys_nr_utimensat = u64(280)
+		const vlibc_sys_nr_symlinkat = u64(266)
+		const vlibc_sys_nr_readlinkat = u64(267)
+		const vlibc_sys_nr_linkat = u64(265)
+		const vlibc_sys_nr_mknodat = u64(259)
 		const vlibc_sys_nr_getdents64 = u64(217)
 		const vlibc_sys_nr_clock_gettime = u64(228)
 		const vlibc_sys_nr_nanosleep = u64(35)
@@ -208,6 +224,66 @@ $if !i386 {
 
 	pub fn vlibc_sys_renameat(olddir i64, oldpath &u8, newdir i64, newpath &u8) VlibcErrno {
 		rc := sys_call4(vlibc_sys_nr_renameat, u64(olddir), u64(oldpath), u64(newdir), u64(newpath))
+		if i64(rc) == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(-i64(rc)) }
+	}
+
+	pub fn vlibc_sys_fchmodat(dirfd i64, path &u8, mode u32, flags int) VlibcErrno {
+		rc := sys_call4(vlibc_sys_nr_fchmodat, u64(dirfd), u64(path), u64(mode), u64(flags))
+		if i64(rc) == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(-i64(rc)) }
+	}
+
+	pub fn vlibc_sys_faccessat(dirfd i64, path &u8, mode int, flags int) VlibcErrno {
+		rc := sys_call4(vlibc_sys_nr_faccessat, u64(dirfd), u64(path), u64(mode), u64(flags))
+		if i64(rc) == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(-i64(rc)) }
+	}
+
+	pub fn vlibc_sys_utimensat(dirfd i64, path &u8, times &VlibcTimespec, flags int) VlibcErrno {
+		rc := sys_call4(vlibc_sys_nr_utimensat, u64(dirfd), u64(path), u64(times), u64(flags))
+		if i64(rc) == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(-i64(rc)) }
+	}
+
+	pub fn vlibc_sys_symlinkat(target &u8, dirfd i64, linkpath &u8) VlibcErrno {
+		rc := sys_call3(vlibc_sys_nr_symlinkat, u64(target), u64(dirfd), u64(linkpath))
+		if i64(rc) == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(-i64(rc)) }
+	}
+
+	pub fn vlibc_sys_readlinkat(dirfd i64, path &u8, buf &u8, size u64) (i64, VlibcErrno) {
+		return vlibc_split(sys_call4(vlibc_sys_nr_readlinkat, u64(dirfd), u64(path), u64(buf), size))
+	}
+
+	pub fn vlibc_sys_linkat(olddir i64, oldpath &u8, newdir i64, newpath &u8, flags int) VlibcErrno {
+		rc := sys_call5(vlibc_sys_nr_linkat, u64(olddir), u64(oldpath), u64(newdir), u64(newpath), u64(flags))
+		if i64(rc) == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(-i64(rc)) }
+	}
+
+	pub fn vlibc_sys_mknodat(dirfd i64, path &u8, mode u32, dev u64) VlibcErrno {
+		rc := sys_call4(vlibc_sys_nr_mknodat, u64(dirfd), u64(path), u64(mode), dev)
+		if i64(rc) == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(-i64(rc)) }
+	}
+
+	pub fn vlibc_sys_fchownat(dirfd i64, path &u8, owner u32, group u32, flags int) VlibcErrno {
+		rc := sys_call5(vlibc_sys_nr_fchownat, u64(dirfd), u64(path), u64(owner), u64(group), u64(flags))
 		if i64(rc) == 0 {
 			return VlibcErrno.enoerror
 		}

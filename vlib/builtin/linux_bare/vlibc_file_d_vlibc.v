@@ -186,6 +186,109 @@ $if !i386 {
 		return vlibc_sys_renameat(-100, oldpath.str, -100, newpath.str)
 	}
 
+	// ---- metadata/link/time ----
+	pub fn vlibc_fchmodat(dirfd i64, path string, mode u32, flags int) VlibcErrno {
+		return vlibc_sys_fchmodat(dirfd, path.str, mode, flags)
+	}
+
+	pub fn vlibc_chmod(path string, mode u32) VlibcErrno {
+		return vlibc_sys_fchmodat(-100, path.str, mode, 0)
+	}
+
+	pub fn vlibc_faccessat(dirfd i64, path string, mode int, flags int) VlibcErrno {
+		return vlibc_sys_faccessat(dirfd, path.str, mode, flags)
+	}
+
+	// vlibc_access mirrors access(2): real-uid check (flags=0), symlinks followed.
+	pub fn vlibc_access(path string, mode int) VlibcErrno {
+		return vlibc_sys_faccessat(-100, path.str, mode, 0)
+	}
+
+	pub fn vlibc_fchownat(dirfd i64, path string, owner u32, group u32, flags int) VlibcErrno {
+		return vlibc_sys_fchownat(dirfd, path.str, owner, group, flags)
+	}
+
+	pub fn vlibc_chown(path string, owner int, group int) VlibcErrno {
+		return vlibc_sys_fchownat(-100, path.str, u32(owner), u32(group), 0)
+	}
+
+	pub fn vlibc_utimensat(dirfd i64, path string, times &VlibcTimespec, flags int) VlibcErrno {
+		return vlibc_sys_utimensat(dirfd, path.str, times, flags)
+	}
+
+	// vlibc_utime mirrors os.utime: second-resolution atime/mtime, symlinks followed.
+	pub fn vlibc_utime(path string, actime i64, modtime i64) VlibcErrno {
+		mut times := [2]VlibcTimespec{}
+		times[0] = VlibcTimespec{ sec: actime, nsec: 0 }
+		times[1] = VlibcTimespec{ sec: modtime, nsec: 0 }
+		return vlibc_sys_utimensat(-100, path.str, &times[0], 0)
+	}
+
+	pub fn vlibc_symlinkat(target string, dirfd i64, linkpath string) VlibcErrno {
+		return vlibc_sys_symlinkat(target.str, dirfd, linkpath.str)
+	}
+
+	pub fn vlibc_symlink(target string, linkpath string) VlibcErrno {
+		return vlibc_sys_symlinkat(target.str, -100, linkpath.str)
+	}
+
+	pub fn vlibc_readlinkat(dirfd i64, path string, buf &u8, size u64) (i64, VlibcErrno) {
+		return vlibc_sys_readlinkat(dirfd, path.str, buf, size)
+	}
+
+	// vlibc_readlink mirrors os.readlink: full target, heap string, no libc.
+	pub fn vlibc_readlink(path string) (string, VlibcErrno) {
+		mut buf := []u8{len: 4096}
+		n, e := vlibc_sys_readlinkat(-100, path.str, &u8(buf.data), 4096)
+		if e != .enoerror {
+			return '', e
+		}
+		if n < 4096 {
+			buf[int(n)] = 0
+			mut s := ''
+			unsafe {
+				s = tos_clone(&u8(buf.data))
+			}
+			return s, VlibcErrno.enoerror
+		}
+		mut size := u64(8192)
+		for size <= u64(1) << 20 {
+			mut big := []u8{len: int(size)}
+			m, e2 := vlibc_sys_readlinkat(-100, path.str, &u8(big.data), size)
+			if e2 != .enoerror {
+				return '', e2
+			}
+			if u64(m) < size {
+				big[int(m)] = 0
+				mut s := ''
+				unsafe {
+					s = tos_clone(&u8(big.data))
+				}
+				return s, VlibcErrno.enoerror
+			}
+			size *= 2
+		}
+		// Target did not fit in 1 MiB; report it as too long.
+		return '', VlibcErrno.enametoolong
+	}
+
+	pub fn vlibc_linkat(olddir i64, oldpath string, newdir i64, newpath string, flags int) VlibcErrno {
+		return vlibc_sys_linkat(olddir, oldpath.str, newdir, newpath.str, flags)
+	}
+
+	pub fn vlibc_link(oldpath string, newpath string) VlibcErrno {
+		return vlibc_sys_linkat(-100, oldpath.str, -100, newpath.str, 0)
+	}
+
+	pub fn vlibc_mknodat(dirfd i64, path string, mode u32, dev u64) VlibcErrno {
+		return vlibc_sys_mknodat(dirfd, path.str, mode, dev)
+	}
+
+	// vlibc_mkfifo mirrors mkfifo(path, mode): S_IFIFO via mknodat (no SYS_mkfifo on Linux).
+	pub fn vlibc_mkfifo(path string, mode u32) VlibcErrno {
+		return vlibc_sys_mknodat(-100, path.str, u32(0o10000) | mode, 0)
+	}
+
 	pub fn vlibc_getcwd() (string, VlibcErrno) {
 		mut buf := []u8{len: 4096}
 		n, e := vlibc_sys_getcwd(&u8(buf.data), 4096)

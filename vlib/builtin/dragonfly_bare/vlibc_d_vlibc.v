@@ -496,6 +496,109 @@ $if !i386 {
 		return vlibc_sys_renameat(-331571, oldpath.str, -331571, newpath.str)
 	}
 
+	// ---- metadata/link/time (thin wrappers over in-tree numbers) ----
+	// Only in-tree numbers are used here: no SYS_utimensat/linkat/fchownat in
+	// syscalls.v, so chown/utime/link stay on libc at their os call sites
+	// (hosted -d vlibc still links libc). mkfifo goes through SYS_mknod.
+	pub fn vlibc_sys_chmod(path &u8, mode u32) VlibcErrno {
+		_, er := sys_call2(df_nr_chmod, u64(path), u64(mode))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_sys_fchmodat(dirfd i64, path &u8, mode u32, flags int) VlibcErrno {
+		_, er := sys_call4(df_nr_fchmodat, u64(dirfd), u64(path), u64(mode), u64(flags))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_sys_faccessat(dirfd i64, path &u8, mode int, flags int) VlibcErrno {
+		_, er := sys_call4(df_nr_faccessat, u64(dirfd), u64(path), u64(mode), u64(flags))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_sys_symlink(target &u8, linkpath &u8) VlibcErrno {
+		_, er := sys_call2(df_nr_symlink, u64(target), u64(linkpath))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_sys_readlink(path &u8, buf &u8, size u64) (i64, VlibcErrno) {
+		rc, er := sys_call3(df_nr_readlink, u64(path), u64(buf), size)
+		return bsd_split(rc, er)
+	}
+
+	pub fn vlibc_sys_mknod(path &u8, mode u32, dev u64) VlibcErrno {
+		_, er := sys_call3(df_nr_mknod, u64(path), u64(mode), dev)
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_chmod(path string, mode u32) VlibcErrno {
+		return vlibc_sys_chmod(path.str, mode)
+	}
+
+	// vlibc_access mirrors access(2): real-uid check (flags=0), symlinks followed.
+	pub fn vlibc_access(path string, mode int) VlibcErrno {
+		return vlibc_sys_faccessat(-100, path.str, mode, 0)
+	}
+
+	pub fn vlibc_symlink(target string, linkpath string) VlibcErrno {
+		return vlibc_sys_symlink(target.str, linkpath.str)
+	}
+
+	// vlibc_readlink mirrors os.readlink: full target, heap string, no libc.
+	pub fn vlibc_readlink(path string) (string, VlibcErrno) {
+		mut buf := []u8{len: 4096}
+		n, e := vlibc_sys_readlink(path.str, &u8(buf.data), 4096)
+		if e != .enoerror {
+			return '', e
+		}
+		if n < 4096 {
+			buf[int(n)] = 0
+			mut s := ''
+			unsafe {
+				s = tos_clone(&u8(buf.data))
+			}
+			return s, VlibcErrno.enoerror
+		}
+		mut size := u64(8192)
+		for size <= u64(1) << 20 {
+			mut big := []u8{len: int(size)}
+			m, e2 := vlibc_sys_readlink(path.str, &u8(big.data), size)
+			if e2 != .enoerror {
+				return '', e2
+			}
+			if u64(m) < size {
+				big[int(m)] = 0
+				mut s := ''
+				unsafe {
+					s = tos_clone(&u8(big.data))
+				}
+				return s, VlibcErrno.enoerror
+			}
+			size *= 2
+		}
+		// Target did not fit in 1 MiB; report it as too long.
+		return '', VlibcErrno.enametoolong
+	}
+
+	// vlibc_mkfifo mirrors mkfifo(path, mode): S_IFIFO via SYS_mknod.
+	pub fn vlibc_mkfifo(path string, mode u32) VlibcErrno {
+		return vlibc_sys_mknod(path.str, u32(0o10000) | mode, 0)
+	}
+
 	pub fn vlibc_getcwd() (string, VlibcErrno) {
 		mut buf := []u8{len: 4096}
 		_, e := vlibc_sys_getcwd(&u8(buf.data), 4096)

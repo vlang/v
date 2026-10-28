@@ -395,10 +395,20 @@ pub fn cp(src string, dst string, config CopyParams) ! {
 			}
 		}
 		from_attr := stat(src)!
-		if C.chmod(&char(w_dst.str), from_attr.mode) < 0 {
-			C.close(fp_to)
-			C.close(fp_from)
-			return error_with_code('failed to set permissions for ${w_dst}', int(-1))
+		$if vlibc ? {
+			// Hosted -d vlibc: fchmodat(AT_FDCWD)/chmod via vlibc (in-tree on all vlibc OSes).
+			e_chmod := vlibc_chmod(w_dst, from_attr.mode)
+			if e_chmod != .enoerror {
+				C.close(fp_to)
+				C.close(fp_from)
+				return error_with_code('failed to set permissions for ${w_dst}', int(e_chmod))
+			}
+		} $else {
+			if C.chmod(&char(w_dst.str), from_attr.mode) < 0 {
+				C.close(fp_to)
+				C.close(fp_from)
+				return error_with_code('failed to set permissions for ${w_dst}', int(-1))
+			}
 		}
 		C.close(fp_to)
 		C.close(fp_from)
@@ -598,6 +608,15 @@ pub fn is_executable(path string) bool {
 		p := real_path(path)
 		return exists(p) && win_has_executable_extension(p)
 	}
+	$if vlibc ? {
+		// Hosted -d vlibc: X_OK via faccessat; freebsd/macos have no
+		// SYS_faccessat in-tree, so they stay on libc (still linked).
+		$if freebsd || macos {
+			return C.access(&char(path.str), x_ok) != -1
+		} $else {
+			return vlibc_access(path, 1) == .enoerror // X_OK
+		}
+	}
 	$if solaris {
 		attr := stat(path) or { return false }
 		return (int(attr.mode) & (s_ixusr | s_ixgrp | s_ixoth)) != 0
@@ -626,6 +645,14 @@ pub fn is_writable(path string) bool {
 		unsafe { p.free() }
 		return res
 	} $else {
+		$if vlibc ? {
+			// Hosted -d vlibc: W_OK via faccessat; freebsd/macos stay on libc (no SYS_faccessat in-tree).
+			$if freebsd || macos {
+				return C.access(&char(path.str), w_ok) != -1
+			} $else {
+				return vlibc_access(path, 2) == .enoerror // W_OK
+			}
+		}
 		return C.access(&char(path.str), w_ok) != -1
 	}
 }
@@ -643,6 +670,14 @@ pub fn is_readable(path string) bool {
 		unsafe { p.free() }
 		return res
 	} $else {
+		$if vlibc ? {
+			// Hosted -d vlibc: R_OK via faccessat; freebsd/macos stay on libc (no SYS_faccessat in-tree).
+			$if freebsd || macos {
+				return C.access(&char(path.str), r_ok) != -1
+			} $else {
+				return vlibc_access(path, 4) == .enoerror // R_OK
+			}
+		}
 		return C.access(&char(path.str), r_ok) != -1
 	}
 }
@@ -1007,6 +1042,15 @@ pub fn executable() string {
 		return res
 	}
 	$if linux {
+		$if vlibc ? {
+			// Hosted -d vlibc: /proc/self/exe via raw readlinkat.
+			s, e := vlibc_readlink('/proc/self/exe')
+			if e == .enoerror {
+				return s
+			}
+			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
+			return executable_fallback()
+		}
 		count := C.readlink(c'/proc/self/exe', &char(&result[0]), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
@@ -1152,6 +1196,8 @@ fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
 // Note: this particular rabbit hole is *deep* ...
 @[manualfree]
 pub fn real_path(fpath string) string {
+	// Hosted -d vlibc note: no vlibc helper fits full path resolution
+	// (needs . and .. collapsing, symlink loops, cwd stitching); stays on libc C.realpath.
 	mut fullpath := [max_path_buffer_size]u8{}
 	mut res := ''
 	$if windows {
@@ -1313,8 +1359,16 @@ pub fn flush() {
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) ! {
-	if C.chmod(&char(path.str), mode) != 0 {
-		return error_posix(msg: 'chmod failed: ' + posix_get_error_msg(C.errno))
+	$if vlibc ? {
+		// Hosted -d vlibc: fchmodat(AT_FDCWD)/chmod via vlibc (in-tree on all vlibc OSes).
+		e := vlibc_chmod(path, u32(mode))
+		if e != .enoerror {
+			return error_posix(msg: 'chmod failed: ' + posix_get_error_msg(int(e)), code: int(e))
+		}
+	} $else {
+		if C.chmod(&char(path.str), mode) != 0 {
+			return error_posix(msg: 'chmod failed: ' + posix_get_error_msg(C.errno))
+		}
 	}
 }
 
@@ -1323,6 +1377,18 @@ pub fn chown(path string, owner int, group int) ! {
 	$if windows {
 		return error('os.chown() not implemented for Windows')
 	} $else {
+		$if vlibc ? {
+			$if linux {
+				// Hosted -d vlibc on Linux: fchownat(AT_FDCWD) via vlibc.
+				e := vlibc_chown(path, owner, group)
+				if e != .enoerror {
+					return error_posix(code: int(e))
+				}
+				return
+			}
+			// Other vlibc OSes: no SYS_chown/SYS_fchownat in-tree; hosted
+			// -d vlibc still links libc, so fall through to C.chown.
+		}
 		if C.chown(&char(path.str), owner, group) != 0 {
 			return error_posix()
 		}

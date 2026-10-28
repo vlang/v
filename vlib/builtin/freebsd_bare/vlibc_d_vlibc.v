@@ -505,6 +505,75 @@ $if !i386 {
 		return vlibc_sys_renameat(-100, oldpath.str, -100, newpath.str)
 	}
 
+	// ---- metadata/link/time (thin wrappers over in-tree numbers) ----
+	// Only in-tree numbers are used here: no SYS_fchmodat/faccessat/utimensat/
+	// linkat/mknodat/fchownat in syscalls.v, so access/chown/utime/link/mkfifo
+	// stay on libc at their os call sites (hosted -d vlibc still links libc).
+	pub fn vlibc_sys_chmod(path &u8, mode u32) VlibcErrno {
+		_, er := sys_call2(fb_nr_chmod, u64(path), u64(mode))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_sys_symlink(target &u8, linkpath &u8) VlibcErrno {
+		_, er := sys_call2(fb_nr_symlink, u64(target), u64(linkpath))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_sys_readlink(path &u8, buf &u8, size u64) (i64, VlibcErrno) {
+		rc, er := sys_call3(fb_nr_readlink, u64(path), u64(buf), size)
+		return bsd_split(rc, er)
+	}
+
+	pub fn vlibc_chmod(path string, mode u32) VlibcErrno {
+		return vlibc_sys_chmod(path.str, mode)
+	}
+
+	pub fn vlibc_symlink(target string, linkpath string) VlibcErrno {
+		return vlibc_sys_symlink(target.str, linkpath.str)
+	}
+
+	// vlibc_readlink mirrors os.readlink: full target, heap string, no libc.
+	pub fn vlibc_readlink(path string) (string, VlibcErrno) {
+		mut buf := []u8{len: 4096}
+		n, e := vlibc_sys_readlink(path.str, &u8(buf.data), 4096)
+		if e != .enoerror {
+			return '', e
+		}
+		if n < 4096 {
+			buf[int(n)] = 0
+			mut s := ''
+			unsafe {
+				s = tos_clone(&u8(buf.data))
+			}
+			return s, VlibcErrno.enoerror
+		}
+		mut size := u64(8192)
+		for size <= u64(1) << 20 {
+			mut big := []u8{len: int(size)}
+			m, e2 := vlibc_sys_readlink(path.str, &u8(big.data), size)
+			if e2 != .enoerror {
+				return '', e2
+			}
+			if u64(m) < size {
+				big[int(m)] = 0
+				mut s := ''
+				unsafe {
+					s = tos_clone(&u8(big.data))
+				}
+				return s, VlibcErrno.enoerror
+			}
+			size *= 2
+		}
+		// Target did not fit in 1 MiB; report it as too long.
+		return '', VlibcErrno.enametoolong
+	}
+
 	pub fn vlibc_getcwd() (string, VlibcErrno) {
 		mut buf := []u8{len: 4096}
 		_, e := vlibc_sys_getcwd(&u8(buf.data), 4096)
