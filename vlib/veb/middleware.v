@@ -241,7 +241,7 @@ fn response_allows_body(status_code int) bool {
 	if status_code >= 100 && status_code < 200 {
 		return false
 	}
-	return status_code != 204 && status_code != 304
+	return status_code != 204 && status_code != 205 && status_code != 304
 }
 
 // qvalue_is_zero reports whether an Accept-Encoding q-value refuses the
@@ -277,7 +277,7 @@ fn client_accepts_encoding(accept_encoding string, encoding string) bool {
 			params := coding[idx + 1..]
 			coding = coding[..idx].trim_space()
 			for param in params.split(';') {
-				p := param.replace(' ', '')
+				p := param.replace(' ', '').replace('\t', '')
 				if p.starts_with('q=') && qvalue_is_zero(p[2..]) {
 					refused = true
 					break
@@ -317,7 +317,7 @@ fn send_compressed_response(mut ctx Context, encoding ContentEncoding) bool {
 	content_type := ctx.res.header.get(.content_type) or { '' }
 	// Caches must not serve a compressed variant to clients that did not ask
 	// for one; advertise the variance even when this response stays plaintext.
-	ctx.res.header.set(.vary, 'Accept-Encoding')
+	add_accept_encoding_vary(mut ctx)
 	if !compressible_content_type(content_type) {
 		return true
 	}
@@ -349,6 +349,11 @@ fn send_compressed_response(mut ctx Context, encoding ContentEncoding) bool {
 
 	// Set HTTP headers for compressed content
 	ctx.res.header.add(.content_encoding, encoding_name)
+	if etag := ctx.res.header.get(.etag) {
+		if !etag.starts_with('W/') {
+			ctx.res.header.set(.etag, 'W/${etag}')
+		}
+	}
 
 	// Replace the response body with the compressed data and update Content-Length.
 	// The normal response path will handle sending it.
@@ -371,6 +376,17 @@ fn should_skip_compression(ctx Context) bool {
 		return true
 	}
 	return false
+}
+
+fn add_accept_encoding_vary(mut ctx Context) {
+	for value in ctx.res.header.values(.vary) {
+		for field in value.split(',') {
+			if field.trim_space().to_lower() in ['*', 'accept-encoding'] {
+				return
+			}
+		}
+	}
+	ctx.res.header.add(.vary, 'Accept-Encoding')
 }
 
 // encode_gzip adds gzip encoding to the HTTP Response body.
@@ -435,8 +451,8 @@ pub fn encode_auto[T]() MiddlewareOptions[T] {
 				return send_compressed_response(mut ctx.Context, .gzip)
 			}
 
-			// No supported compression
-			return true
+			// Apply eligibility and Vary to the identity representation too.
+			return send_compressed_response(mut ctx.Context, .gzip)
 		}
 	}
 }
