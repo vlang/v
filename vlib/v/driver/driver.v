@@ -10298,6 +10298,9 @@ fn is_minimal_literal_output_builtin_file(path string) bool {
 		'panicing.c.v',
 		'prealloc.c.v',
 		'printing.c.v',
+		// In a `-race` build, printing.c.v and character_inout.c.v report their I/O to
+		// the race runtime, and map_d_v3_backend.v its writes.
+		'race_d_race.c.v',
 		// panicing.c.v hands a panic to the unwinder of `recover()` in there.
 		'recover.c.v',
 		'segfault_handler_nix.c.v',
