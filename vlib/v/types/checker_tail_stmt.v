@@ -3230,10 +3230,8 @@ fn (tc &TypeChecker) interface_match_pattern_candidates(pattern_id u32) []u32 {
 	}
 	mut candidates := []u32{}
 	if !flat.source_type_shape(pattern_id).has(.dotted) {
-		// Selective imports are keyed by symbol strings.
-		pattern := flat.source_type_name(pattern_id)
 		mut has_scoped_candidate := false
-		if resolved_id := tc.resolve_selective_import_type_symbol_text_id(pattern) {
+		if resolved_id := tc.resolve_selective_import_type_symbol_id(pattern_id) {
 			candidates << resolved_id
 			has_scoped_candidate = true
 		}
@@ -4506,9 +4504,11 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.unknown_type, message, id, tc.unknown_qualified_struct_init_pos(node))
 		} else if tc.struct_init_has_positional_fields(node) {
 			tc.record_error_at(.unknown_type, 'unknown type `${node.value_text()}`', id, node.pos)
-		} else if candidates := tc.selective_import_candidates(init_type_text) {
+		} else if candidates := tc.selective_import_candidates(init_type_id) {
 			if candidates.len == 1 {
-				tc.record_error_at(.unknown_type, tc.unknown_type_message(candidates[0], id), id, node.pos)
+				// The selected declaration is reported in the diagnostic.
+				tc.record_error_at(.unknown_type, tc.unknown_type_message(flat.source_type_name(candidates[0]),
+					id), id, node.pos)
 			} else {
 				tc.record_error(.unknown_type, 'unknown struct `${node.value_text()}`', id)
 			}
@@ -4759,7 +4759,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					found = true
 				}
 				if found && tc.unsafe_depth == 0 && !is_synthetic_embed_file
-					&& tc.resolve_selective_import_type_symbol(init_type_text) == none {
+					&& tc.resolve_selective_import_type_symbol_id(init_type_id) == none {
 					owner_base_id := if flat.source_type_shape(init_name_id).has(.leading_bracket) {
 						init_name_id
 					} else {
@@ -5314,9 +5314,8 @@ fn (tc &TypeChecker) type_name_known_in_scope_id(name_id u32, file string, mod_n
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(mod_name), name_id)
 		if tc.type_symbol_known(qualified_id) { return true }
 	}
-	// Selective imports are keyed by symbol strings. A selected symbol is only
-	// returned when it is an interned, known type symbol.
-	if _ := tc.resolve_selective_import_type_symbol_in_file(flat.source_type_name(name_id), file) {
+	// A selected symbol is only returned when it is a known type symbol.
+	if _ := tc.resolve_selective_import_type_symbol_in_file_id(name_id, file) {
 		return true
 	}
 	return tc.type_symbol_known(name_id)
@@ -10476,11 +10475,11 @@ fn (tc &TypeChecker) static_assoc_type_candidates(type_ident_id u32) []u32 {
 	if type_ident_id == 0 {
 		return []u32{}
 	}
-	// Selective imports and import aliases are keyed by symbol strings.
+	// Import aliases are keyed by symbol strings.
 	type_ident := flat.source_type_name(type_ident_id)
 	mut candidates := []u32{}
 	tc.add_static_assoc_type_candidate(mut candidates, type_ident_id)
-	if resolved_id := tc.resolve_selective_import_type_symbol_text_id(type_ident) {
+	if resolved_id := tc.resolve_selective_import_type_symbol_id(type_ident_id) {
 		tc.add_static_assoc_type_candidate(mut candidates, resolved_id)
 	}
 	if resolved := tc.resolve_import_alias(type_ident) {
@@ -10913,7 +10912,6 @@ fn (tc &TypeChecker) resolve_enum_name(name_id u32) ?u32 {
 		}
 	}
 	if !flat.source_type_shape(name_id).has(.dotted) {
-		// Selective imports are keyed by symbol strings.
 		if resolved_id := tc.resolve_selective_import_type_symbol_id(name_id) {
 			if resolved_id in tc.enum_names || resolved_id in tc.flag_enums {
 				return resolved_id
@@ -14355,14 +14353,14 @@ fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope_id(name_id u
 		&& tc.source_declares_type_in_scope(name_id, file, mod_name) {
 		return true
 	}
-	// Import tables and the `module.Name` probe use symbol text; the probe must
-	// not intern a spelling that names no type.
+	// The `module.Name` probe uses symbol text; it must not intern a spelling
+	// that names no type.
 	name := flat.source_type_name(name_id)
 	if module_scoped && tc.type_symbol_spelling_known('${mod_name}.${name}') {
 		return true
 	}
-	if file_import_key(file, name) in tc.file_selective_imports {
-		if resolved_id := tc.resolve_selective_import_type_symbol_in_file_id(name, file) {
+	if _ := tc.file_selective_import_ids(file, name_id) {
+		if resolved_id := tc.resolve_selective_import_type_symbol_in_file_id(name_id, file) {
 			return !tc.is_builtin_error_struct_type_id(resolved_id)
 		}
 		return true
@@ -14418,7 +14416,7 @@ pub fn (tc &TypeChecker) qualify_type_name_at(name_id u32, id flat.NodeId, modul
 	if tc.valid_node_id(id) {
 		node := tc.a.node(id)
 		if file := tc.a.source_files[node.pos.id] {
-			if resolved_id := tc.resolve_selective_import_type_symbol_in_file_id(name, file.name) {
+			if resolved_id := tc.resolve_selective_import_type_symbol_in_file_id(name_id, file.name) {
 				return resolved_id
 			}
 		}
@@ -14573,23 +14571,11 @@ fn (tc &TypeChecker) promoted_generic_factory_receiver_inner(receiver_id u32, de
 	return none
 }
 
-fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file(name string, file string) ?string {
-	candidates := tc.file_selective_imports[file_import_key(file, name)] or { return none }
-	for candidate in candidates {
-		if tc.type_symbol_spelling_known(candidate) {
-			return candidate
-		}
-	}
-	return none
-}
-
-// resolve_selective_import_type_symbol_in_file_id is resolve_selective_import_type_symbol_in_file
-// returning the existing spelling ID of the resolved candidate. `name` is the imported
-// symbol text that keys the file's selective import table.
-fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file_id(name string, file string) ?u32 {
-	candidates := tc.file_selective_imports[file_import_key(file, name)] or { return none }
-	for candidate in candidates {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+// resolve_selective_import_type_symbol_in_file_id resolves a name selected by
+// `file` to the spelling ID of the first candidate that names a collected type.
+fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file_id(name_id u32, file string) ?u32 {
+	candidates := tc.file_selective_import_ids(file, name_id) or { return none }
+	for candidate_id in candidates {
 		if tc.type_symbol_known(candidate_id) {
 			return candidate_id
 		}

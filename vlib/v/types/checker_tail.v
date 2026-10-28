@@ -4851,7 +4851,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		callee := tc.a.child_node(&node, 0)
 		if callee.kind == .ident && !tc.vsh_script_file()
 			&& tc.source_file_declares_bare_fn(callee.value, node.pos.id) {
-			if _ := tc.selective_import_candidates(callee.value) {
+			if _ := tc.selective_import_text_candidates(callee.value) {
 				for i in 1 .. node.children_count {
 					tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 				}
@@ -7951,7 +7951,7 @@ fn (tc &TypeChecker) generic_named_type_cast_call_type(node flat.Node) ?Type {
 	if callee.kind == .selector && !callee.value.ends_with(']') {
 		return none
 	}
-	if callee.kind == .ident && !callee.value.ends_with(']') && tc.file_selective_imports.len == 0 {
+	if callee.kind == .ident && !callee.value.ends_with(']') && tc.selective_import_files.len == 0 {
 		return none
 	}
 	target_id := tc.type_expr_name(tc.a.child(&node, 0))
@@ -19898,7 +19898,7 @@ fn (tc &TypeChecker) generic_param_type_text(text_id u32) u32 {
 		return resolved
 	}
 	resolved_text := flat.source_type_name(resolved)
-	if selected_id := tc.resolve_selective_import_type_symbol_in_file_id(resolved_text, file) {
+	if selected_id := tc.resolve_selective_import_type_symbol_in_file_id(resolved, file) {
 		return selected_id
 	}
 	module_name := tc.file_modules[file] or { tc.cur_module }

@@ -3616,6 +3616,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		imports:                               g.tc.imports
 		file_imports:                          g.tc.file_imports
 		file_selective_imports:                g.tc.file_selective_imports
+		selective_import_files:                g.tc.selective_import_files
 		file_modules:                          g.tc.file_modules
 		file_scope:                            g.tc.file_scope
 		cur_scope:                             fs

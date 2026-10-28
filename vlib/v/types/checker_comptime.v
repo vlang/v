@@ -1268,8 +1268,10 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				local_name_id := flat.source_type_id(local_name)
 				if tc.type_symbol_known(local_name_id) {
 					local_name_id
+				} else if prefix_id := flat.source_type_existing_id(prefix) {
+					tc.resolve_selective_import_type_symbol_in_file_id(prefix_id, file) or { local_name_id }
 				} else {
-					tc.resolve_selective_import_type_symbol_in_file_id(prefix, file) or { local_name_id }
+					local_name_id
 				}
 			} else {
 				tc.resolve_imported_type_text_in_file(flat.source_type_id(prefix), file)
@@ -18204,7 +18206,7 @@ fn (tc &TypeChecker) assignment_rhs_call_name(id flat.NodeId) ?string {
 				base := tc.a.child_node(callee_node, 0)
 				if base.kind == .ident && !tc.ident_resolves_to_value(base.value)
 					&& (tc.type_symbol_known(tc.qualify_type_name(base.source_value_id()))
-						|| tc.resolve_selective_import_type_symbol(base.value) != none) {
+						|| tc.resolve_selective_import_type_symbol_text_id(base.value) != none) {
 					return tc.call_display_name(node)
 				}
 			}
