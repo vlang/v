@@ -1370,10 +1370,11 @@ fn (g &FlatGen) qualified_interface_c_types(short_ct string) []string {
 		return []string{}
 	}
 	mut matches := []string{}
+	qualified_suffix := '__${short_ct}'
 	for registry_type_name_id, _ in g.tc.interface_names {
 		type_name := flat.source_type_name(registry_type_name_id)
 		candidate_ct := g.cname(type_name)
-		if candidate_ct != short_ct && !candidate_ct.ends_with('__${short_ct}') {
+		if candidate_ct != short_ct && !candidate_ct.ends_with(qualified_suffix) {
 			continue
 		}
 		if candidate_ct !in matches {
@@ -3434,6 +3435,11 @@ fn parse_shared_generic_app_parts_id(typ_id u32) (u32, []u32, bool) {
 }
 
 fn parse_shared_generic_app_parts(typ string) (string, []string, bool) {
+	// The parts need the bracketed shape, which requires a `[`; skip interning
+	// every plain spelling only to learn that.
+	if !typ.contains_u8(`[`) {
+		return '', []string{}, false
+	}
 	base, args, ok := parse_shared_generic_app_parts_id(flat.source_type_id(typ))
 	return flat.source_type_name(base), flat.TypeTextList{ ids: args }.names(), ok
 }
@@ -3703,10 +3709,13 @@ fn (mut g FlatGen) collect_local_shared_type_names() {
 		}
 		return
 	}
-	for i in g.type_metadata_nodes() {
+	metadata_nodes := g.type_metadata_nodes()
+	for metadata_pos in 0 .. metadata_nodes.len {
+		// `metadata_pos` is in range; read the id without a bounds check.
+		i := unsafe { metadata_nodes[metadata_pos] }
 		// Most metadata nodes are calls, struct inits and params; skip them before
 		// copying the node.
-		kind := g.a.nodes[i].kind
+		kind := g.a.node(flat.NodeId(i)).kind
 		if kind != .module_decl && kind != .global_decl && kind != .fn_decl
 			&& kind != .decl_assign {
 			continue
@@ -4760,20 +4769,24 @@ fn (g &FlatGen) concrete_generic_struct_init_ct(type_name_id u32) ?string {
 		return none
 	}
 	wanted_suffix := generic_receiver_type_suffixes(args_source_ids)
+	wanted_suffix_key := wanted_suffix.replace('_', '')
+	wanted_base := flat.source_type_syntax(base_source_id).unqualified()
 	mut matches := []string{}
 	mut base_matches := []string{}
-	for registry_candidate_id in g.tc.structs.keys() {
-		candidate := flat.source_type_name(registry_candidate_id)
+	// Iterate the registry in place (same order as keys()) and resolve a name
+	// only for the generic applications that can match.
+	for registry_candidate_id, _ in g.tc.structs {
 		candidate_base_source_id, candidate_args_source_ids, candidate_ok := g.shared_generic_app_parts(registry_candidate_id)
 		if !candidate_ok || candidate_args_source_ids.len != args_source_ids.len
-			|| flat.source_type_syntax(candidate_base_source_id).unqualified() != flat.source_type_syntax(base_source_id).unqualified() {
+			|| flat.source_type_syntax(candidate_base_source_id).unqualified() != wanted_base {
 			continue
 		}
+		candidate := flat.source_type_name(registry_candidate_id)
 		ct := g.struct_cname(candidate)
 		if ct !in base_matches {
 			base_matches << ct
 		}
-		if generic_receiver_type_suffixes(candidate_args_source_ids).replace('_', '') != wanted_suffix.replace('_', '') {
+		if generic_receiver_type_suffixes(candidate_args_source_ids).replace('_', '') != wanted_suffix_key {
 			continue
 		}
 		if ct !in matches {
@@ -5236,7 +5249,8 @@ mut:
 }
 
 fn (mut cache StructDeclPrefCache) select_module(module_name string) {
-	if cache.module == module_name {
+	if cache.module.len == module_name.len
+		&& (unsafe { cache.module.str == module_name.str } || cache.module == module_name) {
 		return
 	}
 	cache.module = module_name
@@ -6077,16 +6091,14 @@ fn (g &FlatGen) struct_has_direct_named_field(type_name_id u32, field_name strin
 	info := g.find_struct_decl(type_name_id) or { return false }
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
-		if field.kind != .field_decl || field.value.len == 0 {
+		if field.kind != .field_decl || field.value.len == 0 || field.value != field_name {
 			continue
 		}
 		// An embedded field_decl carries `value == typ`; only a real field can win here.
 		if field.source_value_id() == field.typ {
 			continue
 		}
-		if field.value == field_name {
-			return true
-		}
+		return true
 	}
 	return false
 }
@@ -6538,13 +6550,17 @@ fn map_integer_callback_size_suffix(key_type &types.Type, c_key string, pointer_
 }
 
 fn (mut g FlatGen) precompute_fixed_array_map_key_types() {
-	for node_idx in g.type_metadata_nodes() {
-		node := g.a.nodes[node_idx]
+	metadata_nodes := g.type_metadata_nodes()
+	for metadata_pos in 0 .. metadata_nodes.len {
+		// `metadata_pos` is in range; read the id without a bounds check.
+		node_idx := unsafe { metadata_nodes[metadata_pos] }
+		// Metadata ids index the AST; borrow the node instead of copying it.
+		node := g.a.node(flat.NodeId(node_idx))
 		if node.kind != .call || node.children_count < 3 {
 			continue
 		}
-		callee := g.a.child_node(&node, 0)
-		key_size := g.a.child_node(&node, 1)
+		callee := g.a.child_node(node, 0)
+		key_size := g.a.child_node(node, 1)
 		if callee.kind != .ident || callee.value != 'new_map' || key_size.kind != .sizeof_expr
 			|| key_size.source_value_id() == 0 {
 			continue
@@ -6994,6 +7010,7 @@ fn (mut g FlatGen) struct_decls() {
 	// structs below (right after the element struct is defined), so struct fields that
 	// reference them resolve. Primitive-element ones were already emitted earlier.
 	fixed_array_needed := g.collect_fixed_array_typedefs_needed()
+	mut fixed_array_pending := g.pending_fixed_array_typedefs(fixed_array_needed)
 	incremental_support_only := g.program_body_only && g.cached_support_identifiers.len > 0
 	struct_names := g.c_struct_decl_names().filter(!incremental_support_only
 		|| !g.cached_support_has_c_type(g.struct_cname(it)))
@@ -7182,7 +7199,8 @@ fn (mut g FlatGen) struct_decls() {
 				}
 				g.emit_struct(name)
 				emitted[cn] = true
-				g.emit_ready_fixed_array_typedefs(fixed_array_needed, emitted)
+				g.emit_ready_fixed_array_typedefs(fixed_array_needed, emitted, mut
+					fixed_array_pending)
 				remaining_cnames.delete(cn)
 				emitted_structs << name
 				progress = true
@@ -7211,7 +7229,8 @@ fn (mut g FlatGen) struct_decls() {
 				g.emit_sum_option_typedefs((g.tc.sum_types.type_ids(flat.source_type_id(name)) or { []u32{} }).clone())
 				g.emit_sum_type(flat.source_type_id(name))
 				emitted[cn] = true
-				g.emit_ready_fixed_array_typedefs(fixed_array_needed, emitted)
+				g.emit_ready_fixed_array_typedefs(fixed_array_needed, emitted, mut
+					fixed_array_pending)
 				remaining_cnames.delete(cn)
 				emitted_sums << name
 				progress = true
@@ -7272,8 +7291,11 @@ fn (mut g FlatGen) by_value_field_dependency_c_type(typ types.Type) string {
 
 fn (mut g FlatGen) flattened_map_type_alias_decls() {
 	mut names := map[string]bool{}
-	for node_idx in g.type_metadata_nodes() {
-		node := g.a.nodes[node_idx]
+	metadata_nodes := g.type_metadata_nodes()
+	for metadata_pos in 0 .. metadata_nodes.len {
+		// `metadata_pos` is in range; read the id without a bounds check.
+		node_idx := unsafe { metadata_nodes[metadata_pos] }
+		node := g.a.node(flat.NodeId(node_idx))
 		if node.kind in [.fn_decl, .c_fn_decl, .fn_literal, .param] {
 			g.collect_flattened_map_type_alias(node.typ, mut names)
 		}
@@ -7452,15 +7474,38 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 			g.collect_c_struct_type_refs(field.typ, mut seen)
 		}
 	}
-	for i, present in g.tc.expr_type_set {
-		if present && i < g.tc.expr_type_values.len {
-			g.collect_c_struct_type_refs(*g.tc.expr_type_values[i], mut seen)
-		}
-	}
+	g.collect_expr_c_struct_type_refs(mut seen)
 	for _, typ in g.tc.sparse_expr_type_values {
 		g.collect_c_struct_type_refs(typ, mut seen)
 	}
 	return seen
+}
+
+// collect_expr_c_struct_type_refs walks every checked expression type. These are
+// mostly shared canonical references; walking the same type again adds nothing,
+// so a reference that was just walked is skipped.
+@[direct_array_access]
+fn (g &FlatGen) collect_expr_c_struct_type_refs(mut seen map[u32]bool) {
+	count := if g.tc.expr_type_set.len < g.tc.expr_type_values.len {
+		g.tc.expr_type_set.len
+	} else {
+		g.tc.expr_type_values.len
+	}
+	// The slots only hold the addresses of walked types; nothing reads them as values.
+	mut walked := unsafe { [4096]voidptr{} }
+	for i in 0 .. count {
+		if !g.tc.expr_type_set[i] {
+			continue
+		}
+		typ := g.tc.expr_type_values[i]
+		typ_ref := voidptr(typ)
+		slot := int((u64(typ_ref) >> 4) & 4095)
+		if walked[slot] == typ_ref {
+			continue
+		}
+		walked[slot] = typ_ref
+		g.collect_c_struct_type_refs(*typ, mut seen)
+	}
 }
 
 fn (g &FlatGen) collect_c_struct_auxiliary_type_refs(typ types.Type, mut seen map[u32]bool) {
@@ -7494,13 +7539,18 @@ fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool
 		types.ISize, types.USize, types.Primitive {
 			return
 		}
+		// Only nominal spellings are recorded: callers query C struct names, and a
+		// composite spelling is never one. Composite types are walked without
+		// interning their spelling; recursion still stops at a seen nominal type.
+		types.Struct, types.Interface, types.Enum, types.SumType, types.Alias {
+			key := typ.source_type_id()
+			if seen[key] {
+				return
+			}
+			seen[key] = true
+		}
 		else {}
 	}
-	key := typ.source_type_id()
-	if seen[key] {
-		return
-	}
-	seen[key] = true
 	match typ {
 		types.Struct {
 			for field in g.tc.structs[typ.source_type_id()] or { []types.StructField{} } {

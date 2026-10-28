@@ -10,7 +10,7 @@ fn test_source_type_composition_collisions_preserve_owned_exact_tuples() {
 	// Force the otherwise impractical full-hash collision. Equal bucket/hash,
 	// tuple length and endpoints must still compare every numeric component.
 	hash := u64(0x4f39_a7b2_529d_06cd)
-	slot := int(hash & 4095)
+	slot := int(hash & u64(source_type_composition_slots - 1))
 	first := source_type_composition_miss(slot, .multi_return, borrowed, hash)
 	borrowed[1] = replacement
 	changed := source_type_composition_miss(slot, .multi_return, borrowed, hash)
@@ -47,7 +47,7 @@ fn test_source_type_composition_caches_empty_spelling() {
 	// Force a known key so the exact cache entry can be checked, even when its
 	// spelling ID is zero. A miss must differ from a cached empty spelling.
 	hash := u64(0x61b3_46c2_68aa_b208)
-	slot := int(hash & 4095)
+	slot := int(hash & u64(source_type_composition_slots - 1))
 	parts := []u32{}
 	assert source_type_composition_miss(slot, .concat, parts, hash) == 0
 	entry := source_type_composition_find(slot, .concat, parts, hash)

@@ -329,6 +329,7 @@ mut:
 	alias_cache                            &AliasCache                = unsafe { nil }
 	sum_cache                              &AliasCache                = unsafe { nil }
 	module_type_cache                      &ModuleTypeCache           = unsafe { nil }
+	enum_selector_cache                    &EnumSelectorCache         = unsafe { nil }
 	struct_guess_cache                     &AliasCache                = unsafe { nil }
 	generic_unresolved_cache               &GenericUnresolvedCache    = unsafe { nil }
 	spec_args_misses                       &SpecArgsMissCache         = unsafe { nil }
@@ -752,6 +753,9 @@ mut:
 	monomorph_worker_scopes []voidptr
 	signature_maps_shared   bool
 	signature_maps_changed  bool
+	// signature_keys_borrowed marks a fork whose shared signature tables belong
+	// to a transformer that outlives it: detaching them can borrow their keys.
+	signature_keys_borrowed bool
 	// Allocations lowering adds that the source does not show, for
 	// -warn-about-allocs; see warn_alloc.
 	alloc_warnings []AllocWarning
@@ -789,6 +793,20 @@ mut:
 	shared_bases    map[u32]u32
 	variadic_arrays map[u32]u32
 	entries         map[u32]u32
+}
+
+// EnumSelectorCache memoizes enum_type_name_from_selector_name for one source
+// context. Selector bases repeat within a file; resolving each one again
+// normalizes its spelling through the module and import tables. Results are
+// keyed by spelling ID, so no entry refers to arena-owned text.
+struct EnumSelectorCache {
+mut:
+	file          string
+	module        string
+	enum_types    int
+	type_aliases  int
+	alias_entries int
+	entries       map[u32]u32 // 0 records a name that does not denote an enum
 }
 
 // Field lookups alternate between owner modules within one source file. Keep
@@ -2931,6 +2949,7 @@ fn (mut t Transformer) prepare() {
 	t.alias_cache = &AliasCache{}
 	t.sum_cache = &AliasCache{}
 	t.module_type_cache = &ModuleTypeCache{}
+	t.enum_selector_cache = &EnumSelectorCache{}
 	t.struct_guess_cache = &AliasCache{}
 	t.var_type_cache = &VarTypeIndexCache{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -3633,7 +3652,15 @@ fn (mut t Transformer) add_receiver_method_suffix_index(name string) {
 }
 
 fn (mut t Transformer) ensure_private_signature_maps() {
-	if t.signature_maps_shared {
+	if t.signature_maps_shared && t.signature_keys_borrowed {
+		// A fork's private tables die with it, before the parent's keys.
+		t.fn_ret_types = t.fn_ret_types.clone_sharing_keys()
+		unsafe {
+			map_clone_sharing_keys(&t.receiver_method_suffix_index, &t.receiver_method_suffix_index)
+		}
+		t.signature_maps_shared = false
+		t.signature_keys_borrowed = false
+	} else if t.signature_maps_shared {
 		t.fn_ret_types = t.fn_ret_types.clone()
 		t.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
 		t.signature_maps_shared = false
@@ -5476,6 +5503,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.module_type_cache = &ModuleTypeCache{}
+	w.enum_selector_cache = &EnumSelectorCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -5620,6 +5648,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.module_type_cache = &ModuleTypeCache{}
+	w.enum_selector_cache = &EnumSelectorCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -5949,6 +5978,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		node_context_read_only:                 t.node_context_read_only
 		signature_maps_shared:                  true
 		signature_maps_changed:                 false
+		signature_keys_borrowed:                true
 		struct_maps_shared:                     true
 	}
 }
@@ -5958,13 +5988,15 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	t.merge_worker_capture_contexts(w)
 	scoped := w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil }
 	for name, used in w.used_fns {
-		if used {
+		// A worker forked with a copy of the used set: most names are known here
+		// already, and mark_used_fn_key would ignore them. Copy only new names.
+		if used && !t.used_fn_contains_name(name) {
 			owned_name := if scoped && (!t.retain_worker_results || w.merge_scratch_scope != unsafe { nil }) {
 				name.clone()
 			} else {
 				name
 			}
-			t.mark_used_fn_key(owned_name)
+			t.record_used_fn_key(owned_name)
 		}
 	}
 	for name, used in w.used_struct_operator_fns {
@@ -6185,6 +6217,19 @@ fn transform_scope_owns(scope voidptr, ptr voidptr) bool {
 		return unsafe { prealloc_scope_owns(scope, ptr) }
 	}
 	return false
+}
+
+// transform_scope_unowned_interval returns the widest address interval around
+// ptr that holds no block of `scope`, or `0, 0` when transform_scope_owns would
+// report ptr as owned.
+fn transform_scope_unowned_interval(scope voidptr, ptr voidptr) (uint, uint) {
+	$if prealloc {
+		unsafe {
+			lo, hi := prealloc_scope_unowned_interval(scope, ptr)
+			return lo, hi
+		}
+	}
+	return 0, ~uint(0)
 }
 
 // transform_scope_address_range returns the union address range of the blocks
@@ -6598,14 +6643,21 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
 			t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
 		}
-		for idx, ignored in w.ignored_comptime_for_nodes {
-			if !ignored {
-				continue
+		// The worker's flags cover the whole AST but only a few are set; jump
+		// between them as apply_ignored_comptime_for_nodes does.
+		flags := w.ignored_comptime_for_nodes
+		mut idx := 0
+		for idx < flags.len {
+			found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, uint(flags.len - idx))) }
+			if isnil(found) {
+				break
 			}
+			idx = int(unsafe { found - &u8(flags.data) })
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
 			if shifted >= 0 && shifted < t.ignored_comptime_for_nodes.len {
 				t.ignored_comptime_for_nodes[shifted] = true
 			}
+			idx++
 		}
 	}
 	if w.ignored_comptime_for_log.len > 0 {

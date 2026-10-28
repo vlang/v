@@ -1183,24 +1183,28 @@ pub mut:
 	fn_type_modules                  map[string]string
 	transform_signature_maps_shared  bool
 	transform_signature_maps_changed bool
-	transform_signature_names_log    []string
-	transform_struct_maps_shared     bool
-	fn_generic_params                map[string][]string
-	constraints_scanned              bool // program_declares_constraints has looked
-	declares_constraints             bool
-	specialized_generic_fns          map[string]bool
-	fn_variadic                      map[string]bool
-	c_variadic_fns                   map[string]bool
-	fn_implicit_veb_ctx              map[string]bool
-	receiver_method_suffix_index     map[string]string
-	receiver_method_short_names      map[string]bool
-	collection_method_short_names    map[string]bool // short names of `[]T.m` and `map[K]V.m` methods
-	generic_receiver_method_index    map[string][]string
-	structs                          map[u32][]StructField
-	c_struct_scoped_fields           map[u64][]StructField
-	struct_modules                   map[u32]string
-	struct_files                     map[u32]string
-	soa_structs                      map[u32]bool
+	// transform_signature_keys_borrowed marks a transform fork whose shared
+	// signature maps belong to a checker that outlives it, so a detached copy
+	// can borrow their keys instead of cloning every name.
+	transform_signature_keys_borrowed bool
+	transform_signature_names_log     []string
+	transform_struct_maps_shared      bool
+	fn_generic_params                 map[string][]string
+	constraints_scanned               bool // program_declares_constraints has looked
+	declares_constraints              bool
+	specialized_generic_fns           map[string]bool
+	fn_variadic                       map[string]bool
+	c_variadic_fns                    map[string]bool
+	fn_implicit_veb_ctx               map[string]bool
+	receiver_method_suffix_index      map[string]string
+	receiver_method_short_names       map[string]bool
+	collection_method_short_names     map[string]bool // short names of `[]T.m` and `map[K]V.m` methods
+	generic_receiver_method_index     map[string][]string
+	structs                           map[u32][]StructField
+	c_struct_scoped_fields            map[u64][]StructField
+	struct_modules                    map[u32]string
+	struct_files                      map[u32]string
+	soa_structs                       map[u32]bool
 	// Packed source-context ID and type spelling ID keys for every source-level
 	// struct/type/interface/enum declaration, built once in `collect`. Replaces
 	// the former full-node scan in `source_declares_type_in_scope`, which was
@@ -1542,6 +1546,13 @@ mut:
 	// Dropped with phase caches before a disposable arena is released. Forks
 	// start with nil so their mutable topology slots are never shared.
 	lexical_parent_memo &LexicalParentMemo = unsafe { nil }
+	// Only set during check_semantics_opt; forks and views share the immutable
+	// indexes (see CheckDeclIndexes).
+	check_decl_indexes &CheckDeclIndexes = unsafe { nil }
+	// Private to one checking checker: views do not inherit it.
+	source_type_keyword_memo &SourceTypeKeywordMemo = unsafe { nil }
+	// Only set on the checker that runs the serial interface index loop.
+	interface_impl_memo &InterfaceImplMemo = unsafe { nil }
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
 	fn_context                 FunctionCheckContext
@@ -1977,6 +1988,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		defer_ierror_gating:                   tc.defer_ierror_gating
 		pending_ierror_errors:                 []PendingIerrorError{}
 		top_level_idx:                         tc.top_level_idx
+		check_decl_indexes:                    tc.check_decl_indexes
 		top_level_idx_nodes_len:               tc.top_level_idx_nodes_len
 		synthetic_top_level_type_ids:          tc.synthetic_top_level_type_ids
 		direct_parent_ids:                     tc.direct_parent_ids
@@ -2128,6 +2140,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	// cloning all maps for every scoped batch dominates self-host memory.
 	forked.transform_signature_maps_shared = true
 	forked.transform_signature_maps_changed = false
+	forked.transform_signature_keys_borrowed = true
 	forked.transform_struct_maps_shared = true
 	// Scoped reachability uses a transform fork too. Retain the master's body
 	// policy so it does not eagerly collect the library bodies the check skipped.
@@ -2205,7 +2218,26 @@ pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
 		mut cache := tc.global_store_cache
 		cache.values.clear()
 	}
-	if tc.transform_signature_maps_shared {
+	if tc.transform_signature_maps_shared && tc.transform_signature_keys_borrowed {
+		// The fork's private maps are discarded with its batch, before the parent's
+		// keys, and deleting from them never frees a borrowed key. Cloning every
+		// name of these whole-program tables dominated each detach.
+		unsafe {
+			map_clone_sharing_keys(&tc.fn_ret_types, &tc.fn_ret_types)
+			map_clone_sharing_keys(&tc.fn_param_types, &tc.fn_param_types)
+			map_clone_sharing_keys(&tc.receiver_method_suffix_index, &tc.receiver_method_suffix_index)
+			map_clone_sharing_keys(&tc.receiver_method_short_names, &tc.receiver_method_short_names)
+			map_clone_sharing_keys(&tc.collection_method_short_names, &tc.collection_method_short_names)
+			map_clone_sharing_keys(&tc.fn_variadic, &tc.fn_variadic)
+			map_clone_sharing_keys(&tc.specialized_generic_fns, &tc.specialized_generic_fns)
+			map_clone_sharing_keys(&tc.fn_type_modules, &tc.fn_type_modules)
+			map_clone_sharing_keys(&tc.fn_type_files, &tc.fn_type_files)
+		}
+		tc.generic_receiver_method_index = clone_string_list_map(tc.generic_receiver_method_index)
+		tc.transform_signature_maps_shared = false
+		// Only the tables shared at fork time are known to outlive this fork.
+		tc.transform_signature_keys_borrowed = false
+	} else if tc.transform_signature_maps_shared {
 		tc.fn_ret_types = tc.fn_ret_types.clone()
 		tc.fn_param_types = tc.fn_param_types.clone()
 		tc.receiver_method_suffix_index = tc.receiver_method_suffix_index.clone()
@@ -4467,18 +4499,25 @@ fn type_text_contains_symbol(type_text string, name string) bool {
 	if name == '' || type_text.len < name.len {
 		return false
 	}
-	mut start := 0
-	for {
-		relative := type_text[start..].index(name) or { return false }
-		index := start + relative
+	// Find each `name` in turn, like an index search from past the previous one,
+	// without copying the text.
+	first := name[0]
+	last := type_text.len - name.len
+	mut index := 0
+	for index <= last {
+		if type_text[index] != first
+			|| unsafe { vmemcmp(type_text.str + index, name.str, name.len) } != 0 {
+			index++
+			continue
+		}
 		before_ok := index == 0 || !is_type_symbol_byte(type_text[index - 1])
 		end := index + name.len
 		after_ok := end == type_text.len || !is_type_symbol_byte(type_text[end])
 		if before_ok && after_ok {
 			return true
 		}
-		start = index + name.len
-		if start >= type_text.len {
+		index = end
+		if index >= type_text.len {
 			return false
 		}
 	}
@@ -7968,6 +8007,8 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 	module_path := tc.import_module_path_text(import_node)
 	module_path_id := flat.source_type_id(module_path)
 	alias_id := import_node.typ
+	alias_text := import_node.typ_text()
+	module_c_prefix := '${module_path}.C.'
 	mut selective_names := []string{cap: int(import_node.children_count)}
 	for i in 0 .. import_node.children_count {
 		child := tc.a.child_node(&import_node, i)
@@ -7993,7 +8034,7 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 		value_text := node.value_text()
 		if node.kind in [.call, .selector, .index, .infix, .assign, .selector_assign, .index_assign] {
 			if resolved := tc.resolved_call_name(flat.NodeId(idx)) {
-				if resolved.starts_with('${module_path}.C.') {
+				if resolved.starts_with(module_c_prefix) {
 					return true
 				}
 			}
@@ -8006,7 +8047,7 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 					&& parent.children_count > 0 && tc.a.child(parent, 0) == flat.NodeId(idx) {
 					if base_type := tc.expr_type(tc.a.child(&node, 0)) {
 						if getter := tc.index_operator_call_info(base_type, '[]') {
-							if getter.name.starts_with('${module_path}.C.') { return true }
+							if getter.name.starts_with(module_c_prefix) { return true }
 						}
 					}
 				}
@@ -8015,7 +8056,7 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 		if node.kind == .for_in_stmt && node.value == '3' && node.children_count >= 3 {
 			if container_type := tc.expr_type(tc.a.child(&node, 2)) {
 				if info := tc.iterator_for_in_next_call_info(container_type) {
-					if info.name.starts_with('${module_path}.C.') {
+					if info.name.starts_with(module_c_prefix) {
 						return true
 					}
 				}
@@ -8023,7 +8064,7 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 		}
 		if node.kind == .selector && node.children_count > 0 {
 			base := tc.a.child_node(&node, 0)
-			if base.kind == .ident && base.value == import_node.typ_text() {
+			if base.kind == .ident && base.value == alias_text {
 				return true
 			}
 			if base.kind == .ident && base.value == 'C'
@@ -8037,20 +8078,20 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 		}
 		if node.kind == .sql_expr {
 			text := tc.sql_expression_import_text(node)
-			if sql_text_contains_qualified_import(text, import_node.typ_text())
+			if sql_text_contains_qualified_import(text, alias_text)
 				|| sql_text_contains_qualified_import(text, module_path) {
 				return true
 			}
 		}
 		if node.kind != .sql_expr && (type_id_contains_qualified_import(node.typ, alias_id)
-			|| type_text_contains_qualified_import(value_text, import_node.typ_text())
+			|| type_text_contains_qualified_import(value_text, alias_text)
 			|| type_id_contains_qualified_import(node.typ, module_path_id)
 			|| type_text_contains_qualified_import(value_text, module_path)) {
 			return true
 		}
 		// A module-qualified attribute name (`@[mod.Skip]`) is a use of the
 		// module even though no selector expression names it (vlang/rfcs#35).
-		if tc.node_uses_qualified_attribute(flat.NodeId(idx), import_node.typ_text(), module_path) {
+		if tc.node_uses_qualified_attribute(flat.NodeId(idx), alias_text, module_path) {
 			return true
 		}
 		for constraint_id in node.generic_constraint_ids() {
@@ -8175,15 +8216,21 @@ fn type_text_contains_qualified_import(text string, alias string) bool {
 	if text.len <= alias.len || alias == '' {
 		return false
 	}
-	mut start := 0
-	needle := alias + '.'
-	for start < text.len {
-		relative := text[start..].index(needle) or { return false }
-		index := start + relative
-		if index == 0 || !is_type_symbol_byte(text[index - 1]) {
-			return true
+	// Find each `${alias}.` in turn, like an index search from past the previous
+	// one, without copying the text or the needle.
+	first := alias[0]
+	last := text.len - alias.len - 1
+	mut index := 0
+	for index <= last {
+		if text[index] == first && text[index + alias.len] == `.`
+			&& unsafe { vmemcmp(text.str + index, alias.str, alias.len) } == 0 {
+			if index == 0 || !is_type_symbol_byte(text[index - 1]) {
+				return true
+			}
+			index += alias.len + 1
+			continue
 		}
-		start = index + needle.len
+		index++
 	}
 	return false
 }

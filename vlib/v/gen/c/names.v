@@ -581,12 +581,8 @@ fn (g &FlatGen) cname(name string) string {
 
 fn (g &FlatGen) cname_uncached(name string) string {
 	mut cache := g.c_name_cache
-	if cached := cache.entries[name] {
-		cache.last_name = name
-		cache.last_value = cached
-		cache.remember(name, cached)
-		return cached
-	}
+	// c_name is pure, so every cache level holds the same C name for `name`: the
+	// base's recent slots can answer before the map lookups.
 	if !isnil(cache.base) {
 		if cached := cache.base.recent(name) {
 			cache.last_name = name
@@ -594,6 +590,14 @@ fn (g &FlatGen) cname_uncached(name string) string {
 			cache.remember(name, cached)
 			return cached
 		}
+	}
+	if cached := cache.entries[name] {
+		cache.last_name = name
+		cache.last_value = cached
+		cache.remember(name, cached)
+		return cached
+	}
+	if !isnil(cache.base) {
 		if cached := cache.base.entries[name] {
 			cache.last_name = name
 			cache.last_value = cached
