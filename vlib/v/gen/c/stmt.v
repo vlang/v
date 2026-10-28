@@ -4135,7 +4135,7 @@ fn (mut g FlatGen) gen_assert_failure(node flat.Node) {
 // assert_fn_name returns the module qualified name of the current function, like `main.main`.
 fn (g &FlatGen) assert_fn_name() string {
 	module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-	if g.cur_fn_name.starts_with('${module_name}.') {
+	if has_module_prefix(g.cur_fn_name, module_name) {
 		return g.cur_fn_name
 	}
 	return '${module_name}.${g.cur_fn_name}'

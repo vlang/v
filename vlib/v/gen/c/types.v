@@ -1011,14 +1011,17 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 fn (mut g FlatGen) collect_sizeof_optional_types() {
 	old_file := g.tc.cur_file
 	old_module := g.tc.cur_module
-	for idx in g.type_metadata_nodes() {
-		node := g.a.nodes[idx]
+	metadata_nodes := g.type_metadata_nodes()
+	for metadata_pos in 0 .. metadata_nodes.len {
+		// `metadata_pos` is in range; read the id without a bounds check.
+		idx := unsafe { metadata_nodes[metadata_pos] }
+		node := g.a.node(flat.NodeId(idx))
 		if node.kind == .file {
 			g.tc.cur_file = node.value
 			g.tc.cur_module = g.tc.file_modules[node.value] or { old_module }
 		} else if node.kind == .module_decl {
 			g.tc.cur_module = node.value
-		} else if is_optional_sizeof_node(&node) {
+		} else if is_optional_sizeof_node(node) {
 			g.collect_optional_typedef_type(g.tc.parse_type(node.source_value_id()))
 		}
 	}
@@ -1030,13 +1033,16 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 	// Calls without a resolved expression type and `sizeof` operands are the only
 	// optional-type sources not covered by the shared declaration-signature scan.
 	mut seen_type_ids := map[u32]bool{}
-	for idx in g.type_metadata_nodes() {
+	metadata_nodes := g.type_metadata_nodes()
+	for metadata_pos in 0 .. metadata_nodes.len {
+		// `metadata_pos` is in range; read the id without a bounds check.
+		idx := unsafe { metadata_nodes[metadata_pos] }
 		// This scan only publishes type metadata; keep source nodes borrowed.
 		node := unsafe { &g.a.nodes[idx] }
 		if node.kind != .call {
 			continue
 		}
-		if node.typ == 0 || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
+		if node.typ == 0 || (idx < g.tc.expr_type_set.len && unsafe { g.tc.expr_type_set[idx] }) {
 			continue
 		}
 		// Only a complete type spelling that was not collected yet can add a
@@ -1171,6 +1177,9 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		// (`!&Tls[T]`); their typedefs would reference C types that are never
 		// emitted. Specializations register concrete signatures under their
 		// own suffixed names.
+		if !type_reaches_decl_signature_typedef(ret) {
+			continue
+		}
 		if name in g.tc.fn_generic_params {
 			continue
 		}
@@ -1187,6 +1196,9 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 			continue
 		}
 		for param in params {
+			if !type_reaches_decl_signature_typedef(param) {
+				continue
+			}
 			if !seen.insert(param) {
 				continue
 			}
@@ -1205,6 +1217,9 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 			}
 		}
 		for field in fields {
+			if !type_reaches_decl_signature_typedef(field.typ) {
+				continue
+			}
 			if !seen.insert(field.typ) {
 				continue
 			}
@@ -1213,6 +1228,9 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 	}
 	for _, fields in g.tc.interface_fields {
 		for field in fields {
+			if !type_reaches_decl_signature_typedef(field.typ) {
+				continue
+			}
 			if !seen.insert(field.typ) {
 				continue
 			}
@@ -1220,12 +1238,18 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		}
 	}
 	for _, typ in g.tc.c_globals {
+		if !type_reaches_decl_signature_typedef(typ) {
+			continue
+		}
 		if !seen.insert(typ) {
 			continue
 		}
 		g.collect_declaration_signature_type(typ)
 	}
 	for name, typ in g.tc.const_types {
+		if !type_reaches_decl_signature_typedef(typ) {
+			continue
+		}
 		if g.cache_decl_demand && !g.cache_decl_refs[g.const_ident_c_name(name)] {
 			continue
 		}
@@ -1234,11 +1258,7 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		}
 		g.collect_declaration_signature_type(typ)
 	}
-	for idx, is_set in g.tc.expr_type_set {
-		if !is_set || idx >= g.tc.expr_type_values.len {
-			continue
-		}
-		typ := g.tc.expr_type_values[idx]
+	for typ in g.expr_decl_signature_type_candidates() {
 		if !seen.insert(typ) {
 			continue
 		}
@@ -1246,6 +1266,67 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 	}
 	g.decl_types_ready = true
 	g.multi_return_types_ready = true
+}
+
+// expr_decl_signature_type_candidates lists, in expression order, the checked
+// expression types that can register a declaration typedef. Expression types are
+// mostly shared canonical references; collecting the same type again registers
+// nothing new, so a reference that was just listed is skipped.
+@[direct_array_access]
+fn (g &FlatGen) expr_decl_signature_type_candidates() []&types.Type {
+	count := if g.tc.expr_type_set.len < g.tc.expr_type_values.len {
+		g.tc.expr_type_set.len
+	} else {
+		g.tc.expr_type_values.len
+	}
+	mut candidates := []&types.Type{}
+	// The slots only hold the addresses of listed types; nothing reads them as values.
+	mut recent_refs := unsafe { [4096]voidptr{} }
+	for i in 0 .. count {
+		if !g.tc.expr_type_set[i] {
+			continue
+		}
+		typ := g.tc.expr_type_values[i]
+		typ_ref := voidptr(typ)
+		ref_slot := int((u64(typ_ref) >> 4) & 4095)
+		if recent_refs[ref_slot] == typ_ref {
+			continue
+		}
+		recent_refs[ref_slot] = typ_ref
+		if type_reaches_decl_signature_typedef(typ) {
+			candidates << typ
+		}
+	}
+	return candidates
+}
+
+// type_reaches_decl_signature_typedef reports whether
+// collect_known_declaration_signature_type can register anything for `t`: an
+// option/result typedef or a multi-return reached along the same type edges.
+// Other types are no-ops, so callers skip them before hashing them for dedup.
+fn type_reaches_decl_signature_typedef(t &types.Type) bool {
+	return match t {
+		types.OptionType, types.ResultType, types.MultiReturn {
+			true
+		}
+		types.Array, types.ArrayFixed, types.Channel {
+			type_reaches_decl_signature_typedef(t.elem_type)
+		}
+		types.Map {
+			type_reaches_decl_signature_typedef(t.key_type)
+				|| type_reaches_decl_signature_typedef(t.value_type)
+		}
+		types.Pointer, types.Alias {
+			type_reaches_decl_signature_typedef(t.base_type)
+		}
+		types.FnType {
+			t.params.any(type_reaches_decl_signature_typedef(it.typ))
+				|| type_reaches_decl_signature_typedef(t.return_type)
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn (mut g FlatGen) collect_selected_declaration_signature_types() {

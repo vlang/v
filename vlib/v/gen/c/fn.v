@@ -240,7 +240,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			node := g.a.nodes[int(item.node_id)]
 			if node.value.contains('[') && node.value.contains('].') {
 				qualified := if item.module !in ['', 'main', 'builtin']
-					&& !node.value.starts_with('${item.module}.') {
+					&& !has_module_prefix(node.value, item.module) {
 					'${item.module}.${node.value}'
 				} else {
 					node.value
@@ -1060,11 +1060,13 @@ fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, node_inde
 		return true
 	}
 	if g.has_used_fn_filter() {
-		if g.used_fn_contains_in_module(node.value, module_name) {
+		// `qfn` is qualified_fn_name_in_module_c(module_name, node.value).
+		dfn := dotted_fn_name_in_module(module_name, node.value)
+		if g.used_fn_contains_in_module_known(node.value, module_name, dfn, qfn) {
 			return true
 		}
 		return g.interface_dispatch_method_is_required(node.value)
-			|| g.interface_dispatch_method_is_required(dotted_fn_name_in_module(module_name, node.value))
+			|| g.interface_dispatch_method_is_required(dfn)
 			|| g.interface_dispatch_method_is_required(qfn)
 	}
 	return true
@@ -1237,8 +1239,16 @@ fn (g &FlatGen) used_fn_contains(name string) bool {
 }
 
 fn (g &FlatGen) used_fn_contains_in_module(name string, module_name string) bool {
+	return g.used_fn_contains_in_module_known(name, module_name, dotted_fn_name_in_module(module_name,
+		name), '')
+}
+
+// used_fn_contains_in_module_known is used_fn_contains_in_module for a caller
+// that already built `dfn` (dotted_fn_name_in_module) and possibly `qfn`
+// (qualified_fn_name_in_module_c; empty: not computed yet).
+fn (g &FlatGen) used_fn_contains_in_module_known(name string, module_name string, dfn string, known_qfn string) bool {
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
-		&& name.starts_with('${module_name}.') {
+		&& has_module_prefix(name, module_name) {
 		if g.used_fn_contains(name) {
 			return true
 		}
@@ -1247,11 +1257,14 @@ fn (g &FlatGen) used_fn_contains_in_module(name string, module_name string) bool
 			return true
 		}
 	}
-	dfn := dotted_fn_name_in_module(module_name, name)
 	if g.used_fn_contains(dfn) {
 		return true
 	}
-	qfn := g.qualified_fn_name_in_module_c(module_name, name)
+	qfn := if known_qfn.len > 0 {
+		known_qfn
+	} else {
+		g.qualified_fn_name_in_module_c(module_name, name)
+	}
 	if g.used_fn_contains(qfn) {
 		return true
 	}
@@ -1890,7 +1903,7 @@ fn (g &FlatGen) enum_method_c_name_in_module(module_name string, name string) ?s
 }
 
 fn (g &FlatGen) enum_method_c_name_in_module_uncached(module_name string, name string) ?string {
-	qualified := if module_name !in ['', 'main', 'builtin'] && !name.starts_with('${module_name}.') {
+	qualified := if module_name !in ['', 'main', 'builtin'] && !has_module_prefix(name, module_name) {
 		'${module_name}.${name}'
 	} else {
 		name
@@ -2354,6 +2367,14 @@ fn (g &FlatGen) dotted_fn_name(name string) string {
 }
 
 // dotted_fn_name_in_module supports dotted fn name in module handling for c.
+// has_module_prefix reports whether `name` starts with `module_name` followed by
+// a dot, like `name.starts_with('${module_name}.')` without building the prefix.
+@[inline]
+fn has_module_prefix(name string, module_name string) bool {
+	return name.len > module_name.len && name[module_name.len] == `.`
+		&& name.starts_with(module_name)
+}
+
 fn dotted_fn_name_in_module(module_name string, name string) string {
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		return '${module_name}.${name}'
@@ -2686,8 +2707,8 @@ fn (g &FlatGen) receiver_has_method(base_type &types.Type, method string) bool {
 			return true
 		}
 		for registry_alias_id, target_id in g.tc.type_aliases.ids {
-			alias := flat.source_type_name(registry_alias_id)
 			if target_id == name {
+				alias := flat.source_type_name(registry_alias_id)
 				alias_method := '${alias}.${method}'
 				if g.fn_key_registered(alias_method) {
 					return true
@@ -2979,7 +3000,7 @@ fn (g &FlatGen) method_name_by_receiver_param_type(receiver_type &types.Type, me
 fn (g &FlatGen) receiver_param_method_candidate_score(name string) int {
 	mut score := 0
 	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin'
-		&& name.starts_with('${g.tc.cur_module}.') {
+		&& has_module_prefix(name, g.tc.cur_module) {
 		score += 100
 	}
 	if name.contains('_') {
@@ -5461,8 +5482,8 @@ fn (g &FlatGen) resolved_method_name_for_spawn(clean_type &types.Type, method st
 		return method_name
 	}
 	for registry_alias_id, target_id in g.tc.type_aliases.ids {
-		alias := flat.source_type_name(registry_alias_id)
 		if target_id == type_name_id {
+			alias := flat.source_type_name(registry_alias_id)
 			alias_method := '${alias}.${method}'
 			if alias_method in g.tc.fn_param_types {
 				return alias_method
@@ -8641,8 +8662,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 							}
 							if method_name.len == 0 {
 								for registry_alias_id, target_id in g.tc.type_aliases.ids {
-									alias := flat.source_type_name(registry_alias_id)
 									if target_id == struct_name_id {
+										alias := flat.source_type_name(registry_alias_id)
 										alias_method := '${alias}.${fn_node.value}'
 										if alias_method in g.tc.fn_param_types {
 											method_name = alias_method
@@ -8845,8 +8866,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						}
 						if method_name.len == 0 {
 							for registry_alias_id, target_id in g.tc.type_aliases.ids {
-								alias := flat.source_type_name(registry_alias_id)
 								if target_id == struct_name_id {
+									alias := flat.source_type_name(registry_alias_id)
 									alias_method := '${alias}.${fn_node.value}'
 									if alias_method in g.tc.fn_param_types {
 										method_name = alias_method
@@ -10137,6 +10158,8 @@ fn (g &FlatGen) c_style_mut_receiver_arg_wants_addr(fn_name string, arg_id flat.
 	if method.len == 0 {
 		return false
 	}
+	dot_method := '.${method}'
+	underscore_method := '__${method}'
 	for name, is_mut in g.fn_decl_mut_receivers {
 		if !is_mut {
 			continue
@@ -10144,7 +10167,7 @@ fn (g &FlatGen) c_style_mut_receiver_arg_wants_addr(fn_name string, arg_id flat.
 		if !name.contains(short_receiver) {
 			continue
 		}
-		if name == method || name.ends_with('.${method}') || name.ends_with('__${method}') {
+		if name == method || name.ends_with(dot_method) || name.ends_with(underscore_method) {
 			return true
 		}
 	}
@@ -11428,10 +11451,14 @@ fn (g &FlatGen) name_uses_specialized_generic_abi(name string) bool {
 	if g.skip_generics {
 		return false
 	}
-	generic_base, generic_args, is_generic := parse_shared_generic_app_parts(name)
-	if is_generic && !generic_base.ends_with('.') && generic_args.len > 0 && generic_args[0].len > 0
-		&& name.ends_with(']') {
-		return true
+	// Only an application spelling ending in `]` can qualify; do not intern
+	// every plain function name just to parse it.
+	if name.ends_with(']') {
+		generic_base, generic_args, is_generic := parse_shared_generic_app_parts(name)
+		if is_generic && !generic_base.ends_with('.') && generic_args.len > 0
+			&& generic_args[0].len > 0 {
+			return true
+		}
 	}
 	if _ := g.generic_receiver_method_call_info(name) {
 		return true
@@ -11821,8 +11848,9 @@ fn (g &FlatGen) enum_receiver_method_name(enum_type types.Enum, method string) ?
 	if flat.source_type_shape(enum_type.source_type_id()).has(.dotted) {
 		return none
 	}
+	dot_direct := '.${direct}'
 	for candidate, _ in g.tc.fn_param_types {
-		if candidate.ends_with('.${direct}') {
+		if candidate.ends_with(dot_direct) {
 			return candidate
 		}
 	}
@@ -12920,10 +12948,10 @@ fn (mut g FlatGen) callback_fn_value_type(name string) ?types.FnType {
 
 fn (mut g FlatGen) callback_fn_emitted_param_types(name string, semantic []types.Type) []types.Type {
 	actual_c_name := g.callback_c_fn_name(name)
-	for item in g.ensure_fn_gen_items() {
-		if item.c_name != actual_c_name {
-			continue
-		}
+	items := g.ensure_fn_gen_items()
+	item_idx := fn_gen_item_index_by_c_name(items, actual_c_name)
+	if item_idx >= 0 {
+		item := items[item_idx]
 		node := g.a.nodes[int(item.node_id)]
 		typed := g.fn_node_param_types(node, item.module)
 		if typed.len != semantic.len {
@@ -12948,6 +12976,19 @@ fn (mut g FlatGen) callback_fn_emitted_param_types(name string, semantic []types
 		return semantic
 	}
 	return semantic
+}
+
+// fn_gen_item_index_by_c_name returns the index of the first item emitted as
+// `c_name`, or -1. It compares lengths before bytes and does not copy items.
+@[direct_array_access]
+fn fn_gen_item_index_by_c_name(items []FlatFnGenItem, c_name string) int {
+	for i in 0 .. items.len {
+		item_name := items[i].c_name
+		if item_name.len == c_name.len && item_name == c_name {
+			return i
+		}
+	}
+	return -1
 }
 
 fn (mut g FlatGen) callback_fn_types_direct_compatible(actual types.FnType, expected types.FnType, expected_c_abi string) bool {
@@ -16781,10 +16822,10 @@ fn (g &FlatGen) find_alias_method(target_id u32, method string) ?string {
 	}
 	mut fallback := ''
 	for registry_alias_id, alias_target_id in g.tc.type_aliases.ids {
-		alias := flat.source_type_name(registry_alias_id)
 		if alias_target_id != target_id {
 			continue
 		}
+		alias := flat.source_type_name(registry_alias_id)
 		alias_method := '${alias}.${method}'
 		if alias_method !in g.tc.fn_param_types {
 			if alias.contains('.') {
@@ -19387,11 +19428,12 @@ fn (g &FlatGen) generic_receiver_method_call_info(name string) ?types.CallInfo {
 	if g.skip_generics {
 		return none
 	}
-	if !name.contains('.') {
+	// Most names have no `[` at all, so neither can their receiver part.
+	if !name.contains_u8(`[`) || !name.contains_u8(`.`) {
 		return none
 	}
 	receiver := name.all_before_last('.')
-	if !receiver.contains('[') || !receiver.contains(']') {
+	if !receiver.contains_u8(`[`) || !receiver.contains_u8(`]`) {
 		return none
 	}
 	return g.tc.resolve_generic_struct_method(flat.source_type_id(receiver), name.all_after_last('.'))
