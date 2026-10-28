@@ -61,6 +61,9 @@ pub mut:
 	c_ospeed Speed
 }
 
+// NOTE(vlibc): tcgetattr/tcsetattr stay on libc. A raw-vlibc port would need
+// the FreeBSD termios ioctl request numbers (TIOCGETA/TIOCSETA/TIOCSETAW/TIOCSETAF),
+// which are not established anywhere in-tree; do not invent them.
 // tcgetattr is an unsafe wrapper around C.termios and keeps its semantic
 @[inline]
 pub fn tcgetattr(fd int, mut termios_p Termios) int {

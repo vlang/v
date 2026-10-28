@@ -1450,6 +1450,18 @@ pub fn is_atty(fd int) int {
 			return int(mode)
 		}
 	} $else {
+		$if vlibc ? {
+			// Hosted -d vlibc: probe tty-ness with TIOCGWINSZ through the raw
+			// vlibc ioctl helper (no TCGETS numbers exist in-tree, so there is
+			// no TCGETS probe); fall back to libc isatty when the probe fails.
+			unsafe {
+				mut probe := u64(0)
+				_, e := vlibc_sys_ioctl(i64(fd), u64(C.TIOCGWINSZ), voidptr(&probe))
+				if e == .enoerror {
+					return 1
+				}
+			}
+		}
 		return C.isatty(fd)
 	}
 }

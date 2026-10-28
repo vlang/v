@@ -19,6 +19,17 @@ pub fn get_terminal_size() (int, int) {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return default_columns_size, default_rows_size
 	}
+	$if vlibc ? {
+		// Hosted -d vlibc: query the window size via the raw vlibc ioctl helper (no libc).
+		w := C.winsize{}
+		unsafe {
+			_, e := vlibc_sys_ioctl(1, u64(C.TIOCGWINSZ), voidptr(&w))
+			if e == .enoerror {
+				return int(w.ws_col), int(w.ws_row)
+			}
+		}
+		// On failure fall through to the libc ioctl below.
+	}
 	w := C.winsize{}
 	unsafe { C.ioctl(1, u64(C.TIOCGWINSZ), &w) }
 	return int(w.ws_col), int(w.ws_row)

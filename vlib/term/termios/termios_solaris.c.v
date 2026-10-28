@@ -57,6 +57,9 @@ pub mut:
 	c_cc    [cclen]Cc
 }
 
+// NOTE(vlibc): tcgetattr/tcsetattr stay on libc. A raw-vlibc port would need
+// the Solaris termios ioctl request numbers (TCGETS/TCSETS/TCSETSW/TCSETSF),
+// which are not established anywhere in-tree; do not invent them.
 // tcgetattr is an unsafe wrapper around C.termios and keeps its semantic
 @[inline]
 pub fn tcgetattr(fd int, mut termios_p Termios) int {

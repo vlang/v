@@ -659,12 +659,21 @@ fn (mut r Readline) suspend() {
 	r.disable_raw_mode()
 	if !is_standalone {
 		// We have to SIGSTOP the parent v process
-		unsafe {
-			ppid := C.getppid()
-			C.kill(ppid, C.SIGSTOP)
+		$if vlibc ? {
+			// Hosted -d vlibc: raw vlibc syscalls (no libc).
+			vlibc_sys_kill(vlibc_sys_getppid(), C.SIGSTOP)
+		} $else {
+			unsafe {
+				ppid := C.getppid()
+				C.kill(ppid, C.SIGSTOP)
+			}
 		}
 	}
-	unsafe { C.raise(C.SIGSTOP) }
+	$if vlibc ? {
+		vlibc_sys_kill(vlibc_sys_getpid(), C.SIGSTOP)
+	} $else {
+		unsafe { C.raise(C.SIGSTOP) }
+	}
 	r.enable_raw_mode()
 	r.refresh_line()
 	if r.is_tty {
