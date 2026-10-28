@@ -763,7 +763,8 @@ $if !i386 {
 			((v & 0x00ff0000) >> 8) | ((v & 0xff000000) >> 24)
 	}
 
-	// vlibc_parse_ipv4 packs dotted IPv4 bytes in network byte order.
+	// vlibc_parse_ipv4 packs a valid dotted-quad IPv4 address into network byte order.
+	// Each of its four decimal octets must be in 0..255; malformed input is not validated.
 	pub fn vlibc_parse_ipv4(s string) u32 {
 		mut parts := [u32(0), u32(0), u32(0), u32(0)]
 		mut idx := 0

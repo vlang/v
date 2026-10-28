@@ -25,7 +25,8 @@ $if !i386 {
 		return vlibc_htons(v)
 	}
 
-	// vlibc_parse_ipv4 packs a dotted IPv4 address into network byte order.
+	// vlibc_parse_ipv4 packs a valid dotted-quad IPv4 address into network byte order.
+	// Each of its four decimal octets must be in 0..255; malformed input is not validated.
 	pub fn vlibc_parse_ipv4(s string) u32 {
 		// returns network-byte-order u32
 		mut parts := [u32(0), u32(0), u32(0), u32(0)]

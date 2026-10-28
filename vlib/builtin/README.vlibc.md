@@ -8,6 +8,8 @@ Use `vlibc_sys_wait4` on Linux, BSD, and macOS to obtain the raw POSIX child exi
 File reads retain partial bytes together with a read error; interrupted reads and writes retry.
 File helpers report close errors after otherwise successful I/O.
 `vlibc_htons`, `vlibc_htonl`, and `vlibc_parse_ipv4` produce network-byte-order values.
+`vlibc_parse_ipv4` requires valid dotted-quad input with four decimal octets in 0..255;
+it does not validate malformed addresses.
 
 This interface is experimental. Linux supports amd64 and arm64 using raw syscalls.
 Linux thread startup uses a separate argument block on each mapped stack; join waits until the
