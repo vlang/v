@@ -1173,7 +1173,7 @@ fn (t &Transformer) interface_impl_type_id_iface_candidates(iface_id u32) []u32 
 	}
 	candidates << iface_id
 	if !flat.source_type_shape(iface_id).has(.dotted) {
-		qualified := flat.source_type_id(t.tc.qualify_name(flat.source_type_name(iface_id)))
+		qualified := t.tc.qualify_type_name(iface_id)
 		if qualified != iface_id { candidates << qualified }
 	}
 	mut result := []u32{}

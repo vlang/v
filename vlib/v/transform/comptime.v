@@ -4040,7 +4040,7 @@ fn (mut t Transformer) comptime_interface_field_metas(base_type_id u32) ?[]Field
 	mut iface_name := clean
 	if !t.generic_checker_interface_name_known(iface_name) {
 		// Qualification consults declaration and import names at their resolution boundary.
-		qualified := flat.source_type_id(t.tc.qualify_name(flat.source_type_name(clean)))
+		qualified := t.tc.qualify_type_name(clean)
 		if !t.generic_checker_interface_name_known(qualified) {
 			return none
 		}

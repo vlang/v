@@ -1173,13 +1173,12 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 }
 
 fn (t &Transformer) interface_box_object_cast_needs_raw_call(concrete_type_id u32) bool {
-	concrete_type := flat.source_type_name(concrete_type_id)
 	if isnil(t.tc) {
 		return false
 	}
 	target_source_id := t.tc.type_aliases.type_id(concrete_type_id) or {
 		(if !flat.source_type_shape(concrete_type_id).has(.dotted) {
-			(t.tc.type_aliases.type_id(flat.source_type_id(t.tc.qualify_name(concrete_type))) or { return false })
+			(t.tc.type_aliases.type_id(t.tc.qualify_type_name(concrete_type_id)) or { return false })
 		} else {
 			return false
 		})

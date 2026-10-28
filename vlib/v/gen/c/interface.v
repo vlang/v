@@ -2562,7 +2562,7 @@ fn (mut g FlatGen) interface_custom_str_expr(type_name_id u32, typ types.Type, e
 	method_key := g.tc.concrete_method_signature_key(type_name_id, 'str') or { return none }
 	if typ is types.Alias {
 		direct_key := '${type_name}.str'
-		qualified_key := '${g.tc.qualify_name(type_name)}.str'
+		qualified_key := '${flat.source_type_name(g.tc.qualify_type_name(type_name_id))}.str'
 		if method_key != direct_key && method_key != qualified_key {
 			return none
 		}

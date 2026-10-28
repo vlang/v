@@ -2727,7 +2727,7 @@ fn (g &FlatGen) receiver_method_registered(type_name_id u32, method string) bool
 	mut receivers := []string{}
 	for receiver in [type_name,
 		flat.source_type_name(flat.source_type_syntax(type_name_id).unqualified()),
-		g.tc.qualify_name(type_name)] {
+		flat.source_type_name(g.tc.qualify_type_name(type_name_id))] {
 		if receiver.len > 0 && receiver !in receivers {
 			receivers << receiver
 		}

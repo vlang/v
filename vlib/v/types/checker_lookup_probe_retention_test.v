@@ -97,12 +97,12 @@ fn test_checker_qualified_type_and_error_probes_keep_original_on_miss() {
 		local := '${tc.cur_module}.${name}'
 		assert flat.source_type_existing_id(local) == none
 		assert tc.resolve_ierror_payload_name(name_id_) == name_id_
-		assert !tc.unqualified_type_name_shadows_builtin_in_scope(name, tc.cur_file, tc.cur_module)
+		assert !tc.unqualified_type_name_shadows_builtin_in_scope_id(name_id_, tc.cur_file, tc.cur_module)
 		assert flat.source_type_existing_id(local) == none
 		local_id := flat.source_type_id(local)
 		tc.structs[local_id] = []StructField{}
 		assert tc.resolve_ierror_payload_name(name_id_) == local_id
-		assert tc.unqualified_type_name_shadows_builtin_in_scope(name, tc.cur_file, tc.cur_module)
+		assert tc.unqualified_type_name_shadows_builtin_in_scope_id(name_id_, tc.cur_file, tc.cur_module)
 	}
 }
 

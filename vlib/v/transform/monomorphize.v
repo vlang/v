@@ -2078,8 +2078,7 @@ fn (t &Transformer) interface_boxed_type_marked(iface_name_id u32, concrete_type
 			}
 		}
 	}
-	for candidate in [concrete_type, t.tc.qualify_name(concrete_type)] {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	for candidate_id in [concrete_type_id, t.tc.qualify_type_name(concrete_type_id)] {
 		target := t.tc.type_aliases.type_id(candidate_id) or { continue }
 		for iface in iface_names {
 			if t.interface_boxed_type_key_marked(interface_boxed_type_key(iface, target))

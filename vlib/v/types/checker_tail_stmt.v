@@ -4322,7 +4322,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	if flat.source_type_shape(node.source_value_id()).has(.channel_type) {
 		elem_id := trimmed_source_type_id(flat.source_type_syntax(node.source_value_id()).raw_base())
 		if flat.source_type_syntax(elem_id).named_type() && !tc.type_name_known(elem_id) {
-			tc.record_unknown_decl_type(flat.source_type_name(elem_id), id)
+			tc.record_unknown_decl_type_id(elem_id, id)
 		}
 		tc.remember_expr_type(id, tc.parse_type(node.source_value_id()))
 		return
@@ -14104,8 +14104,13 @@ fn (tc &TypeChecker) named_type_has_non_builtin_error_embed(concrete_name_id u32
 		return true
 	}
 	for field in tc.structs[lookup_id] or { []StructField{} } {
-		if field.name in ['Error', 'MessageError']
-			&& tc.unqualified_type_name_shadows_builtin_in_scope(field.name, struct_file, struct_module) {
+		field_type_id := match field.name {
+			'Error' { checker_source_error }
+			'MessageError' { checker_source_message_error }
+			else { u32(0) }
+		}
+		if field_type_id != 0
+			&& tc.unqualified_type_name_shadows_builtin_in_scope_id(field_type_id, struct_file, struct_module) {
 			return true
 		}
 		embedded_type := embedded_field_type(field) or { continue }
@@ -14339,10 +14344,6 @@ fn (tc &TypeChecker) resolve_unqualified_builtin_error_struct_name_id(name_id u3
 
 fn (tc &TypeChecker) unqualified_type_name_shadows_builtin(name_id u32) bool {
 	return tc.unqualified_type_name_shadows_builtin_in_scope_id(name_id, tc.cur_file, tc.cur_module)
-}
-
-fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope(name string, file string, mod_name string) bool {
-	return tc.unqualified_type_name_shadows_builtin_in_scope_id(flat.source_type_id(name), file, mod_name)
 }
 
 // unqualified_type_name_shadows_builtin_in_scope_id reports whether the bare type
@@ -18889,10 +18890,6 @@ fn (tc &TypeChecker) unresolved_generic_placeholder_in(typ Type) ?string {
 
 // `typeof(expr)` annotations can infer array items and nested generic payloads.
 // Resolve the expression before generic specialization records concrete names.
-pub fn (tc &TypeChecker) resolve_inferred_type_text(typ string) string {
-	return flat.source_type_name(tc.resolve_inferred_type_id(flat.source_type_id(typ)))
-}
-
 // resolve_inferred_type_id resolves the expression witnesses in a source type.
 // Components stay interned through replacement and are composed only on change.
 pub fn (tc &TypeChecker) resolve_inferred_type_id(type_id u32) u32 {

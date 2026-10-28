@@ -11369,13 +11369,12 @@ fn (t &Transformer) resolve_flag_enum_type_name(typ_id u32) ?u32 {
 			// A known ordinary enum must not inherit another module's flag methods.
 			return none
 		}
-		clean := flat.source_type_name(clean_id)
 		if clean_id in t.tc.flag_enums {
 			return clean_id
 		}
-		qualified := t.tc.qualify_name(clean)
-		if flat.source_type_id(qualified) in t.tc.flag_enums {
-			return flat.source_type_id(qualified)
+		qualified := t.tc.qualify_type_name(clean_id)
+		if qualified in t.tc.flag_enums {
+			return qualified
 		}
 		if !flat.source_type_shape(clean_id).has(.dotted) {
 			mut found := ''

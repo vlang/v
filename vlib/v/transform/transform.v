@@ -14149,7 +14149,7 @@ fn (mut t Transformer) transform_sizeof_expr(id flat.NodeId, node flat.Node) fla
 	} else if node.value_text().len > 0 && node.children_count > 0 {
 		value_type := t.selected_sizeof_value_type(node.value_text()) or {
 			if t.tc.sizeof_arg_is_type(node) {
-				flat.source_type_id(t.tc.qualify_name(node.value_text()))
+				t.tc.qualify_type_name(node.source_value_id())
 			} else {
 				u32(0)
 			}

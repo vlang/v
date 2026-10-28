@@ -5089,7 +5089,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					field_is_embed := source_field_decl_is_embed(f, field_typ_id)
 					shadows_builtin_error := field_is_embed
 						&& field_typ_id in [checker_source_error, checker_source_message_error]
-						&& tc.unqualified_type_name_shadows_builtin_in_scope(flat.source_type_name(field_typ_id), tc.cur_file, tc.cur_module)
+						&& tc.unqualified_type_name_shadows_builtin_in_scope_id(field_typ_id, tc.cur_file, tc.cur_module)
 					if shadows_builtin_error {
 						shadows_builtin_error_embed = true
 					}
@@ -17343,11 +17343,7 @@ fn (tc &TypeChecker) node_value_diagnostic_pos(node_id flat.NodeId) token.Pos {
 	return closest_identifier_span(source, node.value_text(), node.pos.offset, node.pos.id) or { node.pos }
 }
 
-fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeId) {
-	tc.record_unknown_decl_type_id(flat.source_type_id(name), node_id)
-}
-
-// record_unknown_decl_type_id is the spelling-ID twin of record_unknown_decl_type.
+// record_unknown_decl_type_id reports an unknown type spelling written in a declaration.
 fn (mut tc TypeChecker) record_unknown_decl_type_id(name_id u32, node_id flat.NodeId) {
 	should_diagnose := tc.should_diagnose(node_id)
 	// Diagnostics, positions and the import tables use the spelling text.
@@ -20717,6 +20713,24 @@ fn qualify_decl_name_in_module_id(name_id u32, module_id u32) u32 {
 		return name_id
 	}
 	return flat.source_type_composition_two(.qualified, module_id, name_id)
+}
+
+// qualify_decl_name_in_module_existing_id is qualify_decl_name_in_module_id for
+// a probe: a qualified spelling that was never interned names no declaration,
+// so it is looked up instead of interned.
+fn qualify_decl_name_in_module_existing_id(name_id u32, module_name string) ?u32 {
+	if module_name == '' || module_name == 'main' || module_name == 'builtin' {
+		return name_id
+	}
+	query := flat.source_type_query(name_id)
+	if query.has(.c_prefix) || query.has(.js_prefix) {
+		return name_id
+	}
+	name := flat.source_type_name(name_id)
+	if name.starts_with('${module_name}.') {
+		return name_id
+	}
+	return flat.source_type_existing_id('${module_name}.${name}')
 }
 
 fn (tc &TypeChecker) enum_declaration_diagnostic_pos(node_id flat.NodeId) token.Pos {

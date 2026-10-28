@@ -5638,12 +5638,7 @@ fn (tc &TypeChecker) v_source_fn_has_body(name string) bool {
 
 // Lowercase C type names are parsed as calls. Resolve them after collecting
 // module declarations, so the type can live in another translated file.
-fn (tc &TypeChecker) translated_named_cast_call_name(id flat.NodeId, node flat.Node) ?string {
-	return flat.source_type_name(tc.translated_named_cast_call_name_id(id, node)?)
-}
-
-// translated_named_cast_call_name_id is translated_named_cast_call_name returning
-// the spelling id of the qualified type name.
+// translated_named_cast_call_name_id returns the spelling id of the qualified type name.
 fn (tc &TypeChecker) translated_named_cast_call_name_id(id flat.NodeId, node flat.Node) ?u32 {
 	if node.children_count != 2 || !tc.node_is_in_translated_file(id) {
 		return none
@@ -17696,12 +17691,6 @@ fn (tc &TypeChecker) call_arg_is_callee_receiver(node flat.Node, arg_id flat.Nod
 		&& receiver.pos.offset == arg.pos.offset && receiver.pos.end == arg.pos.end
 }
 
-// call_owner_has_qualified_suffix compares spellings at a textual name boundary.
-@[inline]
-fn call_owner_has_qualified_suffix(name string, suffix string) bool {
-	return call_owner_has_qualified_suffix_id(flat.source_type_id(name), flat.source_type_id(suffix))
-}
-
 // call_owner_has_qualified_suffix_id compares exact raw `.suffix` components.
 @[inline]
 fn call_owner_has_qualified_suffix_id(name_id u32, suffix_id u32) bool {
@@ -19902,8 +19891,7 @@ fn (tc &TypeChecker) generic_param_type_text(text_id u32) u32 {
 		return selected_id
 	}
 	module_name := tc.file_modules[file] or { tc.cur_module }
-	if qualified_id := flat.source_type_existing_id(qualify_decl_name_in_module(resolved_text,
-		module_name)) {
+	if qualified_id := qualify_decl_name_in_module_existing_id(resolved, module_name) {
 		if tc.type_symbol_known(qualified_id) {
 			return qualified_id
 		}
