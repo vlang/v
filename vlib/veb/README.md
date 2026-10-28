@@ -1604,6 +1604,52 @@ fn main() {
 }
 ```
 
+### Deferred responses
+
+A handler that needs to answer later, without holding the worker, returns
+`ctx.after(ms, cb, arg)`. The handler returns at once; no sooner than `ms`
+milliseconds on, `cb` runs and writes the single response. `ms <= 0` runs
+`cb` on the next timer turn. `cb` may call `after` again to re-arm the
+timer; otherwise the connection closes once `cb` returns.
+
+```v
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn done(mut ctx veb.Context, arg u64) {
+	ctx.text('late:${arg}')
+}
+
+@['/delay/:ms']
+pub fn (mut app App) delay(mut ctx Context, ms int) veb.Result {
+	return ctx.after(ms, done, u64(ms))
+}
+
+fn main() {
+	mut app := &App{}
+	veb.run[App, Context](mut app, 8080)
+}
+```
+
+Boundaries, compared with a plain handler:
+
+* `cb` runs on a dedicated timer thread, not the accept-loop worker, and
+  receives the base `Context`, not the app's wrapper type. The request is
+  still readable, but app state must travel in `arg`.
+* The timer closes the connection after the response and advertises
+  `Connection: close`, so do not pipeline another request behind a
+  deferred one. After-middleware is skipped for deferred responses.
+* Without a live client transport (unit tests, `render_request`, the SSL
+  path, which has no takeover support) `after` answers inline instead:
+  the response and its timing stay correct, on the caller's thread.
+
 ## In-process raw HTTP requests
 
 `veb.handle_raw[App, Context](mut app, request_bytes)` parses raw HTTP/1 request bytes and
