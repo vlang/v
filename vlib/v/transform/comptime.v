@@ -72,9 +72,8 @@ struct FieldMeta {
 	is_atomic          bool
 	is_mut             bool
 	is_pub             bool
+	attr_kinds         u32
 	attrs              []string
-	attributes         []AttributeMeta
-	attribute_data     RawAttributeData
 	attribute_module   string
 	indirections       int
 }
@@ -83,11 +82,38 @@ struct EnumValueMeta {
 	name             string
 	value            i64
 	value_from_c     bool
+	attr_kinds       u32
 	attrs            []string
-	attributes       []AttributeMeta
-	attribute_data   RawAttributeData
 	attribute_module string
 	enum_name        u32
+}
+
+// raw_attribute_data decodes field attribute kinds only for a reflection consumer.
+fn (fm &FieldMeta) raw_attribute_data() RawAttributeData {
+	return RawAttributeData{
+		attrs: fm.attrs
+		kinds: comptime_attribute_kinds(fm.attr_kinds, fm.attrs.len)
+	}
+}
+
+// attribute_metas materializes field attribute metadata only when requested.
+fn (fm &FieldMeta) attribute_metas() []AttributeMeta {
+	data := fm.raw_attribute_data()
+	return comptime_attribute_metas_from_raw(data.attrs, data.kinds)
+}
+
+// raw_attribute_data decodes enum attribute kinds only for a reflection consumer.
+fn (item &EnumValueMeta) raw_attribute_data() RawAttributeData {
+	return RawAttributeData{
+		attrs: item.attrs
+		kinds: comptime_attribute_kinds(item.attr_kinds, item.attrs.len)
+	}
+}
+
+// attribute_metas materializes enum attribute metadata only when requested.
+fn (item &EnumValueMeta) attribute_metas() []AttributeMeta {
+	data := item.raw_attribute_data()
+	return comptime_attribute_metas_from_raw(data.attrs, data.kinds)
 }
 
 struct VariantMeta {
@@ -3701,10 +3727,6 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 			if !from_c {
 				field_values[f.name] = val
 			}
-			raw_attributes := RawAttributeData{
-				attrs: f.attrs
-				kinds: comptime_attribute_kinds(f.attr_kinds, f.attrs.len)
-			}
 			values << EnumValueMeta{
 				name:             f.name
 				value_from_c:     from_c
@@ -3716,8 +3738,7 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 					val
 				}
 				attrs:            f.attrs.clone()
-				attributes:       comptime_attribute_metas_from_raw(raw_attributes.attrs, raw_attributes.kinds)
-				attribute_data:   raw_attributes
+				attr_kinds:       f.attr_kinds
 				attribute_module: cur_mod
 				enum_name:        qualified_id
 			}
@@ -3980,7 +4001,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 	attr_var := comptime_reflected_attributes_loop_var(node, var_name)
 	if attr_var == var_name {
 		// `$for value in value.attributes` shadows the enum value in its body.
-		return t.unroll_reflected_attributes_loop(id, attr_var, item.attribute_data, item.attribute_module, inner_vars)
+		return t.unroll_reflected_attributes_loop(id, attr_var, item.raw_attribute_data(), item.attribute_module, inner_vars)
 	}
 	if comptime_for_declares_var(node, var_name) {
 		return t.clone_node_preserving_children(node)
@@ -4002,7 +4023,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 					return t.make_string_array_literal(item.attrs)
 				}
 				'attributes' {
-					return t.make_attribute_array_literal(item.attributes)
+					return t.make_attribute_array_literal(item.attribute_metas())
 				}
 				else {}
 			}
@@ -4057,7 +4078,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 		children_count: flat.child_count(children.len)
 	})
 	if attr_var.len > 0 {
-		return t.unroll_reflected_attributes_loop(clone_id, attr_var, item.attribute_data, item.attribute_module, inner_vars)
+		return t.unroll_reflected_attributes_loop(clone_id, attr_var, item.raw_attribute_data(), item.attribute_module, inner_vars)
 	}
 	return clone_id
 }
@@ -4741,7 +4762,7 @@ fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 	}
 	value_field := t.make_named_field_init('value', value, flat.source_type_i64)
 	attrs_field := t.make_named_field_init('attrs', t.make_string_array_literal(item.attrs), flat.source_type_id('[]string'))
-	attrs_attributes_field := t.make_named_field_init('attributes', t.make_attribute_array_literal(item.attributes), flat.source_type_id('[]VAttribute'))
+	attrs_attributes_field := t.make_named_field_init('attributes', t.make_attribute_array_literal(item.attribute_metas()), flat.source_type_id('[]VAttribute'))
 	start := t.a.children.len
 	t.a.children << name_field
 	t.a.children << value_field
@@ -4778,7 +4799,7 @@ fn (mut t Transformer) make_field_data_literal(fm FieldMeta) flat.NodeId {
 		t.make_named_field_init('typ', t.make_int_literal(fm.typ_id), flat.source_type_int),
 		t.make_named_field_init('unaliased_typ', t.make_int_literal(fm.unaliased_id), flat.source_type_int),
 		t.make_named_field_init('attrs', t.make_string_array_literal(fm.attrs), flat.source_type_id('[]string')),
-		t.make_named_field_init('attributes', t.make_attribute_array_literal(fm.attributes), flat.source_type_id('[]VAttribute')),
+		t.make_named_field_init('attributes', t.make_attribute_array_literal(fm.attribute_metas()), flat.source_type_id('[]VAttribute')),
 		t.make_named_field_init('is_pub', t.make_bool_literal(fm.is_pub), flat.source_type_bool),
 		t.make_named_field_init('is_mut', t.make_bool_literal(fm.is_mut), flat.source_type_bool),
 		t.make_named_field_init('is_embed', t.make_bool_literal(fm.is_embed), flat.source_type_bool),
@@ -4938,8 +4959,8 @@ fn (t &Transformer) subtree_has_unsupported_late_generic(id flat.NodeId) bool {
 struct FieldDeclMeta {
 	is_mut     bool
 	is_pub     bool
-	attrs      []string
 	attr_kinds u32 // see flat.Node.attribute_kinds_id
+	attrs      []string
 }
 
 // comptime_field_metas derives FieldData for every field of the concrete struct type.
@@ -5258,10 +5279,6 @@ fn (t &Transformer) field_meta_for(name string, ftyp_id u32, resolved_typ_id u32
 	unaliased_core_id := comptime_strip_field_wrappers(unaliased_source_id)
 	unaliased_shape := flat.source_type_shape(unaliased_core_id)
 	is_alias := t.field_type_is_alias(core_id, decl_module)
-	raw_attributes := RawAttributeData{
-		attrs: extra.attrs
-		kinds: comptime_attribute_kinds(extra.attr_kinds, extra.attrs.len)
-	}
 	return FieldMeta{
 		name:               name
 		typ:                ftyp_id
@@ -5283,8 +5300,7 @@ fn (t &Transformer) field_meta_for(name string, ftyp_id u32, resolved_typ_id u32
 		is_mut:             extra.is_mut
 		is_pub:             extra.is_pub
 		attrs:              extra.attrs
-		attributes:         comptime_attribute_metas_from_raw(raw_attributes.attrs, raw_attributes.kinds)
-		attribute_data:     raw_attributes
+		attr_kinds:         extra.attr_kinds
 		attribute_module:   decl_module
 		indirections:       indir
 	}
@@ -5558,7 +5574,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		} else {
 			t.clone_field_subst_children(node, var_name, fm, inner_vars) or { return none }
 		}
-		return t.unroll_reflected_attributes_loop(loop_id, attr_var, fm.attribute_data, fm.attribute_module, inner_vars)
+		return t.unroll_reflected_attributes_loop(loop_id, attr_var, fm.raw_attribute_data(), fm.attribute_module, inner_vars)
 	}
 	if comptime_for_declares_var(node, var_name) {
 		return t.clone_node_preserving_children_with_type(node, t.clone_field_subst_type(node, var_name, fm))
@@ -6293,7 +6309,7 @@ fn (mut t Transformer) field_member_value(member string, fm FieldMeta) ?flat.Nod
 		'is_pub' { t.make_bool_literal(fm.is_pub) }
 		'indirections' { t.make_int_literal(fm.indirections) }
 		'attrs' { t.make_string_array_literal(fm.attrs) }
-		'attributes' { t.make_attribute_array_literal(fm.attributes) }
+		'attributes' { t.make_attribute_array_literal(fm.attribute_metas()) }
 		'typ' { t.make_int_literal(fm.typ_id) }
 		'unaliased_typ' { t.make_int_literal(fm.unaliased_id) }
 		else {
