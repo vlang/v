@@ -2,6 +2,7 @@ module sse
 
 import veb
 import net
+import net.http
 import strings
 
 // This module implements the server side of `Server Sent Events`.
@@ -59,27 +60,25 @@ pub fn start_connection(mut ctx veb.Context) &SSEConnection {
 	}
 }
 
+// encode serializes the message to the SSE wire format. It delegates to the
+// shared `http.SSEEvent` encoder, so `veb.sse` frames events exactly like
+// every other SSE producer in vlib.
+pub fn (m SSEMessage) encode() string {
+	return http.SSEEvent{
+		id:    m.id
+		event: m.event
+		data:  m.data
+		retry: m.retry
+	}.encode()
+}
+
 // send_message sends a single message to the http client that listens for SSE.
 // It does not close the connection, so you can use it many times in a loop.
 pub fn (mut sse SSEConnection) send_message(message SSEMessage) ! {
 	if sse.conn == unsafe { nil } {
 		return error('SSE connection is not available (no TCP connection)')
 	}
-	mut sb := strings.new_builder(512)
-	if message.id != '' {
-		sb.write_string('id: ${message.id}\n')
-	}
-	if message.event != '' {
-		sb.write_string('event: ${message.event}\n')
-	}
-	if message.data != '' {
-		sb.write_string('data: ${message.data}\n')
-	}
-	if message.retry != 0 {
-		sb.write_string('retry: ${message.retry}\n')
-	}
-	sb.write_string('\n')
-	sse.conn.write(sb)!
+	sse.conn.write(message.encode().bytes())!
 }
 
 // send a 'close' event and close the tcp connection.
