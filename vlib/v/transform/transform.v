@@ -14284,6 +14284,86 @@ fn (mut t Transformer) selected_sizeof_value_type(name string) ?u32 {
 	return t.tc.type_name(typ)
 }
 
+// transform_live_expr rewrites native live calls and references in the cold reload path.
+@[direct_array_access]
+fn (mut t Transformer) transform_live_expr(id flat.NodeId) ?flat.NodeId {
+	if !t.should_rewrite_live_calls() {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	// Live reload: rewrite calls/references to @[live] functions into calls
+	// through their __live_<mangled> function pointers.
+	if node.kind == .call && node.children_count >= 1 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .ident {
+			if mangled := t.live_fns[callee.value_text()] {
+				mut args := []flat.NodeId{}
+				for i in 1 .. node.children_count {
+					arg := t.a.child(&node, i)
+					mut arg_node := t.a.nodes[int(arg)]
+					arg_node.is_mut = false
+					args << t.transform_expr(t.a.add_node(arg_node))
+				}
+				lhs := t.make_ident('live_${mangled}')
+				t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
+				start := t.a.children.len
+				t.a.children << lhs
+				for arg_id in args {
+					t.a.children << arg_id
+				}
+				return t.a.add_node(flat.Node{
+					kind:           .call
+					children_start: start
+					children_count: flat.child_count(1 + args.len)
+				})
+			}
+		} else if callee.kind == .selector {
+			receiver_id := t.a.child(callee, 0)
+			method_name := t.tc.resolved_call_name(id) or {
+				t.resolve_receiver_method_name(receiver_id, callee.value_text())
+			}
+			if mangled := t.live_methods[method_name] {
+				mut args := []flat.NodeId{}
+				mut receiver := t.transform_expr(receiver_id)
+				actual_pointer := flat.source_type_shape(t.node_type(receiver_id)).has(.pointer)
+				reference := t.method_receiver_is_reference(id, receiver_id, callee.value_text())
+				if reference && !actual_pointer {
+					receiver = t.make_prefix(.amp, receiver)
+				} else if !reference && actual_pointer {
+					receiver = t.make_prefix(.mul, receiver)
+				}
+				args << receiver
+				for i in 1 .. node.children_count {
+					arg := t.a.child(&node, i)
+					mut arg_node := t.a.nodes[int(arg)]
+					arg_node.is_mut = false
+					args << t.transform_expr(t.a.add_node(arg_node))
+				}
+				lhs := t.make_ident('live_${mangled}')
+				t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
+				start := t.a.children.len
+				t.a.children << lhs
+				for arg_id in args {
+					t.a.children << arg_id
+				}
+				return t.a.add_node(flat.Node{
+					kind:           .call
+					children_start: start
+					children_count: flat.child_count(1 + args.len)
+				})
+			}
+		}
+	}
+	if node.kind == .ident {
+		if mangled := t.live_fns[node.value_text()] {
+			id2 := t.make_ident('live_${mangled}')
+			t.set_node_typ(int(id2), flat.source_type_id('voidptr'))
+			return id2
+		}
+	}
+	return none
+}
+
 // transform_expr transforms transform expr data for transform.
 @[direct_array_access]
 pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
@@ -14295,80 +14375,12 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 			return result
 		}
 	}
-	node := t.a.nodes[int(id)]
-
-	if t.live_reload_runtime && t.should_rewrite_live_calls() {
-		// Live reload: rewrite calls/references to @[live] functions into calls
-		// through their __live_<mangled> function pointers.
-		if node.kind == .call && node.children_count >= 1 {
-			callee := t.a.child_node(&node, 0)
-			if callee.kind == .ident {
-				if mangled := t.live_fns[callee.value_text()] {
-					mut args := []flat.NodeId{}
-					for i in 1 .. node.children_count {
-						arg := t.a.child(&node, i)
-						mut arg_node := t.a.nodes[int(arg)]
-						arg_node.is_mut = false
-						args << t.transform_expr(t.a.add_node(arg_node))
-					}
-					lhs := t.make_ident('live_${mangled}')
-					t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
-					start := t.a.children.len
-					t.a.children << lhs
-					for arg_id in args {
-						t.a.children << arg_id
-					}
-					return t.a.add_node(flat.Node{
-						kind:           .call
-						children_start: start
-						children_count: flat.child_count(1 + args.len)
-					})
-				}
-			} else if callee.kind == .selector {
-				receiver_id := t.a.child(callee, 0)
-				method_name := t.tc.resolved_call_name(id) or {
-					t.resolve_receiver_method_name(receiver_id, callee.value_text())
-				}
-				if mangled := t.live_methods[method_name] {
-					mut args := []flat.NodeId{}
-					mut receiver := t.transform_expr(receiver_id)
-					actual_pointer := flat.source_type_shape(t.node_type(receiver_id)).has(.pointer)
-					reference := t.method_receiver_is_reference(id, receiver_id, callee.value_text())
-					if reference && !actual_pointer {
-						receiver = t.make_prefix(.amp, receiver)
-					} else if !reference && actual_pointer {
-						receiver = t.make_prefix(.mul, receiver)
-					}
-					args << receiver
-					for i in 1 .. node.children_count {
-						arg := t.a.child(&node, i)
-						mut arg_node := t.a.nodes[int(arg)]
-						arg_node.is_mut = false
-						args << t.transform_expr(t.a.add_node(arg_node))
-					}
-					lhs := t.make_ident('live_${mangled}')
-					t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
-					start := t.a.children.len
-					t.a.children << lhs
-					for arg_id in args {
-						t.a.children << arg_id
-					}
-					return t.a.add_node(flat.Node{
-						kind:           .call
-						children_start: start
-						children_count: flat.child_count(1 + args.len)
-					})
-				}
-			}
-		}
-		if node.kind == .ident {
-			if mangled := t.live_fns[node.value_text()] {
-				id2 := t.make_ident('live_${mangled}')
-				t.set_node_typ(int(id2), flat.source_type_id('voidptr'))
-				return id2
-			}
+	if t.live_reload_runtime {
+		if rewritten := t.transform_live_expr(id) {
+			return rewritten
 		}
 	}
+	node := t.a.nodes[int(id)]
 	if node.kind == .string_literal && node.children_count == 1
 		&& node.value_text() in ['__v3_comptime_zero', '__v3_comptime_new'] {
 		if target_source_id := t.comptime_type_expr_type(t.a.child(&node, 0)) {
