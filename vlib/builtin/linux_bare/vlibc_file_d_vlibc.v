@@ -59,7 +59,7 @@ $if !i386 {
 	// vlibc_stat returns file metadata, following symbolic links.
 	pub fn vlibc_stat(path string) (VlibcStat, VlibcErrno) {
 		mut stx := VlibcStatx{}
-		e := vlibc_sys_statx(-100, path.str, 0x100, 0x7ff, &stx)
+		e := vlibc_sys_statx(-100, path.str, 0, 0x7ff, &stx)
 		if e != .enoerror {
 			return VlibcStat{}, e
 		}

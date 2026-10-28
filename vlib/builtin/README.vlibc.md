@@ -19,7 +19,9 @@ FreeBSD and DragonFly join through kernel-published exit state. OpenBSD uses `__
 `__threxit`; current OpenBSD syscall-pinning policies may restrict raw syscall executables.
 NetBSD uses shared-memory clone processes and reaps each clone before releasing its stack.
 Solaris selects its own amd64 syscall runtime; its thread creation helper returns `enosys`.
+Its socket helpers use transports registered with the kernel; legacy netconfig fallback is absent.
 
 Run `./v vlib/v/tests/vlibc_linux_test.v` on Linux or
 `./v vlib/v/tests/vlibc_bsd_test.v` on a matching BSD/macOS host for the runtime regressions.
+Use `./v vlib/v/tests/vlibc_solaris_test.v` on Solaris for files, descriptors, and sockets.
 Cross-compilation can check generated assembly but does not validate the target kernel ABI.
