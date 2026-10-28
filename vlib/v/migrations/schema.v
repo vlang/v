@@ -52,7 +52,8 @@ pub:
 }
 
 // Table describes a table for Context.create_table. An auto-incrementing
-// bigint `id` primary key is added unless id is false.
+// bigint `id` primary key is added unless id is false. options is inserted
+// verbatim and should contain trusted SQL.
 pub struct Table {
 pub:
 	name          string
@@ -61,7 +62,7 @@ pub:
 	id            bool   = true
 	id_name       string = 'id'
 	if_not_exists bool
-	options       string // Raw SQL appended verbatim after (...) in CREATE TABLE
+	options       string // optional raw SQL table options appended after the column list
 }
 
 // Index describes an index for Context.add_index.

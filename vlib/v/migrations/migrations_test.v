@@ -3139,10 +3139,25 @@ fn test_create_table_with_options_sqlite() {
 	mut ctx := new_context(recorder, .sqlite)
 	ctx.create_table(Table{
 		name:    'users'
+		options: 'STRICT'
+	})!
+	// SQLite rejects AUTOINCREMENT on WITHOUT ROWID tables, so that option
+	// needs an explicit non-autoincrement primary key.
+	ctx.create_table(Table{
+		name:    'kv'
+		id:      false
 		options: 'WITHOUT ROWID, STRICT'
+		columns: [
+			Column{
+				name:        'k'
+				kind:        .text
+				primary_key: true
+			},
+		]
 	})!
 	assert recorder.queries == [
-		'CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT) WITHOUT ROWID, STRICT;',
+		'CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT) STRICT;',
+		'CREATE TABLE "kv" ("k" TEXT PRIMARY KEY NOT NULL) WITHOUT ROWID, STRICT;',
 	]
 }
 
