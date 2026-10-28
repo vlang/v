@@ -13172,6 +13172,7 @@ pub fn run(args []string) {
 				'dragonfly' { 'dragonfly_bare' }
 				'macos', 'darwin' { 'macos_bare' }
 				'android', 'termux' { 'linux_bare' }
+				'vinix' { 'linux_bare' }
 				else { 'linux_bare' }
 			}
 			dir := os.join_path(builtin_dir, candidate)
