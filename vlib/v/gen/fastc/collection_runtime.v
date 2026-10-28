@@ -5,9 +5,7 @@ import v.flat
 // Ordinary FastC programs do not compile the builtin module. These helpers supply
 // the collection operations used by the shared expression lowerings.
 fn (g &Parser) collection_runtime_type(typ_source_id u32) string {
-	typ := flat.source_type_name(typ_source_id)
-	runtime_type := fastc_runtime_c_type(typ)
-	return fastc_output_c_type(runtime_type)
+	return fastc_output_c_type(flat.source_type_name(fastc_runtime_c_type_id(typ_source_id)))
 }
 
 fn (g &Parser) collection_storage_type(typ_source_id u32) string {

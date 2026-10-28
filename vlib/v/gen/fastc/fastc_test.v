@@ -312,7 +312,7 @@ fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	mut functions := map[string]FastcFunctionSignature{}
-	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[string]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut functions) or { panic(err) }
+	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[u32]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut functions) or { panic(err) }
 	signature := functions['pair'] or { panic('missing pair signature') }
 	assert signature.parameter_types_text() == ['int', 'int']
 }
@@ -1083,7 +1083,7 @@ fn test_fastc_overlap_workers_honor_serial_preferences() {
 	for name in ['a', 'b', 'c', 'd'] {
 		functions[name] = FastcFunctionSignature{}
 	}
-	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]string{}, map[string]bool{}, map[string][]FastcStructField{}, map[string]bool{}, false, prefs)
+	mut pending_dispatches := fastc_start_interface_dispatches(map[u32]FastcDeclaredTypeKind{}, functions, map[string]string{}, map[string]bool{}, map[string][]FastcStructField{}, map[string]bool{}, false, prefs)
 	assert pending_dispatches.workers.len == 0
 	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
 }

@@ -40,11 +40,14 @@ fn shape_scratch() string {
 
 fn shape_enter_workspace() {
 	root := shape_scratch()
-	os.mkdir_all(root) or { panic(err) }
 	// Child builds inherit both from this process. temp_dir() prefers TMPDIR
 	// over TEMP on every platform, and an explicit VJOBS stops a nested build
-	// from multiplying this suite's own parallelism.
-	os.setenv('TMPDIR', os.join_path(root, 'vtmp'), true)
+	// from multiplying this suite's own parallelism. The directory has to exist:
+	// a child that inherits VTMP from `v test` does not create it, and the C
+	// compiler cannot write its temporary files there.
+	tmp_dir := os.join_path(root, 'vtmp')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	os.setenv('TMPDIR', tmp_dir, true)
 	os.setenv('VJOBS', '2', true)
 }
 

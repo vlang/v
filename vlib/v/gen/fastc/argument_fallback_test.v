@@ -23,8 +23,8 @@ fn fastc_argument_fallback_parser(selfhost bool, translated bool, mode int) Pars
 		numeric_ops_are_builtin: true
 		primitive_cmps_builtin:  true
 		declared_kinds:          {
-			'Record': .struct_
-			'Mode':   .enum_
+			flat.source_type_id('Record'): .struct_
+			flat.source_type_id('Mode'):   .enum_
 		}
 		struct_fields:           {
 			'Record': record_fields

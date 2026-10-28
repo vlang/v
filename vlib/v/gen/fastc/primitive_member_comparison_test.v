@@ -55,19 +55,19 @@ fn fastc_member_comparison_parser(source string, allow bool) Parser {
 		last_multi_return_types:  flat.TypeTextList.from_names(['int', 'string'])
 		last_option_value_type:   flat.source_type_string
 		declared_types:           {
-			'Mode':         true
-			'PointerMode':  true
-			'Shade':        true
-			'PointerShade': true
+			flat.source_type_id('Mode'):         true
+			flat.source_type_id('PointerMode'):  true
+			flat.source_type_id('Shade'):        true
+			flat.source_type_id('PointerShade'): true
 		}
 		declared_kinds:           {
-			'Record':       .struct_
-			'Alias':        .alias_
-			'Iface':        .interface_
-			'Mode':         .enum_
-			'PointerMode':  .enum_
-			'Shade':        .alias_
-			'PointerShade': .alias_
+			flat.source_type_id('Record'):       .struct_
+			flat.source_type_id('Alias'):        .alias_
+			flat.source_type_id('Iface'):        .interface_
+			flat.source_type_id('Mode'):         .enum_
+			flat.source_type_id('PointerMode'):  .enum_
+			flat.source_type_id('Shade'):        .alias_
+			flat.source_type_id('PointerShade'): .alias_
 		}
 		alias_base_types:         aliases
 		struct_fields:            {

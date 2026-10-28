@@ -23,6 +23,18 @@ const scope_signature = [
 	'#module Square=main',
 ].join('\n')
 
+fn test_interface_scope_module_facts_keep_exact_numeric_names_and_last_value() {
+	short_id := flat.source_type_id('DriverScopeNumeric')
+	generic_id := flat.source_type_id('DriverScopeNumeric[int]')
+	scopes := parse_v3_interface_scopes('#module DriverScopeNumeric=first\n#module DriverScopeNumeric=second\n#module DriverScopeNumeric[int]=generic\n#module EmptyOwner=')
+	assert scopes.modules[short_id] == 'second'
+	assert scopes.modules[generic_id] == 'generic'
+	assert scopes.declaring_module(short_id) == 'second'
+	assert scopes.declaring_module(generic_id) == 'generic'
+	assert scopes.declaring_module(flat.source_type_id('EmptyOwner')) == ''
+	assert scopes.declaring_module(flat.source_type_id('UnknownDriverScopeNumeric')) == '?'
+}
+
 fn visible_modules(names ...string) map[string]bool {
 	mut visible := map[string]bool{}
 	visible['builtin'] = true
@@ -179,7 +191,7 @@ fn test_interface_scopes_split_generic_names_at_the_right_commas() {
 	assert flat.source_type_name(v3_interface_line_name('#module Box=main')) == '#module Box'
 	scopes := parse_v3_interface_scopes('lists.Seq[K, V]=lists.Pair[K, V],Mine[int, string]\n#module Mine[int, string]=main\n#reach Mine[int, string]=lists.Seq[K, V]')
 	assert flat.TypeTextList{ ids: scopes.names }.names() == ['lists.Seq[K, V]']
-	assert scopes.modules['Mine[int, string]'] == 'main'
+	assert scopes.modules[flat.source_type_id('Mine[int, string]')] == 'main'
 	assert scopes.declaring_module(flat.source_type_id('lists.Seq[K, V]')) == 'lists'
 	assert scopes.module_signature(visible_modules('lists')) == 'lists.Seq[K, V]=lists.Pair[K, V],Mine[int, string]'
 	assert scopes.module_signature(visible_modules()) == ''

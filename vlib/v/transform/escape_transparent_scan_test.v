@@ -77,7 +77,7 @@ fn test_transparent_escape_scan_reloads_children_after_reflected_ast_growth() {
 	receiver := a.add_node(flat.Node{ kind: .param, op: .dot, value: 'self', typ: flat.source_type_id('App') })
 	transparent_escape_node(mut a, flat.Node{ kind: .fn_decl, value: 'App.first', typ: flat.source_type_int }, [receiver])
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['App'] = []types.StructField{}
+	tc.structs[flat.source_type_id('App')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	body_assign := t.make_assign(t.make_ident('alias'), t.make_ident('reflected'))

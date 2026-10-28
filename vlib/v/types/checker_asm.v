@@ -223,16 +223,17 @@ fn (tc &TypeChecker) inline_asm_intel_operand_width(typ Type) ?int {
 }
 
 fn (tc &TypeChecker) inline_asm_enum_backing_width(name_id u32) int {
-	name := flat.source_type_name(name_id)
+	name_syntax := flat.source_type_syntax(name_id)
+	short_name_id := name_syntax.unqualified()
+	is_qualified := flat.source_type_shape(name_id).has(.dotted)
 	for index in tc.top_level_idx {
 		decl := tc.a.nodes[index]
-		if decl.kind != .enum_decl || decl.value != name.all_after_last('.') {
+		if decl.kind != .enum_decl || !inline_asm_enum_decl_is_named(decl.value, short_name_id) {
 			continue
 		}
 		file := tc.a.source_files[decl.pos.id] or { continue }
 		module_name := tc.file_modules[file.name] or { '' }
-		qualified := qualify_decl_name_in_module(decl.value, module_name)
-		if name.contains('.') && qualified != name {
+		if is_qualified && !inline_asm_enum_module_is_qualifier(module_name, name_syntax.qualifier()) {
 			continue
 		}
 		if decl.enum_backing_type_id() != 0 {
@@ -245,17 +246,37 @@ fn (tc &TypeChecker) inline_asm_enum_backing_width(name_id u32) int {
 	return 32
 }
 
+// inline_asm_enum_decl_is_named reports whether an enum declared as `name` is
+// named `short_name_id`. A name that was never interned names no enum.
+fn inline_asm_enum_decl_is_named(name string, short_name_id u32) bool {
+	decl_name_id := flat.source_type_existing_id(name) or { return false }
+	return decl_name_id == short_name_id
+}
+
+// inline_asm_enum_module_is_qualifier reports whether an enum declared in
+// `module_name` under the short name of a dotted spelling is qualified as that
+// spelling, whose part before its last dot is `qualifier_id`. Declarations in
+// `main` and `builtin` keep their short name, which no dotted spelling equals.
+fn inline_asm_enum_module_is_qualifier(module_name string, qualifier_id u32) bool {
+	if module_name == '' || module_name == 'main' || module_name == 'builtin' {
+		return false
+	}
+	module_id := flat.source_type_existing_id(module_name) or { return false }
+	return module_id == qualifier_id
+}
+
 fn (tc &TypeChecker) inline_asm_enum_backing_type(name_id u32) Type {
-	name := flat.source_type_name(name_id)
+	name_syntax := flat.source_type_syntax(name_id)
+	short_name_id := name_syntax.unqualified()
+	is_qualified := flat.source_type_shape(name_id).has(.dotted)
 	for index in tc.top_level_idx {
 		decl := tc.a.nodes[index]
-		if decl.kind != .enum_decl || decl.value != name.all_after_last('.') {
+		if decl.kind != .enum_decl || !inline_asm_enum_decl_is_named(decl.value, short_name_id) {
 			continue
 		}
 		file := tc.a.source_files[decl.pos.id] or { continue }
 		module_name := tc.file_modules[file.name] or { '' }
-		qualified := qualify_decl_name_in_module(decl.value, module_name)
-		if name.contains('.') && qualified != name {
+		if is_qualified && !inline_asm_enum_module_is_qualifier(module_name, name_syntax.qualifier()) {
 			continue
 		}
 		if decl.enum_backing_type_id() != 0 {

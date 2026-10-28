@@ -14,6 +14,32 @@ struct V3RusageInfo {
 	ri_phys_footprint     u64
 	ri_proc_start_abstime u64
 	ri_proc_exit_abstime  u64
+	// The fields below are only filled by RUSAGE_INFO_V4 and later.
+	ri_child_user_time               u64
+	ri_child_system_time             u64
+	ri_child_pkg_idle_wkups          u64
+	ri_child_interrupt_wkups         u64
+	ri_child_pageins                 u64
+	ri_child_elapsed_abstime         u64
+	ri_diskio_bytesread              u64
+	ri_diskio_byteswritten           u64
+	ri_cpu_time_qos_default          u64
+	ri_cpu_time_qos_maintenance      u64
+	ri_cpu_time_qos_background       u64
+	ri_cpu_time_qos_utility          u64
+	ri_cpu_time_qos_legacy           u64
+	ri_cpu_time_qos_user_initiated   u64
+	ri_cpu_time_qos_user_interactive u64
+	ri_billed_system_time            u64
+	ri_serviced_system_time          u64
+	ri_logical_writes                u64
+	ri_lifetime_max_phys_footprint   u64
+	ri_instructions                  u64
+	ri_cycles                        u64
+	ri_billed_energy                 u64
+	ri_serviced_energy               u64
+	ri_interval_max_phys_footprint   u64
+	ri_runnable_time                 u64
 }
 
 @[c_extern]
