@@ -491,12 +491,12 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			finish_route[A, X](app, mut user_context, route, url.path, not_found,
 				middleware_has_sent_response)
 		}
-	// Free the handler slots a throttle took for this request on every way
-	// out, including the 404 and refusing-middleware paths that skip the
-	// after-middleware above.
-	if user_context.Context.throttle_leases.len > 0 {
-		user_context.Context.release_throttle_leases()
-	}
+		// Free the handler slots a throttle took for this request on every way
+		// out, including the 404 and refusing-middleware paths that skip the
+		// after-middleware above.
+		if user_context.Context.throttle_leases.len > 0 {
+			user_context.Context.release_throttle_leases()
+		}
 	}
 
 	is_root_path := url.path.len == 0 || url.path == '/'
@@ -750,7 +750,6 @@ fn finish_route[A, X](app &A, mut user_context X, route Route, path string, not_
 		// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
 	}
 	// Context.takeover_mode is set, so the user must send a response.
-
 }
 
 // RouteMatch holds runtime routing work shared by all controller types. Only the

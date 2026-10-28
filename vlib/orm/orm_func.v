@@ -1179,7 +1179,7 @@ fn row_primitive_to_time(value Primitive) time.Time {
 }
 
 @[noinline]
-fn row_primitive_to_time_string(value Primitive) time.Time {
+fn row_primitive_to_time_string(value Primitive) !time.Time {
 	return time.parse(value as string)!
 }
 
@@ -1248,7 +1248,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							if mapped.typ == time_ {
 								embedded.$(sub.name) = row_primitive_to_time(value)
 							} else if mapped.typ == type_string {
-								embedded.$(sub.name) = row_primitive_to_time_string(value)
+								embedded.$(sub.name) = row_primitive_to_time_string(value)!
 							}
 						}
 					}
@@ -1296,7 +1296,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 						if mapped.typ == time_ {
 							instance.$(field.name) = row_primitive_to_time(value)
 						} else if mapped.typ == type_string {
-							instance.$(field.name) = row_primitive_to_time_string(value)
+							instance.$(field.name) = row_primitive_to_time_string(value)!
 						}
 					}
 				}
