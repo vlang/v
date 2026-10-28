@@ -133,7 +133,7 @@ $if !i386 {
 
 	// vlibc_write_file writes all bytes, retries interruptions, and reports close failures.
 	pub fn vlibc_write_file(path string, data []u8) VlibcErrno {
-		fd, e := vlibc_open(path, 0x241, 0o644) // O_WRONLY|O_CREAT|O_TRUNC
+		fd, e := vlibc_open(path, 0x241, 0o666) // O_WRONLY|O_CREAT|O_TRUNC
 		if e != .enoerror {
 			return e
 		}
