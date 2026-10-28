@@ -108,6 +108,9 @@ pub:
 	build_date      string
 	build_time      string
 	build_timestamp string
+pub mut:
+	// hot_fn extracts raw machine code for a single function only (hot reload).
+	hot_fn string
 }
 
 // without_excluded returns files, minus the ones matched by a `-exclude` pattern.
@@ -261,7 +264,7 @@ pub fn option_may_consume_value(option string) bool {
 		'-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude', '-file-list',
 		'-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
 		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
-		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-d', '-define', '-message-limit', '-thread-stack-size', '-hot-fn', '-cc', '-c++',
 		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend', '-compile-backend',
 		'--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix',
 		'-cmain', '-line-info', '-memory-limit', '--memory-limit']

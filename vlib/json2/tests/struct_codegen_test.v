@@ -36,6 +36,27 @@ fn main() {
 }
 '
 
+const shared_json5_setup_program = "import json2
+
+struct First {
+	id int
+}
+
+struct Second {
+	name string
+}
+
+struct Third {
+	enabled bool
+}
+
+fn main() {
+	_ := json2.decode[First]('{}', json5: true) or { First{} }
+	_ := json2.decode[Second]('{}', json5: true) or { Second{} }
+	_ := json2.decode[Third]('{}', json5: true) or { Third{} }
+}
+"
+
 fn generated_c(name string, source string) string {
 	dir := os.join_path(os.vtmp_dir(), 'json2_struct_codegen_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
@@ -62,4 +83,12 @@ fn test_struct_without_embeds_does_not_specialize_embed_decoding() {
 fn test_struct_with_embeds_uses_embed_decoding() {
 	c := generated_c('embedding', embedding_struct_program)
 	assert c.contains('decode_struct_key')
+}
+
+fn test_json5_parser_setup_is_shared_across_decoded_types() {
+	c := generated_c('shared_json5_setup', shared_json5_setup_program)
+	// The prototype, the one shared setup call, and the definition. Before the
+	// setup was shared, every decode[T] cloned another complete Json5Parser setup.
+	count := c.count('json2__new_json5_scanner(')
+	assert count > 0 && count <= 3, count.str()
 }

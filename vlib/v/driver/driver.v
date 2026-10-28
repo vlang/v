@@ -4143,7 +4143,14 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		// The program brings its own `_start`, syscalls and allocator (see
 		// vlib/builtin/linux_bare), so it links nothing from the host.
 		if !options.is_o && !options.is_shared {
-			after_inputs << ['-static', '-nostdlib']
+			if options.target_os == 'macos' {
+				// macOS cannot link static binaries and always starts via dyld,
+				// so a freestanding macOS program still links libSystem (which
+				// also provides pthread_create for vlibc threads).
+				after_inputs << ['-lSystem']
+			} else {
+				after_inputs << ['-static', '-nostdlib']
+			}
 			// `-nostdlib` also drops TinyCC's own runtime, whose helpers (like
 			// `__builtin_clz`) the generated code calls; they do not need libc.
 			if options.is_tcc {
@@ -4539,7 +4546,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|x64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|x64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn normalize_backend_name(name string) string {
@@ -4638,9 +4645,12 @@ fn transform_helper_scopes_fit_retention_budget(scopes []voidptr) bool {
 }
 
 fn should_parallel_monomorphize() bool {
-	// TinyCC-built compilers can corrupt the heap during parallel merges.
+	// Parallel merges are covered for TinyCC builds on Linux/amd64. Other
+	// TinyCC targets keep the serial path until their merges are validated.
 	$if tinyc {
-		return false
+		$if !linux || !amd64 {
+			return false
+		}
 	}
 	// Nested generic-interface dispatch still needs serial specialization by
 	// default. Keep parallel merges opt-in until that regression is resolved.
@@ -10700,11 +10710,11 @@ fn parse_memory_limit(value string) !i64 {
 
 fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-e', '-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
-		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
-		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files', '-icon',
-		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix', '-memory-limit',
-		'--memory-limit']
+		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-hot-fn', '-path',
+		'-cov', '-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project',
+		'-test-runner', '-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude',
+		'-dump-files', '-icon', '--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix',
+		'-memory-limit', '--memory-limit']
 }
 
 // format_v3_dumped_c_flags keeps value-taking flags on one line with their value, as V 0.5.2
@@ -11424,6 +11434,7 @@ pub fn run(args []string) {
 	mut is_shared := false
 	mut is_livemain := false
 	mut is_liveshared := false
+	mut hot_fn := ''
 	mut subsystem := pref.Subsystem.auto
 	mut icon_path := ''
 	mut is_strict := false
@@ -11762,6 +11773,10 @@ pub fn run(args []string) {
 		} else if args[i] == '-thread-stack-size' && i + 1 < args.len {
 			thread_stack_size = args[i + 1].int()
 			thread_stack_size_set = true
+			i += 2
+		} else if args[i] == '-hot-fn' && i + 1 < args.len {
+			hot_fn = args[i + 1]
+			no_cache = true
 			i += 2
 		} else if args[i] in ['-cov', '-coverage'] && i + 1 < args.len {
 			coverage_dir = os.real_path(args[i + 1])
@@ -12191,7 +12206,9 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	if is_o && (backend !in ['c', 'fastc'] || !explicit_output
+	native_linux_object := backend == 'arm64' && target_os == 'linux' && explicit_output
+		&& output_file.ends_with('.o')
+	if is_o && !native_linux_object && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
 		eprintln('option `-is_o` requires the C backend and an explicit `.c` or `.o` output file')
 		exit(1)
@@ -12368,6 +12385,10 @@ pub fn run(args []string) {
 	if backend !in ['c', 'fastc', 'arm64', 'x64', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
 		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, x64, wasm, or eval')
+		exit(1)
+	}
+	if hot_fn != '' && backend != 'arm64' {
+		eprintln('option -hot-fn requires the ARM64 backend')
 		exit(1)
 	}
 	if backend == 'arm64' && target_os != 'macos' && 'no_gettid' !in user_defines {
@@ -12901,6 +12922,7 @@ pub fn run(args []string) {
 	prefs.is_livemain = is_livemain
 	prefs.is_liveshared = is_liveshared
 	prefs.is_shared = is_shared
+	prefs.hot_fn = hot_fn
 	prefs.subsystem = subsystem
 	prefs.no_builtin = no_builtin
 	prefs.no_preludes = no_preludes
@@ -13389,7 +13411,24 @@ pub fn run(args []string) {
 		bare_dir := if bare_builtin_dir.len > 0 {
 			bare_builtin_dir
 		} else {
-			os.join_path(builtin_dir, 'linux_bare')
+			// Per-OS freestanding runtime. Each OS has its own syscall ABI, so a
+			// dedicated bare directory is used when present; linux_bare is the
+			// reference implementation and the fallback for platforms without a
+			// dedicated one yet (experimental).
+			os_name := prefs.target.os
+			candidate := match os_name {
+				'freebsd' { 'freebsd_bare' }
+				'openbsd' { 'openbsd_bare' }
+				'netbsd' { 'netbsd_bare' }
+				'dragonfly' { 'dragonfly_bare' }
+				'macos', 'darwin' { 'macos_bare' }
+				'android', 'termux' { 'linux_bare' }
+				'solaris' { 'solaris_bare' }
+				'vinix' { 'linux_bare' }
+				else { 'linux_bare' }
+			}
+			dir := os.join_path(builtin_dir, candidate)
+			if os.is_dir(dir) { dir } else { os.join_path(builtin_dir, 'linux_bare') }
 		}
 		builtin_files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(bare_dir,
 			builtin_defines, prefs.backend, prefs.target))
@@ -13646,6 +13685,26 @@ pub fn run(args []string) {
 		[]string{}
 	}
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
+	$if !skip_arm64 ? {
+		if backend == 'arm64' {
+			live_reload_source := v3_live_reload_source(p.a, input_file, prefs.vexe, v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
+			if live_reload_source != '' {
+				enable_globals_compat = true
+				prefs.enable_globals = true
+				live_reload_file := os.join_path(os.vtmp_dir(), 'v3_live_reload_${os.getpid()}.v')
+				os.write_file(live_reload_file, live_reload_source) or {
+					eprintln(err)
+					exit(1)
+				}
+				live_reload_os_file := os.join_path(os.vtmp_dir(), 'v3_live_reload_os_${os.getpid()}.v')
+				os.write_file(live_reload_os_file, v3_live_reload_os_shim(target.os)) or {
+					eprintln(err)
+					exit(1)
+				}
+				parse_files_dispatch_profiled(mut p, [live_reload_file, live_reload_os_file], false, mut parse_timing)
+			}
+		}
+	}
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
 		&& parsed_files_import_linux_gg(mut a, user_files) {
@@ -16091,6 +16150,7 @@ pub fn run(args []string) {
 				thread_stack_size: prefs.thread_stack_size
 				test_files:        test_files
 				test_run_only:     run_only
+				hot_fn:            prefs.hot_fn
 			})
 			b.step('ssa build')
 			b.metric('SSA values before optimize', m.values.len, 'values')
@@ -16110,7 +16170,31 @@ pub fn run(args []string) {
 			g.gen()
 			b.step('arm64 gen')
 
-			g.write_and_link(bin_file)
+			// Hot code reloading: write raw machine code for a single function
+			// instead of linking an executable.
+			if prefs.hot_fn.len > 0 {
+				code := g.extract_function(prefs.hot_fn)
+				if code.len == 0 {
+					eprintln('hot-fn: could not extract "${prefs.hot_fn}"')
+					exit(1)
+				}
+				os.write_file_array(bin_file, code) or { panic(err) }
+				println('hot-fn: wrote ${code.len} bytes for "${prefs.hot_fn}" to ${bin_file}')
+				return
+			}
+
+			if target.os == 'linux' {
+				if !is_o {
+					eprintln('the experimental Linux ARM64 backend supports object output only; use -o file.o')
+					exit(1)
+				}
+				g.write_elf(bin_file) or {
+					eprintln(err.msg())
+					exit(1)
+				}
+			} else {
+				g.write_and_link(bin_file)
+			}
 			b.step('link')
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if should_run {
