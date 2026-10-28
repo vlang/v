@@ -12496,21 +12496,6 @@ fn visible_mutation_fn_lookup_name(name string) string {
 	return flat.source_type_name(clean_receiver) + name[dot..]
 }
 
-fn (tc &TypeChecker) cache_visible_mutation_fn_decl(key string, decl VisibleMutationFnDecl) {
-	if isnil(tc.visible_mutation_cache) || key == '' {
-		return
-	}
-	mut cache := tc.visible_mutation_cache
-	if visible_mutation_key_is_global(key) {
-		name := key[1..]
-		if name !in cache.global_decls {
-			cache.global_decls[name] = decl
-		}
-	} else if key !in cache.decls {
-		cache.decls[key] = decl
-	}
-}
-
 // visible_mutation_key_is_global reports whether a visible-mutation cache key has
 // no module part (`\x01name`); their names live in VisibleMutationCache.global_decls.
 @[inline]
@@ -12560,6 +12545,12 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 		candidates << c_qname
 		candidates << c_source_name
 	}
+	if isnil(tc.visible_mutation_cache) {
+		return
+	}
+	mut cache := tc.visible_mutation_cache
+	// An insert copies its key, so a short key is spelled in a stack buffer.
+	mut key_buf := [192]u8{}
 	for i, candidate in candidates {
 		// A repeated spelling (a plain name is its own C name) only meets the
 		// entry the earlier one inserted, so skip building its keys again.
@@ -12567,9 +12558,26 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 			continue
 		}
 		if global {
-			tc.cache_visible_mutation_fn_decl('\x01${candidate}', decl)
+			// The module-less key `\x01${candidate}` keeps `candidate` in global_decls.
+			if candidate !in cache.global_decls {
+				cache.global_decls[candidate] = decl
+			}
+			continue
+		}
+		key_len := decl_module.len + 1 + candidate.len
+		key := if key_len <= key_buf.len {
+			unsafe {
+				key_start := &u8(&key_buf[0])
+				vmemcpy(key_start, decl_module.str, decl_module.len)
+				key_start[decl_module.len] = 0x01
+				vmemcpy(key_start + decl_module.len + 1, candidate.str, candidate.len)
+				tos(key_start, key_len)
+			}
 		} else {
-			tc.cache_visible_mutation_fn_decl('${decl_module}\x01${candidate}', decl)
+			'${decl_module}\x01${candidate}'
+		}
+		if key !in cache.decls {
+			cache.decls[key] = decl
 		}
 	}
 }

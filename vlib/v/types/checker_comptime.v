@@ -997,6 +997,13 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name u32) []Comp
 fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_resolving(enum_name u32, stop_at string, mut resolving map[string]bool) []ComptimeStaticValueCase {
 	mut cur_mod := ''
 	if tc.top_level_idx.len > 0 {
+		indexes := tc.top_level_check_decl_indexes()
+		if !isnil(indexes) && indexes.enum_decls_complete {
+			decl := indexes.enum_decls[enum_name] or { return []ComptimeStaticValueCase{} }
+			// The indexed declaration has the spelling `enum_name`, so it matches.
+			return tc.comptime_static_enum_decl_value_cases_for_node(enum_name, decl.module_name,
+				tc.a.nodes[decl.idx], stop_at, mut resolving) or { []ComptimeStaticValueCase{} }
+		}
 		for idx in tc.top_level_idx {
 			kind := tc.a.nodes[idx].kind
 			if kind == .file {

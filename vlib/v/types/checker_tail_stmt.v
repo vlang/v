@@ -5509,6 +5509,238 @@ fn fn_diagnostic_parameter_modes_id(raw_id u32) []string {
 	return modes
 }
 
+// CheckDeclIndexes holds indexes over the declarations of the AST for lookups
+// that scanned every top-level declaration, or every node, on each query.
+// check_semantics_opt builds them before it checks anything, and retires them
+// when it returns; the check does not change the nodes in between. They are
+// never written after they are built, so forks and views share them, and a view
+// that is kept past the check finds them retired and scans as before.
+@[heap]
+struct CheckDeclIndexes {
+mut:
+	live           bool
+	top_level_len  int
+	top_level_data voidptr
+	nodes_len      int
+	// alias_decls maps the name, and the name qualified by the module declared
+	// before it, of each childless top-level `type_decl` to the first such
+	// declaration in top_level_idx order (see first_childless_type_decl).
+	alias_decls map[string]flat.NodeId
+	// enum_decls maps the qualified spelling ID of each top-level `enum_decl` to
+	// the first such declaration in top_level_idx order, and its module.
+	enum_decls map[u32]CheckEnumDeclRef
+	// enum_decls_complete is false when the qualified spelling of an enum was not
+	// interned yet: the scan that enum_decls replaces interns each one it passes.
+	enum_decls_complete bool
+	// decl_assign_names holds every identifier that a `decl_assign` declares.
+	decl_assign_names map[string]bool
+	// struct_decls maps the name, and the name qualified by the module declared
+	// before it, of each top-level `struct_decl` to those declarations, in
+	// top_level_idx order (see source_struct_field_decls).
+	struct_decls map[string][]CheckStructDeclRef
+	// enum_field_sets holds the members of each enum with many of them, for the
+	// field list in enum_fields at the start of the check (see enum_field_name).
+	enum_field_sets map[u32]CheckEnumFieldSet
+}
+
+struct CheckEnumFieldSet {
+	data  voidptr
+	len   int
+	names map[string]bool
+}
+
+struct CheckEnumDeclRef {
+	idx         int
+	module_name string
+}
+
+struct CheckStructDeclRef {
+	order int // the position in top_level_idx
+	idx   int
+	file  string
+}
+
+// new_check_decl_indexes builds the declaration indexes of the current AST.
+fn (tc &TypeChecker) new_check_decl_indexes() &CheckDeclIndexes {
+	mut indexes := &CheckDeclIndexes{
+		live:                true
+		top_level_len:       tc.top_level_idx.len
+		top_level_data:      tc.top_level_idx.data
+		nodes_len:           tc.a.nodes.len
+		enum_decls_complete: true
+	}
+	// The alias and struct scans keep the module of the last `module` declaration
+	// across files, the enum scan clears it at each file (see the scans replaced).
+	mut alias_module := ''
+	mut enum_module := ''
+	mut struct_file := ''
+	for order, index in tc.top_level_idx {
+		node := tc.a.node(flat.NodeId(index))
+		match node.kind {
+			.file {
+				enum_module = ''
+				struct_file = node.value
+			}
+			.struct_decl {
+				if index >= 0 && index < tc.a.nodes.len {
+					ref := CheckStructDeclRef{
+						order: order
+						idx:   int(index)
+						file:  struct_file
+					}
+					mut refs := indexes.struct_decls[node.value] or { []CheckStructDeclRef{} }
+					refs << ref
+					indexes.struct_decls[node.value] = refs
+					qualified := if alias_module.len > 0 && !node.value.contains('.') {
+						'${alias_module}.${node.value}'
+					} else {
+						node.value
+					}
+					if qualified != node.value {
+						mut qualified_refs := indexes.struct_decls[qualified] or {
+							[]CheckStructDeclRef{}
+						}
+						qualified_refs << ref
+						indexes.struct_decls[qualified] = qualified_refs
+					}
+				}
+			}
+			.module_decl {
+				alias_module = node.value
+				enum_module = node.value
+			}
+			.type_decl {
+				if node.children_count == 0 {
+					if node.value !in indexes.alias_decls {
+						indexes.alias_decls[node.value] = flat.NodeId(index)
+					}
+					qualified := qualify_decl_name_in_module(node.value, alias_module)
+					if qualified !in indexes.alias_decls {
+						indexes.alias_decls[qualified] = flat.NodeId(index)
+					}
+				}
+			}
+			.enum_decl {
+				if indexes.enum_decls_complete {
+					qualified := if enum_module != '' && enum_module != 'main'
+						&& enum_module != 'builtin' {
+						'${enum_module}.${node.value}'
+					} else {
+						node.value
+					}
+					if enum_id := flat.source_type_existing_id(qualified) {
+						if enum_id !in indexes.enum_decls {
+							indexes.enum_decls[enum_id] = CheckEnumDeclRef{
+								idx:         int(index)
+								module_name: enum_module
+							}
+						}
+					} else {
+						indexes.enum_decls_complete = false
+					}
+				}
+			}
+			else {}
+		}
+	}
+	for enum_id, fields in tc.enum_fields {
+		if fields.len < min_enum_field_set_len {
+			continue
+		}
+		mut names := map[string]bool{}
+		for field in fields {
+			names[field] = true
+		}
+		indexes.enum_field_sets[enum_id] = CheckEnumFieldSet{
+			data:  fields.data
+			len:   fields.len
+			names: names
+		}
+	}
+	for i in 0 .. tc.a.nodes.len {
+		node := tc.a.node(flat.NodeId(i))
+		if node.kind != .decl_assign {
+			continue
+		}
+		for child_idx := 0; child_idx < node.children_count; child_idx += 2 {
+			lhs := tc.a.node(tc.a.child(node, child_idx))
+			if lhs.kind == .ident && lhs.value !in indexes.decl_assign_names {
+				indexes.decl_assign_names[lhs.value] = true
+			}
+		}
+	}
+	return indexes
+}
+
+// min_enum_field_set_len is the fewest members of an enum whose members
+// new_check_decl_indexes puts in a set: a short list is searched as fast.
+const min_enum_field_set_len = 16
+
+// enum_fields_contain reports whether `field` is in `fields`, the members of the enum
+// `enum_name_id`.
+@[inline]
+fn (tc &TypeChecker) enum_fields_contain(enum_name_id u32, fields []string, field string) bool {
+	if fields.len >= min_enum_field_set_len {
+		indexes := tc.check_decl_indexes
+		if !isnil(indexes) && indexes.live {
+			if set := indexes.enum_field_sets[enum_name_id] {
+				if set.data == fields.data && set.len == fields.len {
+					return field in set.names
+				}
+			}
+		}
+	}
+	return field in fields
+}
+
+// retire_check_decl_indexes ends the use of the declaration indexes, also by the
+// forks and views that still point to them, and drops the source text memo.
+fn (mut tc TypeChecker) retire_check_decl_indexes() {
+	mut indexes := tc.check_decl_indexes
+	if !isnil(indexes) {
+		indexes.live = false
+	}
+	tc.check_decl_indexes = unsafe { nil }
+	tc.source_type_keyword_memo = unsafe { nil }
+}
+
+// top_level_check_decl_indexes returns the live declaration indexes when they
+// describe the current top-level declaration index, or nil.
+@[inline]
+fn (tc &TypeChecker) top_level_check_decl_indexes() &CheckDeclIndexes {
+	indexes := tc.check_decl_indexes
+	if isnil(indexes) || !indexes.live || indexes.top_level_len != tc.top_level_idx.len
+		|| indexes.top_level_data != tc.top_level_idx.data {
+		return unsafe { nil }
+	}
+	return indexes
+}
+
+// first_childless_type_decl returns the first childless top-level `type_decl`, in
+// top_level_idx order, that `name` names unqualified or qualified by the module
+// declared before it, or empty_node.
+fn (tc &TypeChecker) first_childless_type_decl(name string) flat.NodeId {
+	indexes := tc.top_level_check_decl_indexes()
+	if !isnil(indexes) {
+		return indexes.alias_decls[name] or { flat.empty_node }
+	}
+	mut module_name := ''
+	for index in tc.top_level_idx {
+		node := tc.a.node(flat.NodeId(index))
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
+		if node.kind != .type_decl || node.children_count > 0 {
+			continue
+		}
+		if node.value == name || qualify_decl_name_in_module(node.value, module_name) == name {
+			return flat.NodeId(index)
+		}
+	}
+	return flat.empty_node
+}
+
 fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 	mut target_id := trimmed_source_type_id(flat.source_type_id(name))
 	for _ in 0 .. 8 {
@@ -5519,36 +5751,27 @@ fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 			target_id
 		}
 		lookup_target := flat.source_type_name(lookup_target_id)
-		mut module_name := ''
 		mut found_id := u32(0)
 		mut found_name := ''
-		for index in tc.top_level_idx {
-			node := tc.a.node(flat.NodeId(index))
-			if node.kind == .module_decl {
-				module_name = node.value
-				continue
-			}
-			if node.kind != .type_decl || node.children_count > 0 {
-				continue
-			}
-			qualified := qualify_decl_name_in_module(node.value, module_name)
-			if node.value == lookup_target || qualified == lookup_target {
-				mut source_type := tc.source_type_alias_rhs(tc.cur_file, node.value) or { '' }
-				if source_type.len == 0 {
-					if file := tc.a.source_files[node.pos.id] {
-						source_type = tc.source_type_alias_rhs(file.name, node.value) or { '' }
-					}
+		decl_id := tc.first_childless_type_decl(lookup_target)
+		if decl_id != flat.empty_node {
+			node := tc.a.node(decl_id)
+			mut source_type := tc.source_type_alias_rhs(tc.cur_file, node.value) or { '' }
+			if source_type.len == 0 {
+				if file := tc.a.source_files[node.pos.id] {
+					source_type = tc.source_type_alias_rhs(file.name, node.value) or { '' }
 				}
-				source_id := flat.source_type_id(source_type)
-				source_shape := flat.source_type_shape(source_id)
-				found_id = if source_shape.has(.function_compact) || source_shape.has(.function_spaced) {
-					source_id
-				} else {
-					node.typ
-				}
-				found_name = if qualified == lookup_target { qualified } else { node.value }
-				break
 			}
+			source_id := flat.source_type_id(source_type)
+			source_shape := flat.source_type_shape(source_id)
+			found_id = if source_shape.has(.function_compact) || source_shape.has(.function_spaced) {
+				source_id
+			} else {
+				node.typ
+			}
+			// The declaration matched by its name or by its qualified name, either
+			// of which is the lookup target.
+			found_name = lookup_target
 		}
 		if found_id == 0 {
 			return none
@@ -5593,11 +5816,69 @@ fn (tc &TypeChecker) source_type_alias_rhs(file_name string, alias_name string) 
 	if file_name == '' || alias_name == '' {
 		return none
 	}
-	source := tc.source_texts_by_file[file_name] or { os.read_file(file_name) or { return none } }
-	decl_start := source.index('type ${alias_name}') or { return none }
+	mut source := ''
+	mut decl_start := 0
+	if known := tc.source_texts_by_file[file_name] {
+		source = known
+		decl_start = tc.source_type_keyword_index(file_name, source, alias_name) or { return none }
+	} else {
+		source = os.read_file(file_name) or { return none }
+		decl_start = source.index('type ${alias_name}') or { return none }
+	}
 	line_end := source.index_after('\n', decl_start) or { source.len }
 	assign := source[decl_start..line_end].index('=') or { return none }
 	return source[decl_start + assign + 1..line_end].trim_space()
+}
+
+// SourceTypeKeywordMemo records where `type ` occurs in the source texts that
+// source_type_alias_rhs searched. A checker that checks owns a private one (see
+// check_semantics_opt and fork_for_parallel_check); views have none.
+@[heap]
+struct SourceTypeKeywordMemo {
+mut:
+	files map[string]SourceTypeKeywordOffsets
+}
+
+struct SourceTypeKeywordOffsets {
+	text    voidptr
+	len     int
+	offsets []int
+}
+
+// source_type_keyword_index returns the first index of `type ${alias_name}` in
+// `source`, the text of `file_name`.
+fn (tc &TypeChecker) source_type_keyword_index(file_name string, source string, alias_name string) ?int {
+	mut memo := tc.source_type_keyword_memo
+	if isnil(memo) {
+		return source.index('type ${alias_name}')
+	}
+	mut entry := memo.files[file_name] or { SourceTypeKeywordOffsets{} }
+	if entry.text != voidptr(source.str) || entry.len != source.len {
+		mut offsets := []int{}
+		mut start := 0
+		for {
+			offset := source.index_after_('type ', start)
+			if offset < 0 {
+				break
+			}
+			offsets << offset
+			start = offset + 1
+		}
+		entry = SourceTypeKeywordOffsets{
+			text:    source.str
+			len:     source.len
+			offsets: offsets
+		}
+		memo.files[file_name] = entry
+	}
+	for offset in entry.offsets {
+		name_start := offset + 5
+		if alias_name.len <= source.len - name_start
+			&& unsafe { vmemcmp(source.str + name_start, alias_name.str, alias_name.len) } == 0 {
+			return offset
+		}
+	}
+	return none
 }
 
 fn (tc &TypeChecker) expr_diagnostic_fn_type(id flat.NodeId) ?string {
@@ -6231,6 +6512,30 @@ fn (tc &TypeChecker) source_struct_field_decls(struct_name_id u32) []SourceStruc
 			break
 		}
 	}
+	indexes := tc.top_level_check_decl_indexes()
+	if !isnil(indexes) {
+		// The first declaration, in top_level_idx order, that a candidate names
+		// and that is in the wanted file.
+		mut found := CheckStructDeclRef{
+			order: -1
+		}
+		for candidate in candidates {
+			for ref in indexes.struct_decls[candidate] or { continue } {
+				if found.order >= 0 && ref.order >= found.order {
+					break
+				}
+				if wanted_file.len > 0 && ref.file.len > 0 && ref.file != wanted_file {
+					continue
+				}
+				found = ref
+				break
+			}
+		}
+		if found.order < 0 {
+			return []SourceStructFieldDecl{}
+		}
+		return tc.source_struct_decl_fields(tc.a.nodes[found.idx])
+	}
 	mut cur_file := ''
 	mut cur_module := ''
 	for idx in tc.top_level_idx {
@@ -6257,28 +6562,33 @@ fn (tc &TypeChecker) source_struct_field_decls(struct_name_id u32) []SourceStruc
 				if wanted_file.len > 0 && cur_file.len > 0 && cur_file != wanted_file {
 					continue
 				}
-				mut fields := []SourceStructFieldDecl{}
-				for i in 0 .. decl.children_count {
-					field := tc.a.node(tc.a.child(&decl, i))
-					if field.kind != .field_decl {
-						continue
-					}
-					field_type_id := if field.typ != 0 {
-						field.typ
-					} else {
-						flat.source_type_id(field.value)
-					}
-					fields << SourceStructFieldDecl{
-						name: field.value
-						typ:  field_type_id
-					}
-				}
-				return fields
+				return tc.source_struct_decl_fields(decl)
 			}
 			else {}
 		}
 	}
 	return []SourceStructFieldDecl{}
+}
+
+// source_struct_decl_fields lists the field declarations of the struct `decl`.
+fn (tc &TypeChecker) source_struct_decl_fields(decl flat.Node) []SourceStructFieldDecl {
+	mut fields := []SourceStructFieldDecl{}
+	for i in 0 .. decl.children_count {
+		field := tc.a.node(tc.a.child(&decl, i))
+		if field.kind != .field_decl {
+			continue
+		}
+		field_type_id := if field.typ != 0 {
+			field.typ
+		} else {
+			flat.source_type_id(field.value)
+		}
+		fields << SourceStructFieldDecl{
+			name: field.value
+			typ:  field_type_id
+		}
+	}
+	return fields
 }
 
 // check_deferred_generic_receiver_comparisons checks pointer/value ordering
@@ -9229,6 +9539,12 @@ fn (tc &TypeChecker) future_local_decl_id(name string, use_id flat.NodeId) ?flat
 	if name == '' || !tc.valid_node_id(use_id) {
 		return none
 	}
+	// Only an identifier that some `decl_assign` declares can be found below.
+	indexes := tc.check_decl_indexes
+	if !isnil(indexes) && indexes.live && indexes.nodes_len == tc.a.nodes.len
+		&& name !in indexes.decl_assign_names {
+		return none
+	}
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if !tc.valid_node_id(fn_id) {
 		use_pos := tc.a.node(use_id).pos
@@ -10467,13 +10783,13 @@ fn (tc &TypeChecker) enum_field_name(enum_name_id u32, field string) ?string {
 	if field.starts_with('@') && !token.Token.from_string_tinyv(field[1..]).is_keyword() {
 		return none
 	}
-	if field in fields {
+	if tc.enum_fields_contain(enum_name_id, fields, field) {
 		return field
 	}
 	plain := escaped_identifier_name(field)
 	if token.Token.from_string_tinyv(plain).is_keyword() {
 		alternate := if field.starts_with('@') { plain } else { '@' + field }
-		if alternate in fields {
+		if tc.enum_fields_contain(enum_name_id, fields, alternate) {
 			return alternate
 		}
 	}
@@ -12655,6 +12971,36 @@ fn (tc &TypeChecker) interface_impl_candidate_names() map[u32]bool {
 }
 
 fn (tc &TypeChecker) interface_impl_names_uncached_after(iface_name_id u32, excluded map[u32]bool) []u32 {
+	candidates := if excluded.len == 0 && !isnil(tc.interface_impl_memo) {
+		tc.memo_interface_impl_candidates(iface_name_id)
+	} else {
+		tc.interface_impl_candidates(iface_name_id, excluded)
+	}
+	mut impls := []u32{}
+	for name_id in candidates {
+		if name_id in tc.interface_names {
+			if tc.interface_implements_interface(name_id, iface_name_id) {
+				impls << name_id
+			}
+			continue
+		}
+		resolved_name_id := tc.interface_metadata_name(name_id)
+		if resolved_name_id in tc.interface_names {
+			if tc.interface_implements_interface(resolved_name_id, iface_name_id) {
+				impls << name_id
+			}
+			continue
+		}
+		if tc.named_type_implements_interface(name_id, iface_name_id) {
+			impls << name_id
+		}
+	}
+	return impls
+}
+
+// interface_impl_candidates lists, sorted by spelling, the types that are
+// tested for implementing `iface_name_id`, except the `excluded` ones.
+fn (tc &TypeChecker) interface_impl_candidates(iface_name_id u32, excluded map[u32]bool) []u32 {
 	mut candidate_set := map[u32]bool{}
 	has_no_requirements := tc.interface_has_no_requirements(iface_name_id)
 	accepts_implicit_str := tc.interface_accepts_implicit_str(iface_name_id)
@@ -12696,26 +13042,103 @@ fn (tc &TypeChecker) interface_impl_names_uncached_after(iface_name_id u32, excl
 	}
 	mut candidates := candidate_set.keys()
 	candidates.sort_with_compare(compare_interface_impl_spelling_ids)
-	mut impls := []u32{}
-	for name_id in candidates {
-		if name_id in tc.interface_names {
-			if tc.interface_implements_interface(name_id, iface_name_id) {
-				impls << name_id
+	return candidates
+}
+
+// memo_interface_impl_candidates is interface_impl_candidates without excluded
+// types. The structs, enums and aliases, which every interface tests, are
+// sorted once; the candidates that depend on the interface are merged in.
+// Sorting by spelling orders the IDs totally, since an ID names one spelling.
+fn (tc &TypeChecker) memo_interface_impl_candidates(iface_name_id u32) []u32 {
+	mut memo := tc.interface_impl_memo
+	if !memo.base_candidates_ready {
+		mut base_set := map[u32]bool{}
+		for name, _ in tc.structs {
+			candidate := interface_impl_candidate_name(name)
+			if name != flat.source_type_id('VMapData') || tc.struct_modules[name] != 'builtin' {
+				base_set[candidate] = true
 			}
-			continue
 		}
-		resolved_name_id := tc.interface_metadata_name(name_id)
-		if resolved_name_id in tc.interface_names {
-			if tc.interface_implements_interface(resolved_name_id, iface_name_id) {
-				impls << name_id
-			}
-			continue
+		for name, _ in tc.enum_names {
+			base_set[interface_impl_candidate_name(name)] = true
 		}
-		if tc.named_type_implements_interface(name_id, iface_name_id) {
-			impls << name_id
+		for name, _ in tc.type_aliases.ids {
+			base_set[interface_impl_candidate_name(name)] = true
+		}
+		mut base := base_set.keys()
+		base.sort_with_compare(compare_interface_impl_spelling_ids)
+		memo.base_candidates = base
+		memo.base_candidates_ready = true
+	}
+	mut extra_set := map[u32]bool{}
+	has_no_requirements := tc.interface_has_no_requirements(iface_name_id)
+	accepts_implicit_str := tc.interface_accepts_implicit_str(iface_name_id)
+	if has_no_requirements || accepts_implicit_str {
+		for name in implicit_str_builtin_type_names() {
+			extra_set[name] = true
 		}
 	}
-	return impls
+	if has_no_requirements {
+		if !memo.alias_fn_candidates_ready {
+			mut alias_fn_ids := []u32{}
+			for _, target_id in tc.type_aliases.ids {
+				typ := tc.parse_type(target_id)
+				if typ is FnType {
+					alias_fn_ids << Type(typ).source_type_id()
+				}
+			}
+			memo.alias_fn_candidates = alias_fn_ids
+			memo.alias_fn_candidates_ready = true
+		}
+		for name in memo.alias_fn_candidates {
+			extra_set[name] = true
+		}
+	}
+	for name, _ in tc.interface_names {
+		name_id := name
+		if name_id != iface_name_id && tc.interface_implements_interface(name_id, iface_name_id) {
+			extra_set[name_id] = true
+		}
+		short_name := interface_impl_candidate_name(name_id)
+		if short_name != name_id && short_name != iface_name_id
+			&& tc.interface_implements_interface(name_id, iface_name_id) {
+			extra_set[short_name] = true
+		}
+	}
+	base := memo.base_candidates
+	if extra_set.len == 0 {
+		return base.clone()
+	}
+	mut extras := extra_set.keys()
+	extras.sort_with_compare(compare_interface_impl_spelling_ids)
+	mut candidates := []u32{cap: base.len + extras.len}
+	mut i := 0
+	mut j := 0
+	for i < base.len && j < extras.len {
+		base_id := base[i]
+		extra_id := extras[j]
+		order := compare_interface_impl_spelling_ids(&base_id, &extra_id)
+		if order < 0 {
+			candidates << base[i]
+			i++
+		} else if order > 0 {
+			candidates << extras[j]
+			j++
+		} else {
+			candidates << base[i]
+			i++
+			j++
+		}
+	}
+	for i < base.len {
+		candidates << base[i]
+		i++
+	}
+	for j < extras.len {
+		candidates << extras[j]
+		j++
+	}
+	return candidates
 }
 
 // stable_interface_type_ids maps source spelling IDs to deterministic nonzero `_typ` dispatch IDs for
@@ -13161,7 +13584,7 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name_id u32, me
 	if key in tc.fn_param_types || key in tc.fn_ret_types {
 		return key
 	}
-	qualified_name := tc.qualify_name(concrete_name)
+	qualified_name := tc.memo_qualify_name(concrete_name_id, concrete_name)
 	if !tc.type_aliases.contains(concrete_name_id) && qualified_name != concrete_name {
 		qualified_key := '${qualified_name}.${method}'
 		if qualified_key in tc.fn_param_types || qualified_key in tc.fn_ret_types {
@@ -13172,25 +13595,14 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name_id u32, me
 	// `orm.Connection` interface even when the implementation candidate is a
 	// same-named alias from another module. Consult the alias table by its
 	// collected concrete name before doing suffix-based method lookup.
-	for alias_name in [concrete_name, qualified_name] {
-		if alias_target_source_id := tc.type_aliases.type_id(flat.source_type_id(alias_name)) {
-			// An alias of a reference (`type Refs = &&Names`) has the methods of the
-			// referenced type, which a call reaches through automatic dereferencing.
-			alias_target_id := if flat.source_type_shape(alias_target_source_id).has(.pointer) {
-				flat.source_type_syntax(alias_target_source_id).pointer_raw_base()
-			} else {
-				alias_target_source_id
-			}
-			if alias_target_id != flat.source_type_id(alias_name) && alias_target_id != concrete_name_id {
-				if inherited := tc.concrete_method_signature_key_seen(alias_target_id,
-					method, mut seen_aliases)
-				{
-					return inherited
-				}
-			}
+	for alias_target_id in tc.concrete_alias_targets(concrete_name_id, concrete_name, qualified_name) {
+		if inherited := tc.concrete_method_signature_key_seen(alias_target_id, method, mut
+			seen_aliases)
+		{
+			return inherited
 		}
 	}
-	receiver_type := tc.parse_type(concrete_name_id)
+	receiver_type := tc.memo_parse_type(concrete_name_id)
 	receiver_candidates := receiver_method_name_candidates(receiver_type, method, tc.cur_module)
 	// Prefer a method declared directly on the alias when one exists, but do not
 	// let an unqualified alias name resolve through the suffix index to an
@@ -13244,6 +13656,64 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name_id u32, me
 		}
 	}
 	return none
+}
+
+// memo_qualify_name is qualify_name(name), for the spelling `name_id` of `name`.
+fn (tc &TypeChecker) memo_qualify_name(name_id u32, name string) string {
+	mut memo := tc.interface_impl_memo
+	if isnil(memo) {
+		return tc.qualify_name(name)
+	}
+	if qualified := memo.qualified_names[name_id] {
+		return qualified
+	}
+	qualified := tc.qualify_name(name)
+	memo.qualified_names[name_id] = qualified
+	return qualified
+}
+
+// concrete_alias_targets lists the types whose methods concrete_method_signature_key
+// looks up for an alias `concrete_name`, or its qualified name, before its own.
+fn (tc &TypeChecker) concrete_alias_targets(concrete_name_id u32, concrete_name string, qualified_name string) []u32 {
+	mut memo := tc.interface_impl_memo
+	if !isnil(memo) {
+		if targets := memo.alias_targets[concrete_name_id] {
+			return targets
+		}
+	}
+	mut targets := []u32{}
+	for alias_name in [concrete_name, qualified_name] {
+		if alias_target_source_id := tc.type_aliases.type_id(flat.source_type_id(alias_name)) {
+			// An alias of a reference (`type Refs = &&Names`) has the methods of the
+			// referenced type, which a call reaches through automatic dereferencing.
+			alias_target_id := if flat.source_type_shape(alias_target_source_id).has(.pointer) {
+				flat.source_type_syntax(alias_target_source_id).pointer_raw_base()
+			} else {
+				alias_target_source_id
+			}
+			if alias_target_id != flat.source_type_id(alias_name) && alias_target_id != concrete_name_id {
+				targets << alias_target_id
+			}
+		}
+	}
+	if !isnil(memo) {
+		memo.alias_targets[concrete_name_id] = targets
+	}
+	return targets
+}
+
+// memo_parse_type is parse_type(name_id).
+fn (tc &TypeChecker) memo_parse_type(name_id u32) &Type {
+	mut memo := tc.interface_impl_memo
+	if isnil(memo) {
+		return tc.parse_type(name_id)
+	}
+	if typ := memo.parsed_types[name_id] {
+		return typ
+	}
+	typ := tc.parse_type(name_id)
+	memo.parsed_types[name_id] = typ
+	return typ
 }
 
 // concrete_generic_method_signature_candidates returns the registered spellings of a specialized method.
@@ -14145,12 +14615,32 @@ fn (tc &TypeChecker) interface_method_names_indexed(iface_name_id u32, direct_me
 
 // prepare_interface_query_indexes publishes immutable interface requirements and
 // implementer lists for transform workers.
+// InterfaceImplMemo keeps what prepare_interface_query_indexes looks up for a
+// candidate type again for every interface it tests the type against. Nothing
+// it depends on changes during that loop, which runs in one checker context.
+@[heap]
+struct InterfaceImplMemo {
+mut:
+	embedded_receivers map[u32][]u32
+	qualified_names    map[u32]string
+	alias_targets      map[u32][]u32
+	parsed_types       map[u32]&Type
+	// base_candidates are the sorted candidates of every interface, and
+	// alias_fn_candidates the function types that aliases name (see
+	// memo_interface_impl_candidates).
+	base_candidates           []u32
+	base_candidates_ready     bool
+	alias_fn_candidates       []u32
+	alias_fn_candidates_ready bool
+}
+
 pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
 	tc.prepare_interface_requirement_indexes()
 	tc.interface_impl_indexes = map[u32]&InterfaceImplIndex{}
 	tc.interface_impl_candidates_at_index = tc.interface_impl_candidate_names()
 	iface_names := tc.interface_names.keys()
 	if !tc.prepare_interface_impl_indexes_parallel(iface_names) {
+		tc.interface_impl_memo = &InterfaceImplMemo{}
 		for iface_name in iface_names {
 			impls := if is_builtin_ierror_name(iface_name) {
 				tc.ierror_impl_names()
@@ -14162,6 +14652,7 @@ pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
 				ids:   stable_interface_type_ids(impls)
 			}
 		}
+		tc.interface_impl_memo = unsafe { nil }
 	}
 	// The immutable transform indexes above preserve the pre-monomorphization
 	// order. Do not leave the same lists in the mutable query cache: generic
@@ -15046,12 +15537,7 @@ fn (tc &TypeChecker) embedded_method_call_info_inner(struct_name_id u32, method 
 		return none
 	}
 	seen[struct_name_id] = true
-	for field in tc.struct_fields_for_type(struct_name_id) {
-		embedded_type := embedded_field_type(field) or { continue }
-		receiver_id := method_type_name(unwrap_pointer(embedded_type))
-		if receiver_id == 0 {
-			continue
-		}
+	for receiver_id in tc.embedded_receiver_ids(struct_name_id) {
 		// An embedded concrete generic receiver (`Collector[int]`) promotes the
 		// method registered on its open declaration (`Collector[T].use`).
 		if info := tc.resolve_generic_struct_method(receiver_id, method) {
@@ -15087,6 +15573,29 @@ fn (tc &TypeChecker) embedded_method_call_info_inner(struct_name_id u32, method 
 		}
 	}
 	return none
+}
+
+// embedded_receiver_ids lists, in field order, the method receivers of the
+// embedded fields of `struct_name_id`.
+fn (tc &TypeChecker) embedded_receiver_ids(struct_name_id u32) []u32 {
+	mut memo := tc.interface_impl_memo
+	if !isnil(memo) {
+		if ids := memo.embedded_receivers[struct_name_id] {
+			return ids
+		}
+	}
+	mut ids := []u32{}
+	for field in tc.struct_fields_for_type(struct_name_id) {
+		embedded_type := embedded_field_type(field) or { continue }
+		receiver_id := method_type_name(unwrap_pointer(embedded_type))
+		if receiver_id != 0 {
+			ids << receiver_id
+		}
+	}
+	if !isnil(memo) {
+		memo.embedded_receivers[struct_name_id] = ids
+	}
+	return ids
 }
 
 // method_value_receiver_name is the struct that declares the method a method value

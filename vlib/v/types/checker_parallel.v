@@ -1135,6 +1135,13 @@ fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	mut pfsw := time.new_stopwatch()
 	error_count := tc.errors.len
+	if !isnil(tc.a) {
+		tc.check_decl_indexes = tc.new_check_decl_indexes()
+		tc.source_type_keyword_memo = &SourceTypeKeywordMemo{}
+	}
+	defer {
+		tc.retire_check_decl_indexes()
+	}
 	tc.prepare_check_name_filters()
 	// Later stages write the flag tables without going through registration.
 	defer {
@@ -5426,6 +5433,9 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	}
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
 	w.capture_items = tc.capture_items
+	if !isnil(tc.source_type_keyword_memo) {
+		w.source_type_keyword_memo = &SourceTypeKeywordMemo{}
+	}
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
 	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set
