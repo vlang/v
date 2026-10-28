@@ -6,7 +6,7 @@ module os
 // If this is not desired, call lstat/1 instead.
 pub fn stat(path string) !Stat {
 	$if vlibc ? {
-		vs, e := vlibc_stat(path)
+		vs, e := vlibc_stat_follow(path)
 		if e != .enoerror {
 			return error_posix(code: int(e), msg: posix_get_error_msg(int(e)))
 		}

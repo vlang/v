@@ -57,8 +57,18 @@ $if !i386 {
 	}
 
 	pub fn vlibc_stat(path string) (VlibcStat, VlibcErrno) {
+		// AT_SYMLINK_NOFOLLOW: lstat semantics, the link itself is reported.
+		return vlibc_statx_flags(path, 0x100)
+	}
+
+	pub fn vlibc_stat_follow(path string) (VlibcStat, VlibcErrno) {
+		// flags=0: symlinks are followed, stat semantics.
+		return vlibc_statx_flags(path, 0)
+	}
+
+	fn vlibc_statx_flags(path string, flags u32) (VlibcStat, VlibcErrno) {
 		mut stx := VlibcStatx{}
-		e := vlibc_sys_statx(-100, path.str, 0x100, 0x7ff, &stx)
+		e := vlibc_sys_statx(-100, path.str, flags, 0x7ff, &stx)
 		if e != .enoerror {
 			return VlibcStat{}, e
 		}
@@ -76,6 +86,23 @@ $if !i386 {
 
 	pub fn vlibc_open(path string, flags u64, mode u64) (i64, VlibcErrno) {
 		return vlibc_sys_openat(-100, path.str, flags, mode)
+	}
+
+	pub fn vlibc_ftruncate(fd i64, len u64) VlibcErrno {
+		return vlibc_sys_ftruncate(fd, len)
+	}
+
+	pub fn vlibc_truncate(path string, len u64) VlibcErrno {
+		// No truncate syscall on arm64, so open + ftruncate like libc does.
+		// O_WRONLY|O_TRUNC without O_CREAT, mirroring os.truncate:
+		// a missing path fails, matching truncate(2).
+		fd, e := vlibc_open(path, 0x201, 0)
+		if e != .enoerror {
+			return e
+		}
+		e2 := vlibc_sys_ftruncate(fd, len)
+		vlibc_close(fd)
+		return e2
 	}
 
 	pub fn vlibc_close(fd i64) VlibcErrno {

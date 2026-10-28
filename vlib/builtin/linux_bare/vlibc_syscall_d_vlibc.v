@@ -13,6 +13,7 @@ $if !i386 {
 		const vlibc_sys_nr_openat = u64(56)
 		const vlibc_sys_nr_close = u64(57)
 		const vlibc_sys_nr_lseek = u64(62)
+		const vlibc_sys_nr_ftruncate = u64(46)
 		const vlibc_sys_nr_statx = u64(291)
 		const vlibc_sys_nr_getcwd = u64(17)
 		const vlibc_sys_nr_chdir = u64(49)
@@ -69,6 +70,7 @@ $if !i386 {
 		const vlibc_sys_nr_openat = u64(257)
 		const vlibc_sys_nr_close = u64(3)
 		const vlibc_sys_nr_lseek = u64(8)
+		const vlibc_sys_nr_ftruncate = u64(77)
 		const vlibc_sys_nr_statx = u64(332)
 		const vlibc_sys_nr_getcwd = u64(79)
 		const vlibc_sys_nr_chdir = u64(80)
@@ -158,6 +160,14 @@ $if !i386 {
 
 	pub fn vlibc_sys_lseek(fd i64, off i64, whence int) (i64, VlibcErrno) {
 		return vlibc_split(sys_call3(vlibc_sys_nr_lseek, u64(fd), u64(off), u64(whence)))
+	}
+
+	pub fn vlibc_sys_ftruncate(fd i64, len u64) VlibcErrno {
+		rc := sys_call2(vlibc_sys_nr_ftruncate, u64(fd), len)
+		if i64(rc) == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(-i64(rc)) }
 	}
 
 	pub fn vlibc_sys_statx(dirfd i64, path &u8, flags u32, mask u32, buf &VlibcStatx) VlibcErrno {
