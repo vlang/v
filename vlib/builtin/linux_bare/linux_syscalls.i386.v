@@ -253,12 +253,15 @@ fn sys_call5(scn uint, arg1 uint, arg2 uint, arg3 uint, arg4 uint, arg5 uint) ui
 	return res
 }
 
-asm i386 {
-	.globl _start
-	_start:
-	call main
-	mov eax, 1
-	xor ebx, ebx
-	int 0x80
-	ret
+// Freestanding-only: a hosted build links libc, which provides `_start`.
+$if freestanding {
+	asm i386 {
+		.globl _start
+		_start:
+		call main
+		mov eax, 1
+		xor ebx, ebx
+		int 0x80
+		ret
+	}
 }

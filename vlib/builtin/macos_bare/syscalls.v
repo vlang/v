@@ -518,33 +518,36 @@ $if !i386 {
 		return res, err
 	}
 
-	$if amd64 {
-		asm amd64 {
-			.pushsection .text
-			.globl _start
-			_start:
-			xor rbp, rbp
-			mov rdi, [rsp]
-			lea rsi, [rsp + 8]
-			call main
-			mov rdi, rax
-			mov rax, 0x2000001
-			syscall
-			.popsection
-		}
-	} $else $if arm64 {
-		asm arm64 {
-			.pushsection .text
-			.globl _start
-			_start:
-			mov x29, 0
-			mov x30, 0
-			ldr x0, [sp]
-			add x1, sp, 8
-			bl main
-			mov x16, 0x2000001
-			svc 0x80
-			.popsection
+	// Freestanding-only: a hosted build links libc, which provides `_start`.
+	$if freestanding {
+		$if amd64 {
+			asm amd64 {
+				.pushsection .text
+				.globl _start
+				_start:
+				xor rbp, rbp
+				mov rdi, [rsp]
+				lea rsi, [rsp + 8]
+				call main
+				mov rdi, rax
+				mov rax, 0x2000001
+				syscall
+				.popsection
+			}
+		} $else $if arm64 {
+			asm arm64 {
+				.pushsection .text
+				.globl _start
+				_start:
+				mov x29, 0
+				mov x30, 0
+				ldr x0, [sp]
+				add x1, sp, 8
+				bl main
+				mov x16, 0x2000001
+				svc 0x80
+				.popsection
+			}
 		}
 	}
 }

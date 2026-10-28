@@ -556,33 +556,36 @@ $if !i386 {
 
 	// _start is the process entry point: argc at the stack pointer, then
 	// argv, envp, ... It calls `main(argc, argv)` and exits with its result.
-	$if amd64 {
-		asm amd64 {
-			.pushsection .text
-			.globl _start
-			_start:
-			xor rbp, rbp
-			mov rdi, [rsp]
-			lea rsi, [rsp + 8]
-			call main
-			mov rdi, rax
-			mov rax, 1
-			syscall
-			.popsection
-		}
-	} $else $if arm64 {
-		asm arm64 {
-			.pushsection .text
-			.globl _start
-			_start:
-			mov x29, 0
-			mov x30, 0
-			ldr x0, [sp]
-			add x1, sp, 8
-			bl main
-			mov x8, 1
-			svc 0
-			.popsection
+	// Freestanding-only: a hosted build links libc, which provides `_start`.
+	$if freestanding {
+		$if amd64 {
+			asm amd64 {
+				.pushsection .text
+				.globl _start
+				_start:
+				xor rbp, rbp
+				mov rdi, [rsp]
+				lea rsi, [rsp + 8]
+				call main
+				mov rdi, rax
+				mov rax, 1
+				syscall
+				.popsection
+			}
+		} $else $if arm64 {
+			asm arm64 {
+				.pushsection .text
+				.globl _start
+				_start:
+				mov x29, 0
+				mov x30, 0
+				ldr x0, [sp]
+				add x1, sp, 8
+				bl main
+				mov x8, 1
+				svc 0
+				.popsection
+			}
 		}
 	}
 }

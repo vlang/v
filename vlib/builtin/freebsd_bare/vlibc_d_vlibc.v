@@ -690,6 +690,18 @@ $if !i386 {
 		return (v >> 8) | (v << 8)
 	}
 
+	pub fn vlibc_htonl(v u32) u32 {
+		return ((v & 0x000000ff) << 24) | ((v & 0x0000ff00) << 8) | ((v & 0x00ff0000) >> 8) | ((v & 0xff000000) >> 24)
+	}
+
+	pub fn vlibc_ntohs(v u16) u16 {
+		return vlibc_htons(v)
+	}
+
+	pub fn vlibc_errno_str(e VlibcErrno) string {
+		return e.str()
+	}
+
 	pub fn vlibc_parse_ipv4(s string) u32 {
 		mut parts := [u32(0), u32(0), u32(0), u32(0)]
 		mut idx := 0

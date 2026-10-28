@@ -370,17 +370,20 @@ $if !i386 {
 		return res, err
 	}
 
-	asm amd64 {
-		.pushsection .text
-		.globl _start
-		_start:
-		xor rbp, rbp
-		mov rdi, [rsp]
-		lea rsi, [rsp + 8]
-		call main
-		mov rdi, rax
-		mov rax, 1
-		syscall
-		.popsection
+	// Freestanding-only: a hosted build links libc, which provides `_start`.
+	$if freestanding {
+		asm amd64 {
+			.pushsection .text
+			.globl _start
+			_start:
+			xor rbp, rbp
+			mov rdi, [rsp]
+			lea rsi, [rsp + 8]
+			call main
+			mov rdi, rax
+			mov rax, 1
+			syscall
+			.popsection
+		}
 	}
 }

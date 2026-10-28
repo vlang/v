@@ -13213,6 +13213,14 @@ pub fn run(args []string) {
 					builtin_files << scn_path
 				}
 			}
+			// The i386 syscall layer lives in its own arch-suffixed file; include
+			// it when the target arch is i386 (other arches are unaffected).
+			if prefs.target.arch == 'i386' {
+				i386_path := os.join_path(vlibc_dir, 'linux_syscalls.i386.v')
+				if os.is_file(i386_path) {
+					builtin_files << i386_path
+				}
+			}
 			vlibc_api_files := pref.get_v_files_from_dir_for_backend_target(vlibc_dir,
 				builtin_defines, prefs.backend, prefs.target)
 			for f in vlibc_api_files {
