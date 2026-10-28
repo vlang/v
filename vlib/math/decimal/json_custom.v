@@ -1,9 +1,22 @@
 module decimal
 
+import math.big
+
 // from_json_number implements a custom decoder for json2.
 // It parses `raw_number` like `from_string`, so the digits after the decimal
-// point set the scale.
+// point set the scale. A JSON5 hexadecimal integer such as `0x1F` or `-0x1F`
+// has scale 0.
 pub fn (mut d Decimal) from_json_number(raw_number string) ! {
+	sign_len := if raw_number.starts_with('-') || raw_number.starts_with('+') { 1 } else { 0 }
+	if raw_number.len > sign_len + 1 && raw_number[sign_len] == `0`
+		&& raw_number[sign_len + 1] in [`x`, `X`] {
+		hex_digits := raw_number[sign_len + 2..]
+		if hex_digits.len == 0 || !hex_digits.bytes().all(it.is_hex_digit()) {
+			return error('math.decimal: invalid decimal value `${raw_number}`')
+		}
+		d = new(big.integer_from_radix(raw_number[..sign_len] + hex_digits, 16)!, 0)
+		return
+	}
 	d = from_string(raw_number)!
 }
 

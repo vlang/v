@@ -46,10 +46,16 @@ so `10.50` stays `10.50`. Consumers that read JSON numbers as binary floating po
 such as JavaScript's `JSON.parse`, can round such values. `json2.decode` accepts a
 JSON number within the exponent range of `from_string`, or a JSON string with the
 syntax of a JSON number such as `"10.50"`, and keeps its scale; other strings,
-booleans and arrays return an error. Outside strict mode a nested `null` decodes to
-zero; use a `?decimal.Decimal` field to tell a missing value apart from zero. As for
-`big.Integer`, json2 writes a sum type variant as a tagged object of its fields, and
-decodes a JSON object into those fields without validation.
+booleans and arrays return an error. With `json5: true`, a hexadecimal number such as
+`0x1F` decodes with scale 0, while `Infinity` and `NaN` return an error. Outside strict
+mode a nested `null` decodes to zero; use a `?decimal.Decimal` field to tell a missing
+value apart from zero. In a sum type that also has a `string` variant, json2 gives a
+JSON string to whichever of the two is declared first: with `decimal.Decimal | string`
+every string is parsed as a decimal and a non-numeric string is an error, so declare
+`string | decimal.Decimal` to keep strings as strings. As for `big.Integer`, json2
+writes a sum type variant as a tagged object of its fields, and decodes a JSON object
+into those fields without validation: an object with a negative `scale_value` decodes,
+and `str()` and `json2.encode` then panic, so check `scale() >= 0` on untrusted input.
 
 ## Example
 

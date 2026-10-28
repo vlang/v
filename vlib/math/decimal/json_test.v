@@ -11,6 +11,9 @@ struct Ledger {
 	balances map[string]decimal.Decimal
 }
 
+type StringOrDecimal = string | decimal.Decimal
+type DecimalOrString = decimal.Decimal | string
+
 fn d(s string) decimal.Decimal {
 	return decimal.from_string(s) or { panic(err) }
 }
@@ -100,4 +103,55 @@ fn test_json2_rejects_invalid_values() {
 		}
 		assert false, 'decoding `${src}` should have failed'
 	}
+}
+
+fn test_json2_decodes_json5_numbers() {
+	cases := {
+		'{total: 0x1F, lines: []}':                               '31'
+		'{total: -0X1f, lines: []}':                              '-31'
+		'{total: +0x0, lines: []}':                               '0'
+		'{total: .5, lines: []}':                                 '0.5'
+		'{total: 5., lines: []}':                                 '5'
+		'{total: +1.50, lines: []}':                              '1.50'
+		"{total: '1.25', lines: []}":                             '1.25'
+		// 2^124, beyond 64 bits
+		'{total: 0x10000000000000000000000000000000, lines: []}': '21267647932558653966460912964485513216'
+	}
+	for src, expected in cases {
+		invoice := json2.decode[Invoice](src, json5: true) or {
+			assert false, '`${src}`: ${err.msg()}'
+			continue
+		}
+		assert invoice.total.to_json() == expected, src
+	}
+	for src in ['{total: Infinity, lines: []}', '{total: -Infinity, lines: []}',
+		'{total: NaN, lines: []}'] {
+		json2.decode[Invoice](src, json5: true) or { continue }
+		assert false, 'decoding `${src}` should have failed'
+	}
+	for raw in ['0x', '-0x', '0x-1', '0x+1', '0xg', '0x1.5'] {
+		mut v := decimal.zero
+		v.from_json_number(raw) or {
+			assert err.msg() == 'math.decimal: invalid decimal value `${raw}`'
+			continue
+		}
+		assert false, 'from_json_number(`${raw}`) should have failed'
+	}
+}
+
+fn test_json2_sum_types_with_a_string_variant() {
+	// json2 gives a JSON string to the first of `string` and `decimal.Decimal` declared.
+	text := json2.decode[StringOrDecimal]('"x"')!
+	assert text as string == 'x'
+	numeric_text := json2.decode[StringOrDecimal]('"1.5"')!
+	assert numeric_text as string == '1.5'
+	number := json2.decode[StringOrDecimal]('1.50')!
+	assert (number as decimal.Decimal).to_json() == '1.50'
+	quoted := json2.decode[DecimalOrString]('"1.5"')!
+	assert quoted as decimal.Decimal == d('1.5')
+	json2.decode[DecimalOrString]('"x"') or {
+		assert err.msg().contains('invalid JSON number `x`'), err.msg()
+		return
+	}
+	assert false, 'a non-numeric string should not decode into `decimal.Decimal | string`'
 }
