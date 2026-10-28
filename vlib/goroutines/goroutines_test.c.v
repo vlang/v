@@ -297,3 +297,140 @@ fn test_goroutine_reuse_chain() {
 	allgs_mu.release()
 	assert distinct.len < chain_length / 2
 }
+
+struct RendezvousStress {
+	c     &Chan
+	done  &Chan
+	count int
+}
+
+fn rendezvous_stress_sender(arg voidptr) {
+	st := unsafe { &RendezvousStress(arg) }
+	for i in 0 .. st.count {
+		mut value := i
+		assert chan_send(st.c, voidptr(&value), true)
+		gosched()
+	}
+}
+
+fn rendezvous_stress_receiver(arg voidptr) {
+	st := unsafe { &RendezvousStress(arg) }
+	for i in 0 .. st.count {
+		mut value := -1
+		received, ok := chan_recv(st.c, voidptr(&value), true)
+		assert received && ok
+		assert value == i
+		gosched()
+	}
+	mut done := 1
+	assert chan_send(st.done, voidptr(&done), true)
+}
+
+fn wait_stress_value(c &Chan) int {
+	deadline := time.now().unix_milli() + 30000
+	for time.now().unix_milli() < deadline {
+		mut value := -1
+		received, ok := chan_recv(c, voidptr(&value), false)
+		if received {
+			assert ok
+			return value
+		}
+		time.sleep(time.millisecond)
+	}
+	assert false, 'scheduler stress timed out'
+	return -1
+}
+
+fn test_repeated_rendezvous_and_yield_handoffs() {
+	for capacity in [0, 1] {
+		st := &RendezvousStress{
+			c:     chan_make(int(sizeof(int)), capacity)
+			done:  chan_make(int(sizeof(int)), 1)
+			count: 2000
+		}
+		goroutine_create(voidptr(rendezvous_stress_sender), voidptr(st), 0)
+		goroutine_create(voidptr(rendezvous_stress_receiver), voidptr(st), 0)
+		assert wait_stress_value(st.done) == 1
+	}
+}
+
+struct QueueStress {
+	ready &Chan
+	gate  &Chan
+	done  &Chan
+mut:
+	next u32
+	seen []u32
+}
+
+fn queue_stress_worker(arg voidptr) {
+	mut st := unsafe { &QueueStress(arg) }
+	mut id := int(C.goroutines_atomic_fetch_add_u32(&st.next, 1))
+	assert chan_send(st.ready, voidptr(&id), true)
+	_, ok := chan_recv(st.gate, unsafe { nil }, true)
+	assert !ok
+	for _ in 0 .. 8 {
+		gosched()
+	}
+	assert C.goroutines_atomic_fetch_add_u32(&st.seen[id], 1) == 0
+	assert chan_send(st.done, voidptr(&id), true)
+}
+
+fn queue_stress_closer(arg voidptr) {
+	st := unsafe { &QueueStress(arg) }
+	// Waking more than one ring from a worker exercises runnext, overflow, and stealing.
+	chan_close(st.gate)
+}
+
+fn test_queue_overflow_stealing_and_context_reuse() {
+	count := local_queue_size * 2 + 1
+	st := &QueueStress{
+		ready: chan_make(int(sizeof(int)), count)
+		gate:  chan_make(int(sizeof(int)), 0)
+		done:  chan_make(int(sizeof(int)), count)
+		seen:  []u32{len: count}
+	}
+	for _ in 0 .. count {
+		goroutine_create(voidptr(queue_stress_worker), voidptr(st), 0)
+	}
+	for _ in 0 .. count {
+		wait_stress_value(st.ready)
+	}
+	goroutine_create(voidptr(queue_stress_closer), voidptr(st), 0)
+	mut seen := []bool{len: count}
+	for _ in 0 .. count {
+		id := wait_stress_value(st.done)
+		assert id >= 0 && id < count
+		assert !seen[id]
+		seen[id] = true
+	}
+	for i in 0 .. count {
+		assert seen[i]
+		assert C.goroutines_atomic_load_u32(&st.seen[i]) == 1
+	}
+}
+
+fn tls_isolation_worker(marker voidptr, ready chan bool, release chan bool) {
+	C.goroutines_set_current_m(marker)
+	ready <- true
+	_ := <-release
+	assert C.goroutines_get_current_m() == marker
+}
+
+fn test_scheduler_machine_pointer_is_thread_local() {
+	original := C.goroutines_get_current_m()
+	mut first := 1
+	mut second := 2
+	ready := chan bool{cap: 2}
+	release := chan bool{cap: 2}
+	first_thread := spawn tls_isolation_worker(voidptr(&first), ready, release)
+	second_thread := spawn tls_isolation_worker(voidptr(&second), ready, release)
+	_ := <-ready
+	_ := <-ready
+	assert C.goroutines_get_current_m() == original
+	release <- true
+	release <- true
+	first_thread.wait()
+	second_thread.wait()
+	assert C.goroutines_get_current_m() == original
+}

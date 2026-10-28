@@ -40,6 +40,13 @@ pub enum GStatus {
 	copystack // stack is being moved (not used yet)
 }
 
+enum SchedulerHandoff {
+	none
+	parked
+	yielded
+	exited
+}
+
 // PStatus represents processor states
 pub enum PStatus {
 	idle    // not being used, available on idle list
@@ -84,6 +91,10 @@ pub mut:
 	// Windows). It is still running when goexit0 stores it, so execute() releases it after
 	// switching back to g0.
 	dead_context voidptr
+mut:
+	handoff_g   &Goroutine = unsafe { nil }
+	handoff     SchedulerHandoff
+	park_unlock &SpinLock = unsafe { nil }
 }
 
 // Processor represents a processor - a resource required to execute goroutines.
