@@ -14247,6 +14247,31 @@ fn (mut tc TypeChecker) check_asm_stmt(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// root_scope_global_name_prefix counts the leading names of `scope`, when it
+// is the root of the file scope, that are globals. A scope only appends names
+// until it is reset, and global_names only grows, so the count of an earlier
+// call stays valid.
+fn (mut tc TypeChecker) root_scope_global_name_prefix(scope &Scope) int {
+	mut root := tc.file_scope
+	for !isnil(root) && !isnil(root.parent) {
+		root = root.parent
+	}
+	if voidptr(scope) != voidptr(root) {
+		return 0
+	}
+	if voidptr(scope) != tc.root_scope_globals || scope.lifetime != tc.root_scope_global_lifetime {
+		tc.root_scope_globals = voidptr(scope)
+		tc.root_scope_global_lifetime = scope.lifetime
+		tc.root_scope_global_prefix = 0
+	}
+	mut n := tc.root_scope_global_prefix
+	for n < scope.names.len && scope.names[n] in tc.global_names {
+		n++
+	}
+	tc.root_scope_global_prefix = n
+	return n
+}
+
 // check_fn_literal validates check fn literal state for types.
 fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	if node.value == 'missing_body' && !tc.is_top_level_discarded_fn_signature(id) {
@@ -14338,10 +14363,19 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	mut forbidden_captures := map[string]bool{}
 	mut outer_scope := tc.cur_scope
 	for outer_scope != unsafe { nil } {
-		for name in outer_scope.names {
-			qname := tc.qualify_name(name)
-			is_global := name in tc.global_names || qname in tc.global_names
-			if !is_global && !explicit_captures[name] {
+		// The names of the root of the file scope are globals, never forbidden.
+		start := if isnil(outer_scope.parent) {
+			tc.root_scope_global_name_prefix(outer_scope)
+		} else {
+			0
+		}
+		for i in start .. outer_scope.names.len {
+			name := outer_scope.names[i]
+			// Test the cheap conditions before qualifying the name.
+			if explicit_captures[name] || name in tc.global_names {
+				continue
+			}
+			if tc.qualify_name(name) !in tc.global_names {
 				forbidden_captures[name] = true
 			}
 		}

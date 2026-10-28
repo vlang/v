@@ -1624,12 +1624,17 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 		} else if skip_file_semantics && node.kind != .module_decl {
 			continue
 		}
+		// The generic-type walk also looks for a nested option or result type, so
+		// that the walk which reports one only runs when there is one.
+		mut no_nested_option_types := false
 		if do_signatures && node.kind in [.fn_decl, .struct_decl, .interface_decl, .type_decl,
 			.global_decl, .const_decl] {
-			tc.check_written_generic_types(flat.NodeId(i), mut written_types)
+			no_nested_option_types = tc.check_written_generic_types(flat.NodeId(i), mut
+				written_types)
 		}
-		if do_signatures && (node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .interface_decl,
-			.type_decl, .global_decl, .const_decl] || is_top_level_statement_kind(node.kind)) {
+		if do_signatures && !no_nested_option_types && (node.kind in [.fn_decl, .c_fn_decl,
+			.struct_decl, .interface_decl, .type_decl, .global_decl, .const_decl]
+			|| is_top_level_statement_kind(node.kind)) {
 			tc.check_written_nested_option_types(flat.NodeId(i), mut written_types)
 		}
 		match node.kind {

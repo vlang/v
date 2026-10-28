@@ -14698,6 +14698,16 @@ pub fn run(args []string) {
 		if !building_v || !pre_tc.reuse_direct_parent_index_for_unchanged_ast(a) {
 			pre_tc.refresh_direct_parent_index(a)
 		}
+		// A convergence pass below re-runs reachability after checking more
+		// library bodies; it reuses the first pass's declaration indexes when the
+		// declarations are unchanged. Both passes copy their results out of
+		// their arenas before the cache is released. The cache itself must live
+		// in this arena, outside the first pass's disposable one.
+		mut markused_decls := &markused.MarkusedDeclCache(unsafe { nil })
+		if skip_library_bodies && scope_prealloc_markused && !generic_cache_hit
+			&& !library_body_frontiers {
+			markused_decls = markused.new_markused_decl_cache()
+		}
 		mut markused_scope := unsafe { nil }
 		mut markused_tc := &pre_tc
 		if scope_prealloc_markused && !generic_cache_hit && !library_body_frontiers {
@@ -14744,6 +14754,9 @@ pub fn run(args []string) {
 			// Retain MSVC backtrace dependencies and Windows' Unicode console output
 			// when the minimal literal path cannot replace the ordinary runtime.
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
+		} else if !isnil(markused_decls) {
+			used_fns, uses_generics = markused.mark_used_with_generic_usage_cached(a, markused_tc,
+				markused_decls)
 		} else {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
 		}
@@ -14803,8 +14816,11 @@ pub fn run(args []string) {
 				}
 				// The types of those bodies can lead markused to more functions.
 				used_fns, uses_generics = v3_mark_used_for_program(a, mut pre_tc, scope_prealloc_markused,
-					effective_c_compiler == 'msvc', prefs.verbose)
+					effective_c_compiler == 'msvc', prefs.verbose, markused_decls)
 			}
+		}
+		if !isnil(markused_decls) {
+			markused_decls.release()
 		}
 		if skip_library_bodies && verbose {
 			eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
@@ -22380,7 +22396,7 @@ fn v3_library_source_files(a &flat.FlatAst, tc &types.TypeChecker, vroot string)
 
 // v3_mark_used_for_program runs markused as a plain build of a program does, in a
 // scope of its own when the stage scopes its scratch memory.
-fn v3_mark_used_for_program(a &flat.FlatAst, mut tc types.TypeChecker, scoped bool, full_runtime bool, verbose bool) (map[string]bool, bool) {
+fn v3_mark_used_for_program(a &flat.FlatAst, mut tc types.TypeChecker, scoped bool, full_runtime bool, verbose bool, decl_cache &markused.MarkusedDeclCache) (map[string]bool, bool) {
 	mut scope := unsafe { nil }
 	mut markused_tc := unsafe { &tc }
 	if scoped {
@@ -22390,8 +22406,15 @@ fn v3_mark_used_for_program(a &flat.FlatAst, mut tc types.TypeChecker, scoped bo
 		markused_tc.enable_scoped_parallel_workers()
 		markused_tc.verbose = verbose
 	}
-	mut used_fns, uses_generics := if full_runtime {
+	// The declaration cache must outlive only results that are copied out of
+	// this pass's arena, which the scoped pass does below.
+	use_decl_cache := scoped && !isnil(decl_cache)
+	mut used_fns, uses_generics := if full_runtime && use_decl_cache {
+		markused.mark_used_with_generic_usage_full_runtime_cached(a, markused_tc, decl_cache)
+	} else if full_runtime {
 		markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
+	} else if use_decl_cache {
+		markused.mark_used_with_generic_usage_cached(a, markused_tc, decl_cache)
 	} else {
 		markused.mark_used_with_generic_usage(a, markused_tc)
 	}

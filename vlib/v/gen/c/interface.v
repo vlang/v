@@ -463,6 +463,8 @@ fn (mut g FlatGen) collect_interface_impls() {
 	}
 	mut iface_names := g.interfaces.keys()
 	iface_names.sort_with_compare(compare_interface_source_type_ids)
+	// The implementer queries of this loop share one checker context.
+	memo_opened := g.tc.begin_interface_impl_queries()
 	for iface_id in iface_names {
 		mut impls := []u32{}
 		mut base_impls := []u32{}
@@ -501,6 +503,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 			g.collect_ierror_method_emit_names(impls)
 		}
 	}
+	g.tc.end_interface_impl_queries(memo_opened)
 }
 
 fn compare_interface_source_type_ids(a &u32, b &u32) int {

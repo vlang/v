@@ -690,10 +690,13 @@ fn (mut tc TypeChecker) check_generic_type_constraints(id flat.NodeId, pos token
 // `Box[int](x)`, `fn (b Box[int]) {}`, as it is checked where the declared
 // types and the struct literals are. An error one of those checks reported
 // already, at the same place, is not repeated.
-fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stack []WrittenTypeItem) {
+// It returns true when it walked the whole declaration and no node of it has a
+// nested option or result type (see check_written_nested_option_types).
+fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stack []WrittenTypeItem) bool {
 	if !tc.should_diagnose(top_id) || !tc.program_declares_constraints() {
-		return
+		return false
 	}
+	mut has_nested_option_type := false
 	top := tc.a.node(top_id)
 	scope := tc.type_param_scope(*top)
 	// The struct literals of a generic body are checked here: the body is not
@@ -710,6 +713,9 @@ fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stac
 		}
 		node := tc.a.node(item.id)
 		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
+		if !has_nested_option_type && has_written_nested_option_result_type(node) {
+			has_nested_option_type = true
+		}
 		mut type_ids := written_type_ids(*node)
 		if generic_body && node.kind == .struct_init && !flat.source_type_shape(node.source_value_id()).has(.channel_type) {
 			type_ids << node.source_value_id()
@@ -733,6 +739,7 @@ fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stac
 			stack << WrittenTypeItem{tc.a.child(node, i), anchor}
 		}
 	}
+	return !has_nested_option_type
 }
 
 struct WrittenTypeItem {

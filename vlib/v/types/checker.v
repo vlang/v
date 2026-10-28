@@ -1003,7 +1003,8 @@ fn clone_owned_string_list_map(source map[string][]string) map[string][]string {
 		for value in values {
 			owned_values << value.clone()
 		}
-		result[key.clone()] = owned_values
+		// The map stores its own clone of an inserted string key.
+		result[key] = owned_values
 	}
 	return result
 }
@@ -1025,7 +1026,7 @@ fn clone_owned_string_bool_map(source map[string]bool) map[string]bool {
 	mut result := map[string]bool{}
 	result.reserve(u32(source.len))
 	for key, value in source {
-		result[key.clone()] = value
+		result[key] = value
 	}
 	return result
 }
@@ -1034,7 +1035,7 @@ fn clone_owned_string_string_map(source map[string]string) map[string]string {
 	mut result := map[string]string{}
 	result.reserve(u32(source.len))
 	for key, value in source {
-		result[key.clone()] = value.clone()
+		result[key] = value.clone()
 	}
 	return result
 }
@@ -1063,7 +1064,7 @@ fn clone_owned_struct_field_map(source map[string][]StructField) map[string][]St
 				is_volatile: field.is_volatile
 			}
 		}
-		result[key.clone()] = owned_fields
+		result[key] = owned_fields
 	}
 	return result
 }
@@ -1265,6 +1266,14 @@ pub mut:
 	file_imports_by_file     map[string]&FileImportInfo
 	const_import_modules     map[string][]string
 	const_import_files_count int = -1
+
+	// Whether the source of a file (by id) has an `@[if ` attribute.
+	if_attribute_files map[int]bool
+	// The leading names of the root scope `root_scope_globals` (of `lifetime`)
+	// that global_names holds (see root_scope_global_name_prefix).
+	root_scope_globals         voidptr
+	root_scope_global_lifetime int
+	root_scope_global_prefix   int
 	// Field attributes remain immutable after collection; a growing AST invalidates this filter.
 	required_fields_ast_nodes int  = -1
 	has_required_fields       bool = true
@@ -3326,21 +3335,26 @@ pub fn (mut tc TypeChecker) reserve_scoped_transform_metadata(signature_headroom
 // type metadata into the current arena after a disposable transform scope has
 // been left.
 pub fn (mut tc TypeChecker) rebuild_scoped_transform_signature_maps() {
+	// Inserting a string key stores the map's own clone of it.
 	mut ret_types := map[string]Type{}
+	ret_types.reserve(u32(tc.fn_ret_types.len))
 	for name, ret in tc.fn_ret_types {
-		ret_types[name.clone()] = clone_owned_type(ret)
+		ret_types[name] = clone_owned_type(ret)
 	}
 	mut param_types := map[string][]Type{}
+	param_types.reserve(u32(tc.fn_param_types.len))
 	for name, params in tc.fn_param_types {
-		param_types[name.clone()] = clone_owned_types(params)
+		param_types[name] = clone_owned_types(params)
 	}
 	mut variadic := map[string]bool{}
+	variadic.reserve(u32(tc.fn_variadic.len))
 	for name, is_variadic in tc.fn_variadic {
-		variadic[name.clone()] = is_variadic
+		variadic[name] = is_variadic
 	}
 	mut specialized := map[string]bool{}
+	specialized.reserve(u32(tc.specialized_generic_fns.len))
 	for name, is_specialized in tc.specialized_generic_fns {
-		specialized[name.clone()] = is_specialized
+		specialized[name] = is_specialized
 	}
 	tc.fn_ret_types = ret_types.move()
 	tc.fn_ret_types_revision++
@@ -8098,10 +8112,12 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 				return true
 			}
 		}
+		// A text without a dot holds no `alias.` or `module.` qualification.
+		value_has_dot := value_text.index_u8(`.`) >= 0
 		if node.kind != .sql_expr && (type_id_contains_qualified_import(node.typ, alias_id)
-			|| type_text_contains_qualified_import(value_text, alias_text)
+			|| (value_has_dot && type_text_contains_qualified_import(value_text, alias_text))
 			|| type_id_contains_qualified_import(node.typ, module_path_id)
-			|| type_text_contains_qualified_import(value_text, module_path)) {
+			|| (value_has_dot && type_text_contains_qualified_import(value_text, module_path))) {
 			return true
 		}
 		// A module-qualified attribute name (`@[mod.Skip]`) is a use of the
@@ -9972,7 +9988,10 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 		if node.kind != .fn_literal && inferred_type_source(node.typ) {
 			_ = tc.resolve_inferred_type_id(node.typ)
 		}
-		if node.kind == .ident {
+		// Only a spelling with `typeof(__expr_` is an inferred type source:
+		// test that before interning every identifier's name.
+		if node.kind == .ident
+			&& (node.value.len == 0 || node.value.contains('typeof(__expr_')) {
 			source_id := node.source_value_id()
 			if inferred_type_source(source_id) {
 				_ = tc.resolve_inferred_type_id(source_id)
@@ -13299,6 +13318,11 @@ fn (mut tc TypeChecker) check_fn_if_attribute_return(id flat.NodeId, node flat.N
 	if tc.parse_type(node.typ) is Void {
 		return
 	}
+	// The attribute is looked for in the source of the declaration's file: a file
+	// without any `@[if ` has none. (The header position is in the same file.)
+	if !tc.source_file_has_if_attribute(node.pos.id) {
+		return
+	}
 	header_pos := tc.fn_declaration_diagnostic_pos(node)
 	file := tc.a.source_files[header_pos.id] or { return }
 	source := tc.source_texts_by_file[file.name] or { return }
@@ -13323,6 +13347,22 @@ fn (mut tc TypeChecker) check_fn_if_attribute_return(id flat.NodeId, node flat.N
 		}
 		return
 	}
+}
+
+// source_file_has_if_attribute reports whether the source of the file with the
+// id `file_id` has an `@[if ` attribute.
+fn (mut tc TypeChecker) source_file_has_if_attribute(file_id int) bool {
+	if known := tc.if_attribute_files[file_id] {
+		return known
+	}
+	mut has := false
+	if file := tc.a.source_files[file_id] {
+		if source := tc.source_texts_by_file[file.name] {
+			has = source.contains('@[if ')
+		}
+	}
+	tc.if_attribute_files[file_id] = has
+	return has
 }
 
 fn (mut tc TypeChecker) check_main_fn_signature(id flat.NodeId, node flat.Node) {

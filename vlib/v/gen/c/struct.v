@@ -4818,6 +4818,27 @@ fn cgen_compact_generic_type_id(base u32, args []u32) u32 {
 }
 
 fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
+	// The rewrite depends on the spelling and the current file's imports, which a
+	// body memo keeps fixed.
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.alias_type_names.len == 0 {
+		return g.struct_init_import_alias_type_name_uncached(type_name_id)
+	}
+	slot := int(((u64(type_name_id) * u64(0x9e3779b1)) >> 7) & u64(body_alias_type_name_slots - 1))
+	entry := unsafe { &memo.alias_type_names[slot] }
+	if entry.generation == memo.generation && entry.type_id == type_name_id {
+		return entry.value
+	}
+	result := g.struct_init_import_alias_type_name_uncached(type_name_id)
+	memo.alias_type_names[slot] = BodyAliasTypeNameQuery{
+		type_id:    type_name_id
+		generation: memo.generation
+		value:      result
+	}
+	return result
+}
+
+fn (g &FlatGen) struct_init_import_alias_type_name_uncached(type_name_id u32) u32 {
 	base_source_id, args_source_ids, is_generic := g.shared_generic_app_parts(type_name_id)
 	base := flat.source_type_name(base_source_id)
 	if is_generic && args_source_ids.len > 0 && !flat.source_type_shape(base_source_id).has(.dotted) {
@@ -5037,6 +5058,37 @@ fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
 
 // find_struct_decl resolves find struct decl information for c.
 fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
+	// The declaration of a spelling depends on the current file's imports and the
+	// current module, which a body memo keeps fixed.
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.struct_decls.len == 0 {
+		return g.find_struct_decl_uncached(type_name_id)
+	}
+	slot := int(((u64(type_name_id) * u64(0x9e3779b1)) >> 7) & u64(body_struct_decl_query_slots - 1))
+	entry := unsafe { &memo.struct_decls[slot] }
+	if entry.generation == memo.generation && entry.type_id == type_name_id {
+		if entry.found {
+			return entry.info
+		}
+		return none
+	}
+	info := g.find_struct_decl_uncached(type_name_id) or {
+		memo.struct_decls[slot] = BodyStructDeclQuery{
+			type_id:    type_name_id
+			generation: memo.generation
+		}
+		return none
+	}
+	memo.struct_decls[slot] = BodyStructDeclQuery{
+		type_id:    type_name_id
+		generation: memo.generation
+		found:      true
+		info:       info
+	}
+	return info
+}
+
+fn (g &FlatGen) find_struct_decl_uncached(type_name_id u32) ?StructDeclInfo {
 	// A bare name belongs to the file that wrote it: `import model { Context }`
 	// must select `model.Context` here even when another imported module declares
 	// a same-named struct, or that homonym's declarations (fields, defaults)
@@ -6017,6 +6069,40 @@ fn (g &FlatGen) embedded_field_path_for_promoted_field_inner(type_name_id u32, f
 }
 
 fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, field_name string) ?[]types.StructField {
+	clean := types.unwrap_pointer(base_type)
+	if clean !is types.Struct {
+		return g.embedded_field_path_for_promoted_selector_uncached(base_type, field_name)
+	}
+	// For a struct base the answer depends on its name, the field and the current
+	// file's imports. Most selectors have no promoted path; remember those misses
+	// for the rest of the body.
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.promoted_misses.len == 0 {
+		return g.embedded_field_path_for_promoted_selector_uncached(base_type, field_name)
+	}
+	name_id := (clean as types.Struct).name_id
+	mut hash := u64(name_id) * u64(0x9e3779b1) ^ u64(field_name.len) * u64(0x85ebca6b)
+	if field_name.len > 0 {
+		hash ^= u64(field_name[0]) << 3 ^ u64(field_name[field_name.len - 1]) << 11
+	}
+	slot := int((hash >> 7) & u64(body_promoted_miss_slots - 1))
+	entry := unsafe { &memo.promoted_misses[slot] }
+	if entry.generation == memo.generation && entry.name_id == name_id
+		&& entry.field == field_name {
+		return none
+	}
+	path := g.embedded_field_path_for_promoted_selector_uncached(base_type, field_name) or {
+		memo.promoted_misses[slot] = BodyPromotedMissQuery{
+			name_id:    name_id
+			generation: memo.generation
+			field:      field_name
+		}
+		return none
+	}
+	return path
+}
+
+fn (g &FlatGen) embedded_field_path_for_promoted_selector_uncached(base_type types.Type, field_name string) ?[]types.StructField {
 	type_name := (g.concrete_bare_struct_selector_name(base_type) or {
 		g.type_lookup_name(base_type)
 	})

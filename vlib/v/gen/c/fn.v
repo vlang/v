@@ -11704,35 +11704,56 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 					return g.optional_type_name(specialized_ret)
 				}
 			}
-			mut concrete_optional_return := false
-			if resolved := g.tc.resolved_call_name(id) {
-				concrete_optional_return = g.call_uses_concrete_optional_params(resolved)
-			}
-			if !concrete_optional_return {
-				target := g.call_target_name(g.a.child(&node, 0))
-				concrete_optional_return = g.call_uses_concrete_optional_params(target)
-					|| g.call_uses_concrete_optional_params(g.normalize_call_key(target))
-					|| g.call_uses_concrete_optional_params(g.direct_call_name_for_call(id, target))
-			}
-			if concrete_optional_return {
-				declared := g.declared_call_return_type(id)
-				if type_is_optional_result(declared) {
+			// A callee with a concrete optional ABI names its declared return type
+			// (or `typ`) first; any other call prefers a shared payload return, then
+			// the declared type. Those orders only disagree when a shared return
+			// exists, so the costly ABI check runs only then. All three lookups are
+			// memoized queries.
+			declared := g.declared_call_return_type(id)
+			declared_optional := type_is_optional_result(declared)
+			declared_direct := declared is types.OptionType || declared is types.ResultType
+			if declared_optional && !declared_direct {
+				if g.call_returns_concrete_optional(id, node) {
 					return g.optional_type_name(declared)
 				}
-				if type_is_optional_result(typ) {
-					return g.optional_type_name(typ)
+				if shared_return := g.shared_optional_call_type(id, node) {
+					return g.optional_type_name(shared_return)
 				}
+				return g.optional_type_name(typ)
 			}
-			if shared_return := g.shared_optional_call_type(id, node) {
+			shared_return := g.shared_optional_call_type(id, node) or {
+				if declared_optional {
+					return g.optional_type_name(declared)
+				}
+				return g.optional_type_name(typ)
+			}
+			if declared_optional {
+				if g.call_returns_concrete_optional(id, node) {
+					return g.optional_type_name(declared)
+				}
 				return g.optional_type_name(shared_return)
 			}
-			declared := g.declared_call_return_type(id)
-			if declared is types.OptionType || declared is types.ResultType {
-				return g.optional_type_name(declared)
+			if type_is_optional_result(typ) && g.call_returns_concrete_optional(id, node) {
+				return g.optional_type_name(typ)
 			}
+			return g.optional_type_name(shared_return)
 		}
 	}
 	return g.optional_type_name(typ)
+}
+
+// call_returns_concrete_optional reports whether the callee of call `id` uses the
+// concrete optional ABI of a specialized generic or a concrete optional parameter.
+fn (mut g FlatGen) call_returns_concrete_optional(id flat.NodeId, node flat.Node) bool {
+	if resolved := g.tc.resolved_call_name(id) {
+		if g.call_uses_concrete_optional_params(resolved) {
+			return true
+		}
+	}
+	target := g.call_target_name(g.a.child(&node, 0))
+	return g.call_uses_concrete_optional_params(target)
+		|| g.call_uses_concrete_optional_params(g.normalize_call_key(target))
+		|| g.call_uses_concrete_optional_params(g.direct_call_name_for_call(id, target))
 }
 
 fn (g &FlatGen) call_declared_return_type_text(id flat.NodeId, node flat.Node) ?u32 {
@@ -11985,10 +12006,27 @@ fn (g &FlatGen) normalize_call_key_uncached(name string) string {
 	if qname in g.tc.fn_param_types || qname in g.tc.fn_ret_types {
 		return qname
 	}
+	// Most names reaching this loop are found under no import. Probe each
+	// `module.name` spelling from a scratch buffer and copy only a hit.
+	mut probe_buf := [256]u8{}
 	for _, mod_name in g.tc.imports {
-		imported := '${mod_name}.${name}'
-		if imported in g.tc.fn_param_types || imported in g.tc.fn_ret_types {
-			return imported
+		probe_len := mod_name.len + 1 + name.len
+		if probe_len > probe_buf.len {
+			imported := '${mod_name}.${name}'
+			if imported in g.tc.fn_param_types || imported in g.tc.fn_ret_types {
+				return imported
+			}
+			continue
+		}
+		unsafe {
+			vmemcpy(&probe_buf[0], mod_name.str, mod_name.len)
+			vmemcpy(&probe_buf[mod_name.len + 1], name.str, name.len)
+		}
+		probe_buf[mod_name.len] = `.`
+		// The probe borrows the buffer only for these map lookups.
+		probe := unsafe { tos(&probe_buf[0], probe_len) }
+		if probe in g.tc.fn_param_types || probe in g.tc.fn_ret_types {
+			return probe.clone()
 		}
 	}
 	return qname

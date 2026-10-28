@@ -10446,7 +10446,27 @@ fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident_id u32, method stri
 // unchanged; forget_transform_static_method_names covers a removal. The caller owns
 // this checker: no other thread may be resolving through it.
 pub fn (tc &TypeChecker) refresh_transform_static_method_names() {
+	tc.refresh_transform_static_method_names_added([]string{})
+}
+
+// refresh_transform_static_method_names_added is refresh_transform_static_method_names
+// given `added`, the signatures the caller registered since the last refresh: when they
+// account for every new signature, only they are decoded.
+pub fn (tc &TypeChecker) refresh_transform_static_method_names_added(added []string) {
 	if tc.transform_static_method_count == tc.fn_ret_types.len {
+		return
+	}
+	if tc.transform_static_method_count >= 0
+		&& tc.transform_static_method_count + added.len == tc.fn_ret_types.len {
+		mut extended := tc.transform_static_method_names.clone()
+		for name in added {
+			if _, method := flat.decode_static_type_method_name(name) {
+				extended[method] = true
+			}
+		}
+		mut owner := unsafe { tc }
+		owner.transform_static_method_names = extended.move()
+		owner.transform_static_method_count = tc.fn_ret_types.len
 		return
 	}
 	mut names := map[string]bool{}
@@ -12697,6 +12717,11 @@ fn named_type_implements_interface_guarded(tc &TypeChecker, concrete_name_id u32
 	// Methods defined directly on the interface (default implementations) are
 	// inherited and need not be reimplemented.
 	for method in tc.interface_abstract_method_names(iface_name_id) {
+		// Without the method, only an implicit `str` can satisfy it.
+		has_no_method := tc.memo_proves_no_receiver_method(concrete_name_id, method)
+		if has_no_method && method != 'str' {
+			return false
+		}
 		expected_key := tc.interface_method_signature_key(iface_name_id, method) or {
 			'${flat.source_type_name(iface_name_id)}.${method}'
 		}
@@ -12704,26 +12729,28 @@ fn named_type_implements_interface_guarded(tc &TypeChecker, concrete_name_id u32
 			&& tc.interface_method_is_str_requirement(expected_key) {
 			return false
 		}
-		if info := tc.resolve_generic_struct_method(concrete_name_id, method) {
-			if !method_call_info_signature_compatible_for_interface_guarded(tc, info, expected_key,
-				iface_name_id, in_progress) {
-				return false
+		if !has_no_method {
+			if info := tc.resolve_generic_struct_method(concrete_name_id, method) {
+				if !method_call_info_signature_compatible_for_interface_guarded(tc, info, expected_key,
+					iface_name_id, in_progress) {
+					return false
+				}
+				continue
 			}
-			continue
-		}
-		if concrete_key := tc.concrete_method_signature_key(concrete_name_id, method) {
-			if !method_signature_compatible_for_interface_guarded(tc, concrete_key, expected_key,
-				iface_name_id, in_progress) {
-				return false
+			if concrete_key := tc.concrete_method_signature_key(concrete_name_id, method) {
+				if !method_signature_compatible_for_interface_guarded(tc, concrete_key, expected_key,
+					iface_name_id, in_progress) {
+					return false
+				}
+				continue
 			}
-			continue
-		}
-		if info := tc.resolve_generic_sum_method(concrete_name_id, method) {
-			if !method_call_info_signature_compatible_for_interface_guarded(tc, info, expected_key,
-				iface_name_id, in_progress) {
-				return false
+			if info := tc.resolve_generic_sum_method(concrete_name_id, method) {
+				if !method_call_info_signature_compatible_for_interface_guarded(tc, info, expected_key,
+					iface_name_id, in_progress) {
+					return false
+				}
+				continue
 			}
-			continue
 		}
 		if method == 'str' && tc.interface_method_is_str_requirement(expected_key)
 			&& tc.type_has_implicit_str_method(concrete_name_id) {
@@ -12935,7 +12962,7 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name_id u32) []u32 {
 		mut seen := map[u32]bool{}
 		for name_id in impls { seen[name_id] = true }
 		// Preserve transform-emitted dispatch IDs; append later generic implementers.
-		for name_id in tc.interface_impl_names_uncached_after(iface_name_id, tc.interface_impl_candidates_at_snapshot) {
+		for name_id in tc.interface_impl_names_after_snapshot(iface_name_id) {
 			if name_id !in seen {
 				seen[name_id] = true
 				impls << name_id
@@ -13051,7 +13078,30 @@ fn (tc &TypeChecker) interface_impl_names_uncached_after(iface_name_id u32, excl
 	} else {
 		tc.interface_impl_candidates(iface_name_id, excluded)
 	}
+	return tc.interface_impls_among(iface_name_id, candidates)
+}
+
+// interface_impl_names_after_snapshot is interface_impl_names_uncached_after
+// with the candidates of the frozen snapshot excluded.
+fn (tc &TypeChecker) interface_impl_names_after_snapshot(iface_name_id u32) []u32 {
+	if isnil(tc.interface_impl_memo) || tc.interface_impl_candidates_at_snapshot.len == 0 {
+		return tc.interface_impl_names_uncached_after(iface_name_id, tc.interface_impl_candidates_at_snapshot)
+	}
+	return tc.interface_impls_among(iface_name_id, tc.memo_interface_impl_candidates_after_snapshot(iface_name_id))
+}
+
+// interface_impls_among lists, in order, the `candidates` that implement the interface.
+fn (tc &TypeChecker) interface_impls_among(iface_name_id u32, candidates []u32) []u32 {
 	mut impls := []u32{}
+	// With a memo, a candidate that lacks the first method the interface requires
+	// does not implement it (see named_type_implements_interface_guarded).
+	mut first_method_idx := -1
+	if !isnil(tc.interface_impl_memo) {
+		methods := tc.interface_abstract_method_names(iface_name_id)
+		if methods.len > 0 && methods[0] != 'str' {
+			first_method_idx = tc.memo_required_method_index(methods[0])
+		}
+	}
 	for name_id in candidates {
 		if name_id in tc.interface_names {
 			if tc.interface_implements_interface(name_id, iface_name_id) {
@@ -13059,11 +13109,18 @@ fn (tc &TypeChecker) interface_impl_names_uncached_after(iface_name_id u32, excl
 			}
 			continue
 		}
-		resolved_name_id := tc.interface_metadata_name(name_id)
+		resolved_name_id := if isnil(tc.interface_impl_memo) {
+			tc.interface_metadata_name(name_id)
+		} else {
+			tc.memo_interface_metadata_name(name_id)
+		}
 		if resolved_name_id in tc.interface_names {
 			if tc.interface_implements_interface(resolved_name_id, iface_name_id) {
 				impls << name_id
 			}
+			continue
+		}
+		if first_method_idx >= 0 && tc.memo_lacks_required_method(name_id, first_method_idx) {
 			continue
 		}
 		if tc.named_type_implements_interface(name_id, iface_name_id) {
@@ -13180,7 +13237,12 @@ fn (tc &TypeChecker) memo_interface_impl_candidates(iface_name_id u32) []u32 {
 			extra_set[short_name] = true
 		}
 	}
-	base := memo.base_candidates
+	return merge_interface_impl_candidates(memo.base_candidates, extra_set)
+}
+
+// merge_interface_impl_candidates merges the sorted `base` candidates with the
+// `extra_set` ones, in the same total spelling order and without duplicates.
+fn merge_interface_impl_candidates(base []u32, extra_set map[u32]bool) []u32 {
 	if extra_set.len == 0 {
 		return base.clone()
 	}
@@ -13214,6 +13276,86 @@ fn (tc &TypeChecker) memo_interface_impl_candidates(iface_name_id u32) []u32 {
 		j++
 	}
 	return candidates
+}
+
+// memo_interface_impl_candidates_after_snapshot is interface_impl_candidates
+// with the candidates of the frozen snapshot
+// (interface_impl_candidates_at_snapshot) excluded, as
+// memo_interface_impl_candidates is without excluded ones.
+fn (tc &TypeChecker) memo_interface_impl_candidates_after_snapshot(iface_name_id u32) []u32 {
+	mut memo := tc.interface_impl_memo
+	if !memo.snapshot_base_candidates_ready {
+		mut base_set := map[u32]bool{}
+		for name, _ in tc.structs {
+			candidate := interface_impl_candidate_name(name)
+			if (name != flat.source_type_id('VMapData') || tc.struct_modules[name] != 'builtin')
+				&& candidate !in tc.interface_impl_candidates_at_snapshot {
+				base_set[candidate] = true
+			}
+		}
+		for name, _ in tc.enum_names {
+			candidate := interface_impl_candidate_name(name)
+			if candidate !in tc.interface_impl_candidates_at_snapshot {
+				base_set[candidate] = true
+			}
+		}
+		for name, _ in tc.type_aliases.ids {
+			candidate := interface_impl_candidate_name(name)
+			if candidate !in tc.interface_impl_candidates_at_snapshot {
+				base_set[candidate] = true
+			}
+		}
+		mut base := base_set.keys()
+		base.sort_with_compare(compare_interface_impl_spelling_ids)
+		memo.snapshot_base_candidates = base
+		memo.snapshot_base_candidates_ready = true
+	}
+	mut extra_set := map[u32]bool{}
+	has_no_requirements := tc.interface_has_no_requirements(iface_name_id)
+	accepts_implicit_str := tc.interface_accepts_implicit_str(iface_name_id)
+	if has_no_requirements || accepts_implicit_str {
+		for name in implicit_str_builtin_type_names() {
+			if name !in tc.interface_impl_candidates_at_snapshot {
+				extra_set[name] = true
+			}
+		}
+	}
+	if has_no_requirements {
+		if !memo.snapshot_alias_fn_candidates_ready {
+			mut alias_fn_ids := []u32{}
+			for name, target_id in tc.type_aliases.ids {
+				if interface_impl_candidate_name(name) in tc.interface_impl_candidates_at_snapshot {
+					continue
+				}
+				typ := tc.parse_type(target_id)
+				if typ is FnType {
+					fn_type_id := Type(typ).source_type_id()
+					if fn_type_id !in tc.interface_impl_candidates_at_snapshot {
+						alias_fn_ids << fn_type_id
+					}
+				}
+			}
+			memo.snapshot_alias_fn_candidates = alias_fn_ids
+			memo.snapshot_alias_fn_candidates_ready = true
+		}
+		for name in memo.snapshot_alias_fn_candidates {
+			extra_set[name] = true
+		}
+	}
+	for name, _ in tc.interface_names {
+		name_id := name
+		if name_id != iface_name_id && tc.interface_implements_interface(name_id, iface_name_id)
+			&& name_id !in tc.interface_impl_candidates_at_snapshot {
+			extra_set[name_id] = true
+		}
+		short_name := interface_impl_candidate_name(name_id)
+		if short_name != name_id && short_name != iface_name_id
+			&& tc.interface_implements_interface(name_id, iface_name_id)
+			&& short_name !in tc.interface_impl_candidates_at_snapshot {
+			extra_set[short_name] = true
+		}
+	}
+	return merge_interface_impl_candidates(memo.snapshot_base_candidates, extra_set)
 }
 
 // stable_interface_type_ids maps source spelling IDs to deterministic nonzero `_typ` dispatch IDs for
@@ -13639,6 +13781,269 @@ pub fn (tc &TypeChecker) ierror_impl_names() []u32 {
 		cache.ierror_impl_names_set = true
 	}
 	return impls
+}
+
+// memo_proves_no_receiver_method reports, while an InterfaceImplMemo is
+// active, that resolve_generic_struct_method, concrete_method_signature_key
+// and resolve_generic_sum_method all find no `method` for the candidate type
+// `concrete_name_id`. It holds for a candidate whose lookups only probe keys
+// `<receiver>.<method>` and `<receiver>.@<method>` (in the declared signatures
+// and the receiver suffix index), with a receiver whose last component no such
+// key has. Almost every candidate fails the first method of an interface that
+// way; the lookups would build and probe several keys first.
+fn (tc &TypeChecker) memo_proves_no_receiver_method(concrete_name_id u32, method string) bool {
+	method_idx := tc.memo_required_method_index(method)
+	return method_idx >= 0 && tc.memo_lacks_required_method(concrete_name_id, method_idx)
+}
+
+// memo_required_method_index is the index of `method` among the methods that
+// interfaces require, or -1 without an active InterfaceImplMemo.
+fn (tc &TypeChecker) memo_required_method_index(method string) int {
+	mut memo := tc.interface_impl_memo
+	if isnil(memo) {
+		return -1
+	}
+	if !memo.method_keys_ready {
+		tc.memo_index_method_receivers(mut memo)
+	}
+	return memo.required_methods[method] or { -1 }
+}
+
+// memo_lacks_required_method is memo_proves_no_receiver_method for the method
+// with the index `method_idx` (see memo_required_method_index).
+fn (tc &TypeChecker) memo_lacks_required_method(concrete_name_id u32, method_idx int) bool {
+	mut memo := tc.interface_impl_memo
+	lookup := tc.memo_receiver_method_lookup(mut memo, concrete_name_id)
+	if !lookup.plain {
+		return false
+	}
+	for part in lookup.parts {
+		if ((u64(method_idx) << 32) | u64(part)) in memo.method_receivers {
+			return false
+		}
+	}
+	return true
+}
+
+// memo_interface_metadata_name is interface_metadata_name(name_id).
+fn (tc &TypeChecker) memo_interface_metadata_name(name_id u32) u32 {
+	mut memo := tc.interface_impl_memo
+	if metadata_name := memo.metadata_names[name_id] {
+		return metadata_name
+	}
+	metadata_name := tc.interface_metadata_name(name_id)
+	memo.metadata_names[name_id] = metadata_name
+	return metadata_name
+}
+
+// memo_index_method_receivers records, for every method that an interface
+// requires, the last components of the receivers of the keys that declare it.
+fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
+	for iface_name, _ in tc.interface_names {
+		for method in tc.interface_abstract_method_names(iface_name) {
+			// A key is split at its last dot: a dotted name is never indexed, and
+			// must not be proven absent.
+			if method.contains('.') {
+				continue
+			}
+			if method !in memo.required_methods {
+				memo.required_methods[method] = memo.required_methods.len
+			}
+		}
+	}
+	for key, _ in tc.fn_param_types {
+		memo.index_method_receiver_key(key)
+	}
+	for key, _ in tc.fn_ret_types {
+		memo.index_method_receiver_key(key)
+	}
+	for key, _ in tc.receiver_method_suffix_index {
+		memo.index_method_receiver_key(key)
+	}
+	memo.method_keys_ready = true
+}
+
+fn (mut memo InterfaceImplMemo) index_method_receiver_key(key string) {
+	last_dot := key.last_index_u8(`.`)
+	if last_dot < 0 {
+		return
+	}
+	tail := unsafe { key.substr_unsafe(last_dot + 1, key.len) }
+	method_idx := memo.required_methods[tail] or { -1 }
+	// `X.@m` is probed for the method `m`.
+	escaped_idx := if tail.len > 1 && tail[0] == `@` {
+		memo.required_methods[unsafe { tail.substr_unsafe(1, tail.len) }] or { -1 }
+	} else {
+		-1
+	}
+	if method_idx < 0 && escaped_idx < 0 {
+		return
+	}
+	part := receiver_method_part(unsafe { key.substr_unsafe(0, last_dot) })
+	part_idx := memo.receiver_parts[part] or {
+		idx := memo.receiver_parts.len
+		memo.receiver_parts[part] = idx
+		idx
+	}
+	if method_idx >= 0 {
+		memo.method_receivers[(u64(method_idx) << 32) | u64(part_idx)] = true
+	}
+	if escaped_idx >= 0 {
+		memo.method_receivers[(u64(escaped_idx) << 32) | u64(part_idx)] = true
+	}
+}
+
+// receiver_method_part is the last component of a receiver spelling without
+// its generic arguments (`Box` for `gg.Box[mod.T]`). A key `<receiver>.<method>`
+// with this receiver has that part, since a method name has no dot.
+fn receiver_method_part(receiver string) string {
+	bracket := receiver.index_u8(`[`)
+	base := if bracket < 0 { receiver } else { unsafe { receiver.substr_unsafe(0, bracket) } }
+	dot := base.last_index_u8(`.`)
+	return if dot < 0 { base } else { unsafe { base.substr_unsafe(dot + 1, base.len) } }
+}
+
+// memo_receiver_method_lookup finds which receivers the method lookups of
+// memo_proves_no_receiver_method probe for `name_id`: the keys of its own and
+// its qualified spelling, of the receivers its parsed type is looked up by, of
+// the generic declarations it can name, of the types it aliases and of the
+// receivers it embeds. A generic application is looked up by other keys too,
+// and is not plain.
+fn (tc &TypeChecker) memo_receiver_method_lookup(mut memo InterfaceImplMemo, name_id u32) ReceiverMethodLookup {
+	if lookup := memo.receiver_lookups[name_id] {
+		return lookup
+	}
+	mut in_progress := map[u32]bool{}
+	return tc.memo_receiver_method_lookup_nested(mut memo, name_id, mut in_progress)
+}
+
+fn (tc &TypeChecker) memo_receiver_method_lookup_nested(mut memo InterfaceImplMemo, name_id u32, mut in_progress map[u32]bool) ReceiverMethodLookup {
+	if lookup := memo.receiver_lookups[name_id] {
+		return lookup
+	}
+	// An alias cycle is not plain: what a lookup inside it probes depends on
+	// where it entered.
+	if name_id in in_progress {
+		return ReceiverMethodLookup{}
+	}
+	in_progress[name_id] = true
+	lookup := tc.receiver_method_lookup(mut memo, name_id, mut in_progress)
+	memo.receiver_lookups[name_id] = lookup
+	return lookup
+}
+
+fn (tc &TypeChecker) receiver_method_lookup(mut memo InterfaceImplMemo, name_id u32, mut in_progress map[u32]bool) ReceiverMethodLookup {
+	if flat.source_type_syntax(name_id).application_valid() {
+		return ReceiverMethodLookup{}
+	}
+	mut parts := []int{}
+	// resolve_generic_struct_method
+	if !tc.generic_struct_method_parts(memo, name_id, mut parts) {
+		return ReceiverMethodLookup{}
+	}
+	// concrete_method_signature_key; resolve_generic_sum_method probes the
+	// keys of `name` too.
+	qualified_id := tc.memo_qualify_type_name(name_id)
+	add_receiver_method_part(memo, mut parts, flat.source_type_name(name_id))
+	add_receiver_method_part(memo, mut parts, flat.source_type_name(qualified_id))
+	for alias_target_id in tc.concrete_alias_targets(name_id, qualified_id) {
+		target := tc.memo_receiver_method_lookup_nested(mut memo, alias_target_id, mut in_progress)
+		if !target.plain {
+			return ReceiverMethodLookup{}
+		}
+		for part in target.parts {
+			if part !in parts {
+				parts << part
+			}
+		}
+	}
+	receiver_type := tc.memo_parse_type(name_id)
+	if !tc.receiver_candidate_parts(memo, receiver_type, mut parts) {
+		return ReceiverMethodLookup{}
+	}
+	if receiver_type is Alias {
+		if !tc.receiver_candidate_parts(memo, receiver_type.base_type, mut parts) {
+			return ReceiverMethodLookup{}
+		}
+	}
+	mut seen := map[u32]bool{}
+	if !tc.embedded_receiver_method_parts(memo, name_id, mut parts, mut seen) {
+		return ReceiverMethodLookup{}
+	}
+	return ReceiverMethodLookup{
+		plain: true
+		parts: parts
+	}
+}
+
+// receiver_candidate_parts adds the receivers of receiver_method_name_candidates
+// for `typ`, which do not depend on the method name.
+fn (tc &TypeChecker) receiver_candidate_parts(memo &InterfaceImplMemo, typ Type, mut parts []int) bool {
+	for candidate in receiver_method_name_candidates(typ, 'x', tc.cur_module) {
+		if candidate.ends_with('.@x') {
+			add_receiver_method_part(memo, mut parts, candidate[..candidate.len - 3])
+		} else if candidate.ends_with('.x') {
+			add_receiver_method_part(memo, mut parts, candidate[..candidate.len - 2])
+		} else {
+			return false
+		}
+	}
+	return true
+}
+
+fn add_receiver_method_part(memo &InterfaceImplMemo, mut parts []int, receiver string) {
+	part := memo.receiver_parts[receiver_method_part(receiver)] or { return }
+	if part !in parts {
+		parts << part
+	}
+}
+
+// embedded_receiver_method_parts adds the receivers that embedded_method_call_info
+// probes for `name_id`.
+fn (tc &TypeChecker) embedded_receiver_method_parts(memo &InterfaceImplMemo, name_id u32, mut parts []int, mut seen map[u32]bool) bool {
+	if seen[name_id] {
+		return true
+	}
+	seen[name_id] = true
+	for receiver_id in tc.embedded_receiver_ids(name_id) {
+		if !tc.generic_struct_method_parts(memo, receiver_id, mut parts) {
+			return false
+		}
+		receiver_syntax := flat.source_type_syntax(receiver_id)
+		add_receiver_method_part(memo, mut parts, flat.source_type_name(receiver_id))
+		if receiver_syntax.application_valid() {
+			add_receiver_method_part(memo, mut parts, flat.source_type_name(receiver_syntax.application_base()))
+		}
+		if !tc.embedded_receiver_method_parts(memo, receiver_id, mut parts, mut seen) {
+			return false
+		}
+	}
+	return true
+}
+
+// generic_struct_method_parts adds the receivers whose keys
+// resolve_generic_struct_method probes for `name_id` without generic arguments:
+// the generic declarations that it, or the type it aliases, can name. One with
+// arguments is matched in other ways, and is not plain.
+fn (tc &TypeChecker) generic_struct_method_parts(memo &InterfaceImplMemo, name_id u32, mut parts []int) bool {
+	if tc.struct_generic_params.len == 0 && tc.type_alias_generic_params.len == 0
+		&& tc.generic_receiver_method_index.len == 0 {
+		return true
+	}
+	lookup_id := tc.generic_struct_method_alias_target(name_id)
+	syntax := flat.source_type_syntax(lookup_id)
+	if syntax.receiver_app_valid() {
+		return false
+	}
+	if flat.source_type_shape(lookup_id).has(.bracketed) && syntax.generic_base() != 0 {
+		return true
+	}
+	for candidate_id in tc.generic_struct_method_base_candidates(lookup_id) {
+		if candidate_id in tc.struct_generic_params || candidate_id in tc.type_alias_generic_params {
+			add_receiver_method_part(memo, mut parts, flat.source_type_name(candidate_id))
+		}
+	}
+	return true
 }
 
 // concrete_method_signature_key finds a method declaration key for a source spelling ID.
@@ -14295,11 +14700,14 @@ fn source_field_decl_is_embed(field flat.Node, field_type_id u32) bool {
 	if (meta.len > 0 && meta[0].contains('e')) || field.typ == 0 || field.value.len == 0 {
 		return true
 	}
-	// Preserve the invalid-embed diagnostic for uppercase named fields.
+	// Preserve the invalid-embed diagnostic for uppercase named fields. Only
+	// those are compared, so lowercase names are not interned.
+	if !field.value[0].is_capital() {
+		return false
+	}
 	field_name_id := field.source_value_id()
-	return field.value[0].is_capital() && (field_name_id == field_type_id
-		|| (flat.source_type_shape(field_type_id).has(.dotted)
-			&& field_name_id == flat.source_type_syntax(field_type_id).unqualified()))
+	return field_name_id == field_type_id || (flat.source_type_shape(field_type_id).has(.dotted)
+		&& field_name_id == flat.source_type_syntax(field_type_id).unqualified())
 }
 
 fn (tc &TypeChecker) embedded_field_is_scoped_builtin_error(field StructField, embedded_name_id u32, struct_file string, struct_module string) bool {
@@ -14738,6 +15146,54 @@ mut:
 	base_candidates_ready     bool
 	alias_fn_candidates       []u32
 	alias_fn_candidates_ready bool
+	// The same, without the candidates of the frozen snapshot (see
+	// memo_interface_impl_candidates_after_snapshot).
+	snapshot_base_candidates           []u32
+	snapshot_base_candidates_ready     bool
+	snapshot_alias_fn_candidates       []u32
+	snapshot_alias_fn_candidates_ready bool
+	// What memo_proves_no_receiver_method reads (see there): the methods that
+	// interfaces require, the last components of the receivers of the declared
+	// keys that end in one of them, the (method, receiver component) pairs that
+	// a key spells, and the receiver components that each candidate is looked up by.
+	metadata_names    map[u32]u32
+	method_keys_ready bool
+	required_methods  map[string]int
+	receiver_parts    map[string]int
+	method_receivers  map[u64]bool
+	receiver_lookups  map[u32]ReceiverMethodLookup
+}
+
+// ReceiverMethodLookup is what memo_proves_no_receiver_method knows of a
+// candidate type: whether every key that a method lookup on it probes is
+// `<receiver>.<method>` (or `.@<method>`) with a receiver whose last component
+// is one of `parts` (indexes in InterfaceImplMemo.receiver_parts; a component
+// that no key of a required method has is left out).
+struct ReceiverMethodLookup {
+	plain bool
+	parts []int
+}
+
+// begin_interface_impl_queries opens an InterfaceImplMemo for a caller's loop of
+// implementer queries (interface_impl_names, interface_type_ids,
+// ierror_impl_names) during which no declaration of the checker changes and
+// its file and module stay the same. It returns false when one is open already;
+// pass the result to end_interface_impl_queries.
+pub fn (tc &TypeChecker) begin_interface_impl_queries() bool {
+	if !isnil(tc.interface_impl_memo) {
+		return false
+	}
+	mut writable := unsafe { tc }
+	writable.interface_impl_memo = &InterfaceImplMemo{}
+	return true
+}
+
+// end_interface_impl_queries closes the memo that begin_interface_impl_queries opened.
+pub fn (tc &TypeChecker) end_interface_impl_queries(opened bool) {
+	if opened {
+		mut writable := unsafe { tc }
+		writable.interface_impl_memo = unsafe { nil }
+	}
 }
 
 pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
@@ -15946,6 +16402,15 @@ fn embedded_field_type(field StructField) ?Type {
 	}
 	if field.name.len == 0 {
 		return field.typ
+	}
+	// The name matches the type or its generic base only as the whole spelling or
+	// a raw suffix after a dot of it: a name that ends neither is not interned.
+	if !flat.source_type_name(field_type_id).ends_with(field.name) {
+		base_syntax := flat.source_type_syntax(field_type_id)
+		if !base_syntax.application_valid()
+			|| !flat.source_type_name(base_syntax.application_base()).ends_with(field.name) {
+			return none
+		}
 	}
 	field_name_id := flat.source_type_id(field.name)
 	if embedded_type_name_matches(field_name_id, field_type_id) {
