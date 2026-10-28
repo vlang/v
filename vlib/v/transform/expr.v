@@ -1956,23 +1956,25 @@ fn (t &Transformer) generic_struct_params_for_base(base string) ?[]string {
 
 fn (t &Transformer) generic_struct_params_for_base_id(base u32) ?[]string {
 	if isnil(t.tc) || base == 0 { return none }
-	if params := t.tc.struct_generic_params[base] { return params }
+	if params := t.tc.struct_generic_params[base] { return types.generic_param_texts(params) }
 	short := flat.source_type_syntax(base).unqualified()
-	if params := t.tc.struct_generic_params[short] { return params }
+	if params := t.tc.struct_generic_params[short] { return types.generic_param_texts(params) }
 	if !flat.source_type_shape(base).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
 		'main',
 		'builtin',
 	] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base)
-		if params := t.tc.struct_generic_params[qualified] { return params }
+		if params := t.tc.struct_generic_params[qualified] {
+			return types.generic_param_texts(params)
+		}
 	}
-	mut found := []string{}
+	mut found := []u32{}
 	for name_source_id, params in t.tc.struct_generic_params {
 		if flat.source_type_syntax(name_source_id).unqualified() != short { continue }
 		if found.len > 0 && found != params { return none }
 		found = params.clone()
 	}
-	if found.len > 0 { return found }
+	if found.len > 0 { return types.generic_param_texts(found) }
 	return none
 }
 
@@ -2618,11 +2620,7 @@ fn (t &Transformer) selective_import_struct_lookup_name(name_id u32) ?u32 {
 	if isnil(t.tc) || name_id == 0 || flat.source_type_shape(name_id).has(.dotted) || t.cur_file.len == 0 {
 		return none
 	}
-	name := flat.source_type_name(name_id)
-	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
-		return none
-	} {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	for candidate_id in t.tc.file_selective_import_ids(t.cur_file, name_id) or { return none } {
 		if candidate_id in t.structs || candidate_id in t.tc.structs {
 			return candidate_id
 		}
@@ -2639,9 +2637,7 @@ fn (t &Transformer) selective_import_type_name_for_file(file string, name_id u32
 	if isnil(t.tc) || name_id == 0 || flat.source_type_shape(name_id).has(.dotted) || file.len == 0 {
 		return none
 	}
-	name := flat.source_type_name(name_id)
-	for candidate in t.tc.file_selective_imports[file_import_key(file, name)] or { return none } {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	for candidate_id in t.tc.file_selective_import_ids(file, name_id) or { return none } {
 		if candidate_id in t.structs || t.sum_types.contains(candidate_id) || candidate_id in t.enum_types
 			|| candidate_id in t.tc.structs || t.tc.sum_types.contains(candidate_id)
 			|| candidate_id in t.tc.enum_names || candidate_id in t.tc.interface_names
@@ -2658,9 +2654,7 @@ fn (t &Transformer) visible_builtin_struct_lookup_name(name_id u32) ?u32 {
 	if isnil(t.tc) || name_id == 0 || flat.source_type_shape(name_id).has(.dotted) {
 		return none
 	}
-	name := flat.source_type_name(name_id)
-	if t.cur_file.len > 0
-		&& file_import_key(t.cur_file, name) in t.tc.file_selective_imports {
+	if t.cur_file.len > 0 && t.tc.file_selective_import_ids(t.cur_file, name_id) != none {
 		return none
 	}
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
@@ -4851,16 +4845,30 @@ fn (t &Transformer) enum_type_name_for_expected(expected_enum_id u32, owner_mod 
 		if cache.misses[cache_key] { return 0 }
 	}
 	mut found := u32(0)
-	for enum_id, _ in t.enum_types {
-		if flat.source_type_syntax(enum_id).unqualified() != clean_id { continue }
-		if found != 0 && found != enum_id {
-			if !isnil(t.enum_expected_cache) {
-				mut cache := t.enum_expected_cache
-				cache.misses[cache_key] = true
+	if !isnil(t.enum_unqualified_index) && t.enum_unqualified_index.count == t.enum_types.len {
+		// The same enums in the same order as the scan below visits them.
+		for enum_id in t.enum_unqualified_index.ids[clean_id] {
+			if found != 0 && found != enum_id {
+				if !isnil(t.enum_expected_cache) {
+					mut cache := t.enum_expected_cache
+					cache.misses[cache_key] = true
+				}
+				return 0
 			}
-			return 0
+			found = enum_id
 		}
-		found = enum_id
+	} else {
+		for enum_id, _ in t.enum_types {
+			if flat.source_type_syntax(enum_id).unqualified() != clean_id { continue }
+			if found != 0 && found != enum_id {
+				if !isnil(t.enum_expected_cache) {
+					mut cache := t.enum_expected_cache
+					cache.misses[cache_key] = true
+				}
+				return 0
+			}
+			found = enum_id
+		}
 	}
 	if !isnil(t.enum_expected_cache) {
 		mut cache := t.enum_expected_cache

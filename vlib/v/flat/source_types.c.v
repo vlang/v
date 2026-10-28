@@ -361,7 +361,12 @@ struct SourceTypeIndex {
 
 __global g_source_types &SourceTypeTable
 __global g_source_types_lock u32
-__global g_source_type_recent_entries [16384]voidptr
+
+// A whole program uses a few hundred thousand spellings; a small direct-mapped
+// cache keeps evicting entries that are about to be asked for again.
+const source_type_recent_slots = 131072
+
+__global g_source_type_recent_entries [source_type_recent_slots]voidptr
 __global g_source_type_read_entries [source_type_read_cache_size]voidptr
 
 fn source_type_lock() {
@@ -551,7 +556,7 @@ fn source_type_recent_slot(text string) int {
 		key ^= (u64(text[0]) << 8) ^ (u64(text[text.len >> 1]) << 16) ^ (u64(text[text.len - 1]) << 24)
 	}
 	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
-	return int((key >> 32) & 16383)
+	return int((key >> 32) & u64(source_type_recent_slots - 1))
 }
 
 fn source_type_id_uncached(text string) u32 {

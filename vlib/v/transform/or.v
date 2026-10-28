@@ -783,7 +783,6 @@ fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?u32 {
 }
 
 fn (t &Transformer) enum_type_from_name(name_id u32) ?u32 {
-	name := flat.source_type_name(name_id)
 	if name_id in t.enum_types { return name_id }
 	mut qname_id := name_id
 	dotted := flat.source_type_shape(name_id).has(.dotted)
@@ -793,8 +792,7 @@ fn (t &Transformer) enum_type_from_name(name_id u32) ?u32 {
 	}
 	if !isnil(t.tc) {
 		if !dotted && t.cur_file.len > 0 {
-			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or { []string{} } {
-				candidate_id := flat.source_type_id(candidate)
+			for candidate_id in t.tc.file_selective_import_ids(t.cur_file, name_id) or { []u32{} } {
 				if candidate_id in t.enum_types { return candidate_id }
 				if target := t.enum_alias_target(candidate_id) { return target }
 			}

@@ -268,8 +268,24 @@ pub fn (mut ctx Context) file(file_path string) Result {
 		}
 	}
 	if content_type.len == 0 {
-		eprintln('[veb] no MIME type found for extension "${ext}"')
-		return ctx.server_error('')
+		// Unknown extension: sniff the content instead of failing, so
+		// extension-less downloads and captures still serve. Known types
+		// always win; sniffed output is never relabelled afterwards.
+		mut f := os.open(file_path) or {
+			eprintln('[veb] error while trying to open file: ${err.msg()}')
+			return ctx.server_error('could not open resource')
+		}
+		defer {
+			f.close()
+		}
+		// Include up to three continuation bytes for a UTF-8 sequence crossing byte 512.
+		mut head := []u8{len: 515}
+		n := f.read(mut head) or { 0 }
+		content_type = if n > 0 {
+			http.detect_content_type(head[..n])
+		} else {
+			'text/plain; charset=utf-8'
+		}
 	}
 	return ctx.send_file(content_type, file_path)
 }

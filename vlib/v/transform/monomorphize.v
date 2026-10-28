@@ -147,6 +147,7 @@ fn (mut t Transformer) is_generic_struct(name_id u32) bool {
 	return false
 }
 
+@[direct_array_access]
 fn (mut t Transformer) monomorphize_pass() []string {
 	debug_started := time.ticks()
 	if t.parallel_monomorphize {
@@ -657,7 +658,7 @@ fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.Node
 	}
 	// The generic method the check resolved it to.
 	method_key := t.tc.resolved_call_name(id) or { return none }
-	if (t.tc.fn_generic_params[method_key] or { []string{} }).len == 0 {
+	if (t.tc.fn_generic_params[method_key] or { []u32{} }).len == 0 {
 		return none
 	}
 	type_args := t.generic_call_type_args(node)
@@ -917,9 +918,11 @@ fn (t &Transformer) explicit_generic_fn_value_decl_candidates(id flat.NodeId, ba
 				}
 			}
 			file_name := t.node_file_or(int(id), t.node_file_or(int(base_id), t.cur_file))
-			for imported in t.tc.file_selective_imports[file_import_key(file_name, base.value_text())] or {
-				[]string{}
+			for imported_id in t.tc.file_selective_import_ids_by_name(file_name, base.value_text()) or {
+				[]u32{}
 			} {
+				// Candidate function names are declaration keys.
+				imported := flat.source_type_name(imported_id)
 				if imported !in candidates {
 					candidates << imported
 				}
@@ -2076,8 +2079,7 @@ fn (t &Transformer) interface_boxed_type_marked(iface_name_id u32, concrete_type
 			}
 		}
 	}
-	for candidate in [concrete_type, t.tc.qualify_name(concrete_type)] {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	for candidate_id in [concrete_type_id, t.tc.qualify_type_name(concrete_type_id)] {
 		target := t.tc.type_aliases.type_id(candidate_id) or { continue }
 		for iface in iface_names {
 			if t.interface_boxed_type_key_marked(interface_boxed_type_key(iface, target))
@@ -2166,6 +2168,7 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 // transform stage collected from the first `scanned` nodes before lowering and
 // scans only what that scan did not see: the library bodies it skipped and the
 // nodes lowering appended. File and module markers are read for their context.
+@[direct_array_access]
 fn (mut t Transformer) collect_interface_boxed_types_after_transform(scanned int) {
 	for i, key in t.tc.transform_boxed_types {
 		t.interface_boxed_types[key] = t.tc.transform_boxed_values[i]
@@ -3587,6 +3590,7 @@ fn strip_type_modifier_prefixes_id(typ_id u32) u32 {
 	return text_id
 }
 
+@[direct_array_access]
 fn (mut t Transformer) collect_generic_struct_specs_range(decls map[u32]GenericStructDecl, mut specs map[u32]u32, start int, end int) {
 	t.ensure_node_module_map()
 	if decls.len == 0 {
@@ -3844,7 +3848,7 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ_id u32, module_
 	if t.generic_args_have_placeholders(args_source_ids) { return }
 	alias_name_id := t.generic_qualified_alias_name(base_id, module_name)
 	if target_source_id := t.tc.type_aliases.type_id(alias_name_id) {
-		params := t.tc.type_alias_generic_params[alias_name_id] or { []string{} }
+		params := types.generic_param_texts(t.tc.type_alias_generic_params[alias_name_id] or { []u32{} })
 		if params.len == args_source_ids.len {
 			alias_module := if flat.source_type_shape(alias_name_id).has(.dotted) {
 				flat.source_type_name(flat.source_type_syntax(alias_name_id).qualifier())
@@ -4181,9 +4185,8 @@ fn (t &Transformer) selective_import_generic_struct_base(base_id u32, file_name 
 	if isnil(t.tc) || flat.source_type_shape(base_id).has(.dotted) || file_name == '' {
 		return none
 	}
-	candidates := t.tc.file_selective_imports[file_import_key(file_name, flat.source_type_name(base_id))] or { return none }
-	for candidate in candidates {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	candidates := t.tc.file_selective_import_ids(file_name, base_id) or { return none }
+	for candidate_id in candidates {
 		if candidate_id in decls {
 			return candidate_id
 		}
@@ -4195,9 +4198,8 @@ fn (t &Transformer) selective_import_generic_sum_base(base_id u32, file_name str
 	if isnil(t.tc) || flat.source_type_shape(base_id).has(.dotted) || file_name == '' {
 		return none
 	}
-	candidates := t.tc.file_selective_imports[file_import_key(file_name, flat.source_type_name(base_id))] or { return none }
-	for candidate in candidates {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	candidates := t.tc.file_selective_import_ids(file_name, base_id) or { return none }
+	for candidate_id in candidates {
 		if candidate_id in decls {
 			return candidate_id
 		}
@@ -5064,7 +5066,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args_i
 	// An instance whose types its constraints reject is reported at the call
 	// that asks for it: the errors of its body would only repeat that one.
 	instance_satisfies := isnil(t.tc)
-		|| t.tc.generic_instance_satisfies_constraints(decl.node, generic_params, concrete_args_source_ids)
+		|| t.tc.generic_instance_satisfies_constraints(decl.node, types.generic_param_ids(generic_params), concrete_args_source_ids)
 	check_fixture_semantics := !isnil(t.tc) && t.tc.checker_fixture_mode && instance_satisfies
 	if check_fixture_semantics {
 		concrete_error_count = t.tc.errors.len
@@ -6078,26 +6080,21 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ_id u32, decl Gen
 		return clean_id
 	}
 	if selective := t.selective_signature_type_symbol_id(decl.file, clean_id) {
-		return flat.source_type_id(selective)
+		return selective
 	}
 	return clean_id
 }
 
-fn (t &Transformer) selective_signature_type_symbol(file string, name string) ?string {
-	return t.selective_signature_type_symbol_id(file, flat.source_type_id(name))
-}
-
-fn (t &Transformer) selective_signature_type_symbol_id(file string, name_id u32) ?string {
+fn (t &Transformer) selective_signature_type_symbol_id(file string, name_id u32) ?u32 {
 	if isnil(t.tc) || file == '' || flat.source_type_shape(name_id).has(.dotted) {
 		return none
 	}
-	candidates := t.tc.file_selective_imports[file_import_key(file, flat.source_type_name(name_id))] or { return none }
-	for candidate in candidates {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	candidates := t.tc.file_selective_import_ids(file, name_id) or { return none }
+	for candidate_id in candidates {
 		if t.tc.type_aliases.contains(candidate_id) || candidate_id in t.tc.structs
 			|| candidate_id in t.tc.interface_names || candidate_id in t.tc.flag_enums
 			|| candidate_id in t.tc.enum_names || t.tc.sum_types.contains(candidate_id) {
-			return candidate
+			return candidate_id
 		}
 	}
 	return none
@@ -6161,6 +6158,7 @@ fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl
 // AST range once keeps later refreshes independent of the full specialized tree.
 // Ordinary factories returning generic function aliases also need normalization,
 // even though their calls are not rewritten as generic specializations.
+@[direct_array_access]
 fn (mut t Transformer) collect_generic_refresh_call_parents(start int, end int, mut parents map[int][]int, mut alias_calls []int) {
 	if start < 0 || start >= end {
 		return
@@ -9572,8 +9570,10 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 			arg_type_id := arg_type
 			// A type passed for a generic interface, a `UserShelf` for `Shelf[T]`:
 			// its methods bind what the members of the interface name.
-			t.tc.infer_type_params_from_interface(inference_param_type, arg_type_id, param_names, mut
-				inferred)
+			mut inferred_ids := generic_inferred_ids(inferred)
+			t.tc.infer_type_params_from_interface(inference_param_type, arg_type_id, types.generic_param_ids(param_names), mut
+				inferred_ids)
+			merge_generic_inferred_ids(mut inferred, inferred_ids)
 			t.infer_generic_sum_variant_args(child.typ, arg_type_id, mut inferred)
 			if is_recv_param {
 				t.infer_generic_receiver_suffix_args(child.typ, arg_type_id, mut inferred)
@@ -9599,7 +9599,9 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	// A type parameter that only the constraint of another one names, `T` of
 	// `[C Container[T], T Named]`, from the type bound to that one.
 	if param_names.any(it !in inferred) {
-		t.tc.infer_type_params_from_constraints(decl.node, mut inferred)
+		mut inferred_ids := generic_inferred_ids(inferred)
+		t.tc.infer_type_params_from_constraints(decl.node, mut inferred_ids)
+		merge_generic_inferred_ids(mut inferred, inferred_ids)
 	}
 	mut args := []u32{cap: param_names.len}
 	for name in param_names {
@@ -9662,8 +9664,7 @@ fn (t &Transformer) declared_generic_receiver_param_names(node flat.Node, module
 			]
 		}
 		for candidate in candidates {
-			params := t.tc.struct_generic_params[candidate] or { continue }
-			param_ids := flat.TypeTextList.from_names(params).ids
+			param_ids := t.tc.struct_generic_params[candidate] or { continue }
 			for arg in args {
 				if arg in param_ids && flat.source_type_name(arg) !in receiver_params {
 					receiver_params << flat.source_type_name(arg)
@@ -9809,11 +9810,11 @@ fn (t &Transformer) struct_generic_params_for_base(base u32) []string {
 		return []string{}
 	}
 	if params := t.tc.struct_generic_params[base] {
-		return params
+		return types.generic_param_texts(params)
 	}
 	short := flat.source_type_syntax(base).unqualified()
 	if params := t.tc.struct_generic_params[short] {
-		return params
+		return types.generic_param_texts(params)
 	}
 	return []string{}
 }
@@ -14261,6 +14262,12 @@ fn (mut t Transformer) fn_decl_has_unresolved_generics(node flat.Node, module_na
 }
 
 fn (t &Transformer) fn_decl_receiver_is_open_generic(node flat.Node, module_name string) bool {
+	// The receiver is a qualifier of the declared name, and a generic application
+	// is spelled with `[`: a name without one cannot have an open receiver. This
+	// skips interning the name of every ordinary declaration on each scan.
+	if node.value.len > 0 && node.value.index_u8(`[`) < 0 {
+		return false
+	}
 	value_id := node.source_value_id()
 	if !flat.source_type_shape(value_id).has(.dotted) || isnil(t.tc) {
 		return false
@@ -14282,13 +14289,8 @@ fn (t &Transformer) fn_decl_receiver_is_open_generic(node flat.Node, module_name
 		// Generic parameter identifiers enter through declaration metadata.
 		params := t.tc.struct_generic_params[candidate] or { continue }
 		for arg in syntax.generic_app_args() {
-			arg_id := t.trimmed_type_id(arg)
-			for param in params {
-				// A parameter that was never interned cannot match an interned argument.
-				param_id := flat.source_type_existing_id(param) or { continue }
-				if arg_id == param_id {
-					return true
-				}
+			if t.trimmed_type_id(arg) in params {
+				return true
 			}
 		}
 	}
@@ -14650,7 +14652,7 @@ fn (mut t Transformer) collect_generic_param_names_from_type_id(typ_id u32, modu
 		}
 		return
 	}
-	if syntax.bracket_closed() && syntax.bracket_prefix() != 0 {
+	if syntax.bracket_closed() && !shape.has(.leading_bracket) {
 		for arg in syntax.bracket_generic_parts() {
 			t.collect_generic_param_names_from_type_id(arg, module_name, mut names)
 		}
@@ -15262,7 +15264,7 @@ fn (t &Transformer) qualify_generic_alias_cast_type_text(typ_id u32) u32 {
 	}
 	if imported := t.resolve_imported_type_name(clean) { return imported }
 	if selective := t.selective_signature_type_symbol_id(t.cur_file, clean) {
-		return flat.source_type_id(selective)
+		return selective
 	}
 	if !shape.has(.dotted) && t.generic_arg_module_owns_type(flat.source_type_name(clean), t.cur_module) {
 		return flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean)
@@ -17380,4 +17382,25 @@ fn (value &GenericTypeSuffixPart) typ_text() string {
 // args_text resolves concrete type arguments at a text integration boundary.
 fn (value &PendingGenericFnSpec) args_text() []string {
 	return value.args.names()
+}
+
+// generic_inferred_ids keys inferred type arguments by the spelling IDs of
+// their type parameters, as the checker's inference takes them.
+fn generic_inferred_ids(inferred map[string]u32) map[u32]u32 {
+	mut ids := map[u32]u32{}
+	for name, id in inferred {
+		ids[flat.source_type_id(name)] = id
+	}
+	return ids
+}
+
+// merge_generic_inferred_ids adds the type arguments that the checker's
+// inference bound in `ids` to `inferred`, in the order it bound them.
+fn merge_generic_inferred_ids(mut inferred map[string]u32, ids map[u32]u32) {
+	for name_id, id in ids {
+		name := flat.source_type_name(name_id)
+		if name !in inferred {
+			inferred[name] = id
+		}
+	}
 }

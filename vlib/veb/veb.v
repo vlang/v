@@ -486,23 +486,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		// V does not allow `return` in one, so recovery prepares its response here and
 		// skips the after-middleware through the else branch.
 		if msg := recover() {
-			eprintln('[veb] handler for route "${url.path}" panicked: ${msg}')
-			// A takeover handler owns the connection and may already have written to it.
-			if user_context.Context.takeover_mode == .none {
-				// Discard the prepared representation, including file streaming and framing.
-				// server_error replaces and frees the old body through send_response_to_client.
-				user_context.Context.done = false
-				user_context.Context.return_type = .normal
-				user_context.Context.return_file = ''
-				user_context.Context.content_type = ''
-				user_context.Context.already_compressed = false
-				for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
-					.transfer_encoding, .trailer, .content_range, .content_disposition, .accept_ranges,
-					.etag, .last_modified, .cache_control, .expires, .age, .location] {
-					user_context.Context.res.header.delete(header)
-				}
-				user_context.server_error('Internal Server Error')
-			}
+			handle_route_panic[X](mut user_context, url.path, msg)
 		} else {
 			// execute middleware functions after veb is done and before the response is send
 			mut was_done := true
@@ -740,6 +724,29 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	user_context.not_found()
 	not_found = true
 	return
+}
+
+// handle_route_panic builds the fallback response after a route handler panics.
+// It is specialized by context type, so this reset is emitted once per context
+// type instead of once per controller type.
+fn handle_route_panic[X](mut user_context X, path string, msg string) {
+	eprintln('[veb] handler for route "${path}" panicked: ${msg}')
+	// A takeover handler owns the connection and may already have written to it.
+	if user_context.Context.takeover_mode == .none {
+		// Discard the prepared representation, including file streaming and framing.
+		// server_error replaces and frees the old body through send_response_to_client.
+		user_context.Context.done = false
+		user_context.Context.return_type = .normal
+		user_context.Context.return_file = ''
+		user_context.Context.content_type = ''
+		user_context.Context.already_compressed = false
+		for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
+			.transfer_encoding, .trailer, .content_range, .content_disposition, .accept_ranges,
+			.etag, .last_modified, .cache_control, .expires, .age, .location] {
+			user_context.Context.res.header.delete(header)
+		}
+		user_context.server_error('Internal Server Error')
+	}
 }
 
 // RouteMatch holds runtime routing work shared by all controller types. Only the

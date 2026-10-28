@@ -56,7 +56,7 @@ fn test_scalar_parser_keeps_recursive_alias_and_type_parameter_precedence() {
 	assert tc.type_cache.parse_entries.len == 0
 	tc.type_cache.alias_parse_stack.clear()
 	assert *tc.parse_type(flat.source_type_u64) == builtin_type_value('u64')
-	tc.type_param_texts.set_id('u64', flat.source_type_string)
+	tc.type_param_texts[flat.source_type_id('u64')] = flat.source_type_string
 	assert tc.parse_type(flat.source_type_u64) is String
 	assert tc.type_cache.parse_entries.len == 1
 }
