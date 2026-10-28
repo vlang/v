@@ -136,6 +136,28 @@ pub fn (bindings &TypeTextBindings) clone() TypeTextBindings {
 	}
 }
 
+// clone_sharing_keys is clone for a copy that `bindings` outlives: the copy
+// borrows the binding keys instead of cloning every name.
+pub fn (bindings &TypeTextBindings) clone_sharing_keys() TypeTextBindings {
+	mut ids := map[string]u32{}
+	unsafe { map_clone_sharing_keys(&ids, &bindings.ids) }
+	return TypeTextBindings{
+		texts: bindings.texts
+		ids:   ids
+	}
+}
+
+// fork_sharing_keys is fork for a copy that `bindings` outlives: the copy
+// borrows the binding keys instead of cloning every name.
+pub fn (bindings &TypeTextBindings) fork_sharing_keys() TypeTextBindings {
+	mut ids := map[string]u32{}
+	unsafe { map_clone_sharing_keys(&ids, &bindings.ids) }
+	return TypeTextBindings{
+		texts: bindings.texts.fork()
+		ids:   ids
+	}
+}
+
 // clone_owned copies binding keys and lookup storage into the current arena.
 // Indexed spellings already outlive every disposable worker arena.
 pub fn (bindings &TypeTextBindings) clone_owned() TypeTextBindings {

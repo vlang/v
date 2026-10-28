@@ -69,8 +69,10 @@ its checkpoints, so the following invocation starts from the beginning.
 
 The aggregate `ci` command sets `VTEST_FAIL_FAST=1` and `VJOBS=1`, overriding inherited
 values. Test and example-build sessions stop at the first reported failure, with no
-other files already running in parallel. The `self_tests` task retains this single-worker
-setting; standalone GitHub Actions self-test tasks still use every available CPU.
+other files already running in parallel. The `self_tests` task retains the explicit
+`VJOBS` setting, including the workflow's three workers and the aggregate runner's
+single worker. Without `VJOBS`, GitHub Actions self-tests use one worker when
+`VTEST_FAIL_FAST=1`, or every available CPU otherwise.
 `test-cleancode` also stops after a failed
 vetting session instead of starting formatting checks. The failed task's checkpoint
 is retained. Existing per-test retry and known-flaky-test policies are unchanged.
@@ -106,6 +108,9 @@ additional state too. Normal individual-task and `all` invocations remain exhaus
 It checkpoints the successful instrumented compiler build. A retry runs the failing
 self-compilation without rebuilding `v2`, unless that binary is missing or changed.
 Other non-test commands retain their existing task-level retry behavior.
+
+On macOS, `build-examples` builds `examples/macos_tray` as a project folder so its
+platform-specific source is included alongside the main program.
 
 A resumed pass is not a fresh validation of earlier tasks or tests against shared
 source changes. Compiler and library edits deliberately preserve progress. Use

@@ -7,16 +7,18 @@ import sync
 
 fn C.vgc_get_cache_idx() int
 
-fn cache_idx_after_allocating() int {
-	s := 'vgc'.repeat(40)
-	assert s.len == 120
+// Keep the count dynamic so compile-time string folding cannot remove the allocation.
+@[noinline]
+fn cache_idx_after_allocating(count int) int {
+	s := 'vgc'.repeat(count)
+	assert s.len == 3 * count
 	return C.vgc_get_cache_idx()
 }
 
 // cache_idx_while_others_run keeps the thread alive until all threads have their cache: a
 // thread that has exited gives its cache slot to the next one.
 fn cache_idx_while_others_run(started &sync.WaitGroup, release chan bool) int {
-	idx := cache_idx_after_allocating()
+	idx := cache_idx_after_allocating(40)
 	mut wg := unsafe { started }
 	wg.done()
 	_ := <-release
@@ -38,7 +40,7 @@ fn allocate_strings(id int) int {
 
 fn test_spawned_threads_get_their_own_vgc_cache() {
 	$if vgc ? {
-		main_idx := cache_idx_after_allocating()
+		main_idx := cache_idx_after_allocating(40)
 		assert main_idx >= 0
 		mut threads := []thread int{}
 		mut started := sync.new_waitgroup()

@@ -34,7 +34,7 @@ fn test_sumtype_storage_overlaps_variants() {
 	source := 'module main\nstruct Pair { x i64\n y i64 }\ntype Choice = int | Pair | [3]i64\n'
 	b := sumtype_layout_builder(source)!
 	m := b.m
-	choice := b.struct_types['Choice']
+	choice := b.struct_types[flat.source_type_id('Choice')]
 	layout := m.type_store.types[choice]
 	assert layout.field_names == ['typ', '_payload']
 	payload := layout.fields[1]
@@ -59,14 +59,14 @@ type Choice = Array | Map | i32
 	// Distinct opaque runtime identities suffice for this type-resolution test.
 	b.array_type = b.m.type_store.register(Type{ kind: .struct_t })
 	b.map_type = b.m.type_store.register(Type{ kind: .struct_t })
-	array := b.struct_types['Array']
-	map_type := b.struct_types['Map']
-	leaf_pointer := b.m.type_store.get_ptr(b.struct_types['Leaf'])
+	array := b.struct_types[flat.source_type_id('Array')]
+	map_type := b.struct_types[flat.source_type_id('Map')]
+	leaf_pointer := b.m.type_store.get_ptr(b.struct_types[flat.source_type_id('Leaf')])
 	assert b.resolve_type(flat.source_type_id('Array')) == array
 	assert b.resolve_type(flat.source_type_id('Map')) == map_type
 	assert b.m.type_store.types[array].fields == [leaf_pointer]
 	assert b.m.type_store.types[map_type].fields == [leaf_pointer, leaf_pointer]
-	choice := b.struct_types['Choice']
+	choice := b.struct_types[flat.source_type_id('Choice')]
 	payload := b.m.type_store.types[choice].fields.last()
 	assert b.m.type_store.types[payload].fields[..2] == [array, map_type]
 	assert b.resolve_type(flat.source_type_id('&Array')) == b.m.type_store.get_ptr(array)
@@ -80,7 +80,7 @@ type Choice = Array | Map | i32
 		assert b.resolve_type(flat.source_type_id('&' + spelling)) == b.m.type_store.get_ptr(b.map_type)
 	}
 	// A module's exact nominal name precedes the unqualified fallback.
-	b.struct_types['descriptors.Array'] = map_type
+	b.struct_types[flat.source_type_id('descriptors.Array')] = map_type
 	b.cur_module = 'descriptors'
 	assert b.resolve_type(flat.source_type_id('Array')) == map_type
 	assert b.resolve_type(flat.source_type_id('descriptors.Array')) == map_type
@@ -93,7 +93,7 @@ struct Pair { x i64
 type Choice = Pair | &Pair | &&Pair
 '
 	mut b := sumtype_layout_builder(source)!
-	choice := b.struct_types['Choice']
+	choice := b.struct_types[flat.source_type_id('Choice')]
 	payload := b.m.type_store.types[choice].fields.last()
 	expected := ['Pair', '_ptr_Pair', '_ptr__ptr_Pair']
 	assert b.m.type_store.types[payload].field_names == expected
@@ -122,7 +122,7 @@ fn test_sumtype_synthetic_tag_reads_the_header_through_references() {
 		mut b := sumtype_layout_builder_for_target('module main\nstruct Pair { x i64\n y i64 }\ntype Choice = i32 | Pair\n', pointer_size)!
 		function := b.m.add_function('tag', b.i32_type)
 		b.cur_block = b.m.add_block(function, 'entry')
-		mut binding_type := b.struct_types['Choice']
+		mut binding_type := b.struct_types[flat.source_type_id('Choice')]
 		for depth, spelling in ['Choice', '&Choice', '&&Choice'] {
 			if depth > 0 {
 				binding_type = b.m.type_store.get_ptr(binding_type)
@@ -151,7 +151,7 @@ fn test_sumtype_reference_guards_project_fields_and_expire_on_reassignment() {
 	mut b := sumtype_layout_builder('module main\nstruct Pair { x i64\n y i64 }\ntype Choice = Pair | &Pair | &&Pair\n')!
 	function := b.m.add_function('guarded_projection', b.i64_type)
 	b.cur_block = b.m.add_block(function, 'entry')
-	mut binding_type := b.struct_types['Choice']
+	mut binding_type := b.struct_types[flat.source_type_id('Choice')]
 	for depth, spelling in ['Choice', '&Choice', '&&Choice'] {
 		if depth > 0 {
 			binding_type = b.m.type_store.get_ptr(binding_type)
@@ -195,7 +195,7 @@ fn test_dereferenced_sum_guards_keep_the_original_binding_and_expire_on_stores()
 		mut b := sumtype_layout_builder('module main\nstruct FlagData { pad i64\n flag i32 }\ntype Choice = i64 | FlagData\n')!
 		function := b.m.add_function('dereferenced_guard', b.i32_type)
 		b.cur_block = b.m.add_block(function, 'entry')
-		choice := b.struct_types['Choice']
+		choice := b.struct_types[flat.source_type_id('Choice')]
 		mut binding_type := choice
 		for _ in 0 .. depth {
 			binding_type = b.m.type_store.get_ptr(binding_type)
@@ -256,7 +256,7 @@ fn test_dereferenced_sum_guards_keep_the_original_binding_and_expire_on_stores()
 
 fn test_sumtype_variant_selection_preserves_qualification() {
 	mut b := Builder{}
-	b.sum_type_variants.set('Choice', ['left.Item', 'right.Item', '&right.Item'])
+	b.sum_type_variants.set(flat.source_type_id('Choice'), ['left.Item', 'right.Item', '&right.Item'])
 	assert b.find_sum_variant(flat.source_type_id('Choice'), flat.source_type_id('right.Item'))? == flat.source_type_id('right.Item')
 	assert b.find_sum_variant(flat.source_type_id('Choice'), flat.source_type_id('&right.Item'))? == flat.source_type_id('&right.Item')
 	assert b.sum_variant_index(flat.source_type_id('Choice'), flat.source_type_id('right.Item')) == 2
@@ -269,13 +269,13 @@ fn test_sumtype_variant_selection_preserves_qualification() {
 fn test_sumtype_pointer_owner_slot_matches_32_and_64_bit_c_layout() {
 	for pointer_size in [4, 8] {
 		b := sumtype_layout_builder_for_target('module main\ntype PointerChoice = i32 | &i32\ntype ValueChoice = i32 | u32\n', pointer_size)!
-		pointer_choice := b.struct_types['PointerChoice']
+		pointer_choice := b.struct_types[flat.source_type_id('PointerChoice')]
 		pointer_layout := b.m.type_store.types[pointer_choice]
 		assert pointer_layout.field_names == ['typ', '_pointer_variant_is_owned', '_payload']
 		assert b.m.struct_field_offset(pointer_choice, 1) == 4
 		assert b.m.struct_field_offset(pointer_choice, 2) == 8
 		assert b.m.type_size(pointer_choice) == 8 + pointer_size
-		value_choice := b.struct_types['ValueChoice']
+		value_choice := b.struct_types[flat.source_type_id('ValueChoice')]
 		assert b.m.type_store.types[value_choice].field_names == ['typ', '_payload']
 		assert b.m.struct_field_offset(value_choice, 1) == 4
 		assert b.m.type_size(value_choice) == 8
@@ -298,7 +298,7 @@ fn test_sumtype_cast_initializes_pointer_owner_state() {
 	})
 	before := b.m.instrs.len
 	value := b.build_sum_type_cast(flat.source_type_id('PointerChoice'), pointer) or { panic('sum cast failed') }
-	assert b.value_type(value) == b.struct_types['PointerChoice']
+	assert b.value_type(value) == b.struct_types[flat.source_type_id('PointerChoice')]
 	mut initialized := false
 	for instruction in b.m.instrs[before..] {
 		if instruction.op != .store { continue }
@@ -329,7 +329,7 @@ fn test_heap_sum_initializer_keeps_the_selected_payload() {
 	node := flat.Node{ kind: .struct_init, value: 'Choice', typ: flat.source_type_id('Choice'), children_start: fields, children_count: 2 }
 	before := b.m.instrs.len
 	result := b.build_heap_struct_init(node)
-	assert b.deref_type(result) == b.struct_types['Choice']
+	assert b.deref_type(result) == b.struct_types[flat.source_type_id('Choice')]
 	mut payload_stores := 0
 	mut tag_stores := 0
 	for instruction in b.m.instrs[before..] {
@@ -354,7 +354,7 @@ fn test_heap_sum_initializer_keeps_the_selected_payload() {
 		if !has_field_address { continue }
 		assert b.m.values[base].kind == .instruction
 		assert b.m.instrs[b.m.values[base].index].op == .alloca
-		assert b.deref_type(base) == b.struct_types['Choice']
+		assert b.deref_type(base) == b.struct_types[flat.source_type_id('Choice')]
 		mut stored := instruction.operands[0]
 		for b.m.values[stored].kind == .instruction {
 			conversion := b.m.instrs[b.m.values[stored].index]

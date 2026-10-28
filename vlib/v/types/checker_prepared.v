@@ -26,7 +26,7 @@ mut:
 	continued        bool
 	c_structs        CStructRedeclarations
 	c_fns            CFnRedeclarations
-	public_c_structs map[string]bool
+	public_c_structs map[u32]bool
 	// The names the prepared declarations use as keys that code of another
 	// module can use as well, where the order of the two decides the entry,
 	// each with the `.file` markers of the prepared files that use it; the
@@ -107,8 +107,8 @@ pub fn (mut tc TypeChecker) prepare_collect(a &flat.FlatAst) bool {
 fn (mut tc TypeChecker) prepare_for_checks(a &flat.FlatAst) {
 	for name, _ in tc.structs {
 		// These two depend on the file and the module that ask.
-		if name !in ['Error', 'MessageError'] {
-			tc.named_type_compatible_with_ierror(flat.source_type_id(name))
+		if name !in [checker_source_error, checker_source_message_error] {
+			tc.named_type_compatible_with_ierror(name)
 		}
 	}
 	room := a.nodes.len + int_max(a.nodes.len, 1 << 20)

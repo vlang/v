@@ -132,7 +132,7 @@ fn (mut g Parser) parse_for() !bool {
 					return g.unsupported('mutable iteration over immutable collection `${start}`')
 				}
 			}
-			if flat.source_type_name(collection_layout_type).trim_right('*').starts_with('Map_') {
+			if flat.source_type_query(collection_layout_type).has(.c_map_prefix) {
 				key_type_source_id, map_value_type_source_id := g.map_key_value_types(collection_layout_type) or {
 					return g.unsupported('map iteration type `${flat.source_type_name(collection_type)}`')
 				}
@@ -196,7 +196,7 @@ fn (mut g Parser) parse_for() !bool {
 				}
 			}
 			element_c_type := fastc_output_c_type(flat.source_type_name(element_type))
-			fixed_length := fastc_fixed_array_length(flat.source_type_name(collection_layout_type).trim_right('*')) or {
+			fixed_length := fastc_fixed_array_length_id(fastc_trim_pointer_type(collection_layout_type)) or {
 				''
 			}
 			is_fixed_array := fixed_length != ''
@@ -273,7 +273,7 @@ fn (mut g Parser) parse_for() !bool {
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut:       true
 							is_reference: true
-							typ:          flat.source_type_id(flat.source_type_name(element_type) + '*')
+							typ:          flat.source_type_composition_two(.concat, element_type, flat.source_type_id('*'))
 						}
 					}
 				} else if is_ordinary_string {
@@ -284,7 +284,7 @@ fn (mut g Parser) parse_for() !bool {
 				} else if !is_fixed_array && flat.source_type_query(collection_layout_type).has(.c_pointer_suffix) && fastc_trim_pointer_type(collection_layout_type) != flat.source_type_string {
 					g.write_line('${element_c_type} *${c_value_name} = &(((${element_c_type} *)${collection_data})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
-						typ: flat.source_type_id(flat.source_type_name(element_type) + '*')
+						typ: flat.source_type_composition_two(.concat, element_type, flat.source_type_id('*'))
 					}
 				} else {
 					g.write_line('${element_c_type} ${c_value_name} = ((${element_c_type} *)${collection_data})[${index_name}];')
@@ -477,8 +477,7 @@ struct FastcIteratorNext {
 
 // iterator_next_method finds the `next() ?T` method of `collection_type`, if it has one.
 fn (g &Parser) iterator_next_method(collection_type_source_id u32) ?FastcIteratorNext {
-	collection_type := flat.source_type_name(collection_type_source_id)
-	key, path := g.resolve_method(flat.source_type_id(fastc_trim_pointer_suffix(collection_type)), 'next')
+	key, path := g.resolve_method(fastc_trim_pointer_type(collection_type_source_id), 'next')
 	signature := g.functions[key] or { return none }
 	if path.len > 0 || signature.parameter_types.ids.len != 1 || signature.return_type != fastc_type_option
 		|| signature.option_type in [u32(0), flat.source_type_void, fastc_type_multi_return] {

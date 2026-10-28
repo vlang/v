@@ -16,6 +16,25 @@ pub enum SourceTypeQuery {
 	fixed_array_postfix
 	c_pointer_suffix
 	unknown_fragment
+	c_prefix
+	main_prefix
+	fn_ptr_prefix
+	c_array_prefix
+	c_fixed_array_prefix
+	c_map_prefix
+	thread_suffix
+	ctx_suffix
+	c_double_pointer_suffix
+	c_pointer_infix
+	map_arc_key
+	inferred_witness
+	c_thread_prefix
+	js_prefix
+	pointer_option_ref
+	shared_array
+	anon_struct_prefix
+	anon_union_prefix
+	bracket_suffix
 }
 
 @[direct_array_access]
@@ -64,6 +83,25 @@ fn source_type_spelling_query(text string, shape SourceTypeShape) SourceTypeQuer
 		query.set(.generic_name)
 	}
 	if source_type_spelling_fn_placeholder(text) { query.set(.generic_fn_name) }
+	if text.starts_with('C.') { query.set(.c_prefix) }
+	if text.starts_with('main.') { query.set(.main_prefix) }
+	if text.starts_with('fn_ptr:') { query.set(.fn_ptr_prefix) }
+	if text.starts_with('Array_') { query.set(.c_array_prefix) }
+	if text.starts_with('FixedArray_') { query.set(.c_fixed_array_prefix) }
+	if text.starts_with('Map_') { query.set(.c_map_prefix) }
+	if text.ends_with('.thread') { query.set(.thread_suffix) }
+	if text.ends_with('_Ctx') { query.set(.ctx_suffix) }
+	if text.ends_with('**') { query.set(.c_double_pointer_suffix) }
+	if text.contains('*') { query.set(.c_pointer_infix) }
+	if text.contains('Arc[') || text.contains('Arc_') { query.set(.map_arc_key) }
+	if text.contains('typeof(__expr_') { query.set(.inferred_witness) }
+	if text.starts_with('__vf_thread_') { query.set(.c_thread_prefix) }
+	if text.starts_with('JS.') { query.set(.js_prefix) }
+	if text.starts_with('&?&') { query.set(.pointer_option_ref) }
+	if text.starts_with('[]shared ') { query.set(.shared_array) }
+	if text.starts_with('AnonStruct_') { query.set(.anon_struct_prefix) }
+	if text.starts_with('AnonUnion_') { query.set(.anon_union_prefix) }
+	if text.ends_with(']') { query.set(.bracket_suffix) }
 	return query
 }
 

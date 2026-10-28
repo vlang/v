@@ -56,12 +56,13 @@ mut:
 	end      int
 }
 
-// InlineAsmRawLabel is one `name:` label definition, without its colon and with `.L`
-// prefixes and `%=` kept verbatim, at its offsets into the decoded text.
+// InlineAsmRawLabel is one `name:` label definition, without its colon or surrounding
+// quotes and with `.L` prefixes and `%=` kept verbatim, at its offsets into the decoded text.
 struct InlineAsmRawLabel {
-	name  string
-	start int
-	end   int
+	name      string
+	start     int
+	end       int
+	is_quoted bool
 }
 
 // InlineAsmRawInstruction is one tokenized statement. `labels` holds its leading label
@@ -348,10 +349,14 @@ fn inline_asm_raw_parse_instructions(t &InlineAsmRawTemplate, registers []string
 			if colon <= i {
 				break
 			}
+			is_quoted := t.text[i] == `"`
+			label_start := if is_quoted { i + 1 } else { i }
+			label_end := if is_quoted { name_end - 1 } else { name_end }
 			instruction.labels << InlineAsmRawLabel{
-				name:  t.text[i..name_end]
-				start: i
-				end:   name_end
+				name:      t.text[label_start..label_end]
+				start:     label_start
+				end:       label_end
+				is_quoted: is_quoted
 			}
 			i = inline_asm_raw_skip_blanks(t.text, colon + 1, end)
 		}
@@ -403,22 +408,26 @@ fn inline_asm_raw_is_prefix(word string) bool {
 
 // inline_asm_raw_label_end recognizes a `name:` label definition at `start` and returns
 // the end of the name and the offset of the colon, or `start` twice when there is none.
-// A label token may contain `.`, `$` and the `%=` uniqueness marker, and the assembler
-// allows blanks before the colon (`name :`); a `::` or a `:` followed by an operand
-// character (`%%fs:0x28`) is not a label.
+// A label token may be quoted or contain `.`, `$` and the `%=` uniqueness marker, and
+// the assembler allows blanks before the colon (`name :`); a `::` or a `:` followed
+// by an operand character (`%%fs:0x28`) is not a label.
 fn inline_asm_raw_label_end(text string, start int, end int) (int, int) {
 	mut i := start
-	for i < end {
-		c := text[i]
-		if inline_asm_is_ident_char(c) || c == `.` || c == `$` {
-			i++
-			continue
+	if i < end && text[i] == `"` {
+		i = inline_asm_raw_skip_literal(text, i, end)
+	} else {
+		for i < end {
+			c := text[i]
+			if inline_asm_is_ident_char(c) || c == `.` || c == `$` {
+				i++
+				continue
+			}
+			if c == `%` && i + 1 < end && text[i + 1] == `=` {
+				i += 2
+				continue
+			}
+			break
 		}
-		if c == `%` && i + 1 < end && text[i + 1] == `=` {
-			i += 2
-			continue
-		}
-		break
 	}
 	name_end := i
 	for i < end && text[i] in [` `, `\t`] {
@@ -591,7 +600,8 @@ fn (mut tc TypeChecker) check_inline_asm_raw_labels(id flat.NodeId, node flat.No
 	for instruction in instructions {
 		for label in instruction.labels {
 			name := label.name
-			if name.contains('%=') || name.bytes().all(it.is_digit()) || name in exported {
+			if name.contains('%=') || (!label.is_quoted && name.bytes().all(it.is_digit()))
+				|| name in exported {
 				continue
 			}
 			start, end := template.span(label.start, label.end)

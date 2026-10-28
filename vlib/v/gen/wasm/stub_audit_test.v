@@ -46,8 +46,10 @@ fn stub_scratch() string {
 
 fn stub_enter_workspace() {
 	root := stub_scratch()
-	os.mkdir_all(root) or { panic(err) }
-	os.setenv('TMPDIR', os.join_path(root, 'vtmp'), true)
+	// See shape_enter_workspace in shapes_test.v: TMPDIR has to exist.
+	tmp_dir := os.join_path(root, 'vtmp')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	os.setenv('TMPDIR', tmp_dir, true)
 	os.setenv('VJOBS', '2', true)
 }
 
@@ -701,43 +703,39 @@ fn main() {
 			refuses: 'ssa: unknown function `f64__strg`'
 		},
 		StubCase{
-			tag:     'string_split'
-			stub:    'strings.split - no synthetic body, source body panics'
-			source:  '
+			tag:    'string_split'
+			stub:   'strings.split - source body'
+			source: '
 fn main() {
 	sp := "a,b,c".split(",")
 	println(sp)
 	println(sp.len)
 }
 '
-			native:  "['a', 'b', 'c']\n3\n"
-			refuses: 'ssa: unknown function `split`'
+			native: "['a', 'b', 'c']\n3\n"
 		},
 		StubCase{
-			tag:     'string_repeat'
-			stub:    'strings.repeat - no synthetic body, source body panics'
-			source:  '
+			tag:    'string_repeat'
+			stub:   'strings.repeat - source body'
+			source: '
 fn main() {
 	s := "ab".repeat(3)
 	println(s)
 }
 '
-			native:  'ababab\n'
-			refuses: 'ssa: unknown function `string__repeat`'
+			native: 'ababab\n'
 		},
 		StubCase{
-			tag:     'string_index'
-			stub:    'strings.index - no synthetic body, source body panics'
-			source:  stub_source_string_index
-			native:  'Option(2)\nOption(none)\n'
-			refuses: 'ssa: unknown function `index`'
+			tag:    'string_index'
+			stub:   'strings.index - source body'
+			source: stub_source_string_index
+			native: 'Option(2)\nOption(none)\n'
 		},
 		StubCase{
-			tag:     'string_reverse'
-			stub:    'strings.reverse - no synthetic body, source body panics'
-			source:  stub_source_string_reverse
-			native:  'cba\n399\n'
-			refuses: 'ssa: unknown function `reverse`'
+			tag:    'string_reverse'
+			stub:   'strings.reverse - source body'
+			source: stub_source_string_reverse
+			native: 'cba\n399\n'
 		},
 		StubCase{
 			tag:     'pointer_strings'

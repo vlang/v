@@ -208,8 +208,8 @@ fn test_one_job_codegen_keeps_a_lazy_pool_and_matches_explicit_serial() {
 	default_mode := cgen_mode_generate(path, .lazy, false)
 	assert serial.type_names_present
 	assert default_mode.type_names_present
-	assert !serial.field_index_present
-	assert !default_mode.field_index_present
+	assert serial.field_index_present
+	assert default_mode.field_index_present
 	assert default_mode.code == serial.code
 	assert default_mode.literals == serial.literals
 	assert default_mode.fn_names == serial.fn_names

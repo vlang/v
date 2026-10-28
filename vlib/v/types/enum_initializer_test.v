@@ -5,7 +5,7 @@ import v.flat
 fn test_enum_initializer_references_use_the_declaring_module_and_exact_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.enum_fields['models.Kind'] = ['struct', '@none', 'type', '@type']
+	tc.enum_fields[flat.source_type_id('models.Kind')] = ['struct', '@none', 'type', '@type']
 	mut values := {
 		'struct': i64(4)
 		'@none':  11

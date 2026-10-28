@@ -43,6 +43,11 @@ and will exit with a 0 exit code, if they all had 0 failing assertions.
 `v -stats file_test.v` - this will run the test_ functions, and show a
 report about how much time it took to run each of them too.
 
+Implicit test executables and their macOS debug symbols are removed after the test process exits,
+including failed assertions, panics, and nonzero exits. This also applies with `-stats`, `-keepc`,
+and `v run file_test.v`; `-keepc` still retains generated C. An explicit `-o` keeps the requested
+output for later execution or debugging.
+
 NB 2: You can also run many test files at once (in parallel, depending on
 how many cores you have), with:
 `v test folder` - this will run *all* `_test.v` files in `folder`,

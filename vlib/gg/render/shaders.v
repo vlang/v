@@ -270,7 +270,134 @@ fs_out main(fs_in inp)
 }
 "
 
+// The font atlas is a single-channel (r8) texture whose red channel holds the
+// glyph coverage. Sampling it with the generic shader above yields (r,0,0,1) —
+// white glyphs turn red and empty texels draw black. The font shader follows
+// sokol_fontstash: the red channel becomes the alpha coverage and rgb stays
+// white, so the vertex color survives the multiply unchanged.
+
+const font_glsl410_fs = r"#version 410
+
+uniform sampler2D tex_smp;
+
+layout(location = 0) out vec4 frag_color;
+layout(location = 0) in vec4 uv;
+layout(location = 1) in vec4 color;
+
+void main()
+{
+    frag_color = vec4(1.0, 1.0, 1.0, texture(tex_smp, uv.xy).x) * color;
+}
+"
+
+const font_glsl300es_fs = r"#version 300 es
+precision mediump float;
+precision highp int;
+
+uniform highp sampler2D tex_smp;
+
+layout(location = 0) out highp vec4 frag_color;
+in highp vec4 uv;
+in highp vec4 color;
+
+void main()
+{
+    frag_color = vec4(1.0, 1.0, 1.0, texture(tex_smp, uv.xy).x) * color;
+}
+"
+
+const font_metal_sim_fs = r"#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct main0_out
+{
+    float4 frag_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float4 uv [[user(locn0)]];
+    float4 color [[user(locn1)]];
+};
+
+fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]])
+{
+    main0_out out = {};
+    out.frag_color = float4(1.0, 1.0, 1.0, tex.sample(smp, in.uv.xy).r) * in.color;
+    return out;
+}
+"
+
+const font_wgsl_fs = r"diagnostic(off, derivative_uniformity);
+
+var<private> frag_color : vec4f;
+
+@group(1) @binding(48) var tex : texture_2d<f32>;
+
+@group(1) @binding(64) var smp : sampler;
+
+var<private> uv : vec4f;
+var<private> color : vec4f;
+
+fn main_1() {
+  let x_23 : vec4f = uv;
+  let x_25 : vec4f = textureSample(tex, smp, vec2f(x_23.x, x_23.y));
+  let x_27 : vec4f = color;
+  frag_color = (vec4f(1.0f, 1.0f, 1.0f, x_25.r) * x_27);
+  return;
+}
+
+struct main_out {
+  @location(0)
+  frag_color_1 : vec4f,
+}
+
+@fragment
+fn main(@location(0) uv_param : vec4f, @location(1) color_param : vec4f) -> main_out {
+  uv = uv_param;
+  color = color_param;
+  main_1();
+  return main_out(frag_color);
+}
+"
+
+const font_hlsl_fs = r"Texture2D tex : register(t0);
+SamplerState smp : register(s0);
+
+struct fs_in
+{
+    float4 uv : TEXCOORD0;
+    float4 color : TEXCOORD1;
+};
+
+struct fs_out
+{
+    float4 frag_color : SV_Target0;
+};
+
+fs_out main(fs_in inp)
+{
+    fs_out outp;
+    outp.frag_color = float4(1.0, 1.0, 1.0, tex.Sample(smp, inp.uv.xy).r) * inp.color;
+    return outp;
+}
+"
+
 pub fn make_shader() gfx.Shader {
+	return make_shader_with_frag(glsl410_fs, glsl300es_fs, metal_sim_fs, wgsl_fs, hlsl_fs, c'sgl-shader')
+}
+
+// make_font_shader builds the shader the text atlas is drawn with: identical
+// vertex stage, fragment stage rewritten so a single-channel atlas's red
+// channel acts as alpha coverage.
+pub fn make_font_shader() gfx.Shader {
+	return make_shader_with_frag(font_glsl410_fs, font_glsl300es_fs, font_metal_sim_fs, font_wgsl_fs, font_hlsl_fs,
+		c'sgl-font-shader')
+}
+
+fn make_shader_with_frag(glsl410 string, glsl300es string, metal string, wgsl string, hlsl string, label &char) gfx.Shader {
 	mut desc := gfx.ShaderDesc{}
 	desc.attrs[0].name = c'position'
 	desc.attrs[0].sem_name = c'TEXCOORD'
@@ -297,25 +424,25 @@ pub fn make_shader() gfx.Shader {
 	desc.fs.image_sampler_pairs[0].image_slot = 0
 	desc.fs.image_sampler_pairs[0].sampler_slot = 0
 	desc.fs.image_sampler_pairs[0].glsl_name = c'tex_smp'
-	desc.label = c'sgl-shader'
+	desc.label = label
 
 	$if sokol_gles3 ? {
 		desc.set_vert_src(glsl300es_vs)
-		desc.set_frag_src(glsl300es_fs)
-	} $else $if sokol_metal ? {
+		desc.set_frag_src(glsl300es)
+	} $else $if sokol_metal ?|| (macos && !darwin_sokol_glcore33 ?) {
 		desc.vs.entry = c'main0'
 		desc.fs.entry = c'main0'
 		desc.set_vert_src(metal_sim_vs)
-		desc.set_frag_src(metal_sim_fs)
+		desc.set_frag_src(metal)
 	} $else $if sokol_d3d11 ? {
 		desc.set_vert_src(hlsl_vs)
-		desc.set_frag_src(hlsl_fs)
+		desc.set_frag_src(hlsl)
 	} $else $if sokol_wgpu ? {
 		desc.set_vert_src(wgsl_vs)
-		desc.set_frag_src(wgsl_fs)
+		desc.set_frag_src(wgsl)
 	} $else {
 		desc.set_vert_src(glsl410_vs)
-		desc.set_frag_src(glsl410_fs)
+		desc.set_frag_src(glsl410)
 	}
 	return gfx.make_shader(&desc)
 }

@@ -2,6 +2,7 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
 import v.pref
 import v.scanner
 import v.token
@@ -15,7 +16,7 @@ fn test_fastc_self_qualified_types_use_the_canonical_module_path() {
 	first := scan.scan()
 	typ, next := fastc_scan_type_bytes(mut scan, first, 'type.v', 'v.types',
 		map[string]string{}, {
-			'v.types.Type': true
+			flat.source_type_id('v.types.Type'): true
 		}, false) or { panic(err) }
 	assert typ == fastc_array_c_type('v__types__Type')
 	assert next in [.eof, .semicolon]

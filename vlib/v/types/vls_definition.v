@@ -168,7 +168,7 @@ fn (tc &TypeChecker) vls_function_definition(resolved string) ?VlsPos {
 	if interface_name == resolved {
 		return none
 	}
-	member := tc.vls_interface_member(interface_name, resolved.all_after_last('.'))?
+	member := tc.vls_interface_member(flat.source_type_id(interface_name), resolved.all_after_last('.'))?
 	return VlsPos{int(member.pos.id), int(member.pos.offset)}
 }
 
@@ -216,7 +216,7 @@ fn (tc &TypeChecker) vls_type_param_definition(id flat.NodeId, word string) ?Vls
 // receiver of a method, `T` of `fn (b Box[T]) get() T`. A type written among the
 // parameters, `(x Box[T])`, is a use of it.
 fn (tc &TypeChecker) vls_type_param_declared_at(decl flat.Node, word string) ?VlsPos {
-	if word !in tc.type_param_scope(decl).names {
+	if !generic_param_ids_contain_name(tc.type_param_scope(decl).names, word) {
 		return none
 	}
 	file_id := int(decl.pos.id)
@@ -312,8 +312,9 @@ fn vls_part_starting_with(source string, from int, to int, word string) ?int {
 // `struct`, `interface`, `enum` or `type`.
 fn (tc &TypeChecker) vls_type_definition(name string) ?VlsPos {
 	short := name.all_after_last('.')
-	index := tc.first_type_declaration_ids[tc.qualify_name(name)] or {
-		tc.first_type_declaration_ids[name] or { return none }
+	name_id := flat.source_type_id(name)
+	index := tc.first_type_declaration_ids[tc.qualify_type_name(name_id)] or {
+		tc.first_type_declaration_ids[name_id] or { return none }
 	}
 	decl := tc.a.nodes[index]
 	file_id := int(decl.pos.id)
@@ -337,10 +338,14 @@ fn (tc &TypeChecker) vls_selector_definition(node flat.Node) ?VlsPos {
 	}
 	receiver_id := tc.a.child(&node, 0)
 	receiver := tc.a.node(receiver_id)
-	if enum_name := tc.vls_enum_receiver(receiver) {
-		qualified := if enum_name.contains('.') { enum_name } else { tc.qualify_name(enum_name) }
+	if enum_name_id := tc.vls_enum_receiver(receiver) {
+		qualified_id := if flat.source_type_shape(enum_name_id).has(.dotted) {
+			enum_name_id
+		} else {
+			tc.qualify_type_name(enum_name_id)
+		}
 		return tc.vls_enum_value_definition(Type(Enum{
-			name_id: flat.source_type_id(qualified)
+			name_id: qualified_id
 		}), node.value)
 	}
 	if receiver.kind == .ident && tc.expr_type(receiver_id) == none {
@@ -374,8 +379,7 @@ fn (tc &TypeChecker) vls_module_member_definition(module_name string, member str
 // the field `field`, or the struct it embeds that declares it: `u.id` for the
 // `id` of a `Base` that `u`'s struct embeds.
 fn (tc &TypeChecker) vls_field_definition(type_name_id u32, field string) ?VlsPos {
-	type_name := flat.source_type_name(type_name_id)
-	index := tc.first_type_declaration_ids[type_name] or { return none }
+	index := tc.first_type_declaration_ids[type_name_id] or { return none }
 	decl := tc.a.nodes[index]
 	for i in 0 .. decl.children_count {
 		member := tc.a.child_node(&decl, i)
@@ -395,8 +399,7 @@ fn (tc &TypeChecker) vls_enum_value_definition(typ Type, value string) ?VlsPos {
 	if typ !is Enum {
 		return none
 	}
-	name := (typ as Enum).name()
-	index := tc.first_type_declaration_ids[name] or { return none }
+	index := tc.first_type_declaration_ids[typ.source_type_id()] or { return none }
 	decl := tc.a.nodes[index]
 	for i in 0 .. decl.children_count {
 		field := tc.a.child_node(&decl, i)

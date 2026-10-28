@@ -98,10 +98,12 @@ fn test_all() {
 	no_closures_dir := 'vlib/v/tests/no_closures'
 	js_checker_tests := ['index_expr_implicit_int_downcast_err.vv',
 		'js_number_requires_explicit_cast.vv']
+	raw_asm_checker_tests := ['asm_raw_label_ok.vv']
 	disable_explicit_mutability_tests := ['disable_explicit_mutability.vv']
 
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option')
-		&& it !in js_checker_tests && it !in disable_explicit_mutability_tests)
+		&& it !in js_checker_tests && it !in raw_asm_checker_tests
+		&& it !in disable_explicit_mutability_tests)
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
@@ -180,6 +182,8 @@ fn test_all() {
 	tasks.add('', parser_dir, '', '.out', parser_tests, false)
 	tasks.add('', checker_dir, '', '.out', checker_tests, false)
 	tasks.add('', checker_dir, '-b js', '.js.out', js_checker_tests, false)
+	// Keep raw assembly on the compiler selected for this test and its skip rules.
+	tasks.add('', checker_dir, '-cc ${@CCOMPILER}', '.out', raw_asm_checker_tests, false)
 	tasks.add('', scanner_dir, '', '.out', scanner_tests, false)
 	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'], false)
 	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests, false)

@@ -123,7 +123,7 @@ fn test_parsed_ids_follow_generic_recursive_alias_and_worker_precedence() {
 	tc.cur_module = 'other'
 	tc.cur_file = 'other.v'
 	assert tc.parse_type_id(flat.source_type_u64) or { panic('missing contextual identity') } == integer
-	tc.type_param_texts.set_id('u64', flat.source_type_string)
+	tc.type_param_texts[flat.source_type_u64] = flat.source_type_string
 	bound := tc.parse_type_id(flat.source_type_u64) or { panic('missing bound identity') }
 	assert bound != integer
 	assert tc.type_name_by_id(bound) == flat.source_type_string

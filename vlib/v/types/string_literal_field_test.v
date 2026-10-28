@@ -27,7 +27,7 @@ fn test_string_literal_str_field_shadows_method() {
 			field_type := Type(Pointer{
 				base_type: &Type(u8_)
 			})
-			tc.structs['string'] = [
+			tc.structs[flat.source_type_id('string')] = [
 				StructField{
 					name: 'str'
 					typ:  field_type
@@ -52,7 +52,7 @@ fn test_string_literal_method_value_without_a_matching_field() {
 	mut a := flat.FlatAst.new()
 	selector := string_literal_selector(mut a, 'hello', 'to_upper')
 	mut tc := TypeChecker.new(&a)
-	tc.structs['string'] = [
+	tc.structs[flat.source_type_id('string')] = [
 		StructField{
 			name: 'str'
 			typ:  Type(Pointer{
