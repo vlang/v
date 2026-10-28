@@ -19853,7 +19853,7 @@ fn (t &Transformer) generic_call_declared_return_type(id flat.NodeId, node flat.
 	if name.len == 0 {
 		return none
 	}
-	params := t.tc.fn_generic_params[name] or { return none }
+	params := types.generic_param_texts(t.tc.fn_generic_params[name] or { return none })
 	if params.len == 0 {
 		return none
 	}
@@ -20028,7 +20028,8 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
-	if params := t.tc.fn_generic_params[name] {
+	if param_ids := t.tc.fn_generic_params[name] {
+		params := types.generic_param_texts(param_ids)
 		if params == ['T'] {
 			if ret_text_source_id := t.tc.fn_ret_type_texts.type_id(name) {
 				syntax := flat.source_type_syntax(ret_text_source_id)

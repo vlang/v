@@ -38,9 +38,7 @@ fn test_source_operands_remain_visible_to_generic_body_dependency_checks() {
 	})
 	literal := a.add_node(flat.Node{ kind: .string_literal, value: 'Box[T]' })
 	tc := TypeChecker.new(&a)
-	params := {
-		'T': true
-	}
+	params := generic_param_id_set(generic_param_ids(['T']))
 	assert tc.subtree_depends_on_type_params(cast, map[string]bool{}, params)
 	assert !tc.subtree_depends_on_type_params(literal, map[string]bool{}, params)
 }

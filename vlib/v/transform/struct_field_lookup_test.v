@@ -75,7 +75,7 @@ fn test_owned_field_index_survives_worker_arena_release() {
 fn test_foreign_generic_field_arguments_keep_instantiation_module() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.struct_generic_params[flat.source_type_id('rt.Cell')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('rt.Cell')] = types.generic_param_ids(['T'])
 	tc.structs[flat.source_type_id('rt.Type')] = []types.StructField{}
 	tc.structs[flat.source_type_id('ck.Type')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})

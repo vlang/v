@@ -3821,12 +3821,12 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 		tc.fn_context = saved_fn_context
 	}
 	fast_valid_build := tc.building_v_fast
-	inferred_generic_params := tc.infer_decl_generic_param_names(node)
+	inferred_generic_params := tc.infer_decl_generic_param_ids(node)
 	is_concrete_generic_receiver := node.value.contains('.')
 		&& node.value.all_before_last('.').contains('[') && inferred_generic_params.len == 0
 	is_specialized := tc.a.specialized_fn_nodes[fn_idx] || is_concrete_generic_receiver
 	tc.fn_context.generic_params = if is_specialized {
-		[]string{}
+		[]u32{}
 	} else {
 		inferred_generic_params
 	}
@@ -3952,7 +3952,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	// The source-level global-shadow rule does not depend on concrete types, so inspect
 	// those bindings now before deferring expression and control-flow checks.
 	generic_params := if is_specialized {
-		map[string]bool{}
+		map[u32]bool{}
 	} else {
 		tc.infer_decl_generic_params(node)
 	}
@@ -4061,12 +4061,12 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			if is_non_local_type && !is_builtin_array_override && !is_local_collection {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
 				receiver_symbols := flat.source_type_syntax(receiver.typ).symbols()
-				receiver_generics := tc.fn_context.generic_params.filter(it.len > 0
-					&& source_words_contain_name(receiver_symbols, it))
+				receiver_generics := tc.fn_context.generic_params.filter(it != 0
+					&& it in receiver_symbols)
 				alias_name := if receiver_generics.len == 0 {
 					'AliasName'
 				} else {
-					'AliasName[${receiver_generics.join(', ')}]'
+					'AliasName[${generic_param_ids_join(receiver_generics, ', ')}]'
 				}
 				receiver_hint := if receiver_generics.len == 0 {
 					''
@@ -5212,7 +5212,7 @@ fn sql_text_contains_ident(text string, name string) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[string]bool) bool {
+fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[u32]bool) bool {
 	if tc.type_contains_open_generic_placeholder(tc.fn_context.return_type) {
 		return true
 	}
@@ -5245,7 +5245,7 @@ fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_p
 	return tc.stmt_is_terminal_void_propagation(last_stmt, mode)
 }
 
-fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[string]bool) bool {
+fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[u32]bool) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -5288,8 +5288,10 @@ fn (mut tc TypeChecker) generic_comptime_branch_terminates(id flat.NodeId) bool 
 	return false
 }
 
-fn comptime_condition_references_generic_param(cond string, generic_params map[string]bool) bool {
-	for param, _ in generic_params {
+fn comptime_condition_references_generic_param(cond string, generic_params map[u32]bool) bool {
+	for param_id, _ in generic_params {
+		// The condition is source text that spells the type parameter.
+		param := flat.source_type_name(param_id)
 		mut offset := 0
 		for offset + param.len <= cond.len {
 			if cond[offset..offset + param.len] == param {

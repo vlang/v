@@ -11,8 +11,8 @@ fn test_parse_canonical_generic_type_ignores_source_import_aliases() {
 	tc.structs[flat.source_type_id('x.foo.Box')] = []StructField{}
 	tc.structs[flat.source_type_id('item.Value')] = []StructField{}
 	tc.structs[flat.source_type_id('x.item.Value')] = []StructField{}
-	tc.struct_generic_params[flat.source_type_id('foo.Box')] = ['T']
-	tc.struct_generic_params[flat.source_type_id('x.foo.Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('foo.Box')] = generic_param_ids(['T'])
+	tc.struct_generic_params[flat.source_type_id('x.foo.Box')] = generic_param_ids(['T'])
 	tc.register_file_import('foo', 'x.foo')
 	tc.register_file_import('item', 'x.item')
 

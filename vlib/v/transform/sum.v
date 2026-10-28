@@ -753,9 +753,9 @@ fn (t &Transformer) sum_generic_params_for_base(base string) []string {
 
 fn (t &Transformer) sum_generic_params_for_base_id(base u32) []string {
 	if isnil(t.tc) { return []string{} }
-	if params := t.tc.sum_generic_params[base] { return params }
+	if params := t.tc.sum_generic_params[base] { return types.generic_param_texts(params) }
 	short := flat.source_type_syntax(base).unqualified()
-	if params := t.tc.sum_generic_params[short] { return params }
+	if params := t.tc.sum_generic_params[short] { return types.generic_param_texts(params) }
 	return []string{}
 }
 

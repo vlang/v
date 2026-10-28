@@ -394,7 +394,7 @@ struct ParseTypeCacheEntry {
 	file           string
 	module         string
 	text           u32
-	generic_params []string
+	generic_params []u32
 	resolution     bool
 	typ            &Type = empty_type
 }
@@ -552,7 +552,7 @@ mut:
 	parse_entries                    map[u64]ParseTypeCacheEntry
 	parse_context_file               string
 	parse_context_module             string
-	parse_context_generics           []string
+	parse_context_generics           []u32
 	parse_context_resolution         bool
 	parse_context_hash               u64
 	parse_context_valid              bool
@@ -655,7 +655,7 @@ fn new_type_cache(parse_enabled bool) &TypeCache {
 	cache.generated_parent_entries = map[int]flat.NodeId{}
 	cache.borrowed_projection_clone_copies = unsafe { nil }
 	cache.parse_entries = map[u64]ParseTypeCacheEntry{}
-	cache.parse_context_generics = []string{}
+	cache.parse_context_generics = []u32{}
 	cache.parse_text_id_context = []u64{}
 	cache.parse_text_id_values = []&Type{}
 	cache.parse_text_ids = []u32{}
@@ -855,7 +855,7 @@ mut:
 	has_goto_nodes                           bool
 	closure_scope                            &Scope = unsafe { nil }
 	lambda_no_captures                       bool
-	generic_params                           []string
+	generic_params                           []u32
 	return_type                              Type = builtin_void_type
 	undefined_variable_context_depth         int
 	continue_after_unknown_ident             bool
@@ -920,7 +920,7 @@ fn (mut ctx FunctionCheckContext) reset_for_sibling_check() {
 	ctx.unsafe_alias_break_states = [][]map[string]bool{}
 	ctx.pointer_alias_break_states = [][]map[string][]string{}
 	ctx.pointer_alias_continue_states = [][]map[string][]string{}
-	ctx.generic_params = []string{}
+	ctx.generic_params = []u32{}
 	ctx.node_id = -1
 	ctx.concrete_generic_receiver_specialization = false
 	ctx.local_decl_rhs_indexed = false
@@ -1224,7 +1224,7 @@ pub mut:
 	transform_signature_keys_borrowed bool
 	transform_signature_names_log     []string
 	transform_struct_maps_shared      bool
-	fn_generic_params                 map[string][]string
+	fn_generic_params                 map[string][]u32
 	constraints_scanned               bool // program_declares_constraints has looked
 	declares_constraints              bool
 	specialized_generic_fns           map[string]bool
@@ -1247,7 +1247,7 @@ pub mut:
 	declared_type_scope_keys           map[u64]bool
 	concrete_type_scope_keys           map[u64]bool
 	struct_error_embeds_shadow_builtin map[u32]bool
-	struct_generic_params              map[u32][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
+	struct_generic_params              map[u32][]u32 // generic struct base name -> type-param spelling IDs (e.g. Vec4 -> [T])
 	struct_implements                  flat.SourceTypeListBindings
 	struct_shared_fields               map[u32]map[string]bool
 	struct_shared_element_fields       map[u32]map[string]bool
@@ -1261,16 +1261,16 @@ pub mut:
 	unions                                map[u32]bool
 	type_aliases                          flat.SourceTypeBindings
 	type_alias_modules                    map[u32]string
-	type_alias_generic_params             map[u32][]string // generic alias base name -> type-param names
+	type_alias_generic_params             map[u32][]u32 // generic alias base name -> type-param spelling IDs
 	type_alias_c_abi_fns                  map[u32]string
 	recursive_alias_names                 map[u32]bool
 	sum_types                             flat.SourceTypeListBindings
-	sum_generic_params                    map[u32][]string // generic sum type base name -> type-param names (e.g. Tree -> [T])
+	sum_generic_params                    map[u32][]u32 // generic sum type base name -> type-param spelling IDs (e.g. Tree -> [T])
 	enum_names                            map[u32]bool
 	enum_fields                           map[u32][]string
 	flag_enums                            map[u32]bool
 	interface_names                       map[u32]bool
-	interface_generic_params              map[u32][]string
+	interface_generic_params              map[u32][]u32
 	interface_fields                      map[u32][]StructField
 	interface_embeds                      flat.SourceTypeListBindings
 	interface_abstract_methods            map[u32][]string // iface -> abstract (declared) method names
@@ -1413,17 +1413,17 @@ pub mut:
 	is_test                       bool
 	checked_comptime_method_calls map[u64][]ComptimeMethodCallInstance
 	comptime_method_calls_by_decl map[int]map[int]bool
-	check_concrete_generic_bodies bool                  // `-check` checks the concrete clones of the program's generics for fields and methods their types lack, and for arrays and maps with the wrong element layout
-	check_program_lib_instances   bool                  // such a check also checks the instances of library generics that the program's own code asks for (see transform.LibraryBodies)
-	library_instances             int                   // the instances of library generics that such a check cloned
-	library_headers               int                   // how many of them it cloned without their bodies (see transform.LibraryBodies)
-	library_bodies_kept_for       string                // why every one of them kept its body, when one had to
-	check_generic_bodies          bool                  // the bodies of generic functions whose type parameters all have a constraint are checked
-	type_param_texts              flat.TypeTextBindings // in a fork that checks a generic body with its type parameters as types their constraints admit, the text of each (check_generic_fn_body_as)
-	type_params_expanding         map[string]bool       // the type parameters of type_param_texts whose own text is being parsed: `T` of `[T Comparable[T]]` stays open inside it
-	concrete_parents_indexed      int                   // nodes the parent index covered when the last concrete clone was checked
-	concrete_guard_options        map[flat.NodeId]bool  // in check_concrete_instance_members, the `if x := a` operands declared as an option or result, smartcast to their payload
-	checking_concrete_members     bool                  // check_concrete_instance_members is checking a clone
+	check_concrete_generic_bodies bool                 // `-check` checks the concrete clones of the program's generics for fields and methods their types lack, and for arrays and maps with the wrong element layout
+	check_program_lib_instances   bool                 // such a check also checks the instances of library generics that the program's own code asks for (see transform.LibraryBodies)
+	library_instances             int                  // the instances of library generics that such a check cloned
+	library_headers               int                  // how many of them it cloned without their bodies (see transform.LibraryBodies)
+	library_bodies_kept_for       string               // why every one of them kept its body, when one had to
+	check_generic_bodies          bool                 // the bodies of generic functions whose type parameters all have a constraint are checked
+	type_param_texts              map[u32]u32          // in a fork that checks a generic body with its type parameters as types their constraints admit, the text of each (check_generic_fn_body_as)
+	type_params_expanding         map[u32]bool         // the type parameters of type_param_texts whose own text is being parsed: `T` of `[T Comparable[T]]` stays open inside it
+	concrete_parents_indexed      int                  // nodes the parent index covered when the last concrete clone was checked
+	concrete_guard_options        map[flat.NodeId]bool // in check_concrete_instance_members, the `if x := a` operands declared as an option or result, smartcast to their payload
+	checking_concrete_members     bool                 // check_concrete_instance_members is checking a clone
 	module_diagnostic_root        string
 	autofree_mode                 bool
 	no_main                       bool
@@ -1652,7 +1652,7 @@ mut:
 	// index and fall back to the field walk.
 	struct_embed_receivers flat.SourceTypeListBindings
 	// Immutable node -> generic parameter index shared by checker workers.
-	enclosing_generic_params_by_node map[int][]string
+	enclosing_generic_params_by_node map[int][]u32
 	enclosing_generic_param_masks    []u32
 	first_type_declaration_ids       map[u32]int
 }
@@ -1705,7 +1705,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_param_type_texts:                     flat.TypeTextListBindings{}
 		fn_type_files:                           map[string]string{}
 		fn_type_modules:                         map[string]string{}
-		fn_generic_params:                       map[string][]string{}
+		fn_generic_params:                       map[string][]u32{}
 		specialized_generic_fns:                 map[string]bool{}
 		fn_variadic:                             map[string]bool{}
 		c_variadic_fns:                          map[string]bool{}
@@ -1722,7 +1722,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		declared_type_scope_keys:                map[u64]bool{}
 		concrete_type_scope_keys:                map[u64]bool{}
 		struct_error_embeds_shadow_builtin:      map[u32]bool{}
-		struct_generic_params:                   map[u32][]string{}
+		struct_generic_params:                   map[u32][]u32{}
 		struct_implements:                       flat.SourceTypeListBindings{}
 		struct_shared_fields:                    map[u32]map[string]bool{}
 		struct_shared_element_fields:            map[u32]map[string]bool{}
@@ -1733,15 +1733,15 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		unions:                                  map[u32]bool{}
 		type_aliases:                            flat.SourceTypeBindings{}
 		type_alias_modules:                      map[u32]string{}
-		type_alias_generic_params:               map[u32][]string{}
+		type_alias_generic_params:               map[u32][]u32{}
 		type_alias_c_abi_fns:                    map[u32]string{}
 		sum_types:                               flat.SourceTypeListBindings{}
-		sum_generic_params:                      map[u32][]string{}
+		sum_generic_params:                      map[u32][]u32{}
 		enum_names:                              map[u32]bool{}
 		enum_fields:                             map[u32][]string{}
 		flag_enums:                              map[u32]bool{}
 		interface_names:                         map[u32]bool{}
-		interface_generic_params:                map[u32][]string{}
+		interface_generic_params:                map[u32][]u32{}
 		interface_fields:                        map[u32][]StructField{}
 		interface_embeds:                        flat.SourceTypeListBindings{}
 		interface_abstract_methods:              map[u32][]string{}
@@ -1811,7 +1811,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		visible_mutation_cache:                  new_visible_mutation_cache()
 		type_interner:                           type_interner
 		symbols:                                 symbols
-		enclosing_generic_params_by_node:        map[int][]string{}
+		enclosing_generic_params_by_node:        map[int][]u32{}
 		declaration_attributes:                  map[int][]string{}
 		attribute_schemas:                       map[string][]AttributeSchema{}
 		noalloc_terminal_functions:              map[string]bool{}
@@ -2294,7 +2294,7 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.runtime_type_indexes = tc.runtime_type_indexes.clone()
 	tc.fn_ret_type_texts = tc.fn_ret_type_texts.clone_owned()
 	tc.fn_param_type_texts = tc.fn_param_type_texts.clone_owned()
-	tc.fn_generic_params = clone_owned_string_list_map(tc.fn_generic_params)
+	tc.fn_generic_params = clone_owned_string_id_list_map(tc.fn_generic_params)
 	tc.mut_receiver_methods = clone_owned_string_bool_map(tc.mut_receiver_methods)
 	tc.c_variadic_fns = clone_owned_string_bool_map(tc.c_variadic_fns)
 	tc.fn_implicit_veb_ctx = clone_owned_string_bool_map(tc.fn_implicit_veb_ctx)
@@ -2307,7 +2307,7 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.soa_structs = tc.soa_structs.clone()
 	tc.declared_type_scope_keys = tc.declared_type_scope_keys.clone()
 	tc.struct_error_embeds_shadow_builtin = tc.struct_error_embeds_shadow_builtin.clone()
-	tc.struct_generic_params = clone_owned_source_type_string_list_map(tc.struct_generic_params)
+	tc.struct_generic_params = clone_owned_id_list_map(tc.struct_generic_params)
 	tc.struct_implements = tc.struct_implements.clone_owned()
 	tc.struct_shared_fields = clone_owned_type_owner_field_flags(tc.struct_shared_fields)
 	tc.struct_shared_element_fields = clone_owned_type_owner_field_flags(tc.struct_shared_element_fields)
@@ -2315,15 +2315,15 @@ pub fn (mut tc TypeChecker) clone_transform_metadata_owned() {
 	tc.unions = tc.unions.clone()
 	tc.params_structs = tc.params_structs.clone()
 	tc.c_typedef_structs = tc.c_typedef_structs.clone()
-	tc.type_alias_generic_params = clone_owned_source_type_string_list_map(tc.type_alias_generic_params)
+	tc.type_alias_generic_params = clone_owned_id_list_map(tc.type_alias_generic_params)
 	tc.type_alias_c_abi_fns = clone_owned_source_type_string_map(tc.type_alias_c_abi_fns)
 	tc.sum_types = tc.sum_types.clone_owned()
-	tc.sum_generic_params = clone_owned_source_type_string_list_map(tc.sum_generic_params)
+	tc.sum_generic_params = clone_owned_id_list_map(tc.sum_generic_params)
 	tc.enum_names = tc.enum_names.clone()
 	tc.enum_fields = clone_owned_source_type_string_list_map(tc.enum_fields)
 	tc.flag_enums = tc.flag_enums.clone()
 	tc.interface_names = tc.interface_names.clone()
-	tc.interface_generic_params = clone_owned_source_type_string_list_map(tc.interface_generic_params)
+	tc.interface_generic_params = clone_owned_id_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_owned_source_type_struct_field_map(tc.interface_fields)
 	tc.interface_embeds = tc.interface_embeds.clone_owned()
 	tc.interface_abstract_methods = clone_owned_source_type_string_list_map(tc.interface_abstract_methods)
@@ -3182,7 +3182,7 @@ pub fn (tc &TypeChecker) has_fn_decl_short_name(name string) bool {
 }
 
 fn (mut tc TypeChecker) build_enclosing_generic_param_index(a &flat.FlatAst) {
-	tc.enclosing_generic_params_by_node = map[int][]string{}
+	tc.enclosing_generic_params_by_node = map[int][]u32{}
 	tc.enclosing_generic_param_masks = []u32{len: a.nodes.len}
 	tc.index_enclosing_generic_params(a, tc.top_level_idx)
 }
@@ -3195,7 +3195,7 @@ fn (mut tc TypeChecker) index_enclosing_generic_params(a &flat.FlatAst, entries 
 			previous_top_level_idx = idx
 			continue
 		}
-		params := node.generic_params()
+		params := generic_param_ids(node.generic_params())
 		for child_idx in 0 .. node.children_count {
 			child := a.child(&node, child_idx)
 			if int(child) >= 0 {
@@ -3219,7 +3219,7 @@ fn (mut tc TypeChecker) cache_fn_generic_params_of(a &flat.FlatAst, entries []i3
 			previous_top_level_idx = idx
 			continue
 		}
-		params := tc.infer_decl_generic_param_names(node)
+		params := tc.infer_decl_generic_param_ids(node)
 		// Keep non-generic declarations too, so call validation can reuse the miss.
 		tc.enclosing_generic_params_by_node[idx] = params
 		if params.len > 0 {
@@ -3229,12 +3229,10 @@ fn (mut tc TypeChecker) cache_fn_generic_params_of(a &flat.FlatAst, entries []i3
 	}
 }
 
-fn (mut tc TypeChecker) fill_enclosing_generic_param_mask(start int, end int, params []string) {
+fn (mut tc TypeChecker) fill_enclosing_generic_param_mask(start int, end int, params []u32) {
 	mut mask := u32(0)
 	for param in params {
-		if param.len == 1 && param[0] >= `A` && param[0] <= `Z` {
-			mask |= u32(1) << u32(param[0] - `A`)
-		}
+		mask |= generic_param_letter_mask(param)
 	}
 	if mask == 0 {
 		return
@@ -4800,9 +4798,10 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 				tc.struct_modules[qname_id] = tc.cur_module
 				tc.struct_files[qname_id] = tc.cur_file
 				if node.generic_params().len > 0 {
-					tc.struct_generic_params[qname_id] = node.generic_params().clone()
+					param_ids := generic_param_ids(node.generic_params())
+					tc.struct_generic_params[qname_id] = param_ids
 					if qname_id != node.source_value_id() {
-						tc.struct_generic_params[node.source_value_id()] = node.generic_params().clone()
+						tc.struct_generic_params[node.source_value_id()] = param_ids.clone()
 					}
 				}
 				implements_types := struct_decl_implements_ids(node.typ)
@@ -4824,18 +4823,19 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 				}
 			}
 			.type_decl {
+				param_ids := generic_param_ids(node.generic_params())
 				if node.children_count > 0 {
 					mut variants := []u32{}
 					for i in 0 .. node.children_count {
 						v := a.child_node(node_ref, i)
-						variants << tc.qualify_type_text_with_generic_params(v.source_value_id(), node.generic_params())
+						variants << tc.qualify_type_text_with_generic_params(v.source_value_id(), param_ids)
 					}
 					qname_id := tc.qualify_decl_name_id(node.source_value_id())
 					tc.sum_types.set_ids(qname_id, variants)
-					if node.generic_params().len > 0 {
-						tc.sum_generic_params[qname_id] = node.generic_params().clone()
+					if param_ids.len > 0 {
+						tc.sum_generic_params[qname_id] = param_ids
 						if qname_id != node.source_value_id() {
-							tc.sum_generic_params[node.source_value_id()] = node.generic_params().clone()
+							tc.sum_generic_params[node.source_value_id()] = param_ids.clone()
 						}
 					}
 				} else if node.typ != 0 {
@@ -4843,31 +4843,30 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 					if sum_variant_ids.len > 1 {
 						mut variants := []u32{}
 						for part in sum_variant_ids {
-							variants << tc.qualify_type_text_with_generic_params(part, node.generic_params())
+							variants << tc.qualify_type_text_with_generic_params(part, param_ids)
 						}
 						qname_id := tc.qualify_decl_name_id(node.source_value_id())
 						tc.sum_types.set_ids(qname_id, variants)
-						if node.generic_params().len > 0 {
-							tc.sum_generic_params[qname_id] = node.generic_params().clone()
+						if param_ids.len > 0 {
+							tc.sum_generic_params[qname_id] = param_ids
 							if qname_id != node.source_value_id() {
-								tc.sum_generic_params[node.source_value_id()] = node.generic_params().clone()
+								tc.sum_generic_params[node.source_value_id()] = param_ids.clone()
 							}
 						}
 						continue
 					}
 					qname_id := tc.qualify_decl_name_id(node.source_value_id())
-					generic_params := node.generic_params()
-					alias_target := if generic_params.len > 0 {
-						tc.qualify_type_text_with_generic_params(node.typ, generic_params)
+					alias_target := if param_ids.len > 0 {
+						tc.qualify_type_text_with_generic_params(node.typ, param_ids)
 					} else {
 						tc.qualify_type_text(node.typ)
 					}
 					tc.type_aliases.set_id(qname_id, alias_target)
 					tc.type_alias_modules[qname_id] = tc.cur_module
-					if generic_params.len > 0 {
-						tc.type_alias_generic_params[qname_id] = generic_params.clone()
+					if param_ids.len > 0 {
+						tc.type_alias_generic_params[qname_id] = param_ids
 						if qname_id != node.source_value_id() {
-							tc.type_alias_generic_params[node.source_value_id()] = generic_params.clone()
+							tc.type_alias_generic_params[node.source_value_id()] = param_ids.clone()
 						}
 					}
 					if c_abi_fn := tc.c_abi_fn_ptr_type_from_id(node.typ) {
@@ -4876,8 +4875,8 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 					if tc.cur_module in ['', 'main', 'builtin'] && !tc.type_aliases.contains(node.source_value_id()) {
 						tc.type_aliases.set_id(node.source_value_id(), alias_target)
 						tc.type_alias_modules[node.source_value_id()] = tc.cur_module
-						if generic_params.len > 0 {
-							tc.type_alias_generic_params[node.source_value_id()] = generic_params.clone()
+						if param_ids.len > 0 {
+							tc.type_alias_generic_params[node.source_value_id()] = param_ids.clone()
 						}
 						if c_abi_fn := tc.c_abi_fn_ptr_type_from_id(node.typ) {
 							tc.type_alias_c_abi_fns[node.source_value_id()] = c_abi_fn
@@ -4889,9 +4888,10 @@ fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_d
 				qname_id := tc.qualify_decl_name_id(node.source_value_id())
 				tc.interface_names[qname_id] = true
 				if node.generic_params().len > 0 {
-					tc.interface_generic_params[qname_id] = node.generic_params().clone()
+					param_ids := generic_param_ids(node.generic_params())
+					tc.interface_generic_params[qname_id] = param_ids
 					if tc.cur_module in ['', 'main', 'builtin'] && qname_id != node.source_value_id() {
-						tc.interface_generic_params[node.source_value_id()] = node.generic_params().clone()
+						tc.interface_generic_params[node.source_value_id()] = param_ids.clone()
 					}
 				}
 			}
@@ -5067,7 +5067,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						tc.fn_type_modules[name] = tc.cur_module
 						if node.generic_params().len > 0
 							&& (name == qname || tc.cur_module in ['', 'main', 'builtin']) {
-							tc.fn_generic_params[name] = node.generic_params().clone()
+							tc.fn_generic_params[name] = generic_param_ids(node.generic_params())
 						}
 					}
 				}
@@ -5075,7 +5075,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 			.struct_decl {
 				mut fields := []StructField{}
 				old_generic_params := tc.fn_context.generic_params
-				tc.fn_context.generic_params = node.generic_params()
+				tc.fn_context.generic_params = generic_param_ids(node.generic_params())
 				mut field_c_abi_fns := map[string]string{}
 				mut shared_field_names := []string{}
 				mut shared_element_field_names := []string{}
@@ -7153,12 +7153,8 @@ fn (tc &TypeChecker) qualify_type_text(typ_id u32) u32 {
 	return tc.qualify_type_text_impl(typ_id, false, []u32{})
 }
 
-fn (tc &TypeChecker) qualify_type_text_with_generic_params(typ_id u32, generic_params []string) u32 {
-	mut params := []u32{cap: generic_params.len}
-	for param in generic_params {
-		params << flat.source_type_id(param)
-	}
-	return tc.qualify_type_text_impl(typ_id, false, params)
+fn (tc &TypeChecker) qualify_type_text_with_generic_params(typ_id u32, generic_params []u32) u32 {
+	return tc.qualify_type_text_impl(typ_id, false, generic_params)
 }
 
 // qualify_resolution_type_text qualifies a type text in a resolution-only
@@ -7200,7 +7196,7 @@ pub fn (tc &TypeChecker) parse_resolution_type(source_id u32) Type {
 			// The uncached view below parses with no module or generic parameters.
 			// Reuse that exact parse entry before allocating another checker view.
 			mut cache := tc.type_cache
-			if cached := parse_type_cache_get_mode(mut cache, tc.cur_file, '', qualified_source_id, []string{}, false, tc.fast_parse_recent) {
+			if cached := parse_type_cache_get_mode(mut cache, tc.cur_file, '', qualified_source_id, []u32{}, false, tc.fast_parse_recent) {
 				cache.parse_hits++
 				return *cached
 			}
@@ -9472,7 +9468,7 @@ fn (mut tc TypeChecker) annotate_fn_node(id flat.NodeId, node flat.Node) {
 	tc.fn_context.node_id = int(id)
 	tc.fn_context.concrete_generic_receiver_specialization =
 		fn_value_is_concrete_generic_receiver_specialization(node.value)
-	tc.fn_context.generic_params = tc.infer_decl_generic_param_names(node)
+	tc.fn_context.generic_params = tc.infer_decl_generic_param_ids(node)
 	tc.fn_context.return_type = tc.parse_type(node.typ)
 	tc.cur_scope = tc.file_scope
 	tc.push_scope()
@@ -9671,7 +9667,7 @@ pub fn (mut tc TypeChecker) diagnosed_files_declare_generics() bool {
 			continue
 		}
 		if node.kind == .fn_decl && tc.cur_file in tc.diagnostic_files
-			&& tc.infer_decl_generic_param_names(node).len > 0 {
+			&& tc.infer_decl_generic_param_ids(node).len > 0 {
 			found = true
 			break
 		}
@@ -11014,7 +11010,7 @@ pub fn (tc &TypeChecker) iterator_for_in_elem_type(typ Type) ?Type {
 	return iterator_for_in_elem_type_from_next_return(info.return_type)
 }
 
-fn (tc &TypeChecker) iterator_unbounded_next_generic(typ &Type) ?string {
+fn (tc &TypeChecker) iterator_unbounded_next_generic(typ &Type) ?u32 {
 	info := tc.iterator_for_in_next_call_info(typ) or { return none }
 	type_name := resolve_type_name_for_method(unwrap_pointer(typ))
 	syntax := flat.source_type_syntax(type_name)
@@ -11024,10 +11020,10 @@ fn (tc &TypeChecker) iterator_unbounded_next_generic(typ &Type) ?string {
 		type_name
 	}
 	owner_params := tc.struct_generic_params[owner_id] or {
-		tc.struct_generic_params[tc.qualify_type_name(owner_id)] or { []string{} }
+		tc.struct_generic_params[tc.qualify_type_name(owner_id)] or { []u32{} }
 	}
 	method_params := tc.fn_generic_params[info.name] or {
-		mut found := []string{}
+		mut found := []u32{}
 		for candidate in receiver_method_name_candidates(unwrap_pointer(typ), 'next', tc.cur_module) {
 			if params := tc.fn_generic_params[candidate] {
 				found = params.clone()
@@ -12120,7 +12116,7 @@ fn (mut tc TypeChecker) generic_fn_value_matches_expected(key string, expected T
 	if generic_params.len == 0 {
 		return false
 	}
-	mut inferred := map[string]Type{}
+	mut inferred := map[u32]Type{}
 	for i in 0 .. actual_fn.params.len {
 		tc.infer_generic_type_value_from_type(actual_fn.params[i].typ.source_type_id(), *expected_fn.params[i].typ, generic_params, mut inferred)
 	}
@@ -15551,15 +15547,15 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			tc.record_unsupported_generic('unsupported generic declaration `${node.value}`', node_id)
 		}
 		if !invalid_generic_struct_alias && (!decl_generic_mentions_error
-			|| tc.unmentioned_generic_names_in_type(node.typ, generic_param_map_from_names(node.generic_params())).len == 0) {
+			|| tc.unmentioned_generic_names_in_type(node.typ, generic_param_id_set(generic_param_ids(node.generic_params()))).len == 0) {
 			tc.check_type_string_for_unsupported_generics(node.typ, node_id, generic_params)
 		}
 	}
-	mut explicit_decl_params := map[string]bool{}
+	mut explicit_decl_params := map[u32]bool{}
 	if decl_generic_mentions_error {
-		explicit_decl_params = generic_param_map_from_names(node.generic_params())
+		explicit_decl_params = generic_param_id_set(generic_param_ids(node.generic_params()))
 		if explicit_decl_params.len == 0 {
-			explicit_decl_params['@declaration'] = true
+			explicit_decl_params[checker_source_at_declaration] = true
 		}
 	}
 	for i in 0 .. node.children_count {
@@ -15881,26 +15877,26 @@ fn (mut tc TypeChecker) check_type_alias_generic_struct_application(node_id flat
 	return true
 }
 
-fn (tc &TypeChecker) fixed_array_map_alias_generic_params(typ_id u32) []string {
+fn (tc &TypeChecker) fixed_array_map_alias_generic_params(typ_id u32) []u32 {
 	clean_id := trimmed_source_type_id(typ_id)
 	if !flat.source_type_shape(clean_id).has(.leading_bracket) {
-		return []string{}
+		return []u32{}
 	}
 	syntax := flat.source_type_syntax(clean_id)
 	if !syntax.bracket_closed() {
-		return []string{}
+		return []u32{}
 	}
 	element_id := syntax.bracket_base()
 	if !flat.source_type_shape(element_id).has(.map_type) {
-		return []string{}
+		return []u32{}
 	}
-	mut counts := map[string]int{}
+	mut counts := map[u32]int{}
 	tc.collect_generic_param_candidates(element_id, mut counts)
-	mut names := []string{cap: counts.len}
+	mut names := []u32{cap: counts.len}
 	for name, _ in counts {
 		names << name
 	}
-	names.sort()
+	sort_generic_param_ids(mut names)
 	return names
 }
 
@@ -15963,12 +15959,12 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 		return false
 	}
 	explicit_names := node.generic_params()
-	explicit_params := generic_param_map_from_names(explicit_names)
+	explicit_params := generic_param_id_set(generic_param_ids(explicit_names))
 	mut mention_params := explicit_params.clone()
 	if explicit_names.len == 0 {
 		// A declaration signature is type-only context, so any unknown one-letter
 		// capital is an omitted generic parameter, not an expression identifier.
-		mention_params['@declaration'] = true
+		mention_params[checker_source_at_declaration] = true
 	}
 	mut has_unmentioned := false
 	for i in 0 .. node.children_count {
@@ -16017,7 +16013,7 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 	} else {
 		'${node.value}[${explicit_names.join(', ')}]'
 	}
-	mut diagnosed := map[string]bool{}
+	mut diagnosed := map[u64]bool{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
@@ -16026,8 +16022,8 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 		} else {
 			child.typ
 		}
-		for name in tc.unmentioned_generic_names_in_type(child_type_id, explicit_params) {
-			key := '${int(child_id)}\n${name}'
+		for name_id in tc.unmentioned_generic_names_in_type(child_type_id, explicit_params) {
+			key := (u64(u32(int(child_id))) << 32) | u64(name_id)
 			if diagnosed[key] {
 				continue
 			}
@@ -16039,6 +16035,7 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 				child_type_id
 			}
 			pos_text := flat.source_type_name(pos_type_id)
+			name := flat.source_type_name(name_id)
 			tc.record_error_at(.unknown_type, 'generic type name `${name}` is not mentioned in ${kind} `${decl_name}`', child_id, tc.type_diagnostic_pos(child_id, pos_text))
 		}
 		if node.kind != .interface_decl || child.op != .dot {
@@ -16047,12 +16044,13 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 		for j in 0 .. child.children_count {
 			param_id := tc.a.child(child, j)
 			param := tc.a.node(param_id)
-			for name in tc.unmentioned_generic_names_in_type(param.typ, explicit_params) {
-				key := '${int(param_id)}\n${name}'
+			for name_id in tc.unmentioned_generic_names_in_type(param.typ, explicit_params) {
+				key := (u64(u32(int(param_id))) << 32) | u64(name_id)
 				if diagnosed[key] {
 					continue
 				}
 				diagnosed[key] = true
+				name := flat.source_type_name(name_id)
 				tc.record_error_at(.unknown_type, 'generic type name `${name}` is not mentioned in ${kind} `${decl_name}`', param_id, tc.type_diagnostic_pos_id(param_id, param.typ))
 			}
 		}
@@ -16066,7 +16064,7 @@ fn (mut tc TypeChecker) check_fn_bare_generic_signature_types(node_id flat.NodeI
 			name := flat.source_type_name(name_id)
 			kind, params := tc.generic_decl_kind_and_params(name_id)
 			if kind.len > 0 {
-				tc.record_error_at(.unsupported_generic, 'return generic ${kind} `${name}` in fn declaration must specify the generic type names, e.g. ${name}[${params.join(', ')}]', node_id, tc.fn_return_type_diagnostic_pos(node))
+				tc.record_error_at(.unsupported_generic, 'return generic ${kind} `${name}` in fn declaration must specify the generic type names, e.g. ${name}[${generic_param_ids_join(params, ', ')}]', node_id, tc.fn_return_type_diagnostic_pos(node))
 			}
 		}
 	}
@@ -16084,7 +16082,7 @@ fn (mut tc TypeChecker) check_fn_bare_generic_signature_types(node_id flat.NodeI
 	if kind.len == 0 {
 		return
 	}
-	tc.record_error_at(.unsupported_generic, 'generic ${kind} `${name}` in fn declaration must specify the generic type names, e.g. ${name}[${params.join(', ')}]', receiver_id, tc.type_diagnostic_pos_id(receiver_id, receiver.typ))
+	tc.record_error_at(.unsupported_generic, 'generic ${kind} `${name}` in fn declaration must specify the generic type names, e.g. ${name}[${generic_param_ids_join(params, ', ')}]', receiver_id, tc.type_diagnostic_pos_id(receiver_id, receiver.typ))
 }
 
 fn (tc &TypeChecker) fn_decl_has_bare_generic_signature_type(node flat.Node) bool {
@@ -16099,7 +16097,7 @@ fn (tc &TypeChecker) fn_decl_has_bare_generic_signature_type(node flat.Node) boo
 		&& tc.bare_generic_decl_type_name_id(receiver.typ) != none
 }
 
-fn (tc &TypeChecker) generic_decl_kind_and_params(name_id u32) (string, []string) {
+fn (tc &TypeChecker) generic_decl_kind_and_params(name_id u32) (string, []u32) {
 	qualified_id := tc.qualify_type_name(name_id)
 	if name_id in tc.struct_generic_params {
 		return 'struct', tc.struct_generic_params[name_id]
@@ -16137,11 +16135,11 @@ fn (tc &TypeChecker) generic_decl_kind_and_params(name_id u32) (string, []string
 		}
 		return kind, params
 	}
-	return '', []string{}
+	return '', []u32{}
 }
 
 fn (mut tc TypeChecker) check_fn_decl_unmentioned_generic_types(node_id flat.NodeId, node flat.Node) {
-	mut explicit_params := generic_param_map_from_names(node.generic_params())
+	mut explicit_params := generic_param_id_set(generic_param_ids(node.generic_params()))
 	if node.value.contains('.') && node.children_count > 0 {
 		receiver := tc.a.child_node(&node, 0)
 		if receiver.kind == .param {
@@ -16163,9 +16161,9 @@ fn (mut tc TypeChecker) check_fn_decl_unmentioned_generic_types(node_id flat.Nod
 		}
 	}
 	mut missing_ids := []flat.NodeId{}
-	mut missing_names := []string{}
+	mut missing_names := []u32{}
 	mut missing_types := []string{}
-	mut diagnosed := map[string]bool{}
+	mut diagnosed := map[u64]bool{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
@@ -16179,7 +16177,7 @@ fn (mut tc TypeChecker) check_fn_decl_unmentioned_generic_types(node_id flat.Nod
 			continue
 		}
 		for name in tc.unmentioned_generic_names_in_type(child.typ, explicit_params) {
-			key := '${int(child_id)}\n${name}'
+			key := (u64(u32(int(child_id))) << 32) | u64(name)
 			if diagnosed[key] {
 				continue
 			}
@@ -16191,7 +16189,7 @@ fn (mut tc TypeChecker) check_fn_decl_unmentioned_generic_types(node_id flat.Nod
 	}
 	if node.typ != 0 {
 		for name in tc.unmentioned_generic_names_in_type(node.typ, explicit_params) {
-			key := '${int(node_id)}\n${name}'
+			key := (u64(u32(int(node_id))) << 32) | u64(name)
 			if diagnosed[key] {
 				continue
 			}
@@ -16215,7 +16213,8 @@ fn (mut tc TypeChecker) check_fn_decl_unmentioned_generic_types(node_id flat.Nod
 			])
 		}
 	}
-	for i, name in missing_names {
+	for i, name_id in missing_names {
+		name := flat.source_type_name(name_id)
 		tc.record_error_at(.unknown_type, 'generic type name `${name}` is not mentioned in fn `${node.value.all_after_last('.')}[${node.generic_params().join(', ')}]`', missing_ids[i], tc.type_diagnostic_pos(missing_ids[i], missing_types[i]))
 	}
 }
@@ -16225,10 +16224,10 @@ fn (mut tc TypeChecker) check_bare_generic_fntype_param(node_id flat.NodeId, typ
 	name := flat.source_type_name(name_id)
 	qualified_id := tc.qualify_type_name(name_id)
 	interface_params := tc.interface_generic_params[name_id] or {
-		tc.interface_generic_params[qualified_id] or { []string{} }
+		tc.interface_generic_params[qualified_id] or { []u32{} }
 	}
 	if interface_params.len > 0 {
-		tc.record_error_at(.unsupported_generic, 'generic interface `${name}` in fn declaration must specify the generic type names, e.g. ${name}[${interface_params.join(', ')}]', node_id, tc.type_diagnostic_pos_id(node_id, type_id))
+		tc.record_error_at(.unsupported_generic, 'generic interface `${name}` in fn declaration must specify the generic type names, e.g. ${name}[${generic_param_ids_join(interface_params, ', ')}]', node_id, tc.type_diagnostic_pos_id(node_id, type_id))
 		return
 	}
 	params := tc.type_alias_generic_params[name_id] or {
@@ -16237,11 +16236,11 @@ fn (mut tc TypeChecker) check_bare_generic_fntype_param(node_id flat.NodeId, typ
 	if params.len == 0 || unalias_type(tc.parse_type(name_id)) !is FnType {
 		return
 	}
-	tc.record_error_at(.unsupported_generic, 'generic function `${name}` in fn declaration must specify the generic type names, e.g. ${name}[${params.join(', ')}]', node_id, tc.type_diagnostic_pos_id(node_id, type_id))
+	tc.record_error_at(.unsupported_generic, 'generic function `${name}` in fn declaration must specify the generic type names, e.g. ${name}[${generic_param_ids_join(params, ', ')}]', node_id, tc.type_diagnostic_pos_id(node_id, type_id))
 }
 
 fn (mut tc TypeChecker) check_implicit_generic_sumtype_decl(node_id flat.NodeId, node flat.Node) {
-	decl_params := node.generic_params()
+	decl_params := generic_param_ids(node.generic_params())
 	if decl_params.len > 0 {
 		for i in 0 .. node.children_count {
 			child_id := tc.a.child(&node, i)
@@ -16253,23 +16252,23 @@ fn (mut tc TypeChecker) check_implicit_generic_sumtype_decl(node_id flat.NodeId,
 			base_id := syntax.application_base()
 			qualified_id := tc.qualify_type_name(syntax.application_base())
 			struct_params := tc.struct_generic_params[base_id] or {
-				tc.struct_generic_params[qualified_id] or { []string{} }
+				tc.struct_generic_params[qualified_id] or { []u32{} }
 			}
 			if struct_params.len == 0 {
 				continue
 			}
 			for arg_id in syntax.application_args() {
-				arg := flat.source_type_name(arg_id)
-				if source_type_is_bare_generic_param(arg_id) && arg !in decl_params {
+				if source_type_is_bare_generic_param(arg_id) && arg_id !in decl_params {
+					arg := flat.source_type_name(arg_id)
 					variant := flat.source_type_name(variant_id)
-					tc.record_error_at(.unknown_type, 'generic type name `${arg}` of generic struct `${variant}` is not mentioned in sumtype `${node.value}[${decl_params.join(', ')}]`', child_id, tc.type_diagnostic_pos(node_id, variant))
+					tc.record_error_at(.unknown_type, 'generic type name `${arg}` of generic struct `${variant}` is not mentioned in sumtype `${node.value}[${node.generic_params().join(', ')}]`', child_id, tc.type_diagnostic_pos(node_id, variant))
 				}
 			}
 		}
 		return
 	}
 	mut requires_generic_params := false
-	mut example_params := []string{}
+	mut example_params := []u32{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
@@ -16289,7 +16288,7 @@ fn (mut tc TypeChecker) check_implicit_generic_sumtype_decl(node_id flat.NodeId,
 				tc.type_alias_generic_params[lookup_id] or {
 					tc.type_alias_generic_params[qualified_id] or {
 						tc.sum_generic_params[lookup_id] or {
-							tc.sum_generic_params[qualified_id] or { []string{} }
+							tc.sum_generic_params[qualified_id] or { []u32{} }
 						}
 					}
 				}
@@ -16311,7 +16310,7 @@ fn (mut tc TypeChecker) check_implicit_generic_sumtype_decl(node_id flat.NodeId,
 				'sumtype'
 			}
 			lookup := flat.source_type_name(lookup_id)
-			tc.record_error_at(.unknown_type, 'generic ${kind} `${lookup}` must specify generic type names, e.g. ${lookup}[${params.join(', ')}]', child_id, tc.type_diagnostic_pos_id(node_id, variant_id))
+			tc.record_error_at(.unknown_type, 'generic ${kind} `${lookup}` must specify generic type names, e.g. ${lookup}[${generic_param_ids_join(params, ', ')}]', child_id, tc.type_diagnostic_pos_id(node_id, variant_id))
 			continue
 		}
 		for arg_id in syntax.application_args() {
@@ -16326,24 +16325,23 @@ fn (mut tc TypeChecker) check_implicit_generic_sumtype_decl(node_id flat.NodeId,
 	}
 	if requires_generic_params {
 		if example_params.len == 0 {
-			example_params = ['T']
+			example_params = [checker_source_generic_t]
 		}
-		tc.record_error_at(.unsupported_generic, 'generic sumtype `${node.value}` must specify generic type names, e.g. ${node.value}[${example_params.join(', ')}]', node_id, tc.type_diagnostic_pos(node_id, node.value))
+		tc.record_error_at(.unsupported_generic, 'generic sumtype `${node.value}` must specify generic type names, e.g. ${node.value}[${generic_param_ids_join(example_params, ', ')}]', node_id, tc.type_diagnostic_pos(node_id, node.value))
 	}
 }
 
-fn (tc &TypeChecker) unmentioned_generic_names_in_type(typ_id u32, explicit_params map[string]bool) []string {
-	mut names := []string{}
+fn (tc &TypeChecker) unmentioned_generic_names_in_type(typ_id u32, explicit_params map[u32]bool) []u32 {
+	mut names := []u32{}
 	for name_id in flat.source_type_syntax(typ_id).generic_mentions() {
 		if explicit_params.len == 0 && name_id != checker_source_generic_t {
 			continue
 		}
-		name := flat.source_type_name(name_id)
-		if explicit_params[name] || tc.type_name_known(name_id) || tc.local_type_name_known(name)
-			|| name in names {
+		if explicit_params[name_id] || tc.type_name_known(name_id)
+			|| tc.local_type_name_known(flat.source_type_name(name_id)) || name_id in names {
 			continue
 		}
-		names << name
+		names << name_id
 	}
 	return names
 }
@@ -16413,7 +16411,7 @@ fn (mut tc TypeChecker) check_struct_implements(node_id flat.NodeId, node flat.N
 		lookup_id := tc.resolve_selective_import_type_symbol_id(raw_lookup_id) or { raw_lookup_id }
 		qualified_id := tc.qualify_type_name(lookup_id)
 		interface_params := tc.interface_generic_params[lookup_id] or {
-			tc.interface_generic_params[qualified_id] or { []string{} }
+			tc.interface_generic_params[qualified_id] or { []u32{} }
 		}
 		diagnostic_pos := tc.struct_implements_type_pos(node, type_name_id, implements_index)
 		if interface_params.len > 0 && !is_generic {
@@ -16529,26 +16527,26 @@ fn (tc &TypeChecker) struct_declaration_name_pos(node flat.Node) token.Pos {
 	return token.new_span(node.pos.id, start, start + needle.len)
 }
 
-fn (mut tc TypeChecker) check_missing_struct_field_generic_type(node_id flat.NodeId, type_id u32, generic_params map[string]bool) {
+fn (mut tc TypeChecker) check_missing_struct_field_generic_type(node_id flat.NodeId, type_id u32, generic_params map[u32]bool) {
 	name_id := tc.bare_generic_decl_type_name_id(type_id) or { return }
 	name := flat.source_type_name(name_id)
 	qualified_id := tc.qualify_type_name(name_id)
 	mut kind := ''
-	mut target_params := []string{}
+	mut target_params := []u32{}
 	if name_id in tc.struct_generic_params || qualified_id in tc.struct_generic_params {
 		kind = 'struct'
 		target_params = tc.struct_generic_params[name_id] or {
-			tc.struct_generic_params[qualified_id] or { []string{} }
+			tc.struct_generic_params[qualified_id] or { []u32{} }
 		}
 	} else if name_id in tc.interface_generic_params || qualified_id in tc.interface_generic_params {
 		kind = 'interface'
 		target_params = tc.interface_generic_params[name_id] or {
-			tc.interface_generic_params[qualified_id] or { []string{} }
+			tc.interface_generic_params[qualified_id] or { []u32{} }
 		}
 	} else if name_id in tc.sum_generic_params || qualified_id in tc.sum_generic_params {
 		kind = 'sumtype'
 		target_params = tc.sum_generic_params[name_id] or {
-			tc.sum_generic_params[qualified_id] or { []string{} }
+			tc.sum_generic_params[qualified_id] or { []u32{} }
 		}
 	} else if name_id in tc.type_alias_generic_params || qualified_id in tc.type_alias_generic_params {
 		parsed := unalias_type(tc.parse_type(name_id))
@@ -16558,7 +16556,7 @@ fn (mut tc TypeChecker) check_missing_struct_field_generic_type(node_id flat.Nod
 			kind = 'alias'
 		}
 		target_params = tc.type_alias_generic_params[name_id] or {
-			tc.type_alias_generic_params[qualified_id] or { []string{} }
+			tc.type_alias_generic_params[qualified_id] or { []u32{} }
 		}
 	} else {
 		return
@@ -16568,11 +16566,11 @@ fn (mut tc TypeChecker) check_missing_struct_field_generic_type(node_id flat.Nod
 	}
 	mut context_name := 'int'
 	if target_params.len > 0 {
-		context_name = target_params[0]
+		context_name = flat.source_type_name(target_params[0])
 	}
-	mut context_names := generic_param_names_from_map(generic_params)
+	context_names := generic_param_ids_from_set(generic_params)
 	if context_names.len > 0 {
-		context_name = context_names[0]
+		context_name = flat.source_type_name(context_names[0])
 	}
 	node := tc.a.node(node_id)
 	mut pos := if node.kind == .field_decl {
@@ -16777,22 +16775,22 @@ fn collect_unguarded_alias_type_names(type_id u32, mut names []u32) {
 	push_generic_method_base_candidate(mut names, clean_id)
 }
 
-fn (tc &TypeChecker) infer_decl_generic_params(node flat.Node) map[string]bool {
-	mut params := map[string]bool{}
+fn (tc &TypeChecker) infer_decl_generic_params(node flat.Node) map[u32]bool {
+	mut params := map[u32]bool{}
 	for name in node.generic_params() {
-		params[name] = true
+		params[flat.source_type_id(name)] = true
 	}
 	tc.collect_generic_receiver_params(node, mut params)
 	return params
 }
 
-fn (tc &TypeChecker) infer_decl_generic_param_names(node flat.Node) []string {
+fn (tc &TypeChecker) infer_decl_generic_param_ids(node flat.Node) []u32 {
 	if node.generic_params().len == 0 && !tc.decl_receiver_may_carry_generic_params(node) {
 		// The common non-generic declaration: skip the temporary map and sort.
-		return []string{}
+		return []u32{}
 	}
 	params := tc.infer_decl_generic_params(node)
-	return generic_param_names_from_map(params)
+	return generic_param_ids_from_set(params)
 }
 
 // decl_receiver_may_carry_generic_params reports whether a method receiver
@@ -16832,39 +16830,16 @@ fn (tc &TypeChecker) decl_receiver_may_carry_generic_params(node flat.Node) bool
 	return source_type_is_bare_generic_param(clean_id)
 }
 
-fn generic_param_names_from_map(params map[string]bool) []string {
-	mut names := []string{cap: params.len}
-	for name, _ in params {
-		names << name
-	}
-	names.sort()
-	return names
-}
-
-fn generic_param_map_from_names(names []string) map[string]bool {
-	mut params := map[string]bool{}
-	for name in names {
-		params[name] = true
-	}
-	return params
-}
-
+// active_generic_param reports whether the source name `name` spells a type
+// parameter of the function being checked.
 fn (tc &TypeChecker) active_generic_param(name string) bool {
-	for param in tc.fn_context.generic_params {
-		if param == name {
-			return true
-		}
-	}
-	return false
+	return generic_param_ids_contain_name(tc.fn_context.generic_params, name)
 }
 
-// active_generic_param_id is the spelling-ID twin of active_generic_param. The
-// function context keeps its generic parameter names as text.
+// active_generic_param_id reports whether `name_id` is a type parameter of the
+// function being checked.
 fn (tc &TypeChecker) active_generic_param_id(name_id u32) bool {
-	if tc.fn_context.generic_params.len == 0 {
-		return false
-	}
-	return tc.active_generic_param(flat.source_type_name(name_id))
+	return name_id in tc.fn_context.generic_params
 }
 
 fn (tc &TypeChecker) node_has_enclosing_generic_param(node_id flat.NodeId, name string) bool {
@@ -16876,11 +16851,11 @@ fn (tc &TypeChecker) node_has_enclosing_generic_param(node_id flat.NodeId, name 
 		return true
 	}
 	params := tc.enclosing_generic_params_by_node[int(node_id)] or { return false }
-	return name in params
+	return generic_param_ids_contain_name(params, name)
 }
 
 @[direct_array_access]
-fn (tc &TypeChecker) collect_generic_receiver_params(node flat.Node, mut params map[string]bool) {
+fn (tc &TypeChecker) collect_generic_receiver_params(node flat.Node, mut params map[u32]bool) {
 	if node.kind != .fn_decl && node.kind != .c_fn_decl {
 		return
 	}
@@ -16916,18 +16891,17 @@ fn (tc &TypeChecker) collect_generic_receiver_params(node flat.Node, mut params 
 	if syntax.application_valid() {
 		receiver_args := syntax.application_args()
 		decl_params := tc.struct_generic_params[syntax.application_base()] or {
-			tc.struct_generic_params[flat.source_type_syntax(syntax.application_base()).unqualified()] or { []string{} }
+			tc.struct_generic_params[flat.source_type_syntax(syntax.application_base()).unqualified()] or { []u32{} }
 		}
 		if receiver_args.len == decl_params.len {
 			for arg in receiver_args {
-				arg_name := flat.source_type_name(arg)
-				if arg_name in decl_params {
-					params[arg_name] = true
+				if arg in decl_params {
+					params[arg] = true
 				}
 			}
 		}
 	}
-	mut counts := map[string]int{}
+	mut counts := map[u32]int{}
 	if !tc.collect_generic_param_candidates(receiver.typ, mut counts) {
 		return
 	}
@@ -16936,7 +16910,7 @@ fn (tc &TypeChecker) collect_generic_receiver_params(node flat.Node, mut params 
 	}
 }
 
-fn (tc &TypeChecker) collect_generic_param_candidates(typ_id u32, mut counts map[string]int) bool {
+fn (tc &TypeChecker) collect_generic_param_candidates(typ_id u32, mut counts map[u32]int) bool {
 	clean_id := trimmed_source_type_id(typ_id)
 	if clean_id == 0 {
 		return false
@@ -16996,15 +16970,14 @@ fn (tc &TypeChecker) collect_generic_param_candidates(typ_id u32, mut counts map
 		return true
 	}
 	if syntax.bare_generic() && !tc.type_name_known(clean_id) {
-		name := flat.source_type_name(clean_id)
-		counts[name] = (counts[name] or { 0 }) + 1
+		counts[clean_id] = (counts[clean_id] or { 0 }) + 1
 	}
 	return false
 }
 
 // check_type_string_for_unsupported_generics
 // validates helper state for types.
-fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ_id u32, node_id flat.NodeId, generic_params map[string]bool) {
+fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ_id u32, node_id flat.NodeId, generic_params map[u32]bool) {
 	if flat.source_type_shape(typ_id).has(.builtin_alias) {
 		return
 	}
@@ -17030,8 +17003,8 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ_id u32, n
 			return
 		}
 		if node.kind == .type_decl {
-			name := flat.source_type_name(clean_id)
-			if name !in generic_params && !tc.type_name_known(clean_id) {
+			if clean_id !in generic_params && !tc.type_name_known(clean_id) {
+				name := flat.source_type_name(clean_id)
 				tc.record_error_at(.unknown_type, 'unknown aliased type `${name}`', node_id, tc.type_diagnostic_pos(node_id, name))
 				return
 			}
@@ -17094,7 +17067,7 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ_id u32, n
 			tc.record_unsupported_generic('unsupported generic type parameter `${clean}`', node_id)
 			return
 		}
-		if clean in generic_params || tc.active_generic_param(clean)
+		if clean_id in generic_params || tc.active_generic_param_id(clean_id)
 			|| tc.node_has_enclosing_generic_param(node_id, clean) {
 			return
 		}
@@ -17128,11 +17101,10 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 	}
 	qname_id := tc.qualify_type_name(node.source_value_id())
 	params := tc.sum_params_for_base(qname_id)
-	// The declaration tables keep generic parameter names as text.
 	layout_id := if params.len == 0 {
 		qname_id
 	} else {
-		flat.source_type_id('${flat.source_type_name(qname_id)}[${params.join(',')}]')
+		generic_param_layout_name(qname_id, params)
 	}
 	mut seen := map[u32]bool{}
 	mut result_reported := false
@@ -17869,7 +17841,7 @@ fn (tc &TypeChecker) selected_main_file_declares_type(name_id u32) bool {
 
 // check_fn_type_string_for_unsupported_generics
 // validates helper state for types.
-fn (mut tc TypeChecker) check_fn_type_string_for_unsupported_generics(typ_id u32, node_id flat.NodeId, generic_params map[string]bool) {
+fn (mut tc TypeChecker) check_fn_type_string_for_unsupported_generics(typ_id u32, node_id flat.NodeId, generic_params map[u32]bool) {
 	syntax := flat.source_type_syntax(typ_id)
 	if !syntax.function_closed() {
 		return
@@ -19442,7 +19414,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 	node_short_id := flat.source_type_syntax(node_name_id).unqualified()
 	saved_generic_params := tc.fn_context.generic_params.clone()
 	if node.generic_params().len > 0 {
-		tc.fn_context.generic_params = node.generic_params().clone()
+		tc.fn_context.generic_params = generic_param_ids(node.generic_params())
 	}
 	mut seen_field_names := map[string]bool{}
 	mut recursive_struct_reported := false
@@ -22492,10 +22464,10 @@ fn (tc &TypeChecker) comptime_static_method_cases(source_id u32) ComptimeStaticV
 	}
 	generic_params := if is_generic {
 		tc.struct_generic_params[struct_name_id] or {
-			tc.struct_generic_params[flat.source_type_syntax(struct_name_id).unqualified()] or { []string{} }
+			tc.struct_generic_params[flat.source_type_syntax(struct_name_id).unqualified()] or { []u32{} }
 		}
 	} else {
-		[]string{}
+		[]u32{}
 	}
 	if is_generic && generic_params.len != generic_args_ids.len {
 		return ComptimeStaticValueCases{}

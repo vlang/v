@@ -24,7 +24,7 @@ fn test_checker_selective_type_probes_keep_candidate_order() {
 	assert tc.resolve_selective_import_type_symbol_text_id('Selected')? == first_id
 	assert tc.resolve_selective_import_type_symbol_in_file_id(selected_id, tc.cur_file)? == first_id
 	tc.structs.delete(first_id)
-	tc.struct_generic_params[first_id] = ['T']
+	tc.struct_generic_params[first_id] = generic_param_ids(['T'])
 	assert tc.resolve_selective_import_type_symbol_text_id('Selected')? == first_id
 	assert tc.resolve_selective_import_type_symbol_in_file_id(selected_id, tc.cur_file)? == second_id
 }

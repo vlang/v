@@ -514,8 +514,8 @@ fn (g &FlatGen) interface_impl_is_open_generic(name_id u32) bool {
 		return false
 	}
 	for candidate_id in [name_id, g.tc.qualify_type_name(name_id)] {
-		if (g.tc.struct_generic_params[candidate_id] or { []string{} }).len > 0 || (g.tc.interface_generic_params[candidate_id] or {
-			[]string{}
+		if (g.tc.struct_generic_params[candidate_id] or { []u32{} }).len > 0 || (g.tc.interface_generic_params[candidate_id] or {
+			[]u32{}
 		}).len > 0 {
 			return true
 		}
@@ -1662,7 +1662,7 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name_id u32, method string)
 fn (g &FlatGen) open_interface_dispatch_needs_specialization(iface_name_id u32, method string) bool {
 	iface_name := flat.source_type_name(iface_name_id)
 	_, _, is_specialized := parse_shared_generic_app_parts(iface_name)
-	if is_specialized || (g.tc.interface_generic_params[iface_name_id] or { []string{} }).len == 0 {
+	if is_specialized || (g.tc.interface_generic_params[iface_name_id] or { []u32{} }).len == 0 {
 		return false
 	}
 	decl_key := g.interface_method_signature_key(iface_name_id, method) or { return false }

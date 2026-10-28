@@ -7,15 +7,15 @@ import v.pref
 import v.types { unalias_type }
 
 fn test_codegen_generic_inference_retains_source_ids_and_first_binding() {
-	mut inferred := map[string]u32{}
+	mut inferred := map[u32]u32{}
 	infer_codegen_generic_type_args(flat.source_type_id('fn (map[string][]T) ?U'),
 		flat.source_type_id('fn (map[string][]int) ?string'), mut inferred)
-	assert inferred['T'] == flat.source_type_int
-	assert inferred['U'] == flat.source_type_string
+	assert inferred[flat.source_type_id('T')] == flat.source_type_int
+	assert inferred[flat.source_type_id('U')] == flat.source_type_string
 	infer_codegen_generic_type_args(flat.source_type_id('T'), flat.source_type_f64, mut inferred)
-	assert inferred['T'] == flat.source_type_int
+	assert inferred[flat.source_type_id('T')] == flat.source_type_int
 	infer_codegen_generic_type_args(flat.source_type_id('V'), flat.source_type_unknown, mut inferred)
-	assert 'V' !in inferred
+	assert flat.source_type_id('V') !in inferred
 	assert codegen_variadic_elem_param_text(flat.source_type_id('... int ')) == flat.source_type_int
 	assert codegen_generic_arg_is_unresolved(flat.source_type_id('map[string][]T'))
 	assert !codegen_generic_arg_is_unresolved(flat.source_type_id('map[string][]int'))
@@ -23,26 +23,26 @@ fn test_codegen_generic_inference_retains_source_ids_and_first_binding() {
 
 // https://github.com/vlang/v/issues/30842
 fn test_codegen_generic_inference_binds_chan_element_type() {
-	mut inferred := map[string]u32{}
+	mut inferred := map[u32]u32{}
 	infer_codegen_generic_type_args(flat.source_type_id('chan T'), flat.source_type_id('chan string'),
 		mut inferred)
-	assert inferred['T'] == flat.source_type_string
-	mut mismatched := map[string]u32{}
+	assert inferred[flat.source_type_id('T')] == flat.source_type_string
+	mut mismatched := map[u32]u32{}
 	infer_codegen_generic_type_args(flat.source_type_id('chan T'), flat.source_type_id('[]string'),
 		mut mismatched)
-	assert 'T' !in mismatched
+	assert flat.source_type_id('T') !in mismatched
 }
 
 // sibling of https://github.com/vlang/v/issues/30842 for `thread T`
 fn test_codegen_generic_inference_binds_thread_payload_type() {
-	mut inferred := map[string]u32{}
+	mut inferred := map[u32]u32{}
 	infer_codegen_generic_type_args(flat.source_type_id('thread T'), flat.source_type_id('thread string'),
 		mut inferred)
-	assert inferred['T'] == flat.source_type_string
-	mut mismatched := map[string]u32{}
+	assert inferred[flat.source_type_id('T')] == flat.source_type_string
+	mut mismatched := map[u32]u32{}
 	infer_codegen_generic_type_args(flat.source_type_id('thread T'), flat.source_type_id('[]string'),
 		mut mismatched)
-	assert 'T' !in mismatched
+	assert flat.source_type_id('T') !in mismatched
 }
 
 fn test_fixed_array_alias_chains_and_pointer_sizes_use_array_typedefs() {
@@ -1149,7 +1149,7 @@ fn test_specialized_signature_scan_uses_declaration_module() {
 	tc.structs[flat.source_type_id('orm.QueryBuilder[Entity]')] = []types.StructField{}
 	tc.struct_modules[flat.source_type_id('orm.QueryBuilder')] = 'orm'
 	tc.struct_modules[flat.source_type_id('orm.QueryBuilder[Entity]')] = 'orm'
-	tc.struct_generic_params[flat.source_type_id('orm.QueryBuilder')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('orm.QueryBuilder')] = types.generic_param_ids(['T'])
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc

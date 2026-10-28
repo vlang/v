@@ -1316,16 +1316,16 @@ fn (t &Transformer) generic_struct_param_names_for_base(base string) []string {
 
 fn (t &Transformer) generic_struct_param_names_for_base_id(base u32) []string {
 	if isnil(t.tc) { return []string{} }
-	if params := t.tc.struct_generic_params[base] { return params.clone() }
+	if params := t.tc.struct_generic_params[base] { return types.generic_param_texts(params) }
 	short := flat.source_type_syntax(base).unqualified()
-	if params := t.tc.struct_generic_params[short] { return params.clone() }
+	if params := t.tc.struct_generic_params[short] { return types.generic_param_texts(params) }
 	if !flat.source_type_shape(base).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
 		'main',
 		'builtin',
 	] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base)
 		if params := t.tc.struct_generic_params[qualified] {
-			return params.clone()
+			return types.generic_param_texts(params)
 		}
 	}
 	return []string{}
@@ -1623,7 +1623,7 @@ fn (t &Transformer) expand_generic_type_alias(typ_id u32) ?u32 {
 	for candidate in candidates {
 		// Declaration tables retain their source name keys.
 		target := t.tc.type_aliases.type_id(candidate) or { continue }
-		params := t.tc.type_alias_generic_params[candidate] or { continue }
+		params := types.generic_param_texts(t.tc.type_alias_generic_params[candidate] or { continue })
 		if params.len != syntax.generic_app_args().len { continue }
 		expanded := substitute_generic_type_text_with_params(target, syntax.generic_app_args(), params)
 		if flat.source_type_shape(candidate).has(.dotted) {

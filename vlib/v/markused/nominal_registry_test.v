@@ -97,8 +97,8 @@ fn test_prepared_struct_registry_preserves_first_short_and_last_qualified_declar
 fn test_generic_nominal_registry_uses_local_module_and_imported_ids() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.struct_generic_params[flat.source_type_id('owner.Box')] = ['T']
-	tc.sum_generic_params[flat.source_type_id('dep.Choice')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('owner.Box')] = types.generic_param_ids(['T'])
+	tc.sum_generic_params[flat.source_type_id('dep.Choice')] = types.generic_param_ids(['T'])
 	collector := CallCollector{
 		a:                  &a
 		tc:                 &tc
@@ -155,7 +155,7 @@ fn test_selective_type_alias_registry_keeps_target_order_and_ignores_other_symbo
 	assert targets[flat.source_type_id('EmptyTarget')] == [u32(0)]
 	assert flat.source_type_id('OnlyFunction') !in targets
 	assert flat.source_type_id('UnregisteredFunction') !in targets
-	tc.struct_generic_params[flat.source_type_id('owner.Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('owner.Box')] = types.generic_param_ids(['T'])
 	collector := CallCollector{ a: &a, tc: &tc, selective_alias_targets: targets }
 	assert collector.selective_alias_uses_generics(selected, '', map[string]string{}, 0)
 	assert !collector.selective_alias_uses_generics(flat.source_type_id('dep.Selected'), '', map[string]string{}, 0)

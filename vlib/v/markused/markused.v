@@ -4662,13 +4662,13 @@ fn generic_stringification_type_candidates(type_name_id u32, cur_module string, 
 			continue
 		}
 		mut parts := [base_candidate]
-		parts << flat.TypeTextList.from_names(params).ids
+		parts << params
 		candidates << flat.source_type_composition(.generic, parts)
 	}
 	return candidates
 }
 
-fn generic_stringification_params(base_candidate_id u32, tc &types.TypeChecker) ?[]string {
+fn generic_stringification_params(base_candidate_id u32, tc &types.TypeChecker) ?[]u32 {
 	if params := tc.struct_generic_params[base_candidate_id] {
 		return params
 	}
@@ -6008,7 +6008,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 						// `h.first[int]`: the method the check resolved it to (see
 						// types.TypeChecker.check_generic_method_value).
 						if name := c.tc.resolved_call_name(child_id) {
-							if (c.tc.fn_generic_params[name] or { []string{} }).len > 0 {
+							if (c.tc.fn_generic_params[name] or { []u32{} }).len > 0 {
 								calls << name
 								uses_generics = true
 							}
@@ -7739,7 +7739,7 @@ fn (c &CallCollector) collect_generic_alias_operator_usage(call &flat.Node, reso
 
 		inferred := c.infer_alias_generic_args(call, candidate, param_texts_source_ids.clone(), generic_params,
 			cur_module, imports, local_values, local_types)
-		if inferred.ids.len == 0 {
+		if inferred.len == 0 {
 			continue
 		}
 		specialized_locals := c.generic_alias_local_type_names(fn_node, info.module, imports, inferred)
@@ -7799,11 +7799,11 @@ fn (c &CallCollector) generic_candidate_is_generic(name string) bool {
 	return false
 }
 
-fn (c &CallCollector) generic_fn_param_names(name string, fn_node &flat.Node) []string {
+fn (c &CallCollector) generic_fn_param_names(name string, fn_node &flat.Node) []u32 {
 	if params := c.tc.fn_generic_params[name] {
 		return params
 	}
-	return fn_node.generic_params().clone()
+	return types.generic_param_ids(fn_node.generic_params())
 }
 
 fn (c &CallCollector) generic_fn_param_type_texts(name string, fn_node &flat.Node) []u32 {
@@ -7820,8 +7820,8 @@ fn (c &CallCollector) generic_fn_param_type_texts(name string, fn_node &flat.Nod
 	return result
 }
 
-fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, param_texts_ids []u32, generic_params []string, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings) flat.TypeTextBindings {
-	mut inferred := c.new_local_types()
+fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, param_texts_ids []u32, generic_params []u32, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings) map[u32]u32 {
+	mut inferred := map[u32]u32{}
 	if call.children_count == 0 || param_texts_ids.len == 0 || generic_params.len == 0 {
 		return inferred
 	}
@@ -7856,7 +7856,7 @@ fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, 
 	return inferred
 }
 
-fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern_id u32, arg_id flat.NodeId, generic_params []string, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings, mut inferred flat.TypeTextBindings) {
+fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern_id u32, arg_id flat.NodeId, generic_params []u32, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings, mut inferred map[u32]u32) {
 	arg := c.a.node(arg_id)
 	if flat.source_type_shape(pattern_id).has(.variadic) && arg.kind == .prefix && arg.value == '...'
 		&& arg.children_count > 0 {
@@ -7867,20 +7867,20 @@ fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern_id u3
 	if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
 		markused_infer_alias_generic_type(pattern_id, actual, generic_params, mut inferred)
 	}
-	if inferred.ids.len < generic_params.len {
+	if inferred.len < generic_params.len {
 		actual_text_source_id := c.top_level_expr_type_name(arg_id, cur_module, imports, local_values,
 			local_types, false)
 		if actual_text_source_id != 0 && actual_text_source_id != flat.source_type_unknown {
 			markused_infer_generic_type_text(pattern_id, actual_text_source_id, generic_params, mut inferred)
 		}
 	}
-	if inferred.ids.len < generic_params.len {
+	if inferred.len < generic_params.len {
 		if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
 			for generic, concrete in c.tc.infer_generic_reachability_type_args(fn_name,
 				pattern_id, actual, generic_params) {
-				if !inferred.contains(generic) && concrete != flat.source_type_unknown
+				if generic !in inferred && concrete != flat.source_type_unknown
 					&& concrete != flat.source_type_generic {
-					inferred.set_id(generic, concrete)
+					inferred[generic] = concrete
 				}
 			}
 		}
@@ -7930,7 +7930,7 @@ fn (c &CallCollector) generic_factory_short_struct_field_type_text(fn_name strin
 			continue
 		}
 		params := c.tc.struct_generic_params[candidate] or {
-			c.tc.struct_generic_params[base] or { []string{} }
+			c.tc.struct_generic_params[base] or { []u32{} }
 		}
 		return types.subst_generic_text(field_type, args, params)
 	}
@@ -8090,11 +8090,11 @@ fn markused_generic_call_arg_value(a &flat.FlatAst, id flat.NodeId) flat.NodeId 
 	return id
 }
 
-fn markused_infer_alias_generic_type(param_id u32, actual types.Type, generic_params []string, mut inferred flat.TypeTextBindings) {
-	markused_infer_alias_generic_type_inner(param_id, actual, flat.TypeTextList.from_names(generic_params).ids, mut inferred)
+fn markused_infer_alias_generic_type(param_id u32, actual types.Type, generic_params []u32, mut inferred map[u32]u32) {
+	markused_infer_alias_generic_type_inner(param_id, actual, generic_params, mut inferred)
 }
 
-fn markused_infer_alias_generic_type_inner(param_id u32, actual types.Type, generic_params []u32, mut inferred flat.TypeTextBindings) {
+fn markused_infer_alias_generic_type_inner(param_id u32, actual types.Type, generic_params []u32, mut inferred map[u32]u32) {
 	clean := markused_trimmed_source_type(param_id)
 	if clean == 0 { return }
 	shape := flat.source_type_shape(clean)
@@ -8160,25 +8160,23 @@ fn markused_infer_alias_generic_type_inner(param_id u32, actual types.Type, gene
 		return
 	}
 	if clean in generic_params && !markused_type_has_unknown(actual) {
-		name := flat.source_type_name(clean)
-		if !inferred.contains(name) {
+		if clean !in inferred {
 			type_name := resolve_type_name(actual)
-			if type_name != 0 { inferred.set_id(name, type_name) }
+			if type_name != 0 { inferred[clean] = type_name }
 		}
 	}
 }
 
-fn markused_infer_generic_type_text(pattern_id u32, actual_id u32, generic_params []string, mut inferred flat.TypeTextBindings) {
-	markused_infer_generic_type_inner(pattern_id, actual_id, flat.TypeTextList.from_names(generic_params).ids, mut inferred)
+fn markused_infer_generic_type_text(pattern_id u32, actual_id u32, generic_params []u32, mut inferred map[u32]u32) {
+	markused_infer_generic_type_inner(pattern_id, actual_id, generic_params, mut inferred)
 }
 
-fn markused_infer_generic_type_inner(pattern_id u32, actual_id u32, generic_params []u32, mut inferred flat.TypeTextBindings) {
+fn markused_infer_generic_type_inner(pattern_id u32, actual_id u32, generic_params []u32, mut inferred map[u32]u32) {
 	clean := markused_trimmed_source_type(pattern_id)
 	value := markused_trimmed_source_type(actual_id)
 	if clean == 0 || value == 0 { return }
 	if clean in generic_params {
-		name := flat.source_type_name(clean)
-		if !inferred.contains(name) { inferred.set_id(name, value) }
+		if clean !in inferred { inferred[clean] = value }
 		return
 	}
 	shape := flat.source_type_shape(clean)
@@ -8227,7 +8225,7 @@ fn markused_infer_generic_type_inner(pattern_id u32, actual_id u32, generic_para
 	}
 }
 
-fn (c &CallCollector) generic_alias_local_type_names(fn_node &flat.Node, cur_module string, imports map[string]string, inferred flat.TypeTextBindings) flat.TypeTextBindings {
+fn (c &CallCollector) generic_alias_local_type_names(fn_node &flat.Node, cur_module string, imports map[string]string, inferred map[u32]u32) flat.TypeTextBindings {
 	mut result := c.new_local_types()
 	mut stack := []flat.NodeId{cap: int(fn_node.children_count)}
 	for i in 0 .. fn_node.children_count {
@@ -8276,10 +8274,10 @@ fn (c &CallCollector) generic_alias_local_type_names(fn_node &flat.Node, cur_mod
 	return result
 }
 
-fn markused_substitute_alias_generics(type_id u32, inferred flat.TypeTextBindings) u32 {
+fn markused_substitute_alias_generics(type_id u32, inferred map[u32]u32) u32 {
 	clean := markused_trimmed_source_type(type_id)
-	if inferred.ids.len > 0 {
-		if replacement := inferred.type_id(flat.source_type_name(clean)) { return replacement }
+	if inferred.len > 0 {
+		if replacement := inferred[clean] { return replacement }
 	}
 	shape := flat.source_type_shape(clean)
 	for i, wrapper in [flat.SourceTypeShape.pointer, .mutable_type, .array_type, .variadic,
@@ -8943,7 +8941,7 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 			cur_module, imports)
 	}
 	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
-		generic_params := c.tc.fn_generic_params[candidate] or { []string{} }
+		generic_params := c.tc.fn_generic_params[candidate] or { []u32{} }
 		if generic_params.len == 0 {
 			if receiver_type != 0 && c.generic_receiver_method_name_is_known(candidate) {
 				return_type_source_id_3 := c.generic_factory_return_type_text(candidate, cur_module,
@@ -8973,7 +8971,7 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 		mut args := []u32{cap: generic_params.len}
 		mut complete := true
 		for param in generic_params {
-			if actual_source_id := inferred.type_id(param) {
+			if actual_source_id := inferred[param] {
 				args << c.generic_factory_qualified_type_text(actual_source_id, call_id, cur_module,
 					imports)
 			} else {
@@ -10257,7 +10255,7 @@ fn (c &CallCollector) collection_alias_receiver_method_name(type_name_id u32, me
 		} else {
 			return none
 		}
-		if alias_id in aliases || (c.tc.type_alias_generic_params[alias_id] or { []string{} }).len > 0 {
+		if alias_id in aliases || (c.tc.type_alias_generic_params[alias_id] or { []u32{} }).len > 0 {
 			return none
 		}
 		aliases << alias_id
@@ -10602,12 +10600,12 @@ fn (c &CallCollector) value_name_candidates(name string, cur_module string, impo
 
 // Resolve qualified identifiers throughout a type without changing its container syntax.
 fn (c &CallCollector) generic_factory_qualified_type_text(text_id u32, id flat.NodeId, cur_module string, imports map[string]string) u32 {
-	return c.qualified_type_text_preserving_params(text_id, id, cur_module, imports, []string{})
+	return c.qualified_type_text_preserving_params(text_id, id, cur_module, imports, []u32{})
 }
 
-fn (c &CallCollector) qualified_type_text_preserving_params(text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_params []string) u32 {
+fn (c &CallCollector) qualified_type_text_preserving_params(text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_params []u32) u32 {
 	syntax := flat.source_type_syntax(text_id)
-	param_ids := flat.TypeTextList.from_names(generic_params).ids
+	param_ids := generic_params
 	mut parts := []u32{cap: syntax.symbol_parts().len}
 	mut changed := false
 	for i, part in syntax.symbol_parts() {
@@ -10863,7 +10861,7 @@ fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info Struct
 	node := c.a.node(info.node_id)
 	imports := c.imports(info.import_context)
 	_, generic_args, _ := markused_generic_app_parts(struct_name_id)
-	generic_params := node.generic_params()
+	generic_params := types.generic_param_ids(node.generic_params())
 	for i in 0 .. node.children_count {
 		field_id := c.a.child(node, i)
 		field := c.a.node(field_id)
@@ -10909,7 +10907,7 @@ fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info Struct
 }
 
 // specialized_struct_default_type substitutes arguments without rebasing their module ownership.
-fn (c &CallCollector) specialized_struct_default_type(type_text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_args_ids []u32, generic_params []string) types.Type {
+fn (c &CallCollector) specialized_struct_default_type(type_text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_args_ids []u32, generic_params []u32) types.Type {
 	if generic_args_ids.len == 0 || generic_args_ids.len != generic_params.len {
 		return c.value_type_in_source(type_text_id, c.a.node(id), imports)
 	}

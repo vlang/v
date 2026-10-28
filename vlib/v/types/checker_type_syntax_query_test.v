@@ -62,7 +62,7 @@ fn test_numeric_type_qualification_keeps_raw_empty_parts_and_suffixes() {
 	for input, expected in cases {
 		assert tc.qualify_type_text(flat.source_type_id(input)) == flat.source_type_id(expected), input
 	}
-	assert tc.qualify_type_text_with_generic_params(flat.source_type_id('Box[T]'), ['T']) == flat.source_type_id('owner.Box[T]')
+	assert tc.qualify_type_text_with_generic_params(flat.source_type_id('Box[T]'), generic_param_ids(['T'])) == flat.source_type_id('owner.Box[T]')
 }
 
 fn test_written_nested_option_probe_keeps_source_storage_and_operand_roles() {

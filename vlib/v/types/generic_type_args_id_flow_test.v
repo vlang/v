@@ -9,7 +9,7 @@ fn test_generic_receiver_field_keeps_explicit_main_argument() {
 	tc.cur_file = 'foreign.v'
 	tc.structs[flat.source_type_id('Record')] = []StructField{}
 	tc.structs[flat.source_type_id('foreign.Record')] = []StructField{}
-	tc.struct_generic_params[flat.source_type_id('foreign.Slot')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('foreign.Slot')] = generic_param_ids(['T'])
 	tc.structs[flat.source_type_id('foreign.Slot')] = [StructField{
 		name: 'value'
 		typ:  generic_placeholder_type(flat.source_type_id('T'))
@@ -50,7 +50,10 @@ fn test_generic_alias_argument_ids_keep_substitution_order_and_arity_fallback() 
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	tc.type_aliases.set_id(flat.source_type_id('scope.Callbacks'), flat.source_type_id('map[K]fn (V, K) V'))
-	tc.type_alias_generic_params[flat.source_type_id('Callbacks')] = ['K', 'V']
+	tc.type_alias_generic_params[flat.source_type_id('Callbacks')] = generic_param_ids([
+		'K',
+		'V',
+	])
 	args := [flat.source_type_string, flat.source_type_int]
 	alias := tc.parse_generic_alias_application(flat.source_type_id('scope.Callbacks'), args, flat.source_type_id('[string, int]'))
 	assert alias is Alias
@@ -59,7 +62,10 @@ fn test_generic_alias_argument_ids_keep_substitution_order_and_arity_fallback() 
 		assert alias.base_type.name() == 'map[string]fn(int, string) int'
 	}
 	tc.type_aliases.set_id(flat.source_type_id('Fallback'), flat.source_type_u64)
-	tc.type_alias_generic_params[flat.source_type_id('Fallback')] = ['T', 'U']
+	tc.type_alias_generic_params[flat.source_type_id('Fallback')] = generic_param_ids([
+		'T',
+		'U',
+	])
 	fallback := tc.parse_generic_alias_application(flat.source_type_id('Fallback'), [flat.source_type_int], flat.source_type_id('[int]'))
 	assert fallback is Alias
 	if fallback is Alias {
@@ -72,9 +78,9 @@ fn test_main_generic_base_keeps_canonical_specialization_spelling() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	tc.cur_module = 'foreign'
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = generic_param_ids(['T'])
 	tc.structs[flat.source_type_id('Box')] = []StructField{}
-	tc.struct_generic_params[flat.source_type_id('foreign.Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('foreign.Box')] = generic_param_ids(['T'])
 	tc.structs[flat.source_type_id('foreign.Box')] = []StructField{}
 	assert tc.qualified_generic_suffix([flat.source_type_id('main.Box[string]')]) == flat.source_type_id('[Box[string]]')
 }

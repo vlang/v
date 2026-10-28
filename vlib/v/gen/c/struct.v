@@ -7591,7 +7591,7 @@ fn (g &FlatGen) c_sum_decl_names() []string {
 		name_ids = name_ids.filter(g.cache_decl_refs[g.cname(flat.source_type_name(it))])
 	}
 	if g.skip_generics {
-		name_ids = name_ids.filter((g.tc.sum_generic_params[it] or { []string{} }).len == 0)
+		name_ids = name_ids.filter((g.tc.sum_generic_params[it] or { []u32{} }).len == 0)
 	}
 	mut names := name_ids.map(flat.source_type_name(it))
 	names.sort()

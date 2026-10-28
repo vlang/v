@@ -1189,7 +1189,8 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, node_index int,
 		candidate_id := flat.source_type_existing_id(candidate) or { continue }
 		params := g.tc.struct_generic_params[candidate_id] or { continue }
 		for arg in args {
-			if arg.trim_space() in params {
+			arg_id := flat.source_type_existing_id(arg.trim_space()) or { continue }
+			if arg_id in params {
 				return true
 			}
 		}
@@ -10413,7 +10414,7 @@ fn (g &FlatGen) specialized_interface_name_for_method_call(node flat.Node, iface
 	if params.len == 0 {
 		return iface_name_id
 	}
-	mut inferred := map[string]u32{}
+	mut inferred := map[u32]u32{}
 	if is_generic && iface_args.len == params.len {
 		mut all_concrete := true
 		for i, arg in iface_args {
@@ -13710,7 +13711,7 @@ fn (mut g FlatGen) inferred_generic_plain_fn_name_for_call(id flat.NodeId, node 
 	generic_params := g.tc.fn_generic_params[base] or { return none }
 	if generic_params.len == 0 { return none }
 	param_types := g.tc.fn_param_type_texts.type_ids(base) or { return none }
-	mut inferred := map[string]u32{}
+	mut inferred := map[u32]u32{}
 	// Contextual return types must win over default-typed literal arguments. In
 	// `fn values() []Vec2[f64] { return [vec2(1.0, 1.0)] }`, a large combined
 	// test program can retain the literal arguments as untyped floats even though
@@ -13864,7 +13865,7 @@ fn (g &FlatGen) generic_call_type_arg_name(id flat.NodeId) u32 {
 	return node.source_value_id()
 }
 
-fn (g &FlatGen) infer_codegen_generic_call_type_args(node flat.Node, base string, param_texts_ids []u32, mut inferred map[string]u32) {
+fn (g &FlatGen) infer_codegen_generic_call_type_args(node flat.Node, base string, param_texts_ids []u32, mut inferred map[u32]u32) {
 	is_variadic := g.codegen_generic_fn_is_variadic(base)
 	for i, param_type in param_texts_ids {
 		arg_idx := i + 1
@@ -14156,7 +14157,7 @@ fn (g &FlatGen) generic_call_return_type_text_for_inference(id flat.NodeId, node
 	params := g.tc.fn_generic_params[base] or { return none }
 	if params.len == 0 { return none }
 	param_types := g.tc.fn_param_type_texts.type_ids(base) or { return none }
-	mut inferred := map[string]u32{}
+	mut inferred := map[u32]u32{}
 	g.infer_codegen_generic_call_type_args(node, base, param_types, mut inferred)
 	mut args := []u32{cap: params.len}
 	for param in params {
@@ -14166,7 +14167,7 @@ fn (g &FlatGen) generic_call_return_type_text_for_inference(id flat.NodeId, node
 	}
 	ret_type := g.tc.fn_ret_type_texts.type_id(base) or { node.typ }
 	if ret_type == 0 { return none }
-	ret := substitute_shared_generic_type_text(ret_type, params, args)
+	ret := substitute_shared_generic_type_id(ret_type, params, args)
 	if codegen_type_text_is_usable_for_generic_inference(ret) { return ret }
 	return none
 }
@@ -14331,7 +14332,7 @@ fn codegen_push_unique(mut values []string, value string) {
 	}
 }
 
-fn infer_codegen_generic_type_args(param_type u32, arg_type u32, mut inferred map[string]u32) {
+fn infer_codegen_generic_type_args(param_type u32, arg_type u32, mut inferred map[u32]u32) {
 	param := flat.source_type_syntax(param_type).trimmed()
 	arg := flat.source_type_syntax(arg_type).trimmed()
 	if param == 0 || arg == 0 || arg in [flat.source_type_unknown, flat.source_type_generic] {
@@ -14340,9 +14341,8 @@ fn infer_codegen_generic_type_args(param_type u32, arg_type u32, mut inferred ma
 	p_syntax := flat.source_type_syntax(param)
 	a_syntax := flat.source_type_syntax(arg)
 	if p_syntax.cgen_generic_placeholder() {
-		name := flat.source_type_name(param)
-		if name !in inferred {
-			inferred[name] = arg
+		if param !in inferred {
+			inferred[param] = arg
 		}
 		return
 	}

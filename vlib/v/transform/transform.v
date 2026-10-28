@@ -25811,7 +25811,7 @@ fn (t &Transformer) struct_info_matches_generic_base(base_id u32, info StructInf
 	return false
 }
 
-fn struct_info_uses_generic_params(info StructInfo, params []string) bool {
+fn struct_info_uses_generic_params(info StructInfo, params []u32) bool {
 	for field in info.fields {
 		if type_text_uses_any_generic_param(field.typ, params)
 			|| type_text_uses_any_generic_param(field.raw_typ, params) {
@@ -25821,11 +25821,10 @@ fn struct_info_uses_generic_params(info StructInfo, params []string) bool {
 	return false
 }
 
-fn type_text_uses_any_generic_param(typ_id u32, params []string) bool {
-	// Generic declaration parameters are identifiers; use their cached token IDs.
+fn type_text_uses_any_generic_param(typ_id u32, params []u32) bool {
 	words := flat.source_type_syntax(typ_id).words()
 	for param in params {
-		if param.len > 0 && flat.source_type_id(param) in words { return true }
+		if param != 0 && param in words { return true }
 	}
 	return false
 }
@@ -25869,17 +25868,17 @@ fn (t &Transformer) generic_struct_info_for_stringify(typ_id u32) ?StructInfo {
 
 fn (t &Transformer) generic_struct_params_for_stringify(base_id u32) []string {
 	if isnil(t.tc) { return []string{} }
-	if params := t.tc.struct_generic_params[base_id] { return params }
+	if params := t.tc.struct_generic_params[base_id] { return types.generic_param_texts(params) }
 	if !flat.source_type_shape(base_id).has(.dotted) && t.cur_module.len > 0
 		&& t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base_id)
 		if params := t.tc.struct_generic_params[qualified_id] {
-			return params
+			return types.generic_param_texts(params)
 		}
 	}
 	if flat.source_type_shape(base_id).has(.dotted) {
 		if params := t.tc.struct_generic_params[flat.source_type_syntax(base_id).unqualified()] {
-			return params
+			return types.generic_param_texts(params)
 		}
 	}
 	return []string{}
@@ -28835,7 +28834,7 @@ fn (t &Transformer) explicit_generic_call_return_type_for_typeof(id flat.NodeId,
 		}
 	}
 	for name in names {
-		params := t.tc.fn_generic_params[name] or { continue }
+		params := types.generic_param_texts(t.tc.fn_generic_params[name] or { continue })
 		if params.len == 0 {
 			continue
 		}

@@ -85,9 +85,9 @@ fn test_module_type_normalization_ids_expand_applied_owner_alias_first() {
 	tc.type_aliases.set_id(flat.source_type_id('dep.Next'), flat.source_type_id('dep.Item'))
 	tc.type_aliases.set_id(flat.source_type_id('dep.Alias'), flat.source_type_id('dep.Next'))
 	tc.type_aliases.set_id(flat.source_type_id('dep.Values'), flat.source_type_id('[]T'))
-	tc.type_alias_generic_params[flat.source_type_id('dep.Values')] = ['T']
+	tc.type_alias_generic_params[flat.source_type_id('dep.Values')] = types.generic_param_ids(['T'])
 	tc.type_aliases.set_id(flat.source_type_id('Values'), flat.source_type_id('map[string]T'))
-	tc.type_alias_generic_params[flat.source_type_id('Values')] = ['T']
+	tc.type_alias_generic_params[flat.source_type_id('Values')] = types.generic_param_ids(['T'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.cur_file = 'main.v'

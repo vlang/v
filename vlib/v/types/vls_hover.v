@@ -503,14 +503,15 @@ fn (tc &TypeChecker) vls_type_constraint(id flat.NodeId, typ Type) ?GenericConst
 	if decl.kind != .fn_decl {
 		return none
 	}
-	return tc.vls_narrowed_constraints(decl, path)[param] or { return none }
+	param_id := flat.source_type_existing_id(param) or { return none }
+	return tc.vls_narrowed_constraints(decl, path)[param_id] or { return none }
 }
 
 // vls_narrowed_constraints are the constraints of the type parameters of
 // `fn_node` at the end of `path`, the nodes from there up to the body: the
 // `$if`s on the way, together, leave each one the types with which it can go
 // through all of them the way the path does (see comptime_ways_constraints).
-fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.NodeId) map[string]GenericConstraint {
+fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.NodeId) map[u32]GenericConstraint {
 	scope := tc.type_param_scope(fn_node)
 	mut ways := []ComptimeWay{}
 	for i := path.len - 1; i >= 1; i-- {
@@ -526,7 +527,7 @@ fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.Nod
 		// A local that holds a value of a type parameter, `y := x`: `$if y is
 		// User {` tests that type parameter.
 		for tested_name in comptime_condition_tested_names(node.value) {
-			if tested_name in tested || tested_name in scope.names {
+			if tested_name in tested || generic_param_ids_contain_name(scope.names, tested_name) {
 				continue
 			}
 			if param := tc.vls_local_type_param(fn_node, tested_name, scope.names) {
@@ -544,14 +545,15 @@ fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.Nod
 // vls_local_type_param is the type parameter, one of `names`, that the local
 // `name` of the generic function `fn_node` holds a value of: `T` for `y` of
 // `y := x` with `x T`.
-fn (tc &TypeChecker) vls_local_type_param(fn_node flat.Node, name string, names []string) ?string {
+fn (tc &TypeChecker) vls_local_type_param(fn_node flat.Node, name string, names []u32) ?u32 {
 	for id in tc.vls_idents_named(fn_node, name) {
 		if typ := tc.vls_local_type(id) {
 			clean := unwrap_pointer(typ)
 			if clean is Unknown {
 				if param := generic_placeholder_from_unknown(clean) {
-					if param in names {
-						return param
+					param_index := generic_param_index_of_name(names, param)
+					if param_index >= 0 {
+						return names[param_index]
 					}
 				}
 			}
@@ -686,11 +688,11 @@ fn (tc &TypeChecker) vls_generic_value_text(id flat.NodeId, name string, type_id
 	decl, path := tc.vls_enclosing_decl(id) or { return '${name} ${flat.source_type_name(type_id)}' }
 	scope := tc.type_param_scope(decl)
 	constraints := tc.vls_narrowed_constraints(decl, path)
-	mut names := []string{}
+	mut names := []u32{}
 	mut args := []u32{}
 	mut lines := []string{}
 	for param in scope.names {
-		mut one := map[string]bool{}
+		mut one := map[u32]bool{}
 		one[param] = true
 		if !type_id_names_any(type_id, one) {
 			continue
@@ -702,7 +704,7 @@ fn (tc &TypeChecker) vls_generic_value_text(id flat.NodeId, name string, type_id
 		if single := tc.vls_constraint_single_type(constraint) {
 			names << param
 			args << flat.source_type_id(tc.vls_type_text(single))
-		} else if line := tc.vls_type_param_line(param, constraint) {
+		} else if line := tc.vls_type_param_line(flat.source_type_name(param), constraint) {
 			lines << line
 		}
 	}
@@ -724,7 +726,7 @@ fn (tc &TypeChecker) vls_value_hover(id flat.NodeId, name string, typ Type) stri
 	text := tc.vls_value_type_text(typ)
 	text_id := flat.source_type_id(text)
 	// `[]T`, or a generic type with a type parameter as its argument, `Box[T]`.
-	if type_contains_unknown(typ) || !vls_type_params_hold(text_id, map[string]bool{}) {
+	if type_contains_unknown(typ) || !vls_type_params_hold(text_id, map[u32]bool{}) {
 		return tc.vls_generic_value_text(id, name, text_id)
 	}
 	return '${name} ${text}'
@@ -737,12 +739,13 @@ fn (tc &TypeChecker) vls_value_hover(id flat.NodeId, name string, typ Type) stri
 fn (tc &TypeChecker) vls_type_param_hover(id flat.NodeId, word string) ?string {
 	decl, path := tc.vls_enclosing_decl(id)?
 	scope := tc.type_param_scope(decl)
-	if word !in scope.names {
+	word_id := flat.source_type_existing_id(word) or { return none }
+	if word_id !in scope.names {
 		return none
 	}
-	declared := scope.constraints[word] or {
+	declared := scope.constraints[word_id] or {
 		// Without a constraint: what a `$if` makes of it there, if one does.
-		narrowed := tc.vls_narrowed_constraints(decl, path)[word] or { return '[${word}]' }
+		narrowed := tc.vls_narrowed_constraints(decl, path)[word_id] or { return '[${word}]' }
 		line := tc.vls_type_param_line(word, narrowed) or { return '[${word}]' }
 		return '[${word}]\n${line}'
 	}
@@ -750,7 +753,7 @@ fn (tc &TypeChecker) vls_type_param_hover(id flat.NodeId, word string) ?string {
 	if !tc.vls_constraint_known(decl, declared) {
 		return head
 	}
-	constraint := tc.vls_narrowed_constraints(decl, path)[word] or { return head }
+	constraint := tc.vls_narrowed_constraints(decl, path)[word_id] or { return head }
 	line := tc.vls_type_param_line(word, constraint) or { return head }
 	return '${head}\n${line}'
 }
@@ -1259,7 +1262,7 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	}
 	declared := tc.vls_declared_field_type(syntax.application_base(), name)?
 	decl := tc.generic_type_decl(syntax.application_base()) or { return declared }
-	params := decl.generic_params().map(it.trim_space())
+	params := generic_param_ids(decl.generic_params()).map(trimmed_source_type_id(it))
 	if params.len != syntax.application_args().len {
 		return declared
 	}
@@ -1513,7 +1516,7 @@ fn (tc &TypeChecker) vls_signature(resolved string) ?VlsSignature {
 	short := decl.value.all_after_last('.').all_after_last('@')
 	is_method := decl.value.contains('.') && !decl.value.contains('@static@')
 	// A generic function is written as declared: `fn (T) bool`, `[]T`.
-	is_generic := (tc.fn_generic_params[resolved] or { []string{} }).len > 0
+	is_generic := (tc.fn_generic_params[resolved] or { []u32{} }).len > 0
 	checked_types := tc.fn_param_types[resolved] or { []Type{} }
 	param_types := if is_generic { []Type{} } else { checked_types }
 	mut params := []string{}
@@ -1606,7 +1609,7 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 	interface_id := flat.source_type_id(interface_name)
 	decl := tc.vls_interface_decl(interface_id)?
 	syntax := flat.source_type_syntax(interface_id)
-	type_params := decl.generic_params().map(it.trim_space())
+	type_params := generic_param_ids(decl.generic_params()).map(trimmed_source_type_id(it))
 	if syntax.application_valid() && type_params.len == syntax.application_args().len {
 		member := tc.vls_interface_member(interface_id, method)?
 		type_args := syntax.application_args().map(trimmed_source_type_id(it))

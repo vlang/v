@@ -718,8 +718,8 @@ fn test_embedded_field_path_uses_selected_struct_owner() {
 			flat.source_type_id('Outer'): [flat.source_type_id('pkg.Outer')]
 		}
 	}
-	tc.struct_generic_params[flat.source_type_id('pkg.Outer')] = ['T']
-	tc.struct_generic_params[flat.source_type_id('pkg.Middle')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('pkg.Outer')] = types.generic_param_ids(['T'])
+	tc.struct_generic_params[flat.source_type_id('pkg.Middle')] = types.generic_param_ids(['T'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_file = 'main.v'
 	t.cur_module = 'main'
@@ -1634,8 +1634,8 @@ fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs[flat.source_type_id('orm.QueryBuilder')] = []types.StructField{}
-	tc.struct_generic_params[flat.source_type_id('orm.QueryBuilder')] = ['T']
-	tc.struct_generic_params[flat.source_type_id('QueryBuilder')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('orm.QueryBuilder')] = types.generic_param_ids(['T'])
+	tc.struct_generic_params[flat.source_type_id('QueryBuilder')] = types.generic_param_ids(['T'])
 	tc.struct_modules[flat.source_type_id('orm.QueryBuilder')] = 'orm'
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
@@ -1647,7 +1647,7 @@ fn test_immediate_closure_generic_sum_pointer_result_may_alias_capture() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.sum_types.set(flat.source_type_id('Maybe'), ['T', 'IError'])
-	tc.sum_generic_params[flat.source_type_id('Maybe')] = ['T']
+	tc.sum_generic_params[flat.source_type_id('Maybe')] = types.generic_param_ids(['T'])
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('Maybe[&int]'))
@@ -1660,7 +1660,7 @@ fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
 		name: 'value'
 		typ:  tc.parse_type(flat.source_type_id('T'))
 	}]
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = types.generic_param_ids(['T'])
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('Box[&int]'))

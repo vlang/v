@@ -1956,23 +1956,25 @@ fn (t &Transformer) generic_struct_params_for_base(base string) ?[]string {
 
 fn (t &Transformer) generic_struct_params_for_base_id(base u32) ?[]string {
 	if isnil(t.tc) || base == 0 { return none }
-	if params := t.tc.struct_generic_params[base] { return params }
+	if params := t.tc.struct_generic_params[base] { return types.generic_param_texts(params) }
 	short := flat.source_type_syntax(base).unqualified()
-	if params := t.tc.struct_generic_params[short] { return params }
+	if params := t.tc.struct_generic_params[short] { return types.generic_param_texts(params) }
 	if !flat.source_type_shape(base).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
 		'main',
 		'builtin',
 	] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base)
-		if params := t.tc.struct_generic_params[qualified] { return params }
+		if params := t.tc.struct_generic_params[qualified] {
+			return types.generic_param_texts(params)
+		}
 	}
-	mut found := []string{}
+	mut found := []u32{}
 	for name_source_id, params in t.tc.struct_generic_params {
 		if flat.source_type_syntax(name_source_id).unqualified() != short { continue }
 		if found.len > 0 && found != params { return none }
 		found = params.clone()
 	}
-	if found.len > 0 { return found }
+	if found.len > 0 { return types.generic_param_texts(found) }
 	return none
 }
 

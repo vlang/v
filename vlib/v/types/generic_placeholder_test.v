@@ -39,7 +39,7 @@ fn test_empty_array_generic_diagnostic_prescreen() {
 	})
 	mut tc := TypeChecker.new(&a)
 	tc.diagnose_unknown_calls = true
-	tc.fn_generic_params['consume'] = ['T']
+	tc.fn_generic_params['consume'] = generic_param_ids(['T'])
 	for arg in [value, typed, empty, wrapped] {
 		start := a.begin_children()
 		a.add_child(callee)

@@ -181,7 +181,7 @@ fn test_infix_primitive_keeps_generic_struct_phantom_and_concrete_operators() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	tc.structs[flat.source_type_id('Box')] = []StructField{}
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = generic_param_ids(['T'])
 	tc.fn_ret_types['Box[T].+'] = Type(Struct{ name_id: flat.source_type_id('Box') })
 	tc.fn_ret_type_texts.set_id('Box[T].+', flat.source_type_id('Box[T]'))
 	tc.fn_param_types['Box[T].+'] = [
@@ -205,7 +205,7 @@ fn test_infix_primitive_keeps_generic_owner_metadata_candidates() {
 		mut tc := TypeChecker.new(&a)
 		tc.cur_module = 'dep'
 		tc.cur_file = '/tmp/primitive_infix.v'
-		tc.struct_generic_params[flat.source_type_id(owner)] = ['T']
+		tc.struct_generic_params[flat.source_type_id(owner)] = generic_param_ids(['T'])
 		tc.structs[flat.source_type_id(owner)] = []StructField{}
 		if owner != 'u64' {
 			tc.structs[flat.source_type_id('other.Number')] = []StructField{}
@@ -231,7 +231,7 @@ fn test_infix_primitive_keeps_generic_alias_redirect_metadata() {
 		mut tc := TypeChecker.new(&a)
 		tc.cur_module = 'dep'
 		tc.type_aliases.set_id(flat.source_type_id(alias_key), flat.source_type_id('Box[int]'))
-		tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+		tc.struct_generic_params[flat.source_type_id('Box')] = generic_param_ids(['T'])
 		tc.structs[flat.source_type_id('Box')] = []StructField{}
 		tc.fn_ret_types['Box[T].+'] = Type(u64_)
 		tc.fn_param_types['Box[T].+'] = [Type(u64_), Type(u64_)]
