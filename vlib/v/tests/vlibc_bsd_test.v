@@ -132,6 +132,26 @@ fn main() {
 	println('waitpid and status ok')
 
 	path := arguments()[1]
+	$if netbsd || dragonfly {
+		// These kernels retain a padding slot before the 64-bit seek and mmap offsets.
+		mut pages := []u8{len: 8192}
+		pages[4096] = 123
+		check(vlibc_write_file(path, pages))
+		fd, oe := vlibc_open(path, 0, 0)
+		check(oe)
+		offset, seek_error := vlibc_sys_lseek(fd, 4096, 0)
+		check(seek_error)
+		assert offset == 4096
+		mut marker := u8(0)
+		read, read_error := vlibc_sys_read(fd, &marker, 1)
+		check(read_error)
+		assert read == 1 && marker == 123
+		mapping, map_error := vlibc_sys_mmap(unsafe { nil }, 4096, 1, 2, fd, 4096)
+		check(map_error)
+		assert unsafe { (&u8(mapping))[0] } == 123
+		check(vlibc_sys_munmap(mapping, 4096))
+		check(vlibc_close(fd))
+	}
 	check(vlibc_write_file(path, 'hello'.bytes()))
 	data, fe := vlibc_read_file(path)
 	check(fe)

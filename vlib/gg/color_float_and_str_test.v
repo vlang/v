@@ -1,5 +1,7 @@
 module gg
 
+import math
+
 // The pure colour constructors and string forms, which color_test.v does not
 // cover: the generic float builders, the 4-byte form of hex(), and the two
 // string renderings.
@@ -33,6 +35,17 @@ fn test_frgb_and_frgba_truncate_toward_zero() {
 	}
 	// frgb always forces alpha to fully opaque
 	assert frgb(0.25, 0.5, 0.75).a == 255
+}
+
+fn test_frgba_clamps_out_of_range_inputs() {
+	// inputs above 1.0 clamp to 255, inputs below 0.0 clamp to 0
+	assert frgba(2.0, -1.0, 0.5, 1.5) == rgba(255, 0, 127, 255)
+	assert frgba(-0.5, 2.5, 0.0, 1.0) == rgba(0, 255, 0, 255)
+	assert frgb(1.5, -1.5, 0.5) == rgb(255, 0, 127)
+	// NaN is treated as 0.0
+	assert frgba(math.nan(), 0.5, 0.5, 1.0).r == 0
+	// clamping works for f32 inputs too
+	assert frgba(f32(2.0), f32(-1.0), f32(0.5), f32(1.0)) == rgba(255, 0, 127, 255)
 }
 
 fn test_the_generic_float_builders_accept_both_float_widths() {

@@ -198,7 +198,7 @@ fn system_alloc(_ voidptr, size uint) (voidptr, uint, u32) {
 }
 
 fn sys_mmap(addr voidptr, len u64, prot int, flags int, fd i64, off u64) (voidptr, VlibcErrno) {
-	rc, er := sys_call6(df_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), off)
+	rc, er := sys_call7(df_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), 0, off)
 	if er != 0 {
 		return unsafe { nil }, unsafe { VlibcErrno(er) }
 	}

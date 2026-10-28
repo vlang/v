@@ -9,7 +9,7 @@ $if !i386 {
 		nsec i64
 	}
 
-	// SolStatRaw mirrors Solaris struct stat64 (144 bytes on amd64).
+	// SolStatRaw mirrors Solaris struct stat64 (128 bytes on amd64).
 	struct SolStatRaw {
 		dev     u64
 		ino     u64
@@ -22,7 +22,7 @@ $if !i386 {
 		atime   VlibcTimespec
 		mtime   VlibcTimespec
 		ctime   VlibcTimespec
-		blksize i64
+		blksize i32
 		blocks  i64
 		fstype  [16]u8
 	}
@@ -40,11 +40,13 @@ $if !i386 {
 	}
 
 	// ---- sys wrappers (Solaris numbers) ----
+	// vlibc_sys_openat opens a path relative to a directory descriptor with native flags and mode.
 	pub fn vlibc_sys_openat(dirfd i64, path &u8, flags u64, mode u64) (i64, VlibcErrno) {
 		rc, er := sys_call4(sol_nr_openat, u64(dirfd), u64(path), flags, mode)
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_close closes a descriptor and returns the kernel error.
 	pub fn vlibc_sys_close(fd i64) VlibcErrno {
 		_, er := sys_call1(sol_nr_close, u64(fd))
 		if er == 0 {
@@ -53,21 +55,25 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_read reads up to count bytes into buf and returns the count and error.
 	pub fn vlibc_sys_read(fd i64, buf &u8, count u64) (i64, VlibcErrno) {
 		rc, er := sys_call3(sol_nr_read, u64(fd), u64(buf), count)
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_write writes up to count bytes from buf and returns the count and error.
 	pub fn vlibc_sys_write(fd i64, buf &u8, count u64) (i64, VlibcErrno) {
 		rc, er := sys_call3(sol_nr_write, u64(fd), u64(buf), count)
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_lseek changes a descriptor's byte offset relative to whence.
 	pub fn vlibc_sys_lseek(fd i64, off i64, whence int) (i64, VlibcErrno) {
 		rc, er := sys_call3(sol_nr_lseek, u64(fd), u64(off), u64(whence))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_fstatat writes metadata for a path relative to a directory descriptor.
 	pub fn vlibc_sys_fstatat(dirfd i64, path &u8, buf &SolStatRaw, flags u32) VlibcErrno {
 		_, er := sys_call4(sol_nr_fstatat, u64(dirfd), u64(path), u64(buf), u64(flags))
 		if er == 0 {
@@ -76,11 +82,13 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_getcwd writes the working directory into a byte buffer.
 	pub fn vlibc_sys_getcwd(buf &u8, size u64) (i64, VlibcErrno) {
 		rc, er := sys_call2(sol_nr_getcwd, u64(buf), size)
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_chdir changes the working directory using a NUL-terminated path.
 	pub fn vlibc_sys_chdir(path &u8) VlibcErrno {
 		_, er := sys_call1(sol_nr_chdir, u64(path))
 		if er == 0 {
@@ -89,6 +97,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_unlinkat removes a path relative to a directory descriptor.
 	pub fn vlibc_sys_unlinkat(dirfd i64, path &u8, flags int) VlibcErrno {
 		_, er := sys_call3(sol_nr_unlinkat, u64(dirfd), u64(path), u64(flags))
 		if er == 0 {
@@ -97,6 +106,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_mkdirat creates a directory relative to a directory descriptor.
 	pub fn vlibc_sys_mkdirat(dirfd i64, path &u8, mode u32) VlibcErrno {
 		_, er := sys_call3(sol_nr_mkdirat, u64(dirfd), u64(path), u64(mode))
 		if er == 0 {
@@ -105,6 +115,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_renameat renames a path relative to the supplied directory descriptors.
 	pub fn vlibc_sys_renameat(olddir i64, oldpath &u8, newdir i64, newpath &u8) VlibcErrno {
 		_, er := sys_call4(sol_nr_renameat, u64(olddir), u64(oldpath), u64(newdir), u64(newpath))
 		if er == 0 {
@@ -113,6 +124,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_getdents64 reads native 64-bit directory records into a byte buffer.
 	pub fn vlibc_sys_getdents64(fd i64, buf &u8, count u64) (i64, VlibcErrno) {
 		rc, er := sys_call3(sol_nr_getdents64, u64(fd), u64(buf), count)
 		return bsd_split(rc, er)
@@ -153,6 +165,7 @@ $if !i386 {
 		return VlibcErrno.enosys
 	}
 
+	// vlibc_sys_getpid returns the current process ID.
 	pub fn vlibc_sys_getpid() i64 {
 		rc, _ := sys_call0(sol_nr_getpid)
 		return i64(rc)
@@ -164,6 +177,7 @@ $if !i386 {
 		return i64(rc)
 	}
 
+	// vlibc_sys_getuid returns the real user ID.
 	pub fn vlibc_sys_getuid() i64 {
 		rc, _ := sys_call0(sol_nr_getuid)
 		return i64(rc)
@@ -175,6 +189,7 @@ $if !i386 {
 		return i64(rc)
 	}
 
+	// vlibc_sys_getgid returns the real group ID.
 	pub fn vlibc_sys_getgid() i64 {
 		rc, _ := sys_call0(sol_nr_getgid)
 		return i64(rc)
@@ -186,6 +201,7 @@ $if !i386 {
 		return i64(rc)
 	}
 
+	// vlibc_sys_kill sends a signal to a process or process group.
 	pub fn vlibc_sys_kill(pid i64, sig int) VlibcErrno {
 		_, er := sys_call2(sol_nr_kill, u64(pid), u64(sig))
 		if er == 0 {
@@ -205,6 +221,7 @@ $if !i386 {
 		return i64(rc)
 	}
 
+	// vlibc_sys_execve replaces the process image using NUL-terminated pointer arrays.
 	pub fn vlibc_sys_execve(filename &u8, argv []&u8, envp []&u8) int {
 		_, er := sys_call3(sol_nr_execve, u64(filename), u64(argv.data), u64(envp.data))
 		return -int(er)
@@ -216,8 +233,9 @@ $if !i386 {
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_fcntl performs a native descriptor-control operation.
 	pub fn vlibc_sys_fcntl(fd i64, cmd int, arg i64) (i64, VlibcErrno) {
-		rc, er := sys_call3(sol_nr_fcntl, u64(fd), u64(cmd), u64(arg))
+		rc, er := sys_call4(sol_nr_fcntl, u64(fd), u64(cmd), u64(arg), 0)
 		return bsd_split(rc, er)
 	}
 
@@ -240,11 +258,14 @@ $if !i386 {
 		return .enoerror
 	}
 
+	// vlibc_sys_dup2 duplicates a descriptor onto the requested descriptor number.
 	pub fn vlibc_sys_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
-		rc, er := sys_call2(sol_nr_dup2, u64(oldfd), u64(newfd))
+		// F_DUP2FD validates oldfd and preserves the same-descriptor behavior.
+		rc, er := sys_call4(sol_nr_fcntl, u64(oldfd), 9, u64(newfd), 0)
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_mprotect changes the protection of a mapped memory range.
 	pub fn vlibc_sys_mprotect(addr voidptr, len u64, prot int) VlibcErrno {
 		_, er := sys_call3(sol_nr_mprotect, u64(addr), len, u64(prot))
 		if er == 0 {
@@ -253,14 +274,16 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_mmap maps memory using native protection and mapping flags.
 	pub fn vlibc_sys_mmap(addr voidptr, len u64, prot int, flags int, fd i64, off u64) (voidptr, VlibcErrno) {
-		rc, er := sys_call6(sol_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), off)
+		rc, er := sys_call6(sol_nr_mmap, u64(addr), len, u64(prot), u64(flags) | sol_map_new, u64(fd), off)
 		if er != 0 {
 			return unsafe { nil }, unsafe { VlibcErrno(er) }
 		}
 		return unsafe { voidptr(rc) }, VlibcErrno.enoerror
 	}
 
+	// vlibc_sys_munmap unmaps a memory range.
 	pub fn vlibc_sys_munmap(addr voidptr, len u64) VlibcErrno {
 		_, er := sys_call2(sol_nr_munmap, u64(addr), len)
 		if er == 0 {
@@ -269,28 +292,47 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_madvise advises the kernel about a mapped memory range.
 	pub fn vlibc_sys_madvise(addr voidptr, len u64, advice int) VlibcErrno {
-		_, er := sys_call3(sol_nr_mincore, u64(addr), len, u64(advice))
+		_, er := sys_call6(sol_nr_memcntl, u64(addr), len, 4, u64(advice), 0, 0)
 		if er == 0 {
 			return VlibcErrno.enoerror
 		}
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_socket creates a socket with native domain, type, and protocol values.
 	pub fn vlibc_sys_socket(domain int, typ int, protocol int) (i64, VlibcErrno) {
-		rc, er := sys_call3(sol_nr_socket, u64(domain), u64(typ), u64(protocol))
+		rc, er := sys_call5(sol_nr_socket, u64(domain), u64(typ), u64(protocol), 0, 1)
 		return bsd_split(rc, er)
 	}
 
 	// vlibc_sys_socketpair writes two 32-bit socket descriptors to the supplied buffer.
 	pub fn vlibc_sys_socketpair(domain int, typ int, protocol int, sv &i32) VlibcErrno {
-		_, er := sys_call4(sol_nr_socketpair, u64(domain), u64(typ), u64(protocol), u64(sv))
-		if er == 0 {
-			return VlibcErrno.enoerror
+		// so_socketpair connects two existing sockets and may replace their descriptors.
+		first, first_error := vlibc_sys_socket(domain, typ, protocol)
+		if first_error != .enoerror { return first_error }
+		second, second_error := vlibc_sys_socket(domain, typ, protocol)
+		if second_error != .enoerror {
+			vlibc_sys_close(first)
+			return second_error
 		}
-		return unsafe { VlibcErrno(er) }
+		unsafe {
+			sv[0] = i32(first)
+			sv[1] = i32(second)
+		}
+		_, er := sys_call1(sol_nr_socketpair, u64(sv))
+		if er != 0 {
+			vlibc_sys_close(first)
+			vlibc_sys_close(second)
+			return unsafe { VlibcErrno(er) }
+		}
+		if unsafe { sv[0] } != i32(first) { vlibc_sys_close(first) }
+		if unsafe { sv[1] } != i32(second) { vlibc_sys_close(second) }
+		return .enoerror
 	}
 
+	// vlibc_sys_bind binds a socket using a native address buffer.
 	pub fn vlibc_sys_bind(fd i64, addr voidptr, addrlen u32) VlibcErrno {
 		_, er := sys_call3(sol_nr_bind, u64(fd), u64(addr), u64(addrlen))
 		if er == 0 {
@@ -299,6 +341,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_listen marks a socket as accepting connections with the given backlog.
 	pub fn vlibc_sys_listen(fd i64, backlog int) VlibcErrno {
 		_, er := sys_call2(sol_nr_listen, u64(fd), u64(backlog))
 		if er == 0 {
@@ -307,11 +350,13 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_accept accepts a connection into native socket-address buffers.
 	pub fn vlibc_sys_accept(fd i64, addr voidptr, addrlen &u32) (i64, VlibcErrno) {
 		rc, er := sys_call3(sol_nr_accept, u64(fd), u64(addr), u64(addrlen))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_connect connects a socket using a native address buffer.
 	pub fn vlibc_sys_connect(fd i64, addr voidptr, addrlen u32) VlibcErrno {
 		_, er := sys_call3(sol_nr_connect, u64(fd), u64(addr), u64(addrlen))
 		if er == 0 {
@@ -320,16 +365,19 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_sendto sends bytes to an optional native destination address.
 	pub fn vlibc_sys_sendto(fd i64, buf voidptr, len u64, flags int, dest voidptr, addrlen u32) (i64, VlibcErrno) {
 		rc, er := sys_call6(sol_nr_sendto, u64(fd), u64(buf), len, u64(flags), u64(dest), u64(addrlen))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_recvfrom receives bytes and optionally writes the peer's native socket address.
 	pub fn vlibc_sys_recvfrom(fd i64, buf voidptr, len u64, flags int, src voidptr, addrlen &u32) (i64, VlibcErrno) {
 		rc, er := sys_call6(sol_nr_recvfrom, u64(fd), u64(buf), len, u64(flags), u64(src), u64(addrlen))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_shutdown disables the requested socket directions.
 	pub fn vlibc_sys_shutdown(fd i64, how int) VlibcErrno {
 		_, er := sys_call2(sol_nr_shutdown, u64(fd), u64(how))
 		if er == 0 {
@@ -339,18 +387,21 @@ $if !i386 {
 	}
 
 	// ---- time ----
+	// vlibc_now_realtime_ns returns the wall-clock timestamp in nanoseconds since the Unix epoch.
 	pub fn vlibc_now_realtime_ns() i64 {
 		mut ts := VlibcTimespec{}
-		vlibc_sys_clock_gettime(0, &ts)
+		vlibc_sys_clock_gettime(3, &ts)
 		return ts.sec * 1_000_000_000 + ts.nsec
 	}
 
+	// vlibc_now_monotonic_ns returns the monotonic clock value in nanoseconds.
 	pub fn vlibc_now_monotonic_ns() i64 {
 		mut ts := VlibcTimespec{}
 		vlibc_sys_clock_gettime(4, &ts)
 		return ts.sec * 1_000_000_000 + ts.nsec
 	}
 
+	// vlibc_sleep_ns requests a sleep duration in nanoseconds; signals may interrupt it.
 	pub fn vlibc_sleep_ns(nsec u64) {
 		mut ts := VlibcTimespec{ sec: i64(nsec / 1_000_000_000), nsec: i64(nsec % 1_000_000_000) }
 		vlibc_sys_nanosleep(&ts, unsafe { nil })
@@ -373,6 +424,7 @@ $if !i386 {
 		machine  string
 	}
 
+	// vlibc_uname returns operating-system identification fields.
 	pub fn vlibc_uname() VlibcUtsname {
 		mut u := VlibcUtsname{}
 		u.sysname = 'SunOS'
@@ -383,6 +435,7 @@ $if !i386 {
 	}
 
 	// ---- file ----
+	// vlibc_stat returns file metadata, following symbolic links.
 	pub fn vlibc_stat(path string) (VlibcStat, VlibcErrno) {
 		mut raw := SolStatRaw{}
 		e := vlibc_sys_fstatat(sol_at_fdcwd, path.str, &raw, 0)
@@ -401,6 +454,7 @@ $if !i386 {
 		return s, VlibcErrno.enoerror
 	}
 
+	// vlibc_open opens a path with native flags and permissions subject to the process umask.
 	pub fn vlibc_open(path string, flags u64, mode u64) (i64, VlibcErrno) {
 		return vlibc_sys_openat(sol_at_fdcwd, path.str, flags, mode)
 	}
@@ -453,7 +507,7 @@ $if !i386 {
 
 	// vlibc_write_file writes all bytes and reports write or close errors.
 	pub fn vlibc_write_file(path string, data []u8) VlibcErrno {
-		fd, e := vlibc_open(path, 0x201, 0o666)
+		fd, e := vlibc_open(path, sol_o_wronly | sol_o_creat | sol_o_trunc, 0o666)
 		if e != .enoerror {
 			return e
 		}
@@ -476,22 +530,27 @@ $if !i386 {
 		return vlibc_close(fd)
 	}
 
+	// vlibc_mkdir creates a directory with permissions subject to the process umask.
 	pub fn vlibc_mkdir(path string, mode u32) VlibcErrno {
 		return vlibc_sys_mkdirat(sol_at_fdcwd, path.str, mode)
 	}
 
+	// vlibc_rmdir removes an empty directory.
 	pub fn vlibc_rmdir(path string) VlibcErrno {
 		return vlibc_sys_unlinkat(sol_at_fdcwd, path.str, sol_at_removedir)
 	}
 
+	// vlibc_unlink removes a filesystem entry.
 	pub fn vlibc_unlink(path string) VlibcErrno {
 		return vlibc_sys_unlinkat(sol_at_fdcwd, path.str, 0)
 	}
 
+	// vlibc_rename renames or moves a filesystem entry.
 	pub fn vlibc_rename(oldpath string, newpath string) VlibcErrno {
 		return vlibc_sys_renameat(sol_at_fdcwd, oldpath.str, sol_at_fdcwd, newpath.str)
 	}
 
+	// vlibc_getcwd returns the current working directory and any error.
 	pub fn vlibc_getcwd() (string, VlibcErrno) {
 		mut buf := []u8{len: 4096}
 		_, e := vlibc_sys_getcwd(&u8(buf.data), 4096)
@@ -505,6 +564,7 @@ $if !i386 {
 		return s, VlibcErrno.enoerror
 	}
 
+	// vlibc_chdir changes the current working directory.
 	pub fn vlibc_chdir(path string) VlibcErrno {
 		_, er := sys_call1(sol_nr_chdir, u64(path.str))
 		if er == 0 {
@@ -513,6 +573,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_list_dir returns directory entry names, excluding dot and dot-dot.
 	pub fn vlibc_list_dir(path string) ([]string, VlibcErrno) {
 		fd, e := vlibc_open(path, 0, 0)
 		if e != .enoerror {
@@ -569,6 +630,7 @@ $if !i386 {
 		return out
 	}
 
+	// vlibc_getenv returns an environment value and whether it was found.
 	pub fn vlibc_getenv(name string) (string, bool) {
 		for entry in vlibc_environ() {
 			mut i := 0
@@ -593,6 +655,7 @@ $if !i386 {
 		return '', false
 	}
 
+	// vlibc_environ_keys returns the names available in the process environment.
 	pub fn vlibc_environ_keys() []string {
 		mut keys := []string{}
 		for entry in vlibc_environ() {
@@ -638,8 +701,7 @@ $if !i386 {
 			e << s.str
 		}
 		e << unsafe { nil }
-		_, er := sys_call3(sol_nr_execve, u64(path.str), u64(a.data), u64(e.data))
-		return -int(er)
+		return vlibc_sys_execve(path.str, a, e)
 	}
 
 	// vlibc_waitpid waits for a child and returns its process ID.
@@ -661,16 +723,19 @@ $if !i386 {
 		return [int(fds[0]), int(fds[1])]!, e
 	}
 
+	// vlibc_dup2 duplicates oldfd onto newfd, preserving POSIX same-descriptor behavior.
 	pub fn vlibc_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
 		return vlibc_sys_dup2(oldfd, newfd)
 	}
 
+	// vlibc_signal returns ENOSYS because installing signal handlers is not implemented.
 	pub fn vlibc_signal(sig int, handler voidptr) VlibcErrno {
 		_ = sig
 		_ = handler
 		return VlibcErrno.enosys
 	}
 
+	// vlibc_kill sends a signal to a process or process group.
 	pub fn vlibc_kill(pid i64, sig int) VlibcErrno {
 		return vlibc_sys_kill(pid, sig)
 	}
@@ -684,6 +749,7 @@ $if !i386 {
 		zero   [8]u8
 	}
 
+	// vlibc_htons converts a 16-bit host-order value to network byte order.
 	pub fn vlibc_htons(v u16) u16 {
 		return (v >> 8) | (v << 8)
 	}
@@ -694,7 +760,8 @@ $if !i386 {
 			((v & 0x00ff0000) >> 8) | ((v & 0xff000000) >> 24)
 	}
 
-	// vlibc_parse_ipv4 packs dotted IPv4 bytes in network byte order.
+	// vlibc_parse_ipv4 packs a valid dotted-quad IPv4 address into network byte order.
+	// Each of its four decimal octets must be in 0..255; malformed input is not validated.
 	pub fn vlibc_parse_ipv4(s string) u32 {
 		mut parts := [u32(0), u32(0), u32(0), u32(0)]
 		mut idx := 0
@@ -720,6 +787,7 @@ $if !i386 {
 		return vlibc_htonl((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3])
 	}
 
+	// vlibc_socket creates a socket with the native domain, type, and protocol.
 	pub fn vlibc_socket(domain int, typ int, protocol int) (i64, VlibcErrno) {
 		return vlibc_sys_socket(domain, typ, protocol)
 	}
@@ -731,6 +799,7 @@ $if !i386 {
 		return [int(sv[0]), int(sv[1])]!, e
 	}
 
+	// vlibc_bind binds a socket to an IPv4 address in network byte order and a host-order port.
 	pub fn vlibc_bind(fd i64, port u16, addr u32) VlibcErrno {
 		mut sa := VlibcSockAddrIn{}
 		sa.family = 2
@@ -739,14 +808,17 @@ $if !i386 {
 		return vlibc_sys_bind(fd, unsafe { voidptr(&sa) }, 16)
 	}
 
+	// vlibc_listen marks a socket as accepting connections with the given backlog.
 	pub fn vlibc_listen(fd i64, backlog int) VlibcErrno {
 		return vlibc_sys_listen(fd, backlog)
 	}
 
+	// vlibc_accept accepts a connection and returns its descriptor.
 	pub fn vlibc_accept(fd i64) (i64, VlibcErrno) {
 		return vlibc_sys_accept(fd, unsafe { nil }, unsafe { nil })
 	}
 
+	// vlibc_connect connects to a network-order IPv4 address and a host-order port.
 	pub fn vlibc_connect(fd i64, port u16, addr u32) VlibcErrno {
 		mut sa := VlibcSockAddrIn{}
 		sa.family = 2
@@ -755,6 +827,7 @@ $if !i386 {
 		return vlibc_sys_connect(fd, unsafe { voidptr(&sa) }, 16)
 	}
 
+	// vlibc_send sends bytes on a connected socket and returns the number sent and any error.
 	pub fn vlibc_send(fd i64, data []u8, flags int) (i64, VlibcErrno) {
 		if data.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -762,6 +835,7 @@ $if !i386 {
 		return vlibc_sys_sendto(fd, unsafe { voidptr(data.data) }, u64(data.len), flags, unsafe { nil }, 0)
 	}
 
+	// vlibc_recv receives bytes into buf and returns the number read and any error.
 	pub fn vlibc_recv(fd i64, buf []u8, flags int) (i64, VlibcErrno) {
 		if buf.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -896,12 +970,14 @@ $if !i386 {
 		tid    i64
 	}
 
+	// vlibc_thread_spawn returns ENOSYS because Solaris thread creation is not implemented.
 	pub fn vlibc_thread_spawn(fn_ptr VlibcThreadFn, arg u64) (VlibcThread, VlibcErrno) {
 		_ = fn_ptr
 		_ = arg
 		return VlibcThread{}, VlibcErrno.enosys
 	}
 
+	// vlibc_thread_join returns ENOSYS because Solaris thread creation is not implemented.
 	pub fn vlibc_thread_join(mut t VlibcThread) VlibcErrno {
 		_ = t
 		return VlibcErrno.enosys
@@ -913,10 +989,12 @@ $if !i386 {
 		state u32
 	}
 
+	// vlibc_mutex_init creates an unlocked mutex.
 	pub fn vlibc_mutex_init() VlibcMutex {
 		return VlibcMutex{ state: 0 }
 	}
 
+	// vlibc_mutex_lock waits until the mutex is acquired.
 	pub fn vlibc_mutex_lock(mut m VlibcMutex) {
 		for {
 			if vlibc_cas_u32(&m.state, 0, 1) {
@@ -926,6 +1004,7 @@ $if !i386 {
 		}
 	}
 
+	// vlibc_mutex_unlock releases the mutex.
 	pub fn vlibc_mutex_unlock(mut m VlibcMutex) {
 		vlibc_store_u32(&m.state, 0)
 	}
@@ -935,10 +1014,12 @@ $if !i386 {
 		seq u32
 	}
 
+	// vlibc_cond_init creates an initialized condition variable.
 	pub fn vlibc_cond_init() VlibcCond {
 		return VlibcCond{ seq: 0 }
 	}
 
+	// vlibc_cond_wait releases the mutex while waiting, then locks it again before returning.
 	pub fn vlibc_cond_wait(mut c VlibcCond, mut m VlibcMutex) {
 		v := vlibc_load_u32(&c.seq)
 		vlibc_mutex_unlock(mut m)
@@ -948,7 +1029,7 @@ $if !i386 {
 		vlibc_mutex_lock(mut m)
 	}
 
-	// vlibc_cond_signal advances the condition sequence and wakes one waiter.
+	// vlibc_cond_signal advances the condition sequence to notify waiting threads.
 	pub fn vlibc_cond_signal(mut c VlibcCond) {
 		vlibc_increment_u32(&c.seq)
 	}

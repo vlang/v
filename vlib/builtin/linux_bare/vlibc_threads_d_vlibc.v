@@ -249,10 +249,12 @@ $if !i386 {
 		state u32
 	}
 
+	// vlibc_mutex_init creates an unlocked mutex.
 	pub fn vlibc_mutex_init() VlibcMutex {
 		return VlibcMutex{ state: 0 }
 	}
 
+	// vlibc_mutex_lock waits until the mutex is acquired.
 	pub fn vlibc_mutex_lock(mut m VlibcMutex) {
 		for {
 			if vlibc_cas_u32(&m.state, 0, 1) {
@@ -263,6 +265,7 @@ $if !i386 {
 		}
 	}
 
+	// vlibc_mutex_unlock releases the mutex.
 	pub fn vlibc_mutex_unlock(mut m VlibcMutex) {
 		vlibc_store_u32(&m.state, 0)
 		vlibc_sys_futex(&m.state, 1, 1, unsafe { nil }, unsafe { nil }, 0) // FUTEX_WAKE
@@ -274,10 +277,12 @@ $if !i386 {
 		seq u32
 	}
 
+	// vlibc_cond_init creates an initialized condition variable.
 	pub fn vlibc_cond_init() VlibcCond {
 		return VlibcCond{ seq: 0 }
 	}
 
+	// vlibc_cond_wait releases the mutex while waiting, then locks it again before returning.
 	pub fn vlibc_cond_wait(mut c VlibcCond, mut m VlibcMutex) {
 		v := vlibc_load_u32(&c.seq)
 		vlibc_mutex_unlock(mut m)

@@ -42,6 +42,11 @@ fn main() {
 	check(e1)
 	mut two, e2 := vlibc_thread_spawn(worker, u64(&fast))
 	check(e2)
+	vlibc_mutex_lock(mut state.mutex)
+	for state.count < 20000 {
+		vlibc_cond_wait(mut state.cond, mut state.mutex)
+	}
+	vlibc_mutex_unlock(mut state.mutex)
 	check(vlibc_thread_join(mut one))
 	check(vlibc_thread_join(mut two))
 	assert state.count == 20000
@@ -116,6 +121,14 @@ fn main() {
 	data, fe := vlibc_read_file(path)
 	check(fe)
 	assert data.bytestr() == 'hello'
+	file_link, file_link_error := vlibc_stat(arguments()[2] + '/file_link')
+	check(file_link_error)
+	assert file_link.mode & 0xf000 == 0x8000 && file_link.size == 5
+	dir_link, dir_link_error := vlibc_stat(arguments()[2] + '/dir_link')
+	check(dir_link_error)
+	assert dir_link.mode & 0xf000 == 0x4000
+	_, dangling_error := vlibc_stat(arguments()[2] + '/dangling_link')
+	assert dangling_error == .enoent
 	names, le := vlibc_list_dir(arguments()[2])
 	check(le)
 	assert names.contains('fixture.txt')
@@ -136,6 +149,9 @@ fn test_vlibc_freestanding() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, vlibc_program)!
+	os.symlink('fixture.txt', os.join_path(root, 'file_link'))!
+	os.symlink('.', os.join_path(root, 'dir_link'))!
+	os.symlink('missing.txt', os.join_path(root, 'dangling_link'))!
 	mut compilers := ['']
 	for cc in ['gcc', 'clang'] {
 		if _ := os.find_abs_path_of_executable(cc) { compilers << cc }

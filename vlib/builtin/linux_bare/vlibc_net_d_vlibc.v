@@ -10,19 +10,23 @@ $if !i386 {
 		zero   [8]u8
 	}
 
+	// vlibc_htons converts a 16-bit host-order value to network byte order.
 	pub fn vlibc_htons(v u16) u16 {
 		return (v >> 8) | (v << 8)
 	}
 
+	// vlibc_htonl converts a 32-bit host-order value to network byte order.
 	pub fn vlibc_htonl(v u32) u32 {
 		return ((v & 0x000000ff) << 24) | ((v & 0x0000ff00) << 8) | ((v & 0x00ff0000) >> 8) | ((v & 0xff000000) >> 24)
 	}
 
+	// vlibc_ntohs converts a 16-bit network-order value to host byte order.
 	pub fn vlibc_ntohs(v u16) u16 {
 		return vlibc_htons(v)
 	}
 
-	// vlibc_parse_ipv4 packs a dotted IPv4 address into network byte order.
+	// vlibc_parse_ipv4 packs a valid dotted-quad IPv4 address into network byte order.
+	// Each of its four decimal octets must be in 0..255; malformed input is not validated.
 	pub fn vlibc_parse_ipv4(s string) u32 {
 		// returns network-byte-order u32
 		mut parts := [u32(0), u32(0), u32(0), u32(0)]
@@ -50,6 +54,7 @@ $if !i386 {
 		return vlibc_htonl((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3])
 	}
 
+	// vlibc_socket creates a socket with the native domain, type, and protocol.
 	pub fn vlibc_socket(domain int, typ int, protocol int) (i64, VlibcErrno) {
 		return vlibc_sys_socket(domain, typ, protocol)
 	}
@@ -61,6 +66,7 @@ $if !i386 {
 		return [int(sv[0]), int(sv[1])]!, e
 	}
 
+	// vlibc_bind binds a socket to an IPv4 address in network byte order and a host-order port.
 	pub fn vlibc_bind(fd i64, port u16, addr u32) VlibcErrno {
 		mut sa := VlibcSockAddrIn{}
 		sa.family = 2 // AF_INET
@@ -69,14 +75,17 @@ $if !i386 {
 		return vlibc_sys_bind(fd, unsafe { voidptr(&sa) }, 16)
 	}
 
+	// vlibc_listen marks a socket as accepting connections with the given backlog.
 	pub fn vlibc_listen(fd i64, backlog int) VlibcErrno {
 		return vlibc_sys_listen(fd, backlog)
 	}
 
+	// vlibc_accept accepts a connection and returns its descriptor.
 	pub fn vlibc_accept(fd i64) (i64, VlibcErrno) {
 		return vlibc_sys_accept4(fd, unsafe { nil }, unsafe { nil }, 0)
 	}
 
+	// vlibc_connect connects to a network-order IPv4 address and a host-order port.
 	pub fn vlibc_connect(fd i64, port u16, addr u32) VlibcErrno {
 		mut sa := VlibcSockAddrIn{}
 		sa.family = 2
@@ -85,6 +94,7 @@ $if !i386 {
 		return vlibc_sys_connect(fd, unsafe { voidptr(&sa) }, 16)
 	}
 
+	// vlibc_send sends bytes on a connected socket and returns the number sent and any error.
 	pub fn vlibc_send(fd i64, data []u8, flags int) (i64, VlibcErrno) {
 		if data.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -92,6 +102,7 @@ $if !i386 {
 		return vlibc_sys_sendto(fd, unsafe { voidptr(data.data) }, u64(data.len), flags, unsafe { nil }, 0)
 	}
 
+	// vlibc_recv receives bytes into buf and returns the number read and any error.
 	pub fn vlibc_recv(fd i64, buf []u8, flags int) (i64, VlibcErrno) {
 		if buf.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -99,6 +110,7 @@ $if !i386 {
 		return vlibc_sys_recvfrom(fd, unsafe { voidptr(buf.data) }, u64(buf.len), flags, unsafe { nil }, unsafe { nil })
 	}
 
+	// vlibc_shutdown disables the requested socket directions.
 	pub fn vlibc_shutdown(fd i64, how int) VlibcErrno {
 		return vlibc_sys_shutdown(fd, how)
 	}
