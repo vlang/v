@@ -124,10 +124,12 @@ fn map_hash_int_2(pkey voidptr) u64 {
 	return C.wyhash64(*unsafe { &u16(pkey) }, 0)
 }
 
+@[inline]
 fn map_hash_int_4(pkey voidptr) u64 {
 	return C.wyhash64(*unsafe { &u32(pkey) }, 0)
 }
 
+@[inline]
 fn map_hash_int_8(pkey voidptr) u64 {
 	return C.wyhash64(*unsafe { &u64(pkey) }, 0)
 }

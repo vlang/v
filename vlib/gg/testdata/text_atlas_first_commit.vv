@@ -1,0 +1,82 @@
+module main
+
+import gg
+import gg.testdata.multiwindow_probe_gate
+import gg.testdata.multiwindow_sokol_trace as trace
+import time
+
+#flag -DSOKOL_TRACE_HOOKS
+
+const atlas_test_font = $embed_file('@VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf')
+
+struct App {
+mut:
+	gg     &gg.Context = unsafe { nil }
+	frames int
+}
+
+fn main() {
+	multiwindow_probe_gate.await_parent_release(5 * time.second) or { panic(err) }
+	mut app := &App{}
+	app.gg = gg.new_context(
+		width:             128
+		height:            64
+		window_title:      'Font atlas upload ordering'
+		font_bytes_normal: atlas_test_font.to_bytes()
+		user_data:         app
+		init_fn:           initialize
+		frame_fn:          frame
+		cleanup_fn:        cleanup
+	)
+	app.gg.run()
+}
+
+fn initialize(mut app App) {
+	trace.install() or { panic(err) }
+}
+
+fn cleanup(mut app App) {
+	assert app.frames == 3, 'probe did not render every test frame'
+	println('FONT_ATLAS_FIRST_COMMIT_PASS')
+}
+
+fn frame(mut app App) {
+	// Multiple commits in one app frame must each upload their own new glyphs.
+	// The third frame reuses them, and must not upload an unchanged atlas.
+	for pass in 0 .. 2 {
+		trace.reset()
+		app.gg.begin()
+		texts := match app.frames * 2 + pass {
+			0 { ['A', 'B'] }
+			1 { ['C', 'D'] }
+			2 { ['E', 'F'] }
+			3 { ['G', 'H'] }
+			4 { ['AB', 'CD'] }
+			else { ['EF', 'GH'] }
+		}
+		for i, text in texts {
+			app.gg.draw_text(8, 8 + i * 20, text)
+			assert app.gg.text_atlas_pending_upload() == (app.frames < 2)
+		}
+		assert 'update_image' !in trace.snapshot(), 'glyph callbacks uploaded before the commit boundary'
+		app.gg.end()
+		assert !app.gg.text_atlas_pending_upload(), 'new glyphs missed their first commit'
+		mut submission := []string{}
+		for operation in trace.snapshot() {
+			if operation in ['update_image', 'begin_swapchain_pass', 'end_pass', 'commit'] {
+				submission << operation
+			}
+		}
+		expected := if app.frames < 2 {
+			['update_image', 'begin_swapchain_pass', 'end_pass', 'commit']
+		} else {
+			['begin_swapchain_pass', 'end_pass', 'commit']
+		}
+		assert submission == expected, 'frame ${app.frames}, pass ${pass}: ${submission}'
+	}
+	app.frames++
+	if app.frames == 3 {
+		trace.uninstall()
+		app.gg.quit()
+	}
+}

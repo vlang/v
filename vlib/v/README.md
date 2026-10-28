@@ -587,8 +587,10 @@ the V temporary directory by default; set `V3CACHE` to select another root, or p
 object cache. An explicit `-b c` binary build also retains the complete generated translation unit
 at `<output>.c` for codegen inspection. Use `-show-timings` to print elapsed time for each compiler
 stage and the total, including memory usage and cache metrics. It enables the same benchmark
-summary as `-v` without verbose compiler traces. For self-host builds, `-v` also reports
-time spent preparing markused, marking reachable symbols, and waiting for transform preparation.
+summary as `-v` without verbose compiler traces. `-show-instructions` also prints the retired
+CPU instructions of each stage and of the whole process (macOS only). For self-host builds, `-v`
+also reports time spent preparing markused, marking reachable symbols, and waiting for
+transform preparation.
 `-silent` and generated C output to stdout
 (`-o -`) suppress the summary. The benchmark output prints counts for parsed `.vh` and
 `.v` files and their total

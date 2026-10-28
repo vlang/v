@@ -113,8 +113,14 @@ fn (mut c CNameCache) remember(name string, value string) {
 @[heap]
 struct ConstShortIndex {
 mut:
-	built   bool
-	entries map[string]string
+	built                     bool
+	entries                   map[string]string
+	call_names_ready          bool
+	call_names                [64]u64
+	call_const_vals_count     int
+	call_const_exprs_count    int
+	call_const_types_count    int
+	call_const_suffixes_count int
 }
 
 // FnNameFactCache memoizes per-fn-name conclusions (1 = yes, -1 = no) that
@@ -136,6 +142,15 @@ mut:
 	entries    map[string]i8
 	last_name  string
 	last_value i8
+	// parked keeps the entries of contexts switched away from, as in
+	// ContextStringLookupCache.
+	parked map[string]&ContextNameFacts
+}
+
+@[heap]
+struct ContextNameFacts {
+mut:
+	entries map[string]i8
 }
 
 @[inline]
@@ -187,9 +202,20 @@ fn (mut c ContextNameFactCache) select_context(file string, module_name string) 
 		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
+	if c.entries.len > 0 {
+		c.parked[context_lookup_key(c.file, c.module)] = &ContextNameFacts{
+			entries: c.entries.move()
+		}
+	}
 	c.file = file
 	c.module = module_name
-	c.entries = map[string]i8{}
+	key := context_lookup_key(file, module_name)
+	if mut parked := c.parked[key] {
+		c.entries = parked.entries.move()
+		c.parked.delete(key)
+	} else {
+		c.entries = map[string]i8{}
+	}
 	c.last_name = ''
 	c.last_value = 0
 }
@@ -233,9 +259,10 @@ fn (mut c AliasMethodLookupCache) put(target_id u32, method string, value string
 }
 
 // ContextStringLookupCache memoizes string lookups whose answers depend on the
-// current source file and module. Cgen visits functions in source order, so
-// replacing on a context switch avoids allocating a compound key on every hot
-// lookup while retaining almost all hits.
+// current source file and module. Hot lookups use the active context's map
+// directly, so they never allocate a compound key. Function items are not
+// grouped by file, so a context switch parks the active entries under their
+// context instead of discarding them, and a returning context resumes them.
 @[heap]
 struct ContextStringLookupCache {
 mut:
@@ -245,6 +272,13 @@ mut:
 	last_name  string
 	last_value string
 	last_valid bool
+	parked     map[string]&ContextStringEntries
+}
+
+@[heap]
+struct ContextStringEntries {
+mut:
+	entries map[string]string
 }
 
 @[inline]
@@ -277,22 +311,47 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
+	if c.entries.len > 0 {
+		c.parked[context_lookup_key(c.file, c.module)] = &ContextStringEntries{
+			entries: c.entries.move()
+		}
+	}
 	c.file = file
 	c.module = module_name
-	c.entries = map[string]string{}
+	key := context_lookup_key(file, module_name)
+	if mut parked := c.parked[key] {
+		c.entries = parked.entries.move()
+		c.parked.delete(key)
+	} else {
+		c.entries = map[string]string{}
+	}
 	c.last_name = ''
 	c.last_value = ''
 	c.last_valid = false
 }
 
+// context_lookup_key names a (file, module) lookup context. A newline cannot
+// occur in either part.
+@[inline]
+fn context_lookup_key(file string, module_name string) string {
+	return '${file}\n${module_name}'
+}
+
+struct SourceTypeLookupRecentEntry {
+	name  u32
+	value u32
+	valid bool
+}
+
 // ContextSourceTypeLookupCache memoizes source-spelling lookups within one file and module.
-// Zero values record misses; last_valid distinguishes an empty cache from a cached miss.
+// Zero values record misses; validity distinguishes an empty cache from a cached miss.
 @[heap]
 struct ContextSourceTypeLookupCache {
 mut:
 	file       string = '\x00'
 	module     string
 	entries    map[u32]u32
+	recent     [64]SourceTypeLookupRecentEntry
 	last_name  u32
 	last_value u32
 	last_valid bool
@@ -301,7 +360,16 @@ mut:
 @[inline]
 fn (mut c ContextSourceTypeLookupCache) get(name u32) ?u32 {
 	if c.last_valid && c.last_name == name { return c.last_value }
+	slot := int(name & 63)
+	entry := c.recent[slot]
+	if entry.valid && entry.name == name {
+		c.last_name = name
+		c.last_value = entry.value
+		c.last_valid = true
+		return entry.value
+	}
 	if cached := c.entries[name] {
+		c.recent[slot] = SourceTypeLookupRecentEntry{ name: name, value: cached, valid: true }
 		c.last_name = name
 		c.last_value = cached
 		c.last_valid = true
@@ -313,6 +381,7 @@ fn (mut c ContextSourceTypeLookupCache) get(name u32) ?u32 {
 @[inline]
 fn (mut c ContextSourceTypeLookupCache) put(name u32, value u32) {
 	c.entries[name] = value
+	c.recent[int(name & 63)] = SourceTypeLookupRecentEntry{ name: name, value: value, valid: true }
 	c.last_name = name
 	c.last_value = value
 	c.last_valid = true
@@ -328,6 +397,7 @@ fn (mut c ContextSourceTypeLookupCache) select_context(file string, module_name 
 	c.file = file
 	c.module = module_name
 	c.entries = map[u32]u32{}
+	c.recent = [64]SourceTypeLookupRecentEntry{}
 	c.last_name = 0
 	c.last_value = 0
 	c.last_valid = false
@@ -336,7 +406,6 @@ fn (mut c ContextSourceTypeLookupCache) select_context(file string, module_name 
 fn (mut g FlatGen) reset_context_lookup_caches() {
 	g.normalize_call_cache = &ContextStringLookupCache{}
 	g.import_key_cache = &util.KeyRecentCache{}
-	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
 	g.enum_selector_cache = &ContextSourceTypeLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
@@ -557,12 +626,8 @@ fn (g &FlatGen) cname(name string) string {
 
 fn (g &FlatGen) cname_uncached(name string) string {
 	mut cache := g.c_name_cache
-	if cached := cache.entries[name] {
-		cache.last_name = name
-		cache.last_value = cached
-		cache.remember(name, cached)
-		return cached
-	}
+	// c_name is pure, so every cache level holds the same C name for `name`: the
+	// base's recent slots can answer before the map lookups.
 	if !isnil(cache.base) {
 		if cached := cache.base.recent(name) {
 			cache.last_name = name
@@ -570,6 +635,14 @@ fn (g &FlatGen) cname_uncached(name string) string {
 			cache.remember(name, cached)
 			return cached
 		}
+	}
+	if cached := cache.entries[name] {
+		cache.last_name = name
+		cache.last_value = cached
+		cache.remember(name, cached)
+		return cached
+	}
+	if !isnil(cache.base) {
 		if cached := cache.base.entries[name] {
 			cache.last_name = name
 			cache.last_value = cached

@@ -112,7 +112,7 @@ fn (mut g FlatGen) gen_fixed_array_index(index_id flat.NodeId, len string) {
 
 fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayFixed {
 	mut cur := if flat.source_type_shape(type_name_id).has(.padded) {
-		flat.source_type_id(trimmed_space(flat.source_type_name(type_name_id)))
+		flat.source_type_syntax(type_name_id).trimmed()
 	} else {
 		type_name_id
 	}
@@ -123,10 +123,10 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayF
 		if fixed := array_fixed_type(g.tc.parse_type(cur)) {
 			return fixed
 		}
-		mut next := g.tc.type_aliases.type_id(flat.source_type_name(cur)) or { u32(0) }
+		mut next := g.tc.type_aliases.type_id(cur) or { u32(0) }
 		if next == 0 {
 			qname := g.tc.qualify_type_name(cur)
-			next = g.tc.type_aliases.type_id(flat.source_type_name(qname)) or { u32(0) }
+			next = g.tc.type_aliases.type_id(qname) or { u32(0) }
 		}
 		if next == 0 || next == cur {
 			return none
@@ -566,11 +566,17 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 		return false
 	}
 	node := g.a.nodes[int(id)]
-	mut actual := g.body_resolve_type(id)
+	// A parameter's declared type wins; resolve the expression type only otherwise.
+	mut actual := types.Type(types.void_)
+	mut has_param_type := false
 	if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
 			actual = param_type
+			has_param_type = true
 		}
+	}
+	if !has_param_type {
+		actual = g.body_resolve_type(id)
 	}
 	if actual is types.Pointer {
 		return false
@@ -1004,8 +1010,8 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			mut is_thread := false
 			elem := unalias_type(arr.elem_type)
 			if elem is types.Struct {
-				tn := trimmed_space(elem.name())
-				is_thread = tn == 'thread' || tn.starts_with('thread ')
+				tn := flat.source_type_syntax(elem.source_type_id()).trimmed()
+				is_thread = tn == flat.source_type_id('thread') || flat.source_type_shape(tn).has(.thread_type)
 			}
 			if is_thread {
 				g.gen_thread_array_wait(base_id, is_ptr, elem)
@@ -1027,12 +1033,12 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 	if node.kind != .call || node.children_count == 0 {
 		return none
 	}
-	fn_node := g.a.child_node(&node, 0)
+	fn_node := g.a.node(g.a.child(&node, 0))
 	if fn_node.kind != .selector || fn_node.value != 'to_fixed_size' || fn_node.children_count == 0 {
 		return none
 	}
 	if node.typ != 0 {
-		if fixed := array_fixed_type(g.parse_node_type(&node)) {
+		if fixed := array_fixed_type(*g.parse_annotation_type_reference(node.typ)) {
 			return fixed
 		}
 	}
@@ -1144,9 +1150,9 @@ fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_
 	g.needs_thread_runtime = true
 	mut ret_name_id := u32(0)
 	if elem_type is types.Struct {
-		trimmed := trimmed_space(elem_type.name())
-		if trimmed != 'thread' && trimmed.starts_with('thread ') {
-			ret_name_id = flat.source_type_id(trimmed_space(trimmed[7..]))
+		trimmed := flat.source_type_syntax(elem_type.source_type_id()).trimmed()
+		if trimmed != flat.source_type_id('thread') && flat.source_type_shape(trimmed).has(.thread_type) {
+			ret_name_id = flat.source_type_syntax(flat.source_type_syntax(trimmed).raw_base()).trimmed()
 		}
 	}
 	fn_name := g.ensure_thread_arr_wait_fn(ret_name_id)

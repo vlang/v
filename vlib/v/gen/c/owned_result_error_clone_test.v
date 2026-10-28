@@ -26,20 +26,20 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	params_id := a.add_node(params_decl)
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Fault'] = [types.StructField{
+	tc.structs[flat.source_type_id('Fault')] = [types.StructField{
 		name: 'id'
 		typ:  types.Type(types.int_)
 	}]
-	tc.structs['OtherFault'] = tc.structs['Fault'].clone()
-	tc.params_structs['CloneParams'] = true
-	tc.interface_names['IError'] = true
+	tc.structs[flat.source_type_id('OtherFault')] = tc.structs[flat.source_type_id('Fault')].clone()
+	tc.params_structs[flat.source_type_id('CloneParams')] = true
+	tc.interface_names[flat.source_type_id('IError')] = true
 	fault := *tc.parse_type(flat.source_type_id('Fault'))
 	fault_pointer := types.Type(types.Pointer{ base_type: &fault })
-	tc.type_aliases.set_id('FaultRef', flat.source_type_id('&Fault'))
-	tc.type_aliases.set_id('FaultRefAlias', flat.source_type_id('FaultRef'))
-	tc.type_aliases.set_id('FaultValueAlias', flat.source_type_id('Fault'))
+	tc.type_aliases.set_id(flat.source_type_id('FaultRef'), flat.source_type_id('&Fault'))
+	tc.type_aliases.set_id(flat.source_type_id('FaultRefAlias'), flat.source_type_id('FaultRef'))
+	tc.type_aliases.set_id(flat.source_type_id('FaultValueAlias'), flat.source_type_id('Fault'))
 	if needs_drop {
-		tc.struct_implements.set('Fault', ['Drop'])
+		tc.struct_implements.set(flat.source_type_id('Fault'), ['Drop'])
 		tc.fn_param_types['Fault.drop'] = [fault_pointer]
 		tc.fn_ret_types['Fault.drop'] = types.Type(types.void_)
 	}

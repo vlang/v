@@ -81,6 +81,7 @@ Map `clear()` and `free()` release owned entries through their stored values, in
 when the map is accessed through a pointer or a generic pointer parameter.
 String map keys retain their cloned storage until the map releases it. Boxed values use the
 selected allocator during ownership cleanup, including VGC.
+Map runtime callbacks release string keys, including nested fixed arrays and aliases, exactly once.
 
 ## Creating owned values
 
@@ -92,6 +93,9 @@ Returning a scalar field or scalar array element copies its value, including whe
 a pointer to local storage. Scalar copies do not keep a reference to that storage.
 Interpolation with multiple parts copies their storage. A sole string part can pass through
 unchanged, and closures retain their captured references.
+Capturing an owned aggregate transfers its root and owned descendants together. Earlier moves
+and active borrows still prevent capture, and the transferred source cannot be reused afterward.
+Lambdas may capture nested arrays and combine their elements in the same expression.
 Escaped interpolation text stays literal through compile-time reflection and promoted defaults.
 Literal text supplied by reflected attributes or source-location variables follows the same rule.
 
@@ -112,6 +116,12 @@ Use `.to_owned()` or
 by value are copied so they can outlive the source.
 Reassigning a borrowed view releases its loan without freeing the source bytes.
 
+Dynamic and fixed array `init:` expressions clone borrowed owning projections for each element,
+including projections indexed by `index` and those inside struct or array literals and conditional
+branches. Each element gets independent storage and leaves the source usable. Fresh returned values
+are evaluated once per element without an additional clone; a zero-length initializer does not
+evaluate its expression.
+
 Standard string methods, numeric parsers, path inspection and joining functions, and
 string-builder writes borrow string arguments that cannot escape through the return value.
 Signed numeric parsing preserves the caller's string while removing a leading sign.
@@ -120,6 +130,11 @@ instead. Use `.clone()` when the caller also needs to keep an owned fallback. Us
 by-value string parameters still consume owned strings. When a parameter takes ownership, a regular
 string or borrowed view passed to it is copied for the callee, leaving the caller's value available.
 Returned copies remain owned; use `.clone()` when retaining another copy.
+
+Passing `array.pop()` or `array.pop_left()` to an owning string parameter removes that element
+from the array's tracked storage. An owned element transfers to the callee; a non-owning element,
+such as a string literal, is copied for the callee. Remaining elements keep their ownership. For
+arrays with known lengths, later appends use the updated length.
 
 Standard library modules other than `builtin` keep V's value semantics in their own function
 bodies. Their parameters, locals and loop variables never become owners, so library code does not

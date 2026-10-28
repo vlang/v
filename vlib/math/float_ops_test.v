@@ -79,6 +79,38 @@ fn test_floor_div() {
 	assert floor_div(-10.0, 2.5) == -4.0
 	big := 1e19
 	assert floor_div(big, 7.0) * 7.0 + floor_mod(big, 7.0) == big
+	// Divisors without an exact binary representation, like 0.3, pi and e
+	// (also suggested in the discussion of PR #31083): binary rounding makes
+	// the true quotient shift slightly off an integer boundary, which must
+	// not flip the floored result to the neighbouring integer.
+	y3 := 0.3
+	assert floor_div(1.0, y3) == 3.0 // 1.0 / 0.3 is near 3.33, never near 4.0
+	assert approx(floor_mod(1.0, y3), 0.1)
+	assert floor_div(-1.0, y3) == -4.0 // -3.33 floored toward -inf
+	assert approx(floor_mod(-1.0, y3), 0.2)
+	assert floor_div(pi, y3) == 10.0 // pi / 0.3 is near 10.47
+	assert approx(floor_mod(pi, y3), pi - 3.0)
+	assert floor_div(2.0, pi) == 0.0
+	assert floor_mod(2.0, pi) == 2.0
+	assert floor_div(-2.0, pi) == -1.0
+	assert approx(floor_mod(-2.0, pi), pi - 2.0)
+	assert floor_div(10.0, e) == 3.0 // 10.0 / e is near 3.68
+	assert approx(floor_mod(10.0, e), 10.0 - 3.0 * e)
+	assert floor_div(-10.0, e) == -4.0 // -3.68 floored toward -inf
+	assert approx(floor_mod(-10.0, e), 4.0 * e - 10.0)
+	// The invariant still holds for these divisors, allowing for f64 rounding.
+	for x in [-10.0, -1.0, 1.0, 10.0] {
+		for y in [y3, pi, e] {
+			q := floor_div(x, y)
+			r := floor_mod(x, y)
+			assert approx(q * y + r, x)
+			if y > 0 {
+				assert q * y <= x
+			} else {
+				assert q * y >= x
+			}
+		}
+	}
 }
 
 fn test_angle_conversion() {

@@ -87,6 +87,20 @@ def wait_stopped(pid):
         time.sleep(0.02)
     raise AssertionError("background terminal reader did not stop")
 
+def wait_job_stopped():
+    # A job that reads the terminal in the background stops again. The shell's
+    # `fg` continues only a job that it has seen stop; before that it just hands
+    # the terminal over, and the stopped processes never resume.
+    wait_stopped(compiler)
+    deadline = time.monotonic() + 12
+    while True:
+        send(b"jobs\n")
+        if b"Stopped" in read_until(b"VPTY> "):
+            return
+        if time.monotonic() >= deadline:
+            raise AssertionError("shell did not see the background job stop")
+        time.sleep(0.02)
+
 def cleanup():
     # Include children that created separate job groups or sessions.
     rows = subprocess.check_output(["ps", "-axo", "pid,ppid"], text=True).splitlines()[1:]
@@ -356,8 +370,8 @@ int main(void) {
     read_until(b"VPTY> ")
     send(b"bg\n")
     read_until(b"VPTY> ")
-    if not pipeline:
-        wait_stopped(compiler)
+    # The pipeline's peer reads the terminal, so that job stops again too.
+    wait_job_stopped()
     assert os.tcgetpgrp(terminal) == shell
     send(b"fg\nsecond\n")
     read_until(b"READ:second")
@@ -368,9 +382,9 @@ int main(void) {
     wait_stopped(compiler)
     assert os.tcgetpgrp(terminal) == shell
     os.killpg(os.getpgid(compiler), signal.SIGCONT)
-    # Direct terminal input stops again in the background; pipe input keeps waiting.
-    if not pipeline:
-        wait_stopped(compiler)
+    # Terminal input stops again in the background: the app's own in the direct
+    # case, the peer's in the pipeline case.
+    wait_job_stopped()
     send(b"fg\n")
     deadline = time.monotonic() + 5
     while os.tcgetpgrp(terminal) != (os.getpgid(compiler) if pipeline else child) and time.monotonic() < deadline:

@@ -18,14 +18,16 @@ enum CgenModePool {
 }
 
 struct CgenModeOutput {
-	code         string
-	literals     []string
-	fn_names     []string
-	scoped       bool
-	parallel     bool
-	pool_present bool
-	pool_size    int
-	pool_tasks   u64
+	code                string
+	literals            []string
+	fn_names            []string
+	scoped              bool
+	parallel            bool
+	pool_present        bool
+	pool_size           int
+	pool_tasks          u64
+	type_names_present  bool
+	field_index_present bool
 mut:
 	launches      u64
 	launch_errors u64
@@ -114,14 +116,16 @@ fn cgen_mode_generate(path string, pool_mode CgenModePool, no_parallel bool) Cge
 	g.set_scope_parallel_workers(true)
 	code := g.gen_with_used_options(a, used, &tc, no_parallel)
 	mut result := CgenModeOutput{
-		code:         code
-		literals:     g.str_lits.clone()
-		fn_names:     g.used_fn_names.clone()
-		scoped:       g.scope_parallel_workers
-		parallel:     g.parallel_used
-		pool_present: !isnil(a.worker_pool)
-		pool_size:    a.worker_count()
-		pool_tasks:   a.worker_tasks_run()
+		code:                code
+		literals:            g.str_lits.clone()
+		fn_names:            g.used_fn_names.clone()
+		scoped:              g.scope_parallel_workers
+		parallel:            g.parallel_used
+		pool_present:        !isnil(a.worker_pool)
+		pool_size:           a.worker_count()
+		pool_tasks:          a.worker_tasks_run()
+		type_names_present:  !isnil(g.type_name_short_index)
+		field_index_present: !isnil(g.struct_field_index_base)
 	}
 	if !isnil(a.worker_pool) {
 		stats := a.worker_pool.stats()
@@ -202,6 +206,10 @@ fn test_one_job_codegen_keeps_a_lazy_pool_and_matches_explicit_serial() {
 	defer { os.rm(path) or {} }
 	serial := cgen_mode_generate(path, .lazy, true)
 	default_mode := cgen_mode_generate(path, .lazy, false)
+	assert serial.type_names_present
+	assert default_mode.type_names_present
+	assert serial.field_index_present
+	assert default_mode.field_index_present
 	assert default_mode.code == serial.code
 	assert default_mode.literals == serial.literals
 	assert default_mode.fn_names == serial.fn_names

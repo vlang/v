@@ -374,11 +374,7 @@ fn (t &Transformer) comptime_array_elem_type(id flat.NodeId) u32 {
 	if !flat.source_type_shape(declared).has(.array_type) {
 		return 0
 	}
-	name := flat.source_type_name(declared)
-	if !name.starts_with('[]') || name.len <= 2 {
-		return 0
-	}
-	return flat.source_type_id(name[2..])
+	return flat.source_type_syntax(declared).raw_base()
 }
 
 // comptime_scalar_array_elements folds every element of an array expression, or
@@ -419,8 +415,8 @@ fn comptime_array_elem_text(element ComptimeStringScalar, elem_type u32) ?string
 }
 
 // later_stmts_write_array_local reports whether a statement after the declaration
-// writes through the local. An element write or a mutable borrow changes the array
-// a print would render, so a compile-time array is only trusted when none follows.
+// writes through the local or exposes its storage. Aliases and unknown callees
+// may change the elements a print renders, even when the binding is immutable.
 fn (t &Transformer) later_stmts_write_array_local(decl_id flat.NodeId, name string) bool {
 	ids := t.cur_stmt_list
 	mut first := 0
@@ -443,13 +439,62 @@ fn (t &Transformer) node_writes_array_local(id flat.NodeId, name string) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	// A function literal has its own scope, so a name declared there is another
-	// binding and a captured array is a copy that belongs to the closure.
-	if node.kind == .fn_literal {
+	// A captured array header can still share its element storage. Only inspect
+	// closures that capture this binding; other closures have their own locals.
+	if node.kind == .fn_literal && !t.fn_literal_captures_name(id, name) {
 		return false
 	}
 	if node.kind == .ident && node.is_mut && node.value == name {
 		return true
+	}
+	// Unsafe slices can share the original array's elements. An address or data
+	// pointer can expose that storage too, even when the binding is immutable.
+	if ((node.kind == .block && node.value == 'unsafe')
+		|| (node.kind == .prefix && node.op == .amp)
+		|| (node.kind == .selector && node.value == 'data'))
+		&& t.array_map_expr_references_ident(id, name) {
+		return true
+	}
+	if node.kind in [.decl_assign, .assign, .selector_assign, .index_assign, .return_stmt] {
+		first := if node.kind == .decl_assign { 1 } else { 0 }
+		for i in first .. node.children_count {
+			if t.expr_exposes_array_local(t.a.child(&node, i), name) {
+				return true
+			}
+		}
+	}
+	if node.kind == .infix && node.op == .left_shift && node.children_count == 2
+		&& t.expr_exposes_array_local(t.a.child(&node, 1), name) {
+		return true
+	}
+	if node.kind == .for_in_stmt && node.children_count >= 3 {
+		container := t.a.child(&node, 2)
+		// Iterating the array itself reads scalars; an aggregate may yield its header.
+		if t.a.node(container).kind != .ident && t.expr_exposes_array_local(container, name) {
+			return true
+		}
+	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		// These compiler intrinsics render their argument without exposing storage.
+		is_print := callee.kind == .ident
+			&& callee.value in ['print', 'println', 'eprint', 'eprintln']
+		if !is_print {
+			for i in 1 .. node.children_count {
+				if t.expr_exposes_array_local(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+		}
+		if callee.kind == .selector && callee.children_count > 0 {
+			receiver := t.a.child(callee, 0)
+			receiver_node := t.a.node(receiver)
+			is_array_str := callee.value == 'str' && node.children_count == 1
+				&& receiver_node.kind == .ident && receiver_node.value == name
+			if !is_array_str && t.expr_exposes_array_local(receiver, name) {
+				return true
+			}
+		}
 	}
 	if node.kind in [.index_assign, .selector_assign] {
 		if t.node_writes_array_local(t.a.child(&node, 0), name) {
@@ -458,6 +503,35 @@ fn (t &Transformer) node_writes_array_local(id flat.NodeId, name string) bool {
 	}
 	for i in 0 .. node.children_count {
 		if t.node_writes_array_local(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// expr_exposes_array_local recognizes expressions that can retain the array's
+// storage. Scalar reads and rendered strings do not carry that storage to callees.
+fn (t &Transformer) expr_exposes_array_local(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident { return node.value == name }
+		.fn_literal { return t.fn_literal_captures_name(id, name) }
+		.index {
+			if node.value != 'range' {
+				return false
+			}
+		}
+		.paren, .cast_expr, .as_expr, .array_literal, .array_init, .struct_init,
+		.field_init, .map_init, .if_expr, .match_stmt, .match_branch, .or_expr,
+		.assoc, .block, .expr_stmt {
+		}
+		else { return false }
+	}
+	for i in 0 .. node.children_count {
+		if t.expr_exposes_array_local(t.a.child(&node, i), name) {
 			return true
 		}
 	}

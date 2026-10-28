@@ -665,45 +665,30 @@ pub fn (s &SSLConn) negotiated_alpn() string {
 	return unsafe { cstring_to_vstring(p) }
 }
 
-// connect to server using mbedtls
-// load_system_ca_certs tries to load the platform's trusted CA certificates into
-// `cacert`. Returns an error if no trusted authority could be loaded.
-fn load_system_ca_certs(mut cacert C.mbedtls_x509_crt) ! {
-	mut loaded := false
-	ca_files := [
-		'/etc/ssl/certs/ca-certificates.crt',
-		'/etc/pki/tls/certs/ca-bundle.crt',
-		'/etc/ssl/ca-bundle.pem',
-		'/etc/ssl/cert.pem',
-		'/usr/local/share/certs/ca-root-nss.crt',
-		'/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem',
-	]
-	for f in ca_files {
+const system_ca_files = [
+	'/etc/ssl/certs/ca-certificates.crt', // Debian, Ubuntu, Arch, Gentoo
+	'/etc/pki/tls/certs/ca-bundle.crt', // Fedora, RHEL
+	'/etc/ssl/ca-bundle.pem', // openSUSE
+	'/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem', // CentOS, RHEL 7
+	'/etc/ssl/cert.pem', // Alpine, macOS, OpenBSD, FreeBSD
+	'/usr/local/etc/ssl/cert.pem', // FreeBSD with ca_root_nss
+]
+
+// system_ca_file returns $SSL_CERT_FILE, or the first system CA bundle that exists, or ''.
+fn system_ca_file() string {
+	env_file := os.getenv('SSL_CERT_FILE')
+	if env_file != '' && os.is_file(env_file) {
+		return env_file
+	}
+	for f in system_ca_files {
 		if os.is_file(f) {
-			ret := C.mbedtls_x509_crt_parse_file(&cacert, &char(f.str))
-			if ret >= 0 {
-				loaded = true
-			}
+			return f
 		}
 	}
-	ca_dirs := [
-		'/etc/ssl/certs',
-		'/usr/share/ca-certificates',
-		'/etc/pki/tls/certs',
-	]
-	for d in ca_dirs {
-		if os.is_dir(d) {
-			ret := C.mbedtls_x509_crt_parse_path(&cacert, &char(d.str))
-			if ret >= 0 {
-				loaded = true
-			}
-		}
-	}
-	if !loaded {
-		return error('no system CA bundle found')
-	}
+	return ''
 }
 
+// connect to server using mbedtls
 fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
@@ -752,11 +737,23 @@ fn (mut s SSLConn) init() ! {
 				ret)
 		}
 	}
-	if s.config.validate || s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
+	// validate without verify uses the system trust store, like the OpenSSL backend
+	system_ca := if s.config.validate && s.config.verify == '' { system_ca_file() } else { '' }
+	if s.config.validate && s.config.verify == '' && system_ca == '' {
+		return error('net.mbedtls SSLConn.init, validate is set, but no verify was given and no system CA bundle was found')
+	}
+	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' || system_ca != '' {
 		s.certs = &SSLCerts{}
 		C.mbedtls_x509_crt_init(&s.certs.cacert)
 		C.mbedtls_x509_crt_init(&s.certs.client_cert)
 		C.mbedtls_pk_init(&s.certs.client_key)
+	}
+	if system_ca != '' {
+		ret = C.mbedtls_x509_crt_parse_file(&s.certs.cacert, &char(system_ca.str))
+		if ret < 0 {
+			return error_with_code('net.mbedtls SSLConn.init, failed to load the system CA bundle ${system_ca}, ret: ${ret}',
+				ret)
+		}
 	}
 
 	if s.config.in_memory_verification {
@@ -796,15 +793,11 @@ fn (mut s SSLConn) init() ! {
 			ret)
 	}
 
-	if s.config.verify == '' && s.config.validate && unsafe { s.certs != nil } {
-		load_system_ca_certs(mut s.certs.cacert) or {
-			return error('net.mbedtls SSLConn.init, could not load system CA certificates: ${err}')
-		}
-	}
-
 	if unsafe { s.certs != nil } {
 		C.mbedtls_ssl_conf_ca_chain(&s.conf, &s.certs.cacert, 0)
-		C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+		if s.config.cert != '' || s.config.cert_key != '' {
+			C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+		}
 	}
 
 	if s.config.validate {

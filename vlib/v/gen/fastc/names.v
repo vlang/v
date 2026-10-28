@@ -51,28 +51,53 @@ fn fastc_c_module_name(module_name string) string {
 // query, allocating each candidate's C spelling on the way; that scan dominated
 // selfhost code generation. The first key registered for a spelling wins,
 // matching the old first-match scan over the insertion-ordered key list.
-fn fastc_declared_type_c_names(declared_types map[string]bool) flat.TypeTextBindings {
+fn fastc_declared_type_c_names(declared_types map[u32]bool) flat.TypeTextBindings {
 	mut index := flat.TypeTextBindings{}
 	for key in declared_types.keys() {
-		c_name := fastc_c_declared_type_name(key)
+		c_name := fastc_c_declared_type_name(flat.source_type_name(key))
 		if !index.contains(c_name) {
-			index.set(c_name, key)
+			index.set_id(c_name, key)
 		}
 	}
 	return index
 }
 
-fn fastc_declared_type_key_by_name(declared_types map[string]bool) flat.TypeTextBindings {
-	mut index := flat.TypeTextBindings{}
+fn fastc_declared_type_key_by_name(declared_types map[u32]bool) flat.SourceTypeBindings {
+	mut index := flat.SourceTypeBindings{}
 	for key in declared_types.keys() {
-		name := key.all_after_last('.')
+		name := flat.source_type_id(flat.source_type_name(key).all_after_last('.'))
 		if index.contains(name) {
 			index.set_id(name, 0)
 		} else {
-			index.set(name, key)
+			index.set_id(name, key)
 		}
 	}
 	return index
+}
+
+// Lookup-only scanner probes must not retain spellings that are not declared.
+@[inline]
+fn fastc_source_type_key_exists(types map[u32]bool, name string) bool {
+	id := flat.source_type_existing_id(name) or { return false }
+	return id in types
+}
+
+@[inline]
+fn fastc_source_type_key_value(types map[u32]bool, name string) bool {
+	id := flat.source_type_existing_id(name) or { return false }
+	return types[id]
+}
+
+@[inline]
+fn fastc_declared_kind_exists(kinds map[u32]FastcDeclaredTypeKind, name string) bool {
+	id := flat.source_type_existing_id(name) or { return false }
+	return id in kinds
+}
+
+@[inline]
+fn fastc_declared_kind_value(kinds map[u32]FastcDeclaredTypeKind, name string) FastcDeclaredTypeKind {
+	id := flat.source_type_existing_id(name) or { return .struct_ }
+	return kinds[id]
 }
 
 fn fastc_function_key(module_name string, name string) string {

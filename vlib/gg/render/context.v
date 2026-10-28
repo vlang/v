@@ -28,6 +28,9 @@ pub mut:
 	max_vertices int
 	max_commands int
 	face_winding gfx.FaceWinding = .ccw
+	// sample_count must match the render pass the context draws into: the window's
+	// framebuffer sample count for the default pass (0 falls back to 1).
+	sample_count int
 }
 
 pub struct MatrixMode {
@@ -104,6 +107,7 @@ pub fn new_context(desc Desc) &Context {
 	st.max_vertices = max_v
 	st.max_commands = max_c
 	st.face_winding = desc.face_winding
+	st.sample_count = if desc.sample_count > 0 { desc.sample_count } else { 1 }
 	st.verts = []Vertex{len: max_v}
 	st.commands = []Command{len: max_c}
 	st.uniforms = []Uniform{len: max_c}
@@ -121,7 +125,7 @@ pub fn new_context(desc Desc) &Context {
 
 	if gfx.is_valid() {
 		buf_desc := gfx.BufferDesc{
-			size:  usize(max_v) * usize(sizeof(Vertex))
+			size:  uint(max_v) * uint(sizeof(Vertex))
 			type:  .vertexbuffer
 			usage: .stream
 		}
@@ -213,13 +217,9 @@ fn commit_listener_fn(user_data voidptr) {
 	if ctx == unsafe { nil } {
 		return
 	}
+	ctx.rewind()
 	mut st := ctx.st
-	st.vertex_count = 0
-	st.commands_count = 0
-	st.uniforms_count = 0
-	st.base_vertex = 0
 	st.frame_id++
-	st.error = .no_error
 }
 
 fn pack_rgba_f(r f32, g f32, b f32, a f32) u32 {

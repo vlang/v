@@ -12,7 +12,7 @@ fn test_usable_expr_type_uses_materialized_anonymous_storage() {
 			typ:   flat.source_type_id('${prefix}Row')
 		})
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Row'] = [types.StructField{ name: 'item', typ: types.Type(types.int_) }]
+		tc.structs[flat.source_type_id('Row')] = [types.StructField{ name: 'item', typ: types.Type(types.int_) }]
 		tc.register_synth_type(id, tc.parse_type(flat.source_type_id('${prefix}struct')))
 		mut g := FlatGen.new()
 		g.a = &a
@@ -51,7 +51,7 @@ fn test_usable_expr_type_keeps_checked_container_alive_across_dense_slot_updates
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Payload'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Payload')] = []types.StructField{}
 	container := tc.parse_type(flat.source_type_id('[]Payload'))
 	tc.register_synth_type(value, container)
 	mut g := FlatGen.new()
@@ -144,8 +144,8 @@ fn test_body_import_type_queries_keep_source_files_and_declaration_generations()
 	tc.cur_module = 'main'
 	tc.file_imports['first.v\nmodel'] = 'first.model'
 	tc.file_imports['second.v\nmodel'] = 'second.model'
-	tc.structs['first.model.Item'] = []types.StructField{}
-	tc.structs['second.model.Item'] = []types.StructField{}
+	tc.structs[flat.source_type_id('first.model.Item')] = []types.StructField{}
+	tc.structs[flat.source_type_id('second.model.Item')] = []types.StructField{}
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -163,14 +163,14 @@ fn test_body_import_type_queries_keep_source_files_and_declaration_generations()
 	assert g.canonical_import_alias_type_in_file(flat.source_type_id('model.Item'), 'first.v') is types.Struct
 	g.end_usable_expr_type_memo()
 	// Another body can observe declarations registered after the previous one.
-	tc.structs.delete('first.model.Item')
-	tc.enum_names['first.model.Item'] = true
+	tc.structs.delete(flat.source_type_id('first.model.Item'))
+	tc.enum_names[flat.source_type_id('first.model.Item')] = true
 	g.begin_usable_expr_type_memo()
 	assert g.canonical_import_alias_type_in_file(flat.source_type_id('model.Item'), 'first.v') is types.Enum
 	g.end_usable_expr_type_memo()
 	g.usable_expr_type_memo.generation = ~u32(0)
-	tc.enum_names.delete('first.model.Item')
-	tc.structs['first.model.Item'] = []types.StructField{}
+	tc.enum_names.delete(flat.source_type_id('first.model.Item'))
+	tc.structs[flat.source_type_id('first.model.Item')] = []types.StructField{}
 	g.begin_usable_expr_type_memo()
 	assert g.canonical_import_alias_type_in_file(flat.source_type_id('model.Item'), 'first.v') is types.Struct
 }
@@ -180,7 +180,7 @@ fn test_body_import_type_queries_bypass_temporary_contexts() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_file = 'caller.v'
 	tc.cur_module = 'main'
-	tc.structs['Item'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Item')] = []types.StructField{}
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -188,8 +188,8 @@ fn test_body_import_type_queries_bypass_temporary_contexts() {
 	type_id := flat.source_type_id('Item')
 	g.begin_usable_expr_type_memo()
 	assert g.canonical_import_alias_type_in_file(type_id, 'caller.v') is types.Struct
-	tc.structs.delete('Item')
-	tc.enum_names['Item'] = true
+	tc.structs.delete(flat.source_type_id('Item'))
+	tc.enum_names[flat.source_type_id('Item')] = true
 	// Nested emission must resolve its own declarations without poisoning the body.
 	g.const_init_depth = 1
 	assert g.canonical_import_alias_type_in_file(type_id, 'caller.v') is types.Enum
@@ -213,7 +213,7 @@ fn test_body_import_type_queries_preserve_colliding_spelling_ids() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_file = 'caller.v'
 	tc.cur_module = 'main'
-	tc.structs['CollisionStruct'] = []types.StructField{}
+	tc.structs[flat.source_type_id('CollisionStruct')] = []types.StructField{}
 	first := flat.source_type_id('CollisionStruct')
 	mask := u32(body_import_type_query_slots - 1)
 	mut second := u32(0)
@@ -222,7 +222,7 @@ fn test_body_import_type_queries_preserve_colliding_spelling_ids() {
 		id := flat.source_type_id(name)
 		if id != first && (id & mask) == (first & mask) {
 			second = id
-			tc.enum_names[name] = true
+			tc.enum_names[flat.source_type_id(name)] = true
 			break
 		}
 	}
@@ -298,4 +298,89 @@ fn test_body_resolve_reference_checks_the_full_id_on_collisions() {
 		assert *g.body_resolve_type_reference(flat.NodeId(0)) == types.Type(types.int_)
 		assert g.body_resolve_type_reference(flat.NodeId(usable_expr_type_memo_slots)) is types.String
 	}
+}
+
+fn test_usable_expr_type_keeps_owned_container_child_references() {
+	for canonical in [false, true] {
+		for container_kind in 0 .. 4 {
+			mut a := flat.FlatAst.new()
+			value := a.add_val(.ident, 'value')
+			a.children << value
+			access := a.add_node(flat.Node{
+				kind:           if container_kind == 0 { .prefix } else { .index }
+				op:             .mul
+				children_start: 0
+				children_count: 1
+			})
+			mut tc := types.TypeChecker.new(&a)
+			// A raw heap-owned child need not already have interner identity.
+			child := types.new_type_reference(types.Type(types.String{}))
+			container := match container_kind {
+				0 { types.Type(types.Pointer{ base_type: child }) }
+				1 { types.Type(types.Array{ elem_type: child }) }
+				2 { types.Type(types.ArrayFixed{ elem_type: child, len: 3 }) }
+				else {
+					types.Type(types.Map{ key_type: types.new_type_reference(types.Type(types.int_)), value_type: child })
+				}
+			}
+			owned := if canonical {
+				tc.intern_type_reference(container)
+			} else {
+				types.new_type_reference(container)
+			}
+			expected := match owned {
+				types.Pointer { owned.base_type }
+				types.Array { owned.elem_type }
+				types.ArrayFixed { owned.elem_type }
+				types.Map { owned.value_type }
+				else { panic('expected container') }
+			}
+			mut g := FlatGen.new()
+			g.a = &a
+			g.tc = &tc
+			g.cur_param_types['value'] = owned
+			g.memo_usable_expr_types = true
+			g.begin_usable_expr_type_memo()
+			before := g.usable_expr_type(access)
+			assert voidptr(before) == voidptr(expected)
+			assert *before == types.Type(types.String{})
+			g.cur_param_types['value'] = tc.intern_type_reference(types.Type(types.Array{ elem_type: types.new_type_reference(types.Type(types.bool_)) }))
+			for i in 0 .. 1024 {
+				tc.intern_type_reference(types.Type(types.ArrayFixed{ elem_type: child, len: i + 1 }))
+			}
+			assert voidptr(g.usable_expr_type(access)) == voidptr(expected)
+			assert *before == types.Type(types.String{})
+			g.end_usable_expr_type_memo()
+			g.begin_usable_expr_type_memo()
+			if container_kind != 0 {
+				assert *g.usable_expr_type(access) == types.Type(types.bool_)
+			}
+			assert *before == types.Type(types.String{})
+		}
+	}
+}
+
+fn test_usable_expr_type_shared_parameter_keeps_owned_value_reference() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'value')
+	mut tc := types.TypeChecker.new(&a)
+	child := types.new_type_reference(types.Type(types.String{}))
+	parameter := types.new_type_reference(types.Type(types.Pointer{ base_type: child }))
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.cur_param_types['value'] = parameter
+	g.push_scope()
+	owner := tc.cur_scope.insert_with_owner('value', *parameter)
+	g.declare_local_shared_storage(owner, true)
+	g.memo_usable_expr_types = true
+	g.begin_usable_expr_type_memo()
+	before := g.usable_expr_type(id)
+	assert voidptr(before) == voidptr(child)
+	g.end_usable_expr_type_memo()
+	g.declare_local_shared_storage(owner, false)
+	g.begin_usable_expr_type_memo()
+	assert voidptr(g.usable_expr_type(id)) == voidptr(parameter)
+	assert *before == types.Type(types.String{})
+	g.pop_scope()
 }

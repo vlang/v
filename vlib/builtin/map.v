@@ -479,7 +479,8 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 		m.hash_fn(pkey)
 	}
 	index := hash & m.even_index
-	meta := ((hash >> m.shift) & hash_mask) | probe_inc
+	// Valid table growth cannot exhaust the 64-bit hash before the u32 index.
+	meta := ((hash >> (m.shift & 63)) & hash_mask) | probe_inc
 	return u32(index), u32(meta)
 }
 
@@ -1105,6 +1106,16 @@ pub fn (m &map) clone() map {
 		m.clone_fn(res.key_values.key(i), m.key_values.key(i))
 	}
 	return res
+}
+
+// map_clone_sharing_keys stores at `dest` a copy of the map at `src`. This
+// backend clones every key.
+@[unsafe]
+pub fn map_clone_sharing_keys(dest voidptr, src voidptr) {
+	source := unsafe { &map(src) }
+	unsafe {
+		*(&map(dest)) = source.clone()
+	}
 }
 
 // free releases all memory resources occupied by the `map`.

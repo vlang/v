@@ -31,8 +31,10 @@ fn test_mmap_header_ownership_is_limited_to_supported_shipped_bindings() {
 	g.a = &a
 	assert g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
 	a.cached_header_sources['/cache/os.vh'] = '/vroot/vlib/os/args.v'
+	a.cached_header_module_sources['/cache/os.vh'] = ['/vroot/vlib/os/args.v', source]
 	assert g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
 	a.cached_header_sources['/cache/user.vh'] = '/project/os/args.v'
+	a.cached_header_module_sources['/cache/user.vh'] = ['/project/os/args.v', '/project/os/mmap_nix.c.v']
 	assert !g.core_native_header_is_redeclared('/cache/user.vh', '<sys/mman.h>')
 	g.set_target(pref.target_from('linux', 'arm32')!)
 	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
@@ -48,6 +50,59 @@ fn test_mmap_header_ownership_is_limited_to_supported_shipped_bindings() {
 	g.object_file_mode = false
 	g.target_libc_headers = true
 	assert !g.core_native_header_is_redeclared(source, '<sys/mman.h>')
+}
+
+// The header of a cached module stands for all of the module's sources. A build
+// that reads `os` from it has to keep <sys/mman.h> out of its C as the build that
+// parsed mmap_nix.c.v did, though the header is mapped to another source of `os`:
+// otherwise the two generate different C, and never find each other's objects.
+fn test_mmap_header_ownership_holds_for_a_cached_header_of_the_whole_module() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = '/vroot'
+	g.set_target(pref.target_from('macos', 'arm64')!)
+	mut a := flat.FlatAst{}
+	a.cached_header_sources['/cache/os.vh'] = '/vroot/vlib/os/args.v'
+	a.cached_header_module_sources['/cache/os.vh'] = ['/vroot/vlib/os/args.v',
+		'/vroot/vlib/os/mmap_nix.c.v', '/vroot/vlib/os/os.v']
+	a.cached_header_sources['/cache/other.vh'] = '/vroot/vlib/os/args.v'
+	a.cached_header_module_sources['/cache/other.vh'] = ['/vroot/vlib/os/args.v', '/vroot/vlib/os/os.v']
+	a.cached_header_sources['/cache/project.vh'] = '/project/os/args.v'
+	a.cached_header_module_sources['/cache/project.vh'] = ['/project/os/args.v',
+		'/project/os/mmap_nix.c.v']
+	g.a = &a
+	assert g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
+	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<custom.h>')
+	assert !g.core_native_header_is_redeclared('/cache/other.vh', '<sys/mman.h>')
+	assert !g.core_native_header_is_redeclared('/cache/project.vh', '<sys/mman.h>')
+	// v.cmdexec's header is mapped to cmdexec.v, but its cmdexec_poll.h comes from
+	// cmdexec_pipe.c.v.
+	poll_h := '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"'
+	a.cached_header_sources['/cache/cmdexec.vh'] = '/vroot/vlib/v/cmdexec/cmdexec.v'
+	a.cached_header_module_sources['/cache/cmdexec.vh'] = [
+		'/vroot/vlib/v/cmdexec/cmdexec.v',
+		'/vroot/vlib/v/cmdexec/cmdexec_pipe.c.v',
+	]
+	assert g.core_native_header_is_redeclared('/cache/cmdexec.vh', poll_h)
+	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', '<poll.h>')
+	// The SDK modes keep every include of a cached header too.
+	g.no_builtin = true
+	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
+	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', poll_h)
+	g.no_builtin = false
+	g.output_cross_c = true
+	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
+	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', poll_h)
+	g.output_cross_c = false
+	g.object_file_mode = true
+	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
+	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', poll_h)
+	g.object_file_mode = false
+	g.target_libc_headers = true
+	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
+	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', poll_h)
+	g.target_libc_headers = false
+	g.set_target(pref.target_from('macos', 'arm32')!)
+	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
 }
 
 fn test_mmap_sync_constants_follow_each_platform_abi() {
