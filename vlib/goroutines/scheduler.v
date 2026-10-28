@@ -289,8 +289,14 @@ fn park_m(mut mp Machine) {
 	// Sleep until woken
 	mp.park.wait()
 
-	// Woken up - acquire a P and return to schedule_loop
-	acquire_p(mut mp)
+	// Woken up. The waker usually already wired an idle P before posting, so
+	// only acquire one if this M still has none (e.g. a shutdown broadcast
+	// wakes without wiring). Acquiring unconditionally would strand the wired
+	// P: it never returns to the idle list, so npidle deflates until no new
+	// M can start and queued goroutines never run.
+	if mp.p == unsafe { nil } {
+		acquire_p(mut mp)
+	}
 }
 
 // acquire_p tries to get an idle P for the given M.
@@ -550,6 +556,12 @@ fn runq_put_slow(mut pp Processor, gp &Goroutine, _h u32, _t u32) {
 	for {
 		hh := C.goroutines_atomic_load_u32(&pp.runq_head)
 		tt := C.goroutines_atomic_load_u32(&pp.runq_tail)
+		// The local queue never holds more than local_queue_size entries, so a
+		// larger apparent length means the head/tail pair is torn or corrupt.
+		// Fail loudly instead of copying garbage slots into the batch below.
+		if hh > tt || tt - hh > local_queue_size {
+			panic('goroutines: runq desync in put_slow')
+		}
 		n := (tt - hh) / 2
 		if n == 0 {
 			break
