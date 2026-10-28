@@ -182,9 +182,10 @@ jobs:
               --libpaths="$PREFIX/lib" \
               --sysincludepaths="{B}/include:$PREFIX/include" \
               --elfinterp=/system/bin/linker64
-            # bionic's sys/cdefs.h rejects an unversioned target triple unless
-            # __ANDROID_MIN_SDK_VERSION__ is set, and tcc's lib/ build is the
-            # first place that includes it.
+            # bionic sys/cdefs.h rejects an unversioned target triple unless
+            # __ANDROID_MIN_SDK_VERSION__ is set, and the tcc lib build is the
+            # first place that includes it. Do not put apostrophes in this
+            # block: it is inside a single-quoted bash -c string.
             pwd
             ls -la
             # Dry run: prints the commands make would run, saved to the log.
