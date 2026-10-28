@@ -63,6 +63,14 @@ mut:
 	// requests a middleware refuses skip the after-middleware, so an
 	// after-middleware could not free them reliably.
 	throttle_leases []ThrottleLease
+	// Deferred response state, armed by `Context.after`: `deferred_cb` runs no
+	// sooner than `deferred_ms` milliseconds after the handler returns, with
+	// `deferred_arg`. `handle_request_and_route` spawns the timer thread once
+	// the handled context is preserved on the heap.
+	deferred     bool
+	deferred_ms  int
+	deferred_arg u64
+	deferred_cb  AfterCallback = unsafe { nil }
 	// trusted_proxies are the socket peer addresses whose forwarding headers
 	// `ip()` may believe. The framework copies this from a `trusted_proxies`
 	// field on the app struct into every request context; an app that does not
@@ -179,7 +187,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if custom_mimetype != '' {
 		ctx.res.header.set(.content_type, custom_mimetype)
 	}
-	if !ctx.res.header.contains(.content_length) {
+	if !ctx.res.header.contains(.content_length) && ctx.res.status_code != int(http.Status.not_modified) {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
 	// send veb's closing headers
@@ -299,9 +307,9 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	}
 	file.close()
 	// Check which encodings the client accepts
-	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
-	client_accepts_zstd := accept_encoding.contains('zstd')
-	client_accepts_gzip := accept_encoding.contains('gzip')
+	accept_encoding := ctx.req.header.values(.accept_encoding).join(',')
+	client_accepts_zstd := client_accepts_encoding(accept_encoding, 'zstd')
+	client_accepts_gzip := client_accepts_encoding(accept_encoding, 'gzip')
 	max_size_bytes := ctx.static_compression_max_size
 	should_use_static_compression := ctx.should_use_static_compression_for_mime(content_type)
 	// Determine which compression modes are enabled
@@ -341,11 +349,29 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 					return result
 				}
 			}
-			// Compression failed: serve uncompressed in streaming mode
-			ctx.return_type = .file
-			ctx.return_file = file_path
-			ctx.res.header.set(.content_length, file_size.str())
-			return ctx.send_response_to_client(content_type, '')
+			// Compression failed: continue with the identity representation below.
+		}
+	}
+	// Identity validators never apply to the encoded representations above.
+	ctx.vary_static_encoding()
+	mtime := os.file_last_mod_unix(file_path)
+	etag := static_file_etag(file_path) or { return ctx.server_error('could not read resource') }
+	last_modified := time.unix(mtime).http_header_string()
+	// A validator the client already has skips the whole transfer (RFC 7232).
+	// If-None-Match takes precedence over If-Modified-Since.
+	if_none_match_values := ctx.req.header.values(.if_none_match)
+	is_retrieval := ctx.req.method in [.get, .head]
+	if if_none_match_values.len > 0 {
+		if etag_matches(if_none_match_values.join(','), etag) {
+			if is_retrieval {
+				return ctx.send_not_modified(etag, last_modified)
+			}
+			ctx.res.set_status(.precondition_failed)
+			return ctx.send_response_to_client('text/plain', '')
+		}
+	} else if if_modified_since := ctx.req.header.get(.if_modified_since) {
+		if is_retrieval && static_not_modified_since(if_modified_since, mtime) {
+			return ctx.send_not_modified(etag, last_modified)
 		}
 	}
 	// Takeover mode: load file in memory (backward compatibility)
@@ -354,12 +380,34 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 			eprintln('[veb] error while trying to read file: ${err.msg()}')
 			return ctx.server_error('could not read resource')
 		}
+		// A satisfiable single range is served as 206 straight from the
+		// identity bytes, skipping the compression machinery below.
+		if range_header := ctx.req.header.get(.range) {
+			if ctx.req.method == .get
+				&& if_range_holds(ctx.req.header.get(.if_range) or { '' }, etag, mtime) {
+				if rng := parse_range_header(range_header, i64(data.len)) {
+					if rng.start >= i64(data.len) {
+						return ctx.send_range_not_satisfiable(i64(data.len))
+					}
+					return ctx.send_file_range(content_type, file_path, rng, etag,
+						last_modified)
+				}
+			}
+		}
+		ctx.res.header.set(.etag, etag)
+		ctx.res.header.set(.last_modified, last_modified)
+		ctx.res.header.set(.accept_ranges, 'bytes')
 		return ctx.send_response_to_client(content_type, data)
 	}
-	// Default: serve uncompressed file in streaming mode (zero-copy sendfile)
+	// Default: serve uncompressed file in streaming mode (zero-copy sendfile).
+	// Range requests fall through to the full 200 body here: the streaming
+	// transports have no offset support yet, and a full response is always legal.
 	ctx.return_type = .file
 	ctx.return_file = file_path
 	ctx.res.header.set(.content_length, file_size.str())
+	ctx.res.header.set(.etag, etag)
+	ctx.res.header.set(.last_modified, last_modified)
+	ctx.res.header.set(.accept_ranges, 'bytes')
 	return ctx.send_response_to_client(content_type, '')
 }
 
@@ -412,6 +460,9 @@ fn (mut ctx Context) serve_compressed_path_if_fresh(content_type string, compres
 	if compressed_mtime < orig_mtime {
 		return false
 	}
+	if _ := ctx.encoded_if_none_match_star() {
+		return true
+	}
 	// Serve existing compressed file in streaming mode (zero-copy)
 	ctx.return_type = .file
 	ctx.return_file = compressed_path
@@ -451,6 +502,9 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 			c := gzip.compress(data.bytes()) or { return none }
 			c, '.gz', 'gzip'
 		}
+	}
+	if result := ctx.encoded_if_none_match_star() {
+		return result
 	}
 
 	compressed_path := static_compression_cache_path(file_path, ext)

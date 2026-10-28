@@ -735,6 +735,10 @@ over gzip when the client supports both.
 
 **How it works:**
 
+Static sidecars and generated compressed files honor case insensitive `Accept-Encoding` offers,
+wildcards, and `q=0` refusals. An explicit coding entry overrides the wildcard. If every enabled
+coding is refused or no header is sent, veb serves the original file.
+
 1. **Manual pre-compression**: If you create `.zst` or `.gz` files manually, veb will serve
    them in zero-copy streaming mode for maximum performance when the MIME type is allowed.
 2. **Lazy compression cache**: Files smaller than the threshold are automatically compressed
@@ -853,6 +857,14 @@ serve `.zst` if the client supports zstd, otherwise `.gz` if gzip is supported.
 - Large files (> threshold) are always streamed, ensuring low memory usage even for large assets.
 - The `encode_auto` middleware automatically chooses zstd or gzip based on client support. You can
   also use `encode_zstd` or `encode_gzip` for specific compression.
+  Dynamic compression skips bodies below 256 bytes, statuses without a body, streaming files,
+  already compressed content, and noncompressible media types. Compressed output is used only
+  when it is smaller. Encoding names are case insensitive; explicit `q=0` refusals override
+  wildcard offers. Repeated `Accept-Encoding` fields are combined before selecting a coding.
+  Positive quality values allow a coding; `encode_auto` prefers zstd over gzip.
+  Eligible responses include `Vary: Accept-Encoding` even when sent without compression, while
+  preserving existing `Vary` fields.
+  Compression weakens any existing strong ETag because the encoded bytes differ.
 - If caching fails (e.g., on read-only filesystems), veb automatically falls
   back to serving compressed content from memory. You can set `static_compression_max_size = 0`
   to disable auto-compression completely. For optimal performance on read-only systems,
@@ -1591,6 +1603,81 @@ fn main() {
 	veb.run[App, Context](mut app, 8080)
 }
 ```
+
+### Deferred responses
+
+A handler that needs to answer later, without holding the worker, returns
+`ctx.after(ms, cb, arg)`. The handler returns at once; no sooner than `ms`
+milliseconds on, `cb` runs and writes the single response. `ms <= 0` runs
+`cb` on the next timer turn. `cb` may call `after` again to re-arm the
+timer; otherwise the connection closes once `cb` returns.
+
+```v
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn done(mut ctx veb.Context, arg u64) {
+	ctx.text('late:${arg}')
+}
+
+@['/delay/:ms']
+pub fn (mut app App) delay(mut ctx Context, ms int) veb.Result {
+	return ctx.after(ms, done, u64(ms))
+}
+
+fn main() {
+	mut app := &App{}
+	veb.run[App, Context](mut app, 8080)
+}
+```
+
+Boundaries, compared with a plain handler:
+
+* `cb` runs on a dedicated timer thread, not the accept-loop worker, and
+  receives the base `Context`, not the app's wrapper type. The request is
+  still readable, but app state must travel in `arg`.
+* The timer closes the connection after the response and advertises
+  `Connection: close`, so do not pipeline another request behind a
+  deferred one. After-middleware is skipped for deferred responses.
+* Without a live client transport (unit tests, `render_request`, the SSL
+  path, which has no takeover support) `after` answers inline instead:
+  the response and its timing stay correct, on the caller's thread.
+
+## Conditional static responses and ranges
+
+Identity responses from `Context.file` and `StaticHandler` include a strong `ETag`,
+`Last-Modified`, and `Accept-Ranges: bytes`. The ETag hashes the file contents with SHA-256,
+reading the file in bounded chunks on every request, even when its body is streamed. Files that
+change within one timestamp second still receive different ETags. `Last-Modified` has HTTP's
+second precision; prefer ETags for files that can change more frequently.
+
+`If-None-Match` combines all repeated fields. Its presence takes precedence over
+`If-Modified-Since`, including an empty list of tags.
+A match returns 304 for GET and HEAD,
+without a body or Content-Length, and 412 for other methods. `If-Modified-Since` is ignored for
+other methods. Identity responses retain `Vary: Accept-Encoding` along with
+existing Vary fields. Encoded static responses currently omit these validators, so an identity
+ETag cannot suppress a compressed body. `If-None-Match: *` still matches an existing encoded
+representation, returning 304 for GET/HEAD or 412 for other methods. Its 304 omits the identity
+ETag.
+A takeover-mode 304 uses a weak ETag to preserve
+validators for bodies encoded by dynamic middleware. That weak tag can revalidate a cached body;
+a later `If-Range` request with it falls back to the full response.
+
+In-memory takeover GET responses support one byte range (`bytes=0-99`, `bytes=100-`, or
+`bytes=-100`). Range headers on other methods are ignored.
+A satisfiable range returns 206 and `Content-Range`; an out-of-bounds range returns 416. Invalid
+or multiple ranges are ignored. `If-Range` requires an exact strong ETag. Weak ETags, stale
+validators, and date validators fall back to the full response: filesystem dates have only second
+precision and cannot prove the file was unchanged within that second. Streaming transports serve
+the full 200 response for ranges because their file writers do not support offsets.
 
 ## In-process raw HTTP requests
 
