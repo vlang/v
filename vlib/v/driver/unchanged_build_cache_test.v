@@ -134,12 +134,28 @@ fn test_unchanged_build_cache_rejects_unavailable_metadata() {
 }
 
 fn test_parallel_monomorphize_requires_explicit_opt_in() {
-	old := os.getenv('V3_PARALLEL_MONOMORPHIZE')
-	defer { os.setenv('V3_PARALLEL_MONOMORPHIZE', old, true) }
+	old := os.getenv_opt('V3_PARALLEL_MONOMORPHIZE')
+	defer {
+		if previous := old {
+			os.setenv('V3_PARALLEL_MONOMORPHIZE', previous, true)
+		} else {
+			os.unsetenv('V3_PARALLEL_MONOMORPHIZE')
+		}
+	}
 	os.unsetenv('V3_PARALLEL_MONOMORPHIZE')
 	assert !should_parallel_monomorphize()
 	os.setenv('V3_PARALLEL_MONOMORPHIZE', '0', true)
 	assert !should_parallel_monomorphize()
+	os.setenv('V3_PARALLEL_MONOMORPHIZE', '1', true)
+	$if tinyc {
+		$if linux && amd64 {
+			assert should_parallel_monomorphize()
+		} $else {
+			assert !should_parallel_monomorphize()
+		}
+	} $else {
+		assert should_parallel_monomorphize()
+	}
 }
 
 fn test_default_build_rechecks_compile_time_environment() {
