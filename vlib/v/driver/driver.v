@@ -12078,6 +12078,10 @@ pub fn run(args []string) {
 		maybe_delegate_v3_to_vvmrc(input_file, verbose)
 	}
 	// The JS compatibility path returns before the common backend validation below.
+	if 'vlibc' in user_defines && backend == 'js' {
+		eprintln('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target')
+		exit(1)
+	}
 	if target_libc_headers && backend == 'js' {
 		eprintln('option `-target-libc-headers` requires the C backend')
 		exit(1)
@@ -13119,9 +13123,9 @@ pub fn run(args []string) {
 
 	if 'vlibc' in prefs.user_defines
 		&& (prefs.backend != 'c' || prefs.target.os !in ['linux', 'android', 'termux', 'vinix',
-		'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'macos', 'darwin', 'solaris']
-		|| prefs.target.arch !in ['amd64', 'arm64']
-		|| (prefs.target.os in ['dragonfly', 'solaris'] && prefs.target.arch != 'amd64')) {
+			'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'macos', 'darwin', 'solaris']
+			|| prefs.target.arch !in ['amd64', 'arm64']
+			|| (prefs.target.os in ['dragonfly', 'solaris'] && prefs.target.arch != 'amd64')) {
 		eprintln('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target')
 		exit(1)
 	}
