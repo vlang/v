@@ -2149,6 +2149,31 @@ fn test_c_build_directives_are_rejected_instead_of_discarded() {
 	assert message.contains('C build directive `#flag -D FEATURE=1`'), message
 }
 
+fn test_separate_library_operand_flag_is_skipped() {
+	// `#flag -l <lib>` spells the library as a separate operand (vlib/builtin uses
+	// `#flag windows -l dbghelp`). It only affects linking, so it is left to the
+	// TinyCC driver exactly like the joined `-l<lib>` spelling, not rejected.
+	mut prefs := pref.new_preferences()
+	prefs.building_v = false
+	for directive in ['#flag -l dbghelp', '#flag -l advapi32 -l dbghelp', '#flag -ldbghelp -l advapi32'] {
+		out := generate('module main\n${directive}\nfn main() { println(1) }\n', 'separate_lib_flag.v',
+			prefs) or {
+			assert false, '`${directive}` should be skipped, not rejected: ${err.msg()}'
+			''
+		}
+		assert !out.contains('dbghelp'), out
+	}
+	// The same separate operand mixed with a preprocessor define must still yield
+	// the define, with the link flag and its operand skipped.
+	mixed := generate('module main\n#flag -DFEATURE=1 -l dbghelp\nfn main() { println(1) }\n',
+		'separate_lib_flag_mixed.v', prefs) or {
+		assert false, 'mixed define and separate library operand should be accepted: ${err.msg()}'
+		''
+	}
+	assert mixed.contains('#define FEATURE 1'), mixed
+	assert !mixed.contains('dbghelp'), mixed
+}
+
 fn test_colliding_import_aliases_are_rejected() {
 	prefs := pref.new_preferences()
 	for source in [
