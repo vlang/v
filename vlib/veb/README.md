@@ -735,6 +735,10 @@ over gzip when the client supports both.
 
 **How it works:**
 
+Static sidecars and generated compressed files honor case insensitive `Accept-Encoding` offers,
+wildcards, and `q=0` refusals. An explicit coding entry overrides the wildcard. If every enabled
+coding is refused or no header is sent, veb serves the original file.
+
 1. **Manual pre-compression**: If you create `.zst` or `.gz` files manually, veb will serve
    them in zero-copy streaming mode for maximum performance when the MIME type is allowed.
 2. **Lazy compression cache**: Files smaller than the threshold are automatically compressed
