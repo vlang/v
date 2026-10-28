@@ -21,15 +21,18 @@ fn delayed_answer(mut ctx veb.Context, arg u64) {
 	ctx.text('late:${arg}')
 }
 
+// before_accept_loop signals that the test server is ready to accept requests.
 pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
+// delay schedules a response while releasing the request worker.
 @['/delay']
 pub fn (mut app App) delay(mut ctx Context) veb.Result {
 	return ctx.after(400, delayed_answer, 7)
 }
 
+// fast responds immediately to test that a deferred request leaves the worker available.
 @['/fast']
 pub fn (mut app App) fast(mut ctx Context) veb.Result {
 	return ctx.text('fast')
