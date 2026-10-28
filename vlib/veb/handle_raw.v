@@ -1,6 +1,8 @@
 module veb
 
 import io
+import net.http
+import os
 
 // RawRequestReader is an in-memory `io.Reader` over raw request bytes, so
 // `handle_raw` can feed them through the same buffered wire reader the server
@@ -60,7 +62,24 @@ pub fn handle_raw[A, X](mut app A, raw []u8) []u8 {
 			out << request_read_error_response(err).bytes()
 			break
 		}
-		completed := handle_request_and_route[A, X](mut app, req, -1, params)
+		mut completed := handle_request_and_route[A, X](mut app, req, -1, params)
+		if completed.return_type == .file {
+			// Socket transports stream return_file separately from the response.
+			// Here the returned buffer must contain those bytes before the next response.
+			completed.res.body = os.read_file(completed.return_file) or {
+				failure := http.new_response(
+					status: .internal_server_error
+					body:   '500 Internal Server Error'
+					header: http.new_header(http.HeaderConfig{ key: .content_type, value: 'text/plain' },
+						key:   .connection
+						value: 'close'
+					)
+				)
+				out << failure.bytes()
+				break
+			}
+			completed.res.header.set(.content_length, completed.res.body.len.str())
+		}
 		completed.res.write_to(mut out)
 		if should_close_connection(&completed.req, &completed.res,
 			completed.client_wants_to_close)
