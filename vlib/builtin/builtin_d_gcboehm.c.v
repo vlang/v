@@ -30,6 +30,23 @@ $if !no_gc_threads ? {
 		// See issues #27486, #27488 and #27553.
 		#flag -DTHREAD_LOCAL_ALLOC=1
 	}
+	$if linux || macos {
+		$if gc_parallel_mark ? {
+			// `-d gc_parallel_mark` enables Boehm's parallel marking in the bundled
+			// `gc.c` that V compiles from source (e.g. `-prod` with gcc/clang). The
+			// amalgamation was generated with `--enable-parallel-mark`, but that
+			// setting lives in its `config.h` part, which is only used with
+			// HAVE_CONFIG_H, so without this flag the marker code is compiled out.
+			// With it, up to `nproc - 1` helper threads (at most 15, `GC_MARKERS=n`
+			// overrides) are started at startup and mark with the collecting thread.
+			// That shortens pauses and total GC time for large live heaps, but the
+			// extra wakeups and lock traffic slow down programs with small live heaps
+			// that allocate a lot, and programs with many allocating threads, so it
+			// is opt-in. The prebuilt `thirdparty/tcc/lib/libgc.a` always has
+			// parallel marking; `GC_MARKERS=1` turns it off at run time.
+			#flag -DPARALLEL_MARK=1
+		}
+	}
 }
 
 $if use_bundled_libgc ? {
