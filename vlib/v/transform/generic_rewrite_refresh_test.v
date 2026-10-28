@@ -111,3 +111,52 @@ fn test_generic_refresh_revisits_existing_result_parents_after_late_rewrite() {
 		assert t.var_type('value') == flat.source_type_id('string')
 	}
 }
+
+fn test_refresh_collection_keeps_every_duplicate_generic_call_site() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, 'main.v')
+	a.add_val(.module_decl, 'main')
+	callee := a.add_val(.ident, 'generic')
+	arg := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'value'
+		typ:   flat.source_type_string
+	})
+	mut call_node := flat.Node{
+		kind:           .call
+		typ:            flat.source_type_string
+		children_start: a.children.len
+		children_count: 2
+	}
+	call_node.set_call_type_args([flat.source_type_string])
+	a.children << callee
+	a.children << arg
+	first_call := a.add_node(call_node)
+	second_call := a.add_node(call_node)
+
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	spec := GenericCallSpec{
+		decl_key: 'main.generic'
+		args:     flat.TypeTextList{ ids: [flat.source_type_string] }
+	}
+	t.generic_call_spec_cache[int(first_call)] = spec
+	t.generic_call_spec_cache[int(second_call)] = spec
+	mut decls := map[string]GenericFnDecl{}
+	decls['main.generic'] = GenericFnDecl{
+		node:   flat.Node{
+			kind:  .fn_decl
+			value: 'generic'
+		}
+		module: 'main'
+		key:    'main.generic'
+	}
+	mut emitted := GenericFnSpecBoolMap{}
+	emitted.set(generic_fn_spec_key('main.generic', [flat.source_type_string]), true)
+	mut recorded_call_sites := map[int]bool{}
+	sites := t.collect_generic_call_sites_after_type_refresh(map[u32]u32{}, decls, []bool{},
+		[int(first_call), int(second_call)], mut emitted, mut recorded_call_sites)
+	assert sites.len == 2
+	assert int(sites[0].id) == int(first_call)
+	assert int(sites[1].id) == int(second_call)
+}

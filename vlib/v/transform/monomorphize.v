@@ -1120,7 +1120,6 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 		t.in_monomorphize_scan = old_in_scan
 	}
 	lowered_operator_uses := t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs, decls)
-	mut checked_refresh_signatures := map[string]bool{}
 	for i in candidate_ids {
 		if i < 0 || i >= t.a.nodes.len {
 			continue
@@ -1138,10 +1137,6 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 		}
 		input_signature := t.generic_call_inference_signature(flat.NodeId(i), node,
 			t.node_module_or(i, ''), false, false)
-		if checked_refresh_signatures[input_signature] {
-			continue
-		}
-		checked_refresh_signatures[input_signature] = true
 		if recorded_signature := t.generic_call_miss_signatures[i] {
 			if input_signature == recorded_signature {
 				continue
