@@ -447,8 +447,11 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 	callee := t.a.node(callee_id)
 	name := t.call_name_for_node(id, node)
 	params := t.call_param_types_from_decl(name) or { []types.Type{} }
-	offset := if params.len > 0 { t.call_param_offset(name, node, params) } else { 0 }
+	// The receiver offset only matters for a callee or argument that mentions the
+	// parameter; most calls mention none, so resolve it on first use.
+	mut offset := -1
 	if t.fixed_array_expr_mentions_param(callee_id, param) {
+		offset = if params.len > 0 { t.call_param_offset(name, node, params) } else { 0 }
 		receiver_borrows := offset == 1 && callee.kind == .selector && callee.children_count > 0
 			&& t.fixed_array_arg_hands_param_storage(t.a.child(callee, 0), param)
 			&& t.fixed_array_storage_arg_borrows(name, node, params, 0, t.a.child(callee, 0), mut dependencies)
@@ -464,6 +467,9 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 		arg_id := t.a.child(&node, i)
 		if !t.fixed_array_expr_mentions_param(arg_id, param) {
 			continue
+		}
+		if offset < 0 {
+			offset = if params.len > 0 { t.call_param_offset(name, node, params) } else { 0 }
 		}
 		dependency_start := dependencies.len
 		if t.fixed_array_arg_hands_param_storage(arg_id, param)

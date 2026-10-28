@@ -11,25 +11,26 @@ fn test_nominal_selective_import_probes_skip_missing_candidates_in_order() {
 	item_id := flat.source_type_id('__nominal_probe_Item')
 	first_id := flat.source_type_id('__nominal_probe_first.Item')
 	second_id := flat.source_type_id('__nominal_probe_second.Item')
-	missing := '__nominal_probe_missing.Item'
+	missing_id := flat.source_type_id('__nominal_probe_missing.Item')
 	t.structs[first_id] = StructInfo{}
 	t.structs[second_id] = StructInfo{}
 	tc.interface_names[first_id] = true
 	tc.interface_names[second_id] = true
-	tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(item_id))] = [
-		missing,
-		flat.source_type_name(first_id),
-		flat.source_type_name(second_id),
-	]
-	assert flat.source_type_existing_id(missing) == none
+	tc.selective_import_files[t.cur_file] = &types.FileImportInfo{
+		selective_imports: {
+			item_id: [missing_id, first_id, second_id]
+		}
+	}
 	assert t.selective_import_struct_lookup_name(item_id) or { u32(0) } == first_id
 	assert t.selective_import_type_name_for_file(t.cur_file, item_id) or { u32(0) } == first_id
 	assert t.resolve_interface_type_name_uncached(item_id) == first_id
-	assert flat.source_type_existing_id(missing) == none
-	tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(item_id))] = [missing]
+	tc.selective_import_files[t.cur_file] = &types.FileImportInfo{
+		selective_imports: {
+			item_id: [missing_id]
+		}
+	}
 	assert t.selective_import_struct_lookup_name(item_id) == none
 	assert t.selective_import_type_name_for_file(t.cur_file, item_id) == none
-	assert flat.source_type_existing_id(missing) == none
 }
 
 fn test_nominal_expected_enum_probes_keep_module_order_and_global_fallback() {

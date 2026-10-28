@@ -2451,12 +2451,11 @@ fn (g &FlatGen) struct_default_canonical_leaf_type_text(name_id u32, module_name
 		|| types.is_builtin_type_name_id(clean_id) {
 		return clean_id
 	}
-	// Declaration and selective-import indexes still use declaration-name text.
+	// Declaration indexes still use declaration-name text.
 	clean := flat.source_type_name(clean_id)
 	mut imported := u32(0)
-	for candidate in g.file_selective_import_candidates(file, clean) or { []string{} } {
-		if !g.struct_default_type_key_known(candidate) { continue }
-		candidate_id := flat.source_type_id(candidate)
+	for candidate_id in g.tc.file_selective_import_ids(file, clean_id) or { []u32{} } {
+		if !g.struct_default_type_id_known(candidate_id) { continue }
 		if imported != 0 && imported != candidate_id { return clean_id }
 		imported = candidate_id
 	}
@@ -2473,6 +2472,11 @@ fn (g &FlatGen) struct_default_canonical_leaf_type_text(name_id u32, module_name
 
 fn (g &FlatGen) struct_default_type_key_known(name string) bool {
 	name_id := flat.source_type_existing_id(name) or { return false }
+	return g.struct_default_type_id_known(name_id)
+}
+
+// struct_default_type_id_known reports whether a spelling ID names a declared type.
+fn (g &FlatGen) struct_default_type_id_known(name_id u32) bool {
 	return name_id in g.tc.structs || g.tc.type_aliases.contains(name_id) || name_id in g.tc.interface_names
 		|| g.tc.sum_types.contains(name_id) || name_id in g.tc.enum_names || name_id in g.tc.flag_enums
 		|| name_id in g.struct_decl_infos
@@ -3650,8 +3654,7 @@ fn (g &FlatGen) shared_qualify_leaf_type_text(name_id u32, module_name string) u
 	}
 	clean := flat.source_type_name(clean_id)
 	mut imported := u32(0)
-	for candidate in g.file_selective_import_candidates(g.tc.cur_file, clean) or { []string{} } {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	for candidate_id in g.tc.file_selective_import_ids(g.tc.cur_file, clean_id) or { []u32{} } {
 		if candidate_id !in g.tc.structs && !g.tc.type_aliases.contains(candidate_id) && candidate_id !in g.tc.interface_names
 			&& !g.tc.sum_types.contains(candidate_id) && candidate_id !in g.tc.enum_names && candidate_id !in g.tc.flag_enums {
 			continue
@@ -4818,14 +4821,34 @@ fn cgen_compact_generic_type_id(base u32, args []u32) u32 {
 }
 
 fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
+	// The rewrite depends on the spelling and the current file's imports, which a
+	// body memo keeps fixed.
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.alias_type_names.len == 0 {
+		return g.struct_init_import_alias_type_name_uncached(type_name_id)
+	}
+	slot := int(((u64(type_name_id) * u64(0x9e3779b1)) >> 7) & u64(body_alias_type_name_slots - 1))
+	entry := unsafe { &memo.alias_type_names[slot] }
+	if entry.generation == memo.generation && entry.type_id == type_name_id {
+		return entry.value
+	}
+	result := g.struct_init_import_alias_type_name_uncached(type_name_id)
+	memo.alias_type_names[slot] = BodyAliasTypeNameQuery{
+		type_id:    type_name_id
+		generation: memo.generation
+		value:      result
+	}
+	return result
+}
+
+fn (g &FlatGen) struct_init_import_alias_type_name_uncached(type_name_id u32) u32 {
 	base_source_id, args_source_ids, is_generic := g.shared_generic_app_parts(type_name_id)
-	base := flat.source_type_name(base_source_id)
 	if is_generic && args_source_ids.len > 0 && !flat.source_type_shape(base_source_id).has(.dotted) {
-		mut resolved := []string{}
+		mut resolved := []u32{}
 		if g.tc.cur_file.len > 0 {
-			if candidates := g.file_selective_import_candidates(g.tc.cur_file, base) {
+			if candidates := g.tc.file_selective_import_ids(g.tc.cur_file, base_source_id) {
 				for candidate in candidates {
-					if candidate.len > 0 && candidate !in resolved {
+					if candidate != 0 && candidate !in resolved {
 						resolved << candidate
 					}
 				}
@@ -4835,20 +4858,17 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
 			// Specialized function bodies can be emitted after the top-level file
 			// cursor has moved. Recover a selective type import only when its short
 			// name has one unambiguous target across the checked files.
-			suffix := '\n${base}'
-			for key, candidates in g.tc.file_selective_imports {
-				if !key.ends_with(suffix) {
-					continue
-				}
+			for _, info in g.tc.selective_import_files {
+				candidates := info.selective_imports[base_source_id] or { continue }
 				for candidate in candidates {
-					if candidate.len > 0 && candidate !in resolved {
+					if candidate != 0 && candidate !in resolved {
 						resolved << candidate
 					}
 				}
 			}
 		}
 		if resolved.len == 1 {
-			return cgen_compact_generic_type_id(flat.source_type_id(resolved[0]), args_source_ids)
+			return cgen_compact_generic_type_id(resolved[0], args_source_ids)
 		}
 	}
 	if !flat.source_type_shape(type_name_id).has(.dotted) {
@@ -5037,17 +5057,46 @@ fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
 
 // find_struct_decl resolves find struct decl information for c.
 fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
+	// The declaration of a spelling depends on the current file's imports and the
+	// current module, which a body memo keeps fixed.
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.struct_decls.len == 0 {
+		return g.find_struct_decl_uncached(type_name_id)
+	}
+	slot := int(((u64(type_name_id) * u64(0x9e3779b1)) >> 7) & u64(body_struct_decl_query_slots - 1))
+	entry := unsafe { &memo.struct_decls[slot] }
+	if entry.generation == memo.generation && entry.type_id == type_name_id {
+		if entry.found {
+			return entry.info
+		}
+		return none
+	}
+	info := g.find_struct_decl_uncached(type_name_id) or {
+		memo.struct_decls[slot] = BodyStructDeclQuery{
+			type_id:    type_name_id
+			generation: memo.generation
+		}
+		return none
+	}
+	memo.struct_decls[slot] = BodyStructDeclQuery{
+		type_id:    type_name_id
+		generation: memo.generation
+		found:      true
+		info:       info
+	}
+	return info
+}
+
+fn (g &FlatGen) find_struct_decl_uncached(type_name_id u32) ?StructDeclInfo {
 	// A bare name belongs to the file that wrote it: `import model { Context }`
 	// must select `model.Context` here even when another imported module declares
 	// a same-named struct, or that homonym's declarations (fields, defaults)
 	// leak into this file's literals. Checked before the per-module cache below,
 	// because two files of one module can import different homonyms.
 	if !flat.source_type_shape(type_name_id).has(.dotted) && g.tc.cur_file.len > 0 {
-		type_name := flat.source_type_name(type_name_id)
-		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_name) or {
-			[]string{}
+		for candidate_id in g.tc.file_selective_import_ids(g.tc.cur_file, type_name_id) or {
+			[]u32{}
 		} {
-			candidate_id := flat.source_type_existing_id(candidate) or { continue }
 			if info := g.struct_decl_infos[candidate_id] {
 				return info
 			}
@@ -5788,8 +5837,8 @@ fn (g &FlatGen) embedded_field_type_name(field types.StructField) u32 {
 	// alias name so promoted methods on the alias receive the embedded callback,
 	// rather than the outer struct.
 	if clean_type is types.FnType {
-		for candidate in [field.name, g.tc.qualify_name(field.name)] {
-			candidate_id := flat.source_type_existing_id(candidate) or { continue }
+		embedded_name_id := flat.source_type_id(field.name)
+		for candidate_id in [embedded_name_id, g.tc.qualify_type_name(embedded_name_id)] {
 			if !g.tc.type_aliases.contains(candidate_id) {
 				continue
 			}
@@ -6017,6 +6066,40 @@ fn (g &FlatGen) embedded_field_path_for_promoted_field_inner(type_name_id u32, f
 }
 
 fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, field_name string) ?[]types.StructField {
+	clean := types.unwrap_pointer(base_type)
+	if clean !is types.Struct {
+		return g.embedded_field_path_for_promoted_selector_uncached(base_type, field_name)
+	}
+	// For a struct base the answer depends on its name, the field and the current
+	// file's imports. Most selectors have no promoted path; remember those misses
+	// for the rest of the body.
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.promoted_misses.len == 0 {
+		return g.embedded_field_path_for_promoted_selector_uncached(base_type, field_name)
+	}
+	name_id := (clean as types.Struct).name_id
+	mut hash := u64(name_id) * u64(0x9e3779b1) ^ u64(field_name.len) * u64(0x85ebca6b)
+	if field_name.len > 0 {
+		hash ^= u64(field_name[0]) << 3 ^ u64(field_name[field_name.len - 1]) << 11
+	}
+	slot := int((hash >> 7) & u64(body_promoted_miss_slots - 1))
+	entry := unsafe { &memo.promoted_misses[slot] }
+	if entry.generation == memo.generation && entry.name_id == name_id
+		&& entry.field == field_name {
+		return none
+	}
+	path := g.embedded_field_path_for_promoted_selector_uncached(base_type, field_name) or {
+		memo.promoted_misses[slot] = BodyPromotedMissQuery{
+			name_id:    name_id
+			generation: memo.generation
+			field:      field_name
+		}
+		return none
+	}
+	return path
+}
+
+fn (g &FlatGen) embedded_field_path_for_promoted_selector_uncached(base_type types.Type, field_name string) ?[]types.StructField {
 	type_name := (g.concrete_bare_struct_selector_name(base_type) or {
 		g.type_lookup_name(base_type)
 	})
@@ -7594,7 +7677,7 @@ fn (g &FlatGen) c_sum_decl_names() []string {
 		name_ids = name_ids.filter(g.cache_decl_refs[g.cname(flat.source_type_name(it))])
 	}
 	if g.skip_generics {
-		name_ids = name_ids.filter((g.tc.sum_generic_params[it] or { []string{} }).len == 0)
+		name_ids = name_ids.filter((g.tc.sum_generic_params[it] or { []u32{} }).len == 0)
 	}
 	mut names := name_ids.map(flat.source_type_name(it))
 	names.sort()

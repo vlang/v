@@ -2,37 +2,31 @@ module types
 
 import v.flat
 
-fn test_checker_selective_type_probes_keep_misses_and_candidate_order() {
+fn test_checker_selective_type_probes_keep_candidate_order() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	tc.cur_file = 'checker_lookup_probe.v'
-	missing := '__checker_lookup_probe_missing__.Selected'
-	first := '__checker_lookup_probe_first__.Selected'
-	second := '__checker_lookup_probe_second__.Selected'
-	candidates := [missing, first, second]
-	tc.file_selective_imports[file_import_key(tc.cur_file, 'Selected')] = candidates
-	tc.file_imports_by_file[tc.cur_file] = &FileImportInfo{
+	selected_id := flat.source_type_id('Selected')
+	missing_id := flat.source_type_id('__checker_lookup_probe_missing__.Selected')
+	first_id := flat.source_type_id('__checker_lookup_probe_first__.Selected')
+	second_id := flat.source_type_id('__checker_lookup_probe_second__.Selected')
+	info := &FileImportInfo{
 		selective_imports: {
-			'Selected': candidates
+			selected_id: [missing_id, first_id, second_id]
 		}
 	}
-	assert flat.source_type_existing_id(missing) == none
-	assert tc.resolve_selective_import_type_symbol('Selected') == none
-	assert tc.resolve_selective_import_type_symbol_in_file('Selected', tc.cur_file) == none
-	for candidate in candidates {
-		assert flat.source_type_existing_id(candidate) == none
-	}
-	first_id := flat.source_type_id(first)
-	second_id := flat.source_type_id(second)
+	tc.file_imports_by_file[tc.cur_file] = info
+	tc.selective_import_files[tc.cur_file] = info
+	assert tc.resolve_selective_import_type_symbol_text_id('Selected') == none
+	assert tc.resolve_selective_import_type_symbol_in_file_id(selected_id, tc.cur_file) == none
 	tc.structs[first_id] = []StructField{}
 	tc.enum_names[second_id] = true
-	assert tc.resolve_selective_import_type_symbol('Selected')? == first
-	assert tc.resolve_selective_import_type_symbol_in_file('Selected', tc.cur_file)? == first
+	assert tc.resolve_selective_import_type_symbol_text_id('Selected')? == first_id
+	assert tc.resolve_selective_import_type_symbol_in_file_id(selected_id, tc.cur_file)? == first_id
 	tc.structs.delete(first_id)
-	tc.struct_generic_params[first_id] = ['T']
-	assert tc.resolve_selective_import_type_symbol('Selected')? == first
-	assert tc.resolve_selective_import_type_symbol_in_file('Selected', tc.cur_file)? == second
-	assert flat.source_type_existing_id(missing) == none
+	tc.struct_generic_params[first_id] = generic_param_ids(['T'])
+	assert tc.resolve_selective_import_type_symbol_text_id('Selected')? == first_id
+	assert tc.resolve_selective_import_type_symbol_in_file_id(selected_id, tc.cur_file)? == second_id
 }
 
 fn test_checker_type_spelling_probes_preserve_empty_identity_and_registered_kinds() {
@@ -103,12 +97,12 @@ fn test_checker_qualified_type_and_error_probes_keep_original_on_miss() {
 		local := '${tc.cur_module}.${name}'
 		assert flat.source_type_existing_id(local) == none
 		assert tc.resolve_ierror_payload_name(name_id_) == name_id_
-		assert !tc.unqualified_type_name_shadows_builtin_in_scope(name, tc.cur_file, tc.cur_module)
+		assert !tc.unqualified_type_name_shadows_builtin_in_scope_id(name_id_, tc.cur_file, tc.cur_module)
 		assert flat.source_type_existing_id(local) == none
 		local_id := flat.source_type_id(local)
 		tc.structs[local_id] = []StructField{}
 		assert tc.resolve_ierror_payload_name(name_id_) == local_id
-		assert tc.unqualified_type_name_shadows_builtin_in_scope(name, tc.cur_file, tc.cur_module)
+		assert tc.unqualified_type_name_shadows_builtin_in_scope_id(name_id_, tc.cur_file, tc.cur_module)
 	}
 }
 

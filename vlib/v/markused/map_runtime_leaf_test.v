@@ -97,7 +97,7 @@ fn test_map_runtime_mixed_signatures_and_recursive_structs_keep_maps() {
 fn test_map_runtime_generic_placeholders_and_unknowns_keep_existing_results() {
 	mut a := flat.FlatAst.new()
 	tc := types.TypeChecker.new(&a)
-	generic := types.Type(types.Unknown{ reason: 'generic placeholder T' })
+	generic := types.Type(types.Unknown{ reason: 'generic placeholder T', generic: true })
 	unknown := types.Type(types.Unknown{ reason: 'unresolved value' })
 	mut scan := RuntimeHelpersScan{}
 	assert scan.type_needs_map_runtime(generic, &tc)

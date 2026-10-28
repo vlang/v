@@ -353,7 +353,11 @@ fn test_enum_autostr_keeps_checked_types_and_resolves_declaration_spellings() {
 	tc.file_imports['${file}\nreal_a'] = 'a'
 	tc.file_imports['${file}\na'] = 'b'
 	tc.file_imports['${file}\ntoken'] = 'toml.token'
-	tc.file_selective_imports['${file}\nKind'] = ['b.Kind']
+	tc.selective_import_files[file] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Kind'): [flat.source_type_id('b.Kind')]
+		}
+	}
 	mut t := new_transformer(mut a, &tc, {
 		'main': true
 	})
@@ -709,9 +713,13 @@ fn test_embedded_field_path_specializes_each_owner() {
 fn test_embedded_field_path_uses_selected_struct_owner() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.file_selective_imports['main.v\nOuter'] = ['pkg.Outer']
-	tc.struct_generic_params[flat.source_type_id('pkg.Outer')] = ['T']
-	tc.struct_generic_params[flat.source_type_id('pkg.Middle')] = ['T']
+	tc.selective_import_files['main.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Outer'): [flat.source_type_id('pkg.Outer')]
+		}
+	}
+	tc.struct_generic_params[flat.source_type_id('pkg.Outer')] = types.generic_param_ids(['T'])
+	tc.struct_generic_params[flat.source_type_id('pkg.Middle')] = types.generic_param_ids(['T'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_file = 'main.v'
 	t.cur_module = 'main'
@@ -1626,8 +1634,8 @@ fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs[flat.source_type_id('orm.QueryBuilder')] = []types.StructField{}
-	tc.struct_generic_params[flat.source_type_id('orm.QueryBuilder')] = ['T']
-	tc.struct_generic_params[flat.source_type_id('QueryBuilder')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('orm.QueryBuilder')] = types.generic_param_ids(['T'])
+	tc.struct_generic_params[flat.source_type_id('QueryBuilder')] = types.generic_param_ids(['T'])
 	tc.struct_modules[flat.source_type_id('orm.QueryBuilder')] = 'orm'
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
@@ -1639,7 +1647,7 @@ fn test_immediate_closure_generic_sum_pointer_result_may_alias_capture() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.sum_types.set(flat.source_type_id('Maybe'), ['T', 'IError'])
-	tc.sum_generic_params[flat.source_type_id('Maybe')] = ['T']
+	tc.sum_generic_params[flat.source_type_id('Maybe')] = types.generic_param_ids(['T'])
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('Maybe[&int]'))
@@ -1652,7 +1660,7 @@ fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
 		name: 'value'
 		typ:  tc.parse_type(flat.source_type_id('T'))
 	}]
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = types.generic_param_ids(['T'])
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.immediate_closure_result_may_alias_capture(flat.source_type_id('Box[&int]'))
@@ -2044,7 +2052,11 @@ fn test_generic_cast_prescreen_keeps_selectively_imported_type_spellings() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs[flat.source_type_id('library.Box')] = []types.StructField{}
 	tc.structs[flat.source_type_id('library.Box[int]')] = []types.StructField{}
-	tc.file_selective_imports['caller.v\nImported'] = ['library.Box[int]']
+	tc.selective_import_files['caller.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Imported'): [flat.source_type_id('library.Box[int]')]
+		}
+	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_file = 'caller.v'
 	lowered := t.try_lower_generic_named_type_cast_call(a.nodes[int(call)]) or {

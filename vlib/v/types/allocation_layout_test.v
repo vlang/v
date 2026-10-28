@@ -13,7 +13,7 @@ fn test_allocation_alignment_follows_value_edges() {
 	tc.type_aliases.set(flat.source_type_id('Alias'), 'Choice')
 	tc.structs[flat.source_type_id('Holder')] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('Choice')) }]
 	tc.structs[flat.source_type_id('Box')] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('T')) }]
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = generic_param_ids(['T'])
 	aligned := ['Aligned', 'Choice', 'Alias', 'Holder', 'Box[Choice]', '[2]Choice', '?Choice',
 		'!Choice']
 	ordinary := ['int', '&Choice', '[]Choice', 'map[string]Choice', 'fn () Choice']
@@ -47,7 +47,7 @@ fn test_allocation_scan_follows_storage_and_generic_fields() {
 		StructField{ name: 'right', typ: *tc.parse_type(flat.source_type_id('Plain')) },
 	]
 	tc.structs[flat.source_type_id('Box')] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('T')) }]
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = generic_param_ids(['T'])
 	tc.structs[flat.source_type_id('Shared')] = tc.structs[flat.source_type_id('Plain')]
 	tc.struct_shared_fields[flat.source_type_id('Shared')] = {
 		'value': true
