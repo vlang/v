@@ -329,6 +329,7 @@ mut:
 	alias_cache                            &AliasCache                = unsafe { nil }
 	sum_cache                              &AliasCache                = unsafe { nil }
 	module_type_cache                      &ModuleTypeCache           = unsafe { nil }
+	enum_selector_cache                    &EnumSelectorCache         = unsafe { nil }
 	struct_guess_cache                     &AliasCache                = unsafe { nil }
 	generic_unresolved_cache               &GenericUnresolvedCache    = unsafe { nil }
 	spec_args_misses                       &SpecArgsMissCache         = unsafe { nil }
@@ -792,6 +793,20 @@ mut:
 	shared_bases    map[u32]u32
 	variadic_arrays map[u32]u32
 	entries         map[u32]u32
+}
+
+// EnumSelectorCache memoizes enum_type_name_from_selector_name for one source
+// context. Selector bases repeat within a file; resolving each one again
+// normalizes its spelling through the module and import tables. Results are
+// keyed by spelling ID, so no entry refers to arena-owned text.
+struct EnumSelectorCache {
+mut:
+	file          string
+	module        string
+	enum_types    int
+	type_aliases  int
+	alias_entries int
+	entries       map[u32]u32 // 0 records a name that does not denote an enum
 }
 
 // Field lookups alternate between owner modules within one source file. Keep
@@ -2934,6 +2949,7 @@ fn (mut t Transformer) prepare() {
 	t.alias_cache = &AliasCache{}
 	t.sum_cache = &AliasCache{}
 	t.module_type_cache = &ModuleTypeCache{}
+	t.enum_selector_cache = &EnumSelectorCache{}
 	t.struct_guess_cache = &AliasCache{}
 	t.var_type_cache = &VarTypeIndexCache{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -5487,6 +5503,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.module_type_cache = &ModuleTypeCache{}
+	w.enum_selector_cache = &EnumSelectorCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -5631,6 +5648,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.module_type_cache = &ModuleTypeCache{}
+	w.enum_selector_cache = &EnumSelectorCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}

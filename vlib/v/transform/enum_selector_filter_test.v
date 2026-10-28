@@ -149,3 +149,38 @@ fn test_enum_selector_filter_preserves_dotted_selector_values() {
 		assert t.resolve_selector_type_uncached(node) == flat.source_type_id('model.nested.Kind')
 	}
 }
+
+fn test_enum_selector_base_filter_skips_only_bases_that_cannot_name_an_enum() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set_id(flat.source_type_id('Shade'), flat.source_type_id('paint.Tone'))
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'paint'
+	t.enum_types[flat.source_type_id('paint.Tone')] = ['dark', 'light']
+	mut nodes := []flat.Node{}
+	for base in ['Tone', 'paint.Tone', 'Shade', '__eq_lhs_basefilter_1', 'tone_value'] {
+		base_id := a.add_val(.ident, base)
+		nodes << enum_filter_selector(mut a, base_id, 'dark')
+	}
+	mut before := []u32{}
+	for node in nodes { before << t.resolve_selector_type_uncached(node) }
+	assert before[0] == flat.source_type_id('paint.Tone')
+	assert before[1] == flat.source_type_id('paint.Tone')
+	assert before[2] == flat.source_type_id('paint.Tone')
+	t.prepare_enum_selector_filter()
+	assert t.enum_selector_base_may_match('Tone')
+	assert t.enum_selector_base_may_match('other.Shade')
+	assert !t.enum_selector_base_may_match('__eq_lhs_basefilter_2')
+	// Spellings outside plain dotted identifiers keep the full resolution.
+	assert t.enum_selector_base_may_match('Box[int]')
+	missing := '__eq_lhs_basefilter_3'
+	assert t.enum_type_name_from_selector_name(missing) == none
+	assert flat.source_type_existing_id(missing) == none
+	for i, node in nodes {
+		assert t.resolve_selector_type_uncached(node) == before[i]
+	}
+	// A type alias registered after the filter was built disables it.
+	tc.type_aliases.set_id(flat.source_type_id('Hue'), flat.source_type_id('paint.Tone'))
+	assert t.enum_selector_base_may_match('Hue')
+	assert t.enum_type_name_from_selector_name('Hue') or { 0 } == flat.source_type_id('paint.Tone')
+}

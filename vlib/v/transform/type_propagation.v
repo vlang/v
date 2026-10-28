@@ -890,10 +890,41 @@ fn (t &Transformer) enum_type_name_from_expr(id flat.NodeId) ?u32 {
 }
 
 fn (t &Transformer) enum_type_name_from_selector_name(name string) ?u32 {
-	if name == '' {
+	if name == '' || !t.enum_selector_base_may_match(name) {
 		return none
 	}
 	name_id := flat.source_type_id(name)
+	if isnil(t.enum_selector_cache) || isnil(t.tc) || inferred_type_id(name_id) {
+		return t.enum_type_name_from_selector_id(name_id)
+	}
+	mut cache := t.enum_selector_cache
+	if !same_transform_text(cache.file, t.cur_file)
+		|| !same_transform_text(cache.module, t.cur_module)
+		|| cache.enum_types != t.enum_types.len
+		|| cache.type_aliases != t.tc.type_aliases.ids.len
+		|| cache.alias_entries != t.type_alias_suffixes.len {
+		cache.file = t.cur_file
+		cache.module = t.cur_module
+		cache.enum_types = t.enum_types.len
+		cache.type_aliases = t.tc.type_aliases.ids.len
+		cache.alias_entries = t.type_alias_suffixes.len
+		cache.entries.clear()
+	}
+	if cached := cache.entries[name_id] {
+		if cached == 0 {
+			return none
+		}
+		return cached
+	}
+	result := t.enum_type_name_from_selector_id(name_id) or { u32(0) }
+	cache.entries[name_id] = result
+	if result == 0 {
+		return none
+	}
+	return result
+}
+
+fn (t &Transformer) enum_type_name_from_selector_id(name_id u32) ?u32 {
 	if name_id in t.enum_types {
 		return name_id
 	}
