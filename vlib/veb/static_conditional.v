@@ -1,6 +1,8 @@
 module veb
 
+import crypto.sha256
 import os
+import strconv
 import time
 
 // Helpers for conditional and range Static file responses, ported from
@@ -14,18 +16,29 @@ pub:
 	end   i64
 }
 
-// static_file_etag builds a strong validator for a static file body from its
-// modification time and size. Any byte change to a static file also changes
-// at least one of the two, so the tag only matches identical bodies.
-pub fn static_file_etag(mtime i64, size i64) string {
-	return '"${mtime}-${size}"'
+// static_file_etag hashes the file contents to build a strong identity validator.
+// It reads the file in bounded chunks, including for streaming responses.
+pub fn static_file_etag(file_path string) !string {
+	mut file := os.open(file_path)!
+	defer { file.close() }
+	mut digest := sha256.new()
+	mut buffer := []u8{len: 64 * 1024}
+	for {
+		n := file.read(mut buffer) or {
+			if err is os.Eof { break }
+			return err
+		}
+		if n == 0 { break }
+		digest.write(buffer[..n])!
+	}
+	return '"${digest.sum([]u8{}).hex()}"'
 }
 
-// etag_matches reports whether an If-None-Match or If-Range header value
+// etag_matches reports whether an If-None-Match header value
 // matches etag. `*` matches anything, `W/` prefixes are stripped (weak
 // comparison), entries are comma-separated, anything else must match exactly.
 pub fn etag_matches(header_value string, etag string) bool {
-	want := etag.trim('"')
+	want := if etag.starts_with('W/') { etag[2..] } else { etag }
 	for entry in header_value.split(',') {
 		mut candidate := entry.trim_space()
 		if candidate == '*' {
@@ -34,7 +47,7 @@ pub fn etag_matches(header_value string, etag string) bool {
 		if candidate.starts_with('W/') {
 			candidate = candidate[2..]
 		}
-		if candidate.trim('"') == want {
+		if candidate == want && candidate.starts_with('"') && candidate.ends_with('"') {
 			return true
 		}
 	}
@@ -59,7 +72,7 @@ fn parse_range_int(s string) ?i64 {
 			return none
 		}
 	}
-	return s.i64()
+	return strconv.common_parse_int(s, 10, 64, true, true) or { return none }
 }
 
 // parse_range_header parses a single `Range` header value against a body of
@@ -114,27 +127,47 @@ pub fn parse_range_header(header_value string, size i64) ?HttpRange {
 	}
 }
 
-// if_range_holds reports whether an If-Range value still matches the current
-// representation, identified by etag and mtime. An absent value holds; an
-// ETag value is compared weakly; a date value must be at least as recent as
-// the file; anything else (including an unparseable date) fails, so the
-// caller serves the full 200 response instead of a stale range.
-pub fn if_range_holds(header_value string, etag string, mtime i64) bool {
+// if_range_holds reports whether an If-Range value matches the current identity
+// representation. An absent value holds; an
+// ETag value uses exact strong comparison. File modification dates have only
+// second precision, so their strength cannot be guaranteed and date values fail.
+// The caller then serves the full 200 response instead of a stale range.
+pub fn if_range_holds(header_value string, etag string, _mtime i64) bool {
 	v := header_value.trim_space()
 	if v == '' {
 		return true
 	}
 	if v.starts_with('"') || v.starts_with('W/') {
-		return etag_matches(v, etag)
+		return !v.starts_with('W/') && !etag.starts_with('W/') && v == etag
 	}
-	modified := time.parse_http_header_string(v) or { return false }
-	return modified.unix() >= mtime
+	return false
+}
+
+// vary_static_encoding preserves cache keys for identity and encoded responses.
+fn (mut ctx Context) vary_static_encoding() {
+	for value in ctx.res.header.values(.vary) {
+		for token in value.split(',') {
+			if token.trim_space().to_lower() in ['accept-encoding', '*'] {
+				return
+			}
+		}
+	}
+	ctx.res.header.add(.vary, 'Accept-Encoding')
 }
 
 // send_not_modified answers a conditional static request with 304 Not Modified.
 fn (mut ctx Context) send_not_modified(etag string, last_modified string) Result {
 	ctx.res.set_status(.not_modified)
-	ctx.res.header.set(.etag, etag)
+	// Middleware may select an encoded representation with a different length.
+	ctx.res.header.delete(.content_length)
+	// Takeover bodies may have been dynamically encoded before being cached.
+	// A 304 must not replace their weak validator with a strong identity tag.
+	response_etag := if ctx.takeover_mode != .none && !etag.starts_with('W/') {
+		'W/${etag}'
+	} else {
+		etag
+	}
+	ctx.res.header.set(.etag, response_etag)
 	ctx.res.header.set(.last_modified, last_modified)
 	return ctx.send_response_to_client('text/plain', '')
 }

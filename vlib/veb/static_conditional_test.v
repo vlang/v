@@ -2,6 +2,7 @@ module veb
 
 import net.http
 import os
+import time
 
 // Tests for the static conditional/range support in static_conditional.v and
 // send_file. The send_file cases drive the real function in-process (no
@@ -39,7 +40,7 @@ fn test_parse_range_header_forms() {
 
 fn test_parse_range_header_invalid_is_ignored() {
 	for bad in ['', 'bytes=', 'items=0-1', 'bytes=0-1,2-3', 'bytes=abc-def', 'bytes=5-3', 'bytes=-0',
-		'bytes=--', 'bytes'] {
+		'bytes=--', 'bytes', 'bytes=18446744073709551615-', 'bytes=-18446744073709551615'] {
 		if _ := parse_range_header(bad, 1000) {
 			assert false, 'range `${bad}` must be ignored'
 		}
@@ -59,7 +60,12 @@ fn test_if_range_holds() {
 	assert if_range_holds('', etag, mtime) == true
 	assert if_range_holds(etag, etag, mtime) == true
 	assert if_range_holds('"other"', etag, mtime) == false
-	assert if_range_holds('Wed, 21 Oct 2026 07:28:00 GMT', etag, mtime) == true
+	assert !if_range_holds(time.unix(mtime).http_header_string(), etag, mtime)
+	assert !if_range_holds('Wed, 21 Oct 2026 07:28:00 GMT', etag, mtime)
+	assert !if_range_holds('W/' + etag, etag, mtime)
+	assert !if_range_holds(etag + ', "other"', etag, mtime)
+	assert !if_range_holds('*', etag, mtime)
+	assert !if_range_holds(etag, 'W/' + etag, mtime)
 	assert if_range_holds('Tue, 01 Jan 1980 00:00:00 GMT', etag, mtime) == false
 	assert if_range_holds('garbage', etag, mtime) == false
 }
@@ -125,6 +131,7 @@ fn test_static_if_none_match_returns_304() {
 	assert ctx.res.status_code == 304
 	assert ctx.res.body == ''
 	assert (ctx.res.header.get(.etag) or { '' }) == etag
+	assert !ctx.res.header.contains(.content_length)
 }
 
 fn test_static_if_modified_since_returns_304() {
@@ -207,4 +214,114 @@ fn test_static_range_falls_back_to_200_when_unsupported() {
 	}, true)
 	assert stale.res.status_code == 200
 	assert stale.res.body == '0123456789abcde'
+}
+
+fn test_static_etag_changes_for_same_size_and_mtime_rewrite() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	mtime := os.file_last_mod_unix(path)
+	first := conditional_send_file(path, {}, false)
+	old_tag := first.res.header.get(.etag) or { panic('missing etag') }
+	os.write_file(path, 'edcba9876543210') or { panic(err) }
+	os.utime(path, mtime, mtime) or { panic(err) }
+	assert os.file_last_mod_unix(path) == mtime
+	ctx := conditional_send_file(path, {
+		'If-None-Match': old_tag
+	}, false)
+	assert ctx.res.status_code == 200
+	assert ctx.res.header.get(.etag) or { '' } != old_tag
+}
+
+fn test_static_if_range_requires_exact_strong_validator() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	first := conditional_send_file(path, {}, false)
+	tag := first.res.header.get(.etag) or { panic('missing etag') }
+	for invalid in ['W/' + tag, tag + ', "other"', '*', 'Wed, 21 Oct 2099 07:28:00 GMT'] {
+		ctx := conditional_send_file(path, {
+			'Range':    'bytes=0-3'
+			'If-Range': invalid
+		}, true)
+		assert ctx.res.status_code == 200
+		assert ctx.res.body == '0123456789abcde'
+	}
+	ctx := conditional_send_file(path, {
+		'Range':    'bytes=0-3'
+		'If-Range': tag
+	}, true)
+	assert ctx.res.status_code == 206
+	assert ctx.res.body == '0123'
+}
+
+fn test_identity_validator_does_not_short_circuit_compressed_response() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	identity := conditional_send_file(path, {}, false)
+	tag := identity.res.header.get(.etag) or { panic('missing etag') }
+	mut ctx := &Context{
+		req:                         conditional_test_request({
+			'Accept-Encoding': 'gzip'
+			'If-None-Match':   tag
+		})
+		enable_static_gzip:          true
+		static_compression_max_size: 1_000_000
+	}
+	ctx.send_file('text/plain', path)
+	assert ctx.res.status_code == 200
+	assert ctx.res.header.get(.content_encoding) or { '' } == 'gzip'
+	assert !ctx.res.header.contains(.etag)
+}
+
+fn test_static_vary_preserves_origin_for_identity_and_not_modified() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	mut first := &Context{
+		req: conditional_test_request({})
+	}
+	first.res.header.set(.vary, 'Origin')
+	first.send_file('text/plain', path)
+	assert first.res.header.values(.vary).join(',') == 'Origin,Accept-Encoding'
+	etag := first.res.header.get(.etag) or { panic('missing etag') }
+	mut cached := &Context{
+		req: conditional_test_request({
+			'If-None-Match': 'W/' + etag
+		})
+	}
+	cached.res.header.set(.vary, 'Origin')
+	cached.res.header.set(.content_length, '999')
+	cached.send_file('text/plain', path)
+	assert cached.res.status_code == 304
+	assert !cached.res.header.contains(.content_length)
+	assert cached.res.header.values(.vary).join(',') == 'Origin,Accept-Encoding'
+}
+
+fn test_static_if_range_date_cannot_validate_same_second_rewrite() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	mtime := os.file_last_mod_unix(path)
+	first := conditional_send_file(path, {}, true)
+	last_modified := first.res.header.get(.last_modified) or { panic('missing date') }
+	os.write_file(path, 'edcba9876543210') or { panic(err) }
+	os.utime(path, mtime, mtime) or { panic(err) }
+	ctx := conditional_send_file(path, {
+		'Range':    'bytes=0-3'
+		'If-Range': last_modified
+	}, true)
+	assert ctx.res.status_code == 200
+	assert ctx.res.body == 'edcba9876543210'
+}
+
+fn test_static_takeover_not_modified_keeps_encoding_validator_weak() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	first := conditional_send_file(path, {}, true)
+	etag := first.res.header.get(.etag) or { panic('missing etag') }
+	ctx := conditional_send_file(path, {
+		'If-None-Match':   'W/' + etag
+		'Accept-Encoding': 'gzip'
+	}, true)
+	assert ctx.res.status_code == 304
+	assert ctx.res.header.get(.etag) or { '' } == 'W/' + etag
+	assert !ctx.res.header.contains(.content_length)
+	assert ctx.res.body == ''
 }

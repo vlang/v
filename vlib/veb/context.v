@@ -179,7 +179,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if custom_mimetype != '' {
 		ctx.res.header.set(.content_type, custom_mimetype)
 	}
-	if !ctx.res.header.contains(.content_length) {
+	if !ctx.res.header.contains(.content_length) && ctx.res.status_code != int(http.Status.not_modified) {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
 	// send veb's closing headers
@@ -282,21 +282,6 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 		return ctx.server_error('could not read resource')
 	}
 	file.close()
-	mtime := os.file_last_mod_unix(file_path)
-	etag := static_file_etag(mtime, i64(file_size))
-	last_modified := time.unix(mtime).http_header_string()
-	// A validator the client already has skips the whole transfer (RFC 7232).
-	// If-None-Match takes precedence over If-Modified-Since.
-	if_none_match := ctx.req.header.get(.if_none_match) or { '' }
-	if if_none_match != '' {
-		if etag_matches(if_none_match, etag) {
-			return ctx.send_not_modified(etag, last_modified)
-		}
-	} else if if_modified_since := ctx.req.header.get(.if_modified_since) {
-		if static_not_modified_since(if_modified_since, mtime) {
-			return ctx.send_not_modified(etag, last_modified)
-		}
-	}
 	// Check which encodings the client accepts
 	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
 	client_accepts_zstd := accept_encoding.contains('zstd')
@@ -340,11 +325,24 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 					return result
 				}
 			}
-			// Compression failed: serve uncompressed in streaming mode
-			ctx.return_type = .file
-			ctx.return_file = file_path
-			ctx.res.header.set(.content_length, file_size.str())
-			return ctx.send_response_to_client(content_type, '')
+			// Compression failed: continue with the identity representation below.
+		}
+	}
+	// Identity validators never apply to the encoded representations above.
+	ctx.vary_static_encoding()
+	mtime := os.file_last_mod_unix(file_path)
+	etag := static_file_etag(file_path) or { return ctx.server_error('could not read resource') }
+	last_modified := time.unix(mtime).http_header_string()
+	// A validator the client already has skips the whole transfer (RFC 7232).
+	// If-None-Match takes precedence over If-Modified-Since.
+	if_none_match := ctx.req.header.get(.if_none_match) or { '' }
+	if if_none_match != '' {
+		if etag_matches(if_none_match, etag) {
+			return ctx.send_not_modified(etag, last_modified)
+		}
+	} else if if_modified_since := ctx.req.header.get(.if_modified_since) {
+		if static_not_modified_since(if_modified_since, mtime) {
+			return ctx.send_not_modified(etag, last_modified)
 		}
 	}
 	// Takeover mode: load file in memory (backward compatibility)
