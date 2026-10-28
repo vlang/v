@@ -1386,7 +1386,7 @@ pub mut:
 	cur_fn_mut_local_binding_owners         map[string]ScopeBindingOwner
 	cur_fn_shared_binding_owners            map[string]ScopeBindingOwner
 	cur_comptime_variant_loop_vars          []string
-	comptime_attr_narrow_schemas           []string
+	comptime_attr_narrow_schemas            []string
 	expr_type_values                        []&Type // node_id -> complex/contextual resolved type
 	expr_type_set                           []bool
 	lexical_smartcast_misses                []bool
@@ -22468,6 +22468,21 @@ fn (mut tc TypeChecker) check_comptime_attribute_body(id flat.NodeId, var_name s
 		}
 		return
 	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := tc.a.child_node(node, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			receiver := tc.a.child_node(callee, 0)
+			if receiver.kind == .ident && receiver.value == var_name
+				&& !tc.comptime_attribute_has_member(callee.value)
+				&& callee.value !in comptime_attribute_members {
+				// Method names are resolved by the semantic checker, not as fields.
+				for i in 1 .. node.children_count {
+					tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, schemas)
+				}
+				return
+			}
+		}
+	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.a.child_node(node, 0)
 		if base.kind == .ident && base.value == var_name
@@ -23850,6 +23865,7 @@ fn comptime_static_subst_attribute_is_cond(cond string, var_name string, attr_na
 	}
 	return out.str()
 }
+
 fn comptime_static_subst_method_param_cond(cond string, var_name string, item ComptimeStaticValueCase) string {
 	mut result := cond
 	for collection in ['args', 'params'] {

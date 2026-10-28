@@ -20,3 +20,16 @@ distance). An attribute call `@[Name(args)]` warns once, on its name, never per 
 
 Whole-string metadata such as `@['legacy']` does not warn. Independently written names,
 such as `@[foo; foo_bar]`, are checked separately, even when one name prefixes another.
+
+## Checking schema field access
+
+Inside an `attributes` loop, read a schema field after narrowing the loop variable with
+`$if attr is Schema`. The checker validates field access in initializers, assignments,
+interpolations, calls, and runtime conditions. This also applies to chained field access.
+The four metadata members `name`, `arg`, `has_arg`, and `kind` remain available without
+narrowing. A narrowed schema's own field takes precedence over a metadata member of the same name.
+
+Narrowing follows `&&`, `||`, parentheses, negation, and both branches of nested `$if`
+conditions. A branch that can contain multiple schemas may read a field only when every
+possible schema declares it with the same type. Compile-time conditions currently accept
+the four metadata members; schema field values in those conditions require further work.
