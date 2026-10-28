@@ -1003,7 +1003,8 @@ fn clone_owned_string_list_map(source map[string][]string) map[string][]string {
 		for value in values {
 			owned_values << value.clone()
 		}
-		result[key.clone()] = owned_values
+		// The map stores its own clone of an inserted string key.
+		result[key] = owned_values
 	}
 	return result
 }
@@ -1025,7 +1026,7 @@ fn clone_owned_string_bool_map(source map[string]bool) map[string]bool {
 	mut result := map[string]bool{}
 	result.reserve(u32(source.len))
 	for key, value in source {
-		result[key.clone()] = value
+		result[key] = value
 	}
 	return result
 }
@@ -1034,7 +1035,7 @@ fn clone_owned_string_string_map(source map[string]string) map[string]string {
 	mut result := map[string]string{}
 	result.reserve(u32(source.len))
 	for key, value in source {
-		result[key.clone()] = value.clone()
+		result[key] = value.clone()
 	}
 	return result
 }
@@ -1063,7 +1064,7 @@ fn clone_owned_struct_field_map(source map[string][]StructField) map[string][]St
 				is_volatile: field.is_volatile
 			}
 		}
-		result[key.clone()] = owned_fields
+		result[key] = owned_fields
 	}
 	return result
 }
@@ -3326,21 +3327,26 @@ pub fn (mut tc TypeChecker) reserve_scoped_transform_metadata(signature_headroom
 // type metadata into the current arena after a disposable transform scope has
 // been left.
 pub fn (mut tc TypeChecker) rebuild_scoped_transform_signature_maps() {
+	// Inserting a string key stores the map's own clone of it.
 	mut ret_types := map[string]Type{}
+	ret_types.reserve(u32(tc.fn_ret_types.len))
 	for name, ret in tc.fn_ret_types {
-		ret_types[name.clone()] = clone_owned_type(ret)
+		ret_types[name] = clone_owned_type(ret)
 	}
 	mut param_types := map[string][]Type{}
+	param_types.reserve(u32(tc.fn_param_types.len))
 	for name, params in tc.fn_param_types {
-		param_types[name.clone()] = clone_owned_types(params)
+		param_types[name] = clone_owned_types(params)
 	}
 	mut variadic := map[string]bool{}
+	variadic.reserve(u32(tc.fn_variadic.len))
 	for name, is_variadic in tc.fn_variadic {
-		variadic[name.clone()] = is_variadic
+		variadic[name] = is_variadic
 	}
 	mut specialized := map[string]bool{}
+	specialized.reserve(u32(tc.specialized_generic_fns.len))
 	for name, is_specialized in tc.specialized_generic_fns {
-		specialized[name.clone()] = is_specialized
+		specialized[name] = is_specialized
 	}
 	tc.fn_ret_types = ret_types.move()
 	tc.fn_ret_types_revision++

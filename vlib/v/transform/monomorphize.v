@@ -147,6 +147,7 @@ fn (mut t Transformer) is_generic_struct(name_id u32) bool {
 	return false
 }
 
+@[direct_array_access]
 fn (mut t Transformer) monomorphize_pass() []string {
 	debug_started := time.ticks()
 	if t.parallel_monomorphize {
@@ -2166,6 +2167,7 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 // transform stage collected from the first `scanned` nodes before lowering and
 // scans only what that scan did not see: the library bodies it skipped and the
 // nodes lowering appended. File and module markers are read for their context.
+@[direct_array_access]
 fn (mut t Transformer) collect_interface_boxed_types_after_transform(scanned int) {
 	for i, key in t.tc.transform_boxed_types {
 		t.interface_boxed_types[key] = t.tc.transform_boxed_values[i]
@@ -3587,6 +3589,7 @@ fn strip_type_modifier_prefixes_id(typ_id u32) u32 {
 	return text_id
 }
 
+@[direct_array_access]
 fn (mut t Transformer) collect_generic_struct_specs_range(decls map[u32]GenericStructDecl, mut specs map[u32]u32, start int, end int) {
 	t.ensure_node_module_map()
 	if decls.len == 0 {
@@ -6161,6 +6164,7 @@ fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl
 // AST range once keeps later refreshes independent of the full specialized tree.
 // Ordinary factories returning generic function aliases also need normalization,
 // even though their calls are not rewritten as generic specializations.
+@[direct_array_access]
 fn (mut t Transformer) collect_generic_refresh_call_parents(start int, end int, mut parents map[int][]int, mut alias_calls []int) {
 	if start < 0 || start >= end {
 		return
@@ -14261,6 +14265,12 @@ fn (mut t Transformer) fn_decl_has_unresolved_generics(node flat.Node, module_na
 }
 
 fn (t &Transformer) fn_decl_receiver_is_open_generic(node flat.Node, module_name string) bool {
+	// The receiver is a qualifier of the declared name, and a generic application
+	// is spelled with `[`: a name without one cannot have an open receiver. This
+	// skips interning the name of every ordinary declaration on each scan.
+	if node.value.len > 0 && node.value.index_u8(`[`) < 0 {
+		return false
+	}
 	value_id := node.source_value_id()
 	if !flat.source_type_shape(value_id).has(.dotted) || isnil(t.tc) {
 		return false

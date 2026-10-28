@@ -5518,12 +5518,19 @@ fn (t &Transformer) fork_scoped_batch_worker(ast &flat.FlatAst, wtc &types.TypeC
 }
 
 fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker, copy_used_fns bool) &Transformer {
+	return t.fork_worker_with_state(ast, wtc, copy_used_fns, copy_used_fns)
+}
+
+// fork_worker_with_state is fork_worker_config with the copy of the used set,
+// which a worker without one reads through its parent, chosen independently of
+// the copy of the generic specialization state.
+fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChecker, copy_used_fns bool, copy_generic_state bool) &Transformer {
 	used := if copy_used_fns {
 		t.used_fns
 	} else {
 		map[string]bool{}
 	}
-	mut w := t.fork_program_view(ast, wtc, used, copy_used_fns)
+	mut w := t.fork_program_view(ast, wtc, used, copy_generic_state)
 	if !copy_used_fns {
 		if t.node_context_read_only && isnil(t.used_fns_parent) && !isnil(t.used_fns_root) {
 			// A shared-base master is still recording helper names while its workers
