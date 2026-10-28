@@ -14323,7 +14323,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 					capture_type.source_type_id()
 				}
 				capture_dependency_text := fn_literal_capture_generic_dependency_text(capture_type,
-					capture_type_text, literal_generic_params)
+					capture_type_text, literal_generic_param_ids)
 				for generic_name_id in tc.fn_context.generic_params {
 					if generic_name_id !in literal_generic_param_ids
 						&& generic_name_id in flat.source_type_syntax(capture_dependency_text).symbols() {
@@ -14622,7 +14622,7 @@ fn (mut tc TypeChecker) check_generic_fn_literal_capture_types(node flat.Node) {
 					capture_type.source_type_id()
 				}
 				capture_dependency_text := fn_literal_capture_generic_dependency_text(capture_type,
-					capture_type_text, literal_generic_params)
+					capture_type_text, literal_generic_param_ids)
 				for generic_name_id in tc.fn_context.generic_params {
 					if generic_name_id !in literal_generic_param_ids
 						&& generic_name_id in flat.source_type_syntax(capture_dependency_text).symbols() {
@@ -14650,7 +14650,7 @@ fn (mut tc TypeChecker) check_generic_fn_literal_capture_types(node flat.Node) {
 	}
 }
 
-fn fn_literal_capture_generic_dependency_text(capture_type Type, capture_type_id u32, literal_generic_params []string) u32 {
+fn fn_literal_capture_generic_dependency_text(capture_type Type, capture_type_id u32, literal_generic_params []u32) u32 {
 	// A closure without its own generic list cannot carry any open captured type.
 	if literal_generic_params.len == 0 {
 		return capture_type_id
