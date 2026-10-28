@@ -1650,6 +1650,35 @@ Boundaries, compared with a plain handler:
   path, which has no takeover support) `after` answers inline instead:
   the response and its timing stay correct, on the caller's thread.
 
+## Conditional static responses and ranges
+
+Identity responses from `Context.file` and `StaticHandler` include a strong `ETag`,
+`Last-Modified`, and `Accept-Ranges: bytes`. The ETag hashes the file contents with SHA-256,
+reading the file in bounded chunks on every request, even when its body is streamed. Files that
+change within one timestamp second still receive different ETags. `Last-Modified` has HTTP's
+second precision; prefer ETags for files that can change more frequently.
+
+`If-None-Match` combines all repeated fields. Its presence takes precedence over
+`If-Modified-Since`, including an empty list of tags.
+A match returns 304 for GET and HEAD,
+without a body or Content-Length, and 412 for other methods. `If-Modified-Since` is ignored for
+other methods. Identity responses retain `Vary: Accept-Encoding` along with
+existing Vary fields. Encoded static responses currently omit these validators, so an identity
+ETag cannot suppress a compressed body. `If-None-Match: *` still matches an existing encoded
+representation, returning 304 for GET/HEAD or 412 for other methods. Its 304 omits the identity
+ETag.
+A takeover-mode 304 uses a weak ETag to preserve
+validators for bodies encoded by dynamic middleware. That weak tag can revalidate a cached body;
+a later `If-Range` request with it falls back to the full response.
+
+In-memory takeover GET responses support one byte range (`bytes=0-99`, `bytes=100-`, or
+`bytes=-100`). Range headers on other methods are ignored.
+A satisfiable range returns 206 and `Content-Range`; an out-of-bounds range returns 416. Invalid
+or multiple ranges are ignored. `If-Range` requires an exact strong ETag. Weak ETags, stale
+validators, and date validators fall back to the full response: filesystem dates have only second
+precision and cannot prove the file was unchanged within that second. Streaming transports serve
+the full 200 response for ranges because their file writers do not support offsets.
+
 ## In-process raw HTTP requests
 
 `veb.handle_raw[App, Context](mut app, request_bytes)` parses raw HTTP/1 request bytes and
