@@ -179,7 +179,7 @@ jobs:
             # Termux has no /bin/sh, so run configure and make with $PREFIX/bin/sh.
             sh ./configure --cc=clang --prefix="$HOME/tcc-install" \
               --crtprefix="$PREFIX/lib" \
-              --libpaths="$PREFIX/lib" \
+              --libpaths="$PREFIX/lib:/system/lib64" \
               --sysincludepaths="{B}/include:$PREFIX/include:$PREFIX/include/aarch64-linux-android" \
               --elfinterp=/system/bin/linker64
             # bionic sys/cdefs.h rejects an unversioned target triple unless
@@ -214,8 +214,14 @@ jobs:
             # The Makefile only recognises a literal `-cc tcc`, so put the
             # built tcc first on PATH.
             export PATH="$HOME/tcc-install/bin:$PATH"
-            V_ANDROID_TCC=1 VFLAGS="-cc tcc" make
+            V_ANDROID_TCC=1 VFLAGS="-cc tcc" make 2>&1 | tee /logs/v-bootstrap.log
             ./v -cc "$tcc" run examples/hello_world.v 2>&1 | tee /logs/hello_world.log
+            # V falls back to cc with a warning when a tcc link test fails, so a
+            # green build alone does not show tcc was used. Fail on that warning.
+            if grep -q "falling back" /logs/v-bootstrap.log /logs/hello_world.log; then
+              echo "tcc was not used: V fell back to cc"
+              exit 1
+            fi
             tar -C "$HOME" -czf /logs/tcc-install-aarch64-termux.tar.gz tcc-install
           '
       - name: Upload tcc build and log
