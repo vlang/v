@@ -1,6 +1,7 @@
 module ssa
 
 import math
+import strconv
 import v.flat
 import v.gen.c.naming { sum_field_name }
 import v.token
@@ -10023,6 +10024,10 @@ fn (mut b Builder) build_for_in(node flat.Node) {
 fn (mut b Builder) build_range_for_in(node flat.Node, key_id flat.NodeId, start_id flat.NodeId, end_id flat.NodeId, body_start int, label string) {
 	start_val := b.build_expr(start_id)
 	end_val := b.build_expr(end_id)
+	if b.value_type(start_val) == b.wide_integer_type()
+		|| b.value_type(end_val) == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer operation: range iteration')
+	}
 	idx_alloca := b.emit0(.alloca, b.m.type_store.get_ptr(b.i64_type))
 	b.emit2(.store, b.void_type, start_val, idx_alloca)
 	key_name := b.ident_name(key_id)
@@ -10795,6 +10800,10 @@ fn (mut b Builder) build_match_condition(subject ValueID, branch flat.Node) Valu
 	mut result := ValueID(0)
 	for i in 0 .. n_conds {
 		cond_value := b.build_expr(b.a.child(&branch, i))
+		if b.value_type(subject) == b.wide_integer_type()
+			|| b.value_type(cond_value) == b.wide_integer_type() {
+			panic('ssa: unsupported 128-bit integer operation: match comparison')
+		}
 		cmp := b.emit2(.eq, b.i1_type, subject, cond_value)
 		if result == 0 {
 			result = cmp
@@ -11178,6 +11187,11 @@ fn (mut b Builder) build_in_expr(node flat.Node) ValueID {
 		lhs := b.build_expr(lhs_id)
 		low := b.build_expr(b.a.child(&rhs, 0))
 		high := b.build_expr(b.a.child(&rhs, 1))
+		if b.value_type(lhs) == b.wide_integer_type()
+			|| b.value_type(low) == b.wide_integer_type()
+			|| b.value_type(high) == b.wide_integer_type() {
+			panic('ssa: unsupported 128-bit integer operation: range membership')
+		}
 		ge_low := b.emit2(.ge, b.i1_type, lhs, low)
 		lt_high := b.emit2(.lt, b.i1_type, lhs, high)
 		return b.emit2(.and_, b.i1_type, ge_low, lt_high)
@@ -12090,12 +12104,12 @@ fn (mut b Builder) wide_integer_type() TypeID {
 }
 
 fn (mut b Builder) is_wide_integer_expr(id flat.NodeId) bool {
-	name := flat.source_type_name(b.checked_expr_type_name(id)).trim_left('&')
+	name := flat.source_type_name(b.checked_expr_type_name(id))
 	if name in ['u128', 'i128'] {
 		return true
 	}
 	node := b.a.nodes[int(id)]
-	node_type := flat.source_type_name(node.typ).trim_left('&')
+	node_type := flat.source_type_name(node.typ)
 	if node_type in ['u128', 'i128'] {
 		return true
 	}
@@ -12103,6 +12117,15 @@ fn (mut b Builder) is_wide_integer_expr(id flat.NodeId) bool {
 		return b.ssa_type_from_checker_type(b.tc.resolve_type(id)) == b.wide_integer_type()
 	}
 	return false
+}
+
+fn (mut b Builder) is_signed_wide_integer_expr(id flat.NodeId) bool {
+	if b.tc != unsafe { nil } {
+		typ := b.tc.resolve_type(id)
+		return types.unalias_type(&typ).source_type_id() == ssa_i128_source_type
+	}
+	return b.checked_expr_type_name(id) == ssa_i128_source_type
+		|| b.a.nodes[int(id)].typ == ssa_i128_source_type
 }
 
 fn (mut b Builder) make_wide_integer(block BlockID, low ValueID, high ValueID) ValueID {
@@ -12126,9 +12149,55 @@ fn (mut b Builder) wide_integer_limbs(block BlockID, value ValueID) (ValueID, Va
 	return low, high
 }
 
+fn (b &Builder) wide_integer_literal_value(id flat.NodeId) ?string {
+	node := b.a.nodes[int(id)]
+	if node.kind == .int_literal {
+		return node.value_text()
+	}
+	if node.children_count > 0 {
+		if node.kind == .paren {
+			return b.wide_integer_literal_value(b.a.child(&node, 0))
+		}
+		if node.kind == .prefix && node.op in [.plus, .minus] {
+			value := b.wide_integer_literal_value(b.a.child(&node, 0)) or { return none }
+			if node.op == .plus {
+				return value
+			}
+			return if value.starts_with('-') { value[1..] } else { '-' + value }
+		}
+	}
+	return none
+}
+
+fn check_wide_integer_literal(value string) u64 {
+	return strconv.parse_uint(value.trim_left('-'), 0, 64) or {
+		panic('ssa: unsupported 128-bit integer literal outside a single 64-bit limb')
+	}
+}
+
+fn (mut b Builder) wide_integer_from_literal(value string) ValueID {
+	magnitude := check_wide_integer_literal(value)
+	negative := value.starts_with('-') && magnitude != 0
+	low := if negative { u64(0) - magnitude } else { magnitude }
+	high := if negative { '18446744073709551615' } else { '0' }
+	return b.make_wide_integer(b.cur_block, b.m.get_or_add_const(b.u64_type, low.str()),
+		b.m.get_or_add_const(b.u64_type, high))
+}
+
 fn (mut b Builder) wide_integer_from_scalar(value ValueID) ValueID {
+	from_type := b.value_type(value)
+	if !b.is_int_type(from_type) {
+		panic('ssa: unsupported 128-bit integer conversion from a non-integer value')
+	}
 	low := b.coerce_numeric_value(value, b.u64_type)
-	return b.make_wide_integer(b.cur_block, low, b.m.get_or_add_const(b.u64_type, '0'))
+	// Widen the source integer before interpreting it as either i128 or u128.
+	high := if b.is_unsigned_type(from_type) {
+		b.m.get_or_add_const(b.u64_type, '0')
+	} else {
+		b.block_instr2(.ashr, b.cur_block, b.u64_type, low,
+			b.m.get_or_add_const(b.u64_type, '63'))
+	}
+	return b.make_wide_integer(b.cur_block, low, high)
 }
 
 fn (mut b Builder) wide_integer_operand(id flat.NodeId) ValueID {
@@ -12142,9 +12211,7 @@ fn (mut b Builder) wide_integer_operand(id flat.NodeId) ValueID {
 fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 	match node.kind {
 		.int_literal {
-			low := b.m.get_or_add_const(b.u64_type, node.value)
-			return b.make_wide_integer(b.cur_block, low,
-				b.m.get_or_add_const(b.u64_type, '0'))
+			return b.wide_integer_from_literal(node.value_text())
 		}
 		.cast_expr {
 			if node.children_count == 0 {
@@ -12153,6 +12220,14 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 			child_id := b.a.child(&node, 0)
 			if b.is_wide_integer_expr(child_id) {
 				return b.build_expr(child_id)
+			}
+			// A bare positive literal may occupy all 64 bits without becoming
+			// a negative i64. Explicit scalar casts still use scalar widening.
+			if literal := b.wide_integer_literal_value(child_id) {
+				return b.wide_integer_from_literal(literal)
+			}
+			if literal := b.const_int_literal_value(child_id) {
+				check_wide_integer_literal(literal)
 			}
 			return b.wide_integer_from_scalar(b.build_expr(child_id))
 		}
@@ -12169,7 +12244,9 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 			lhs_id := b.a.child(&node, 0)
 			rhs_id := b.a.child(&node, 1)
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
-				shift_text := b.const_int_literal_value(rhs_id) or { return none }
+				shift_text := b.const_int_literal_value(rhs_id) or {
+					panic('ssa: unsupported 128-bit integer operation: variable shift')
+				}
 				shift := shift_text.int()
 				if shift < 0 || shift >= 128 {
 					zero := b.m.get_or_add_const(b.u64_type, '0')
@@ -12197,14 +12274,22 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 						next_high, carry)
 					return b.make_wide_integer(b.cur_block, next_low, combined_high)
 				}
+				arithmetic := node.op == .right_shift && b.is_signed_wide_integer_expr(lhs_id)
+				right_op := if arithmetic { OpCode.ashr } else { OpCode.lshr }
 				if shift >= 64 {
-					next_low := b.block_instr2(.lshr, b.cur_block, b.u64_type, high,
+					next_low := b.block_instr2(right_op, b.cur_block, b.u64_type, high,
 						b.m.get_or_add_const(b.u64_type, '${shift - 64}'))
-					return b.make_wide_integer(b.cur_block, next_low, zero)
+					next_high := if arithmetic {
+						b.block_instr2(.ashr, b.cur_block, b.u64_type, high,
+							b.m.get_or_add_const(b.u64_type, '63'))
+					} else {
+						zero
+					}
+					return b.make_wide_integer(b.cur_block, next_low, next_high)
 				}
 				next_low := b.block_instr2(.lshr, b.cur_block, b.u64_type, low,
 					b.m.get_or_add_const(b.u64_type, '${shift}'))
-				next_high := b.block_instr2(.lshr, b.cur_block, b.u64_type, high,
+				next_high := b.block_instr2(right_op, b.cur_block, b.u64_type, high,
 					b.m.get_or_add_const(b.u64_type, '${shift}'))
 				if shift == 0 {
 					return b.make_wide_integer(b.cur_block, next_low, next_high)
@@ -12214,6 +12299,9 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 				combined_low := b.block_instr2(.or_, b.cur_block, b.u64_type, next_low,
 					carry)
 				return b.make_wide_integer(b.cur_block, combined_low, next_high)
+			}
+			if node.op !in [.pipe, .amp, .xor, .plus, .minus] {
+				panic('ssa: unsupported 128-bit integer operation: ${node.op}')
 			}
 			lhs := b.wide_integer_operand(lhs_id)
 			rhs := b.wide_integer_operand(rhs_id)
@@ -12258,6 +12346,13 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 }
 
 fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
+	// Comparisons have a bool result, so the result-type wide dispatch cannot
+	// catch them. Never send either wide operand to a scalar instruction.
+	if node.children_count >= 2
+		&& (b.is_wide_integer_expr(b.a.child(&node, 0))
+			|| b.is_wide_integer_expr(b.a.child(&node, 1))) {
+		panic('ssa: unsupported 128-bit integer operation: ${node.op}')
+	}
 	if node.op == .power {
 		panic('power expression reached the V3 SSA backend')
 	}
@@ -12858,6 +12953,9 @@ fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 	if b.is_interface_type_id(target_type) {
 		return b.box_interface_value(target_type, checked_name_source_id, value)
 	}
+	if from_type == b.wide_integer_type() || target_type == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer conversion to or from a scalar value')
+	}
 	if b.is_pointer_type(target_type) || b.is_pointer_type(from_type) {
 		return b.emit1(.bitcast, target_type, value)
 	}
@@ -13194,6 +13292,9 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 		return b.build_expr(b.a.child(&child, 0))
 	}
 	val := b.build_expr(child_id)
+	if b.value_type(val) == b.wide_integer_type() && node.op !in [.amp, .mul] {
+		panic('ssa: unsupported 128-bit integer operation: unary ${node.op}')
+	}
 	match node.op {
 		.minus {
 			typ := b.value_type(val)
@@ -13271,6 +13372,9 @@ fn (mut b Builder) build_postfix(node flat.Node) ValueID {
 	value_type := b.deref_type(addr)
 	if value_type <= 0 {
 		return b.m.get_or_add_const(b.i64_type, '0')
+	}
+	if value_type == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer operation: postfix ${node.op}')
 	}
 	cur := b.emit1(.load, value_type, addr)
 	one := b.m.get_or_add_const(value_type, '1')
@@ -14896,6 +15000,9 @@ fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) u32 {
 
 fn (mut b Builder) coerce_int_value(value ValueID, to_type TypeID) ValueID {
 	from_type := b.value_type(value)
+	if (from_type == b.wide_integer_type()) != (to_type == b.wide_integer_type()) {
+		panic('ssa: unsupported 128-bit integer conversion to or from a scalar value')
+	}
 	if !b.is_int_type(from_type) || !b.is_int_type(to_type) {
 		return value
 	}
@@ -14988,6 +15095,9 @@ fn (mut b Builder) build_array_first_last_call(id flat.NodeId, base_id flat.Node
 fn (mut b Builder) build_array_index_call(base_id flat.NodeId, needle_id flat.NodeId) ValueID {
 	base := b.build_expr(base_id)
 	elem_type := b.array_receiver_elem_type(base_id)
+	if elem_type == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer operation: array index search')
+	}
 	fn_name := if elem_type == b.str_type {
 		'__v3_array_index_string'
 	} else {
@@ -16331,7 +16441,21 @@ fn (b &Builder) selector_has_addressable_root(node &flat.Node) bool {
 	return false
 }
 
+fn (mut b Builder) check_wide_integer_index(node flat.Node) {
+	base_id := b.a.child(&node, 0)
+	if flat.source_type_shape(b.expr_type_name_for_map(base_id)).has(.map_type) {
+		return
+	}
+	for index in 1 .. node.children_count {
+		id := b.a.child(&node, index)
+		if b.a.nodes[int(id)].kind != .empty && b.is_wide_integer_expr(id) {
+			panic('ssa: unsupported 128-bit integer operation: index or slice bound')
+		}
+	}
+}
+
 fn (mut b Builder) build_index(id flat.NodeId, node flat.Node) ValueID {
+	b.check_wide_integer_index(node)
 	base_id := b.a.child(&node, 0)
 	if node.children_count >= 2 {
 		if base := b.build_const_i32_array_arg(base_id) {
@@ -16560,6 +16684,7 @@ fn (mut b Builder) build_index_addr(id flat.NodeId, node flat.Node) ValueID {
 	if node.children_count < 2 {
 		return b.m.get_or_add_const(b.m.type_store.get_ptr(b.i8_type), '0')
 	}
+	b.check_wide_integer_index(node)
 	// `a[lo..hi]` (an index node tagged `range`) is a slice expression producing a fresh
 	// array value, not an addressable element. Its address must point at the materialized
 	// slice value; computing an element pointer would make the slice's fields read as
@@ -16911,6 +17036,9 @@ fn (mut b Builder) build_field_value(expr_id flat.NodeId, field_type_name_id u32
 		expr := b.a.nodes[int(expr_id)]
 		if expr.kind == .prefix && expr.op == .bit_not && expr.children_count > 0 {
 			value := b.build_field_value(b.a.child(&expr, 0), field_type_name_id)
+			if b.value_type(value) == b.wide_integer_type() {
+				panic('ssa: unsupported 128-bit integer operation: unary bitwise complement')
+			}
 			all_bits := b.m.get_or_add_const(b.value_type(value), '-1')
 			return b.emit2(.xor, b.value_type(value), value, all_bits)
 		}
@@ -17862,6 +17990,9 @@ fn (mut b Builder) emit4(op OpCode, typ TypeID, a ValueID, c ValueID, d ValueID,
 
 fn (mut b Builder) build_compound_assign_value(op flat.Op, current ValueID, rhs ValueID, lhs_type_source_id u32) ValueID {
 	typ := b.value_type(current)
+	if typ == b.wide_integer_type() || b.value_type(rhs) == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer operation: compound ${op}')
+	}
 	if typ == b.str_type && op == .plus_assign {
 		return b.build_string_infix(.plus, current, rhs)
 	}
