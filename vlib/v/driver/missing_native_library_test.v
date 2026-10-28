@@ -11,18 +11,25 @@ fn test_missing_native_library_checks_only_positional_library_files() {
 	}
 	for suffix in ['.a', '.so', '.so.1', '.dylib', '.dll', '.lib', '.tbd'] {
 		path := os.join_path(root, 'native' + suffix)
-		assert v3_missing_c_link_library([path]) or { '' } == path
+		assert v3_missing_c_link_library([path], false) or { '' } == path
 		for option in ['-I', '-L', '-F', '-D', '-U', '-include', '-isystem', '-isysroot', '-o',
 			'-x', '-l', '-Xlinker'] {
-			assert v3_missing_c_link_library([option, path]) == none
+			assert v3_missing_c_link_library([option, path], false) == none
 		}
 		for prefix in ['-I', '-L', '-DNAME=', '-Wl,'] {
-			assert v3_missing_c_link_library([prefix + path]) == none
+			assert v3_missing_c_link_library([prefix + path], false) == none
 		}
 		os.write_file(path, 'existing library')!
-		assert v3_missing_c_link_library([path]) == none
+		assert v3_missing_c_link_library([path], false) == none
 	}
-	assert v3_missing_c_link_library(['-lmissing', '-Lmissing', 'missing.c', 'missing.o']) == none
+	assert v3_missing_c_link_library(['-lmissing', '-Lmissing', 'missing.c', 'missing.o'], false) == none
+}
+
+fn test_native_library_checks_preserve_msvc_names_and_options() {
+	assert v3_missing_c_link_library(['kernel32.lib'], true) == none
+	assert v3_missing_c_link_library(['kernel32.lib'], false) == none
+	assert v3_missing_c_link_library(['/OUT:program.dll', '/Iinclude.lib'], true) == none
+	assert v3_missing_c_link_library(['C:/v/missing.lib'], true) or { '' } == 'C:/v/missing.lib'
 }
 
 fn test_missing_native_library_does_not_arm_compatibility_fallback() {
