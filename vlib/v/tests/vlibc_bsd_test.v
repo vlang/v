@@ -41,6 +41,13 @@ fn check(e VlibcErrno) {
 }
 
 fn main() {
+	mut words := [u32(0x11223344), u32(0), u32(0xaabbccdd), u32(0)]!
+	vlibc_store_u32(&words[1], 7)
+	assert words[0] == 0x11223344 && words[2] == 0xaabbccdd
+	assert vlibc_load_u32(&words[1]) == 7
+	assert !vlibc_cas_u32(&words[1], 8, 9) && words[1] == 7
+	assert vlibc_cas_u32(&words[1], 7, 9) && words[1] == 9
+	assert words[0] == 0x11223344 && words[2] == 0xaabbccdd
 	$if macos {
 		aligned := AlignmentProbe{}
 		assert u64(&aligned.mutex) % 8 == 0

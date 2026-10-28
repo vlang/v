@@ -5,12 +5,17 @@ $if !i386 {
 	pub fn vlibc_cas_u32(ptr &u32, old u32, new u32) bool {
 		mut swapped := u8(0)
 		$if arm64 {
+			// Named operands use X registers; copy word values into explicit W aliases.
+			old_word := u64(old)
+			new_word := u64(new)
 			asm volatile arm64 {
+				mov x6, old_word
+				mov x7, new_word
 				1:
 				ldaxr w4, [ptr]
-				cmp w4, old
+				cmp w4, w6
 				b.ne '2f'
-				stlxr w5, new, [ptr]
+				stlxr w5, w7, [ptr]
 				cbnz w5, '1b'
 				mov swapped, #1
 				b '3f'
@@ -20,10 +25,12 @@ $if !i386 {
 				3:
 				; =r (swapped)
 				; r (ptr)
-				  r (old)
-				  r (new)
+				  r (old_word)
+				  r (new_word)
 				; x4
 				  x5
+				  x6
+				  x7
 				  cc
 				  memory
 			}
@@ -48,12 +55,16 @@ $if !i386 {
 	pub fn vlibc_load_u32(ptr &u32) u32 {
 		mut value := u32(0)
 		$if arm64 {
+			mut loaded_word := u64(0)
 			asm volatile arm64 {
-				ldar value, [ptr]
-				; =r (value)
+				ldar w4, [ptr]
+				mov loaded_word, x4
+				; =r (loaded_word)
 				; r (ptr)
-				; memory
+				; x4
+				  memory
 			}
+			value = u32(loaded_word)
 		} $else {
 			asm volatile amd64 {
 				mov value, [ptr]
@@ -68,11 +79,14 @@ $if !i386 {
 	// vlibc_store_u32 stores a word with release ordering.
 	pub fn vlibc_store_u32(ptr &u32, val u32) {
 		$if arm64 {
+			stored_word := u64(val)
 			asm volatile arm64 {
-				stlr val, [ptr]
+				mov x4, stored_word
+				stlr w4, [ptr]
 				; ; r (ptr)
-				    r (val)
-				; memory
+				    r (stored_word)
+				; x4
+				  memory
 			}
 		} $else {
 			asm volatile amd64 {
