@@ -398,28 +398,28 @@ mut:
 	comptime_method_index_nodes            int
 	comptime_method_index_module           string
 	comptime_method_index_file             string
-	comptime_attribute_schema_decls        []ComptimeAttributeSchemaDecl
-	comptime_attribute_schemas_cache       []AttributeSchemaInfo
-	comptime_attribute_schemas_built       int
-	comptime_method_line_offsets           map[string][]int
-	comptime_reflected_for_roles           map[string]u8
-	comptime_reflected_for_ready           bool
-	call_param_types_recent                &CallParamTypesRecentCache = unsafe { nil }
-	call_param_types_decl_cache            map[int][]types.Type
-	packed_variadic_tail_types             map[int]u32
-	call_param_types_decl_misses           map[string]bool
-	call_param_types_decl_shared           bool
-	call_param_types_decl_index            map[string]FnParamDeclRef
-	call_param_types_index_ready           bool
-	call_param_types_prepared              bool
-	fixed_array_borrow_params              map[int][]bool
-	call_provenance_borrow_params          map[int][]bool
-	preserve_call_provenance               bool
-	borrow_param_mentions                  &BorrowParamMentions = unsafe { nil }
-	used_fns                               map[string]bool
-	used_fns_parent                        &map[string]bool = unsafe { nil }
-	used_fns_root                          &map[string]bool = unsafe { nil }
-	comptime_reflected_params              map[string][]ParamMeta
+	// Mutable schema metadata belongs to this worker and is absent until a
+	// declaration actually uses `@[attribute]`. Forks start with a nil registry.
+	comptime_attribute_schema_state &ComptimeAttributeSchemaState = unsafe { nil }
+	comptime_method_line_offsets    map[string][]int
+	comptime_reflected_for_roles    map[string]u8
+	comptime_reflected_for_ready    bool
+	call_param_types_recent         &CallParamTypesRecentCache = unsafe { nil }
+	call_param_types_decl_cache     map[int][]types.Type
+	packed_variadic_tail_types      map[int]u32
+	call_param_types_decl_misses    map[string]bool
+	call_param_types_decl_shared    bool
+	call_param_types_decl_index     map[string]FnParamDeclRef
+	call_param_types_index_ready    bool
+	call_param_types_prepared       bool
+	fixed_array_borrow_params       map[int][]bool
+	call_provenance_borrow_params   map[int][]bool
+	preserve_call_provenance        bool
+	borrow_param_mentions           &BorrowParamMentions = unsafe { nil }
+	used_fns                        map[string]bool
+	used_fns_parent                 &map[string]bool = unsafe { nil }
+	used_fns_root                   &map[string]bool = unsafe { nil }
+	comptime_reflected_params       map[string][]ParamMeta
 	// sum_eq_types records sum and recursive struct deep-equality helpers,
 	// keyed by the concrete helper name with the
 	// module/file context of the requesting call site (type resolution inside
