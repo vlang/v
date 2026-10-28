@@ -775,10 +775,17 @@ mut:
 	// back after the call (transform_call_expr).
 	mut_optional_call_writebacks []flat.NodeId
 	// Keep native live metadata last so ordinary transform fields retain their offsets.
-	live_fns            map[string]string
-	live_methods        map[string]string
-	live_source_file    string
+	live_metadata       &LiveMetadata = unsafe { nil }
 	live_reload_runtime bool
+}
+
+// LiveMetadata holds native live-reload tables outside ordinary Transformer defaults.
+// The collector fills it before workers are forked; they share it read-only.
+struct LiveMetadata {
+mut:
+	fns         map[string]string
+	methods     map[string]string
+	source_file string
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -5843,9 +5850,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		alias_receiver_fns_aliases:             t.alias_receiver_fns_aliases
 		globals:                                fork_prepared_type_bindings(t.globals)
 		global_qualified_names:                 t.global_qualified_names
-		live_fns:                               t.live_fns
-		live_methods:                           t.live_methods
-		live_source_file:                       t.live_source_file
+		live_metadata:                          t.live_metadata
 		live_reload_runtime:                    t.live_reload_runtime
 		sum_types:                              t.sum_types
 		sum_variant_parents:                    t.sum_variant_parents
@@ -14298,7 +14303,7 @@ fn (mut t Transformer) transform_live_expr(id flat.NodeId) ?flat.NodeId {
 	if node.kind == .call && node.children_count >= 1 {
 		callee := t.a.child_node(&node, 0)
 		if callee.kind == .ident {
-			if mangled := t.live_fns[callee.value_text()] {
+			if mangled := t.live_metadata.fns[callee.value_text()] {
 				mut args := []flat.NodeId{}
 				for i in 1 .. node.children_count {
 					arg := t.a.child(&node, i)
@@ -14324,7 +14329,7 @@ fn (mut t Transformer) transform_live_expr(id flat.NodeId) ?flat.NodeId {
 			method_name := t.tc.resolved_call_name(id) or {
 				t.resolve_receiver_method_name(receiver_id, callee.value_text())
 			}
-			if mangled := t.live_methods[method_name] {
+			if mangled := t.live_metadata.methods[method_name] {
 				mut args := []flat.NodeId{}
 				mut receiver := t.transform_expr(receiver_id)
 				actual_pointer := flat.source_type_shape(t.node_type(receiver_id)).has(.pointer)
@@ -14357,7 +14362,7 @@ fn (mut t Transformer) transform_live_expr(id flat.NodeId) ?flat.NodeId {
 		}
 	}
 	if node.kind == .ident {
-		if mangled := t.live_fns[node.value_text()] {
+		if mangled := t.live_metadata.fns[node.value_text()] {
 			id2 := t.make_ident('live_${mangled}')
 			t.set_node_typ(int(id2), flat.source_type_id('voidptr'))
 			return id2
@@ -26368,7 +26373,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		if t.live_reload_runtime && !t.in_call_callee
 			&& os.base(t.cur_file).starts_with('v3_live_reload_') {
 			if method := t.tc.resolved_fn_value_name(id) {
-				if method in t.live_methods {
+				if method in t.live_metadata.methods {
 					return t.lower_static_fn_value(id, node, method)
 				}
 			}
@@ -33319,15 +33324,14 @@ fn (mut cache EnumExpectedCache) key(typ u32, owner_module string, current_modul
 // collect_live_functions records @[live] function metadata and whether the
 // generated native live-reload runtime is present in this AST.
 fn (mut t Transformer) collect_live_functions() {
-	t.live_source_file = ''
+	t.live_metadata = unsafe { nil }
 	t.live_reload_runtime = false
 	// The driver injects this global only for a native live-reload program.
 	// Ordinary compilations do not need another full-arena metadata scan.
 	if !isnil(t.tc) && 'live_mtime' !in t.tc.global_names {
 		return
 	}
-	t.live_fns = map[string]string{}
-	t.live_methods = map[string]string{}
+	t.live_metadata = &LiveMetadata{}
 	node_count := t.a.nodes.len
 	mut mutable_cur_file := ''
 	for i in 0 .. node_count {
@@ -33351,12 +33355,12 @@ fn (mut t Transformer) collect_live_functions() {
 					decl_name := t.a.nodes[target_idx].value_text()
 					mangled := decl_name.replace('.', '__')
 					if decl_name.contains('.') {
-						t.live_methods[decl_name] = mangled.bytes().hex()
+						t.live_metadata.methods[decl_name] = mangled.bytes().hex()
 					} else {
-						t.live_fns[decl_name] = mangled.bytes().hex()
+						t.live_metadata.fns[decl_name] = mangled.bytes().hex()
 					}
-					if t.live_source_file == '' {
-						t.live_source_file = mutable_cur_file
+					if t.live_metadata.source_file == '' {
+						t.live_metadata.source_file = mutable_cur_file
 					}
 				}
 			}
@@ -33368,5 +33372,5 @@ fn (mut t Transformer) collect_live_functions() {
 fn (t &Transformer) should_rewrite_live_calls() bool {
 	return t.live_reload_runtime && t.cur_module == 'main'
 		&& !os.base(t.cur_file).starts_with('v3_live_reload_')
-		&& t.cur_fn_name !in t.live_fns && t.cur_fn_name !in t.live_methods
+		&& t.cur_fn_name !in t.live_metadata.fns && t.cur_fn_name !in t.live_metadata.methods
 }

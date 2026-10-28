@@ -89,7 +89,7 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 	mut new_body := t.transform_scope_stmts(body_ids)
 	$if !skip_arm64 ? {
 		if t.live_reload_runtime && t.should_rewrite_live_calls() && t.cur_fn_name == 'main'
-			&& (t.live_fns.len > 0 || t.live_methods.len > 0) {
+			&& (t.live_metadata.fns.len > 0 || t.live_metadata.methods.len > 0) {
 			check_call := t.make_ident('live_reload_check')
 			start := t.a.children.len
 			t.a.children << check_call
