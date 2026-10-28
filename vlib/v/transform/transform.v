@@ -14375,9 +14375,12 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 			return result
 		}
 	}
-	if t.live_reload_runtime {
-		if rewritten := t.transform_live_expr(id) {
-			return rewritten
+	// Live rewrites require the optional native ARM64 backend.
+	$if !skip_arm64 ? {
+		if t.live_reload_runtime {
+			if rewritten := t.transform_live_expr(id) {
+				return rewritten
+			}
 		}
 	}
 	node := t.a.nodes[int(id)]
