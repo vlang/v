@@ -261,7 +261,7 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 			if k < fn_params.len {
 				clean_id := trimmed_source_type_id(text_source_id)
 				bound[fn_params[k]] = if flat.source_type_syntax(clean_id).bare_generic() {
-					unknown_type('generic placeholder `${flat.source_type_name(clean_id)}`')
+					generic_placeholder_type(clean_id)
 				} else {
 					*tc.parse_type(text_source_id)
 				}
@@ -366,7 +366,7 @@ fn (tc &TypeChecker) vls_bind_type_params(text_id u32, actual Type, names []stri
 	for i, arg in syntax.application_args() {
 		arg_id := trimmed_source_type_id(actual_syntax.application_args()[i])
 		arg_type := if flat.source_type_syntax(arg_id).bare_generic() {
-			unknown_type('generic placeholder `${flat.source_type_name(arg_id)}`')
+			generic_placeholder_type(arg_id)
 		} else {
 			*tc.parse_type(arg_id)
 		}

@@ -1765,7 +1765,7 @@ fn (mut tc TypeChecker) check_generic_call_in_body(id flat.NodeId, node flat.Nod
 fn binding_type_id(binding CallBinding, name string) u32 {
 	t := binding.types[name] or { return flat.source_type_id(name) }
 	if t is Unknown {
-		return flat.source_type_id(generic_placeholder_from_unknown(t) or { name })
+		return if t.placeholder != 0 { t.placeholder } else { flat.source_type_id(name) }
 	}
 	return flat.source_type_syntax(t.source_type_id()).unqualified()
 }
@@ -1822,7 +1822,7 @@ fn (tc &TypeChecker) constraint_walk_named_type(name_id u32) Type {
 	if syntax.trimmed() == name_id && syntax.bare_generic() {
 		name := flat.source_type_name(name_id)
 		if name in tc.fn_context.generic_params || tc.active_generic_param(name) {
-			return unknown_type('generic placeholder `${name}`')
+			return generic_placeholder_type(name_id)
 		}
 	}
 	return *tc.parse_type(name_id)

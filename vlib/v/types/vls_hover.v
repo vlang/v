@@ -1266,7 +1266,7 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	mut values := []Type{cap: syntax.application_args().len}
 	for arg in syntax.application_args() {
 		values << if flat.source_type_syntax(arg).bare_generic() {
-			unknown_type('generic placeholder `${flat.source_type_name(arg)}`')
+			generic_placeholder_type(arg)
 		} else {
 			*tc.parse_type(arg)
 		}

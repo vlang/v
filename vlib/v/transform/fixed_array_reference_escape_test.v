@@ -154,7 +154,7 @@ fn test_fixed_array_reference_generic_call_uses_conservative_escape_scan() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs[flat.source_type_id('Holder')] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
-	tc.fn_param_types['forward'] = [types.Type(types.Pointer{ base_type: types.Type(types.Unknown{ reason: 'generic placeholder `T`' }) })]
+	tc.fn_param_types['forward'] = [types.Type(types.Pointer{ base_type: types.Type(types.Unknown{ reason: 'generic placeholder `T`', placeholder: flat.source_type_id('T'), generic: true }) })]
 	tc.fn_ret_types['forward'] = types.Type(types.Array{ elem_type: types.Type(types.int_) })
 	tc.cur_scope.insert('holder', types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})

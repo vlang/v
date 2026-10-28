@@ -4491,7 +4491,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			for i in 0 .. node.children_count {
 				tc.check_node(tc.a.child(&node, i))
 			}
-			tc.remember_expr_type(id, unknown_type('unmentioned generic `${init_type_text}`'))
+			tc.remember_expr_type(id, unknown_type_quoting('unmentioned generic', init_type_text))
 			return
 		}
 		if init_syntax.c_qualified() {
@@ -9400,7 +9400,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			|| tc.node_has_enclosing_generic_param(id, name)
 			|| tc.source_enclosing_fn_has_generic_param(id, name)
 		if active_generic_ident {
-			tc.register_synth_type(id, unknown_type('generic placeholder `${name}`'))
+			tc.register_synth_type(id, generic_placeholder_type(node.source_value_id()))
 			return
 		}
 	}
@@ -9483,7 +9483,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if tc.selective_import_symbol_is_ambiguous(name) {
-		tc.register_synth_type(id, unknown_type('ambiguous selective import `${name}`'))
+		tc.register_synth_type(id, unknown_type_quoting('ambiguous selective import', name))
 		return
 	}
 	if name in tc.fn_ret_types || tc.qualify_fn_name(name) in tc.fn_ret_types {
@@ -17705,7 +17705,7 @@ fn (tc &TypeChecker) recursive_alias_reference(typ_id u32) ?Type {
 		if clean == name_id || qualified == name_id || clean == flat.source_type_syntax(name_id).unqualified() {
 			return Type(Alias{
 				name_id:   name_id
-				base_type: tc.intern_type_reference(Type(Unknown{ reason: 'recursive alias `${flat.source_type_name(name_id)}`' }))
+				base_type: tc.intern_type_reference(unknown_type_quoting_id('recursive alias', name_id))
 			})
 		}
 	}
@@ -18327,7 +18327,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 		return resolved
 	}
 	if flat.source_type_syntax(syntax.trimmed()).typeof_prefix() {
-		return unknown_type('unresolved typeof type `${flat.source_type_name(source_id)}`')
+		return unknown_type_quoting_id('unresolved typeof type', source_id)
 	}
 	// Preserve open generic struct applications wherever they occur in a signature or
 	// expression type. Qualifying their placeholder (`T` -> `module.T`) makes it look
@@ -18478,7 +18478,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 	// from the declared-type tables, even though `module.M` is concrete.
 	if syntax.named_type() && source_type_is_bare_generic_param(syntax.unqualified())
 		&& (tc.active_generic_param(flat.source_type_name(source_id)) || !tc.is_known_type_text(source_id)) {
-		return unknown_type('generic placeholder `${flat.source_type_name(source_id)}`')
+		return generic_placeholder_type(source_id)
 	}
 	qtyp_id := if tc.resolution_type_mode {
 		tc.qualify_resolution_type_name(source_id)
@@ -18795,7 +18795,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 		}
 	}
 	if syntax.named_type() && source_type_is_bare_generic_param(syntax.unqualified()) {
-		return unknown_type('generic type parameter `${flat.source_type_name(source_id)}`')
+		return unknown_type_quoting_id('generic type parameter', source_id)
 	}
 	if shape.has(.bracketed) && !shape.has(.leading_bracket) && syntax.last_bracket_span_valid() {
 		// ArrayFixed renders the outermost dimension last, so recurse through
@@ -19400,7 +19400,7 @@ fn (tc &TypeChecker) unique_qualified_type_name_scan(short_id u32) ?u32 {
 fn (tc &TypeChecker) parse_fn_type(type_id u32) Type {
 	syntax := flat.source_type_syntax(type_id)
 	if !syntax.function_closed() {
-		return unknown_type('malformed fn type `${flat.source_type_name(type_id)}`')
+		return unknown_type_quoting_id('malformed fn type', type_id)
 	}
 	mut params := []FnParam{cap: syntax.checker_function_params().len}
 	mut is_variadic := false
@@ -20180,7 +20180,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					|| tc.node_has_enclosing_generic_param(id, name)
 					|| tc.source_enclosing_fn_has_generic_param(id, name)
 				if active_generic_ident {
-					return unknown_type('generic placeholder `${name}`')
+					return generic_placeholder_type(node.source_value_id())
 				}
 			}
 			// The smartcast of this ident was looked up before the cached and
@@ -20222,12 +20222,12 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				return typ
 			}
 			if tc.selective_import_symbol_is_ambiguous(name) {
-				return unknown_type('ambiguous selective import `${name}`')
+				return unknown_type_quoting('ambiguous selective import', name)
 			}
 			if is_bare_generic_param(name) {
 				return builtin_void_type
 			}
-			return unknown_type('unknown identifier `${name}`')
+			return unknown_type_quoting('unknown identifier', name)
 		}
 		.call {
 			if type_name_id := tc.translated_named_cast_call_name_id(id, *node) {
@@ -20297,7 +20297,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 						if resolved := tc.resolve_import_alias(base_node.value) {
 							if imported_name := tc.imported_fn_key(resolved, fn_node.value) {
 								return tc.fn_ret_types[imported_name] or {
-									unknown_type('unknown return type for `${imported_name}`')
+									unknown_type_quoting('unknown return type for', imported_name)
 								}
 							}
 							mod_name := '${resolved}.${fn_node.value}'
@@ -20329,7 +20329,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					} else {
 						if static_name := tc.static_assoc_fn_key_for_base(base_node.source_value_id(), fn_node.value) {
 							return tc.fn_ret_types[static_name] or {
-								unknown_type('unknown return type for `${static_name}`')
+								unknown_type_quoting('unknown return type for', static_name)
 							}
 						}
 					}
@@ -20343,7 +20343,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 						}
 						if static_name := tc.static_assoc_fn_key_for_base(flat.source_type_id('${mod_name}.${base_node.value}'), fn_node.value) {
 							return tc.fn_ret_types[static_name] or {
-								unknown_type('unknown return type for `${static_name}`')
+								unknown_type_quoting('unknown return type for', static_name)
 							}
 						}
 					}
@@ -20385,7 +20385,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					if mname := tc.unique_receiver_method_suffix_match(clean_type_raw, candidates) {
 						return tc.alias_return_type_from_text(mname) or {
 							tc.fn_ret_types[mname] or {
-								unknown_type('unknown return type for `${mname}`')
+								unknown_type_quoting('unknown return type for', mname)
 							}
 						}
 					}
@@ -20531,7 +20531,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					if ret := tc.fn_ret_types[array_mname] {
 						return ret
 					}
-					return unknown_type('unknown array method `${fn_node.value}`')
+					return unknown_type_quoting('unknown array method', fn_node.value)
 				}
 				if clean_type is Map {
 					if fn_node.value in ['clone', 'move'] {
@@ -20562,7 +20562,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					if ret := tc.fn_ret_types[map_mname] {
 						return ret
 					}
-					return unknown_type('unknown map method `${fn_node.value}`')
+					return unknown_type_quoting('unknown map method', fn_node.value)
 				}
 				if clean_type is String {
 					mname := 'string.${fn_node.value}'
@@ -20635,7 +20635,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 			}
 			if local_name := tc.local_bare_fn_key(fn_node.value) {
 				return tc.fn_ret_types[local_name] or {
-					unknown_type('unknown return type for `${local_name}`')
+					unknown_type_quoting('unknown return type for', local_name)
 				}
 			}
 			if imported_name := tc.resolve_selective_import_symbol(fn_node.value) {
@@ -20654,7 +20654,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					eprintln('warning: unknown fn return type `${fn_node.value}`')
 				}
 			}
-			return unknown_type('unknown function `${fn_node.value}`')
+			return unknown_type_quoting('unknown function', fn_node.value)
 		}
 		.infix {
 			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
@@ -20912,7 +20912,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				return typ
 			}
 			if key := tc.selector_fn_value_key(*node) {
-				return tc.fn_type_from_key(key) or { unknown_type('unknown function `${key}`') }
+				return tc.fn_type_from_key(key) or { unknown_type_quoting('unknown function', key) }
 			}
 			if tc.unknown_import_selector(*node) {
 				return builtin_void_type
@@ -20952,11 +20952,11 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					}
 				}
 				if qname in tc.const_types {
-					typ := tc.const_types[qname] or { unknown_type('unknown const `${qname}`') }
+					typ := tc.const_types[qname] or { unknown_type_quoting('unknown const', qname) }
 					return tc.const_type_from_initializer(qname, typ)
 				}
 				if key := tc.const_key_for_suffix(qname) {
-					typ := tc.const_types[key] or { unknown_type('unknown const `${key}`') }
+					typ := tc.const_types[key] or { unknown_type_quoting('unknown const', key) }
 					return tc.const_type_from_initializer(key, typ)
 				}
 			}
@@ -21033,7 +21033,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					}
 				}
 			}
-			return unknown_type('unknown selector `${node.value}`')
+			return unknown_type_quoting('unknown selector', node.value)
 		}
 		.array_literal {
 			if node.typ != 0 {
@@ -21146,7 +21146,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 		}
 		.comptime_if {
 			take_then := tc.comptime_type_condition_value(node.value) or {
-				return unknown_type('unresolved compile-time expression condition `${node.value}`')
+				return unknown_type_quoting('unresolved compile-time expression condition', node.value)
 			}
 			branch_index := if take_then { 0 } else { 1 }
 			if branch_index >= node.children_count {
@@ -21502,7 +21502,7 @@ fn (tc &TypeChecker) resolve_index_base_value_type(base_type Type) Type {
 	if info := tc.index_overload_call_info(base_type, false) {
 		return info.return_type
 	}
-	return unknown_type('cannot index `${base_type.name()}`')
+	return unknown_type_quoting('cannot index', base_type.name())
 }
 
 // c_type supports c type handling for TypeChecker.
@@ -22363,7 +22363,7 @@ fn generic_method_receiver_params_from_key(key string, fallback []string) []stri
 fn generic_semantic_type_has_placeholder(typ &Type) bool {
 	match typ {
 		Unknown {
-			return generic_placeholder_from_unknown(typ) != none
+			return typ.placeholder != 0
 		}
 		Array {
 			return generic_semantic_type_has_placeholder(typ.elem_type)

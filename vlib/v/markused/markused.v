@@ -3043,7 +3043,6 @@ mut:
 	ierror_equality_cache      map[u32]int
 	interface_dispatch         InterfaceDispatchScan
 	map_type_cache             map[u32]int
-	unknown_map_type_cache     map[string]int
 	auto_str_skipped_fields    map[u32]&MarkusedSkippedFields
 	stringification_seen       map[string]&StringifiedTypes
 	stringification_node_count int
@@ -3791,16 +3790,9 @@ fn (mut scan RuntimeHelpersScan) type_needs_map_runtime(typ types.Type, tc &type
 		else {}
 	}
 	if typ is types.Unknown {
-		if cached := scan.unknown_map_type_cache[typ.reason] {
-			return cached == 1
-		}
-		// Unknown reasons are provenance bytes, distinct from source spelling IDs.
-		scan.unknown_map_type_cache[typ.reason] = 2
 		// Markused precedes monomorphization. A reached generic value may
 		// become a map even when its placeholder has no concrete type yet.
-		needed := typ.reason.starts_with('generic placeholder ')
-		scan.unknown_map_type_cache[typ.reason] = if needed { 1 } else { -1 }
-		return needed
+		return typ.generic
 	}
 	key := typ.source_type_id()
 	if cached := scan.map_type_cache[key] {
@@ -4387,7 +4379,7 @@ fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeCh
 			// Before monomorphization an implicit interface implementer can still
 			// expose its declaration's generic field type. Keep both float widths
 			// until the concrete field selected by the boxer is available.
-			if !tc.nofloat && typ.reason.starts_with('generic placeholder ') {
+			if !tc.nofloat && typ.generic {
 				enqueue_stringified_primitive_helpers(flat.source_type_f32, mut used, mut queue)
 				enqueue_stringified_primitive_helpers(flat.source_type_f64, mut used, mut queue)
 			}

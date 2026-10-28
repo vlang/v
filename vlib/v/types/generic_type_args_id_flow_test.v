@@ -12,7 +12,7 @@ fn test_generic_receiver_field_keeps_explicit_main_argument() {
 	tc.struct_generic_params[flat.source_type_id('foreign.Slot')] = ['T']
 	tc.structs[flat.source_type_id('foreign.Slot')] = [StructField{
 		name: 'value'
-		typ:  unknown_type('generic placeholder `T`')
+		typ:  generic_placeholder_type(flat.source_type_id('T'))
 	}]
 	assert tc.qualified_generic_suffix([flat.source_type_id('main.Record')]) == flat.source_type_id('[main.Record]')
 	receiver := tc.parse_scope_param_type(flat.source_type_id('&foreign.Slot[main.Record]'))

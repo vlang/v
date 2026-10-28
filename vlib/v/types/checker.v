@@ -187,6 +187,36 @@ fn unknown_type(reason string) Type {
 	})
 }
 
+// unknown_type_quoting is the unknown type with the reason `<reason> `<name>``.
+// When `name` is a type parameter (`T`), the unknown also stands for it.
+fn unknown_type_quoting(reason string, name string) Type {
+	return Type(Unknown{
+		reason:      '${reason} `${name}`'
+		placeholder: if is_bare_generic_param(name) { flat.source_type_id(name) } else { 0 }
+	})
+}
+
+// unknown_type_quoting_id is unknown_type_quoting for the spelling `name_id`.
+fn unknown_type_quoting_id(reason string, name_id u32) Type {
+	name := flat.source_type_name(name_id)
+	return Type(Unknown{
+		reason:      '${reason} `${name}`'
+		placeholder: if is_bare_generic_param(name) { name_id } else { 0 }
+	})
+}
+
+// generic_placeholder_type is the type of the generic placeholder spelled
+// `name_id`: the type parameter `T`, or a qualified `mod.T`, which stands for no
+// type parameter (see UnknownData.placeholder).
+fn generic_placeholder_type(name_id u32) Type {
+	name := flat.source_type_name(name_id)
+	return Type(Unknown{
+		reason:      'generic placeholder `${name}`'
+		placeholder: if is_bare_generic_param(name) { name_id } else { 0 }
+		generic:     true
+	})
+}
+
 const unresolved_name_reason = 'unresolved name'
 
 // unresolved_name_type is the type of an expression built on a name that did not
@@ -5285,7 +5315,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					f := a.child_node(node_ref, i)
 					if f.kind == .const_field && f.children_count > 0 {
 						qname := tc.const_decl_key(f.value)
-						tc.const_types[qname] = unknown_type('pending const `${qname}`')
+						tc.const_types[qname] = unknown_type_quoting('pending const', qname)
 						tc.const_expr_short_names_count = -1
 						tc.const_exprs[qname] = a.child(f, 0)
 						tc.const_modules[qname] = tc.cur_module
@@ -6598,7 +6628,7 @@ fn (tc &TypeChecker) const_type_for_selector(node flat.Node) ?Type {
 		}
 	}
 	if key := tc.const_key_for_suffix(qname) {
-		typ := tc.const_types[key] or { unknown_type('unknown const `${key}`') }
+		typ := tc.const_types[key] or { unknown_type_quoting('unknown const', key) }
 		return tc.const_type_from_initializer(key, typ)
 	}
 	return none
@@ -12196,7 +12226,7 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 			tc.expr_type_set[idx] = true
 		}
 	} else if tc.keep_placeholder_types && typ is Unknown {
-		if _ := generic_placeholder_from_unknown(typ) {
+		if typ.placeholder != 0 {
 			tc.placeholder_types[int(id)] = typ
 		}
 	}
@@ -18051,7 +18081,7 @@ fn is_bare_generic_param(typ string) bool {
 
 fn unresolved_generic_receiver_type(typ &Type) bool {
 	if typ is Unknown {
-		if _ := generic_placeholder_from_unknown(typ) {
+		if typ.placeholder != 0 {
 			return true
 		}
 	}
@@ -18072,20 +18102,13 @@ fn generic_param_index(name string) int {
 	}
 }
 
+// generic_placeholder_from_unknown is the name of the type parameter that `typ`
+// stands for, for the callers that compare it with type parameter names.
 fn generic_placeholder_from_unknown(typ Unknown) ?string {
-	start := typ.reason.index_u8(`\``)
-	if start < 0 {
+	if typ.placeholder == 0 {
 		return none
 	}
-	end := typ.reason[start + 1..].index_u8(`\``)
-	if end < 0 {
-		return none
-	}
-	name := typ.reason[start + 1..start + 1 + end]
-	if !is_bare_generic_param(name) {
-		return none
-	}
-	return name
+	return flat.source_type_name(typ.placeholder)
 }
 
 fn (tc &TypeChecker) resolve_known_field_type(type_name_id u32, fallback Type) Type {

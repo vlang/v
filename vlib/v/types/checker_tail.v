@@ -2103,7 +2103,7 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 				tc.record_error(.unknown_ident, 'unknown identifier `${lhs.value}`', lhs_id)
 			}
 		}
-		return unknown_type('unknown identifier `${lhs.value}`')
+		return unknown_type_quoting('unknown identifier', lhs.value)
 	}
 	if lhs.kind == .selector {
 		tc.check_selector(lhs_id, lhs)
@@ -4870,7 +4870,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					|| tc.ident_is_rhs_of_own_declaration(receiver_id, receiver.value)) {
 				tc.record_error_at(.unknown_ident, 'undefined variable: `${receiver.value}`', receiver_id,
 					receiver.pos)
-				tc.register_synth_type(id, unknown_type('undefined variable `${receiver.value}`'))
+				tc.register_synth_type(id, unknown_type_quoting('undefined variable', receiver.value))
 				return
 			}
 		}
@@ -5062,7 +5062,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					&& tc.qualify_type_name(generic_base.source_value_id()) !in tc.type_alias_generic_params {
 					display := tc.source_text_for_node(callee_id).trim_space()
 					tc.record_error_at(.unknown_fn, 'unknown function: ${display}', id, tc.method_call_name_pos(node, callee))
-					tc.register_synth_type(id, unknown_type('unknown function `${display}`'))
+					tc.register_synth_type(id, unknown_type_quoting('unknown function', display))
 					return
 				}
 				tc.record_error_at(.unsupported_generic, 'generic fn using generic types cannot be called outside of generic fn', id, node.pos)
@@ -11500,7 +11500,7 @@ fn (tc &TypeChecker) failed_explicit_generic_call_info(name string) CallInfo {
 	return CallInfo{
 		name:         name
 		params:       []Type{}
-		return_type:  unknown_type('invalid explicit generic call `${name}`')
+		return_type:  unknown_type_quoting('invalid explicit generic call', name)
 		params_known: false
 	}
 }
@@ -11815,7 +11815,7 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 		if module_name := tc.visible_c_fn_module(name) {
 			module_key := c_fn_module_signature_key(module_name, name)
 			return_type := tc.c_fn_module_ret_types[module_key] or {
-				unknown_type('unknown return type for `${name}`')
+				unknown_type_quoting('unknown return type for', name)
 			}
 			is_variadic := tc.c_fn_module_variadic[module_key] or { false }
 			params := tc.c_fn_module_param_types[module_key] or { []Type{} }
@@ -11831,7 +11831,7 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 		}
 	}
 	return_type := tc.alias_return_type_from_text(name) or {
-		tc.fn_ret_types[name] or { unknown_type('unknown return type for `${name}`') }
+		tc.fn_ret_types[name] or { unknown_type_quoting('unknown return type for', name) }
 	}
 	// Most functions are in none of the sparse flag tables.
 	info := if tc.call_flag_bloom.excludes(name, tc.call_flag_tables_count()) {
@@ -19786,7 +19786,7 @@ fn (mut tc TypeChecker) contextual_generic_lambda_type(id flat.NodeId, expected 
 	}
 	mut generic_types := []Type{cap: generic_params.len}
 	for param in generic_params {
-		generic_types << inferred_types[param] or { unknown_type('unresolved generic `${param}`') }
+		generic_types << inferred_types[param] or { unknown_type_quoting('unresolved generic', param) }
 	}
 	expected_fn_type := tc.substitute_generic_type_values(Type(expected_fn0), generic_types, generic_params)
 	expected_fn := fn_type_from_type(expected_fn_type) or { return none }
@@ -20270,7 +20270,7 @@ fn (tc &TypeChecker) generic_interface_inference_method(actual_name_id u32, meth
 
 fn (tc &TypeChecker) generic_infer_type_text(actual &Type) u32 {
 	if actual is Unknown {
-		if name := generic_placeholder_from_unknown(actual) { return flat.source_type_id(name) }
+		if actual.placeholder != 0 { return actual.placeholder }
 	}
 	return actual.source_type_id()
 }

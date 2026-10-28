@@ -14822,7 +14822,7 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 			param_type := if i < expected_fn.params.len {
 				fn_compatible_param_type(expected_fn, i)
 			} else {
-				unknown_type('lambda parameter `${child.value}`')
+				unknown_type_quoting('lambda parameter', child.value)
 			}
 			owner := tc.cur_scope.insert_with_owner(child.value, param_type)
 			tc.initialize_pointer_parameter_binding(owner, param_type)
