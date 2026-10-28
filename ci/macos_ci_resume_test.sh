@@ -39,8 +39,8 @@ if [ "$1" = doctor ]; then
 fi
 if [ "$1" = -no-memory-limit ]; then
     [ "$2" = -silent ] && [ "$3" = test-self ] && [ "$4" = vlib ] || exit 98
-    [ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 1 ] || exit 99
-    echo self-tests >> self.log
+    [ "${VJOBS:-}" = "$SELF_TEST_EXPECTED_JOBS" ] || exit 99
+    printf '%s:%s\n' "$VTEST_FAIL_FAST" "$VJOBS" >> self.log
     exit 0
 fi
 [ "$1" = run ] && [ "$2" = ci/macos_ci.vsh ] || exit 90
@@ -134,12 +134,22 @@ run_ci 0 v_doctor
 cmp "$work/saved" "$checkpoint"
 [ "$(cat "$checkout/direct.log")" = doctor ] || fail 'individual task did not run'
 
-# Execute the real self_tests task: its GitHub branch must retain the aggregate
-# runner's serial fail-fast setting instead of replacing it with the CPU count.
-(cd "$checkout" && GITHUB_JOB=clang-macos VTEST_FAIL_FAST=1 VJOBS=1 \
-    V_CI_VEXE="$fake_v" "$runner" self_tests) > "$work/output" 2>&1 || \
-    fail 'self_tests replaced the fail-fast worker count'
-[ "$(cat "$checkout/self.log")" = self-tests ] || fail 'self_tests did not run'
+# Execute the real self_tests task with both the aggregate runner's serial setting
+# and the workflow's three workers. Fail-fast must not override an explicit VJOBS.
+for fast in 0 1; do
+    for jobs in 1 3; do
+        (cd "$checkout" && GITHUB_JOB=clang-macos VTEST_FAIL_FAST="$fast" VJOBS="$jobs" \
+            SELF_TEST_EXPECTED_JOBS="$jobs" V_CI_VEXE="$fake_v" "$runner" self_tests) \
+            > "$work/output" 2>&1 || fail "self_tests replaced VJOBS=$jobs (fail-fast=$fast)"
+    done
+done
+printf '0:1\n0:3\n1:1\n1:3\n' > "$work/expected-self"
+cmp "$work/expected-self" "$checkout/self.log" || fail 'self_tests did not run'
+
+# Without an explicit worker count, fail-fast still defaults to a serial session.
+(cd "$checkout" && unset VJOBS && GITHUB_JOB=clang-macos VTEST_FAIL_FAST=1 \
+    SELF_TEST_EXPECTED_JOBS=1 V_CI_VEXE="$fake_v" "$runner" self_tests) \
+    > "$work/output" 2>&1 || fail 'self_tests lost its serial fail-fast default'
 
 # A second checkout must not consume the first checkout's saved progress.
 first_checkout=$checkout

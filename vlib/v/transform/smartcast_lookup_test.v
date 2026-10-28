@@ -107,11 +107,11 @@ fn test_selector_type_keeps_field_and_receiver_smartcasts() {
 	mut t := Transformer{
 		a:       &a
 		structs: {
-			'Box':   StructInfo{
+			flat.source_type_id('Box'):   StructInfo{
 				name:   flat.source_type_id('Box')
 				fields: [FieldInfo{ name: 'member', typ: flat.source_type_int }]
 			}
-			'Other': StructInfo{
+			flat.source_type_id('Other'): StructInfo{
 				name:   flat.source_type_id('Other')
 				fields: [FieldInfo{ name: 'member', typ: flat.source_type_string }]
 			}

@@ -1,0 +1,147 @@
+name: Notices CI
+
+# `v -N` turns V notices into errors, so a module that is clean under `-N` stays
+# clean only while a lane runs it. V notices are mostly signals about code the
+# compiler cannot prove is alive: unused parameters, locals that shadow a
+# function, conditions that are constant. vlib is not clean under `-N` yet, so
+# the blocking job gates the modules that are clean today, and the weekly sweep
+# reports the rest, ready to be added to the list once they are fixed.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'vlib/**'
+      - 'cmd/v/**'
+      - 'cmd/tools/vtest*.v'
+      - 'cmd/tools/testing/**'
+      - '**/notices_ci.yml'
+  pull_request:
+    paths:
+      - 'vlib/**'
+      - 'cmd/v/**'
+      - 'cmd/tools/vtest*.v'
+      - 'cmd/tools/testing/**'
+      - '**/notices_ci.yml'
+  schedule:
+    # Weekly: the sweep runs the modules that are not gated yet, so it takes
+    # longer than a PR lane may.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: notices-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Stop a failing test session at its first failure instead of running the
+  # whole suite to completion; the remaining files add no signal.
+  VTEST_FAIL_FAST: '1'
+  # The modules whose `v -N test vlib/<module>` run is clean today. A module
+  # joins this list once its own run is clean, so the list keeps growing as the
+  # notice debt is fixed. The sweep job reports the modules that are not here
+  # yet and are clean, ready to be added.
+  NOTICE_GATE_MODULES: 'arena arrays benchmark bitfield build cell clipboard compress config context dl eventbus flag hash i18n image intern log maps mcp metrics ncurses pico_http_parser picoev picohttpparser pool rand semver stbi strconv strings toml trace uuid wasm yaml'
+
+jobs:
+  notices-gate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            cc: gcc
+            build: make
+            v: ./v
+          - os: macos-14
+            cc: clang
+            build: make
+            v: ./v
+          - os: windows-2025
+            cc: gcc
+            build: .\makev.bat -gcc
+            v: ./v.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      VFLAGS: -cc ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: ${{ matrix.build }}
+      # Any vlib change can add a notice to any module, and notices differ per
+      # platform, so the list runs on every PR and on master, on all three
+      # operating systems. A failure means the change added a notice to a
+      # module that was clean: fix the notice, do not drop the module.
+      # A module joins the list once its own `v -N test vlib/<module>` run is
+      # clean, so the gate keeps growing with the debt reduction.
+      - name: Run the -N test gate
+        shell: bash
+        run: |
+          set -u
+          if [ -z "$NOTICE_GATE_MODULES" ]; then
+            echo "::error title=notices::the gate module list is empty"
+            exit 1
+          fi
+          failed=0
+          for module in $NOTICE_GATE_MODULES; do
+            if ! ${{ matrix.v }} -N -silent test "vlib/$module"; then
+              echo "::error title=notices::v -N test vlib/$module reported notices"
+              failed=1
+            fi
+          done
+          exit $failed
+
+  notices-sweep:
+    # Advisory inventory, never blocking: the modules that are clean today are
+    # the candidates for the gate list. Red modules are notice debt; timeouts
+    # mean the module is too large to prove clean in this budget.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.ref == 'refs/heads/master' && github.repository == 'vlang/v')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make
+      - name: Sweep every vlib module under -N
+        shell: bash
+        run: |
+          set -u
+          green=()
+          red=()
+          budget=()
+          for dir in vlib/*/; do
+            module="$(basename "$dir")"
+            case " $NOTICE_GATE_MODULES " in
+              *" $module "*) continue ;;
+            esac
+            if timeout 240 ./v -N -silent test "$dir" > "sweep-$module.log" 2>&1; then
+              status=0
+            else
+              status=$?
+            fi
+            if [ "$status" -eq 0 ]; then
+              green+=("$module")
+            elif [ "$status" -eq 124 ]; then
+              budget+=("$module")
+            else
+              red+=("$module")
+            fi
+          done
+          {
+            echo "## -N sweep summary"
+            echo
+            echo "Clean (candidates for the gate list): ${green[*]:-none}"
+            echo
+            echo "Notice debt: ${red[*]:-none}"
+            echo
+            echo "Over budget (240 s per module): ${budget[*]:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -12,7 +12,7 @@ fn test_borrowed_array_push_many_is_cloned() ? {
 	mut optional := OptionalPayloads{}
 	optional.items = []
 	optional.items? << holder.items
-	mut optional_items := optional.items or { panic(err) }
+	mut optional_items := optional.items or { panic("expected items") }
 	optional_items[0].values[0] = "optional push many"
 	assert holder.items[0].values[0] == "original"
 }
@@ -26,7 +26,7 @@ fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
 	mut optional := OptionalPayloads{}
 	optional.items = []
 	optional.items? << (*holder).left
-	optional_items := optional.items or { panic(err) }
+	optional_items := optional.items or { panic("expected items") }
 	assert optional_items[0].values[0] == "left"
 	assert holder.left.values[0] == "left"
 }
@@ -89,7 +89,7 @@ fn test_borrowed_optional_struct_field_is_cloned(holder &Holder) {
 	optional_copy := OptionalCopy{
 		value: holder.left
 	}
-	mut value := optional_copy.value or { panic(err) }
+	mut value := optional_copy.value or { panic("expected value") }
 	value.values[0] = "optional copy"
 	assert holder.left.values[0] == "left"
 }
@@ -173,8 +173,8 @@ fn main() {
 			values: ["right"]
 		}
 	}
-	test_borrowed_array_push_many_is_cloned() or { panic(err) }
-	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
+	test_borrowed_array_push_many_is_cloned() or { panic("expected push many") }
+	test_borrowed_append_is_cloned_once(holder) or { panic("expected append") }
 	test_borrowed_prepend_and_insert_are_cloned(holder)
 	test_borrowed_bulk_prepend_and_insert_are_cloned()
 	test_borrowed_array_initializer_is_cloned_per_element(holder)

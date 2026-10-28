@@ -1,6 +1,119 @@
 module types
 
+import os
+import v.parser
+import v.pref
 import v.util
+
+fn raw_label_checker(name string, source string) &TypeChecker {
+	path := os.join_path(os.vtmp_dir(), 'raw_asm_labels_${name}_${os.getpid()}.v')
+	os.write_file(path, source) or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut prefs := pref.new_preferences()
+	// Check retained templates for each ISA without requiring a matching host backend.
+	prefs.supports_inline_asm = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	return tc
+}
+
+fn test_raw_labels_accept_quoted_exported_symbols() {
+	tc := raw_label_checker('quoted_exports', 'module main
+fn main() {
+ asm arm64 raw {
+  ".globl \\"first_symbol\\"\\n"
+  ".global \\"second_symbol\\"\\n"
+  ".weak \\"third_symbol\\"\\n"
+  "first_symbol: second_symbol: third_symbol: nop"
+ }
+}
+')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.notices.len == 0, tc.notices.str()
+}
+
+fn test_raw_labels_skip_unknown_assembler_comment_grammars() {
+	for arch, comment in {
+		'arm':     '@'
+		'riscv64': '#'
+	} {
+		tc := raw_label_checker(arch, 'module main
+fn main() {
+ asm ${arch} raw {
+  "${comment} ignored; fake_label:\\n"
+  "nop"
+ }
+}
+')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.notices.len == 0, tc.notices.str()
+	}
+}
+
+fn test_raw_labels_still_warn_for_other_unexported_symbols() {
+	tc := raw_label_checker('unexported', 'module main
+fn main() {
+ asm arm64 raw {
+  ".globl \\"exported_symbol\\"\\n"
+  ".globl \\"private\\\\_symbol\\"\\n"
+  "private_symbol: nop"
+ }
+}
+')
+	assert tc.errors.len == 0, tc.errors.str()
+	// The quoted backslash is part of a different assembler symbol, not an escape.
+	assert tc.notices.len == 1, tc.notices.str()
+	assert tc.notices[0].severity == 'warning:'
+	assert tc.notices[0].msg.starts_with('label `private_symbol` in a raw assembly template has no `%=` suffix')
+}
+
+fn test_raw_labels_warn_for_quoted_definitions() {
+	for arch in ['amd64', 'arm64'] {
+		source := 'module main
+fn main() {
+ asm ${arch} raw {
+  "\\"quoted_label\\": \\"1\\": nop\\n"
+  "\\"escaped\\\\\\"quote\\": nop\\n"
+  ;
+ }
+}
+'
+		tc := raw_label_checker('quoted_${arch}', source)
+		assert tc.errors.len == 0, tc.errors.str()
+		// A quoted digit names an ordinary symbol, unlike the numeric local label `1:`.
+		assert tc.notices.len == 3, tc.notices.str()
+		for name in ['quoted_label', '1', 'escaped\\"quote'] {
+			assert tc.notices.any(it.msg.starts_with('label `${name}` in a raw assembly template'))
+		}
+		escaped_notices := tc.notices.filter(it.msg.starts_with('label `escaped'))
+		escaped := escaped_notices[0].pos
+		assert source[int(escaped.offset)..int(escaped.end)] == 'escaped\\\\\\"quote'
+	}
+}
+
+fn test_raw_labels_accept_safe_quoted_definitions() {
+	for arch in ['amd64', 'arm64'] {
+		tc := raw_label_checker('safe_quoted_${arch}', 'module main
+fn main() {
+ asm ${arch} raw {
+  ".globl exported\\n"
+  ".global \\"quoted export\\"\\n"
+  "\\"exported\\": \\"quoted export\\": \\"unique%=\\": 1: nop\\n"
+  ".ascii \\"text: inside a string\\"\\n"
+  ".weak \\"escaped\\\\\\"quote\\"\\n"
+  "\\"escaped\\\\\\"quote\\": nop\\n"
+  ;
+ }
+}
+')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.notices.len == 0, tc.notices.str()
+	}
+}
 
 // raw_template_of decodes the template section of a complete raw asm block, so the
 // tests exercise the same block offsets a checker diagnostic would use.
@@ -9,7 +122,11 @@ fn raw_template_of(source string) InlineAsmRawTemplate {
 	open := inline_asm_index_of(block, 0, block.len, `{`) or { panic('no `{`') }
 	close := inline_asm_last_index_of(block, open, block.len, `}`) or { panic('no `}`') }
 	sections := inline_asm_section_ranges(block, open + 1, close)
-	return inline_asm_raw_template(block, sections[0])
+	return inline_asm_raw_template(block, sections[0], util.parse_inline_asm_header(block[..open]).arch)
+}
+
+fn first_label(instruction InlineAsmRawInstruction) string {
+	return if instruction.labels.len > 0 { instruction.labels[0].name } else { '' }
 }
 
 // raw_instructions_of tokenizes a block the way the checker will: bare register names
@@ -74,7 +191,7 @@ fn test_raw_template_span_handles_empty_and_out_of_range() {
 	_, last_end := template.span(template.text.len - 1, template.text.len)
 	assert too_far_end == last_end
 	assert too_far_start == template.starts[0]
-	empty := inline_asm_raw_template('nothing quoted here', InlineAsmRange{ start: 0, end: 19 })
+	empty := inline_asm_raw_template('nothing quoted here', InlineAsmRange{ start: 0, end: 19 }, 'amd64')
 	assert empty.text == ''
 	empty_start, empty_end := empty.span(0, 1)
 	assert empty_start == 0 && empty_end == 0
@@ -82,7 +199,7 @@ fn test_raw_template_span_handles_empty_and_out_of_range() {
 
 fn test_raw_template_decodes_c_escapes() {
 	block := '"a\\\\b\\"c\\x41\\101\\q"'
-	template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len })
+	template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len }, 'amd64')
 	assert template.text == 'a\\b"cAAq'
 	// `\x41` spans four source bytes.
 	x := template.text.index('A') or { -1 }
@@ -90,7 +207,7 @@ fn test_raw_template_decodes_c_escapes() {
 	assert block[start..end] == '\\x41'
 	// Like C, `\x` consumes every following hex digit, and `\x` alone is the letter.
 	hex := '"\\x001\\x7g\\xz\\0017"'
-	decoded := inline_asm_raw_template(hex, InlineAsmRange{ start: 0, end: hex.len })
+	decoded := inline_asm_raw_template(hex, InlineAsmRange{ start: 0, end: hex.len }, 'amd64')
 	assert decoded.text.bytes() == [u8(1), 7, `g`, `x`, `z`, 1, `7`]
 	// Octal escapes stop after three digits; `\0017` is `\001` then `7`.
 	seven := decoded.text.len - 1
@@ -102,7 +219,7 @@ fn test_raw_template_decodes_c_escapes() {
 
 fn test_raw_template_span_at_end_of_text_is_past_the_last_byte() {
 	block := '"nop\\n"'
-	template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len })
+	template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len }, 'amd64')
 	assert template.text == 'nop\n'
 	// Position 4 is one past the decoded text, which is the closing quote in the source.
 	start, end := template.span(template.text.len, template.text.len)
@@ -112,7 +229,7 @@ fn test_raw_template_span_at_end_of_text_is_past_the_last_byte() {
 	assert also_start == start && also_end == end
 	// A lone trailing backslash is kept as a literal byte.
 	lone := '"a\\'
-	lone_template := inline_asm_raw_template(lone, InlineAsmRange{ start: 0, end: lone.len })
+	lone_template := inline_asm_raw_template(lone, InlineAsmRange{ start: 0, end: lone.len }, 'amd64')
 	assert lone_template.text == 'a\\'
 }
 
@@ -126,7 +243,7 @@ fn test_raw_lines_split_on_newline_and_semicolon() {
 
 fn test_raw_lines_keep_semicolons_inside_quoted_text() {
 	block := '".ascii \\"a;b\\"\\n\\t"'
-	template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len })
+	template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len }, 'amd64')
 	lines := inline_asm_raw_lines(&template)
 	assert lines.map(template.text[it.start..it.end]) == ['.ascii "a;b"', '\t']
 }
@@ -151,7 +268,7 @@ fn test_raw_instructions_labels_mnemonics_and_operands() {
 	instructions := raw_instructions_of(raw_loop_block, 'amd64')
 	assert instructions.map(it.mnemonic) == ['testq', 'jz', '', 'movzbl', 'addq', 'incq', 'decq',
 		'jnz', '']
-	assert instructions.map(it.label) == ['', '', '.Lloop%=', '', '', '', '', '', '.Ldone%=']
+	assert instructions.map(first_label(it)) == ['', '', '.Lloop%=', '', '', '', '', '', '.Ldone%=']
 	assert instructions.map(it.is_directive) == [false, false, false, false, false, false, false,
 		false, false]
 
@@ -176,7 +293,7 @@ fn test_raw_instructions_labels_mnemonics_and_operands() {
 	// The label span points into the string literal in the source.
 	template := raw_template_of(raw_loop_block)
 	loop := instructions[2]
-	start, end := template.span(loop.label_start, loop.label_end)
+	start, end := template.span(loop.labels[0].start, loop.labels[0].end)
 	assert raw_loop_block[start..end] == '.Lloop%='
 }
 
@@ -241,7 +358,7 @@ fn test_raw_operand_modifiers_immediates_and_prefixes() {
 	assert jmp.operands[0].name == 'rax'
 	assert jmp.operands[0].text == '*%%rax'
 
-	assert instructions[5].label == '1'
+	assert first_label(instructions[5]) == '1'
 	assert instructions[6].operands[0].kind == .symbol
 	assert instructions[6].operands[0].text == '1b'
 	assert instructions[7].operands[0].kind == .symbol
@@ -310,20 +427,20 @@ fn test_raw_intel_templates_use_bare_registers() {
 fn test_raw_label_detection_rejects_operand_colons() {
 	template := raw_template_of('asm amd64 raw { "%%fs:0x28\\n\\t" "a::\\n\\t" "x: nop" ; }')
 	instructions := inline_asm_raw_parse_instructions(&template, util.asm_register_names('amd64'))
-	assert instructions.map(it.label) == ['', '', 'x']
+	assert instructions.map(first_label(it)) == ['', '', 'x']
 	assert instructions.map(it.mnemonic) == ['%%fs:0x28', 'a::', 'nop']
 }
 
 fn test_raw_template_removes_c_line_splices() {
 	for line_end in ['\n', '\r\n'] {
 		block := '"mov' + '\\' + line_end + 'q %%rax, %%rbx"'
-		template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len })
+		template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len }, 'amd64')
 		assert template.text == 'movq %%rax, %%rbx'
 		start, end := template.span(3, 4)
 		assert block[start..end] == 'q'
 		// A splice can also join the source bytes within an escape sequence.
 		escape := '"' + '\\\\' + line_end + 'n' + '\\x4' + '\\' + line_end + '1"'
-		decoded := inline_asm_raw_template(escape, InlineAsmRange{ start: 0, end: escape.len })
+		decoded := inline_asm_raw_template(escape, InlineAsmRange{ start: 0, end: escape.len }, 'amd64')
 		assert decoded.text == '\nA'
 		escape_start, escape_end := decoded.span(1, 2)
 		assert escape[escape_start..escape_end] == '\\x4' + '\\' + line_end + '1'
@@ -336,4 +453,49 @@ fn test_raw_instructions_fold_multiple_prefixes() {
 	assert instructions.len == 1
 	assert instructions[0].mnemonic == 'lock rex.w addl'
 	assert instructions[0].operands.map(it.text) == ['%%eax', '(%%rcx)']
+}
+
+fn test_raw_statement_can_define_several_labels_with_blanks_before_colons() {
+	instructions := raw_instructions_of('asm amd64 raw { ".La%=: .Lb: nop\\n\\t" "spaced\\t: ret" ; }',
+		'amd64')
+	assert instructions.map(it.mnemonic) == ['nop', 'ret']
+	assert instructions[0].labels.map(it.name) == ['.La%=', '.Lb']
+	assert instructions[1].labels.map(it.name) == ['spaced']
+	assert instructions[1].labels[0].end - instructions[1].labels[0].start == 'spaced'.len
+}
+
+fn test_raw_quoted_label_names_and_spans() {
+	block := 'asm amd64 raw { "\\"quoted;: label\\" \\t: \\"1\\": nop\\n" ; }'
+	template := raw_template_of(block)
+	instructions := inline_asm_raw_parse_instructions(&template, [])
+	assert instructions.len == 1
+	assert instructions[0].mnemonic == 'nop'
+	assert instructions[0].labels.map(it.name) == ['quoted;: label', '1']
+	for label in instructions[0].labels {
+		assert label.is_quoted
+		start, end := template.span(label.start, label.end)
+		assert block[start..end] == label.name
+	}
+}
+
+fn test_raw_template_masks_assembler_comments_per_arch() {
+	x86 := raw_template_of('asm amd64 raw { "/* a\\n" " note: b */ nop # c: d \\"e\\"\\n" ".ascii \\"#x\\"\\n" "jmp .L1 // not: comment" ; }')
+	// Masking keeps the length and the newlines, so offsets still map back to the source.
+	assert x86.text.len == x86.starts.len
+	assert x86.text.count('\n') == 3
+	assert !x86.text.contains('note')
+	assert x86.text.contains('"#x"')
+	assert x86.text.contains('// not: comment')
+	x86_instructions := inline_asm_raw_parse_instructions(&x86, [])
+	assert x86_instructions.map(it.mnemonic) == ['nop', '.ascii', 'jmp']
+	assert x86_instructions.map(it.labels.len) == [0, 0, 0]
+	assert x86_instructions[1].operands.map(it.text) == ['"#x"']
+	// On x86 `//` is not a comment, and operands split only on commas.
+	assert x86_instructions[2].operands.map(it.text) == ['.L1 // not: comment']
+	// A `//` comment hides a `'` that would otherwise start a character constant.
+	arm := raw_template_of('asm arm64 raw { "add x0, x0, #16 // don\'t: stop\\n" "1: ret" ; }')
+	arm_instructions := inline_asm_raw_parse_instructions(&arm, util.asm_register_names('arm64'))
+	assert arm_instructions.map(it.mnemonic) == ['add', 'ret']
+	assert arm_instructions[0].operands.map(it.kind) == [.register, .register, .immediate]
+	assert arm_instructions[1].labels.map(it.name) == ['1']
 }

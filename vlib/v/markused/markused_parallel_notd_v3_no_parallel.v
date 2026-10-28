@@ -156,6 +156,12 @@ fn clone_body_calls(value BodyCalls) BodyCalls {
 	}
 }
 
+// Only eager-collect prepared bodies when helpers can offset scanning unreachable bodies.
+fn markused_can_parallel_precollect(collector &CallCollector) bool {
+	return collector.a.worker_count() > 0
+		|| (collector.tc.scoped_parallel_workers_enabled() && runtime.nr_jobs() > 1)
+}
+
 // precollect_body_calls analyzes every fn_decl body, across threads when there
 // is enough work.
 fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules []string, body_import_contexts []int) []BodyCalls {

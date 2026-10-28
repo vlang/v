@@ -1,0 +1,30 @@
+// The checker warning is the subject; the undefined name afterwards stops the build before
+// code generation, which would otherwise reject the amd64 template on other hosts.
+fn sum_bytes(data []u8) u64 {
+	mut ptr := data.data
+	mut len := u64(data.len)
+	mut sum := u64(0)
+	asm amd64 raw {
+		"testq %[len], %[len]\n\t"
+		"jz .Ldone\n\t"
+		".Lloop:\n\t"
+		"movzbl (%[ptr]), %%eax\n\t"
+		"addq %%rax, %[sum]\n\t"
+		"incq %[ptr]\n\t"
+		"decq %[len]\n\t"
+		"jnz .Lloop\n\t"
+		".Ldone:"
+		; [sum] "+r" (sum)
+		  [ptr] "+r" (ptr)
+		  [len] "+r" (len)
+		;
+		; rax
+		  memory
+		  cc
+	}
+	return sum + undefined_total
+}
+
+fn main() {
+	println(sum_bytes([u8(1), 2, 3]))
+}

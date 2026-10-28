@@ -3,6 +3,30 @@ module flat
 import os
 import v.token
 
+fn test_discard_names_survive_source_file_renumbering() {
+	mut file_set := token.FileSet.new()
+	mut a := FlatAst.new()
+	a.source_files[1] = file_set.add_file('library/first.v', 20)
+	a.source_files[2] = file_set.add_file('library/second.v', 20)
+	first := a.discard_name(token.new_span(1, 4, 5))
+	second := a.discard_name(token.new_span(2, 4, 5))
+	assert first != second
+	assert first != a.discard_name(token.new_span(1, 6, 7))
+	assert first != a.discard_name(token.new_span(1, 4, 6))
+	a.source_files.clear()
+	// A warm compilation can replace earlier files with a single cached header.
+	a.source_files[17] = file_set.add_file('library/first.v', 20)
+	a.source_files[3] = file_set.add_file('library/second.v', 20)
+	assert first == a.discard_name(token.new_span(17, 4, 5))
+	assert second == a.discard_name(token.new_span(3, 4, 5))
+	// Missing and unnamed source entries use the same explicit fallback.
+	missing := a.discard_name(token.new_span(9, 4, 5))
+	a.source_files[9] = file_set.add_file('', 20)
+	assert missing == a.discard_name(token.new_span(9, 4, 5))
+	assert missing != a.discard_name(token.new_span(10, 4, 5))
+	assert missing != first
+}
+
 // real_source_path must answer exactly like os.real_path, from the table for
 // parsed sources and directly for anything else, and must never add to the
 // table: threads read it concurrently once it is built.

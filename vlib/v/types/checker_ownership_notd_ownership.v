@@ -117,6 +117,9 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(_ flat.NodeId) bo
 	return false
 }
 
+// note_generated_borrowed_projection_copy needs no clone metadata without ownership checking.
+pub fn (tc &TypeChecker) note_generated_borrowed_projection_copy(_ flat.NodeId, _ flat.NodeId) {}
+
 // ownership_expr_clones_borrowed_storage reports no clone metadata when ownership is disabled.
 pub fn (tc &TypeChecker) ownership_expr_clones_borrowed_storage(_ flat.NodeId) bool {
 	return false

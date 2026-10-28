@@ -265,7 +265,7 @@ fn test_checked_numeric_infix_recovers_index_alias_overrides_from_raw_element_ty
 	a.children << [lhs, rhs]
 	id := a.add_node(flat.Node{ kind: .infix, op: .plus, children_start: start, children_count: 2 })
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Count', flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('Count'), flat.source_type_int)
 	// A flattened index sidecar alone must not hide a declared alias operator.
 	tc.register_synth_type(lhs, types.Type(types.int_))
 	tc.register_synth_type(rhs, types.Type(types.int_))
@@ -297,7 +297,7 @@ fn test_checked_numeric_infix_keeps_named_annotations_and_casts_on_operator_path
 	a.children << [lhs, rhs]
 	id := a.add_node(flat.Node{ kind: .infix, op: .plus, children_start: start, children_count: 2 })
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Count', flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('Count'), flat.source_type_int)
 	tc.register_synth_type(lhs, types.Type(types.int_))
 	tc.register_synth_type(rhs, types.Type(types.int_))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})

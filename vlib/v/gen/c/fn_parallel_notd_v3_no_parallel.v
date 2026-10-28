@@ -19,7 +19,10 @@ const min_flat_cgen_parallel_items = 128
 // V3-generated compilers allocate temporary sum payloads while lowering each
 // expression. Keep self-host body batches narrow so those values are released
 // throughout cgen instead of accumulating across hundreds of functions.
-const scoped_cgen_worker_batches = 256
+// Every batch starts with cold generator/checker caches (c names, parsed types,
+// interned types, local scopes), so too many batches re-derive the same facts:
+// 16 batches keep most of that warmth while still bounding the scratch.
+const scoped_cgen_worker_batches = 16
 const min_scoped_cgen_batch_cost = 16_384
 const flat_cgen_chunks_per_job = 32
 
@@ -1348,8 +1351,8 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 	mut prep_g := unsafe { nil }
 	if fused {
 		if g.prep_alias_short_names.len == 0 {
-			for name, _ in g.tc.type_aliases.ids {
-				g.prep_alias_short_names[name.all_after_last('.')] = true
+			for registry_name_id, _ in g.tc.type_aliases.ids {
+				g.prep_alias_short_names[flat.source_type_syntax(registry_name_id).unqualified()] = true
 			}
 		}
 		prep_g = voidptr(g)
@@ -1968,7 +1971,8 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		for item in chunks[chunk_idx] {
 			chunk_cost += item.cost
 		}
-		if scratch_scope == unsafe { nil } || !cgen_worker_scope_reenter(scratch_scope) {
+		if scratch_scope == unsafe { nil }
+			|| !cgen_worker_scope_reenter(scratch_scope, cgen_chunk_arena_keep_bytes) {
 			cgen_worker_scope_free(scratch_scope)
 			scratch_scope = cgen_worker_scope_begin(true)
 		}
@@ -2016,6 +2020,10 @@ fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
 	n_batches := g.scoped_cgen_batch_count(items.len, total_cost)
 	mut start := 0
 	mut consumed_cost := i64(0)
+	// Batches are cost-balanced and each one is absorbed before the next starts,
+	// so one scratch arena is rewound and reused whole instead of being unmapped
+	// and faulted in again for every batch.
+	mut scratch_scope := unsafe { nil }
 	for batch_idx in 0 .. n_batches {
 		mut end := start
 		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
@@ -2024,14 +2032,17 @@ fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
 			consumed_cost += i64(items[end].cost) + 1
 			end++
 		}
-		scratch_scope := cgen_worker_scope_begin(true)
+		if scratch_scope == unsafe { nil } || !cgen_worker_scope_reenter(scratch_scope, max_int) {
+			cgen_worker_scope_free(scratch_scope)
+			scratch_scope = cgen_worker_scope_begin(true)
+		}
 		mut batch := g.new_parallel_worker(batch_idx)
 		batch.gen_fn_items(items[start..end])
 		cgen_worker_scope_leave(scratch_scope)
 		g.absorb_scoped_cgen_batch(batch, false)
-		cgen_worker_scope_free(scratch_scope)
 		start = end
 	}
+	cgen_worker_scope_free(scratch_scope)
 }
 
 fn clone_embedded_fields_by_type(values map[u32][]types.StructField) map[u32][]types.StructField {
@@ -2160,7 +2171,7 @@ fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
 fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
 	for name, methods in worker.interfaces {
 		if name !in g.interfaces {
-			g.interfaces[name.clone()] = methods.clone()
+			g.interfaces[name] = methods.clone()
 		}
 	}
 	g.interface_boxed_types_done = worker.interface_boxed_types_done
@@ -2966,60 +2977,10 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 // V alias declarations are capitalized; literal callback types are the only
 // lowercase text that can require a function-pointer preseed.
 fn parallel_type_text_may_preseed(g &FlatGen, typ_id u32) bool {
-	if typ_id == 0 {
-		return false
-	}
-	typ := flat.source_type_name(typ_id)
-	mut start := 0
-	for start < typ.len {
-		for start < typ.len && typ[start] in [` `, `\t`, `\n`, `\r`] {
-			start++
-		}
-		if start + 7 <= typ.len && typ[start] == `s` && typ[start + 1] == `h`
-			&& typ[start + 2] == `a` && typ[start + 3] == `r` && typ[start + 4] == `e`
-			&& typ[start + 5] == `d` && typ[start + 6] == ` ` {
-			start += 7
-			continue
-		}
-		if start + 3 <= typ.len && typ[start] == `.` && typ[start + 1] == `.`
-			&& typ[start + 2] == `.` {
-			start += 3
-			continue
-		}
-		if start + 2 <= typ.len && typ[start] == `[` && typ[start + 1] == `]` {
-			start += 2
-			continue
-		}
-		if start < typ.len && typ[start] in [`&`, `?`, `!`] {
-			start++
-			continue
-		}
-		break
-	}
-	if start >= typ.len {
-		return false
-	}
-	if start + 1 < typ.len && typ[start] == `f` && typ[start + 1] == `n` {
-		return true
-	}
-	mut name_start := start
-	for i := start; i < typ.len; i++ {
-		if typ[i] == `.` {
-			name_start = i + 1
-		}
-	}
-	if name_start >= typ.len || !typ[name_start].is_capital() {
-		return false
-	}
-	mut end := typ.len
-	for end > name_start && typ[end - 1] in [` `, `\t`, `\n`, `\r`] {
-		end--
-	}
-	if end <= name_start {
-		return false
-	}
-	short := unsafe { tos(typ.str + name_start, end - name_start) }
-	return short in g.prep_alias_short_names
+	if typ_id == 0 { return false }
+	syntax := flat.source_type_syntax(typ_id)
+	return syntax.parallel_preseed_fn() || (syntax.parallel_preseed_short() != 0
+		&& syntax.parallel_preseed_short() in g.prep_alias_short_names)
 }
 
 // par_cgen_prep_enabled gates the parallel fused item prep, so a single binary
@@ -3061,35 +3022,30 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ_id u32) bool {
 	if typ_id == 0 {
 		return false
 	}
-	clean := flat.source_type_name(g.parallel_base_type_text(typ_id))
-	if clean.contains('fn(') || clean.contains('fn (') {
+	clean_id := g.parallel_base_type_text(typ_id)
+	if flat.source_type_syntax(clean_id).function_fragment() {
 		return true
 	}
-	if g.tc.type_aliases.contains(clean) {
+	if g.tc.type_aliases.contains(clean_id) {
 		return true
 	}
-	qtyp := g.tc.qualify_name(clean)
-	return g.tc.type_aliases.contains(qtyp)
+	qualified_qtyp_id := g.tc.qualify_type_name(clean_id)
+	return g.tc.type_aliases.contains(qualified_qtyp_id)
 }
 
 // parallel_base_type_text supports parallel base type text handling for FlatGen.
 fn (g &FlatGen) parallel_base_type_text(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
-	mut clean := trimmed_space(typ)
-	for clean.len > 0 {
-		if clean.starts_with('shared ') {
-			clean = trimmed_space(clean[7..])
-		} else if clean[0] == `&` || clean[0] == `?` || clean[0] == `!` {
-			clean = trimmed_space(clean[1..])
-		} else if clean.starts_with('...') {
-			clean = trimmed_space(clean[3..])
-		} else if clean.starts_with('[]') {
-			clean = trimmed_space(clean[2..])
+	mut clean := flat.source_type_syntax(typ_id).trimmed()
+	for clean != 0 {
+		shape := flat.source_type_shape(clean)
+		if shape.has(.shared_type) || shape.has(.pointer) || shape.has(.option_type)
+			|| shape.has(.result_type) || shape.has(.variadic) || shape.has(.array_type) {
+			clean = flat.source_type_syntax(flat.source_type_syntax(clean).raw_base()).trimmed()
 		} else {
 			break
 		}
 	}
-	return if clean == typ { typ_id } else { flat.source_type_id(clean) }
+	return clean
 }
 
 // preseed_parallel_fn_ptr_type supports preseed parallel fn ptr type handling for FlatGen.
@@ -3496,7 +3452,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cur_fn_ret_base:                    g.cur_fn_ret_base
 		memo_usable_expr_types:             g.memo_usable_expr_types
 		import_key_cache:                   &util.KeyRecentCache{}
-		selective_import_key_cache:         &util.KeyRecentCache{}
 		cache_struct_fields:                g.cache_struct_fields
 		dedup_fn_decl_aliases:              g.dedup_fn_decl_aliases
 		prefix_param_scan:                  g.prefix_param_scan
@@ -3659,7 +3614,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		const_suffixes:                        g.tc.const_suffixes
 		imports:                               g.tc.imports
 		file_imports:                          g.tc.file_imports
-		file_selective_imports:                g.tc.file_selective_imports
+		selective_import_files:                g.tc.selective_import_files
 		file_modules:                          g.tc.file_modules
 		file_scope:                            g.tc.file_scope
 		cur_scope:                             fs

@@ -248,6 +248,7 @@ pub fn (mut z Zip) open_entry(name string) ! {
 		z.entries << ZipEntry{
 			name:   normalized
 			method: 0
+			flags:  0x0800
 			is_dir: normalized.ends_with('/')
 		}
 		z.current = z.entries.len - 1
@@ -462,6 +463,8 @@ fn (mut z Zip) flush() ! {
 		z.entries[i].size = u64(e.data.len)
 		z.entries[i].csize = u64(payload.len)
 		z.entries[i].crc32 = crc32.sum(e.data)
+		// Re-encoding removes data descriptors and compression options, but not name encoding.
+		z.entries[i].flags = e.flags & 0x0800
 		payloads << payload
 	}
 	// Build zip file in memory
@@ -474,7 +477,7 @@ fn (mut z Zip) flush() ! {
 		// version needed (2.0)
 		out << [u8(20), 0x00]
 		// flags
-		out << [u8(0), 0x00]
+		out << u16_to_bytes(e.flags)
 		// method
 		out << [u8(e.method), 0x00]
 		// mod time/date (0)
@@ -505,7 +508,7 @@ fn (mut z Zip) flush() ! {
 		// version needed
 		out << [u8(20), 0x00]
 		// flags
-		out << [u8(0), 0x00]
+		out << u16_to_bytes(e.flags)
 		// method
 		out << [u8(e.method), 0x00]
 		// mod time/date

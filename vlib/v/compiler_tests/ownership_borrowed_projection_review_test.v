@@ -38,7 +38,8 @@ fn test_borrowed_projection_regressions_by_context() {
 	common := os.read_file(os.join_path(borrowed_projection_fixture_dir, 'common.v.txt')) or {
 		panic(err)
 	}
-	for name in ['assignments', 'calls_and_conversions', 'collections', 'indexed_aliases', 'constants'] {
+	for name in ['assignments', 'calls_and_conversions', 'collections', 'array_initializers',
+		'indexed_aliases', 'constants'] {
 		fragment := os.read_file(os.join_path(borrowed_projection_fixture_dir, '${name}.v.txt')) or { panic(err) }
 		run_borrowed_projection_source(v3_bin, name, common + '\n' + fragment)
 	}

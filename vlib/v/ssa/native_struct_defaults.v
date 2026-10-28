@@ -17,7 +17,7 @@ fn (mut b Builder) register_struct_field_defaults() {
 		if node.kind != .struct_decl {
 			continue
 		}
-		typ := b.struct_type_id_for_decl(node.value, module_name)
+		typ := b.struct_type_id_for_decl(node.source_value_id(), module_name)
 		b.default_struct_types[typ] = true
 		for index in 0 .. node.children_count {
 			field := b.a.child_node(&node, index)

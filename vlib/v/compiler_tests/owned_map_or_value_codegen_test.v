@@ -89,6 +89,77 @@ fn byte_fallback() []u8 {
  return [u8(9)]
 }
 
+struct Bytes {
+mut:
+ value []u8
+}
+
+type TextKey = string
+type FixedTextKey = [1]TextKey
+type NestedTextKey = [1]FixedTextKey
+
+fn verify_runtime_key_cleanup() {
+ before := drops.len
+ {
+  mut values := map[[1]string]Entry{}
+  values[["fixed".to_owned()]!] = fresh("fixed owner".repeat(1))
+  assert values[["fixed"]!].text == "fixed owner"
+ }
+ assert drops.len == before + 1
+ {
+  mut values := map[NestedTextKey]Entry{}
+  nested_key := NestedTextKey([[TextKey("nested".to_owned())]!]!)
+  values[nested_key] = fresh("nested owner".repeat(1))
+  assert values[NestedTextKey([[TextKey("nested")]!]!)].text == "nested owner"
+ }
+ assert drops.len == before + 2
+ {
+  mut values := map[TextKey]Entry{}
+  values[TextKey("alias".to_owned())] = fresh("alias owner".repeat(1))
+  assert values[TextKey("alias")].text == "alias owner"
+ }
+ assert drops.len == before + 3
+ assert drops.len == next_id
+}
+
+fn verify_cleanup_scopes() {
+ before := drops.len
+ {
+  mut values := {"found": [u8(1)]}
+  values["found"] = [u8(2)]
+  assert values["found"][0] == 2
+ }
+ {
+  entry := fresh("after value replacement".repeat(1))
+  assert entry.text == "after value replacement"
+ }
+ assert drops.len == before + 1
+ {
+  mut values := map[[1]string][]u8{}
+  name := ["found".to_owned()]!
+  values[name] = [u8(1)]
+  values[["found".to_owned()]!] = [u8(2)]
+  assert values[["found"]!][0] == 2
+ }
+ {
+  entry := fresh("after key cleanup".repeat(1))
+  assert entry.text == "after key cleanup"
+ }
+ assert drops.len == before + 2
+ {
+  mut values := map[[1]string]Bytes{}
+  values[["found".to_owned()]!].value = [u8(1)]
+  values[["found".to_owned()]!].value = [u8(2)]
+  assert values[["found"]!].value[0] == 2
+ }
+ {
+  entry := fresh("after field cleanup".repeat(1))
+  assert entry.text == "after field cleanup"
+ }
+ assert drops.len == before + 3
+ assert drops.len == next_id
+}
+
 fn main() {
  {
   mut builder := Builder{entries: map[string][]Entry{}}
@@ -149,15 +220,19 @@ fn main() {
   assert absent == [u8(9)]
   assert fallbacks == 3
  }
+ verify_cleanup_scopes()
+ verify_runtime_key_cleanup()
  println("ok")
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
-		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		run := os.execute(os.quoted_path(output))
-		assert run.exit_code == 0, '${mode}: ${run.output}'
-		assert run.output.trim_space() == 'ok', run.output
+		for gc_mode in ['vgc', 'none'] {
+			output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}_${gc_mode}')
+			compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -cc clang ${mode} -gc ${gc_mode} -no-prealloc -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+			assert compile.exit_code == 0, '${mode} ${gc_mode}: ${compile.output}'
+			run := os.execute(os.quoted_path(output))
+			assert run.exit_code == 0, '${mode} ${gc_mode}: ${run.output}'
+			assert run.output.trim_space() == 'ok', run.output
+		}
 	}
 }

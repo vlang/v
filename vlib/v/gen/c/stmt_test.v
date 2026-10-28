@@ -200,8 +200,8 @@ fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
 fn test_usable_resolved_sum_type_requires_exact_qualified_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types.set('bar.Result', ['bar.Failed', 'bar.Ok'])
-	tc.sum_types.set('foo.Choice', ['foo.Left', 'foo.Right'])
+	tc.sum_types.set(flat.source_type_id('bar.Result'), ['bar.Failed', 'bar.Ok'])
+	tc.sum_types.set(flat.source_type_id('foo.Choice'), ['foo.Left', 'foo.Right'])
 	mut g := FlatGen.new()
 	g.tc = &tc
 	g.precompute_sum_name_lookup()
@@ -599,7 +599,7 @@ fn test_heap_local_memdup_expr_uses_aligned_memdup_for_aligned_structs() {
 		name_id: flat.source_type_id('Plain')
 	})
 	assert g.heap_local_memdup_expr('p', plain_type, 'Plain', true) == '(Plain*)memdup(p, sizeof(Plain))'
-	tc.structs['Holder'] = [types.StructField{
+	tc.structs[flat.source_type_id('Holder')] = [types.StructField{
 		name: 'values'
 		typ:  types.Type(types.ArrayFixed{ elem_type: aligned_type, len: 2 })
 	}]
@@ -649,7 +649,7 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 	int_ptr := types.Type(types.Pointer{
 		base_type: &types.Type(int_type)
 	})
-	tc.structs['S'] = [types.StructField{
+	tc.structs[flat.source_type_id('S')] = [types.StructField{
 		name: 'x'
 		typ:  int_type
 	}]
@@ -866,8 +866,8 @@ fn test_expression_type_references_survive_memo_generations() {
 fn test_staging_declarations_do_not_evaluate_default_initializers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types.set('Value', ['int', 'string'])
-	tc.type_aliases.set('Mapping', 'map[string]int')
+	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
+	tc.type_aliases.set(flat.source_type_id('Mapping'), 'map[string]int')
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -910,7 +910,7 @@ fn test_qualified_mut_parameter_copy_preserves_value_staging_storage() {
 	for pointer_decl in [false, true] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['snapshot.State'] = []types.StructField{}
+		tc.structs[flat.source_type_id('snapshot.State')] = []types.StructField{}
 		value_type := types.Type(types.Struct{ name_id: flat.source_type_id('snapshot.State') })
 		pointer_type := types.Type(types.Pointer{ base_type: value_type })
 		mut g := FlatGen.new()
@@ -949,8 +949,8 @@ fn test_tinyc_declarations_preserve_explicit_stack_alignment() {
 		node := flat.Node{ kind: .struct_decl, value: 'Aligned', typ: flat.source_type_id('aligned=64') }
 		decl := a.add_node(node)
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Aligned'] = []types.StructField{}
-		tc.type_declaration_ids['Aligned'] = [int(decl)]
+		tc.structs[flat.source_type_id('Aligned')] = []types.StructField{}
+		tc.type_declaration_ids[flat.source_type_id('Aligned')] = [int(decl)]
 		tc.declaration_attributes[int(decl)] = ['aligned: 64']
 		mut g := FlatGen.new()
 		g.a = &a

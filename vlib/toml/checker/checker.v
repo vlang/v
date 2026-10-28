@@ -156,7 +156,15 @@ fn (c &Checker) check_number(num ast.Number) ! {
 		}
 	}
 
-	if has_repeating(lit, [`_`, `.`, `b`, `o`, `x`]) {
+	// `b` is a valid hex digit that may repeat (e.g. `0xbbbbbb`),
+	// so it is only checked as a repeating character in non-hex numbers.
+	// Repeats of `o` and `x` are invalid in any base and repeats of `b`
+	// in binary numbers are rejected by is_valid_binary_literal.
+	mut repeating_chars := [`_`, `.`, `b`, `o`, `x`]
+	if lit_sans_sign.starts_with('0x') {
+		repeating_chars = [`_`, `.`, `o`, `x`]
+	}
+	if has_repeating(lit, repeating_chars) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' numbers like "${lit}" can not have ${scanner.digit_extras} as repeating characters in ...${c.excerpt(num.pos)}...')
 	}

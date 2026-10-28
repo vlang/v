@@ -69,6 +69,17 @@ Different build flags, program or test modes, and import sequences can require
 separate checks. Pass `v up -v` to see each checked configuration.
 Cached module headers preserve struct field attribute groups, so valid deprecation
 attributes do not introduce warnings during refresh.
+
+`make` also warms the default test configuration's builtin module bundle, including
+`strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
+when the program introduces new error types, retaining builtin error dispatch ID dependencies.
+Dispatch hash collisions retain the full error-type dependency. Without a bundled collector,
+the warmup uses `-gc none`; an explicit `-gc` setting takes precedence.
+A missing object for another module rebuilds that module while retaining compatible cached
+modules. Ignored local names remain stable when cached headers replace source files, so
+reparsed modules can reuse identical C objects. Compiler flags, source changes and dependency
+changes still invalidate the affected objects.
+
 Ordinary builds report cache progress on standard error. Refreshes retain absolute
 module search paths, resolved C compiler commands, and build modes. They omit
 linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
@@ -1590,6 +1601,7 @@ println(upper_fn) // ['HELLO', 'WORLD']
 `it` is a builtin variable which refers to the element currently being
 processed in filter/map methods.
 
+User-defined struct methods named `map` keep their declared return type, including when chained.
 Additionally, `.any()` and `.all()` can be used to conveniently test
 for elements that satisfy a condition.
 
@@ -1730,6 +1742,9 @@ the parent array or the resulting slice is mutable, V inserts an implicit
 affecting the other. If both arrays are immutable, the slice safely reuses the
 parent array's memory without cloning. The shared-memory examples below
 therefore use `unsafe {}` intentionally.
+Printing or interpolating the parent array shows changes made through such a shared slice.
+Formatting such a mutated array with `-b wasm` currently reports an unsupported
+runtime-formatting error.
 
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
@@ -3271,6 +3286,8 @@ struct Settings {
 	in      string
 }
 ```
+
+The same rule applies to defaults such as `match` expressions, including fields named `or`.
 
 ### Required fields
 
@@ -5794,6 +5811,10 @@ Currently generic function definitions must declare their type parameters, but i
 future versions, V will infer generic type parameters from single-letter type names in
 runtime parameter types. This is why the `find_by_id(1)` calls above can omit `[T]`,
 because the receiver argument `r` in the method declaration, uses a generic type `T`.
+
+A generic function can be specialized as a function value, such as `f := identity[int]`.
+Fixed-array lengths in its parameters, including C constants such as `[C.N]int`, do not
+add generic type parameters.
 
 Receiver inference also works across module imports and aliases. Declared receiver types
 are resolved in the module that defines the method, so a caller type with the same name
@@ -8333,7 +8354,8 @@ Call-style attributes can also use named arguments.
 The C backend emits `@[_constructor]` and `@[_destructor]` as GNU function attributes before the
 function declarator, so definitions compile with GCC and Clang. When supported by the C compiler,
 these hooks run before `main` and after it returns. They must not depend on V's runtime being
-initialized. MSVC ignores these attributes.
+initialized. Both are builtin attributes and require no user-defined attribute schema.
+MSVC ignores these attributes.
 
 ```v
 // @[flag] enables Enum types to be used as bitfields
@@ -11506,7 +11528,10 @@ for each inline-assembly statement, so prefer names such as `.Lloop%=` for loops
 functions. Numeric local labels such as `1:` with `1b` (backward) and `1f` (forward) references are
 also useful for short branches. Do not use an ordinary global-looking label in a raw block unless
 it is deliberately exported: two instantiations of a function can otherwise define the same
-assembler symbol.
+assembler symbol. In x86 and arm64 raw blocks, the compiler warns about such a label inside a
+function unless it is an unquoted numeric label, uses `%=`, or is exported with `.globl`,
+`.global`, or `.weak`. Quoted symbol definitions are checked too: `"1":` is an ordinary symbol,
+not a numeric local label.
 
 For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
 the pointer inside the template, and decrement the count until it reaches zero:
