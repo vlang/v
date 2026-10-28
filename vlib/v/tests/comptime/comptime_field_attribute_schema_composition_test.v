@@ -260,3 +260,56 @@ fn test_keyed_schema_materialization_and_imported_declaration_identity() {
 	}
 	assert got == ['/keyed', 'module-declaration:9']
 }
+
+@[ReflectedSchemaCollision: 'custom'; ReflectedSchemaCollision_arg: 'value'; ReflectedSchemaCollision_has_arg: false; ReflectedSchemaCollision_kind: 7; ReflectedSchemaCollision_str: 'field value'; 'legacy']
+struct SchemaCollisionMixedDeclaration {}
+
+fn test_declaration_schema_collision_narrowing_is_per_instance_and_branch() {
+	mut seen := []string{}
+	$for attr in SchemaCollisionMixedDeclaration.attributes {
+		// Outside narrowing the same names retain their VAttribute meaning.
+		assert attr.name in ['ReflectedSchemaCollision', 'legacy']
+		assert attr.kind == .string
+		$if attr.name == 'ReflectedSchemaCollision' {
+			assert attr.arg == 'custom'
+			assert attr.has_arg
+		} $else {
+			assert attr.name == 'legacy'
+			assert !attr.has_arg
+		}
+		$if attr is ReflectedSchemaCollision || attr.name == 'unused' {
+			$if attr.name == 'custom' && attr.arg == 'value' && !attr.has_arg && attr.kind == 7 {
+				seen << 'positive-or'
+			} $else {
+				assert false
+			}
+		}
+		$if attr is ReflectedSchemaCollision && attr.name == 'custom' {
+			seen << 'positive-and'
+		}
+		$if attr !is ReflectedSchemaCollision || attr.name == 'unused' {
+			assert attr.name == 'legacy'
+			seen << 'legacy-or'
+		} $else {
+			$if attr.name == 'custom' {
+				seen << 'negative-or-else'
+			} $else {
+				assert false
+			}
+		}
+		$if attr !is ReflectedSchemaCollision {
+			assert attr.name == 'legacy'
+		} $else {
+			$if attr.name == 'custom' {
+				seen << 'negative-else'
+			}
+		}
+		$if attr is ReflectedSchemaCollision {
+			$if attr.name == 'custom' || attr.name == 'unused' {
+				seen << 'nested-or'
+			}
+		}
+	}
+	assert seen == ['positive-or', 'positive-and', 'negative-or-else', 'negative-else', 'nested-or',
+		'legacy-or']
+}
