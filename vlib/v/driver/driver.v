@@ -16237,7 +16237,7 @@ pub fn run(args []string) {
 		}
 		if !c_only && !is_o {
 			// Environment flags also reach the native helper compilations below.
-			v3_require_c_link_libraries([environment_c_flags], macos_v3_fallback_file, cc_dir)
+			v3_require_c_link_libraries([environment_c_flags], macos_v3_fallback_file, cc_dir, effective_c_compiler == 'msvc')
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
@@ -16337,7 +16337,7 @@ pub fn run(args []string) {
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
-			v3_require_c_link_libraries([resolved_c_flags, link_ld_flags], macos_v3_fallback_file, cc_dir)
+			v3_require_c_link_libraries([resolved_c_flags, link_ld_flags], macos_v3_fallback_file, cc_dir, effective_c_compiler == 'msvc')
 		}
 		flag_plan_sdk_root := if effective_tcc && prefs.normalized_target_os() == 'macos' {
 			macos_sdk_root_cache.get()
@@ -17695,9 +17695,9 @@ fn checker_fixture_missing_header(a &flat.FlatAst, user_files []string, c_compil
 	return none
 }
 
-fn v3_require_c_link_libraries(flag_groups [][]string, fallback_file string, build_dir string) {
+fn v3_require_c_link_libraries(flag_groups [][]string, fallback_file string, build_dir string, msvc bool) {
 	for flags in flag_groups {
-		if missing_library := v3_missing_c_link_library(flags) {
+		if missing_library := v3_missing_c_link_library(flags, msvc) {
 			clear_macos_v3_compiler_error_fallback(fallback_file)
 			eprintln('builder error:\n==================\nC library file `${missing_library}` was not found.\nBuild or restore this native library before compiling the V program.')
 			cleanup_c_build_dir(build_dir)
@@ -17706,9 +17706,15 @@ fn v3_require_c_link_libraries(flag_groups [][]string, fallback_file string, bui
 	}
 }
 
-fn v3_missing_c_link_library(flags []string) ?string {
+fn v3_missing_c_link_library(flags []string, msvc bool) ?string {
 	for index in c_link_input_indices(flags) {
 		path := flags[index].trim_space()
+		// Bare .lib names can be resolved through MSVC's LIB search path. Slash
+		// options, such as /OUT:program.dll, are not positional library files.
+		if (path.ends_with('.lib') && !path.contains_any('/\\'))
+			|| (msvc && path.starts_with('/')) {
+			continue
+		}
 		if c_flag_token_is_link_only(path) && !os.is_file(path) {
 			return path
 		}
