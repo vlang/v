@@ -39,6 +39,21 @@ fn (mut t Transformer) prepare_enum_selector_filter() {
 		filter.alias_count = -1
 	}
 	t.enum_selector_filter = filter
+	mut index := &EnumUnqualifiedIndex{
+		count: t.enum_types.len
+	}
+	for name_id, _ in t.enum_types {
+		index.ids[flat.source_type_syntax(name_id).unqualified()] << name_id
+	}
+	t.enum_unqualified_index = index
+}
+
+// EnumUnqualifiedIndex lists the enums by the unqualified segment of their name, in
+// enum table order. Like the name filter it describes the frozen enum table.
+struct EnumUnqualifiedIndex {
+mut:
+	count int
+	ids   map[u32][]u32
 }
 
 @[direct_array_access; inline]

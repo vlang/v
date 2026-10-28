@@ -708,8 +708,12 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 		}
 	}
 	if base_node.kind == .ident {
-		if typ_source_id := t.const_type_name('${base_node.value}.${field_name}') {
-			return typ_source_id
+		// const_type_name filters the spelling by its last segment, `field_name`'s;
+		// ask the filter before building the spelling.
+		if t.const_selector_may_match(field_name) {
+			if typ_source_id := t.const_type_name('${base_node.value}.${field_name}') {
+				return typ_source_id
+			}
 		}
 		if enum_may_match {
 			if fields := t.enum_types[base_node.source_value_id()] {
@@ -818,10 +822,10 @@ fn (t &Transformer) builtin_selector_type(base_type_id u32, field_name string) ?
 		}
 	}
 	if field_name == 'len' && (clean_source_id == flat.source_type_string || clean_shape.has(.map_type) || t.is_fixed_array_type(clean_source_id)
-		|| clean_source_id == flat.source_type_id('chan') || clean_shape.has(.channel_type)) {
+		|| clean_source_id == transform_source_type_chan || clean_shape.has(.channel_type)) {
 		return flat.source_type_int
 	}
-	if clean_source_id == flat.source_type_id('chan') || clean_shape.has(.channel_type) {
+	if clean_source_id == transform_source_type_chan || clean_shape.has(.channel_type) {
 		if field_name == 'cap' {
 			return flat.source_type_int
 		}
@@ -1316,16 +1320,16 @@ fn (t &Transformer) generic_struct_param_names_for_base(base string) []string {
 
 fn (t &Transformer) generic_struct_param_names_for_base_id(base u32) []string {
 	if isnil(t.tc) { return []string{} }
-	if params := t.tc.struct_generic_params[base] { return params.clone() }
+	if params := t.tc.struct_generic_params[base] { return types.generic_param_texts(params) }
 	short := flat.source_type_syntax(base).unqualified()
-	if params := t.tc.struct_generic_params[short] { return params.clone() }
+	if params := t.tc.struct_generic_params[short] { return types.generic_param_texts(params) }
 	if !flat.source_type_shape(base).has(.dotted) && t.cur_module.len > 0 && t.cur_module !in [
 		'main',
 		'builtin',
 	] {
 		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base)
 		if params := t.tc.struct_generic_params[qualified] {
-			return params.clone()
+			return types.generic_param_texts(params)
 		}
 	}
 	return []string{}
@@ -1623,7 +1627,7 @@ fn (t &Transformer) expand_generic_type_alias(typ_id u32) ?u32 {
 	for candidate in candidates {
 		// Declaration tables retain their source name keys.
 		target := t.tc.type_aliases.type_id(candidate) or { continue }
-		params := t.tc.type_alias_generic_params[candidate] or { continue }
+		params := types.generic_param_texts(t.tc.type_alias_generic_params[candidate] or { continue })
 		if params.len != syntax.generic_app_args().len { continue }
 		expanded := substitute_generic_type_text_with_params(target, syntax.generic_app_args(), params)
 		if flat.source_type_shape(candidate).has(.dotted) {
@@ -1795,22 +1799,19 @@ fn (t &Transformer) normalize_type_in_module_uncached(type_id u32, mod string) u
 		return t.normalize_type_alias(clean_id)
 	}
 	if !isnil(t.tc) && mod == t.cur_module && t.cur_file.len > 0 {
-		clean := flat.source_type_name(clean_id)
-		mut imported := ''
-		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
-			[]string{}
-		} {
-			if !t.type_authority_has(flat.source_type_id(candidate)) {
+		mut imported := u32(0)
+		for candidate in t.tc.file_selective_import_ids(t.cur_file, clean_id) or { []u32{} } {
+			if !t.type_authority_has(candidate) {
 				continue
 			}
-			if imported != '' && imported != candidate {
-				imported = ''
+			if imported != 0 && imported != candidate {
+				imported = 0
 				break
 			}
 			imported = candidate
 		}
-		if imported.len > 0 {
-			return t.normalize_type_alias(flat.source_type_id(imported))
+		if imported != 0 {
+			return t.normalize_type_alias(imported)
 		}
 	}
 	qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(mod), clean_id)

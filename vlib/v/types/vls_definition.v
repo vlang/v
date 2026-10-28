@@ -216,7 +216,7 @@ fn (tc &TypeChecker) vls_type_param_definition(id flat.NodeId, word string) ?Vls
 // receiver of a method, `T` of `fn (b Box[T]) get() T`. A type written among the
 // parameters, `(x Box[T])`, is a use of it.
 fn (tc &TypeChecker) vls_type_param_declared_at(decl flat.Node, word string) ?VlsPos {
-	if word !in tc.type_param_scope(decl).names {
+	if !generic_param_ids_contain_name(tc.type_param_scope(decl).names, word) {
 		return none
 	}
 	file_id := int(decl.pos.id)

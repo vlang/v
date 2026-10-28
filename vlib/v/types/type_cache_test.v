@@ -7,7 +7,7 @@ fn test_receiver_pattern_cache_keys_keep_source_argument_order_and_context() {
 	mut tc := TypeChecker.new(&a)
 	tc.cur_file = 'caller.v'
 	tc.cur_module = 'main'
-	tc.fn_context.generic_params = ['T']
+	tc.fn_context.generic_params = generic_param_ids(['T'])
 	first := flat.source_type_id('Item[int]')
 	second := flat.source_type_id('Item[string]')
 	ordered := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [
@@ -37,7 +37,7 @@ fn test_receiver_pattern_cache_keys_keep_source_argument_order_and_context() {
 	tc.cur_module = 'other'
 	assert tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first, second], 'take') != ordered
 	tc.cur_module = 'main'
-	tc.fn_context.generic_params = ['U']
+	tc.fn_context.generic_params = generic_param_ids(['U'])
 	assert tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first, second], 'take') != ordered
 }
 
@@ -91,7 +91,7 @@ fn test_seeded_field_types_preserve_direct_precedence_and_generic_substitution()
 	tc.structs[flat.source_type_id('Promoted')] = [
 		StructField{ name: 'Inner', typ: Type(Struct{ name_id: flat.source_type_id('Inner') }) },
 	]
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = generic_param_ids(['T'])
 	mut expected := []string{}
 	for owner in ['Outer', 'Box[int]', 'Box[string]'] {
 		field := if owner == 'Outer' { 'value' } else { 'item' }
@@ -393,7 +393,7 @@ fn test_receiver_embeds_through_alias() {
 fn test_parse_resolution_type_handles_locked_main_generic_application() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.struct_generic_params[flat.source_type_id('StructType')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('StructType')] = generic_param_ids(['T'])
 	tc.cur_file = 'decode.v'
 	tc.cur_module = 'json2'
 
@@ -644,10 +644,10 @@ fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application(
 }
 
 fn test_generic_text_substitution_recurses_through_wrappers() {
-	assert flat.source_type_name(subst_generic_text(flat.source_type_id('chan T'), flat.TypeTextList.from_names(['int']).ids, ['T'])) == 'chan int'
-	assert flat.source_type_name(subst_generic_text(flat.source_type_id('thread T'), flat.TypeTextList.from_names(['string']).ids, ['T'])) == 'thread string'
-	assert flat.source_type_name(subst_generic_text(flat.source_type_id('atomic T'), flat.TypeTextList.from_names(['u64']).ids, ['T'])) == 'atomic u64'
-	assert flat.source_type_name(subst_generic_text(flat.source_type_id('chan ?[]T'), flat.TypeTextList.from_names(['i16']).ids, ['T'])) == 'chan ?[]i16'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('chan T'), flat.TypeTextList.from_names(['int']).ids, generic_param_ids(['T']))) == 'chan int'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('thread T'), flat.TypeTextList.from_names(['string']).ids, generic_param_ids(['T']))) == 'thread string'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('atomic T'), flat.TypeTextList.from_names(['u64']).ids, generic_param_ids(['T']))) == 'atomic u64'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('chan ?[]T'), flat.TypeTextList.from_names(['i16']).ids, generic_param_ids(['T']))) == 'chan ?[]i16'
 }
 
 fn test_generic_type_substitution_preserves_padded_source_argument_semantics() {
@@ -655,7 +655,7 @@ fn test_generic_type_substitution_preserves_padded_source_argument_semantics() {
 	tc := TypeChecker.new(&a)
 	typ := tc.parse_type(flat.source_type_id('fn (T) ?[]T'))
 	args := [flat.source_type_id(' \tint\n')]
-	substituted := tc.substitute_generic_type(typ, args, ['T'])
+	substituted := tc.substitute_generic_type(typ, args, generic_param_ids(['T']))
 	expected := tc.parse_type(flat.source_type_id('fn (int) ?[]int'))
 	assert substituted.name() == expected.name()
 	assert flat.source_type_name(args[0]) == ' \tint\n'
@@ -667,19 +667,19 @@ fn test_generic_type_substitution_updates_fixed_array_length_expr() {
 	typ := tc.parse_type(flat.source_type_id('[cache_line_size - sizeof(T)]u8'))
 	assert typ is ArrayFixed
 
-	text_substituted := tc.substitute_generic_type(typ, flat.TypeTextList.from_names(['int']).ids, ['T'])
+	text_substituted := tc.substitute_generic_type(typ, flat.TypeTextList.from_names(['int']).ids, generic_param_ids(['T']))
 	assert text_substituted is ArrayFixed
 	assert (text_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
 
-	value_substituted := tc.substitute_generic_type_values(typ, [Type(int_)], ['T'])
+	value_substituted := tc.substitute_generic_type_values(typ, [Type(int_)], generic_param_ids(['T']))
 	assert value_substituted is ArrayFixed
 	assert (value_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
-	assert subst_generic_const_expr('sizeof(T) + T_SIZE', flat.TypeTextList.from_names(['u64']).ids, ['T']) ==
+	assert subst_generic_const_expr('sizeof(T) + T_SIZE', flat.TypeTextList.from_names(['u64']).ids, generic_param_ids(['T'])) ==
 		'sizeof(u64) + T_SIZE'
 }
 
 fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
-	substituted := flat.source_type_name(subst_generic_text(flat.source_type_id('fn (mut T) string'), flat.TypeTextList.from_names(['&Dog']).ids, ['T']))
+	substituted := flat.source_type_name(subst_generic_text(flat.source_type_id('fn (mut T) string'), flat.TypeTextList.from_names(['&Dog']).ids, generic_param_ids(['T'])))
 	assert substituted == 'fn(mut &Dog) string'
 
 	a := flat.FlatAst.new()
@@ -690,7 +690,7 @@ fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
 	assert fn_type.params.map(it.is_mut) == [true]
 	assert fn_compatible_param_type(fn_type, 0).name() == '&&Dog'
 	assert tc.c_type(callback_type) == 'fn_ptr:string|Dog**'
-	assert subst_generic_signature_param_type(flat.source_type_id('f fn (mut it T) string'), flat.TypeTextList.from_names(['&Dog']).ids, ['T']) == flat.source_type_id('fn(mut &Dog) string')
+	assert subst_generic_signature_param_type(flat.source_type_id('f fn (mut it T) string'), flat.TypeTextList.from_names(['&Dog']).ids, generic_param_ids(['T'])) == flat.source_type_id('fn(mut &Dog) string')
 }
 
 fn test_mut_callback_param_keeps_declared_and_slot_pointers_apart() {

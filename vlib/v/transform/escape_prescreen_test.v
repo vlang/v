@@ -157,7 +157,7 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 				if mode == 'generic_param' {
 					// A declared placeholder can collide with a scalar nominal type,
 					// while inference specializes the full walk to a reference type.
-					tc.fn_generic_params['retain'] = ['T']
+					tc.fn_generic_params['retain'] = types.generic_param_ids(['T'])
 				}
 				if mode == 'unresolved_call' {
 					source = escape_prescreen_node(mut a, flat.Node{ kind: .call }, [

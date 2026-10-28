@@ -61,6 +61,10 @@ const usable_expr_type_memo_mask = usable_expr_type_memo_slots - 1
 const body_import_type_query_slots = 256
 const body_field_type_query_slots = 512
 const body_method_query_slots = 256
+const body_sum_name_query_slots = 256
+const body_promoted_miss_slots = 1024
+const body_struct_decl_query_slots = 256
+const body_alias_type_name_slots = 1024
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -286,28 +290,6 @@ fn (g &FlatGen) cached_file_import(file string, alias string) ?string {
 	}
 	cache.put(file, alias, '', 1, module_name)
 	return module_name
-}
-
-// file_selective_import_candidates returns the selective imports of `name` in
-// `file`, or none. Most names are not selectively imported; those misses are
-// memoized so they do not build the table's composite key again.
-fn (g &FlatGen) file_selective_import_candidates(file string, name string) ?[]string {
-	if !isnil(g.selective_import_key_cache) {
-		mut cache := g.selective_import_key_cache
-		state, _ := cache.get(file, name, '')
-		if state < 0 {
-			return none
-		}
-		candidates := g.tc.file_selective_imports['${file}\n${name}'] or {
-			cache.put(file, name, '', -1, '')
-			return none
-		}
-		if state == 0 {
-			cache.put(file, name, '', 1, '')
-		}
-		return candidates
-	}
-	return g.tc.file_selective_imports['${file}\n${name}'] or { return none }
 }
 
 fn cgen_worker_scope_begin(enabled bool) voidptr {
@@ -539,6 +521,39 @@ mut:
 	ret         types.Type
 }
 
+// BodySumNameQuery memoizes sum_type_name_for_type for one nominal base of the
+// current body. `key` holds the base kind above its name ID; zero is unused.
+struct BodySumNameQuery {
+	key        u64
+	generation u32
+	found      bool
+	value      u32
+}
+
+// BodyPromotedMissQuery records a struct field selector of the current body that
+// has no promoted embedded-field path.
+struct BodyPromotedMissQuery {
+	name_id    u32
+	generation u32
+	field      string
+}
+
+// BodyAliasTypeNameQuery memoizes struct_init_import_alias_type_name for one
+// spelling of the current body.
+struct BodyAliasTypeNameQuery {
+	type_id    u32
+	generation u32
+	value      u32
+}
+
+// BodyStructDeclQuery memoizes find_struct_decl for one spelling of the current body.
+struct BodyStructDeclQuery {
+	type_id    u32
+	generation u32
+	found      bool
+	info       StructDeclInfo
+}
+
 // BodyFieldTypeQuery memoizes one owner/field type query of the current body.
 struct BodyFieldTypeQuery {
 	type_id    u32
@@ -567,11 +582,15 @@ mut:
 	values         []&types.Type
 	import_queries []BodyImportTypeQuery
 	// Declared callee return types of call nodes, tagged like `ids`/`gens`.
-	call_ret_ids    []int
-	call_ret_gens   []u32
-	call_ret_values []&types.Type
-	field_queries   []BodyFieldTypeQuery
-	method_queries  []BodyMethodQuery
+	call_ret_ids     []int
+	call_ret_gens    []u32
+	call_ret_values  []&types.Type
+	field_queries    []BodyFieldTypeQuery
+	method_queries   []BodyMethodQuery
+	sum_name_queries []BodySumNameQuery
+	promoted_misses  []BodyPromotedMissQuery
+	struct_decls     []BodyStructDeclQuery
+	alias_type_names []BodyAliasTypeNameQuery
 	// selector_declared_type results of selector nodes, tagged like `ids`/`gens`.
 	sel_ids    []int
 	sel_gens   []u32
@@ -590,22 +609,26 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 	if isnil(g.usable_expr_type_memo) {
 		g.usable_expr_type_memo = &UsableExprTypeMemo{
 			// Generation zero marks unused slots, including the slot for node zero.
-			ids:             []int{len: usable_expr_type_memo_slots}
-			gens:            []u32{len: usable_expr_type_memo_slots}
-			values:          unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
-			import_queries:  []BodyImportTypeQuery{len: body_import_type_query_slots}
-			call_ret_ids:    []int{len: usable_expr_type_memo_slots}
-			call_ret_gens:   []u32{len: usable_expr_type_memo_slots}
-			call_ret_values: unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
-			field_queries:   []BodyFieldTypeQuery{len: body_field_type_query_slots}
-			method_queries:  []BodyMethodQuery{len: body_method_query_slots}
-			sel_ids:         []int{len: usable_expr_type_memo_slots}
-			sel_gens:        []u32{len: usable_expr_type_memo_slots}
-			sel_found:       []bool{len: usable_expr_type_memo_slots}
-			sel_values:      unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
-			resolve_ids:     []int{len: usable_expr_type_memo_slots}
-			resolve_gens:    []u32{len: usable_expr_type_memo_slots}
-			resolve_values:  unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
+			ids:              []int{len: usable_expr_type_memo_slots}
+			gens:             []u32{len: usable_expr_type_memo_slots}
+			values:           unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
+			import_queries:   []BodyImportTypeQuery{len: body_import_type_query_slots}
+			call_ret_ids:     []int{len: usable_expr_type_memo_slots}
+			call_ret_gens:    []u32{len: usable_expr_type_memo_slots}
+			call_ret_values:  unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
+			field_queries:    []BodyFieldTypeQuery{len: body_field_type_query_slots}
+			method_queries:   []BodyMethodQuery{len: body_method_query_slots}
+			sum_name_queries: []BodySumNameQuery{len: body_sum_name_query_slots}
+			promoted_misses:  []BodyPromotedMissQuery{len: body_promoted_miss_slots}
+			struct_decls:     []BodyStructDeclQuery{len: body_struct_decl_query_slots}
+			alias_type_names: []BodyAliasTypeNameQuery{len: body_alias_type_name_slots}
+			sel_ids:          []int{len: usable_expr_type_memo_slots}
+			sel_gens:         []u32{len: usable_expr_type_memo_slots}
+			sel_found:        []bool{len: usable_expr_type_memo_slots}
+			sel_values:       unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
+			resolve_ids:      []int{len: usable_expr_type_memo_slots}
+			resolve_gens:     []u32{len: usable_expr_type_memo_slots}
+			resolve_values:   unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -631,6 +654,18 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		}
 		for i in 0 .. memo.method_queries.len {
 			memo.method_queries[i] = BodyMethodQuery{}
+		}
+		for i in 0 .. memo.sum_name_queries.len {
+			memo.sum_name_queries[i] = BodySumNameQuery{}
+		}
+		for i in 0 .. memo.promoted_misses.len {
+			memo.promoted_misses[i] = BodyPromotedMissQuery{}
+		}
+		for i in 0 .. memo.struct_decls.len {
+			memo.struct_decls[i] = BodyStructDeclQuery{}
+		}
+		for i in 0 .. memo.alias_type_names.len {
+			memo.alias_type_names[i] = BodyAliasTypeNameQuery{}
 		}
 		memo.generation = 1
 	}
@@ -1029,7 +1064,6 @@ mut:
 	lazy_param_abi_merge           bool
 	usable_expr_type_memo          &UsableExprTypeMemo  = unsafe { nil }
 	import_key_cache               &util.KeyRecentCache = unsafe { nil }
-	selective_import_key_cache     &util.KeyRecentCache = unsafe { nil }
 	needed_optional_types          flat.TypeTextBindings
 	optional_pointer_struct_tags   map[string]string
 	optional_payload_types         map[string]types.Type // C name -> struct or sum type, for option typedefs
@@ -1719,7 +1753,6 @@ pub fn FlatGen.new() FlatGen {
 	return FlatGen{
 		memo_usable_expr_types:             os.getenv('V3_NO_CGEN_EXPR_TYPE_MEMO') == ''
 		import_key_cache:                   &util.KeyRecentCache{}
-		selective_import_key_cache:         &util.KeyRecentCache{}
 		cache_struct_fields:                os.getenv('V3_NO_CGEN_STRUCT_FIELDS_CACHE') == ''
 		dedup_fn_decl_aliases:              os.getenv('V3_NO_DEDUP_FN_DECL_ALIASES') == ''
 		prefix_param_scan:                  os.getenv('V3_NO_PREFIX_PARAM_SCAN') == ''
@@ -3912,7 +3945,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// The import front caches memoize the previous program's import tables,
 	// including misses; the serial path never resets them otherwise.
 	g.import_key_cache = &util.KeyRecentCache{}
-	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.enum_selector_cache = &ContextSourceTypeLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
@@ -13007,9 +13039,8 @@ fn (g &FlatGen) enum_selector_base_name(name_id u32) ?u32 {
 }
 
 fn (g &FlatGen) enum_selector_base_name_uncached(name_id u32) ?u32 {
-	name := flat.source_type_name(name_id)
 	// Every resolution below (import alias, qualified name, selective import,
-	// alias chain) keeps the last name component of `name`.
+	// alias chain) keeps the last name component of the spelling.
 	if !g.type_id_may_reach_enum(name_id) {
 		return none
 	}
@@ -13041,12 +13072,12 @@ fn (g &FlatGen) enum_selector_base_name_uncached(name_id u32) ?u32 {
 	if flat.source_type_shape(name_id).has(.dotted) || g.tc.cur_file.len == 0 {
 		return none
 	}
-	candidates := g.file_selective_import_candidates(g.tc.cur_file, name) or { return none }
+	candidates := g.tc.file_selective_import_ids(g.tc.cur_file, name_id) or { return none }
 	for candidate in candidates {
-		if flat.source_type_id(candidate) in g.tc.enum_names || flat.source_type_id(candidate) in g.tc.flag_enums {
-			return flat.source_type_id(candidate)
+		if candidate in g.tc.enum_names || candidate in g.tc.flag_enums {
+			return candidate
 		}
-		if target := g.enum_selector_alias_target(flat.source_type_id(candidate)) {
+		if target := g.enum_selector_alias_target(candidate) {
 			return target
 		}
 	}
@@ -14466,6 +14497,47 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 &types.Type) ?u32 {
 			else { break }
 		}
 	}
+	kind := if clean is types.SumType {
+		u64(1)
+	} else if clean is types.Struct {
+		u64(2)
+	} else {
+		return none
+	}
+	// The answer depends on the nominal name and the current module only. Selector
+	// emission asks for the same few receivers many times per body.
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.sum_name_queries.len == 0 {
+		return g.sum_type_name_for_nominal(clean)
+	}
+	name_id := clean.source_type_id()
+	key := (kind << 32) | u64(name_id)
+	slot := int(((u64(name_id) * u64(0x9e3779b1)) >> 7) & u64(body_sum_name_query_slots - 1))
+	entry := unsafe { &memo.sum_name_queries[slot] }
+	if entry.generation == memo.generation && entry.key == key {
+		if entry.found {
+			return entry.value
+		}
+		return none
+	}
+	result := g.sum_type_name_for_nominal(clean) or {
+		memo.sum_name_queries[slot] = BodySumNameQuery{
+			key:        key
+			generation: memo.generation
+		}
+		return none
+	}
+	memo.sum_name_queries[slot] = BodySumNameQuery{
+		key:        key
+		generation: memo.generation
+		found:      true
+		value:      result
+	}
+	return result
+}
+
+// sum_type_name_for_nominal resolves the sum type of an unwrapped sum or struct base.
+fn (g &FlatGen) sum_type_name_for_nominal(clean types.Type) ?u32 {
 	if clean is types.SumType {
 		// The checker names a sum type by its `sum_types` key, where a bare name is a
 		// main or builtin declaration. Qualifying it with the current module would turn

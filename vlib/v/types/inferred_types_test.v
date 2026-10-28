@@ -24,7 +24,7 @@ fn test_inferred_type_witness_resolves_before_expression_annotation() {
 		}
 		assert tc.parse_type(flat.source_type_id(annotation)).name() == expected
 		assert tc.parse_type(flat.source_type_id('!${annotation}')).name() == '!${expected}'
-		assert tc.resolve_inferred_type_text('&Signal[${annotation}]') == '&Signal[${expected}]'
+		assert flat.source_type_name(tc.resolve_inferred_type_id(flat.source_type_id('&Signal[${annotation}]'))) == '&Signal[${expected}]'
 	}
 }
 

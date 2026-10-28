@@ -106,7 +106,7 @@ fn add_fixed_array_reference_generic_struct(mut t Transformer, name string, fiel
 	t.mark_node_context(decl, 'worker', '/tmp/worker.v')
 	t.mark_node_context(field, 'worker', '/tmp/worker.v')
 	t.tc.type_declaration_ids[flat.source_type_id('worker.${name}')] = [int(decl)]
-	t.tc.struct_generic_params[flat.source_type_id('worker.${name}')] = ['T']
+	t.tc.struct_generic_params[flat.source_type_id('worker.${name}')] = types.generic_param_ids(['T'])
 	// Deliberately mimic cached checker metadata resolving a source T to worker.T.
 	t.tc.structs[flat.source_type_id('worker.${name}')] = [types.StructField{ name: 'value', typ: types.Type(types.Struct{ name_id: flat.source_type_id('worker.T') }) }]
 }
@@ -154,7 +154,7 @@ fn test_fixed_array_reference_generic_call_uses_conservative_escape_scan() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs[flat.source_type_id('Holder')] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
-	tc.fn_param_types['forward'] = [types.Type(types.Pointer{ base_type: types.Type(types.Unknown{ reason: 'generic placeholder `T`' }) })]
+	tc.fn_param_types['forward'] = [types.Type(types.Pointer{ base_type: types.Type(types.Unknown{ reason: 'generic placeholder `T`', placeholder: flat.source_type_id('T'), generic: true }) })]
 	tc.fn_ret_types['forward'] = types.Type(types.Array{ elem_type: types.Type(types.int_) })
 	tc.cur_scope.insert('holder', types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -674,7 +674,7 @@ fn test_fixed_array_reference_sums_own_inline_variant_storage() {
 	tc.structs[flat.source_type_id('Wrapper')] = [types.StructField{ name: 'payload', typ: types.Type(types.SumType{ name_id: flat.source_type_id('Payload') }) }]
 	tc.sum_types.set(flat.source_type_id('Payload'), ['int', 'FixedPayload'])
 	tc.sum_types.set(flat.source_type_id('Generic'), ['int', 'T'])
-	tc.sum_generic_params[flat.source_type_id('Generic')] = ['T']
+	tc.sum_generic_params[flat.source_type_id('Generic')] = types.generic_param_ids(['T'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for name in ['Payload', 'Generic[FixedPayload]'] {
 		mut seen := map[u32]bool{}
@@ -700,7 +700,7 @@ fn test_fixed_array_reference_nominal_cache_keeps_complete_walk_results() {
 	tc.sum_types.set(flat.source_type_id('Payload'), ['Other', 'FixedPayload'])
 	tc.sum_types.set(flat.source_type_id('Other'), ['Payload', 'int'])
 	tc.sum_types.set(flat.source_type_id('Generic'), ['int', 'T'])
-	tc.sum_generic_params[flat.source_type_id('Generic')] = ['T']
+	tc.sum_generic_params[flat.source_type_id('Generic')] = types.generic_param_ids(['T'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for _ in 0 .. 2 {
 		for name in ['Payload', 'Other', 'Generic[FixedPayload]', 'Generic[int]', 'Empty'] {
