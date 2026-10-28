@@ -1,6 +1,7 @@
 module veb
 
 import net
+import net.http
 import os
 import sync
 import time
@@ -72,14 +73,15 @@ fn livereload_script_tag(method string) string {
 	return '<script src="/veb_livereload/${veb_livereload_server_start}/script.js" data-veb-livereload data-started="${veb_livereload_server_start}" data-method="${method}" data-retry-max="${veb_livereload_retry_max_ms}" data-toast="${veb_livereload_toast}"></script>'
 }
 
-// livereload_sse_frame formats one Server-Sent Events message. Each line of
-// `data` gets its own `data:` field; the browser joins them with newlines.
+// livereload_sse_frame formats one Server-Sent Events message. It delegates to
+// the shared `http.SSEEvent` encoder, so livereload frames events exactly like
+// every other SSE producer in vlib. Each line of `data` gets its own `data:`
+// field; the browser joins them with newlines.
 fn livereload_sse_frame(event string, data string) string {
-	mut frame := 'event: ${event}\n'
-	for line in data.replace('\r\n', '\n').split('\n') {
-		frame += 'data: ${line}\n'
-	}
-	return frame + '\n'
+	return http.SSEEvent{
+		event: event
+		data:  data
+	}.encode()
 }
 
 // livereload_status_state returns the state on the first line of a build status.
