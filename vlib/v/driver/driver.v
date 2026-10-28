@@ -13424,7 +13424,12 @@ pub fn run(args []string) {
 				eprintln(err)
 				exit(1)
 			}
-			parse_files_dispatch_profiled(mut p, [live_reload_file], false, mut parse_timing)
+			live_reload_os_file := os.join_path(os.vtmp_dir(), 'v3_live_reload_os_${os.getpid()}.v')
+			os.write_file(live_reload_os_file, v3_live_reload_os_shim(target.os)) or {
+				eprintln(err)
+				exit(1)
+			}
+			parse_files_dispatch_profiled(mut p, [live_reload_file, live_reload_os_file], false, mut parse_timing)
 		}
 	}
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
