@@ -106,6 +106,9 @@ fn call_goroutine_fn(fn_ptr voidptr, arg voidptr) {
 // goexit0 handles goroutine cleanup after the user function returns.
 // Translated from Go's goexit0 in proc.go.
 fn goexit0(mut gp Goroutine) {
+	if gp.status == .dead {
+		panic('goroutines: double goexit')
+	}
 	mut mp := get_current_m()
 
 	gp.status = .dead
@@ -199,7 +202,13 @@ fn find_runnable(mut mp Machine, mut pp Processor) (&Goroutine, bool) {
 // execute runs a goroutine on the current M.
 // Translated from Go's execute() in proc.go.
 fn execute(mut mp Machine, mut pp Processor, gp &Goroutine) {
+	if gp == unsafe { nil } {
+		panic('goroutines: execute called with nil G')
+	}
 	mut g := unsafe { gp }
+	if g.status != .runnable {
+		panic('goroutines: execute called for G id=${g.id} status=${g.status} (want runnable)')
+	}
 	// Associate G with M
 	mp.curg = g
 	g.m = mp
