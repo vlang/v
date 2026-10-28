@@ -11123,6 +11123,39 @@ fn v3_parallel_transform_allowed(parallel_transform bool, no_parallel bool) bool
 	return parallel_transform && !no_parallel
 }
 
+// append_hosted_vlibc_files keeps runtime discovery outside the compiler driver.
+fn append_hosted_vlibc_files(prefs &pref.Preferences, builtin_dir string, builtin_defines []string, mut builtin_files []string) {
+	os_name := prefs.target.os
+	candidate := match os_name {
+		'freebsd' { 'freebsd_bare' }
+		'openbsd' { 'openbsd_bare' }
+		'netbsd' { 'netbsd_bare' }
+		'dragonfly' { 'dragonfly_bare' }
+		'macos', 'darwin' { 'macos_bare' }
+		'solaris' { 'solaris_bare' }
+		'android', 'termux' { 'linux_bare' }
+		else { 'linux_bare' }
+	}
+	vlibc_dir := os.join_path(builtin_dir, candidate)
+	if os.is_dir(vlibc_dir) {
+		// Include the syscall layer (numbers + sys_callN). The file name varies
+		// by platform: linux uses linux_syscalls.v, others use syscalls.v.
+		for scn_name in ['syscalls.v', 'linux_syscalls.v'] {
+			scn_path := os.join_path(vlibc_dir, scn_name)
+			if os.is_file(scn_path) {
+				builtin_files << prefs.without_excluded([scn_path])
+			}
+		}
+		vlibc_api_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(vlibc_dir,
+			builtin_defines, prefs.backend, prefs.target))
+		for f in vlibc_api_files {
+			if os.file_name(f).ends_with('_d_vlibc.v') {
+				builtin_files << f
+			}
+		}
+	}
+}
+
 // run executes the V3 compiler driver with `args`.
 // run compiles the input selected by args using the requested backend and flags.
 @[markused]
@@ -13181,35 +13214,7 @@ pub fn run(args []string) {
 	// Hosted builds need only its syscall layer and vlibc API, retaining libc startup.
 	if 'vlibc' in prefs.user_defines && 'freestanding' !in prefs.user_defines
 		&& prefs.backend == 'c' {
-		os_name := prefs.target.os
-		candidate := match os_name {
-			'freebsd' { 'freebsd_bare' }
-			'openbsd' { 'openbsd_bare' }
-			'netbsd' { 'netbsd_bare' }
-			'dragonfly' { 'dragonfly_bare' }
-			'macos', 'darwin' { 'macos_bare' }
-			'solaris' { 'solaris_bare' }
-			'android', 'termux' { 'linux_bare' }
-			else { 'linux_bare' }
-		}
-		vlibc_dir := os.join_path(builtin_dir, candidate)
-		if os.is_dir(vlibc_dir) {
-			// Include the syscall layer (numbers + sys_callN). The file name varies
-			// by platform: linux uses linux_syscalls.v, others use syscalls.v.
-			for scn_name in ['syscalls.v', 'linux_syscalls.v'] {
-				scn_path := os.join_path(vlibc_dir, scn_name)
-				if os.is_file(scn_path) {
-					builtin_files << prefs.without_excluded([scn_path])
-				}
-			}
-			vlibc_api_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(vlibc_dir,
-				builtin_defines, prefs.backend, prefs.target))
-			for f in vlibc_api_files {
-				if os.file_name(f).ends_with('_d_vlibc.v') {
-					builtin_files << f
-				}
-			}
-		}
+		append_hosted_vlibc_files(prefs, builtin_dir, builtin_defines, mut builtin_files)
 	}
 	if no_builtin {
 		builtin_files = []
