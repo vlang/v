@@ -11721,6 +11721,39 @@ before their definition.
 
 Right now it's not possible to modify types while the program is running.
 
+#### Native backend reloading (experimental, macOS ARM64)
+
+On macOS ARM64, `@[live]` functions can also be reloaded by patching
+the running binary instead of loading a shared library. Build with
+`-b arm64`; calls to `@[live]` functions go through a pointer that
+the reloader updates with freshly compiled machine code. Reload checks run in
+loops in `main`; changes are installed before the next iteration. Published code
+pages remain executable so saved function pointers continue to work. Failed
+rebuilds keep the old function and are retried on the next check.
+Each file containing `@[live]` functions is watched with its own modification time,
+so editing another live source file also triggers a reload.
+
+```bash
+v -b arm64 run native_counter.v
+```
+
+Single functions can be extracted as raw machine code with `-hot-fn`:
+
+```bash
+v -b arm64 -hot-fn next_value -o next_value.bin native_counter.v
+```
+
+Only self-contained `@[live]` functions are supported for now: functions
+needing address fixups (calls, string literals, globals) are rejected at
+extract time instead of emitting silently broken machine code.
+`examples/hot_reload/message.v` is therefore not supported by the native
+path (its live function calls other functions and prints strings); it
+remains an example for the C shared-library workflow.
+
+Linux ARM64 output is experimental and currently supports relocatable objects
+only (`v -b arm64 -os linux -o program.o program.v`). Executable linking and
+native live reloading on Linux are not yet supported.
+
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
 
