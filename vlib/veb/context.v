@@ -452,6 +452,9 @@ fn (mut ctx Context) serve_compressed_path_if_fresh(content_type string, compres
 	if compressed_mtime < orig_mtime {
 		return false
 	}
+	if _ := ctx.encoded_if_none_match_star() {
+		return true
+	}
 	// Serve existing compressed file in streaming mode (zero-copy)
 	ctx.return_type = .file
 	ctx.return_file = compressed_path
@@ -491,6 +494,9 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 			c := gzip.compress(data.bytes()) or { return none }
 			c, '.gz', 'gzip'
 		}
+	}
+	if result := ctx.encoded_if_none_match_star() {
+		return result
 	}
 
 	compressed_path := static_compression_cache_path(file_path, ext)

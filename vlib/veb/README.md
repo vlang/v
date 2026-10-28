@@ -1606,7 +1606,10 @@ A match returns 304 for GET and HEAD,
 without a body or Content-Length, and 412 for other methods. `If-Modified-Since` is ignored for
 other methods. Identity responses retain `Vary: Accept-Encoding` along with
 existing Vary fields. Encoded static responses currently omit these validators, so an identity
-ETag cannot suppress a compressed body. A takeover-mode 304 uses a weak ETag to preserve
+ETag cannot suppress a compressed body. `If-None-Match: *` still matches an existing encoded
+representation, returning 304 for GET/HEAD or 412 for other methods. Its 304 omits the identity
+ETag.
+A takeover-mode 304 uses a weak ETag to preserve
 validators for bodies encoded by dynamic middleware. That weak tag can revalidate a cached body;
 a later `If-Range` request with it falls back to the full response.
 

@@ -155,6 +155,23 @@ fn (mut ctx Context) vary_static_encoding() {
 	ctx.res.header.add(.vary, 'Accept-Encoding')
 }
 
+// encoded_if_none_match_star evaluates the existence precondition for an encoded body.
+fn (mut ctx Context) encoded_if_none_match_star() ?Result {
+	if ctx.req.header.values(.if_none_match).join(',').trim_space() != '*' {
+		return none
+	}
+	ctx.vary_static_encoding()
+	ctx.res.header.delete(.content_length)
+	// Encoded responses have no validator for their representation.
+	ctx.res.header.delete(.etag)
+	if ctx.req.method in [.get, .head] {
+		ctx.res.set_status(.not_modified)
+	} else {
+		ctx.res.set_status(.precondition_failed)
+	}
+	return ctx.send_response_to_client('text/plain', '')
+}
+
 // send_not_modified answers a conditional static request with 304 Not Modified.
 fn (mut ctx Context) send_not_modified(etag string, last_modified string) Result {
 	ctx.res.set_status(.not_modified)

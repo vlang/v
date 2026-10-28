@@ -3,6 +3,8 @@ module veb
 import net.http
 import os
 import time
+import compress.gzip
+import compress.zstd
 
 // Tests for the static conditional/range support in static_conditional.v and
 // send_file. The send_file cases drive the real function in-process (no
@@ -363,6 +365,57 @@ fn test_identity_validator_does_not_short_circuit_compressed_response() {
 	assert ctx.res.status_code == 200
 	assert ctx.res.header.get(.content_encoding) or { '' } == 'gzip'
 	assert !ctx.res.header.contains(.etag)
+}
+
+fn test_static_encoded_if_none_match_star_checks_existence() {
+	dir := os.join_path(os.temp_dir(), 'veb_conditional_encoded_star')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	data := 'compressible static resource\n'.repeat(32)
+	for encoding in ['gzip', 'zstd'] {
+		ext := if encoding == 'gzip' { '.gz' } else { '.zst' }
+		for sidecar in [false, true] {
+			for method in [http.Method.get, .head, .post] {
+				path := os.join_path(dir, '${encoding}_${sidecar}_${method}.txt')
+				os.write_file(path, data) or { panic(err) }
+				cache_path := static_compression_cache_path(path, ext)
+				defer { os.rm(cache_path) or {} }
+				os.rm(cache_path) or {}
+				if sidecar {
+					compressed := if encoding == 'gzip' {
+						gzip.compress(data.bytes()) or { panic(err) }
+					} else {
+						zstd.compress(data.bytes()) or { panic(err) }
+					}
+					os.write_file(path + ext, compressed.bytestr()) or { panic(err) }
+				}
+				mut req := conditional_test_request({
+					'Accept-Encoding': encoding
+					'If-None-Match':   '*'
+				})
+				req.method = method
+				mut ctx := &Context{
+					req:                         req
+					enable_static_compression:   true
+					static_compression_max_size: if sidecar { 0 } else { 1_000_000 }
+				}
+				ctx.res.header.set(.vary, 'Origin')
+				ctx.res.header.set(.content_length, '999')
+				ctx.res.header.set(.etag, '"identity-only"')
+				ctx.send_file('text/plain', path)
+				assert ctx.res.status_code == if method == .post { 412 } else { 304 }
+				assert ctx.res.body == ''
+				assert ctx.return_type != .file
+				assert ctx.res.header.values(.vary).join(',') == 'Origin,Accept-Encoding'
+				if method != .post {
+					assert !ctx.res.header.contains(.content_length)
+					assert !ctx.res.header.contains(.etag)
+				} else {
+					assert ctx.res.header.get(.content_length) or { '' } == '0'
+				}
+			}
+		}
+	}
 }
 
 fn test_static_vary_preserves_origin_for_identity_and_not_modified() {
