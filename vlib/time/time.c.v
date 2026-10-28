@@ -95,7 +95,21 @@ fn time_fields_to_unix(t Time) i64 {
 // available — a plain `time()` call, served from the vDSO on Linux — and is
 // the natural choice for second-resolution caches, timeouts and TTL checks.
 pub fn unix_now() i64 {
-	return i64(C.time(0))
+	$if vlibc ? {
+		// Hosted -d vlibc: derive seconds from the raw clock_gettime syscall
+		// (REALTIME) instead of the libc time() call. Windows/macOS/Solaris
+		// stay on libc (macOS has no clock_gettime syscall), so their
+		// behavior is intentionally untouched.
+		$if windows || darwin || solaris {
+			return i64(C.time(0))
+		} $else {
+			mut ts := VlibcTimespec{}
+			vlibc_sys_clock_gettime(0, &ts)
+			return ts.sec
+		}
+	} $else {
+		return i64(C.time(0))
+	}
 }
 
 // ticks returns the number of milliseconds since the UNIX epoch.
@@ -105,9 +119,25 @@ pub fn ticks() i64 {
 	$if windows {
 		return i64(C.v_time_ticks_ms())
 	} $else {
-		ts := C.timeval{}
-		C.gettimeofday(&ts, 0)
-		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1_000)))
+		$if vlibc ? {
+			// Hosted -d vlibc: derive ms from the raw clock_gettime syscall
+			// (REALTIME) instead of the gettimeofday libc call. macOS/Solaris
+			// stay on gettimeofday (macOS has no clock_gettime syscall), so
+			// their behavior is intentionally untouched.
+			$if darwin || solaris {
+				ts := C.timeval{}
+				C.gettimeofday(&ts, 0)
+				return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1_000)))
+			} $else {
+				mut ts := VlibcTimespec{}
+				vlibc_sys_clock_gettime(0, &ts)
+				return ts.sec * i64(1000) + ts.nsec / i64(1_000_000)
+			}
+		} $else {
+			ts := C.timeval{}
+			C.gettimeofday(&ts, 0)
+			return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1_000)))
+		}
 	}
 	// t := i64(C.mach_absolute_time())
 	// # Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
