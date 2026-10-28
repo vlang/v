@@ -705,6 +705,30 @@ fn inline_asm_att_register_width(name string, arch_bits int) int {
 	return inline_asm_intel_register_width(register)
 }
 
+// inline_asm_att_enum_explicit_backing_type returns the `as` backing type of an enum, or none
+// when the enum is declared without one.
+fn (tc &TypeChecker) inline_asm_att_enum_explicit_backing_type(name_id u32) ?Type {
+	name_syntax := flat.source_type_syntax(name_id)
+	short_name_id := name_syntax.unqualified()
+	is_qualified := flat.source_type_shape(name_id).has(.dotted)
+	for index in tc.top_level_idx {
+		decl := tc.a.nodes[index]
+		if decl.kind != .enum_decl || !inline_asm_enum_decl_is_named(decl.value, short_name_id) {
+			continue
+		}
+		file := tc.a.source_files[decl.pos.id] or { continue }
+		module_name := tc.file_modules[file.name] or { '' }
+		if is_qualified && !inline_asm_enum_module_is_qualifier(module_name, name_syntax.qualifier()) {
+			continue
+		}
+		if decl.enum_backing_type_id() != 0 {
+			return *tc.parse_type(decl.enum_backing_type_id())
+		}
+		break
+	}
+	return none
+}
+
 // inline_asm_att_type_width returns the width of the register that an unmodified `%[name]`
 // prints for an operand of type `typ`, or 0 when it prints no general register. V's `int`,
 // `isize`, `usize` and pointers have the target's pointer width, which is `arch_bits` on any
@@ -729,7 +753,7 @@ fn (tc &TypeChecker) inline_asm_att_type_width(typ Type, arch_bits int) int {
 		}
 		Enum {
 			// An enum without an `as` backing type is a C `int`, which is 32 bits wide.
-			backing := tc.inline_asm_enum_explicit_backing_type(clean.source_type_id()) or {
+			backing := tc.inline_asm_att_enum_explicit_backing_type(clean.source_type_id()) or {
 				return 32
 			}
 			width = tc.inline_asm_att_type_width(backing, arch_bits)
