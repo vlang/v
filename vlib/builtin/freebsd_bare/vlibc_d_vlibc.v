@@ -476,7 +476,7 @@ $if !i386 {
 	// vlibc_write_file writes all bytes and reports write or close errors.
 	pub fn vlibc_write_file(path string, data []u8) VlibcErrno {
 		// O_WRONLY|O_CREAT|O_TRUNC = 0x601 on FreeBSD.
-		fd, e := vlibc_open(path, 0x601, 0o644)
+		fd, e := vlibc_open(path, 0x601, 0o666)
 		if e != .enoerror {
 			return e
 		}

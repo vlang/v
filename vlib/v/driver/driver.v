@@ -13117,6 +13117,14 @@ pub fn run(args []string) {
 		p.reserve_selfhost_ast()
 	}
 
+	if 'vlibc' in prefs.user_defines
+		&& (prefs.backend != 'c' || prefs.target.os !in ['linux', 'android', 'termux', 'vinix',
+		'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'macos', 'darwin', 'solaris']
+		|| prefs.target.arch !in ['amd64', 'arm64']
+		|| (prefs.target.os in ['dragonfly', 'solaris'] && prefs.target.arch != 'amd64')) {
+		eprintln('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target')
+		exit(1)
+	}
 	builtin_dir := builtin_dir_for_vroot(prefs.vroot)
 	mut builtin_defines := prefs.user_defines.clone()
 	// Builtin contains a small number of ABI-sensitive helpers. Keep their v3
@@ -13165,10 +13173,10 @@ pub fn run(args []string) {
 	} else if bare_builtin_dir.len > 0 {
 		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
 	}
-	// When -d vlibc is set (hosted or freestanding), include the vlibc syscall
-	// layer and API from the per-OS bare directory so that os/time/etc. can
-	// optionally use pure-V syscalls instead of libc.
-	if 'vlibc' in prefs.user_defines && prefs.backend == 'c' {
+	// Freestanding builds already include the runtime from their selected bare directory.
+	// Hosted builds need only its syscall layer and vlibc API, retaining libc startup.
+	if 'vlibc' in prefs.user_defines && 'freestanding' !in prefs.user_defines
+		&& prefs.backend == 'c' {
 		os_name := prefs.target.os
 		candidate := match os_name {
 			'freebsd' { 'freebsd_bare' }
@@ -13187,11 +13195,11 @@ pub fn run(args []string) {
 			for scn_name in ['syscalls.v', 'linux_syscalls.v'] {
 				scn_path := os.join_path(vlibc_dir, scn_name)
 				if os.is_file(scn_path) {
-					builtin_files << scn_path
+					builtin_files << prefs.without_excluded([scn_path])
 				}
 			}
-			vlibc_api_files := pref.get_v_files_from_dir_for_backend_target(vlibc_dir,
-				builtin_defines, prefs.backend, prefs.target)
+			vlibc_api_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(vlibc_dir,
+				builtin_defines, prefs.backend, prefs.target))
 			for f in vlibc_api_files {
 				if os.file_name(f).ends_with('_d_vlibc.v') {
 					builtin_files << f

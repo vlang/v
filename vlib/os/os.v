@@ -666,9 +666,10 @@ pub fn expand_tilde_to_home(path string) string {
 // If `path` already exists, it will be overwritten.
 pub fn write_file(path string, text string) ! {
 	$if vlibc ? {
-		e := vlibc_write_file(path, text.bytes())
+		// The synchronous write borrows the immutable string buffer.
+		e := vlibc_write_file(path, unsafe { text.str.vbytes(text.len) })
 		if e != .enoerror {
-			return error('write_file failed: ${e}')
+			return error_with_code('write_file failed: ${e}', int(e))
 		}
 		return
 	} $else {

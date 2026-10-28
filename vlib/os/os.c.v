@@ -78,9 +78,10 @@ fn C._chsize_s(i32, u64) i32
 @[manualfree]
 pub fn read_bytes(path string) ![]u8 {
 	$if vlibc ? {
-		data, e := vlibc_read_file(path)
+		mut data, e := vlibc_read_file(path)
 		if e != .enoerror {
-			return error('read_bytes failed: ${e}')
+			unsafe { data.free() }
+			return error_with_code('read_bytes failed: ${e}', int(e))
 		}
 		return data
 	} $else {
@@ -110,7 +111,7 @@ pub fn write_bytes(path string, bytes []u8) ! {
 	$if vlibc ? {
 		e := vlibc_write_file(path, bytes)
 		if e != .enoerror {
-			return error('write_bytes failed: ${e}')
+			return error_with_code('write_bytes failed: ${e}', int(e))
 		}
 		return
 	} $else {
@@ -176,9 +177,10 @@ fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 @[manualfree]
 pub fn read_file(path string) !string {
 	$if vlibc ? {
-		data, e := vlibc_read_file(path)
+		mut data, e := vlibc_read_file(path)
+		defer { unsafe { data.free() } }
 		if e != .enoerror {
-			return error('read_file failed: ${e}')
+			return error_with_code('read_file failed: ${e}', int(e))
 		}
 		return data.bytestr()
 	} $else {

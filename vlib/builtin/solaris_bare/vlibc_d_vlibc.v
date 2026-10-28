@@ -453,7 +453,7 @@ $if !i386 {
 
 	// vlibc_write_file writes all bytes and reports write or close errors.
 	pub fn vlibc_write_file(path string, data []u8) VlibcErrno {
-		fd, e := vlibc_open(path, 0x201, 0o644)
+		fd, e := vlibc_open(path, 0x201, 0o666)
 		if e != .enoerror {
 			return e
 		}
