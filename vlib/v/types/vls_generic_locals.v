@@ -155,8 +155,7 @@ fn (tc &TypeChecker) vls_calls_generic(id flat.NodeId, node flat.Node) bool {
 fn vls_open_type_holds(typ &Type, params map[u32]bool) bool {
 	match typ {
 		Unknown {
-			name := generic_placeholder_from_unknown(typ) or { return false }
-			return generic_param_set_has_name(params, name)
+			return typ.placeholder != 0 && typ.placeholder in params
 		}
 		Void {
 			return false

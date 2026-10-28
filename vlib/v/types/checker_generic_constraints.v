@@ -1732,9 +1732,8 @@ fn (mut tc TypeChecker) check_generic_call_in_body(id flat.NodeId, node flat.Nod
 			tc.generic_param_arg_pos(node, binding.info, name)
 		}
 		if bound is Unknown {
-			param := generic_placeholder_from_unknown(bound) or { continue }
-			param_id := flat.source_type_existing_id(param) or { continue }
-			if param_id !in scope.names {
+			param_id := bound.placeholder
+			if param_id == 0 || param_id !in scope.names {
 				continue
 			}
 			mut bound_ids := []u32{cap: own.len}
@@ -1745,6 +1744,7 @@ fn (mut tc TypeChecker) check_generic_call_in_body(id flat.NodeId, node flat.Nod
 			if reason := tc.constraint_unmet_reason(constraints, param_id, need, display_id) {
 				display := flat.source_type_name(display_id)
 				callee := binding.info.name.all_after_last('.')
+				param := flat.source_type_name(param_id)
 				tc.record_error_at(.call_arg_mismatch, '`${callee}` needs `${param}` to ${constraint_need(need, display)}: ${reason}', id, pos)
 			}
 			continue
@@ -1996,8 +1996,10 @@ fn (tc &TypeChecker) comptime_tested_params(cond string, fn_node flat.Node, name
 		}
 		typ := tc.cur_scope.lookup(name) or { continue }
 		if typ is Unknown {
-			param := generic_placeholder_from_unknown(typ) or { continue }
-			param_index := generic_param_index_of_name(names, param)
+			if typ.placeholder == 0 {
+				continue
+			}
+			param_index := names.index(typ.placeholder)
 			if param_index >= 0 {
 				tested[name] = names[param_index]
 			}
@@ -2368,8 +2370,10 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 	if base_type !is Unknown {
 		return
 	}
-	param := generic_placeholder_from_unknown(base_type as Unknown) or { return }
-	param_id := flat.source_type_existing_id(param) or { return }
+	param_id := (base_type as Unknown).placeholder
+	if param_id == 0 {
+		return
+	}
 	constraint := interfaces[param_id] or { return }
 	member := sel.value
 	if !constraint.is_interface {
@@ -2379,6 +2383,7 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 				continue
 			}
 			what := if is_call { 'method `${member}`' } else { 'field named `${member}`' }
+			param := flat.source_type_name(param_id)
 			message := 'type `${param}` has no ${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name_text()}`, does not have it'
 			if is_call {
 				tc.record_error_at(.unknown_fn, message, node_id, tc.method_call_name_pos(node, sel))
@@ -2398,6 +2403,7 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 	if !is_call && tc.interface_field_list(iface_name_id).any(it.name == member) {
 		return
 	}
+	param := flat.source_type_name(param_id)
 	if is_call {
 		tc.record_error_at(.unknown_fn, 'type `${param}` has no method `${member}`: its constraint `${display}` does not declare it',
 			node_id, tc.method_call_name_pos(node, sel))
@@ -2778,8 +2784,8 @@ fn (mut tc TypeChecker) constraint_operand(id flat.NodeId, param u32) Constraint
 	}
 	typ := tc.constraint_walk_value_type(id)
 	if typ is Unknown {
-		if name := generic_placeholder_from_unknown(typ) {
-			return if source_type_id_is_name(param, name) {
+		if typ.placeholder != 0 {
+			return if typ.placeholder == param {
 				ConstraintOperand.same
 			} else {
 				ConstraintOperand.unknown
@@ -2841,9 +2847,8 @@ fn (mut tc TypeChecker) constraint_walk_param(id flat.NodeId, interfaces map[u32
 	if typ !is Unknown {
 		return none
 	}
-	param := generic_placeholder_from_unknown(typ as Unknown) or { return none }
-	param_id := flat.source_type_existing_id(param) or { return none }
-	if param_id !in interfaces {
+	param_id := (typ as Unknown).placeholder
+	if param_id == 0 || param_id !in interfaces {
 		return none
 	}
 	return param_id

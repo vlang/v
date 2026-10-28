@@ -18094,8 +18094,8 @@ fn generic_param_index(name string) int {
 	}
 }
 
-// generic_placeholder_from_unknown is the name of the type parameter that `typ`
-// stands for, for the callers that compare it with type parameter names.
+// generic_placeholder_from_unknown spells the type parameter that `typ` stands
+// for, for display; compare `typ.placeholder` ids instead of this text.
 fn generic_placeholder_from_unknown(typ Unknown) ?string {
 	if typ.placeholder == 0 {
 		return none

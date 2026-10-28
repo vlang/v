@@ -498,12 +498,14 @@ fn (tc &TypeChecker) vls_type_constraint(id flat.NodeId, typ Type) ?GenericConst
 	if clean !is Unknown {
 		return none
 	}
-	param := generic_placeholder_from_unknown(clean as Unknown)?
+	param_id := (clean as Unknown).placeholder
+	if param_id == 0 {
+		return none
+	}
 	decl, path := tc.vls_enclosing_decl(id)?
 	if decl.kind != .fn_decl {
 		return none
 	}
-	param_id := flat.source_type_existing_id(param) or { return none }
 	return tc.vls_narrowed_constraints(decl, path)[param_id] or { return none }
 }
 
@@ -550,8 +552,8 @@ fn (tc &TypeChecker) vls_local_type_param(fn_node flat.Node, name string, names 
 		if typ := tc.vls_local_type(id) {
 			clean := unwrap_pointer(typ)
 			if clean is Unknown {
-				if param := generic_placeholder_from_unknown(clean) {
-					param_index := generic_param_index_of_name(names, param)
+				if clean.placeholder != 0 {
+					param_index := names.index(clean.placeholder)
 					if param_index >= 0 {
 						return names[param_index]
 					}

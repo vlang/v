@@ -15358,10 +15358,10 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args_ids []u32, param_nam
 		return typ
 	}
 	if typ is Unknown {
-		if name := generic_placeholder_from_unknown(typ) {
-			mut idx := generic_param_index_of_name(param_names, name)
+		if typ.placeholder != 0 {
+			mut idx := param_names.index(typ.placeholder)
 			if idx < 0 {
-				idx = generic_param_index(name)
+				idx = generic_param_index(flat.source_type_name(typ.placeholder))
 			}
 			if idx >= 0 && idx < args_ids.len {
 				return *tc.parse_type(trimmed_source_type_id(args_ids[idx]))
@@ -15470,11 +15470,11 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		return typ
 	}
 	if typ is Unknown {
-		if name := generic_placeholder_from_unknown(typ) {
+		if typ.placeholder != 0 {
 			idx := if param_names.len > 0 {
-				generic_param_index_of_name(param_names, name)
+				param_names.index(typ.placeholder)
 			} else {
-				generic_param_index(name)
+				generic_param_index(flat.source_type_name(typ.placeholder))
 			}
 			if idx >= 0 && idx < args.len {
 				return args[idx]
@@ -18873,8 +18873,8 @@ fn (mut tc TypeChecker) check_inferred_type_witnesses(source_id u32) {
 // `typ` that the current function does not declare.
 fn (tc &TypeChecker) unresolved_generic_placeholder_in(typ Type) ?string {
 	if typ is Unknown {
-		if placeholder := generic_placeholder_from_unknown(typ) {
-			if !tc.active_generic_param(placeholder) { return placeholder }
+		if typ.placeholder != 0 && !tc.active_generic_param_id(typ.placeholder) {
+			return flat.source_type_name(typ.placeholder)
 		}
 		return none
 	}
