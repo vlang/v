@@ -35,6 +35,9 @@ const cgen_veb_context_source_type = flat.source_type_id('veb.Context')
 const cgen_veb_result_source_type = flat.source_type_id('veb.Result')
 // portable_uint_c_type is the unsigned counterpart of `types.portable_int_c_type`.
 const portable_uint_c_type = '__v_uint'
+// string_literal_macro_define defines `_S`, the C macro for V string literals. It is
+// emitted in the preamble and again on Solaris after the system headers.
+const string_literal_macro_define = '#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})'
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
@@ -20034,7 +20037,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define E_STRUCT_DECL')
 	g.writeln('#define E_STRUCT')
 	g.writeln('#endif')
-	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
+	g.writeln(string_literal_macro_define)
 	g.writeln('#if !defined(VNORETURN)')
 	g.writeln('#if defined(__TINYC__)')
 	g.writeln('#define VNORETURN __attribute__((noreturn))')
@@ -20379,10 +20382,12 @@ fn (mut g FlatGen) system_libc_headers() {
 	// written over, and V's string-literal macro is spelled _S — the header's
 	// object macro wins over V's earlier definition. Nothing in the generated
 	// C calls the ctype macros, whose bodies are the only readers of the
-	// flags, so take the name back once every system header is in.
+	// flags, so take the name back once every system header is in. Known
+	// limit: V code calling `C.isspace` on Solaris then fails to compile,
+	// because that ctype macro reads the restored `_S`.
 	g.writeln('#if defined(__sun)')
 	g.writeln('#undef _S')
-	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
+	g.writeln(string_literal_macro_define)
 	g.writeln('#endif')
 	g.system_execinfo_declarations()
 	g.writeln('')

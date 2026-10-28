@@ -23,32 +23,29 @@ pub mut:
 
 fn C.timegm(&C.tm) C.time_t
 
-fn C.mktime(&C.tm) C.time_t
-
 // preferring localtime_r over the localtime because
 // from docs localtime_r is thread safe,
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 
-fn C.gmtime_r(t &C.time_t, tm &C.tm)
-
-// c_local_epoch_offset answers how many seconds east of UTC the zone is at the
-// instant `sec`. glibc and the BSDs expose it as struct tm's tm_gmtoff, which
-// loc_tm — the caller's localtime_r result for `sec` — already carries. Solaris's
-// struct tm has no such member, so it is worked out: mktime reads the UTC fields
-// back as local time, and tm_isdst = -1 lets it apply the zone's current offset
-// (with 0 it assumes standard time, which is an hour off during DST). For instants
-// inside a DST spring-forward gap, mktime resolves the ambiguity by the zone's
-// rules, so the offset can be an hour off for that hour each year.
+// c_local_epoch_offset returns how many seconds east of UTC the local zone is at
+// the instant `sec`; `loc_tm` is the caller's localtime_r result for `sec`. glibc,
+// macOS and the BSDs carry it in struct tm's tm_gmtoff. Solaris's struct tm has no
+// such member, so there it is the local calendar fields read as UTC, minus `sec`.
 @[inline]
 fn c_local_epoch_offset(sec i64, loc_tm C.tm) i64 {
 	$if solaris {
-		mut utc_tm := C.tm{}
-		C.gmtime_r(voidptr(&sec), &utc_tm)
-		utc_tm.tm_isdst = -1
-		return sec - i64(C.mktime(&utc_tm))
+		return local_offset_from_fields(sec, &loc_tm)
 	} $else {
 		return i64(loc_tm.tm_gmtoff)
 	}
+}
+
+// local_offset_from_fields returns the UTC offset of the local zone at the instant
+// `sec`, from `loc_tm`, the localtime_r result for `sec`. It uses only the calendar
+// fields, so it works where struct tm has no tm_gmtoff.
+@[inline]
+fn local_offset_from_fields(sec i64, loc_tm &C.tm) i64 {
+	return portable_timegm(loc_tm) - sec
 }
 
 fn make_unix_time(t C.tm) i64 {

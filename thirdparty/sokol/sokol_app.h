@@ -3876,12 +3876,11 @@ static void _sapp_log(sapp_log_item log_item, uint32_t log_level,
 #endif
     _sapp.desc.logger.func("sapp", log_level, (uint32_t)log_item, msg, line_nr,
                            filename, _sapp.desc.logger.user_data);
-  }
-  // for log level PANIC it would be 'undefined behaviour' to continue —
-  // with or without a logger; the logger branch above used to return
-  // instead, and the run limped on to the first GL call's assertion
-  if (log_level == 0) {
-    abort();
+  } else {
+    // for log level PANIC it would be 'undefined behaviour' to continue
+    if (log_level == 0) {
+      abort();
+    }
   }
 }
 
@@ -13782,9 +13781,6 @@ _SOKOL_PRIVATE void _sapp_glx_create_context(void) {
   if (0 == native) {
     _SAPP_PANIC(LINUX_GLX_NO_SUITABLE_GLXFBCONFIG);
   }
-  if (!(_sapp.glx.ARB_create_context && _sapp.glx.ARB_create_context_profile)) {
-    _SAPP_PANIC(LINUX_GLX_REQUIRED_EXTENSIONS_MISSING);
-  }
   _sapp_x11_grab_error_handler();
   const int attribs[] = {GLX_CONTEXT_MAJOR_VERSION_ARB,
                          _sapp.desc.gl.major_version,
@@ -13796,34 +13792,35 @@ _SOKOL_PRIVATE void _sapp_glx_create_context(void) {
                          GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
                          0,
                          0};
-  _sapp.glx.ctx = _sapp.glx.CreateContextAttribsARB(_sapp.x11.display, native,
-                                                    NULL, True, attribs);
-  if (!_sapp.glx.ctx) {
-    // The core-profile request can fail on stacks whose server side never
-    // grew GLX_ARB_create_context (indirect GLX, older Xorg), while the
-    // legacy glXCreateContext path glxgears takes still works — and on
-    // llvmpipe the legacy context is a compatibility profile whose GL 4.x
-    // version string carries everything the core backend asks for. Fall
-    // back before giving up; only a total failure panics below.
-    // glXCreateContext wants the XVisualInfo, not the FBConfig the core
-    // path takes — get this FBConfig's own visual, the same pairing the
-    // GLX window below is built from.
-    _SAPP_WARN(LINUX_GLX_CREATE_CONTEXT_FAILED);
-    if (_sapp.glx.CreateContext) {
-      XVisualInfo *vi = _sapp.glx.GetVisualFromFBConfig(_sapp.x11.display,
-                                                        native);
-      if (vi) {
-        _sapp.glx.ctx = _sapp.glx.CreateContext(_sapp.x11.display, vi, NULL,
-                                                True);
-        XFree(vi);
-      }
+  _sapp.glx.ctx = 0;
+  if (_sapp.glx.ARB_create_context && _sapp.glx.ARB_create_context_profile &&
+      _sapp.glx.CreateContextAttribsARB) {
+    _sapp.glx.ctx = _sapp.glx.CreateContextAttribsARB(_sapp.x11.display, native,
+                                                      NULL, True, attribs);
+    if (!_sapp.glx.ctx) {
+      _SAPP_WARN(LINUX_GLX_CREATE_CONTEXT_FAILED);
+    }
+  } else {
+    _SAPP_WARN(LINUX_GLX_REQUIRED_EXTENSIONS_MISSING);
+  }
+  if (!_sapp.glx.ctx && _sapp.glx.CreateContext) {
+    // Stacks without GLX_ARB_create_context (indirect GLX, older Xorg), or
+    // whose core-profile request fails, can still create a legacy context;
+    // on Mesa it is a compatibility profile that covers the GL core backend.
+    // glXCreateContext takes the XVisualInfo of the FBConfig, not the
+    // FBConfig itself.
+    XVisualInfo *vi =
+        _sapp.glx.GetVisualFromFBConfig(_sapp.x11.display, native);
+    if (vi) {
+      _sapp.glx.ctx =
+          _sapp.glx.CreateContext(_sapp.x11.display, vi, NULL, True);
+      XFree(vi);
     }
   }
   _sapp_x11_release_error_handler();
   if (!_sapp.glx.ctx) {
     _SAPP_PANIC(LINUX_GLX_CREATE_CONTEXT_FAILED);
   }
-  _sapp_x11_release_error_handler();
   _sapp.glx.window =
       _sapp.glx.CreateWindow(_sapp.x11.display, native, _sapp.x11.window, NULL);
   if (!_sapp.glx.window) {
