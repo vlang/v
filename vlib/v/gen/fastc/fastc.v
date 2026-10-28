@@ -3773,7 +3773,7 @@ pub fn fastc_generation_link_cache_key(tcc string, compile_args []string, final_
 			stable_final_args << arg
 		}
 	}
-	configuration := 'fastc-generation-link-v1\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${stable_final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.tail_prototype_ids}'
+	configuration := 'fastc-generation-link-v2\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${stable_final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.tail_prototype_ids}'
 	mut hash := fastc_unit_cache_hash(configuration, u64(0x510e527fade682d1))
 	for piece in pieces {
 		hash = fastc_unit_cache_hash(piece, hash ^ u64(piece.len))
