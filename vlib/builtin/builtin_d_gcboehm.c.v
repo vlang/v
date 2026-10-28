@@ -14,10 +14,18 @@ $if macos || linux {
 	// running (no exec) still has the parent's threads in its thread table. Its first
 	// collection then tries to stop them and aborts with `pthread_kill failed at
 	// suspend`. With it, the handlers lock the allocator around the fork and rebuild
-	// the thread table in the child. The prebuilt thirdparty/tcc/lib/libgc.a is built
-	// with --enable-handle-fork=yes; this makes the collector that V compiles from
-	// source agree with it.
-	#flag -DHANDLE_FORK=1
+	// the thread table in the child. The prebuilt libgc of default TCC builds on
+	// Linux amd64 and macOS has fork handling too; this makes the collector that V
+	// compiles from source agree with it.
+	$if !no_gc_threads ? {
+		// Only multi-threaded collectors need it. Without GC threads it only makes
+		// macOS refuse `-gc boehm_incr` (gc.c's GC_dirty_init, MPROTECT_VDB).
+		$if !(arm32 && tinyc) {
+			// TinyCC on 32-bit ARM cannot call glibc's Thumb-2 `pthread_atfork`; see
+			// thirdparty/build_scripts/thirdparty-linux-armv7_bdwgc.sh.
+			#flag -DHANDLE_FORK=1
+		}
+	}
 }
 
 $if !no_gc_threads ? {
