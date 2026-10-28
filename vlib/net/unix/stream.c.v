@@ -87,16 +87,31 @@ pub fn (mut c StreamConn) write_ptr(b &u8, len int) !int {
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
-			mut sent := $if is_coroutine ? {
-				C.photon_send(c.sock.handle, ptr, remaining, net.msg_nosignal, c.write_timeout)
-			} $else {
-				C.send(c.sock.handle, ptr, remaining, net.msg_nosignal)
+			mut sent := 0
+			mut code := 0
+			$if vlibc ? {
+				$if is_coroutine ? {
+					sent = C.photon_send(c.sock.handle, ptr, remaining, net.msg_nosignal, c.write_timeout)
+					code = net.error_code()
+				} $else {
+					sent = vlibc_unix_send(c.sock.handle, ptr, remaining, net.msg_nosignal) or {
+						code = err.code()
+						-1
+					}
+				}
+			}
+			$if !vlibc ? {
+				sent = $if is_coroutine ? {
+					C.photon_send(c.sock.handle, ptr, remaining, net.msg_nosignal, c.write_timeout)
+				} $else {
+					C.send(c.sock.handle, ptr, remaining, net.msg_nosignal)
+				}
+				code = net.error_code()
 			}
 			$if trace_unix_data_write ? {
 				eprintln('>>> UnixConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
 			if sent < 0 {
-				code := net.error_code()
 				if code == int(net.error_ewouldblock) {
 					c.wait_for_write()!
 					continue
@@ -122,10 +137,26 @@ pub fn (mut c StreamConn) write_string(s string) !int {
 
 // read_ptr attempts to write all data
 pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
-	mut res := $if is_coroutine ? {
-		wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
-	} $else {
-		wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+	mut res := 0
+	mut ecode := 0
+	$if vlibc ? {
+		$if is_coroutine ? {
+			res = wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
+			ecode = net.error_code()
+		} $else {
+			res = wrap_read_result(vlibc_unix_recv(c.sock.handle, buf_ptr, len, 0) or {
+				ecode = err.code()
+				-1
+			})!
+		}
+	}
+	$if !vlibc ? {
+		res = $if is_coroutine ? {
+			wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
+		} $else {
+			wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+		}
+		ecode = net.error_code()
 	}
 	$if trace_unix ? {
 		eprintln('<<< StreamConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
@@ -137,13 +168,25 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return res
 	}
-	code := net.error_code()
-	if code == int(net.error_ewouldblock) {
+	if ecode == int(net.error_ewouldblock) {
 		c.wait_for_read()!
-		res = $if is_coroutine ? {
-			wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
-		} $else {
-			wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+		$if vlibc ? {
+			$if is_coroutine ? {
+				res = wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
+			} $else {
+				res = wrap_read_result(vlibc_unix_recv(c.sock.handle, buf_ptr, len, 0) or {
+					e := err.code()
+					net.wrap_error(e)!
+					-1
+				})!
+			}
+		}
+		$if !vlibc ? {
+			res = $if is_coroutine ? {
+				wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
+			} $else {
+				wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+			}
 		}
 		$if trace_unix ? {
 			eprintln('<<< StreamConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
@@ -156,7 +199,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return net.socket_error(res)
 	} else {
-		net.wrap_error(code)!
+		net.wrap_error(ecode)!
 	}
 	return error('none')
 }
@@ -270,6 +313,17 @@ pub fn listen_stream(socket_path string, options ListenOptions) !&StreamListener
 		C.unlink(&char(socket_path.str))
 	}
 
+	$if vlibc ? {
+		// The fd and I/O go through vlibc; the sockaddr_un bytes stay shared
+		// with the libc path, and the unlink above stays on libc.
+		vlibc_unix_bind(s.handle, addr)!
+		vlibc_unix_listen(s.handle, options.backlog)!
+		return &StreamListener{
+			sock:            s
+			accept_deadline: no_deadline
+			accept_timeout:  infinite_timeout
+		}
+	}
 	net.socket_error_message(C.bind(s.handle, voidptr(&addr), alen),
 		'binding to ${socket_path} failed')!
 	net.socket_error_message(C.listen(s.handle, options.backlog),
@@ -291,6 +345,19 @@ pub fn (mut l StreamListener) accept() !&StreamConn {
 	// for first. With both unset, the plain blocking accept is kept.
 	if deadline_set(l.accept_deadline) || (l.accept_timeout > 0 && l.accept_timeout != infinite_timeout) {
 		l.wait_for_accept()!
+	}
+	$if vlibc ? {
+		$if !is_coroutine ? {
+			// The accepted fd and subsequent I/O go through vlibc.
+			accepted := vlibc_unix_accept(l.sock.handle)!
+			mut c := &StreamConn{
+				handle:        accepted
+				read_timeout:  unix_default_read_timeout
+				write_timeout: unix_default_write_timeout
+			}
+			c.sock = stream_socket_from_handle(c.handle)!
+			return c
+		}
 	}
 	mut new_handle := $if is_coroutine ? {
 		C.photon_accept(l.sock.handle, 0, 0, unix_default_read_timeout)
@@ -385,10 +452,21 @@ mut:
 }
 
 fn new_stream_socket(socket_path string) !StreamSocket {
-	handle := $if is_coroutine ? {
-		net.socket_error(C.photon_socket(i32(net.AddrFamily.unix), i32(net.SocketType.tcp), 0))!
-	} $else {
-		net.socket_error(C.socket(i32(net.AddrFamily.unix), i32(net.SocketType.tcp), 0))!
+	mut handle := 0
+	$if vlibc ? {
+		$if is_coroutine ? {
+			handle = net.socket_error(C.photon_socket(i32(net.AddrFamily.unix), i32(net.SocketType.tcp), 0))!
+		} $else {
+			// The fd and subsequent I/O go through vlibc.
+			handle = vlibc_unix_socket()!
+		}
+	}
+	$if !vlibc ? {
+		handle = $if is_coroutine ? {
+			net.socket_error(C.photon_socket(i32(net.AddrFamily.unix), i32(net.SocketType.tcp), 0))!
+		} $else {
+			net.socket_error(C.socket(i32(net.AddrFamily.unix), i32(net.SocketType.tcp), 0))!
+		}
 	}
 	mut s := StreamSocket{
 		handle:      handle
@@ -450,6 +528,12 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 	// cast to the correct type
 	alen := addr.len()
 
+	$if vlibc ? {
+		// AF_UNIX connects go through the vlibc syscall with the same
+		// sockaddr_un bytes as the libc path below.
+		vlibc_unix_connect(s.handle, addr)!
+		return
+	}
 	$if net_nonblocking_sockets ? {
 		res := $if is_coroutine ? {
 			C.photon_connect(s.handle, voidptr(&addr), alen, unix_default_read_timeout)

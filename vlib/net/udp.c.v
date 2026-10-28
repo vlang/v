@@ -87,6 +87,14 @@ pub fn (mut c UdpConn) write_string(s string) !int {
 }
 
 pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &u8, len int) !int {
+	$if vlibc ? {
+		// AF_INET destinations go through the vlibc sendto syscall; the
+		// sockaddr bytes stay shared with the libc path below. Other
+		// families keep the libc path.
+		if addr.family() == .ip {
+			return vlibc_udp_write_to_ptr(mut c, addr, b, len)
+		}
+	}
 	res := C.sendto(c.sock.handle, b, len, 0, voidptr(&addr), addr.len())
 	if res >= 0 {
 		return res
@@ -123,6 +131,13 @@ pub fn (c &UdpConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 	if c.is_blocking {
 		// Honor read deadlines/timeouts before entering a blocking recvfrom call.
 		c.wait_for_read()!
+	}
+	$if vlibc ? {
+		// AF_INET sockets receive through the vlibc recvfrom syscall so the
+		// source address is preserved; other families keep the libc path below.
+		if c.sock.l.family() == .ip {
+			return vlibc_udp_read_ptr(c, buf_ptr, len, mut addr)
+		}
 	}
 	res = C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr), &addr_len)
 	// A datagram may be empty: 0 bytes is a datagram received, not the end of a stream.
@@ -335,7 +350,19 @@ pub fn listen_udp(laddr string) !&UdpConn {
 fn new_udp_socket(local_addr Addr) !&UdpSocket {
 	family := local_addr.family()
 
-	sockfd := socket_error(C.socket(i32(family), i32(SocketType.udp), 0))!
+	mut sockfd := 0
+	$if vlibc ? {
+		// AF_INET datagram sockets go through the vlibc socket syscall; other
+		// families keep the libc path below.
+		if family == .ip {
+			sockfd = vlibc_new_udp_socket(family)!
+		} else {
+			sockfd = socket_error(C.socket(i32(family), i32(SocketType.udp), 0))!
+		}
+	}
+	$if !vlibc ? {
+		sockfd = socket_error(C.socket(i32(family), i32(SocketType.udp), 0))!
+	}
 	mut s := &UdpSocket{
 		handle: sockfd
 		l:      local_addr
@@ -357,7 +384,19 @@ fn new_udp_socket(local_addr Addr) !&UdpSocket {
 	}
 
 	// cast to the correct type
-	socket_error(C.bind(s.handle, voidptr(&local_addr), local_addr.len()))!
+	$if vlibc ? {
+		// AF_INET binds go through the vlibc bind syscall; other families
+		// keep the libc path below. setsockopt above stays on libc (see the
+		// note in udp_d_vlibc.c.v).
+		if family == .ip {
+			vlibc_udp_bind(s.handle, local_addr)!
+		} else {
+			socket_error(C.bind(s.handle, voidptr(&local_addr), local_addr.len()))!
+		}
+	}
+	$if !vlibc ? {
+		socket_error(C.bind(s.handle, voidptr(&local_addr), local_addr.len()))!
+	}
 	return s
 }
 
