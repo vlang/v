@@ -735,6 +735,10 @@ over gzip when the client supports both.
 
 **How it works:**
 
+Static sidecars and generated compressed files honor case insensitive `Accept-Encoding` offers,
+wildcards, and `q=0` refusals. An explicit coding entry overrides the wildcard. If every enabled
+coding is refused or no header is sent, veb serves the original file.
+
 1. **Manual pre-compression**: If you create `.zst` or `.gz` files manually, veb will serve
    them in zero-copy streaming mode for maximum performance when the MIME type is allowed.
 2. **Lazy compression cache**: Files smaller than the threshold are automatically compressed
@@ -853,6 +857,14 @@ serve `.zst` if the client supports zstd, otherwise `.gz` if gzip is supported.
 - Large files (> threshold) are always streamed, ensuring low memory usage even for large assets.
 - The `encode_auto` middleware automatically chooses zstd or gzip based on client support. You can
   also use `encode_zstd` or `encode_gzip` for specific compression.
+  Dynamic compression skips bodies below 256 bytes, statuses without a body, streaming files,
+  already compressed content, and noncompressible media types. Compressed output is used only
+  when it is smaller. Encoding names are case insensitive; explicit `q=0` refusals override
+  wildcard offers. Repeated `Accept-Encoding` fields are combined before selecting a coding.
+  Positive quality values allow a coding; `encode_auto` prefers zstd over gzip.
+  Eligible responses include `Vary: Accept-Encoding` even when sent without compression, while
+  preserving existing `Vary` fields.
+  Compression weakens any existing strong ETag because the encoded bytes differ.
 - If caching fails (e.g., on read-only filesystems), veb automatically falls
   back to serving compressed content from memory. You can set `static_compression_max_size = 0`
   to disable auto-compression completely. For optimal performance on read-only systems,
