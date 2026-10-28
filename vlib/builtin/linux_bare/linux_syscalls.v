@@ -669,7 +669,8 @@ $if !i386 {
 	// with its result. A top-level asm block lands in whatever section the C
 	// compiler is emitting at that point (gcc: the string literals' `.data`), so
 	// it switches to `.text` itself.
-	$if amd64 {
+	$if freestanding {
+		$if amd64 {
 		asm amd64 {
 			.pushsection .text
 			.globl _start
@@ -698,4 +699,5 @@ $if !i386 {
 			.popsection
 		}
 	}
+}
 }

@@ -75,9 +75,15 @@ pub fn sys_mono_now() u64 {
 	$if macos {
 		return sys_mono_now_darwin()
 	} $else {
-		ts := C.timespec{}
-		C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
-		return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
+		$if vlibc ? {
+			mut ts := VlibcTimespec{}
+			vlibc_sys_clock_gettime(1, &ts)
+			return u64(ts.sec) * 1_000_000_000 + u64(ts.nsec)
+		} $else {
+			ts := C.timespec{}
+			C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
+			return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
+		}
 	}
 }
 
@@ -98,19 +104,33 @@ fn vpc_now() u64 {
 fn linux_now() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part
-	mut ts := C.timespec{}
-	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-	loc_tm := C.tm{}
-	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
-	return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + i64(loc_tm.tm_gmtoff))
+	$if vlibc ? {
+		mut ts := VlibcTimespec{}
+		vlibc_sys_clock_gettime(0, &ts)
+		loc_tm := C.tm{}
+		C.localtime_r(voidptr(&ts.sec), &loc_tm)
+		return convert_ctime_with_unix(loc_tm, int(ts.nsec), i64(ts.sec) + i64(loc_tm.tm_gmtoff))
+	} $else {
+		mut ts := C.timespec{}
+		C.clock_gettime(C.CLOCK_REALTIME, &ts)
+		loc_tm := C.tm{}
+		C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
+		return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + i64(loc_tm.tm_gmtoff))
+	}
 }
 
 fn linux_utc() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part
-	mut ts := C.timespec{}
-	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-	return unix_nanosecond(i64(ts.tv_sec), int(ts.tv_nsec))
+	$if vlibc ? {
+		mut ts := VlibcTimespec{}
+		vlibc_sys_clock_gettime(0, &ts)
+		return unix_nanosecond(i64(ts.sec), int(ts.nsec))
+	} $else {
+		mut ts := C.timespec{}
+		C.clock_gettime(C.CLOCK_REALTIME, &ts)
+		return unix_nanosecond(i64(ts.tv_sec), int(ts.tv_nsec))
+	}
 }
 
 // dummy to compile with all compilers
