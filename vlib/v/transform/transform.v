@@ -253,6 +253,7 @@ mut:
 	// repeated uses of the same array constant in one transform worker.
 	const_array_fixed_storage_cache     map[string]i8
 	enum_selector_filter                &EnumSelectorNameFilter = unsafe { nil }
+	enum_unqualified_index              &EnumUnqualifiedIndex   = unsafe { nil }
 	enum_types                          map[u32][]string
 	enum_explicit_first_values          map[u32]bool // the first member has a value, maybe not 0
 	enum_backing_types                  flat.SourceTypeBindings
@@ -452,6 +453,12 @@ mut:
 	alias_receiver_fns            map[string][]string
 	alias_receiver_fns_signatures int = -1
 	alias_receiver_fns_aliases    int
+	// alias_receiver_added_names logs, in registration order, the signatures that
+	// merge_worker_signatures appended to the checker since alias_receiver_fns was listed.
+	alias_receiver_added_names []string
+	// static_method_added_names logs the return signatures merge_worker_signatures
+	// appended to the checker since its static method names were listed.
+	static_method_added_names []string
 	// var_type_undo_log holds the bindings that set_var_type_binding replaced while
 	// var_type_undo_active is set. A walk that only adds or rebinds locals restores a
 	// lexical scope from it instead of copying every live binding on scope entry.
@@ -4684,6 +4691,7 @@ fn (mut t Transformer) collect_alias_methods() {
 	t.alias_method_candidates_ready = true
 	t.alias_receiver_fns_signatures = t.tc.fn_param_types.len
 	t.alias_receiver_fns_aliases = t.tc.type_aliases.ids.len
+	t.alias_receiver_added_names.clear()
 }
 
 // refresh_alias_receiver_fns lists the alias receiver signatures again after signatures
@@ -4693,6 +4701,35 @@ fn (mut t Transformer) refresh_alias_receiver_fns() {
 		&& t.alias_receiver_fns_aliases == t.tc.type_aliases.ids.len) {
 		return
 	}
+	// Signatures are only appended between two listings (a removal resets the count to
+	// -1), and the map keeps insertion order. When the logged merges account for every
+	// signature added since the last listing, appending the logged alias receivers to
+	// it gives the list that a scan of all signatures would build.
+	if t.alias_receiver_fns_signatures >= 0
+		&& t.alias_receiver_fns_aliases == t.tc.type_aliases.ids.len
+		&& t.alias_receiver_fns_signatures + t.alias_receiver_added_names.len == t.tc.fn_param_types.len {
+		mut extended := t.alias_receiver_fns.clone()
+		for name in t.alias_receiver_added_names {
+			dot := name.last_index_u8(`.`)
+			if dot <= 0 {
+				continue
+			}
+			receiver_id := flat.source_type_existing_id(unsafe { name.substr_unsafe(0, dot) }) or {
+				continue
+			}
+			if receiver_id in t.tc.type_aliases.ids {
+				method := name[dot + 1..]
+				mut listed := (extended[method] or { []string{} }).clone()
+				listed << name
+				extended[method] = listed
+			}
+		}
+		t.alias_receiver_fns = extended.move()
+		t.alias_receiver_fns_signatures = t.tc.fn_param_types.len
+		t.alias_receiver_added_names.clear()
+		return
+	}
+	t.alias_receiver_added_names.clear()
 	mut by_method := map[string][]string{}
 	for name, _ in t.tc.fn_param_types {
 		dot := name.last_index_u8(`.`)
@@ -5481,12 +5518,19 @@ fn (t &Transformer) fork_scoped_batch_worker(ast &flat.FlatAst, wtc &types.TypeC
 }
 
 fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker, copy_used_fns bool) &Transformer {
+	return t.fork_worker_with_state(ast, wtc, copy_used_fns, copy_used_fns)
+}
+
+// fork_worker_with_state is fork_worker_config with the copy of the used set,
+// which a worker without one reads through its parent, chosen independently of
+// the copy of the generic specialization state.
+fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChecker, copy_used_fns bool, copy_generic_state bool) &Transformer {
 	used := if copy_used_fns {
 		t.used_fns
 	} else {
 		map[string]bool{}
 	}
-	mut w := t.fork_program_view(ast, wtc, used, copy_used_fns)
+	mut w := t.fork_program_view(ast, wtc, used, copy_generic_state)
 	if !copy_used_fns {
 		if t.node_context_read_only && isnil(t.used_fns_parent) && !isnil(t.used_fns_root) {
 			// A shared-base master is still recording helper names while its workers
@@ -6156,11 +6200,13 @@ fn (mut t Transformer) merge_worker_signatures(w &Transformer) {
 		if ret := w.tc.fn_ret_types[name] {
 			if name !in master_tc.fn_ret_types {
 				master_tc.register_generated_fn_return_type(owned_name, types.clone_owned_type(ret))
+				t.static_method_added_names << owned_name
 			}
 		}
 		if params := w.tc.fn_param_types[name] {
 			if name !in master_tc.fn_param_types {
 				master_tc.register_generated_fn_param_types(owned_name, types.clone_owned_types(params))
+				t.alias_receiver_added_names << owned_name
 			}
 		}
 		master_tc.fn_variadic[owned_name] = w.tc.fn_variadic[name]
@@ -14149,7 +14195,7 @@ fn (mut t Transformer) transform_sizeof_expr(id flat.NodeId, node flat.Node) fla
 	} else if node.value_text().len > 0 && node.children_count > 0 {
 		value_type := t.selected_sizeof_value_type(node.value_text()) or {
 			if t.tc.sizeof_arg_is_type(node) {
-				flat.source_type_id(t.tc.qualify_name(node.value_text()))
+				t.tc.qualify_type_name(node.source_value_id())
 			} else {
 				u32(0)
 			}
@@ -25811,7 +25857,7 @@ fn (t &Transformer) struct_info_matches_generic_base(base_id u32, info StructInf
 	return false
 }
 
-fn struct_info_uses_generic_params(info StructInfo, params []string) bool {
+fn struct_info_uses_generic_params(info StructInfo, params []u32) bool {
 	for field in info.fields {
 		if type_text_uses_any_generic_param(field.typ, params)
 			|| type_text_uses_any_generic_param(field.raw_typ, params) {
@@ -25821,11 +25867,10 @@ fn struct_info_uses_generic_params(info StructInfo, params []string) bool {
 	return false
 }
 
-fn type_text_uses_any_generic_param(typ_id u32, params []string) bool {
-	// Generic declaration parameters are identifiers; use their cached token IDs.
+fn type_text_uses_any_generic_param(typ_id u32, params []u32) bool {
 	words := flat.source_type_syntax(typ_id).words()
 	for param in params {
-		if param.len > 0 && flat.source_type_id(param) in words { return true }
+		if param != 0 && param in words { return true }
 	}
 	return false
 }
@@ -25869,17 +25914,17 @@ fn (t &Transformer) generic_struct_info_for_stringify(typ_id u32) ?StructInfo {
 
 fn (t &Transformer) generic_struct_params_for_stringify(base_id u32) []string {
 	if isnil(t.tc) { return []string{} }
-	if params := t.tc.struct_generic_params[base_id] { return params }
+	if params := t.tc.struct_generic_params[base_id] { return types.generic_param_texts(params) }
 	if !flat.source_type_shape(base_id).has(.dotted) && t.cur_module.len > 0
 		&& t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), base_id)
 		if params := t.tc.struct_generic_params[qualified_id] {
-			return params
+			return types.generic_param_texts(params)
 		}
 	}
 	if flat.source_type_shape(base_id).has(.dotted) {
 		if params := t.tc.struct_generic_params[flat.source_type_syntax(base_id).unqualified()] {
-			return params
+			return types.generic_param_texts(params)
 		}
 	}
 	return []string{}
@@ -28835,7 +28880,7 @@ fn (t &Transformer) explicit_generic_call_return_type_for_typeof(id flat.NodeId,
 		}
 	}
 	for name in names {
-		params := t.tc.fn_generic_params[name] or { continue }
+		params := types.generic_param_texts(t.tc.fn_generic_params[name] or { continue })
 		if params.len == 0 {
 			continue
 		}
@@ -32640,10 +32685,7 @@ fn (t &Transformer) interface_pattern_candidates(pattern_id u32) []u32 {
 	if !flat.source_type_shape(pattern_id).has(.dotted) {
 		mut has_scoped_candidate := false
 		if t.cur_file.len > 0 {
-			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(pattern_id))] or {
-				[]string{}
-			} {
-				candidate_id := flat.source_type_id(candidate)
+			for candidate_id in t.tc.file_selective_import_ids(t.cur_file, pattern_id) or { []u32{} } {
 				if t.interface_pattern_candidate_known(candidate_id) {
 					candidates << candidate_id
 					has_scoped_candidate = true

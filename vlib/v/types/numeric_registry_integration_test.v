@@ -50,7 +50,7 @@ interface Contract {
 	assert scope_type_key(path, 'registryfixture', flat.source_type_id('Kind')) !in tc.concrete_type_scope_keys
 	assert tc.struct_modules[item_id] == 'registryfixture'
 	assert tc.struct_files[item_id] == path
-	assert tc.struct_generic_params[box_id] == ['T']
+	assert tc.struct_generic_params[box_id] == generic_param_ids(['T'])
 	assert item_id in tc.first_type_declaration_ids
 	assert a.nodes[tc.first_type_declaration_ids[item_id]].kind == .struct_decl
 	assert tc.type_aliases.type_id(alias_id)? == item_id
@@ -103,7 +103,7 @@ interface Contract {
 	}
 	worker.struct_modules[item_id] = 'worker'
 	worker.struct_files[item_id] = 'worker.v'
-	worker.struct_generic_params[box_id][0] = 'WorkerT'
+	worker.struct_generic_params[box_id][0] = flat.source_type_id('WorkerT')
 	worker.sum_types.set_ids(choice_id, [flat.source_type_bool])
 	worker.enum_fields[kind_id][0] = 'worker_first'
 	worker_interface_field := worker.interface_fields[contract_id][0]
@@ -119,7 +119,7 @@ interface Contract {
 	assert tc.structs[item_id][0].name == 'value'
 	assert tc.struct_modules[item_id] == 'registryfixture'
 	assert tc.struct_files[item_id] == path
-	assert tc.struct_generic_params[box_id] == ['T']
+	assert tc.struct_generic_params[box_id] == generic_param_ids(['T'])
 	assert tc.sum_types.type_ids(choice_id)? == [item_id, flat.source_type_string]
 	assert tc.enum_fields[kind_id] == ['first', 'second']
 	assert tc.interface_fields[contract_id][0].name == 'label'

@@ -3831,7 +3831,7 @@ fn (t &Transformer) array_append_elem_is_interface_uncached(elem_type_id u32) bo
 		transform_trimmed_type_id(t.normalize_type_alias(elem_type_id))]
 	for candidate in candidates.clone() {
 		if candidate == 0 || flat.source_type_shape(candidate).has(.dotted) { continue }
-		candidates << flat.source_type_id(t.tc.qualify_name(flat.source_type_name(candidate)))
+		candidates << t.tc.qualify_type_name(candidate)
 		candidates << flat.source_type_composition_two(.qualified, flat.source_type_id('main'), candidate)
 		candidates << flat.source_type_composition_two(.qualified, flat.source_type_id('builtin'), candidate)
 	}
