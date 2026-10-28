@@ -1110,15 +1110,15 @@ fn comptime_attribute_is_bare_ident(s string) bool {
 // enum, spelled as written, module-qualified, or short.
 fn (t &Transformer) comptime_attribute_is_enum_type(type_text string) bool {
 	clean := type_text.trim_space()
-	if clean in t.enum_types {
+	if flat.source_type_id(clean) in t.enum_types {
 		return true
 	}
 	short := clean.all_after_last('.')
-	if short in t.enum_types {
+	if flat.source_type_id(short) in t.enum_types {
 		return true
 	}
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
-		if '${t.cur_module}.${short}' in t.enum_types {
+		if flat.source_type_id('${t.cur_module}.${short}') in t.enum_types {
 			return true
 		}
 	}
@@ -1659,12 +1659,16 @@ fn (mut t Transformer) make_attribute_schema_field_literal(raw string, type_text
 	}
 	variant := if raw.starts_with('.') { raw[1..] } else { raw }
 	mut enum_name := clean
-	if clean !in t.enum_types {
+	mut clean_in := false
+	if flat.source_type_id(clean) in t.enum_types { clean_in = true }
+	if !clean_in {
 		short := clean.all_after_last('.')
-		if short in t.enum_types {
+		mut short_in := false
+		if flat.source_type_id(short) in t.enum_types { short_in = true }
+		if short_in {
 			enum_name = short
 		} else if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin']
-			&& '${t.cur_module}.${short}' in t.enum_types {
+			&& flat.source_type_id('${t.cur_module}.${short}') in t.enum_types {
 			enum_name = '${t.cur_module}.${short}'
 		}
 	}
