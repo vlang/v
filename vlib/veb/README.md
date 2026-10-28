@@ -1592,4 +1592,3 @@ Boundaries, compared with a plain handler:
 * Without a live client transport (unit tests, `render_request`, the SSL
   path, which has no takeover support) `after` answers inline instead:
   the response and its timing stay correct, on the caller's thread.
-```

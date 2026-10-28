@@ -3,6 +3,7 @@ module veb
 import net
 import net.http
 import time
+import fasthttp
 
 struct AfterApp {}
 
@@ -30,6 +31,11 @@ fn (mut app AfterApp) delay(mut ctx AfterContext) Result {
 @['/chain']
 fn (mut app AfterApp) chain(mut ctx AfterContext) Result {
 	return ctx.after(150, after_chain_live, 0)
+}
+
+@['/immediate']
+fn (mut app AfterApp) immediate(mut ctx AfterContext) Result {
+	return ctx.after(0, after_chain, 0)
 }
 
 fn after_chain_live(mut ctx Context, arg u64) {
@@ -194,4 +200,35 @@ fn test_after_live_transport_supports_rearming() {
 	resp := after_read_until(mut cli, 'chained:1')
 	assert time.ticks() - start >= 250, 're-armed response arrived too early'
 	assert resp.contains('chained:1'), 'unexpected re-armed response: ${resp}'
+}
+
+fn test_after_append_handler_zero_delay_rearming_owns_request_arena() {
+	mut app := &AfterApp{}
+	routes := generate_routes[AfterApp, AfterContext](app)!
+	params := &RequestParams{
+		global_app: voidptr(app)
+		routes:     &routes
+	}
+	raw := 'GET /immediate HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n'.bytes()
+	for _ in 0 .. 16 {
+		fd, mut cli, mut ln := after_live_pair()!
+		cli.set_read_timeout(10 * time.second)
+		mut out := []u8{}
+		mut ctl := fasthttp.ResponseControl{}
+		step := parallel_append_handler[AfterApp, AfterContext](fasthttp.HttpRequest{
+			buffer:         raw
+			client_conn_fd: fd
+			user_data:      voidptr(params)
+		}, mut out, unsafe { nil }, mut ctl)
+		assert step == .done
+		assert ctl.takeover_mode == .manual
+		assert out.len == 0
+		resp := after_read_until(mut cli, 'chained:1')
+		assert resp.count('HTTP/1.1') == 1, resp
+		assert resp.contains('chained:1'), resp
+		mut eof_buf := []u8{len: 64}
+		assert cli.read(mut eof_buf) or { 0 } == 0
+		cli.close() or {}
+		ln.close() or {}
+	}
 }

@@ -16,6 +16,8 @@ struct RequestParams {
 	controllers_sorted        []&ControllerPath
 	routes                    &map[string]Route
 	benchmark_page_generation bool
+	// The append handler transfers its arena only after it finishes reading the context.
+	defer_after_timer bool
 }
 
 const http_500_response = 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
@@ -235,15 +237,23 @@ fn parallel_append_handler[A, X](req fasthttp.HttpRequest, mut out []u8, worker_
 		}
 	}
 	// Create and populate the `veb.Context` and route the request.
-	mut completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd, params)
+	mut completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd,
+		RequestParams{ ...params, defer_after_timer: true })
 
 	match completed_context.takeover_mode {
 		.manual {
+			ctl.takeover_mode = .manual
+			if completed_context.deferred {
+				// Spawn only after the worker has finished reading the context and
+				// left the arena: even a zero-delay timer may immediately free it.
+				va_scope_leave(arena)
+				spawn after_timer(mut completed_context, arena)
+				return .done
+			}
 			// The handler took over the connection (SSE / WebSocket) and already
 			// wrote the response over ctx.conn: hand the fd off without closing it.
 			// The takeover handler now owns any request-arena allocations.
 			va_scope_abandon(arena)
-			ctl.takeover_mode = .manual
 			return .done
 		}
 		.reusable {
@@ -342,7 +352,9 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	$if A is ControllerInterface {
 		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url, host) {
 			mut armed := unsafe { &Context(completed_context) }
-			armed.spawn_after_timer_if_armed()
+			if !params.defer_after_timer {
+				armed.spawn_after_timer_if_armed()
+			}
 			return completed_context
 		}
 	}
@@ -353,7 +365,9 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	}
 	// Preserve the handled context on the heap before the stack-local user context goes away.
 	ctx.preserve_for_response_writer(user_context.Context)
-	ctx.spawn_after_timer_if_armed()
+	if !params.defer_after_timer {
+		ctx.spawn_after_timer_if_armed()
+	}
 	return ctx
 }
 

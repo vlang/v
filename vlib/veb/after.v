@@ -66,7 +66,7 @@ fn (ctx &Context) has_live_transport() bool {
 // heap, so the timer owns that context instead of a stack-local copy.
 fn (mut ctx Context) spawn_after_timer_if_armed() {
 	if ctx.deferred {
-		spawn after_timer(mut ctx)
+		spawn after_timer(mut ctx, unsafe { nil })
 	}
 }
 
@@ -74,7 +74,7 @@ fn (mut ctx Context) spawn_after_timer_if_armed() {
 // the callback's single response, and closes the connection once the callback
 // stops re-arming with `after`. The accept-loop worker has been free since
 // `after` returned; only this short-lived thread waits.
-fn after_timer(mut ctx Context) {
+fn after_timer(mut ctx Context, arena voidptr) {
 	defer {
 		if msg := recover() {
 			eprintln('[veb] deferred response for "${ctx.req.url}" panicked: ${msg}')
@@ -82,6 +82,9 @@ fn after_timer(mut ctx Context) {
 		if ctx.conn != unsafe { nil } {
 			ctx.conn.close() or {}
 		}
+		// The append worker left this arena before starting the timer. Free it
+		// after the callback and close hook finish using the request context.
+		va_scope_free_after(arena)
 	}
 	for ctx.deferred {
 		ms := ctx.deferred_ms
