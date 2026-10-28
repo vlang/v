@@ -72,11 +72,13 @@ $if !i386 {
 	fn C.pthread_cond_signal(cond voidptr) int
 	fn C.pthread_cond_broadcast(cond voidptr) int
 
+	// vlibc_sys_open opens a NUL-terminated path with native flags and mode.
 	pub fn vlibc_sys_open(path &u8, flags u64, mode u64) (i64, VlibcErrno) {
 		rc, er := sys_call3(mac_nr_open, u64(path), flags, mode)
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_close closes a descriptor and returns the kernel error.
 	pub fn vlibc_sys_close(fd i64) VlibcErrno {
 		_, er := sys_call1(mac_nr_close, u64(fd))
 		if er == 0 {
@@ -85,21 +87,25 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_read reads up to count bytes into buf and returns the count and error.
 	pub fn vlibc_sys_read(fd i64, buf &u8, count u64) (i64, VlibcErrno) {
 		rc, er := sys_call3(mac_nr_read, u64(fd), u64(buf), count)
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_write writes up to count bytes from buf and returns the count and error.
 	pub fn vlibc_sys_write(fd i64, buf &u8, count u64) (i64, VlibcErrno) {
 		rc, er := sys_call3(mac_nr_write, u64(fd), u64(buf), count)
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_lseek changes a descriptor's byte offset relative to whence.
 	pub fn vlibc_sys_lseek(fd i64, off i64, whence int) (i64, VlibcErrno) {
 		rc, er := sys_call3(mac_nr_lseek, u64(fd), u64(off), u64(whence))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_stat64 writes path metadata into the native 64-bit stat layout.
 	pub fn vlibc_sys_stat64(path &u8, buf &MacStat64) VlibcErrno {
 		_, er := sys_call2(mac_nr_stat64, u64(path), u64(buf))
 		if er == 0 {
@@ -108,6 +114,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_fstat64 writes descriptor metadata into the native 64-bit stat layout.
 	pub fn vlibc_sys_fstat64(fd i64, buf &MacStat64) VlibcErrno {
 		_, er := sys_call2(mac_nr_fstat64, u64(fd), u64(buf))
 		if er == 0 {
@@ -116,11 +123,13 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_getdirentries64 reads 64-bit directory records and updates the directory position.
 	pub fn vlibc_sys_getdirentries64(fd i64, buf &u8, count u64, basep &u64) (i64, VlibcErrno) {
 		rc, er := sys_call4(mac_nr_getdirentries64, u64(fd), u64(buf), count, u64(basep))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_gettimeofday writes the wall-clock time into a native timeval.
 	pub fn vlibc_sys_gettimeofday(tv &MacTimeval, tz voidptr) VlibcErrno {
 		_, er := sys_call2(mac_nr_gettimeofday, u64(tv), u64(tz))
 		if er == 0 {
@@ -129,6 +138,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_select waits for descriptor readiness using native descriptor sets and timeout.
 	pub fn vlibc_sys_select(nfds int, rfds voidptr, wfds voidptr, efds voidptr, tv &MacTimeval) (i64, VlibcErrno) {
 		rc, er := sys_call5(mac_nr_select, u64(nfds), u64(rfds), u64(wfds), u64(efds), u64(tv))
 		return bsd_split(rc, er)
@@ -143,26 +153,31 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_getpid returns the current process ID.
 	pub fn vlibc_sys_getpid() i64 {
 		rc, _ := sys_call0(mac_nr_getpid)
 		return i64(rc)
 	}
 
+	// vlibc_sys_getppid returns the parent process ID.
 	pub fn vlibc_sys_getppid() i64 {
 		rc, _ := sys_call0(mac_nr_getppid)
 		return i64(rc)
 	}
 
+	// vlibc_sys_getuid returns the real user ID.
 	pub fn vlibc_sys_getuid() i64 {
 		rc, _ := sys_call0(mac_nr_getuid)
 		return i64(rc)
 	}
 
+	// vlibc_sys_geteuid returns the effective user ID.
 	pub fn vlibc_sys_geteuid() i64 {
 		rc, _ := sys_call0(mac_nr_geteuid)
 		return i64(rc)
 	}
 
+	// vlibc_sys_kill sends a signal to a process or process group.
 	pub fn vlibc_sys_kill(pid i64, sig int) VlibcErrno {
 		_, er := sys_call2(mac_nr_kill, u64(pid), u64(sig))
 		if er == 0 {
@@ -171,6 +186,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_exit terminates the calling process with the given exit code.
 	pub fn vlibc_sys_exit(code int) {
 		sys_call1(mac_nr_exit, u64(code))
 		for {}
@@ -186,6 +202,7 @@ $if !i386 {
 		return i64(rc)
 	}
 
+	// vlibc_sys_execve replaces the process image using NUL-terminated pointer arrays.
 	pub fn vlibc_sys_execve(filename &u8, argv []&u8, envp []&u8) int {
 		_, er := sys_call3(mac_nr_execve, u64(filename), u64(argv.data), u64(envp.data))
 		return -int(er)
@@ -197,6 +214,7 @@ $if !i386 {
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_fcntl performs a native descriptor-control operation.
 	pub fn vlibc_sys_fcntl(fd i64, cmd int, arg voidptr) (i64, VlibcErrno) {
 		rc, er := sys_call3(mac_nr_fcntl, u64(fd), u64(cmd), u64(arg))
 		return bsd_split(rc, er)
@@ -219,11 +237,13 @@ $if !i386 {
 		return .enoerror
 	}
 
+	// vlibc_sys_dup2 duplicates a descriptor onto the requested descriptor number.
 	pub fn vlibc_sys_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
 		rc, er := sys_call2(mac_nr_dup2, u64(oldfd), u64(newfd))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_mprotect changes the protection of a mapped memory range.
 	pub fn vlibc_sys_mprotect(addr voidptr, len u64, prot int) VlibcErrno {
 		_, er := sys_call3(mac_nr_mprotect, u64(addr), len, u64(prot))
 		if er == 0 {
@@ -232,6 +252,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_mmap maps memory using native protection and mapping flags.
 	pub fn vlibc_sys_mmap(addr voidptr, len u64, prot int, flags int, fd i64, off u64) (voidptr, VlibcErrno) {
 		rc, er := sys_call6(mac_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), off)
 		if er != 0 {
@@ -240,6 +261,7 @@ $if !i386 {
 		return unsafe { voidptr(rc) }, VlibcErrno.enoerror
 	}
 
+	// vlibc_sys_munmap unmaps a memory range.
 	pub fn vlibc_sys_munmap(addr voidptr, len u64) VlibcErrno {
 		_, er := sys_call2(mac_nr_munmap, u64(addr), len)
 		if er == 0 {
@@ -248,6 +270,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_madvise advises the kernel about a mapped memory range.
 	pub fn vlibc_sys_madvise(addr voidptr, len u64, advice int) VlibcErrno {
 		_, er := sys_call3(mac_nr_madvise, u64(addr), len, u64(advice))
 		if er == 0 {
@@ -256,6 +279,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_socket creates a socket with native domain, type, and protocol values.
 	pub fn vlibc_sys_socket(domain int, typ int, protocol int) (i64, VlibcErrno) {
 		rc, er := sys_call3(mac_nr_socket, u64(domain), u64(typ), u64(protocol))
 		return bsd_split(rc, er)
@@ -270,6 +294,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_bind binds a socket using a native address buffer.
 	pub fn vlibc_sys_bind(fd i64, addr voidptr, addrlen u32) VlibcErrno {
 		_, er := sys_call3(mac_nr_bind, u64(fd), u64(addr), u64(addrlen))
 		if er == 0 {
@@ -278,6 +303,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_listen marks a socket as accepting connections with the given backlog.
 	pub fn vlibc_sys_listen(fd i64, backlog int) VlibcErrno {
 		_, er := sys_call2(mac_nr_listen, u64(fd), u64(backlog))
 		if er == 0 {
@@ -286,11 +312,13 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_accept accepts a connection into native socket-address buffers.
 	pub fn vlibc_sys_accept(fd i64, addr voidptr, addrlen &u32) (i64, VlibcErrno) {
 		rc, er := sys_call3(mac_nr_accept, u64(fd), u64(addr), u64(addrlen))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_connect connects a socket using a native address buffer.
 	pub fn vlibc_sys_connect(fd i64, addr voidptr, addrlen u32) VlibcErrno {
 		_, er := sys_call3(mac_nr_connect, u64(fd), u64(addr), u64(addrlen))
 		if er == 0 {
@@ -299,16 +327,19 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_sendto sends bytes to an optional native destination address.
 	pub fn vlibc_sys_sendto(fd i64, buf voidptr, len u64, flags int, dest voidptr, addrlen u32) (i64, VlibcErrno) {
 		rc, er := sys_call6(mac_nr_sendto, u64(fd), u64(buf), len, u64(flags), u64(dest), u64(addrlen))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_recvfrom receives bytes and optionally writes the peer's native socket address.
 	pub fn vlibc_sys_recvfrom(fd i64, buf voidptr, len u64, flags int, src voidptr, addrlen &u32) (i64, VlibcErrno) {
 		rc, er := sys_call6(mac_nr_recvfrom, u64(fd), u64(buf), len, u64(flags), u64(src), u64(addrlen))
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_shutdown disables the requested socket directions.
 	pub fn vlibc_sys_shutdown(fd i64, how int) VlibcErrno {
 		_, er := sys_call2(mac_nr_shutdown, u64(fd), u64(how))
 		if er == 0 {
@@ -318,18 +349,21 @@ $if !i386 {
 	}
 
 	// ---- time (gettimeofday + select; macOS has no clock_gettime/nanosleep syscalls) ----
+	// vlibc_now_realtime_ns returns the wall-clock timestamp in nanoseconds since the Unix epoch.
 	pub fn vlibc_now_realtime_ns() i64 {
 		mut tv := MacTimeval{}
 		vlibc_sys_gettimeofday(&tv, unsafe { nil })
 		return tv.sec * 1_000_000_000 + i64(tv.usec) * 1000
 	}
 
+	// vlibc_now_monotonic_ns returns wall-clock nanoseconds as a fallback; it can jump when the clock changes.
 	pub fn vlibc_now_monotonic_ns() i64 {
 		// No monotonic clock syscall on macOS; gettimeofday is used instead.
 		// This jumps with wall-clock changes; documented limitation.
 		return vlibc_now_realtime_ns()
 	}
 
+	// vlibc_sleep_ns requests a sleep duration in nanoseconds; signals may interrupt it.
 	pub fn vlibc_sleep_ns(nsec u64) {
 		mut tv := MacTimeval{
 			sec:  i64(nsec / 1_000_000_000)
@@ -368,6 +402,7 @@ $if !i386 {
 		machine  string
 	}
 
+	// vlibc_uname returns operating-system identification fields.
 	pub fn vlibc_uname() VlibcUtsname {
 		mut u := VlibcUtsname{}
 		$if macos {
@@ -385,6 +420,7 @@ $if !i386 {
 	}
 
 	// ---- file ----
+	// vlibc_stat returns file metadata, following symbolic links.
 	pub fn vlibc_stat(path string) (VlibcStat, VlibcErrno) {
 		mut raw := MacStat64{}
 		e := vlibc_sys_stat64(path.str, &raw)
@@ -403,6 +439,7 @@ $if !i386 {
 		return s, VlibcErrno.enoerror
 	}
 
+	// vlibc_open opens a path with native flags and permissions subject to the process umask.
 	pub fn vlibc_open(path string, flags u64, mode u64) (i64, VlibcErrno) {
 		return vlibc_sys_open(path.str, flags, mode)
 	}
@@ -479,6 +516,7 @@ $if !i386 {
 		return vlibc_close(fd)
 	}
 
+	// vlibc_mkdir creates a directory with permissions subject to the process umask.
 	pub fn vlibc_mkdir(path string, mode u32) VlibcErrno {
 		_, er := sys_call2(mac_nr_mkdir, u64(path.str), u64(mode))
 		if er == 0 {
@@ -487,6 +525,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_rmdir removes an empty directory.
 	pub fn vlibc_rmdir(path string) VlibcErrno {
 		_, er := sys_call1(mac_nr_rmdir, u64(path.str))
 		if er == 0 {
@@ -495,6 +534,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_unlink removes a filesystem entry.
 	pub fn vlibc_unlink(path string) VlibcErrno {
 		_, er := sys_call1(mac_nr_unlink, u64(path.str))
 		if er == 0 {
@@ -503,6 +543,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_rename renames or moves a filesystem entry.
 	pub fn vlibc_rename(oldpath string, newpath string) VlibcErrno {
 		_, er := sys_call2(mac_nr_rename, u64(oldpath.str), u64(newpath.str))
 		if er == 0 {
@@ -511,6 +552,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_getcwd returns the current working directory and any error.
 	pub fn vlibc_getcwd() (string, VlibcErrno) {
 		// macOS has no getcwd syscall; fcntl F_GETPATH on "." is the way.
 		fd, e := vlibc_open('.', 0, 0)
@@ -530,6 +572,7 @@ $if !i386 {
 		return s, VlibcErrno.enoerror
 	}
 
+	// vlibc_chdir changes the current working directory.
 	pub fn vlibc_chdir(path string) VlibcErrno {
 		_, er := sys_call1(mac_nr_chdir, u64(path.str))
 		if er == 0 {
@@ -538,6 +581,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_list_dir returns directory entry names, excluding dot and dot-dot.
 	pub fn vlibc_list_dir(path string) ([]string, VlibcErrno) {
 		fd, e := vlibc_open(path, 0x100000, 0)
 		if e != .enoerror {
@@ -593,6 +637,7 @@ $if !i386 {
 		return out
 	}
 
+	// vlibc_getenv returns an environment value and whether it was found.
 	pub fn vlibc_getenv(name string) (string, bool) {
 		for entry in vlibc_environ() {
 			mut i := 0
@@ -651,6 +696,7 @@ $if !i386 {
 		return vlibc_sys_fork()
 	}
 
+	// vlibc_execve replaces the process image using string argument and environment arrays.
 	pub fn vlibc_execve(path string, argv []string, envp []string) int {
 		mut a := []&u8{cap: argv.len + 1}
 		for s in argv {
@@ -679,16 +725,19 @@ $if !i386 {
 		return [int(fds[0]), int(fds[1])]!, e
 	}
 
+	// vlibc_dup2 duplicates oldfd onto newfd, preserving POSIX same-descriptor behavior.
 	pub fn vlibc_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
 		return vlibc_sys_dup2(oldfd, newfd)
 	}
 
+	// vlibc_signal returns ENOSYS because installing signal handlers is not implemented.
 	pub fn vlibc_signal(sig int, handler voidptr) VlibcErrno {
 		_ = sig
 		_ = handler
 		return VlibcErrno.enosys
 	}
 
+	// vlibc_kill sends a signal to a process or process group.
 	pub fn vlibc_kill(pid i64, sig int) VlibcErrno {
 		return vlibc_sys_kill(pid, sig)
 	}
@@ -703,6 +752,7 @@ $if !i386 {
 		zero   [8]u8
 	}
 
+	// vlibc_htons converts a 16-bit host-order value to network byte order.
 	pub fn vlibc_htons(v u16) u16 {
 		return (v >> 8) | (v << 8)
 	}
@@ -739,6 +789,7 @@ $if !i386 {
 		return vlibc_htonl((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3])
 	}
 
+	// vlibc_socket creates a socket with the native domain, type, and protocol.
 	pub fn vlibc_socket(domain int, typ int, protocol int) (i64, VlibcErrno) {
 		return vlibc_sys_socket(domain, typ, protocol)
 	}
@@ -750,6 +801,7 @@ $if !i386 {
 		return [int(sv[0]), int(sv[1])]!, e
 	}
 
+	// vlibc_bind binds a socket to an IPv4 address in network byte order and a host-order port.
 	pub fn vlibc_bind(fd i64, port u16, addr u32) VlibcErrno {
 		mut sa := VlibcSockAddrIn{}
 		sa.len = 16
@@ -759,14 +811,17 @@ $if !i386 {
 		return vlibc_sys_bind(fd, unsafe { voidptr(&sa) }, 16)
 	}
 
+	// vlibc_listen marks a socket as accepting connections with the given backlog.
 	pub fn vlibc_listen(fd i64, backlog int) VlibcErrno {
 		return vlibc_sys_listen(fd, backlog)
 	}
 
+	// vlibc_accept accepts a connection and returns its descriptor.
 	pub fn vlibc_accept(fd i64) (i64, VlibcErrno) {
 		return vlibc_sys_accept(fd, unsafe { nil }, unsafe { nil })
 	}
 
+	// vlibc_connect connects to a network-order IPv4 address and a host-order port.
 	pub fn vlibc_connect(fd i64, port u16, addr u32) VlibcErrno {
 		mut sa := VlibcSockAddrIn{}
 		sa.len = 16
@@ -776,6 +831,7 @@ $if !i386 {
 		return vlibc_sys_connect(fd, unsafe { voidptr(&sa) }, 16)
 	}
 
+	// vlibc_send sends bytes on a connected socket and returns the number sent and any error.
 	pub fn vlibc_send(fd i64, data []u8, flags int) (i64, VlibcErrno) {
 		if data.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -783,6 +839,7 @@ $if !i386 {
 		return vlibc_sys_sendto(fd, unsafe { voidptr(data.data) }, u64(data.len), flags, unsafe { nil }, 0)
 	}
 
+	// vlibc_recv receives bytes into buf and returns the number read and any error.
 	pub fn vlibc_recv(fd i64, buf []u8, flags int) (i64, VlibcErrno) {
 		if buf.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -968,16 +1025,19 @@ $if !i386 {
 		opaque [8]u64
 	}
 
+	// vlibc_mutex_init creates an unlocked mutex.
 	pub fn vlibc_mutex_init() VlibcMutex {
 		mut m := VlibcMutex{}
 		C.pthread_mutex_init(&m.opaque[0], unsafe { nil })
 		return m
 	}
 
+	// vlibc_mutex_lock waits until the mutex is acquired.
 	pub fn vlibc_mutex_lock(mut m VlibcMutex) {
 		C.pthread_mutex_lock(&m.opaque[0])
 	}
 
+	// vlibc_mutex_unlock releases the mutex.
 	pub fn vlibc_mutex_unlock(mut m VlibcMutex) {
 		C.pthread_mutex_unlock(&m.opaque[0])
 	}
@@ -987,20 +1047,24 @@ $if !i386 {
 		opaque [6]u64
 	}
 
+	// vlibc_cond_init creates an initialized condition variable.
 	pub fn vlibc_cond_init() VlibcCond {
 		mut c := VlibcCond{}
 		C.pthread_cond_init(&c.opaque[0], unsafe { nil })
 		return c
 	}
 
+	// vlibc_cond_wait releases the mutex while waiting, then locks it again before returning.
 	pub fn vlibc_cond_wait(mut c VlibcCond, mut m VlibcMutex) {
 		C.pthread_cond_wait(&c.opaque[0], &m.opaque[0])
 	}
 
+	// vlibc_cond_signal signals threads waiting on the condition.
 	pub fn vlibc_cond_signal(mut c VlibcCond) {
 		C.pthread_cond_signal(&c.opaque[0])
 	}
 
+	// vlibc_cond_broadcast wakes all threads waiting on the condition.
 	pub fn vlibc_cond_broadcast(mut c VlibcCond) {
 		C.pthread_cond_broadcast(&c.opaque[0])
 	}

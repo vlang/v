@@ -137,6 +137,7 @@ $if !i386 {
 		ehwpoison       = 134
 	}
 
+	// vlibc_errno_str returns a description for an error number.
 	pub fn vlibc_errno_str(e VlibcErrno) string {
 		return e.str()
 	}

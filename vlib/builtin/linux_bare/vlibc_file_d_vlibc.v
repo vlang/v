@@ -56,6 +56,7 @@ $if !i386 {
 		blksize u32
 	}
 
+	// vlibc_stat returns file metadata, following symbolic links.
 	pub fn vlibc_stat(path string) (VlibcStat, VlibcErrno) {
 		mut stx := VlibcStatx{}
 		e := vlibc_sys_statx(-100, path.str, 0x100, 0x7ff, &stx)
@@ -74,10 +75,12 @@ $if !i386 {
 		return s, VlibcErrno.enoerror
 	}
 
+	// vlibc_open opens a path with native flags and permissions subject to the process umask.
 	pub fn vlibc_open(path string, flags u64, mode u64) (i64, VlibcErrno) {
 		return vlibc_sys_openat(-100, path.str, flags, mode)
 	}
 
+	// vlibc_close closes a file descriptor.
 	pub fn vlibc_close(fd i64) VlibcErrno {
 		return vlibc_sys_close(fd)
 	}
@@ -153,22 +156,27 @@ $if !i386 {
 		return vlibc_close(fd)
 	}
 
+	// vlibc_mkdir creates a directory with permissions subject to the process umask.
 	pub fn vlibc_mkdir(path string, mode u32) VlibcErrno {
 		return vlibc_sys_mkdirat(-100, path.str, mode)
 	}
 
+	// vlibc_rmdir removes an empty directory.
 	pub fn vlibc_rmdir(path string) VlibcErrno {
 		return vlibc_sys_unlinkat(-100, path.str, 0x200) // AT_REMOVEDIR
 	}
 
+	// vlibc_unlink removes a filesystem entry.
 	pub fn vlibc_unlink(path string) VlibcErrno {
 		return vlibc_sys_unlinkat(-100, path.str, 0)
 	}
 
+	// vlibc_rename renames or moves a filesystem entry.
 	pub fn vlibc_rename(oldpath string, newpath string) VlibcErrno {
 		return vlibc_sys_renameat(-100, oldpath.str, -100, newpath.str)
 	}
 
+	// vlibc_getcwd returns the current working directory and any error.
 	pub fn vlibc_getcwd() (string, VlibcErrno) {
 		mut buf := []u8{len: 4096}
 		n, e := vlibc_sys_getcwd(&u8(buf.data), 4096)
@@ -182,6 +190,7 @@ $if !i386 {
 		return s, VlibcErrno.enoerror
 	}
 
+	// vlibc_chdir changes the current working directory.
 	pub fn vlibc_chdir(path string) VlibcErrno {
 		return vlibc_sys_chdir(path.str)
 	}

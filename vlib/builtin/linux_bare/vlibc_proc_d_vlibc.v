@@ -1,6 +1,7 @@
 module builtin
 
 $if !i386 {
+	// vlibc_fork creates a child process, returning its PID to the parent and zero to the child.
 	pub fn vlibc_fork() i64 {
 		$if arm64 {
 			return vlibc_sys_clone(0x00000011, unsafe { nil }, unsafe { nil }, unsafe { nil }, unsafe { nil })
@@ -10,6 +11,7 @@ $if !i386 {
 		}
 	}
 
+	// vlibc_execve replaces the process image using string argument and environment arrays.
 	pub fn vlibc_execve(path string, argv []string, envp []string) int {
 		// convert []string to []&u8 for execve
 		mut a := []&u8{cap: argv.len + 1}
@@ -42,10 +44,12 @@ $if !i386 {
 		return [int(fds[0]), int(fds[1])]!, e
 	}
 
+	// vlibc_dup2 duplicates oldfd onto newfd, preserving POSIX same-descriptor behavior.
 	pub fn vlibc_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
 		return vlibc_sys_dup2(oldfd, newfd)
 	}
 
+	// vlibc_signal returns ENOSYS because installing signal handlers is not implemented.
 	pub fn vlibc_signal(sig int, handler voidptr) VlibcErrno {
 		// rt_sigaction with empty mask
 		mut sa := [32]u8{} // opaque; kernel expects struct sigaction (size ~152 on x86_64)
@@ -58,6 +62,7 @@ $if !i386 {
 		return VlibcErrno.enotsys
 	}
 
+	// vlibc_kill sends a signal to a process or process group.
 	pub fn vlibc_kill(pid i64, sig int) VlibcErrno {
 		return vlibc_sys_kill(pid, sig)
 	}

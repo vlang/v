@@ -2,6 +2,7 @@ module builtin
 
 $if !i386 {
 	// Read environment via /proc/self/environ (NUL-separated KEY=VALUE).
+	// vlibc_getenv returns an environment value and whether it was found.
 	pub fn vlibc_getenv(name string) (string, bool) {
 		data, e := vlibc_read_file('/proc/self/environ')
 		if e != .enoerror {
@@ -44,6 +45,7 @@ $if !i386 {
 		return '', false
 	}
 
+	// vlibc_environ_keys returns the names available in the process environment.
 	pub fn vlibc_environ_keys() []string {
 		data, e := vlibc_read_file('/proc/self/environ')
 		if e != .enoerror {
