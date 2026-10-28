@@ -62,6 +62,7 @@ $if !i386 {
 		const vlibc_sys_nr_getsockname = u64(204)
 		const vlibc_sys_nr_setsockopt = u64(208)
 		const vlibc_sys_nr_getsockopt = u64(209)
+		const vlibc_sys_nr_getrandom = u64(278)
 		const vlibc_sys_nr_sendmsg = u64(211)
 		const vlibc_sys_nr_recvmsg = u64(212)
 		const vlibc_sys_nr_fork = u64(0) // use clone
@@ -118,6 +119,7 @@ $if !i386 {
 		const vlibc_sys_nr_getsockname = u64(51)
 		const vlibc_sys_nr_setsockopt = u64(54)
 		const vlibc_sys_nr_getsockopt = u64(55)
+		const vlibc_sys_nr_getrandom = u64(318)
 		const vlibc_sys_nr_sendmsg = u64(46)
 		const vlibc_sys_nr_recvmsg = u64(47)
 		const vlibc_sys_nr_fork = u64(57)
@@ -443,4 +445,13 @@ $if !i386 {
 		}
 		return unsafe { VlibcErrno(-i64(rc)) }
 	}
+
+	// vlibc_sys_getrandom fills buf with n random bytes. Returns bytes read or negative errno.
+	pub fn vlibc_sys_getrandom(buf voidptr, n uint, flags uint) i64 {
+		$if arm64 {
+			return i64(sys_call3(278, u64(buf), u64(n), u64(flags)))
+		} $else {
+			return i64(sys_call3(vlibc_sys_nr_getrandom, u64(buf), u64(n), u64(flags)))
+		}
+}
 }

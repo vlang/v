@@ -3,20 +3,26 @@
 // that can be found in the LICENSE file.
 module internal
 
-// A portable `-os cross` compiler snapshot is generated on Linux, so it bakes
-// in this file even when its C source is later compiled on an Apple host.
-$if macos || ios || openbsd {
-	#include <sys/random.h>
-} $else {
-	#include <sys/syscall.h>
-	#insert "@VEXEROOT/vlib/crypto/rand/internal/getrandom_linux.h"
+$if !vlibc ? {
+	// A portable `-os cross` compiler snapshot is generated on Linux, so it bakes
+	// in this file even when its C source is later compiled on an Apple host.
+	$if macos || ios || openbsd {
+		#include <sys/random.h>
+	} $else {
+		#include <sys/syscall.h>
+		#insert "@VEXEROOT/vlib/crypto/rand/internal/getrandom_linux.h"
+	}
 }
 
-pub const C.SYS_getrandom int
+$if !vlibc ? {
+	pub const C.SYS_getrandom int
+}
 
-fn C.getentropy(buf voidptr, buflen uint) i32
+$if !vlibc ? {
+	fn C.getentropy(buf voidptr, buflen uint) i32
 
-fn C.v_crypto_getrandom(buf voidptr, n uint) i64
+	fn C.v_crypto_getrandom(buf voidptr, n uint) i64
+}
 
 const read_batch_size = 256
 
@@ -50,6 +56,14 @@ fn getrandom(bytes_needed int, buffer voidptr) int {
 		}
 		return bytes_needed
 	} $else {
-		return int(C.v_crypto_getrandom(buffer, uint(bytes_needed)))
+		$if vlibc ? {
+			r := vlibc_sys_getrandom(buffer, uint(bytes_needed), 0)
+			if r < 0 {
+				return -1
+			}
+			return int(r)
+		} $else {
+			return int(C.v_crypto_getrandom(buffer, uint(bytes_needed)))
+		}
 	}
 }

@@ -13183,6 +13183,41 @@ pub fn run(args []string) {
 	} else if bare_builtin_dir.len > 0 {
 		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
 	}
+	// When -d vlibc is set (hosted or freestanding), include the vlibc syscall
+	// layer and API from the per-OS bare directory so that os/time/crypto.rand/etc.
+	// can optionally use pure-V syscalls instead of libc.
+	if 'vlibc' in prefs.user_defines && prefs.backend == 'c' {
+		os_name := prefs.target.os
+		candidate := match os_name {
+			'freebsd' { 'freebsd_bare' }
+			'openbsd' { 'openbsd_bare' }
+			'netbsd' { 'netbsd_bare' }
+			'dragonfly' { 'dragonfly_bare' }
+			'macos', 'darwin' { 'macos_bare' }
+			'solaris' { 'solaris_bare' }
+			'android', 'termux' { 'linux_bare' }
+			'vinix' { 'linux_bare' }
+			else { 'linux_bare' }
+		}
+		vlibc_dir := os.join_path(builtin_dir, candidate)
+		if os.is_dir(vlibc_dir) {
+			if !('freestanding' in prefs.user_defines) {
+				for scn_name in ['syscalls.v', 'linux_syscalls.v'] {
+					scn_path := os.join_path(vlibc_dir, scn_name)
+					if os.is_file(scn_path) {
+						builtin_files << scn_path
+					}
+				}
+			}
+			vlibc_api_files := pref.get_v_files_from_dir_for_backend_target(vlibc_dir,
+				builtin_defines, prefs.backend, prefs.target)
+			for f in vlibc_api_files {
+				if os.file_name(f).ends_with('_d_vlibc.v') {
+					builtin_files << f
+				}
+			}
+		}
+	}
 	if no_builtin {
 		builtin_files = []
 	}
