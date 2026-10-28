@@ -35,8 +35,12 @@ fn main() {
 "
 
 fn test_vlibc_os_file_operations() {
-	$if !(linux || macos || freebsd || openbsd || netbsd || dragonfly) { return }
-	$if !amd64 && !arm64 { return }
+	$if !(linux || macos || freebsd || openbsd || netbsd || dragonfly) {
+		return
+	}
+	$if !amd64 && !arm64 {
+		return
+	}
 	root := os.join_path(os.vtmp_dir(), 'vlibc_os_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
