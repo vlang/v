@@ -91,7 +91,15 @@ pub fn (mut ctx Context) create_image(file string, cfg ImageConfig) !Image {
 }
 
 // adapted from https://github.com/floooh/sokol/issues/102#issuecomment-2926566603
-fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) {
+// sokol_mipmap generates box-filtered mipmap levels 1..N for the base image
+// already stored in `simg_desc.data.subimage[0][0]`, and sets
+// `simg_desc.num_mipmaps` to the total level count (base level + generated).
+// It returns the base pointer of the freshly allocated mip buffer, or nil
+// when the image is too small for extra levels. The caller must `free()` the
+// returned pointer after `gfx.make_image()` returns: sokol uploads (copies)
+// the pixel data synchronously during `gfx.make_image()` on every backend,
+// so the buffer is no longer needed afterwards.
+fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) voidptr {
 	mut levels := 0
 	mut size := 0
 	width := simg_desc.width
@@ -110,11 +118,17 @@ fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) {
 		size += w * h * 4 // 4 = img.nr_channels
 		levels++
 	}
+	total := levels + 1 // base level + generated levels
+	simg_desc.num_mipmaps = total
+	if size == 0 {
+		return unsafe { nil }
+	}
 	// use unsafe to access the data because we have to anyway
 	mut target := unsafe { malloc(size) }
+	base := target
 	mut src_width := width
 	mut src_height := height
-	for level in 1 .. levels {
+	for level in 1 .. total {
 		src := unsafe { &u8(simg_desc.data.subimage[0][level - 1].ptr) }
 		target_width := src_width / 2
 		target_height := src_height / 2
@@ -146,13 +160,21 @@ fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) {
 			target += target_width * target_height * 4
 		}
 	}
-	simg_desc.num_mipmaps = levels
+	return base
 }
 
 // init_sokol_image initializes this `Image` for use with the
 // sokol graphical backend system.
 pub fn (mut img Image) init_sokol_image() &Image {
 	// println('\n init sokol image ${img.path} ok=${img.simg_ok}')
+	if img.data == unsafe { nil } {
+		eprintln('gg: init_sokol_image() called with no pixel data for "${img.path}"')
+		return img
+	}
+	if img.nr_channels != 4 {
+		eprintln('gg: init_sokol_image() expects 4-channel RGBA data, got ${img.nr_channels} channels for "${img.path}"')
+		return img
+	}
 	mut img_desc := gfx.ImageDesc{
 		width:         img.width
 		height:        img.height
@@ -161,6 +183,10 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		label:         &char(img.path.str)
 		d3d11_texture: 0
 	}
+	// `label` is only read synchronously inside `gfx.make_image()` (copied
+	// into backend resources at creation time) and never retained, so
+	// borrowing the pointer into `img.path` (which outlives this call) is
+	// safe. A strdup here would leak instead, since nothing could free it.
 
 	// NOTE the following code, sometimes, result in hard-to-detect visual errors/bugs:
 	// img_size := uint(img.nr_channels * img.width * img.height)
@@ -178,9 +204,12 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		ptr:  img.data
 		size: img_size
 	}
-	sokol_mipmap(mut img_desc, img.nr_mipmaps)
+	mipmap_data := sokol_mipmap(mut img_desc, img.nr_mipmaps)
 	img.nr_mipmaps = img_desc.num_mipmaps
 	img.simg = gfx.make_image(&img_desc)
+	if mipmap_data != unsafe { nil } {
+		unsafe { free(mipmap_data) }
+	}
 	gfx_filter := img.texture_filter.gfx_filter()
 
 	mut smp_desc := gfx.SamplerDesc{
@@ -264,6 +293,12 @@ pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 // update_pixel_data updates the sokol specific pixel data associated
 // with this `Image`.
 pub fn (mut img Image) update_pixel_data(buf &u8) {
+	if buf == unsafe { nil } {
+		return
+	}
+	if img.width <= 0 || img.height <= 0 || img.nr_channels <= 0 {
+		return
+	}
 	mut data := gfx.ImageData{}
 	data.subimage[0][0].ptr = buf
 	data.subimage[0][0].size = uint(img.width * img.height * img.nr_channels)
@@ -377,7 +412,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 				mut img := config.img
 				if config.img == nil {
 					// Get image by id
-					if config.img_id > 0 {
+					if config.img_id > 0 && config.img_id < ctx.image_cache.len {
 						img = &ctx.image_cache[config.img_id]
 					} else {
 						$if !noggverbose ? {
@@ -386,7 +421,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 						return
 					}
 				}
-				if img.id >= ctx.image_cache.len {
+				if img.id < 0 || img.id >= ctx.image_cache.len {
 					eprintln('gg: draw_image() bad img id ${img.id} (img cache len = ${ctx.image_cache.len})')
 					return
 				}
@@ -422,7 +457,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	}
 
 	id := if !isnil(config.img) { config.img.id } else { config.img_id }
-	if id >= ctx.image_cache.len {
+	if id < 0 || id >= ctx.image_cache.len {
 		eprintln('gg: draw_image() bad img id ${id} (img cache len = ${ctx.image_cache.len})')
 		return
 	}

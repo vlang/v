@@ -2,6 +2,7 @@
 module gg
 
 import os
+import sokol.gfx
 
 const background_path = os.join_path(@VEXEROOT, 'examples/flappylearning/assets/img/background.png')
 
@@ -24,4 +25,41 @@ fn test_load_image_returns_error_for_unsupported_file_contents() {
 		return
 	}
 	assert false
+}
+
+fn test_sokol_mipmap_counts_base_level() {
+	width := 64
+	height := 64
+	mut base := unsafe { malloc(width * height * 4) }
+	defer {
+		unsafe { free(base) }
+	}
+	mut desc := gfx.ImageDesc{
+		width:  width
+		height: height
+	}
+	desc.data.subimage[0][0] = gfx.Range{
+		ptr:  base
+		size: uint(width * height * 4)
+	}
+	mip_data := sokol_mipmap(mut desc, 0)
+	defer {
+		if mip_data != unsafe { nil } {
+			unsafe { free(mip_data) }
+		}
+	}
+	// 64 -> 32 -> 16 -> 8 -> 4 -> 2 -> 1: base level + 6 generated levels
+	assert desc.num_mipmaps == 7
+	assert desc.data.subimage[0][6].size == uint(1 * 1 * 4)
+	assert desc.data.subimage[0][6].ptr != unsafe { nil }
+}
+
+fn test_sokol_mipmap_tiny_image_needs_no_alloc() {
+	mut desc := gfx.ImageDesc{
+		width:  1
+		height: 1
+	}
+	mip_data := sokol_mipmap(mut desc, 1)
+	assert desc.num_mipmaps == 1
+	assert mip_data == unsafe { nil }
 }
