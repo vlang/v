@@ -5447,9 +5447,15 @@ fn (mut g FlatGen) gen_thread_wait_call(fn_node &flat.Node) bool {
 		g.write('if (${res_name}) __v_thread_free(${res_name}); })')
 		return true
 	}
-	ret_ct := g.fn_return_type_name(g.tc.parse_type(ret_name))
+	ret_type := g.tc.parse_type(ret_name)
+	ret_ct := g.fn_return_type_name(ret_type)
 	val_name := '__twval${tmp}'
 	g.write('${ret_ct} ${val_name}; if (${res_name}) { ${val_name} = *((${ret_ct}*)${res_name}); __v_thread_free(${res_name}); } else { memset(&${val_name}, 0, sizeof(${val_name})); } ${val_name}; })')
+	if unalias_type(ret_type) is types.ArrayFixed {
+		// The thread stores a fixed array in its return wrapper; like a direct call
+		// to the function, `wait()` yields the array itself.
+		g.write('.ret_arr')
+	}
 	return true
 }
 
