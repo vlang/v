@@ -1388,6 +1388,7 @@ pub mut:
 	cur_fn_mut_local_binding_owners         map[string]ScopeBindingOwner
 	cur_fn_shared_binding_owners            map[string]ScopeBindingOwner
 	cur_comptime_variant_loop_vars          []string
+	comptime_attr_narrow_state              &ComptimeAttributeNarrowState = unsafe { nil }
 	expr_type_values                        []&Type // node_id -> complex/contextual resolved type
 	expr_type_set                           []bool
 	lexical_smartcast_misses                []bool
@@ -1988,6 +1989,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		direct_dependencies_by_fn:             direct_dependencies_by_fn
 		method_values_by_fn:                   tc.method_values_by_fn
 		cur_comptime_variant_loop_vars:        tc.cur_comptime_variant_loop_vars
+		comptime_attr_narrow_state:            tc.comptime_attr_narrow_state
 		expr_type_values:                      tc.expr_type_values
 		expr_type_set:                         tc.expr_type_set
 		lexical_smartcast_misses:              tc.lexical_smartcast_misses
@@ -21976,6 +21978,24 @@ struct ComptimeStaticValueCase {
 	// value_from_c marks an enum member whose value V can not evaluate, because it, or
 	// the explicit value it follows, comes from C (`a = C.FOO`). `value` is a guess then.
 	value_from_c bool
+	// Schema fields shadow VAttribute metadata only after this case is narrowed.
+	attr_schema_narrowed bool
+	// Process-owned interned schema identity; 0 represents legacy attributes.
+	attr_schema_id u32
+}
+
+// Each scope owns an immutable set. Forks may share it; branch checks replace
+// and restore the pointer instead of mutating a parent's narrowed schema set.
+struct ComptimeAttributeNarrowState {
+	names []string
+}
+
+struct ComptimeStaticAttributeCondNarrowing {
+	decided bool
+	value   bool
+mut:
+	then_branch bool
+	else_branch bool
 }
 
 struct ComptimeStaticValueCases {
@@ -22072,6 +22092,13 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	}
 	tc.push_scope()
 	tc.cur_scope.insert(parts[0], *tc.parse_type(comptime_static_metadata_type_id(parts[1])))
+	saved_attribute_state := tc.comptime_attr_narrow_state
+	if parts[1] == 'attributes' {
+		tc.comptime_attr_narrow_state = &ComptimeAttributeNarrowState{ names: tc.comptime_attribute_schema_universe() }
+	}
+	defer {
+		tc.comptime_attr_narrow_state = saved_attribute_state
+	}
 	defer {
 		tc.pop_scope()
 	}
@@ -22100,6 +22127,11 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 			tc.cur_comptime_variant_loop_vars.pop()
 		}
 	}
+	deferred_cases := if parts[1] in ['methods', 'params', 'attributes'] {
+		tc.comptime_static_deferred_cases(node.typ, parts[1])
+	} else {
+		ComptimeStaticValueCases{}
+	}
 	match parts[1] {
 		'fields' {
 			tc.check_comptime_members(body_id, parts[0], comptime_field_members, 'FieldData')
@@ -22111,7 +22143,7 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 			tc.check_comptime_members(body_id, parts[0], comptime_variant_members, 'VariantData')
 		}
 		'attributes' {
-			tc.check_comptime_attribute_members(body_id, parts[0])
+			tc.check_comptime_attribute_members(body_id, parts[0], deferred_cases)
 		}
 		else {}
 	}
@@ -22120,7 +22152,6 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	// Their bodies can also reference metadata from an enclosing reflection loop, which does
 	// not exist as a runtime local while checking the original generic body.
 	if parts[1] in ['methods', 'params', 'attributes'] {
-		deferred_cases := tc.comptime_static_deferred_cases(node.typ, parts[1])
 		if deferred_cases.known && deferred_cases.cases.len == 0 {
 			return
 		}
@@ -22449,12 +22480,37 @@ fn (tc &TypeChecker) comptime_condition_type_pos(node flat.Node, typ string) tok
 	return node.pos
 }
 
-fn (mut tc TypeChecker) check_comptime_attribute_members(id flat.NodeId, var_name string) {
-	if !tc.valid_node_id(id) {
+// Attribute member validation walks every expression, including initializers and
+// interpolation parts that the deferred semantic checker does not visit.
+fn (mut tc TypeChecker) check_comptime_attribute_members(id flat.NodeId, var_name string, value_cases ComptimeStaticValueCases) {
+	// Known declaration attributes do not narrow the loop variable. Track the
+	// schema guard separately from the concrete cases used for reachability.
+	narrow_schemas := tc.comptime_attribute_schema_universe()
+	if !value_cases.known {
+		tc.check_comptime_attribute_body(id, var_name, narrow_schemas, narrow_schemas)
+		return
+	}
+	mut schemas := []string{}
+	for item in value_cases.cases {
+		name := flat.source_type_name(item.attr_schema_id)
+		if name !in schemas {
+			schemas << name
+		}
+	}
+	tc.check_comptime_attribute_body(id, var_name, schemas, narrow_schemas)
+}
+
+fn (mut tc TypeChecker) check_comptime_attribute_body(id flat.NodeId, var_name string, schemas []string, narrow_schemas []string) {
+	if !tc.valid_node_id(id) || schemas.len == 0 {
 		return
 	}
 	node := tc.a.node(id)
+	if node.kind == .comptime_for && node.value.all_before('|') == var_name {
+		return
+	}
 	if node.kind == .comptime_if {
+		// Schema fields in conditions need a separate transform/checker contract.
+		// Keep this pass's accepted condition surface at the VAttribute members.
 		if member := comptime_cond_unknown_member(node.value, var_name, comptime_attribute_members) {
 			mut pos := node.pos
 			if file := tc.a.source_files[node.pos.id] {
@@ -22472,10 +22528,118 @@ fn (mut tc TypeChecker) check_comptime_attribute_members(id flat.NodeId, var_nam
 			tc.record_error_at(.unknown_field, 'unknown field `${member}` from ${var_name}', id, pos)
 			return
 		}
+		for i in 0 .. int_min(2, node.children_count) {
+			branch_schemas := tc.comptime_attribute_branch_schemas(node.value, var_name, schemas, i == 0)
+			branch_narrow_schemas := tc.comptime_attribute_branch_schemas(node.value, var_name, narrow_schemas, i == 0)
+			tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, branch_schemas, branch_narrow_schemas)
+		}
+		return
+	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := tc.a.child_node(node, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			receiver := tc.a.child_node(callee, 0)
+			if receiver.kind == .ident && receiver.value == var_name {
+				// Method names are resolved by the semantic checker, not as fields.
+				for i in 1 .. node.children_count {
+					tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, schemas, narrow_schemas)
+				}
+				return
+			}
+		}
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := tc.a.child_node(node, 0)
+		if base.kind == .ident && base.value == var_name
+			&& node.value !in comptime_attribute_members {
+			member := node.value
+			if !tc.comptime_attribute_has_member(member) {
+				tc.record_error_at(.unknown_field, 'unknown field `${member}` from ${var_name}', id, node.pos)
+			} else if '' in narrow_schemas {
+				tc.record_error_at(.unknown_field, 'attribute field `${member}` requires narrowing with `$if ${var_name} is Schema`', id, node.pos)
+			} else if _ := tc.comptime_attribute_member_type_for_schemas(member, schemas) {
+				// Every possible schema exposes this field with the same type.
+			} else {
+				tc.record_error_at(.unknown_field, 'attribute field `${member}` is not available with one type on every narrowed schema', id, node.pos)
+			}
+		}
 	}
 	for i in 0 .. node.children_count {
-		tc.check_comptime_attribute_members(tc.a.child(node, i), var_name)
+		tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, schemas, narrow_schemas)
 	}
+}
+
+fn (tc &TypeChecker) comptime_attribute_schema_universe() []string {
+	// The empty name represents legacy VAttribute instances, including attributes
+	// on generic types whose concrete declaration is not known yet.
+	mut names := ['']
+	for _, schemas in tc.attribute_schemas {
+		for schema in schemas {
+			names << '${schema.module}.${schema.name}'
+		}
+	}
+	return names
+}
+
+fn (tc &TypeChecker) comptime_attribute_has_member(member string) bool {
+	for _, schemas in tc.attribute_schemas {
+		for schema in schemas {
+			for field in schema.fields {
+				if field.name == member {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// comptime_attribute_union_member_type resolves fields from the current
+// narrowed schemas. Multiple schemas must agree on the field's declared type.
+fn (tc &TypeChecker) comptime_attribute_union_member_type(member string) ?Type {
+	if isnil(tc.comptime_attr_narrow_state) {
+		return none
+	}
+	return tc.comptime_attribute_member_type_for_schemas(member, tc.comptime_attr_narrow_state.names)
+}
+
+fn (tc &TypeChecker) comptime_attribute_narrowing_names() []string {
+	if isnil(tc.comptime_attr_narrow_state) {
+		return []string{}
+	}
+	return tc.comptime_attr_narrow_state.names
+}
+
+fn (tc &TypeChecker) comptime_attribute_member_type_for_schemas(member string, names []string) ?Type {
+	if names.len == 0 || '' in names {
+		return none
+	}
+	mut result := u32(0)
+	for name in names {
+		mut found := false
+		for schema in tc.attribute_schemas[name.all_after_last('.')] or { []AttributeSchema{} } {
+			if '${schema.module}.${schema.name}' != name {
+				continue
+			}
+			for field in schema.fields {
+				if field.name == member {
+					if result != 0 && result != field.type_id {
+						return none
+					}
+					result = field.type_id
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			return none
+		}
+	}
+	if result == 0 {
+		return none
+	}
+	return *tc.parse_type(result)
 }
 
 fn (tc &TypeChecker) fn_literal_directly_captures_ident(node flat.Node, var_name string) bool {
@@ -22741,15 +22905,44 @@ fn (tc &TypeChecker) comptime_static_attribute_cases(source string) ComptimeStat
 			} else {
 				[]string{}
 			}
+			mut consumed := []bool{len: params.len}
 			for idx, raw in params {
+				if consumed[idx] {
+					continue
+				}
 				item := comptime_static_attribute_case(raw, if idx < kinds.len {
 					kinds[idx].int()
 				} else {
 					0
 				})
-				name := item.name
-				if name.len > 0 {
-					cases << item
+				if item.name.len == 0 {
+					continue
+				}
+				mut schema_name := ''
+				whole_string := item.attr_kind >= 0
+					&& item.attr_kind & flat.attribute_kind_no_arg != 0
+				if !whole_string {
+					uses := tc.attribute_use_schemas([item.name], wanted.module_name)
+					if uses.len > 0 {
+						schema := uses[0].schema
+						schema_name = '${schema.module}.${schema.name}'
+						// Validated named/positional pieces belong to this one instance,
+						// matching the transform's forward grouping and whole-string exclusion.
+						for j in idx .. params.len {
+							if consumed[j] || (j < kinds.len && kinds[j].int() >= 0
+								&& kinds[j].int() & flat.attribute_kind_no_arg != 0) {
+								continue
+							}
+							base := params[j].all_before(':').trim_space()
+							if base == item.name || base.starts_with(item.name + '_') {
+								consumed[j] = true
+							}
+						}
+					}
+				}
+				cases << ComptimeStaticValueCase{
+					...item
+					attr_schema_id: flat.source_type_id(schema_name)
 				}
 			}
 			return ComptimeStaticValueCases{
@@ -23511,34 +23704,71 @@ fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Nod
 	mut then_cases := []ComptimeStaticValueCase{}
 	mut else_cases := []ComptimeStaticValueCase{}
 	for item in value_cases.cases {
-		cond := comptime_static_subst_deferred_cond(node.value, var_name, loop_kind, item)
+		narrowing := if loop_kind == 'attributes' {
+			tc.comptime_static_attribute_cond_narrowing(node.value, var_name, item)
+		} else {
+			ComptimeStaticAttributeCondNarrowing{}
+		}
+		condition_item := if narrowing.then_branch || narrowing.else_branch {
+			ComptimeStaticValueCase{
+				...item
+				attr_schema_narrowed: item.attr_schema_id != 0
+			}
+		} else {
+			item
+		}
+		cond := if narrowing.decided {
+			narrowing.value.str()
+		} else {
+			tc.comptime_static_subst_deferred_cond(node.value, var_name, loop_kind, condition_item)
+		}
+		then_item := ComptimeStaticValueCase{
+			...item
+			attr_schema_narrowed: item.attr_schema_narrowed
+				|| (narrowing.then_branch && item.attr_schema_id != 0)
+		}
+		else_item := ComptimeStaticValueCase{
+			...item
+			attr_schema_narrowed: item.attr_schema_narrowed
+				|| (narrowing.else_branch && item.attr_schema_id != 0)
+		}
 		if comptime_text_references_var(cond, var_name) {
-			then_cases << item
-			else_cases << item
+			then_cases << then_item
+			else_cases << else_item
 			continue
 		}
 		taken := tc.comptime_static_eval_field_cond(cond) or {
-			then_cases << item
-			else_cases << item
+			then_cases << then_item
+			else_cases << else_item
 			continue
 		}
 		if taken {
-			then_cases << item
+			then_cases << then_item
 		} else {
-			else_cases << item
+			else_cases << else_item
 		}
 	}
 	if then_cases.len > 0 && node.children_count > 0 {
+		saved := tc.comptime_attr_narrow_state
+		if loop_kind == 'attributes' {
+			tc.comptime_attr_narrow_state = &ComptimeAttributeNarrowState{ names: tc.comptime_attribute_branch_schemas(node.value, var_name, tc.comptime_attribute_narrowing_names(), true) }
+		}
 		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases, ComptimeStaticValueCases{
 			known: true
 			cases: then_cases
 		})
+		tc.comptime_attr_narrow_state = saved
 	}
 	if else_cases.len > 0 && node.children_count > 1 {
+		saved := tc.comptime_attr_narrow_state
+		if loop_kind == 'attributes' {
+			tc.comptime_attr_narrow_state = &ComptimeAttributeNarrowState{ names: tc.comptime_attribute_branch_schemas(node.value, var_name, tc.comptime_attribute_narrowing_names(), false) }
+		}
 		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases, ComptimeStaticValueCases{
 			known: true
 			cases: else_cases
 		})
+		tc.comptime_attr_narrow_state = saved
 	}
 }
 
@@ -23685,8 +23915,11 @@ fn (tc &TypeChecker) comptime_static_method_call_return_type(id flat.NodeId, var
 	return *tc.parse_type(first_source_id)
 }
 
-fn comptime_static_subst_deferred_cond(cond string, var_name string, loop_kind string, item ComptimeStaticValueCase) string {
-	mut result := comptime_static_replace_unquoted(cond, '${var_name}.name', comptime_static_string_literal(item.name))
+fn (tc &TypeChecker) comptime_static_subst_deferred_cond(cond string, var_name string, loop_kind string, item ComptimeStaticValueCase) string {
+	mut result := cond
+	if loop_kind != 'attributes' || !tc.comptime_attribute_narrow_has_field('name', item) {
+		result = comptime_static_replace_unquoted(result, '${var_name}.name', comptime_static_string_literal(item.name))
+	}
 	if loop_kind == 'methods' {
 		result = comptime_static_subst_method_param_cond(result, var_name, item)
 		result = comptime_static_replace_unquoted(result, '${var_name}.args.len', item.param_names.len.str())
@@ -23700,14 +23933,151 @@ fn comptime_static_subst_deferred_cond(cond string, var_name string, loop_kind s
 	} else if loop_kind == 'params' {
 		result = comptime_static_replace_unquoted(result, '${var_name}.typ', comptime_static_deferred_type(item.typ))
 	} else if loop_kind == 'attributes' && item.has_attr_meta {
-		result = comptime_static_replace_unquoted(result, '${var_name}.has_arg', item.has_arg.str())
-		result = comptime_static_replace_unquoted(result, '${var_name}.arg', comptime_static_string_literal(item.arg))
-		kind := comptime_static_attribute_kind_value(item.attr_kind)
-		result = comptime_static_replace_unquoted(result, '${var_name}.kind ==.', '${kind} == .')
-		result = comptime_static_replace_unquoted(result, '${var_name}.kind !=.', '${kind} != .')
-		result = comptime_static_replace_unquoted(result, '${var_name}.kind', kind)
+		if !tc.comptime_attribute_narrow_has_field('has_arg', item) {
+			result = comptime_static_replace_unquoted(result, '${var_name}.has_arg', item.has_arg.str())
+		}
+		if !tc.comptime_attribute_narrow_has_field('arg', item) {
+			result = comptime_static_replace_unquoted(result, '${var_name}.arg', comptime_static_string_literal(item.arg))
+		}
+		if !tc.comptime_attribute_narrow_has_field('kind', item) {
+			kind := comptime_static_attribute_kind_value(item.attr_kind)
+			result = comptime_static_replace_unquoted(result, '${var_name}.kind ==.', '${kind} == .')
+			result = comptime_static_replace_unquoted(result, '${var_name}.kind !=.', '${kind} != .')
+			result = comptime_static_replace_unquoted(result, '${var_name}.kind', kind)
+		}
+		result = tc.comptime_static_subst_attribute_is_cond(result, var_name, flat.source_type_name(item.attr_schema_id))
 	}
 	return result
+}
+
+// Keep schema-field conditions unresolved here: the transform substitutes their
+// bound values; guessing legacy metadata would prune the wrong branch.
+fn (tc &TypeChecker) comptime_attribute_narrow_has_field(member string, item ComptimeStaticValueCase) bool {
+	if !item.attr_schema_narrowed || item.attr_schema_id == 0 {
+		return false
+	}
+	name := flat.source_type_name(item.attr_schema_id)
+	for schema in tc.attribute_schemas[name.all_after_last('.')] or { []AttributeSchema{} } {
+		if '${schema.module}.${schema.name}' != name {
+			continue
+		}
+		for field in schema.fields {
+			if field.name == member {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Match the transform's per-instance narrowing, including the short-circuit
+// decisions of top-level is terms. Schema-field values stay unresolved here.
+fn (tc &TypeChecker) comptime_static_attribute_cond_narrowing(cond string, var_name string, item ComptimeStaticValueCase) ComptimeStaticAttributeCondNarrowing {
+	if tc.attribute_schemas.len == 0 || !cond.contains('is') {
+		return ComptimeStaticAttributeCondNarrowing{}
+	}
+	clean := comptime_condition_strip_outer_parens(cond)
+	is_disjunction := comptime_condition_top_level_index(clean, '||') >= 0
+	op := if is_disjunction { '||' } else { '&&' }
+	mut terms := []string{}
+	mut rest := clean
+	for {
+		idx := comptime_condition_top_level_index(rest, op)
+		if idx < 0 {
+			break
+		}
+		terms << rest[..idx]
+		rest = rest[idx + op.len..]
+	}
+	terms << rest
+	mut result := ComptimeStaticAttributeCondNarrowing{}
+	for term in terms {
+		target, positive := tc.comptime_attribute_narrow_from_condition(term, var_name) or { continue }
+		term_value := (flat.source_type_name(item.attr_schema_id) == target) == positive
+		if is_disjunction {
+			if term_value {
+				return ComptimeStaticAttributeCondNarrowing{
+					decided:     true
+					value:       true
+					then_branch: positive
+				}
+			}
+			if !positive {
+				result.else_branch = true
+			}
+		} else {
+			if !term_value {
+				return ComptimeStaticAttributeCondNarrowing{
+					decided:     true
+					value:       false
+					else_branch: terms.len == 1 && !positive
+				}
+			}
+			if positive {
+				result.then_branch = true
+			}
+		}
+	}
+	return result
+}
+
+fn (tc &TypeChecker) comptime_static_subst_attribute_is_cond(cond string, var_name string, attr_schema string) string {
+	if var_name == '' || !cond.contains(var_name) {
+		return cond
+	}
+	mut out := strings.new_builder(cond.len)
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			end := comptime_cond_skip_string(cond, offset)
+			out.write_string(cond[offset..end])
+			offset = end
+			continue
+		}
+		start := offset
+		if start + var_name.len <= cond.len && cond[start..start + var_name.len] == var_name
+			&& (start == 0 || !comptime_cond_name_char(cond[start - 1])) {
+			after_var := start + var_name.len
+			if after_var >= cond.len || (!comptime_cond_name_char(cond[after_var]) && cond[after_var] != `.`) {
+				mut i := after_var
+				for i < cond.len && cond[i] == ` ` {
+					i++
+				}
+				mut is_neg := false
+				if i < cond.len && cond[i] == `!` {
+					is_neg = true
+					i++
+					for i < cond.len && cond[i] == ` ` {
+						i++
+					}
+				}
+				if cond[i..].starts_with('is')
+					&& (i + 2 >= cond.len || (!comptime_cond_name_char(cond[i + 2]) && cond[i + 2] != `.`)) {
+					i += 2
+					for i < cond.len && cond[i] == ` ` {
+						i++
+					}
+					rhs_start := i
+					for i < cond.len && (comptime_cond_name_char(cond[i]) || cond[i] == `.`) {
+						i++
+					}
+					if rhs_start < i {
+						rhs := cond[rhs_start..i]
+						if target, _ := tc.comptime_attribute_narrow_from_condition('${var_name} is ${rhs}', var_name) {
+							match_val := attr_schema == target
+							value := if is_neg { !match_val } else { match_val }
+							out.write_string(if value { 'true' } else { 'false' })
+							offset = i
+							continue
+						}
+					}
+				}
+			}
+		}
+		out.write_u8(cond[offset])
+		offset++
+	}
+	return out.str()
 }
 
 fn comptime_static_subst_method_param_cond(cond string, var_name string, item ComptimeStaticValueCase) string {
@@ -23770,6 +24140,85 @@ fn comptime_static_subst_method_param_cond(cond string, var_name string, item Co
 		}
 	}
 	return result
+}
+
+// comptime_attribute_branch_schemas computes possible schemas in either branch.
+// Boolean structure is evaluated as sets, preserving the enclosing narrowing.
+fn (tc &TypeChecker) comptime_attribute_branch_schemas(cond string, var_name string, schemas []string, taken bool) []string {
+	clean := comptime_condition_strip_outer_parens(cond)
+	for op in ['||', '&&'] {
+		idx := comptime_condition_top_level_index(clean, op)
+		if idx < 0 {
+			continue
+		}
+		left := clean[..idx]
+		right := clean[idx + op.len..]
+		if (op == '&&' && taken) || (op == '||' && !taken) {
+			first := tc.comptime_attribute_branch_schemas(left, var_name, schemas, taken)
+			return tc.comptime_attribute_branch_schemas(right, var_name, first, taken)
+		}
+		mut result := tc.comptime_attribute_branch_schemas(left, var_name, schemas, taken)
+		other := tc.comptime_attribute_branch_schemas(left, var_name, schemas, !taken)
+		for name in tc.comptime_attribute_branch_schemas(right, var_name, other, taken) {
+			if name !in result {
+				result << name
+			}
+		}
+		return result
+	}
+	if clean.starts_with('!') {
+		return tc.comptime_attribute_branch_schemas(clean[1..], var_name, schemas, !taken)
+	}
+	if clean in ['true', 'false'] {
+		return if (clean == 'true') == taken { schemas } else { []string{} }
+	}
+	if name, positive := tc.comptime_attribute_narrow_from_condition(clean, var_name) {
+		mut result := []string{}
+		for schema in schemas {
+			if (schema == name) == (positive == taken) {
+				result << schema
+			}
+		}
+		return result
+	}
+	return schemas
+}
+
+fn (tc &TypeChecker) comptime_attribute_narrow_from_condition(cond string, var_name string) ?(string, bool) {
+	clean := comptime_condition_strip_outer_parens(cond)
+	if var_name == '' || !clean.starts_with(var_name) {
+		return none
+	}
+	mut i := var_name.len
+	if i < clean.len && (comptime_cond_name_char(clean[i]) || clean[i] == `.`) {
+		return none
+	}
+	for i < clean.len && clean[i] == ` ` {
+		i++
+	}
+	mut is_neg := false
+	if i < clean.len && clean[i] == `!` {
+		is_neg = true
+		i++
+	}
+	if !clean[i..].starts_with('is ') {
+		return none
+	}
+	name := clean[i + 3..].trim_space()
+	for ch in name {
+		if !comptime_cond_name_char(ch) && ch != `.` {
+			return none
+		}
+	}
+	short := name.all_after_last('.')
+	qualifier := if name.contains('.') { name.all_before_last('.') } else { '' }
+	for schema in tc.attribute_schemas[short] or { []AttributeSchema{} } {
+		if (qualifier != '' && schema.module == qualifier)
+			|| (qualifier == '' && attribute_modules_compatible(schema.module, tc.cur_module)) {
+			return '${schema.module}.${schema.name}', !is_neg
+		}
+	}
+	return none
 }
 
 fn comptime_static_deferred_type(typ_id u32) string {

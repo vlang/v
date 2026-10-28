@@ -11126,6 +11126,39 @@ fn v3_parallel_transform_allowed(parallel_transform bool, no_parallel bool) bool
 	return parallel_transform && !no_parallel
 }
 
+// append_hosted_vlibc_files keeps runtime discovery outside the compiler driver.
+fn append_hosted_vlibc_files(prefs &pref.Preferences, builtin_dir string, builtin_defines []string, mut builtin_files []string) {
+	os_name := prefs.target.os
+	candidate := match os_name {
+		'freebsd' { 'freebsd_bare' }
+		'openbsd' { 'openbsd_bare' }
+		'netbsd' { 'netbsd_bare' }
+		'dragonfly' { 'dragonfly_bare' }
+		'macos', 'darwin' { 'macos_bare' }
+		'solaris' { 'solaris_bare' }
+		'android', 'termux' { 'linux_bare' }
+		else { 'linux_bare' }
+	}
+	vlibc_dir := os.join_path(builtin_dir, candidate)
+	if os.is_dir(vlibc_dir) {
+		// Include the syscall layer (numbers + sys_callN). The file name varies
+		// by platform: linux uses linux_syscalls.v, others use syscalls.v.
+		for scn_name in ['syscalls.v', 'linux_syscalls.v'] {
+			scn_path := os.join_path(vlibc_dir, scn_name)
+			if os.is_file(scn_path) {
+				builtin_files << prefs.without_excluded([scn_path])
+			}
+		}
+		vlibc_api_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(vlibc_dir,
+			builtin_defines, prefs.backend, prefs.target))
+		for f in vlibc_api_files {
+			if os.file_name(f).ends_with('_d_vlibc.v') {
+				builtin_files << f
+			}
+		}
+	}
+}
+
 // run executes the V3 compiler driver with `args`.
 // run compiles the input selected by args using the requested backend and flags.
 @[markused]
@@ -12087,7 +12120,11 @@ pub fn run(args []string) {
 	if os.getenv(v3_embedded_env) != '1' {
 		maybe_delegate_v3_to_vvmrc(input_file, verbose)
 	}
-	// The JS compatibility path returns before the common backend validation below.
+	// JS and FastC dispatch before the common runtime-injection validation below.
+	if 'vlibc' in user_defines && backend != 'c' {
+		eprintln('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target')
+		exit(1)
+	}
 	if target_libc_headers && backend == 'js' {
 		eprintln('option `-target-libc-headers` requires the C backend')
 		exit(1)
@@ -13132,6 +13169,14 @@ pub fn run(args []string) {
 		p.reserve_selfhost_ast()
 	}
 
+	if 'vlibc' in prefs.user_defines
+		&& (prefs.backend != 'c' || prefs.target.os !in ['linux', 'android', 'termux', 'vinix',
+			'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'macos', 'darwin', 'solaris']
+			|| prefs.target.arch !in ['amd64', 'arm64']
+			|| (prefs.target.os in ['dragonfly', 'solaris'] && prefs.target.arch != 'amd64')) {
+		eprintln('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target')
+		exit(1)
+	}
 	builtin_dir := builtin_dir_for_vroot(prefs.vroot)
 	mut builtin_defines := prefs.user_defines.clone()
 	// Builtin contains a small number of ABI-sensitive helpers. Keep their v3
@@ -13179,6 +13224,12 @@ pub fn run(args []string) {
 			builtin_defines, prefs.backend, prefs.target))
 	} else if bare_builtin_dir.len > 0 {
 		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
+	}
+	// Freestanding builds already include the runtime from their selected bare directory.
+	// Hosted builds need only its syscall layer and vlibc API, retaining libc startup.
+	if 'vlibc' in prefs.user_defines && 'freestanding' !in prefs.user_defines
+		&& prefs.backend == 'c' {
+		append_hosted_vlibc_files(prefs, builtin_dir, builtin_defines, mut builtin_files)
 	}
 	if no_builtin {
 		builtin_files = []
@@ -16319,6 +16370,10 @@ pub fn run(args []string) {
 		} else {
 			generated_c_flags.clone()
 		}
+		if !c_only && !is_o {
+			// Environment flags also reach the native helper compilations below.
+			v3_require_c_link_libraries([environment_c_flags], macos_v3_fallback_file, cc_dir)
+		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
 				no_prod_options, is_shared, parallel_cc, effective_tcc), prefs.normalized_target_os(),
@@ -16417,6 +16472,7 @@ pub fn run(args []string) {
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
+			v3_require_c_link_libraries([resolved_c_flags, link_ld_flags], macos_v3_fallback_file, cc_dir)
 		}
 		flag_plan_sdk_root := if effective_tcc && prefs.normalized_target_os() == 'macos' {
 			macos_sdk_root_cache.get()
@@ -17770,6 +17826,27 @@ fn checker_fixture_missing_header(a &flat.FlatAst, user_files []string, c_compil
 			'Please install the corresponding development headers.'
 		}
 		return 'Header file ${target}, needed for module `${current_module}` was not found. ${message}'
+	}
+	return none
+}
+
+fn v3_require_c_link_libraries(flag_groups [][]string, fallback_file string, build_dir string) {
+	for flags in flag_groups {
+		if missing_library := v3_missing_c_link_library(flags) {
+			clear_macos_v3_compiler_error_fallback(fallback_file)
+			eprintln('builder error:\n==================\nC library file `${missing_library}` was not found.\nBuild or restore this native library before compiling the V program.')
+			cleanup_c_build_dir(build_dir)
+			exit(1)
+		}
+	}
+}
+
+fn v3_missing_c_link_library(flags []string) ?string {
+	for index in c_link_input_indices(flags) {
+		path := flags[index].trim_space()
+		if c_flag_token_is_link_only(path) && !os.is_file(path) {
+			return path
+		}
 	}
 	return none
 }

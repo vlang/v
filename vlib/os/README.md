@@ -376,3 +376,12 @@ is rejected.
 `LOCALAPPDATA` and `APPDATA` on Windows, falling back to `AppData/Local` and `AppData/Roaming`.
 On POSIX they use nonempty, absolute `XDG_CACHE_HOME` and `XDG_CONFIG_HOME`; empty values
 fall back to `~/.cache` and `~/.config`. Variables from the other platform are ignored.
+
+### Experimental vlibc file operations
+
+With `-d vlibc`, Unix C builds use the experimental raw syscall runtime for `read_file`,
+`read_bytes`, `write_file`, `write_bytes`, and `exists`. This applies to hosted builds and
+`-freestanding` builds. Hosted builds retain the normal C runtime startup.
+New files use mode `0666` filtered by the process umask. Read and write errors retain their
+POSIX error codes; interrupted operations retry. `exists` follows symbolic links.
+See [the vlibc runtime notes](../builtin/README.vlibc.md) for supported platforms and limitations.
