@@ -529,8 +529,8 @@ fn generate_inline_asm_c_for_arch(name string, source string, arch string) (os.R
 
 fn test_raw_asm_templates_reach_c_lowering_unchanged() {
 	generate, c_source := generate_inline_asm_c('raw_program', 'fn main() {
-	mut value := 40
-	increment := 2
+	mut value := i32(40)
+	increment := i32(2)
 	asm amd64 raw {
 		"addl %[increment], %[value]\\n\\t"
 		; [value] "+r" (value)

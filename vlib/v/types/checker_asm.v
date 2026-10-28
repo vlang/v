@@ -228,27 +228,8 @@ fn (tc &TypeChecker) inline_asm_intel_operand_width(typ Type) ?int {
 }
 
 fn (tc &TypeChecker) inline_asm_enum_backing_width(name_id u32) int {
-	name_syntax := flat.source_type_syntax(name_id)
-	short_name_id := name_syntax.unqualified()
-	is_qualified := flat.source_type_shape(name_id).has(.dotted)
-	for index in tc.top_level_idx {
-		decl := tc.a.nodes[index]
-		if decl.kind != .enum_decl || !inline_asm_enum_decl_is_named(decl.value, short_name_id) {
-			continue
-		}
-		file := tc.a.source_files[decl.pos.id] or { continue }
-		module_name := tc.file_modules[file.name] or { '' }
-		if is_qualified && !inline_asm_enum_module_is_qualifier(module_name, name_syntax.qualifier()) {
-			continue
-		}
-		if decl.enum_backing_type_id() != 0 {
-			if width := tc.inline_asm_intel_operand_width(tc.parse_type(decl.enum_backing_type_id())) {
-				return width
-			}
-		}
-		break
-	}
-	return 32
+	backing := tc.inline_asm_enum_explicit_backing_type(name_id) or { return 32 }
+	return tc.inline_asm_intel_operand_width(backing) or { 32 }
 }
 
 // inline_asm_enum_decl_is_named reports whether an enum declared as `name` is
@@ -271,6 +252,12 @@ fn inline_asm_enum_module_is_qualifier(module_name string, qualifier_id u32) boo
 }
 
 fn (tc &TypeChecker) inline_asm_enum_backing_type(name_id u32) Type {
+	return tc.inline_asm_enum_explicit_backing_type(name_id) or { Type(int_) }
+}
+
+// inline_asm_enum_explicit_backing_type returns the `as` backing type of an enum, or none
+// when the enum is declared without one.
+fn (tc &TypeChecker) inline_asm_enum_explicit_backing_type(name_id u32) ?Type {
 	name_syntax := flat.source_type_syntax(name_id)
 	short_name_id := name_syntax.unqualified()
 	is_qualified := flat.source_type_shape(name_id).has(.dotted)
@@ -289,7 +276,7 @@ fn (tc &TypeChecker) inline_asm_enum_backing_type(name_id u32) Type {
 		}
 		break
 	}
-	return Type(int_)
+	return none
 }
 
 fn (tc &TypeChecker) inline_asm_intel_type_is_signed(typ Type) bool {

@@ -1,35 +1,70 @@
-vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:12:9: error: `incq` operates on 64-bit operands here, but `%[small]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
-   10 |         "movl %%rax, %%ecx\n\t"
-   11 |         "movzwl %%al, %%eax\n\t"
-   12 |         "incq %[small]"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:17:13: error: `addl` operates on 32-bit operands here, but `%[total]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+   15 |         "movzwl %%al, %%eax\n\t"
+   16 |         "incq %[small]\n\t"
+   17 |         "addl $1, %[total]\n\t"
+      |                   ~~~~~~~~
+   18 |         "orq %%rax, %%ecx\n\t"
+   19 |         "movl %%cr0, %%eax"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:16:9: error: `incq` operates on 64-bit operands here, but `%[small]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
+   14 |         "movl %%rax, %%ecx\n\t"
+   15 |         "movzwl %%al, %%eax\n\t"
+   16 |         "incq %[small]\n\t"
       |               ~~~~~~~~
-   13 |         ; [len] "+r" (out)
-   14 |         ; [small] "+r" (small)
-vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:10:9: error: `movl` operates on 32-bit operands here, but `%%rax` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
-    8 |         "movl %[len], %%eax\n\t"
-    9 |         "movq %k[len], %%rcx\n\t"
-   10 |         "movl %%rax, %%ecx\n\t"
+   17 |         "addl $1, %[total]\n\t"
+   18 |         "orq %%rax, %%ecx\n\t"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:19:9: error: `movl` operates on 32-bit operands here, but `%%cr0` is 64-bit; use a size suffix that matches the operand, or a 32-bit register
+   17 |         "addl $1, %[total]\n\t"
+   18 |         "orq %%rax, %%ecx\n\t"
+   19 |         "movl %%cr0, %%eax"
       |               ~~~~~
-   11 |         "movzwl %%al, %%eax\n\t"
-   12 |         "incq %[small]"
-vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:8:9: error: `movl` operates on 32-bit operands here, but `%[len]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
-    6 |     mut out := len
-    7 |     asm amd64 raw {
-    8 |         "movl %[len], %%eax\n\t"
+   20 |         ; [len] "+r" (out)
+   21 |           [small] "+r" (narrow)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:14:9: error: `movl` operates on 32-bit operands here, but `%%rax` is 64-bit; use a size suffix that matches the operand, or a 32-bit register
+   12 |         "movl %[len], %%eax\n\t"
+   13 |         "movq %k[len], %%rcx\n\t"
+   14 |         "movl %%rax, %%ecx\n\t"
+      |               ~~~~~
+   15 |         "movzwl %%al, %%eax\n\t"
+   16 |         "incq %[small]\n\t"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:12:9: error: `movl` operates on 32-bit operands here, but `%[len]` is 64-bit; use a size suffix that matches the operand, or an operand modifier that selects a 32-bit register
+   10 |     mut total := count
+   11 |     asm amd64 raw {
+   12 |         "movl %[len], %%eax\n\t"
       |               ~~~~~~
-    9 |         "movq %k[len], %%rcx\n\t"
-   10 |         "movl %%rax, %%ecx\n\t"
-vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:9:9: error: `movq` operates on 64-bit operands here, but `%k[len]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
-    7 |     asm amd64 raw {
-    8 |         "movl %[len], %%eax\n\t"
-    9 |         "movq %k[len], %%rcx\n\t"
+   13 |         "movq %k[len], %%rcx\n\t"
+   14 |         "movl %%rax, %%ecx\n\t"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:13:9: error: `movq` operates on 64-bit operands here, but `%k[len]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
+   11 |     asm amd64 raw {
+   12 |         "movl %[len], %%eax\n\t"
+   13 |         "movq %k[len], %%rcx\n\t"
       |               ~~~~~~~
-   10 |         "movl %%rax, %%ecx\n\t"
-   11 |         "movzwl %%al, %%eax\n\t"
-vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:11:11: error: `movzwl` operates on 16-bit operands here, but `%%al` is 8-bit; use a size suffix that matches the operand, or an operand modifier that selects a 16-bit register
-    9 |         "movq %k[len], %%rcx\n\t"
-   10 |         "movl %%rax, %%ecx\n\t"
-   11 |         "movzwl %%al, %%eax\n\t"
+   14 |         "movl %%rax, %%ecx\n\t"
+   15 |         "movzwl %%al, %%eax\n\t"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:15:11: error: `movzwl` operates on 16-bit operands here, but `%%al` is 8-bit; use a size suffix that matches the operand, or a 16-bit register
+   13 |         "movq %k[len], %%rcx\n\t"
+   14 |         "movl %%rax, %%ecx\n\t"
+   15 |         "movzwl %%al, %%eax\n\t"
       |                 ~~~~
-   12 |         "incq %[small]"
-   13 |         ; [len] "+r" (out)
+   16 |         "incq %[small]\n\t"
+   17 |         "addl $1, %[total]\n\t"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:18:15: error: `orq` operates on 64-bit operands here, but `%%ecx` is 32-bit; use a size suffix that matches the operand, or a 64-bit register
+   16 |         "incq %[small]\n\t"
+   17 |         "addl $1, %[total]\n\t"
+   18 |         "orq %%rax, %%ecx\n\t"
+      |                     ~~~~~
+   19 |         "movl %%cr0, %%eax"
+   20 |         ; [len] "+r" (out)
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:33:9: error: `incw` operates on 16-bit operands here, but `%[total]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 16-bit register
+   31 |     mut total := count
+   32 |     asm i386 raw {
+   33 |         "incw %[total]\n\t"
+      |               ~~~~~~~~
+   34 |         "movw %[wide], %%ax\n\t"
+   35 |         "movl %%eax, %[out]"
+vlib/v/checker/tests/asm_raw_att_width_mismatch.vv:34:9: error: `movw` operates on 16-bit operands here, but `%[wide]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 16-bit register
+   32 |     asm i386 raw {
+   33 |         "incw %[total]\n\t"
+   34 |         "movw %[wide], %%ax\n\t"
+      |               ~~~~~~~
+   35 |         "movl %%eax, %[out]"
+   36 |         ; [out] "=r" (out)

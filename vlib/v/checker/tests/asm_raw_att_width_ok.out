@@ -1,7 +1,7 @@
-vlib/v/checker/tests/asm_raw_att_width_ok.vv:24:15: error: undefined ident: `undefined_total`
-   22 |         ; cc
-   23 |     }
-   24 |     return out + undefined_total
-      |                  ~~~~~~~~~~~~~~~
-   25 | }
-   26 |
+vlib/v/checker/tests/asm_raw_att_width_ok.vv:43:72: error: undefined ident: `undefined_total`
+   41 |         ; ; rax rcx rdx xmm0 cc
+   42 |     }
+   43 |     return out + u64(narrow) + u64(byte_value) + u64(total) + u64(kind) + undefined_total
+      |                                                                           ~~~~~~~~~~~~~~~
+   44 | }
+   45 |

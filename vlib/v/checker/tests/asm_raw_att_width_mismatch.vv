@@ -1,22 +1,47 @@
 // A GNU x86 size suffix must match the width of the operands it acts on. Each error below is
 // one the GNU assembler rejects too: `movl` on a 64-bit register, a modifier that contradicts
-// the suffix, and the `movzwl` source that is 8-bit.
+// the suffix, the `movzwl` source that is 8-bit, a 32-bit suffix on a 64-bit `int`, `orq` on a
+// 32-bit register, and `movl` on a 64-bit control register. On i386, `int` and the printed
+// view of a 64-bit operand are 32 bits wide.
 @[noinline]
-fn widths(len u64, small u32) u64 {
+fn widths(len u64, small u32, count int) u64 {
 	mut out := len
+	mut narrow := small
+	mut total := count
 	asm amd64 raw {
 		"movl %[len], %%eax\n\t"
 		"movq %k[len], %%rcx\n\t"
 		"movl %%rax, %%ecx\n\t"
 		"movzwl %%al, %%eax\n\t"
-		"incq %[small]"
+		"incq %[small]\n\t"
+		"addl $1, %[total]\n\t"
+		"orq %%rax, %%ecx\n\t"
+		"movl %%cr0, %%eax"
 		; [len] "+r" (out)
-		; [small] "+r" (small)
-		; cc
+		  [small] "+r" (narrow)
+		  [total] "+r" (total)
+		; ; rax rcx cc
 	}
-	return out
+	return out + u64(narrow) + u64(total)
+}
+
+@[noinline]
+fn narrow_widths(wide u64, count int) u32 {
+	mut out := u32(0)
+	mut total := count
+	asm i386 raw {
+		"incw %[total]\n\t"
+		"movw %[wide], %%ax\n\t"
+		"movl %%eax, %[out]"
+		; [out] "=r" (out)
+		  [total] "+r" (total)
+		; [wide] "r" (wide)
+		; eax cc
+	}
+	return out + u32(total)
 }
 
 fn main() {
-	println(widths(1, 2))
+	println(widths(1, 2, 3))
+	println(narrow_widths(4, 5))
 }
