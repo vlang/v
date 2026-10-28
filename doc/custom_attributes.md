@@ -56,8 +56,9 @@ A use the checker rejects (unknown field, wrong arity) keeps the legacy pieces
 so the checker diagnostic stays authoritative. Copies of the loop variable
 (`r := attr`) keep the `VAttribute` view; narrowing applies to direct `attr`
 uses. Inside that narrowed branch, schema fields named `name`, `arg`, `has_arg`, or
-`kind` take precedence over the metadata members. Outside narrowing, those members
-retain the `VAttribute` view.
+`kind` take precedence over the metadata members. Method calls such as `attr.str()`
+keep the `VAttribute` method even when a schema declares a `str` field.
+Outside narrowing, metadata members retain the `VAttribute` view.
 
 ## Checking schema field access
 

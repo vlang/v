@@ -1874,7 +1874,20 @@ fn (mut t Transformer) clone_attribute_subst_children_with_value(node flat.Node,
 	child_inner_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		children << t.clone_attribute_subst_scoped(t.a.child(&node, i), var_name, attr, child_inner_vars, schemas)
+		child_id := t.a.child(&node, i)
+		if node.kind == .call && i == 0 {
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .selector && child.children_count > 0 {
+				receiver := t.a.child_node(&child, 0)
+				if receiver.kind == .ident && receiver.value == var_name {
+					// A method callee keeps the VAttribute receiver even when a
+					// schema field has the same name as the method.
+					children << t.clone_attribute_subst_children(child, var_name, attr, child_inner_vars, schemas)
+					continue
+				}
+			}
+		}
+		children << t.clone_attribute_subst_scoped(child_id, var_name, attr, child_inner_vars, schemas)
 	}
 	start := t.a.children.len
 	for child in children {

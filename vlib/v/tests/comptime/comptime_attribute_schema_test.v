@@ -149,3 +149,25 @@ fn test_attribute_schema_resolves_aliases_and_integer_types() {
 	}
 	assert seen
 }
+
+@[attribute]
+struct SchemaMethodField {
+	str string
+}
+
+@[SchemaMethodField('field value')]
+fn schema_method_field() {}
+
+fn test_attribute_schema_fields_do_not_replace_method_callees() {
+	mut seen := false
+	$for attr in schema_method_field.attributes {
+		copy := attr
+		assert attr.str() == copy.str()
+		$if attr is SchemaMethodField {
+			assert attr.str == 'field value'
+			assert attr.str() == copy.str()
+			seen = true
+		}
+	}
+	assert seen
+}
