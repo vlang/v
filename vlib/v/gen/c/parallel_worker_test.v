@@ -76,7 +76,7 @@ fn test_scoped_cgen_batches_amortize_small_bodies_and_bound_compiler_scratch() {
 	assert g.scoped_cgen_batch_count(1, 1_000_000) == 1
 	assert g.scoped_cgen_batch_count(10_000, 100_000_000) == scoped_cgen_worker_batches
 	tc.building_v_fast = true
-	assert g.scoped_cgen_batch_count(169, 1000) == 169
+	assert g.scoped_cgen_batch_count(12, 1000) == 12
 	assert g.scoped_cgen_batch_count(10_000, 100_000_000) == scoped_cgen_worker_batches
 }
 
@@ -777,8 +777,8 @@ fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 
 fn test_parallel_type_declarations_preseed_function_type_aliases() {
 	mut g, mut tc := parallel_worker_test_gen(true)
-	tc.type_aliases.set_id('Callback', flat.source_type_id('fn (int)'))
-	callback_type := tc.parse_type(tc.type_aliases.value_id('Callback'))
+	tc.type_aliases.set_id(flat.source_type_id('Callback'), flat.source_type_id('fn (int)'))
+	callback_type := tc.parse_type(tc.type_aliases.value_id(flat.source_type_id('Callback')))
 	encoded := tc.c_type(callback_type)
 	assert encoded.starts_with('fn_ptr:')
 	assert encoded !in g.fn_ptr_types

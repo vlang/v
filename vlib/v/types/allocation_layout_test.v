@@ -6,14 +6,14 @@ fn test_allocation_alignment_follows_value_edges() {
 	mut a := flat.FlatAst.new()
 	aligned_decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'Aligned' })
 	mut tc := TypeChecker.new(&a)
-	tc.first_type_declaration_ids['Aligned'] = int(aligned_decl)
+	tc.first_type_declaration_ids[flat.source_type_id('Aligned')] = int(aligned_decl)
 	tc.declaration_attributes[int(aligned_decl)] = ['aligned: 64']
-	tc.structs['Aligned'] = []StructField{}
-	tc.sum_types.set('Choice', ['Aligned', 'int'])
-	tc.type_aliases.set('Alias', 'Choice')
-	tc.structs['Holder'] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('Choice')) }]
-	tc.structs['Box'] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('T')) }]
-	tc.struct_generic_params['Box'] = ['T']
+	tc.structs[flat.source_type_id('Aligned')] = []StructField{}
+	tc.sum_types.set(flat.source_type_id('Choice'), ['Aligned', 'int'])
+	tc.type_aliases.set(flat.source_type_id('Alias'), 'Choice')
+	tc.structs[flat.source_type_id('Holder')] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('Choice')) }]
+	tc.structs[flat.source_type_id('Box')] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('T')) }]
+	tc.struct_generic_params[flat.source_type_id('Box')] = generic_param_ids(['T'])
 	aligned := ['Aligned', 'Choice', 'Alias', 'Holder', 'Box[Choice]', '[2]Choice', '?Choice',
 		'!Choice']
 	ordinary := ['int', '&Choice', '[]Choice', 'map[string]Choice', 'fn () Choice']
@@ -29,8 +29,8 @@ fn test_allocation_alignment_cache_tracks_declaration_changes() {
 	mut a := flat.FlatAst.new()
 	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'Value' })
 	mut tc := TypeChecker.new(&a)
-	tc.structs['Value'] = []StructField{}
-	tc.first_type_declaration_ids['Value'] = int(decl)
+	tc.structs[flat.source_type_id('Value')] = []StructField{}
+	tc.first_type_declaration_ids[flat.source_type_id('Value')] = int(decl)
 	value := tc.parse_type(flat.source_type_id('Value'))
 	assert !tc.requires_aligned_allocation(value)
 	tc.declaration_attributes[int(decl)] = ['aligned: 64']
@@ -41,19 +41,19 @@ fn test_allocation_alignment_cache_tracks_declaration_changes() {
 fn test_allocation_scan_follows_storage_and_generic_fields() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.structs['Plain'] = [StructField{ name: 'value', typ: Type(int_) }]
-	tc.structs['Pair'] = [
+	tc.structs[flat.source_type_id('Plain')] = [StructField{ name: 'value', typ: Type(int_) }]
+	tc.structs[flat.source_type_id('Pair')] = [
 		StructField{ name: 'left', typ: *tc.parse_type(flat.source_type_id('Plain')) },
 		StructField{ name: 'right', typ: *tc.parse_type(flat.source_type_id('Plain')) },
 	]
-	tc.structs['Box'] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('T')) }]
-	tc.struct_generic_params['Box'] = ['T']
-	tc.structs['Shared'] = tc.structs['Plain']
+	tc.structs[flat.source_type_id('Box')] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('T')) }]
+	tc.struct_generic_params[flat.source_type_id('Box')] = generic_param_ids(['T'])
+	tc.structs[flat.source_type_id('Shared')] = tc.structs[flat.source_type_id('Plain')]
 	tc.struct_shared_fields[flat.source_type_id('Shared')] = {
 		'value': true
 	}
-	tc.sum_types.set('Scalars', ['Plain', 'int'])
-	tc.sum_types.set('References', ['Plain', '&Plain'])
+	tc.sum_types.set(flat.source_type_id('Scalars'), ['Plain', 'int'])
+	tc.sum_types.set(flat.source_type_id('References'), ['Plain', '&Plain'])
 	scalars := ['int', 'Plain', 'Pair', 'Box[Plain]', 'Scalars', '[2]Plain', '?Plain']
 	references := [
 		'&Plain',
@@ -73,7 +73,7 @@ fn test_allocation_scan_follows_storage_and_generic_fields() {
 	for name in references {
 		assert tc.allocation_layout(tc.parse_type(flat.source_type_id(name))).has(.scanned), name
 	}
-	tc.structs['Plain'] = [StructField{ name: 'value', typ: Type(string_) }]
+	tc.structs[flat.source_type_id('Plain')] = [StructField{ name: 'value', typ: Type(string_) }]
 	tc.clear_field_lookup_cache()
 	assert tc.allocation_layout(tc.parse_type(flat.source_type_id('Pair'))).has(.scanned)
 }

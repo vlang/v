@@ -434,11 +434,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				mut container_str := g.expr_to_string(container_id)
 				if container_node.kind == .ident {
 					if raw_source_id := g.local_storage_raw_type(container_node.value) {
-						raw := flat.source_type_name(raw_source_id)
-
-						clean_raw := raw.trim_space()
-						if clean_raw.starts_with('?')
-							&& clean_raw[1..].trim_space().starts_with('[]') {
+						clean_raw := flat.source_type_syntax(raw_source_id).trimmed()
+						if flat.source_type_shape(clean_raw).has(.option_type)
+							&& flat.source_type_shape(flat.source_type_syntax(flat.source_type_syntax(clean_raw).raw_base()).trimmed()).has(.array_type) {
 							container_str = '(${container_str}).value'
 						}
 					}

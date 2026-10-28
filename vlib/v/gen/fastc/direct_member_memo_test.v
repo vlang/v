@@ -32,9 +32,9 @@ fn direct_member40_parser(finalized bool) Parser {
 		alias_base_types:      aliases
 		declared_type_c_names: names
 		declared_kinds:        {
-			'memo.Face':   .interface_
-			'AliasRecord': .alias_
-			'AliasMap':    .alias_
+			flat.source_type_id('memo.Face'):   .interface_
+			flat.source_type_id('AliasRecord'): .alias_
+			flat.source_type_id('AliasMap'):    .alias_
 		}
 		struct_fields:         {
 			'MemoRecord': record

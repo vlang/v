@@ -89,16 +89,25 @@ pub fn (mut g Gen) extract_function(fn_name string) []u8 {
 			eprintln('extract_function: "${target_sym}" uses a page-address instruction at offset ${int(fn_start) + i}; only self-contained functions can be hot-reloaded')
 			return []u8{}
 		}
-		if instr & u32(0xFC000000) == u32(0x94000000)
-			|| instr & u32(0xFC000000) == u32(0x14000000) {
-			// BL or B with a 26-bit signed word offset from this instruction.
-			mut imm := i32(instr & u32(0x03FFFFFF))
-			if imm & i32(0x02000000) != 0 {
-				imm -= i32(0x04000000)
-			}
-			target := i64(fn_start) + i64(i) + i64(imm) * 4
+		mut bits := 0
+		mut imm := u32(0)
+		if instr & u32(0x7C000000) == u32(0x14000000) {
+			bits = 26 // B / BL
+			imm = instr & u32(0x03FFFFFF)
+		} else if instr & u32(0xFF000010) == u32(0x54000000)
+			|| instr & u32(0x7E000000) == u32(0x34000000)
+			|| instr & u32(0x3B000000) == u32(0x18000000) {
+			bits = 19 // B.cond, CBZ/CBNZ, and literal loads
+			imm = (instr >> 5) & u32(0x7FFFF)
+		} else if instr & u32(0x7E000000) == u32(0x36000000) {
+			bits = 14 // TBZ/TBNZ
+			imm = (instr >> 5) & u32(0x3FFF)
+		}
+		if bits > 0 {
+			displacement := i64(i32(imm << (32 - bits)) >> (32 - bits)) * 4
+			target := i64(fn_start) + i64(i) + displacement
 			if target < i64(fn_start) || target >= i64(fn_end) {
-				eprintln('extract_function: "${target_sym}" branches outside itself (offset ${int(fn_start) + i} targets ${target}); only self-contained functions can be hot-reloaded')
+				eprintln('extract_function: "${target_sym}" references code or data outside itself; only self-contained functions can be hot-reloaded')
 				return []u8{}
 			}
 		}

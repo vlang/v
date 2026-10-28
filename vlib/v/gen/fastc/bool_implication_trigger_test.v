@@ -12,11 +12,11 @@ fn fastc_bool_implication_trigger_parser() Parser {
 		s:              scanner.new_scanner(prefs, .normal)
 		selfhost:       true
 		declared_types: {
-			'Record': true
+			flat.source_type_id('Record'): true
 		}
 		declared_kinds: {
-			'Record': .struct_
-			'Choice': .alias_
+			flat.source_type_id('Record'): .struct_
+			flat.source_type_id('Choice'): .alias_
 		}
 		sum_types:      {
 			'Choice': true

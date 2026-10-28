@@ -10,6 +10,8 @@ fn v3_v_string_literal(s string) string {
 			out += '\\\\'
 		} else if ch == `"` {
 			out += '\\"'
+		} else if ch == `$` {
+			out += '\\' + ch.ascii_str()
 		} else if ch == `\n` {
 			out += '\\n'
 		} else if ch == `\r` {
@@ -30,8 +32,7 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	mut seen := map[string]bool{}
 	for i in 0 .. a.nodes.len {
 		node := a.nodes[i]
-		kind_id := int(node.kind)
-		if kind_id == 77 {
+		if node.kind == .file {
 			cur_file = node.value_text()
 		}
 		if node.kind == .directive && node.value.starts_with('@attributes:') {
@@ -56,8 +57,7 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	cur_file = ''
 	for i in 0 .. a.nodes.len {
 		node := a.nodes[i]
-		kind_id := int(node.kind)
-		if kind_id == 77 {
+		if node.kind == .file {
 			cur_file = node.value_text()
 		}
 		if node.kind == .directive && node.value.starts_with('@attributes:') {
@@ -78,12 +78,15 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 
 	mut live_param_types := [][]string{}
 	mut live_return_types := []string{}
+	mut live_source_names := []string{}
 	for m in live_mangled {
 		mut params := []string{}
 		mut ret := ''
+		mut source_name := m
 		for i in 0 .. a.nodes.len {
 			node := a.nodes[i]
 			if node.kind == .fn_decl && node.value_text().replace('.', '__') == m {
+				source_name = node.value_text()
 				for ci in 0 .. node.children_count {
 					child := a.child_node(&node, ci)
 					if child.kind == .param {
@@ -96,142 +99,93 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 		}
 		live_param_types << params
 		live_return_types << ret
+		live_source_names << source_name
 	}
 
 	mut out := 'import os\n\n'
-	out += 'fn C.mmap(addr voidptr, len uint, prot int, flags int, fd int, offset i64) voidptr\n'
-	out += 'fn C.mprotect(addr voidptr, len uint, prot int) int\n'
-	out += 'fn C.sys_icache_invalidate(start voidptr, size uint)\n'
-	out += 'fn C.__clear_cache(start voidptr, end voidptr)\n'
-	out += 'fn C.VirtualAlloc(addr voidptr, len uint, typ uint, prot uint) voidptr\n'
-	out += 'fn C.VirtualProtect(addr voidptr, len uint, new_prot uint, old_prot &uint) bool\n'
-	out += 'fn C.FlushInstructionCache(proc voidptr, addr voidptr, size uint)\n'
-	out += 'fn C.GetCurrentProcess() voidptr\n'
 	out += 'fn C.fopen(path &u8, mode &u8) voidptr\n'
 	out += 'fn C.fread(buf voidptr, size uint, count uint, f voidptr) uint\n'
 	out += 'fn C.fseek(f voidptr, offset i64, whence int) int\n'
 	out += 'fn C.ftell(f voidptr) i64\n'
 	out += 'fn C.fclose(f voidptr) int\n'
 	out += 'fn C.system(cmd &u8) int\n'
-	out += 'fn C.printf(fmt &u8) int\n'
-	out += 'fn C.fflush(f voidptr) int\n\n'
-
-	out += '__global live_mtime i64\n'
-	out += '__global live_code_page voidptr\n'
-	out += '__global live_code_offset i64\n'
-	out += '__global live_code_pages []voidptr\n'
+	out += 'fn C.puts(s &u8) int\n'
+	out += 'fn C.remove(path &u8) int\n'
+	out += 'fn C.fflush(f voidptr) int\n'
+	out += 'fn C.getpid() int\n'
+	out += '\n__global live_mtime i64 = os.file_last_mod_unix(live_source_file)\n__global live_code_pages []voidptr\n'
 	for idx, m in live_mangled {
-		mut param_list := live_param_types[idx].join(', ')
+		storage := m.bytes().hex()
+		params := live_param_types[idx].join(', ')
 		ret := live_return_types[idx]
-		out += 'type LiveFn_${m} = fn (${param_list})'
+		out += 'type LiveFn_${m} = fn (${params})'
 		if ret != '' && ret != 'void' {
 			out += ' ${ret}'
 		}
-		out += '\n'
-		out += '__global live_${m} LiveFn_${m} = ${m}\n'
+		out += '\n__global live_${storage} LiveFn_${m} = ${live_source_names[idx]}\n'
 	}
-	out += '\n'
-
-	out += 'const live_source_file = ${v3_v_string_literal(source_file)}\n'
-	out += 'const live_vexe = ${v3_v_string_literal(vexe)}\n'
-	out += 'const live_opts = ${v3_v_string_literal(opts_str)}\n\n'
-
-	out += 'fn init() {\n'
+	out += '\nconst live_source_file = ${v3_v_string_literal(source_file)}\n'
+	out += 'const live_command_prefix = ${v3_v_string_literal(os.quoted_path(vexe) + ' ' + opts_str)}\n'
+	out += 'const live_quoted_source = ${v3_v_string_literal(os.quoted_path(source_file))}\n\n'
+	out += 'fn live_reload_check() {\n\tlive_nm := os.file_last_mod_unix(live_source_file)\n\tif live_nm <= live_mtime { return }\n\tmut live_ok := true\n'
 	for m in live_mangled {
-		out += '\tlive_${m} = ${m}\n'
+		storage := m.bytes().hex()
+		out += '\tmut live_next_${storage} := voidptr(unsafe { nil })\n'
 	}
-	out += '\tlive_code_page = live_page_alloc()\n'
-	out += '\tif live_page_failed(live_code_page) {\n'
-	out += '\t\teprintln("[live] failed to allocate executable page; live reload disabled")\n'
-	out += '\t} else {\n'
-	out += '\t\tlive_code_pages << live_code_page\n'
-	out += '\t}\n'
-	out += '\tlive_mtime = os.file_last_mod_unix(live_source_file)\n'
-	out += '}\n\n'
-
-	out += 'fn live_reload_check() {\n'
-	out += '\tlive_nm := os.file_last_mod_unix(live_source_file)\n'
-	out += '\tif live_nm > live_mtime {\n'
-	out += '\t\tif live_page_failed(live_code_page) {\n'
-	out += '\t\t\tlive_code_page = live_page_alloc()\n'
-	out += '\t\t\tif live_page_failed(live_code_page) {\n'
-	out += '\t\t\t\teprintln("[live] failed to allocate executable page; will retry")\n'
-	out += '\t\t\t\treturn\n'
-	out += '\t\t\t}\n'
-	out += '\t\t\tlive_code_pages << live_code_page\n'
-	out += '\t\t\tlive_code_offset = 0\n'
-	out += '\t\t}\n'
-	out += '\t\tC.printf(c"[live] reloading...\\n")\n'
-	out += '\t\tC.fflush(unsafe { nil })\n'
-	out += '\t\tmut live_ok := true\n'
-	for idx, m in live_mangled {
-		bin := '/tmp/_hot_${m}.bin'
-		out += '\t\t{\n'
-		out += '\t\t\tcmd := "' + '$' + '{live_vexe} ' + '$' + '{live_opts} -hot-fn ' + m + ' -o ' + bin + ' ' + '$' + '{live_source_file}"\n'
-		out += '\t\t\tos.rm("' + bin + '") or {}\n'
-		out += '\t\t\tbuild_rc := C.system(cmd.str)\n'
-		out += '\t\t\tif build_rc != 0 {\n'
-		out += '\t\t\t\teprintln("[live] rebuild failed for ${m}")\n'
+	for m in live_mangled {
+		storage := m.bytes().hex()
+		out += '\t{\n'
+		out += '\t\tbin := "/tmp/_hot_' + '$' + '{C.getpid()}_${m}.bin"\n'
+		out += '\t\tcmd := "' + '$' + '{live_command_prefix} -hot-fn ${m} -o ' + '$' + '{bin} ' + '$' + '{live_quoted_source}"\n'
+		out += '\t\tC.remove(bin.str)\n'
+		out += '\t\tbuild_rc := C.system(cmd.str)\n'
+		out += '\t\tif build_rc != 0 {\n'
+		out += '\t\t\tC.puts(c"[live] rebuild failed for ${m}; will retry")\n'
+		out += '\t\t\tlive_ok = false\n'
+		out += '\t\t} else {\n'
+		out += '\t\t\tf := C.fopen(bin.str, c"rb")\n'
+		out += '\t\t\tif f == unsafe { nil } {\n'
 		out += '\t\t\t\tlive_ok = false\n'
 		out += '\t\t\t} else {\n'
-		out += '\t\t\t\tf := C.fopen(c"' + bin + '", c"rb")\n'
-		out += '\t\t\t\tif f == unsafe { nil } {\n'
-		out += '\t\t\t\t\teprintln("[live] missing output for ${m}")\n'
+		out += '\t\t\t\tC.fseek(f, 0, 2)\n'
+		out += '\t\t\t\tsz := C.ftell(f)\n'
+		out += '\t\t\t\tC.fseek(f, 0, 0)\n'
+		out += '\t\t\t\tif sz <= 0 || sz > 0x4000 {\n'
 		out += '\t\t\t\t\tlive_ok = false\n'
 		out += '\t\t\t\t} else {\n'
-		out += '\t\t\t\t\tC.fseek(f, 0, 2)\n'
-		out += '\t\t\t\t\tsz := int(C.ftell(f))\n'
-		out += '\t\t\t\t\tC.fseek(f, 0, 0)\n'
-		out += '\t\t\t\t\tif sz <= 0 || sz > 0x4000 {\n'
-		out += '\t\t\t\t\t\teprintln("[live] bad output size for ${m}")\n'
-		out += '\t\t\t\t\t\tC.fclose(f)\n'
+		out += '\t\t\t\t\tpage := live_page_alloc()\n'
+		out += '\t\t\t\t\tif live_page_failed(page) {\n'
+		out += '\t\t\t\t\t\tlive_ok = false\n'
+		out += '\t\t\t\t\t} else if C.fread(page, uint(1), uint(sz), f) != uint(sz) {\n'
+		out += '\t\t\t\t\t\tlive_page_free(page)\n'
+		out += '\t\t\t\t\t\tlive_ok = false\n'
+		out += '\t\t\t\t\t} else if !live_page_protect_rx(page) {\n'
+		out += '\t\t\t\t\t\tlive_page_free(page)\n'
 		out += '\t\t\t\t\t\tlive_ok = false\n'
 		out += '\t\t\t\t\t} else {\n'
-		out += '\t\t\tif live_code_offset + i64(sz) > i64(0x4000) {\n'
-		out += '\t\t\t\tnew_page := live_page_alloc()\n'
-		out += '\t\t\t\tif live_page_failed(new_page) {\n'
-		out += '\t\t\t\t\teprintln("[live] out of executable pages")\n'
-		out += '\t\t\t\t\tlive_ok = false\n'
-		out += '\t\t\t\t} else {\n'
-		out += '\t\t\t\t\tlive_code_page = new_page\n'
-		out += '\t\t\t\t\tlive_code_pages << new_page\n'
-		out += '\t\t\t\t\tlive_code_offset = 0\n'
-		out += '\t\t\t\t}\n'
-		out += '\t\t\t}\n'
-		out += '\t\t\tif !live_ok {\n'
-		out += '\t\t\t\tC.fclose(f)\n'
-		out += '\t\t\t} else if !live_page_protect_rw(live_code_page) {\n'
-		out += '\t\t\t\teprintln("[live] failed to protect page for ${m}")\n'
-		out += '\t\t\t\tC.fclose(f)\n'
-		out += '\t\t\t\tlive_ok = false\n'
-		out += '\t\t\t} else {\n'
-		out += '\t\t\t\tdest := voidptr(u64(live_code_page) + u64(live_code_offset))\n'
-		out += '\t\t\t\tnread := C.fread(dest, uint(1), uint(sz), f)\n'
-		out += '\t\t\t\tC.fclose(f)\n'
-		out += '\t\t\t\tif nread != uint(sz) {\n'
-		out += '\t\t\t\t\teprintln("[live] short read for ${m}")\n'
-		out += '\t\t\t\t\tlive_ok = false\n'
-		out += '\t\t\t\t} else if !live_page_protect_rx(live_code_page) {\n'
-		out += '\t\t\t\t\teprintln("[live] failed to protect page for ${m}")\n'
-		out += '\t\t\t\t\tlive_ok = false\n'
-		out += '\t\t\t\t} else {\n'
-		out += '\t\t\t\t\tlive_page_flush(live_code_page)\n'
-		out += '\t\t\t\t\tlive_${m} = LiveFn_${m}(dest)\n'
-		out += '\t\t\t\t\tlive_code_offset = live_code_offset + i64(sz)\n'
-		out += '\t\t\t\t}\n'
-		out += '\t\t\t}\n'
+		out += '\t\t\t\t\t\tlive_page_flush(page)\n'
+		out += '\t\t\t\t\t\tlive_next_${storage} = page\n'
 		out += '\t\t\t\t\t}\n'
 		out += '\t\t\t\t}\n'
+		out += '\t\t\t\tC.fclose(f)\n'
 		out += '\t\t\t}\n'
 		out += '\t\t}\n'
+		out += '\t\tC.remove(bin.str)\n'
+		out += '\t}\n'
 	}
-	out += '\t\tif live_ok {\n'
-	out += '\t\t\tlive_mtime = live_nm\n'
-	out += '\t\t} else {\n'
-	out += '\t\t\teprintln("[live] reload incomplete, will retry")\n'
-	out += '\t\t}\n'
-	out += '\t}\n'
-	out += '}\n'
+	out += '\tif live_ok {\n'
+	for m in live_mangled {
+		storage := m.bytes().hex()
+		// Publish only after every extraction succeeds; retained pages protect captured pointers.
+		out += '\t\tlive_code_pages << live_next_${storage}\n'
+		out += '\t\tlive_${storage} = LiveFn_${m}(live_next_${storage})\n'
+	}
+	out += '\t\tlive_mtime = live_nm\n\t} else {\n'
+	for m in live_mangled {
+		storage := m.bytes().hex()
+		out += '\t\tif live_next_${storage} != unsafe { nil } { live_page_free(live_next_${storage}) }\n'
+	}
+	out += '\t\tC.puts(c"[live] reload incomplete; will retry")\n\t}\n\tC.fflush(unsafe { nil })\n}\n'
 
 	return out
 }
@@ -241,6 +195,7 @@ fn v3_live_reload_os_shim(target_os string) string {
 	match target_os {
 		'macos' {
 			out += 'fn C.mmap(addr voidptr, len uint, prot int, flags int, fd int, offset i64) voidptr\n'
+			out += 'fn C.munmap(addr voidptr, len uint) int\n'
 			out += 'fn C.mprotect(addr voidptr, len uint, prot int) int\n'
 			out += 'fn C.sys_icache_invalidate(start voidptr, size uint)\n\n'
 			out += 'fn live_page_alloc() voidptr {\n'
@@ -248,6 +203,9 @@ fn v3_live_reload_os_shim(target_os string) string {
 			out += '}\n\n'
 			out += 'fn live_page_failed(p voidptr) bool {\n'
 			out += '\treturn p == unsafe { nil } || u64(p) == ~u64(0)\n'
+			out += '}\n\n'
+			out += 'fn live_page_free(p voidptr) {\n'
+			out += '\tC.munmap(p, uint(0x4000))\n'
 			out += '}\n\n'
 			out += 'fn live_page_protect_rw(p voidptr) bool {\n'
 			out += '\treturn C.mprotect(p, uint(0x4000), 3) == 0\n'
@@ -261,6 +219,7 @@ fn v3_live_reload_os_shim(target_os string) string {
 		}
 		'linux' {
 			out += 'fn C.mmap(addr voidptr, len uint, prot int, flags int, fd int, offset i64) voidptr\n'
+			out += 'fn C.munmap(addr voidptr, len uint) int\n'
 			out += 'fn C.mprotect(addr voidptr, len uint, prot int) int\n'
 			out += 'fn C.__clear_cache(start voidptr, end voidptr)\n\n'
 			out += 'fn live_page_alloc() voidptr {\n'
@@ -268,6 +227,9 @@ fn v3_live_reload_os_shim(target_os string) string {
 			out += '}\n\n'
 			out += 'fn live_page_failed(p voidptr) bool {\n'
 			out += '\treturn p == unsafe { nil } || u64(p) == ~u64(0)\n'
+			out += '}\n\n'
+			out += 'fn live_page_free(p voidptr) {\n'
+			out += '\tC.munmap(p, uint(0x4000))\n'
 			out += '}\n\n'
 			out += 'fn live_page_protect_rw(p voidptr) bool {\n'
 			out += '\treturn C.mprotect(p, uint(0x4000), 3) == 0\n'
@@ -280,7 +242,9 @@ fn v3_live_reload_os_shim(target_os string) string {
 			out += '}\n'
 		}
 		'windows' {
+			out += 'fn live_page_free(p voidptr) { C.VirtualFree(p, uint(0), uint(0x8000)) }\n'
 			out += 'fn C.VirtualAlloc(addr voidptr, len uint, typ uint, prot uint) voidptr\n'
+			out += 'fn C.VirtualFree(addr voidptr, len uint, typ uint) bool\n'
 			out += 'fn C.VirtualProtect(addr voidptr, len uint, new_prot uint, old_prot &uint) bool\n'
 			out += 'fn C.FlushInstructionCache(proc voidptr, addr voidptr, size uint)\n'
 			out += 'fn C.GetCurrentProcess() voidptr\n\n'
@@ -303,6 +267,7 @@ fn v3_live_reload_os_shim(target_os string) string {
 			out += '}\n'
 		}
 		else {
+			out += 'fn live_page_free(p voidptr) {}\n'
 			out += 'fn live_page_alloc() voidptr {\n'
 			out += '\treturn unsafe { nil }\n'
 			out += '}\n\n'

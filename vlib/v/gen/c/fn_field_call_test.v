@@ -24,7 +24,7 @@ fn fn_field_call_test_output(pointer_storage bool, pointer_type bool, pointer_fi
 	} else {
 		callback_type
 	}
-	tc.structs['FnFieldHolder'] = [types.StructField{
+	tc.structs[flat.source_type_id('FnFieldHolder')] = [types.StructField{
 		name: 'callback'
 		typ:  field_type
 	}]

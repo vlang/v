@@ -58,3 +58,15 @@ fn test_extract_function_accepts_recursive_call() {
 	code := g.extract_function('foo')
 	assert code == [u8(0x00), 0x00, 0x00, 0x94]
 }
+
+fn test_extract_function_rejects_conditional_and_literal_references_outside_function() {
+	for instruction in [u32(0x54000040), u32(0x34000040), u32(0x36000040), u32(0x58000040)] {
+		mut m := ssa.Module.new()
+		mut g := Gen.new(m)
+		g.macho.text_data = [u8(instruction), u8(instruction >> 8), u8(instruction >> 16),
+			u8(instruction >> 24), 0xC0, 0x03, 0x5F, 0xD6]
+		g.macho.add_symbol('_foo', 0, false, 1)
+		g.macho.add_symbol('_bar', 4, false, 1)
+		assert g.extract_function('foo').len == 0
+	}
+}

@@ -76,3 +76,58 @@ pub fn two() Builder { return new_builder(2) }
 	imports := header.split_into_lines().filter(it.starts_with('import '))
 	assert imports == ['import strings { new_builder }', 'import strings as s { Builder }'], header
 }
+
+fn test_header_preserves_first_nominal_declarations_across_files() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_nominal_dedup_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	first := os.join_path(root, 'first.v')
+	second := os.join_path(root, 'second.v')
+	os.write_file(first, 'module joined
+pub struct Record { first_field int }
+pub enum Choice { first_choice }
+pub type Number = int
+pub interface Reader { first_method() int }
+')!
+	os.write_file(second, 'module joined
+pub struct Record { second_field string }
+pub enum Choice { second_choice }
+pub type Number = string
+pub interface Reader { second_method() string }
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([first, second])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	tc := types.TypeChecker.new(a)
+	header := module_header_with_const_order(a, &tc, 'joined', root, map[string]string{}, []string{})
+	for declaration in ['struct Record', 'enum Choice', 'type Number', 'interface Reader'] {
+		assert header.count(declaration) == 1, header
+	}
+	assert header.contains('first_field int'), header
+	assert header.contains('first_choice'), header
+	assert header.contains('type Number = int'), header
+	assert header.contains('first_method() int'), header
+	assert !header.contains('second_'), header
+	assert !header.contains('type Number = string'), header
+	struct_pos := header.index('struct Record') or { panic(header) }
+	enum_pos := header.index('enum Choice') or { panic(header) }
+	type_pos := header.index('type Number') or { panic(header) }
+	interface_pos := header.index('interface Reader') or { panic(header) }
+	assert struct_pos < enum_pos && enum_pos < type_pos && type_pos < interface_pos, header
+}
+
+fn test_nominal_declaration_keys_preserve_kind_and_exact_name() {
+	mut seen := map[u64]bool{}
+	for kind in [flat.NodeKind.struct_decl, .enum_decl, .type_decl, .interface_decl] {
+		for name in ['', 'Shared', 'other.Shared'] {
+			node := flat.Node{ kind: kind, value: name }
+			key := nominal_decl_key(node)
+			assert key != 0
+			assert key !in seen
+			seen[key] = true
+			assert nominal_decl_key(flat.Node{ kind: kind, value: name.clone() }) == key
+		}
+	}
+	assert nominal_decl_key(flat.Node{ kind: .fn_decl, value: 'Shared' }) == 0
+	assert nominal_decl_key(flat.Node{ kind: .import_decl, value: 'Shared' }) == 0
+}

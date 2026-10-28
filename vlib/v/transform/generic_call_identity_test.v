@@ -89,8 +89,8 @@ fn test_rewritten_generic_call_keeps_caller_type_in_foreign_scan() {
 	}
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Context'] = StructInfo{ name: flat.source_type_id('Context'), module: 'main' }
-	t.structs['callee.Context'] = StructInfo{ name: flat.source_type_id('Context'), module: 'callee' }
+	t.structs[flat.source_type_id('Context')] = StructInfo{ name: flat.source_type_id('Context'), module: 'main' }
+	t.structs[flat.source_type_id('callee.Context')] = StructInfo{ name: flat.source_type_id('Context'), module: 'callee' }
 	t.cur_module = 'callee'
 	t.cur_file = 'callee.v'
 	t.ensure_node_context_map_capacity()

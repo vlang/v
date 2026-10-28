@@ -54,8 +54,8 @@ fn test_used_name_probes_preserve_spellings_overlays_and_log_order() {
 				fast.cur_module = module_name
 				slow.used_fns_log_active = logging
 				fast.used_fns_log_active = logging
-				slow.enum_types['Color'] = ['red', 'blue']
-				fast.enum_types['Color'] = ['red', 'blue']
+				slow.enum_types[flat.source_type_id('Color')] = ['red', 'blue']
+				fast.enum_types[flat.source_type_id('Color')] = ['red', 'blue']
 				for name in ['', 'helper', 'demo.call', 'malloc', 'int_str', 'exit', 'Color.red',
 					'Color.method', 'word__value', 'Box.+', 'helper'] {
 					used_name_reference(mut slow, name)

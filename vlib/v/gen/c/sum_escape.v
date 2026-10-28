@@ -37,7 +37,7 @@ fn (mut g FlatGen) gen_sum_pointer_replacement(node &flat.Node) bool {
 	g.gen_expr(rhs)
 	g.writeln(';')
 	g.writeln('bool ${same} = false;')
-	for variant in g.tc.sum_types.type_ids(sum.name()) or { []u32{} } {
+	for variant in g.tc.sum_types.type_ids(sum.source_type_id()) or { []u32{} } {
 		if unalias_type(g.tc.parse_canonical_type(variant)) !is types.Pointer { continue }
 		field := sum_field_name(flat.source_type_name(variant))
 		tag := g.sum_type_index(sum.name_id, variant)
@@ -105,7 +105,7 @@ fn (mut g FlatGen) gen_sum_local_transfer_return(node flat.Node, id flat.NodeId)
 			} else {
 				cname
 			}
-			for variant in g.tc.sum_types.type_ids(clean_source.name()) or { []u32{} } {
+			for variant in g.tc.sum_types.type_ids(clean_source.source_type_id()) or { []u32{} } {
 				pointer := unalias_type(g.tc.parse_canonical_type(variant))
 				if pointer !is types.Pointer { continue }
 				returned_variant := g.sum_variant_for_actual(sum.name_id, g.tc.parse_canonical_type(variant)) or { continue }

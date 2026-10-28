@@ -1,7 +1,6 @@
 module arm64
 
 import os
-import v.cmdexec
 
 // ELF64 constants for AArch64 relocatable objects.
 const ei_mag0 = 0x7f
@@ -40,7 +39,7 @@ const r_aarch64_ld64_got_lo12_nc = 312
 
 // write_elf serializes the already-generated Mach-O object data as an ELF64
 // relocatable object, so the ARM64 backend can target Linux/AArch64.
-pub fn (mut m MachOObject) write_elf(path string) {
+pub fn (mut m MachOObject) write_elf(path string) ! {
 	mut buf := []u8{}
 	mut shstr := [u8(0)]
 
@@ -75,105 +74,10 @@ pub fn (mut m MachOObject) write_elf(path string) {
 	mut elf_name_off := []int{len: m.symbols.len + 1}
 	elf_name_off[0] = 0
 
-	ehdr_size := 64
-	shdr_size := 64
-	num_sections := 9
-
-	mut off := ehdr_size
-
-	if off % 16 != 0 {
-		off += 16 - (off % 16)
-	}
-	off_text := off
-	off += m.text_data.len
-
-	if off % 8 != 0 {
-		off += 8 - (off % 8)
-	}
-	off_data := off
-	off += m.data_data.len
-
-	if off % 4 != 0 {
-		off += 4 - (off % 4)
-	}
-	off_rodata := off
-	off += m.str_data.len
-
-	if off % 8 != 0 {
-		off += 8 - (off % 8)
-	}
-	off_symtab := off
-	size_symtab := (m.symbols.len + 1) * 24
-	off += size_symtab
-
-	off_strtab := off
-	off += m.str_table.len + 1
-
-	if off % 8 != 0 {
-		off += 8 - (off % 8)
-	}
-	off_rela_text := off
-	size_rela_text := m.relocs.len * 24
-	off += size_rela_text
-
-	off_shstrtab := off
-	off += shstr.len
-
-	if off % 8 != 0 {
-		off += 8 - (off % 8)
-	}
-	off_shdrs_calc := off
-
-	// ELF header
-	buf << u8(ei_mag0)
-	buf << u8(ei_mag1)
-	buf << u8(ei_mag2)
-	buf << u8(ei_mag3)
-	buf << u8(elfclass64)
-	buf << u8(elfdata2lsb)
-	buf << u8(ev_current)
-	buf << u8(0)
-	for _ in 0 .. 8 {
-		buf << 0
-	}
-	write_u16_le(mut buf, et_rel)
-	write_u16_le(mut buf, em_aarch64)
-	write_u32_le(mut buf, ev_current)
-	write_u64_le(mut buf, 0)
-	write_u64_le(mut buf, 0)
-	write_u64_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-	write_u16_le(mut buf, u16(ehdr_size))
-	write_u16_le(mut buf, 0)
-	write_u16_le(mut buf, 0)
-	write_u16_le(mut buf, u16(shdr_size))
-	write_u16_le(mut buf, u16(num_sections))
-	write_u16_le(mut buf, 7) // shstrtab index
-
-	// Pad to text offset
-	for buf.len < off_text {
-		buf << 0
-	}
-
-	// .text
-	buf << m.text_data
-
-	// .data
-	for buf.len < off_data {
-		buf << 0
-	}
-	buf << m.data_data
-
-	// .rodata
-	for buf.len < off_rodata {
-		buf << 0
-	}
-	buf << m.str_data
-
 	mut local_indices := []int{}
 	mut global_indices := []int{}
 	for i, sym in m.symbols {
-		bind := u8(stb_global)
+		bind := if sym.type_ & 1 == 0 { u8(stb_local) } else { u8(stb_global) }
 		if bind == stb_global {
 			global_indices << i
 		} else {
@@ -238,6 +142,100 @@ pub fn (mut m MachOObject) write_elf(path string) {
 
 	first_global := local_indices.len + 1
 
+	ehdr_size := 64
+	shdr_size := 64
+	num_sections := 9
+
+	mut off := ehdr_size
+
+	if off % 16 != 0 {
+		off += 16 - (off % 16)
+	}
+	off_text := off
+	off += m.text_data.len
+
+	if off % 8 != 0 {
+		off += 8 - (off % 8)
+	}
+	off_data := off
+	off += m.data_data.len
+
+	if off % 4 != 0 {
+		off += 4 - (off % 4)
+	}
+	off_rodata := off
+	off += m.str_data.len
+
+	if off % 8 != 0 {
+		off += 8 - (off % 8)
+	}
+	off_symtab := off
+	size_symtab := (m.symbols.len + 1) * 24
+	off += size_symtab
+
+	off_strtab := off
+	off += elf_strtab.len
+
+	if off % 8 != 0 {
+		off += 8 - (off % 8)
+	}
+	off_rela_text := off
+	size_rela_text := m.relocs.len * 24
+	off += size_rela_text
+
+	off_shstrtab := off
+	off += shstr.len
+
+	if off % 8 != 0 {
+		off += 8 - (off % 8)
+	}
+
+	// ELF header
+	buf << u8(ei_mag0)
+	buf << u8(ei_mag1)
+	buf << u8(ei_mag2)
+	buf << u8(ei_mag3)
+	buf << u8(elfclass64)
+	buf << u8(elfdata2lsb)
+	buf << u8(ev_current)
+	buf << u8(0)
+	for _ in 0 .. 8 {
+		buf << 0
+	}
+	write_u16_le(mut buf, et_rel)
+	write_u16_le(mut buf, em_aarch64)
+	write_u32_le(mut buf, ev_current)
+	write_u64_le(mut buf, 0)
+	write_u64_le(mut buf, 0)
+	write_u64_le(mut buf, 0)
+	write_u32_le(mut buf, 0)
+	write_u16_le(mut buf, u16(ehdr_size))
+	write_u16_le(mut buf, 0)
+	write_u16_le(mut buf, 0)
+	write_u16_le(mut buf, u16(shdr_size))
+	write_u16_le(mut buf, u16(num_sections))
+	write_u16_le(mut buf, 7) // shstrtab index
+
+	// Pad to text offset
+	for buf.len < off_text {
+		buf << 0
+	}
+
+	// .text
+	buf << m.text_data
+
+	// .data
+	for buf.len < off_data {
+		buf << 0
+	}
+	buf << m.data_data
+
+	// .rodata
+	for buf.len < off_rodata {
+		buf << 0
+	}
+	buf << m.str_data
+
 	// .symtab
 	for buf.len < off_symtab {
 		buf << 0
@@ -248,7 +246,7 @@ pub fn (mut m MachOObject) write_elf(path string) {
 	}
 	for _, old_i in local_indices {
 		sym := m.symbols[old_i]
-		bind := stb_global
+		bind := stb_local
 		mut typ := stt_notype
 		mut shndx := u16(0)
 		if sym.type_ == 0x01 {
@@ -315,7 +313,7 @@ pub fn (mut m MachOObject) write_elf(path string) {
 			4 { reloc_type = r_aarch64_add_abs_lo12_nc }
 			5 { reloc_type = r_aarch64_adr_got_page }
 			6 { reloc_type = r_aarch64_ld64_got_lo12_nc }
-			else { reloc_type = 0 }
+			else { return error('unsupported AArch64 ELF relocation ${reloc.type_}') }
 		}
 		info := (u64(index_map[reloc.sym_idx]) << 32) | reloc_type
 		write_u64_le(mut buf, u64(reloc.addr))
@@ -394,7 +392,7 @@ pub fn (mut m MachOObject) write_elf(path string) {
 	write_u64_le(mut buf, 0)
 	write_u64_le(mut buf, 0)
 	write_u64_le(mut buf, u64(off_strtab))
-	write_u64_le(mut buf, u64(m.str_table.len))
+	write_u64_le(mut buf, u64(elf_strtab.len))
 	write_u32_le(mut buf, 0)
 	write_u32_le(mut buf, 0)
 	write_u64_le(mut buf, 1)
@@ -433,18 +431,15 @@ pub fn (mut m MachOObject) write_elf(path string) {
 	write_u64_le(mut buf, 1)
 	write_u64_le(mut buf, 0)
 
-	os.write_file_array(path, buf) or { panic(err) }
+	os.write_file_array(path, buf)!
 }
 
 fn write_i64_le(mut b []u8, v i64) {
 	u := u64(v)
 	write_u64_le(mut b, u)
 }
-PYimport v.cmdexec
 
-pub fn (mut g Gen) write_and_link_linux(output string) {
-	object := output + '.o'
-	g.macho.write_elf(object)
-	// Leave the object for manual linking in WSL during bring-up.
-	println('arm64 linux object written: ' + object)
+// write_elf writes the generated ARM64 code as an experimental Linux object.
+pub fn (mut g Gen) write_elf(path string) ! {
+	g.macho.write_elf(path)!
 }

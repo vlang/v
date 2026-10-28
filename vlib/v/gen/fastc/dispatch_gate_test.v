@@ -86,7 +86,7 @@ fn test_expression_dispatch_gate_synthetic_typed_receiver_without_call_tokens_is
 		struct_field_info:   fields
 		struct_field_lookup: fastc_build_struct_field_lookup(fields)
 		declared_kinds:      {
-			'Payload': .struct_
+			flat.source_type_id('Payload'): .struct_
 		}
 	}
 	tokens := [

@@ -1742,6 +1742,9 @@ the parent array or the resulting slice is mutable, V inserts an implicit
 affecting the other. If both arrays are immutable, the slice safely reuses the
 parent array's memory without cloning. The shared-memory examples below
 therefore use `unsafe {}` intentionally.
+Printing or interpolating the parent array shows changes made through such a shared slice.
+Formatting such a mutated array with `-b wasm` currently reports an unsupported
+runtime-formatting error.
 
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
@@ -5808,6 +5811,10 @@ Currently generic function definitions must declare their type parameters, but i
 future versions, V will infer generic type parameters from single-letter type names in
 runtime parameter types. This is why the `find_by_id(1)` calls above can omit `[T]`,
 because the receiver argument `r` in the method declaration, uses a generic type `T`.
+
+A generic function can be specialized as a function value, such as `f := identity[int]`.
+Fixed-array lengths in its parameters, including C constants such as `[C.N]int`, do not
+add generic type parameters.
 
 Receiver inference also works across module imports and aliases. Declared receiver types
 are resolved in the module that defines the method, so a caller type with the same name
@@ -11714,7 +11721,10 @@ Right now it's not possible to modify types while the program is running.
 On macOS ARM64, `@[live]` functions can also be reloaded by patching
 the running binary instead of loading a shared library. Build with
 `-b arm64`; calls to `@[live]` functions go through a pointer that
-the reloader updates with freshly compiled machine code:
+the reloader updates with freshly compiled machine code. Reload checks run in
+loops in `main`; changes are installed before the next iteration. Published code
+pages remain executable so saved function pointers continue to work. Failed
+rebuilds keep the old function and are retried on the next check.
 
 ```bash
 v -b arm64 run native_counter.v
@@ -11732,6 +11742,10 @@ extract time instead of emitting silently broken machine code.
 `examples/hot_reload/message.v` is therefore not supported by the native
 path (its live function calls other functions and prints strings); it
 remains an example for the C shared-library workflow.
+
+Linux ARM64 output is experimental and currently supports relocatable objects
+only (`v -b arm64 -os linux -o program.o program.v`). Executable linking and
+native live reloading on Linux are not yet supported.
 
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
