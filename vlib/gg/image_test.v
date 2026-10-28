@@ -37,6 +37,31 @@ fn test_remove_cached_images_by_id_keeps_other_ids_valid() {
 	assert ctx.get_cached_image_by_idx(curr.id).ok == false
 }
 
+fn test_remove_cached_image_by_idx_preserves_slot_id() {
+	mut ctx := gg.new_context(width: 100)
+	first := gg.Image{
+		ok: true
+	}
+	second := gg.Image{
+		ok: true
+	}
+	ctx.cache_image(first)
+	second_idx := ctx.cache_image(second)
+	ctx.remove_cached_image_by_idx(second_idx)
+	slot := ctx.get_cached_image_by_idx(second_idx)
+	assert slot.ok == false
+	assert slot.id == second_idx
+}
+
+fn test_get_cached_image_by_idx_returns_fresh_placeholder() {
+	mut ctx := gg.new_context(width: 100)
+	mut a := ctx.get_cached_image_by_idx(-1)
+	assert a.ok == false
+	a.ok = true // must not corrupt shared state
+	b := ctx.get_cached_image_by_idx(-1)
+	assert b.ok == false
+}
+
 fn test_new_context_sets_borderless_window_flag() {
 	ctx := gg.new_context(
 		width:             100

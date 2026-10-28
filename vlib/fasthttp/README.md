@@ -28,7 +28,8 @@ response bytes with a small, explicit API, and is the parallel backend used by
 - **Takeover**: hand a connection off to your own code (SSE / WebSocket) or write
   the response yourself and keep the connection alive.
 - **Zero-copy file bodies**: return a `file_path` and the body is streamed with
-  `sendfile(2)`.
+  `sendfile(2)`. Linux file streaming suppresses SIGPIPE from disconnected clients
+  without changing the application's signal handler or the worker's signal mask.
 - **Graceful shutdown**: drain in-flight responses, then stop.
 
 Linux workers collect up to 256 epoll events per wait. Each worker reserves only that many

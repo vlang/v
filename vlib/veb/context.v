@@ -63,6 +63,14 @@ mut:
 	// requests a middleware refuses skip the after-middleware, so an
 	// after-middleware could not free them reliably.
 	throttle_leases []ThrottleLease
+	// Deferred response state, armed by `Context.after`: `deferred_cb` runs no
+	// sooner than `deferred_ms` milliseconds after the handler returns, with
+	// `deferred_arg`. `handle_request_and_route` spawns the timer thread once
+	// the handled context is preserved on the heap.
+	deferred     bool
+	deferred_ms  int
+	deferred_arg u64
+	deferred_cb  AfterCallback = unsafe { nil }
 	// trusted_proxies are the socket peer addresses whose forwarding headers
 	// `ip()` may believe. The framework copies this from a `trusted_proxies`
 	// field on the app struct into every request context; an app that does not
@@ -260,8 +268,24 @@ pub fn (mut ctx Context) file(file_path string) Result {
 		}
 	}
 	if content_type.len == 0 {
-		eprintln('[veb] no MIME type found for extension "${ext}"')
-		return ctx.server_error('')
+		// Unknown extension: sniff the content instead of failing, so
+		// extension-less downloads and captures still serve. Known types
+		// always win; sniffed output is never relabelled afterwards.
+		mut f := os.open(file_path) or {
+			eprintln('[veb] error while trying to open file: ${err.msg()}')
+			return ctx.server_error('could not open resource')
+		}
+		defer {
+			f.close()
+		}
+		// Include up to three continuation bytes for a UTF-8 sequence crossing byte 512.
+		mut head := []u8{len: 515}
+		n := f.read(mut head) or { 0 }
+		content_type = if n > 0 {
+			http.detect_content_type(head[..n])
+		} else {
+			'text/plain; charset=utf-8'
+		}
 	}
 	return ctx.send_file(content_type, file_path)
 }
@@ -283,9 +307,9 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	}
 	file.close()
 	// Check which encodings the client accepts
-	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
-	client_accepts_zstd := accept_encoding.contains('zstd')
-	client_accepts_gzip := accept_encoding.contains('gzip')
+	accept_encoding := ctx.req.header.values(.accept_encoding).join(',')
+	client_accepts_zstd := client_accepts_encoding(accept_encoding, 'zstd')
+	client_accepts_gzip := client_accepts_encoding(accept_encoding, 'gzip')
 	max_size_bytes := ctx.static_compression_max_size
 	should_use_static_compression := ctx.should_use_static_compression_for_mime(content_type)
 	// Determine which compression modes are enabled

@@ -392,6 +392,15 @@ see also `v help build`.
       can be called to get detection results. This function is a no-op
       when `-gc boehm_leak` is not supplied.
 
+      On Linux and macOS, V's bundled source copy of Boehm (used for example by
+      `-prod` with gcc or clang, and by `-d use_bundled_libgc`) is compiled with
+      HANDLE_FORK, as the prebuilt library of default TCC builds on Linux amd64
+      and macOS is. A child process that calls fork() without exec() from a
+      multi-threaded program can then allocate and collect garbage. HANDLE_FORK
+      is left out with `-d no_gc_threads`, and with TCC on 32-bit ARM. A
+      system libgc selected with `-d dynamic_boehm` keeps the setting it was
+      built with.
+
       Use `-gc none` to completely disable the garbage collector, in case of
       wanting to handle memory manually, or strictly using `-autofree`.
 

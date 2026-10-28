@@ -55,16 +55,25 @@ pub fn (ctx &Context) draw_pixels(points []f32, c Color, params DrawPixelConfig)
 pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			// Make the line more clear on hi dpi screens: draw a rectangle
-			// TODO this is broken if the line's x1 != x2
-			mut width := math.abs(x2 - x)
-			mut height := math.abs(y2 - y)
-			if width == 0 {
-				width = 1
-			} else if height == 0 {
-				height = 1
+			// Make horizontal/vertical lines more clear on hi dpi screens
+			// by drawing a rectangle. Diagonals use the same native surface.
+			if x == x2 || y == y2 {
+				// Normalize the origin, so the rect covers the segment
+				// regardless of the order of the points.
+				rx := if x < x2 { x } else { x2 }
+				ry := if y < y2 { y } else { y2 }
+				mut width := math.abs(x2 - x)
+				mut height := math.abs(y2 - y)
+				if width == 0 {
+					width = 1
+				} else if height == 0 {
+					height = 1
+				}
+				ctx.draw_rect_filled(rx, ry, f32(width), f32(height), c)
+				return
 			}
-			ctx.draw_rect_filled(x, y, f32(width), f32(height), c)
+			darwin_stroke_line(current_cg_context(), x, ctx.height - y, x2, ctx.height - y2,
+				c)
 			return
 		}
 	}
@@ -81,10 +90,12 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c Color) {
 }
 
 // draw_line_with_config draws a line between the points `x,y` and `x2,y2` using `PenConfig`.
+// Coordinates, thickness and dash spacing are in logical pixels.
 pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config PenConfig) {
 	if config.color.a != 255 {
 		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
+	ctx.r.c4b(config.color.r, config.color.g, config.color.b, config.color.a)
 
 	if config.thickness <= 0 {
 		return
@@ -97,36 +108,44 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 
 	dx := nx2 - nx
 	dy := ny2 - ny
-	length := math.sqrtf(math.powf(x2 - x, 2) + math.powf(y2 - y, 2))
+	// length and thickness are in device space: the matrix below already
+	// holds the scaled translation+rotation, so the rects are emitted at
+	// the origin without applying ctx.scale a second time.
+	length := math.sqrtf(dx * dx + dy * dy)
+	thickness := config.thickness * ctx.scale
 	theta := f32(math.atan2(dy, dx))
 
 	ctx.r.push_matrix()
 
 	ctx.r.translate(nx, ny, 0)
 	ctx.r.rotate(theta, 0, 0, 1)
-	ctx.r.translate(-nx, -ny, 0)
 
+	ctx.r.begin_quads()
 	if config.line_type == .solid {
-		ctx.draw_rect_filled(x, y, length, config.thickness, config.color)
+		ctx.r.v2f(0, 0)
+		ctx.r.v2f(length, 0)
+		ctx.r.v2f(length, thickness)
+		ctx.r.v2f(0, thickness)
 	} else {
-		size := if config.line_type == .dotted { config.thickness } else { config.thickness * 3 }
-		space := if size == 1 { 2 } else { size }
+		logical_size := if config.line_type == .dotted {
+			config.thickness
+		} else {
+			config.thickness * 3
+		}
+		size := logical_size * ctx.scale
+		space := (if logical_size == 1 { f32(2) } else { logical_size }) * ctx.scale
+		mut start_x := f32(0)
 
-		mut available := length
-		mut start_x := x
-
-		for i := 0; available > 0; i++ {
-			if i % 2 == 0 {
-				ctx.draw_rect_filled(start_x, y, size, config.thickness, config.color)
-				available -= size
-				start_x += size
-				continue
-			}
-
-			available -= space
-			start_x += space
+		for start_x < length {
+			end_x := math.min(start_x + size, length)
+			ctx.r.v2f(start_x, 0)
+			ctx.r.v2f(end_x, 0)
+			ctx.r.v2f(end_x, thickness)
+			ctx.r.v2f(start_x, thickness)
+			start_x += size + space
 		}
 	}
+	ctx.r.end()
 
 	ctx.r.pop_matrix()
 }
@@ -173,7 +192,8 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c Color) {
 		x := points[i * 2] * ctx.scale
 		y := points[i * 2 + 1] * ctx.scale
 		ctx.r.v2f(x, y)
-		if i & 0 == 0 {
+		// Re-emit the shared first vertex on even steps to continue the strip.
+		if i % 2 == 0 {
 			ctx.r.v2f(x0, y0)
 		}
 	}
@@ -925,7 +945,7 @@ pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c Color) {
 
 // The table here is derived by looking at the result of vlib/gg/testdata/tweak_circles.vv
 // and then choosing the most circle-ish drawing with the minimum number of segments.
-const small_circle_segments = [0, 2, 4, 6, 6, 8, 8, 13, 10, 18, 12, 12, 10, 13, 16, 15, 16]!
+const small_circle_segments = [0, 2, 4, 6, 6, 8, 8, 10, 13, 18, 12, 12, 10, 13, 16, 15, 16]!
 
 @[direct_array_access]
 fn radius_to_segments(r f32) int {
@@ -962,6 +982,10 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 	mut xx := f32(0)
 	mut yy := f32(0)
 	segments := radius_to_segments(radius * ctx.scale)
+	if segments <= 0 {
+		// Nothing to emit: avoids a division by zero in the loop below.
+		return
+	}
 
 	ctx.r.begin_line_strip()
 	for i := 0; i < segments + 1; i++ {
@@ -1149,7 +1173,7 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 // `end_angle` is the angle in radians at which the arc ends.
 // `segments` affects how smooth/round the arc is.
 // `c` is the color of the arc/outline.
-pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int,
+pub fn (ctx &Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int,
 	c Color) {
 	if segments <= 0 || radius < 0 {
 		return
@@ -1325,15 +1349,19 @@ pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c Color) 
 	}
 	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nrw := rw * ctx.scale
+	nrh := rh * ctx.scale
 	ctx.r.begin_line_strip()
 	for i := 0; i < 360; i += 10 {
-		ctx.r.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
+		ctx.r.v2f(nx + math.sinf(f32(math.radians(i))) * nrw, ny + math.cosf(f32(math.radians(i))) * nrh)
 	}
-	ctx.r.v2f(x, y + rh)
+	ctx.r.v2f(nx, ny + nrh)
 	ctx.r.end()
 }
 
-// draw_ellipse_empty draws the outline of an ellipse.
+// draw_ellipse_thick draws the outline of an ellipse.
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
 // `rh` defines the *height* radius of the ellipse.
@@ -1345,16 +1373,21 @@ pub fn (ctx &Context) draw_ellipse_thick(x f32, y f32, rw f32, rh f32, th f32, c
 	}
 	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nrw := rw * ctx.scale
+	nrh := rh * ctx.scale
+	nth := th * ctx.scale
 	ctx.r.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
 		xfactor := math.sinf(f32(math.radians(i)))
 		yfactor := math.cosf(f32(math.radians(i)))
 
-		ctx.r.v2f(x + xfactor * (rw - th / 2), y + yfactor * (rh - th / 2))
-		ctx.r.v2f(x + xfactor * (rw + th / 2), y + yfactor * (rh + th / 2))
+		ctx.r.v2f(nx + xfactor * (nrw - nth / 2), ny + yfactor * (nrh - nth / 2))
+		ctx.r.v2f(nx + xfactor * (nrw + nth / 2), ny + yfactor * (nrh + nth / 2))
 	}
-	ctx.r.v2f(x, y + (rh - th / 2))
-	ctx.r.v2f(x, y + (rh + th / 2))
+	ctx.r.v2f(nx, ny + (nrh - nth / 2))
+	ctx.r.v2f(nx, ny + (nrh + nth / 2))
 	ctx.r.end()
 }
 
@@ -1369,12 +1402,16 @@ pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c Color)
 	}
 	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nrw := rw * ctx.scale
+	nrh := rh * ctx.scale
 	ctx.r.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
-		ctx.r.v2f(x, y)
-		ctx.r.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
+		ctx.r.v2f(nx, ny)
+		ctx.r.v2f(nx + math.sinf(f32(math.radians(i))) * nrw, ny + math.cosf(f32(math.radians(i))) * nrh)
 	}
-	ctx.r.v2f(x, y + rh)
+	ctx.r.v2f(nx, ny + nrh)
 	ctx.r.end()
 }
 
@@ -1390,21 +1427,25 @@ pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, ro
 	}
 	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nrw := rw * ctx.scale
+	nrh := rh * ctx.scale
 	cos_rot := math.cosf(rota)
 	sin_rot := math.sinf(rota)
 	ctx.r.begin_line_strip()
 	for i := 0; i < 360; i += 10 {
-		x_current := math.sinf(f32(math.radians(i))) * rw
-		y_current := math.cosf(f32(math.radians(i))) * rh
+		x_current := math.sinf(f32(math.radians(i))) * nrw
+		y_current := math.cosf(f32(math.radians(i))) * nrh
 
-		ctx.r.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
+		ctx.r.v2f(nx + x_current * cos_rot - y_current * sin_rot, ny + x_current * sin_rot +
 			y_current * cos_rot)
 	}
-	ctx.r.v2f(x - rh * sin_rot, y + rh * cos_rot)
+	ctx.r.v2f(nx - nrh * sin_rot, ny + nrh * cos_rot)
 	ctx.r.end()
 }
 
-// draw_ellipse_empty draws the outline of an ellipse.
+// draw_ellipse_thick_rotate draws the outline of an ellipse.
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
 // `rh` defines the *height* radius of the ellipse.
@@ -1417,6 +1458,11 @@ pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th
 	}
 	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nrw := rw * ctx.scale
+	nrh := rh * ctx.scale
+	nth := th * ctx.scale
 	cos_rot := math.cosf(rota)
 	sin_rot := math.sinf(rota)
 	ctx.r.begin_triangle_strip()
@@ -1424,17 +1470,17 @@ pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th
 		xfactor := math.sinf(f32(math.radians(i)))
 		yfactor := math.cosf(f32(math.radians(i)))
 
-		ctx.r.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot, y +
-			yfactor * (rh - th / 2) * cos_rot + xfactor * (rw - th / 2) * sin_rot)
-		ctx.r.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot, y +
-			yfactor * (rh + th / 2) * cos_rot + xfactor * (rw + th / 2) * sin_rot)
+		ctx.r.v2f(nx + xfactor * (nrw - nth / 2) * cos_rot - yfactor * (nrh - nth / 2) * sin_rot, ny +
+			yfactor * (nrh - nth / 2) * cos_rot + xfactor * (nrw - nth / 2) * sin_rot)
+		ctx.r.v2f(nx + xfactor * (nrw + nth / 2) * cos_rot - yfactor * (nrh + nth / 2) * sin_rot, ny +
+			yfactor * (nrh + nth / 2) * cos_rot + xfactor * (nrw + nth / 2) * sin_rot)
 	}
-	ctx.r.v2f(x - (rh - th / 2) * sin_rot, y + (rh - th / 2) * cos_rot)
-	ctx.r.v2f(x - (rh + th / 2) * sin_rot, y + (rh + th / 2) * cos_rot)
+	ctx.r.v2f(nx - (nrh - nth / 2) * sin_rot, ny + (nrh - nth / 2) * cos_rot)
+	ctx.r.v2f(nx - (nrh + nth / 2) * sin_rot, ny + (nrh + nth / 2) * cos_rot)
 	ctx.r.end()
 }
 
-// draw_ellipse_filled draws an opaque ellipse.
+// draw_ellipse_filled_rotate draws an opaque rotated ellipse.
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
 // `rh` defines the *height* radius of the ellipse.
@@ -1446,17 +1492,21 @@ pub fn (ctx &Context) draw_ellipse_filled_rotate(x f32, y f32, rw f32, rh f32, r
 	}
 	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nrw := rw * ctx.scale
+	nrh := rh * ctx.scale
 	cos_rot := math.cosf(rota)
 	sin_rot := math.sinf(rota)
 	ctx.r.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
-		ctx.r.v2f(x, y)
-		x_current := math.sinf(f32(math.radians(i))) * rw
-		y_current := math.cosf(f32(math.radians(i))) * rh
-		ctx.r.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
+		ctx.r.v2f(nx, ny)
+		x_current := math.sinf(f32(math.radians(i))) * nrw
+		y_current := math.cosf(f32(math.radians(i))) * nrh
+		ctx.r.v2f(nx + x_current * cos_rot - y_current * sin_rot, ny + x_current * sin_rot +
 			y_current * cos_rot)
 	}
-	ctx.r.v2f(x - rh * sin_rot, y + rh * cos_rot)
+	ctx.r.v2f(nx - nrh * sin_rot, ny + nrh * cos_rot)
 	ctx.r.end()
 }
 

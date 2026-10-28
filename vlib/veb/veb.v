@@ -718,7 +718,11 @@ fn finish_route[A, X](app &A, mut user_context X, route Route, path string, not_
 	// execute middleware functions after veb is done and before the response is send
 	mut was_done := true
 	$if A is MiddlewareApp {
-		if !not_found && !middleware_has_sent_response {
+		// A deferred (`after`) response does not exist yet: the timer
+		// thread writes it later, so framing middleware (compression,
+		// ...) must not touch this context now. Throttle leases in the
+		// caller are still freed.
+		if !not_found && !middleware_has_sent_response && !user_context.Context.deferred {
 			// if the middleware doesn't send an alternate response, but only changes the
 			// response object we only have to check if the `done` was previously set to true
 			was_done = user_context.Context.done

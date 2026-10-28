@@ -72,6 +72,28 @@ running.
 All the code, including HTML templates, is in one binary file. That's all you need to deploy.
 Use the `-prod` flag when building for production.
 
+## Signed-cookie sessions
+
+`ctx.session(veb.SessionOptions{secret: secret})` loads a string map from a signed cookie.
+Use a strong, unpredictable secret shared by the instances serving your application. Missing,
+expired or invalid cookies start an empty session; an empty secret disables loading and saving.
+
+```v ignore
+opts := veb.SessionOptions{secret: app.session_secret, secure: true}
+mut session := ctx.session(opts)
+session.set('user', 'ada')
+ctx.save_session(session)
+user := session.get('user') or { 'guest' }
+// To delete the cookie, use ctx.clear_session(opts).
+```
+
+All state is stored in the cookie: it is signed, but **not encrypted**. Clients can read its
+contents. Keep values small enough for browser cookie limits, and store confidential data on
+the server. Keys and values may be empty strings. `SessionOptions` controls the cookie name,
+path, lifetime in seconds, `secure` and `http_only` flags; HTTP-only defaults to true and
+`secure` defaults to false, so enable it when serving over HTTPS. Call `save_session` after
+changes; `set` alone only changes the in-memory session.
+
 ## Getting Started
 
 To start, you must import the module `veb` and define a structure which will
@@ -665,6 +687,13 @@ app.serve_static('/path/main.css',  'static/css/main.css')!
 
 ### Dealing with MIME types
 
+`ctx.file(path)` uses an explicit `ctx.content_type`, a custom MIME mapping, or the known
+file extension first. When none provides a type, it uses `http.detect_content_type` to
+inspect the beginning of the file. Unknown binary content is served as
+`application/octet-stream`. Sniffed HTML can run scripts from your origin; set an explicit
+safe content type when serving untrusted uploads. Static folder registration still requires
+extension mappings as described below.
+
 By default, veb will map the extension of a file to a MIME type. If any of your static file's
 extensions do not have a default MIME type in veb, veb will throw an error and you
 have to add your MIME type to `.static_mime_types` yourself.
@@ -705,6 +734,10 @@ support compression, reducing bandwidth usage and improving load times. Zstd is 
 over gzip when the client supports both.
 
 **How it works:**
+
+Static sidecars and generated compressed files honor case insensitive `Accept-Encoding` offers,
+wildcards, and `q=0` refusals. An explicit coding entry overrides the wildcard. If every enabled
+coding is refused or no header is sent, veb serves the original file.
 
 1. **Manual pre-compression**: If you create `.zst` or `.gz` files manually, veb will serve
    them in zero-copy streaming mode for maximum performance when the MIME type is allowed.
@@ -824,6 +857,14 @@ serve `.zst` if the client supports zstd, otherwise `.gz` if gzip is supported.
 - Large files (> threshold) are always streamed, ensuring low memory usage even for large assets.
 - The `encode_auto` middleware automatically chooses zstd or gzip based on client support. You can
   also use `encode_zstd` or `encode_gzip` for specific compression.
+  Dynamic compression skips bodies below 256 bytes, statuses without a body, streaming files,
+  already compressed content, and noncompressible media types. Compressed output is used only
+  when it is smaller. Encoding names are case insensitive; explicit `q=0` refusals override
+  wildcard offers. Repeated `Accept-Encoding` fields are combined before selecting a coding.
+  Positive quality values allow a coding; `encode_auto` prefers zstd over gzip.
+  Eligible responses include `Vary: Accept-Encoding` even when sent without compression, while
+  preserving existing `Vary` fields.
+  Compression weakens any existing strong ETag because the encoded bytes differ.
 - If caching fails (e.g., on read-only filesystems), veb automatically falls
   back to serving compressed content from memory. You can set `static_compression_max_size = 0`
   to disable auto-compression completely. For optimal performance on read-only systems,
@@ -1346,6 +1387,22 @@ ctx.json(User{
 ctx.no_content()
 ```
 
+#### Reusing a JSON buffer
+
+`ctx.json_buf(value, mut buffer)` produces the same response as `ctx.json(value)`, while
+reusing a caller-owned `[]u8` for intermediate encoding. It clears the buffer first and
+copies the result into the response, so the buffer can be reused as soon as the call returns.
+
+```v ignore
+mut buffer := []u8{cap: 2048}
+ctx.json_buf(User{name: 'test', age: 20}, mut buffer)
+```
+
+For encoding without sending a response, `veb.json_encode_into(value, mut buffer)` appends
+JSON to the buffer; call `buffer.clear()` first when replacing its previous contents.
+Keep reusable buffers local to a request worker or borrow them exclusively from a pool.
+Concurrent requests must not encode into the same buffer at the same time.
+
 #### Sending files
 
 **Example:**
@@ -1546,3 +1603,62 @@ fn main() {
 	veb.run[App, Context](mut app, 8080)
 }
 ```
+
+### Deferred responses
+
+A handler that needs to answer later, without holding the worker, returns
+`ctx.after(ms, cb, arg)`. The handler returns at once; no sooner than `ms`
+milliseconds on, `cb` runs and writes the single response. `ms <= 0` runs
+`cb` on the next timer turn. `cb` may call `after` again to re-arm the
+timer; otherwise the connection closes once `cb` returns.
+
+```v
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn done(mut ctx veb.Context, arg u64) {
+	ctx.text('late:${arg}')
+}
+
+@['/delay/:ms']
+pub fn (mut app App) delay(mut ctx Context, ms int) veb.Result {
+	return ctx.after(ms, done, u64(ms))
+}
+
+fn main() {
+	mut app := &App{}
+	veb.run[App, Context](mut app, 8080)
+}
+```
+
+Boundaries, compared with a plain handler:
+
+* `cb` runs on a dedicated timer thread, not the accept-loop worker, and
+  receives the base `Context`, not the app's wrapper type. The request is
+  still readable, but app state must travel in `arg`.
+* The timer closes the connection after the response and advertises
+  `Connection: close`, so do not pipeline another request behind a
+  deferred one. After-middleware is skipped for deferred responses.
+* Without a live client transport (unit tests, `render_request`, the SSL
+  path, which has no takeover support) `after` answers inline instead:
+  the response and its timing stay correct, on the caller's thread.
+
+## In-process raw HTTP requests
+
+`veb.handle_raw[App, Context](mut app, request_bytes)` parses raw HTTP/1 request bytes and
+runs the normal dispatcher without opening a socket. It returns complete serialized responses,
+including file bodies. Pipelined requests produce concatenated responses in request order until
+EOF, a parse error, or `Connection: close`. Parse errors produce the corresponding HTTP error;
+invalid route configuration produces HTTP 500. A file that cannot be read while serializing also
+produces HTTP 500 and ends processing.
+
+This helper buffers requests and responses in memory, including static files. Use it for in-process
+wire-parser and routing tests. Socket takeover, live SSE streams, and WebSocket connections require
+a network transport. For an already parsed `http.Request`, use `veb.render_request` instead.
