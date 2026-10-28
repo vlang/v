@@ -410,9 +410,9 @@ fn fastc_flag_is_skippable(flag string) bool {
 	mut i := 0
 	for i < tokens.len {
 		part := tokens[i]
-		// Search-path / include flags whose operand can be a SEPARATE token
-		// (`-I <path>`): skip the flag and its path operand.
-		if part in ['-I', '-L', '-F', '-rpath', '-isystem', '-iquote', '-idirafter'] {
+		// Search-path / include / library flags whose operand can be a SEPARATE
+		// token (`-I <path>`, `-l <lib>`): skip the flag and its operand.
+		if part in ['-I', '-L', '-l', '-F', '-rpath', '-isystem', '-iquote', '-idirafter'] {
 			i += 2
 			continue
 		}
@@ -458,7 +458,10 @@ fn fastc_flag_defines(flag string) ?[]string {
 	}
 	mut defines := []string{}
 	mut has_define := false
-	for part in tokens {
+	mut i := 0
+	for i < tokens.len {
+		part := tokens[i]
+		i++
 		if part.starts_with('-D') {
 			body := part[2..]
 			if body == '' {
@@ -475,6 +478,12 @@ fn fastc_flag_defines(flag string) ?[]string {
 		if part.starts_with('-U') && part.len > 2 {
 			has_define = true
 			defines << '#undef ${part[2..]}'
+			continue
+		}
+		// Link/header flags mixed in are skipped, including a SEPARATE operand
+		// (`-l <lib>`, `-I <path>`), as in fastc_flag_is_skippable.
+		if part in ['-I', '-L', '-l'] {
+			i++
 			continue
 		}
 		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-I') || part.starts_with('-Wl') || part.starts_with('-rpath') || part == '-pthread' {

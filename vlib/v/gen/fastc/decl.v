@@ -113,7 +113,9 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 				if name == 'C' && tok == .dot {
 					tok = scan.scan()
 					if tok == .name {
-						key := flat.source_type_id(if next_c_struct_is_typedef {
+						// `type C.X = ...` names a C typedef (`DWORD`), spelled bare like
+						// `@[typedef] struct C.X`; only a plain `struct C.X` is `struct X`.
+						key := flat.source_type_id(if next_c_struct_is_typedef || kind == .alias_ {
 							'#Ctypedef#${scan.lit}'
 						} else {
 							'#Cstruct#${scan.lit}'
