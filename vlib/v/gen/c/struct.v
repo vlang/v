@@ -5184,8 +5184,15 @@ fn (g &FlatGen) type_id_may_reach_enum(name_id u32) bool {
 // interface.
 @[inline]
 fn (g &FlatGen) ident_may_name_type(name string) bool {
-	name_id := flat.source_type_id(name)
 	if isnil(g.type_name_short_index) { return true }
+	// The short index holds interned ids, so a spelling that was never interned only
+	// matches through its bracket or its unqualified suffix.
+	name_id := flat.source_type_existing_id(name) or {
+		if name.contains('[') { return true }
+		if !name.contains('.') { return false }
+		short_id := flat.source_type_existing_id(name.all_after_last('.')) or { return false }
+		return short_id in g.type_name_short_index.shorts
+	}
 	shape := flat.source_type_shape(name_id)
 	if shape.has(.bracketed) { return true }
 	short_id := if shape.has(.dotted) {
@@ -7438,8 +7445,7 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 	// Alias preseeding can emit wrappers, array typedefs, and callback signatures
 	// even when the alias is unused. Keep their payload layouts available.
 	for registry_name_id, target_id in g.tc.type_aliases.ids {
-		name := flat.source_type_name(registry_name_id)
-		g.tc.cur_module = module_from_qualified_name(name)
+		g.tc.cur_module = module_from_source_type_name(registry_name_id)
 		g.collect_c_struct_auxiliary_type_refs(g.tc.parse_type(target_id), mut seen)
 	}
 	for registry_name_id, fields in g.tc.structs {
@@ -7598,10 +7604,10 @@ fn (g &FlatGen) c_sum_decl_names() []string {
 // emit_struct emits emit struct output for c.
 fn (mut g FlatGen) emit_struct(name string) {
 	old_module := g.tc.cur_module
-	g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
-	if flat.source_type_id(name) in g.tc.structs {
-		fields := g.tc.structs[flat.source_type_id(name)]
-		pack := g.struct_decl_pack_for_name(flat.source_type_id(name))
+	name_id := flat.source_type_id(name)
+	g.tc.cur_module = g.fixed_array_typedef_type_module(name_id, old_module)
+	if fields := g.tc.structs[name_id] {
+		pack := g.struct_decl_pack_for_name(name_id)
 		if pack.len > 0 {
 			g.writeln('#pragma pack(push, ${pack})')
 		}
@@ -7622,7 +7628,7 @@ fn (mut g FlatGen) emit_struct(name string) {
 		}
 		mut align := StructDeclAlignment{}
 		mut has_align := false
-		if decl_align := g.struct_decl_alignment_for_name(flat.source_type_id(name)) {
+		if decl_align := g.struct_decl_alignment_for_name(name_id) {
 			align = decl_align
 			has_align = true
 		}

@@ -18,6 +18,8 @@ const transform_source_type_struct = flat.source_type_id('struct')
 const transform_source_type_c_va_list = flat.source_type_id('C.va_list')
 const transform_source_type_main = flat.source_type_id('main')
 const transform_source_type_builtin = flat.source_type_id('builtin')
+const transform_source_type_strings_builder = flat.source_type_id('strings.Builder')
+const transform_source_type_builder = flat.source_type_id('Builder')
 const detached_spawn_thread_array_type_id = flat.source_type_id('thread[]')
 
 @[inline]

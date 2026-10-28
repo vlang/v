@@ -23876,12 +23876,11 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		}
 	}
 	for registry_name_id, target_id in g.tc.type_aliases.ids {
-		name := flat.source_type_name(registry_name_id)
 		target_shape := flat.source_type_shape(target_id)
 		if !target_shape.has(.bracketed) {
 			continue
 		}
-		g.tc.cur_module = module_from_qualified_name(name)
+		g.tc.cur_module = module_from_source_type_name(registry_name_id)
 		alias_type := g.tc.parse_type(target_id)
 		if fixed_array_type_first_seen(alias_type, g.tc.cur_module, mut type_seen) {
 			g.collect_fixed_array_typedef(alias_type, g.tc.cur_module, mut needed)
@@ -23895,7 +23894,7 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 				continue
 			}
 		}
-		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
+		g.tc.cur_module = g.fixed_array_typedef_type_module(registry_name_id, old_module)
 		for field in fields {
 			if fixed_array_type_first_seen(field.typ, g.tc.cur_module, mut type_seen) {
 				g.collect_fixed_array_typedef(field.typ, g.tc.cur_module, mut needed)
@@ -23903,8 +23902,7 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		}
 	}
 	for registry_name_id, fields in g.tc.interface_fields {
-		name := flat.source_type_name(registry_name_id)
-		g.tc.cur_module = module_from_qualified_name(name)
+		g.tc.cur_module = module_from_source_type_name(registry_name_id)
 		for field in fields {
 			if fixed_array_type_first_seen(field.typ, g.tc.cur_module, mut type_seen) {
 				g.collect_fixed_array_typedef(field.typ, g.tc.cur_module, mut needed)
@@ -23914,8 +23912,9 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 	// Sum pointer fields may erase their C storage while projections still need the
 	// exact array typedef. Use the declaration metadata, including unused variants.
 	for name in g.c_sum_decl_names() {
-		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(flat.source_type_id(name)).generic_base())
-		for variant in g.tc.sum_types.type_ids(flat.source_type_id(name)) or { []u32{} } {
+		name_id := flat.source_type_id(name)
+		g.tc.cur_module = module_from_source_type_name(flat.source_type_syntax(name_id).generic_base())
+		for variant in g.tc.sum_types.type_ids(name_id) or { []u32{} } {
 			typ := g.tc.parse_canonical_type(variant)
 			if fixed_array_type_first_seen(typ, g.tc.cur_module, mut type_seen) {
 				g.collect_fixed_array_typedef(typ, g.tc.cur_module, mut needed)
@@ -24134,16 +24133,14 @@ fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 		}
 	}
 	for registry_name_id, target_id in g.tc.type_aliases.ids {
-		name := flat.source_type_name(registry_name_id)
-		g.tc.cur_module = module_from_qualified_name(name)
+		g.tc.cur_module = module_from_source_type_name(registry_name_id)
 		g.collect_fn_type_fixed_array_return_wrappers(g.tc.parse_type(target_id))
 	}
 	for registry_name_id, fields in g.tc.structs {
 		if !fields.any(fn_type_has_fixed_array_return(it.typ)) {
 			continue
 		}
-		name := flat.source_type_name(registry_name_id)
-		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
+		g.tc.cur_module = g.fixed_array_typedef_type_module(registry_name_id, old_module)
 		for field in fields {
 			g.collect_fn_type_fixed_array_return_wrappers(field.typ)
 		}
@@ -24152,8 +24149,7 @@ fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 		if !fields.any(fn_type_has_fixed_array_return(it.typ)) {
 			continue
 		}
-		name := flat.source_type_name(registry_name_id)
-		g.tc.cur_module = module_from_qualified_name(name)
+		g.tc.cur_module = module_from_source_type_name(registry_name_id)
 		for field in fields {
 			g.collect_fn_type_fixed_array_return_wrappers(field.typ)
 		}
@@ -24484,23 +24480,30 @@ fn (g &FlatGen) fixed_array_type_defined(typ0 &types.Type, emitted_structs map[s
 	return true
 }
 
-fn (mut g FlatGen) fixed_array_typedef_type_module(name string, fallback string) string {
-	name_id := flat.source_type_id(name)
+fn (mut g FlatGen) fixed_array_typedef_type_module(name_id u32, fallback string) string {
 	if info := g.struct_decl_infos[name_id] {
 		return info.module
 	}
 	if module_name := g.tc.struct_modules[name_id] {
 		return module_name
 	}
-	mod := module_from_qualified_name(name)
+	mod := module_from_source_type_name(name_id)
 	if mod.len > 0 {
 		return mod
 	}
 	return fallback
 }
 
+// module_from_qualified_name slices the module from a function or declaration name.
+// It matches module_from_source_type_name without interning and parsing the name as a type.
 fn module_from_qualified_name(name string) string {
-	return module_from_source_type_name(flat.source_type_id(name))
+	if name.contains('.') {
+		return name.all_before_last('.')
+	}
+	if name.contains('__') {
+		return name.all_before_last('__').replace('__', '.')
+	}
+	return ''
 }
 
 fn module_from_source_type_name(name_id u32) string {
