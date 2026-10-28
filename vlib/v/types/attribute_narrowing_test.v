@@ -8,6 +8,8 @@ struct Route { path string }
 struct Get { path string }
 @[attribute]
 struct Limit { path int }
+@[attribute]
+struct MethodField { str string }
 @[Route('/r')]
 @[Get('/g')]
 @[Limit(7)]

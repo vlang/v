@@ -22472,9 +22472,7 @@ fn (mut tc TypeChecker) check_comptime_attribute_body(id flat.NodeId, var_name s
 		callee := tc.a.child_node(node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver := tc.a.child_node(callee, 0)
-			if receiver.kind == .ident && receiver.value == var_name
-				&& !tc.comptime_attribute_has_member(callee.value)
-				&& callee.value !in comptime_attribute_members {
+			if receiver.kind == .ident && receiver.value == var_name {
 				// Method names are resolved by the semantic checker, not as fields.
 				for i in 1 .. node.children_count {
 					tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, schemas)
