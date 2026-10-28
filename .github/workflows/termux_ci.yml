@@ -189,10 +189,15 @@ jobs:
             pwd
             ls -la
             # Dry run: prints the commands make would run, saved to the log.
-            make -n -j2 SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24" > /logs/make-dry-run.log 2>&1 || true
+            # The lib/ build compiles its objects with tcc and takes its flags
+            # from XFLAGS, not CFLAGS. Command-line XFLAGS replaces the lib
+            # makefile value, so it also sets the -B and -I paths it normally
+            # sets. This drops the -bt that lib makes add to bcheck.o.
+            lib_xflags="XFLAGS=-B.. -I.. -D__ANDROID_MIN_SDK_VERSION__=24"
+            make -n -j2 SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24" "$lib_xflags" > /logs/make-dry-run.log 2>&1 || true
             head -n 60 /logs/make-dry-run.log
-            make -j2 SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24"
-            make install SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24"
+            make -j2 SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24" "$lib_xflags"
+            make install SHELL="$PREFIX/bin/sh" CFLAGS="-O2 -D__ANDROID_MIN_SDK_VERSION__=24" "$lib_xflags"
             echo "HOME=$HOME PWD=$PWD PREFIX=$PREFIX"
             ls -la "$HOME/tcc-install" || true
             ls -la "$HOME/tcc-install/bin" || true
