@@ -16319,6 +16319,10 @@ pub fn run(args []string) {
 		} else {
 			generated_c_flags.clone()
 		}
+		if !c_only && !is_o {
+			// Environment flags also reach the native helper compilations below.
+			v3_require_c_link_libraries([environment_c_flags], macos_v3_fallback_file, cc_dir)
+		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
 				no_prod_options, is_shared, parallel_cc, effective_tcc), prefs.normalized_target_os(),
@@ -16417,6 +16421,7 @@ pub fn run(args []string) {
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
+			v3_require_c_link_libraries([resolved_c_flags, link_ld_flags], macos_v3_fallback_file, cc_dir)
 		}
 		flag_plan_sdk_root := if effective_tcc && prefs.normalized_target_os() == 'macos' {
 			macos_sdk_root_cache.get()
@@ -17770,6 +17775,27 @@ fn checker_fixture_missing_header(a &flat.FlatAst, user_files []string, c_compil
 			'Please install the corresponding development headers.'
 		}
 		return 'Header file ${target}, needed for module `${current_module}` was not found. ${message}'
+	}
+	return none
+}
+
+fn v3_require_c_link_libraries(flag_groups [][]string, fallback_file string, build_dir string) {
+	for flags in flag_groups {
+		if missing_library := v3_missing_c_link_library(flags) {
+			clear_macos_v3_compiler_error_fallback(fallback_file)
+			eprintln('builder error:\n==================\nC library file `${missing_library}` was not found.\nBuild or restore this native library before compiling the V program.')
+			cleanup_c_build_dir(build_dir)
+			exit(1)
+		}
+	}
+}
+
+fn v3_missing_c_link_library(flags []string) ?string {
+	for index in c_link_input_indices(flags) {
+		path := flags[index].trim_space()
+		if c_flag_token_is_link_only(path) && !os.is_file(path) {
+			return path
+		}
 	}
 	return none
 }
