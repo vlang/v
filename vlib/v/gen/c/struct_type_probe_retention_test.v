@@ -34,10 +34,13 @@ fn test_struct_selective_and_module_probe_misses_preserve_later_fallbacks() {
 	tc.cur_module = 'struct_probe_owner'
 	name_id := flat.source_type_id('StructProbeItem')
 	known_id := flat.source_type_id('struct_probe_import.StructProbeItem')
-	missing := 'struct_probe_missing.StructProbeItem'
+	missing_id := flat.source_type_id('struct_probe_missing.StructProbeItem')
 	qualified := 'struct_probe_owner.StructProbeItem'
-	tc.file_selective_imports['struct_probe_import.v\nStructProbeItem'] = [missing,
-		flat.source_type_name(known_id)]
+	tc.selective_import_files['struct_probe_import.v'] = &types.FileImportInfo{
+		selective_imports: {
+			name_id: [missing_id, known_id]
+		}
+	}
 	tc.structs[known_id] = []types.StructField{}
 	mut g := FlatGen.new()
 	g.a = &ast
@@ -50,13 +53,11 @@ fn test_struct_selective_and_module_probe_misses_preserve_later_fallbacks() {
 	g.struct_decl_infos[known_id] = info
 	g.struct_decl_short_infos[name_id] = info
 	g.type_name_short_index = new_type_name_short_index(&tc)
-	assert flat.source_type_existing_id(missing) == none
 	assert g.shared_qualify_leaf_type_text(name_id, tc.cur_module) == known_id
 	assert (g.find_struct_decl(name_id) or { panic('selective import fallback missing') }).full_name == known_id
-	assert flat.source_type_existing_id(missing) == none
 	// With no selective import, the missing preferred module must still allow
 	// the short declaration fallback, without matching an unrelated zero key.
-	tc.file_selective_imports.clear()
+	tc.selective_import_files.clear()
 	g.struct_decl_infos[u32(0)] = info
 	assert flat.source_type_existing_id(qualified) == none
 	assert g.find_struct_decl_preferred_uncached(name_id) == none

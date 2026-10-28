@@ -1651,29 +1651,29 @@ fn (g &FlatGen) type_contains_generic_placeholder(t &types.Type) bool {
 }
 
 // struct_generic_params_for_name returns declaration parameter names for a struct source spelling ID.
-fn (g &FlatGen) struct_generic_params_for_name(name_id u32) []string {
+fn (g &FlatGen) struct_generic_params_for_name(name_id u32) []u32 {
 	base_source_id, _, ok := g.shared_generic_app_parts(name_id)
 	if !ok {
-		return []string{}
+		return []u32{}
 	}
 	return g.tc.struct_generic_params[base_source_id] or {
-		g.tc.struct_generic_params[flat.source_type_syntax(base_source_id).unqualified()] or { []string{} }
+		g.tc.struct_generic_params[flat.source_type_syntax(base_source_id).unqualified()] or { []u32{} }
 	}
 }
 
 // sum_generic_params_for_name returns declaration parameter names for a sum source spelling ID.
-fn (g &FlatGen) sum_generic_params_for_name(name_id u32) []string {
+fn (g &FlatGen) sum_generic_params_for_name(name_id u32) []u32 {
 	base_source_id, _, ok := g.shared_generic_app_parts(name_id)
 	if !ok {
-		return []string{}
+		return []u32{}
 	}
 	return g.tc.sum_generic_params[base_source_id] or {
-		g.tc.sum_generic_params[flat.source_type_syntax(base_source_id).unqualified()] or { []string{} }
+		g.tc.sum_generic_params[flat.source_type_syntax(base_source_id).unqualified()] or { []u32{} }
 	}
 }
 
 // type_name_is_unbound_generic_decl checks whether a source spelling retains declaration parameters.
-fn (g &FlatGen) type_name_is_unbound_generic_decl(name_id u32, params []string, materialized bool) bool {
+fn (g &FlatGen) type_name_is_unbound_generic_decl(name_id u32, params []u32, materialized bool) bool {
 	if materialized || params.len == 0 {
 		return false
 	}
@@ -1682,7 +1682,7 @@ fn (g &FlatGen) type_name_is_unbound_generic_decl(name_id u32, params []string, 
 		return false
 	}
 	for arg in args {
-		if shared_type_text_uses_generic_params(arg, params) {
+		if shared_type_id_uses_generic_params(arg, params) {
 			return true
 		}
 	}

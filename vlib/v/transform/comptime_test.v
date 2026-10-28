@@ -150,7 +150,11 @@ fn test_comptime_method_selector_preserves_type_namespace_function_values() {
 		tc.structs[flat.source_type_id('dep.receiver')] = []types.StructField{}
 		tc.type_aliases.set_id(flat.source_type_id('Alias'), flat.source_type_id('Dummy'))
 		tc.generated_files['generated.v'] = true
-		tc.file_selective_imports[file_import_key('generated.v', 'receiver')] = ['dep.receiver']
+		tc.selective_import_files['generated.v'] = &types.FileImportInfo{
+			selective_imports: {
+				flat.source_type_id('receiver'): [flat.source_type_id('dep.receiver')]
+			}
+		}
 		receiver_type := match name {
 			'Alias' { 'Dummy' }
 			'receiver' { 'dep.receiver' }
@@ -968,7 +972,7 @@ fn test_comptime_method_metadata_keeps_generic_receiver_specializations() {
 	a.add_val(.module_decl, 'main')
 	add_comptime_test_method(mut a, 'Box[T]', 'replace', 'T', 'T')
 	mut tc := types.TypeChecker.new(&a)
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = types.generic_param_ids(['T'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	for typ in ['int', 'string', 'uint'] {
@@ -1070,7 +1074,7 @@ fn test_comptime_method_metadata_observes_erased_generic_methods() {
 		payload: flat.node_payload(['concrete'])
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = types.generic_param_ids(['T'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	initial := t.comptime_method_metas(flat.source_type_id('Box[int]'))
