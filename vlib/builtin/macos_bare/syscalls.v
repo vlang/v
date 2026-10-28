@@ -84,7 +84,7 @@ $if !i386 {
 		enosys          = 78
 	}
 
-	// macOS class offset: every number below already includes 0x2000000.
+	// The x86_64 syscall class is stripped by the arm64 syscall helpers.
 	const mac_nr_exit = u64(0x2000001)
 	const mac_nr_fork = u64(0x2000002)
 	const mac_nr_read = u64(0x2000003)
@@ -168,36 +168,93 @@ $if !i386 {
 		$if arm64 {
 			asm volatile arm64 {
 				mov x16, scn
+				and x16, x16, #0xffffff
 				svc 0x80
 				mov res, x0
 				mov err, xzr
-				b.cc bsd0_done
+				b.cc '1f'
 				mov err, x0
-				bsd0_done:
+				1:
 				; =r (res)
 				  =r (err)
 				; r (scn)
 				; x0
+				  x1
 				  x16
+				  cc
 				  memory
 			}
 		} $else {
 			asm volatile amd64 {
+				mov rax, scn
 				syscall
 				mov res, rax
-				xor err, err
-				jnc bsd0_done
+				mov err, 0
+				jnc '1f'
 				mov err, rax
-				bsd0_done:
+				1:
 				; =r (res)
 				  =r (err)
-				; 0 (scn)
-				; rcx
+				; r (scn)
+				; rax
+				  rdx
+				  rcx
 				  r11
+				  cc
 				  memory
 			}
 		}
 		return res, err
+	}
+
+	fn mac_sys_call0_pair(scn u64) (u64, u64, u64) {
+		mut first := u64(0)
+		mut second := u64(0)
+		mut err := u64(0)
+		$if arm64 {
+			asm volatile arm64 {
+				mov x16, scn
+				and x16, x16, #0xffffff
+				svc 0x80
+				mov first, x0
+				mov second, x1
+				mov err, xzr
+				b.cc '1f'
+				mov err, x0
+				1:
+				; =r (first)
+				  =r (second)
+				  =r (err)
+				; r (scn)
+				; x0
+				  x1
+				  x16
+				  cc
+				  memory
+			}
+		} $else {
+			asm volatile amd64 {
+				mov rax, scn
+				syscall
+				mov first, rax
+				mov second, rdx
+				mov err, 0
+				jnc '1f'
+				mov err, rax
+				1:
+				; =r (first)
+				  =r (second)
+				  =r (err)
+				; r (scn)
+				; rax
+				  rdx
+				  rcx
+				  r11
+				  cc
+				  memory
+			}
+		}
+		return first, second, err
 	}
 
 	fn sys_call1(scn u64, arg1 u64) (u64, u64) {
@@ -206,35 +263,42 @@ $if !i386 {
 		$if arm64 {
 			asm volatile arm64 {
 				mov x16, scn
+				and x16, x16, #0xffffff
 				mov x0, arg1
 				svc 0x80
 				mov res, x0
 				mov err, xzr
-				b.cc bsd1_done
+				b.cc '1f'
 				mov err, x0
-				bsd1_done:
+				1:
 				; =r (res)
 				  =r (err)
 				; r (scn)
 				  r (arg1)
 				; x0
+				  x1
 				  x16
+				  cc
 				  memory
 			}
 		} $else {
 			asm volatile amd64 {
+				mov rax, scn
 				syscall
 				mov res, rax
-				xor err, err
-				jnc bsd1_done
+				mov err, 0
+				jnc '1f'
 				mov err, rax
-				bsd1_done:
+				1:
 				; =r (res)
 				  =r (err)
-				; 0 (scn)
+				; r (scn)
 				  D (arg1)
-				; rcx
+				; rax
+				  rdx
+				  rcx
 				  r11
+				  cc
 				  memory
 			}
 		}
@@ -247,14 +311,15 @@ $if !i386 {
 		$if arm64 {
 			asm volatile arm64 {
 				mov x16, scn
+				and x16, x16, #0xffffff
 				mov x0, arg1
 				mov x1, arg2
 				svc 0x80
 				mov res, x0
 				mov err, xzr
-				b.cc bsd2_done
+				b.cc '1f'
 				mov err, x0
-				bsd2_done:
+				1:
 				; =r (res)
 				  =r (err)
 				; r (scn)
@@ -263,23 +328,28 @@ $if !i386 {
 				; x0
 				  x1
 				  x16
+				  cc
 				  memory
 			}
 		} $else {
 			asm volatile amd64 {
+				mov rax, scn
 				syscall
 				mov res, rax
-				xor err, err
-				jnc bsd2_done
+				mov err, 0
+				jnc '1f'
 				mov err, rax
-				bsd2_done:
+				1:
 				; =r (res)
 				  =r (err)
-				; 0 (scn)
+				; r (scn)
 				  D (arg1)
 				  S (arg2)
-				; rcx
+				; rax
+				  rdx
+				  rcx
 				  r11
+				  cc
 				  memory
 			}
 		}
@@ -292,15 +362,16 @@ $if !i386 {
 		$if arm64 {
 			asm volatile arm64 {
 				mov x16, scn
+				and x16, x16, #0xffffff
 				mov x0, arg1
 				mov x1, arg2
 				mov x2, arg3
 				svc 0x80
 				mov res, x0
 				mov err, xzr
-				b.cc bsd3_done
+				b.cc '1f'
 				mov err, x0
-				bsd3_done:
+				1:
 				; =r (res)
 				  =r (err)
 				; r (scn)
@@ -311,24 +382,30 @@ $if !i386 {
 				  x1
 				  x2
 				  x16
+				  cc
 				  memory
 			}
 		} $else {
 			asm volatile amd64 {
+				mov rax, scn
+				mov rdx, arg3
 				syscall
 				mov res, rax
-				xor err, err
-				jnc bsd3_done
+				mov err, 0
+				jnc '1f'
 				mov err, rax
-				bsd3_done:
+				1:
 				; =r (res)
 				  =r (err)
-				; 0 (scn)
+				; r (scn)
 				  D (arg1)
 				  S (arg2)
-				  d (arg3)
-				; rcx
+				  g (arg3)
+				; rax
+				  rdx
+				  rcx
 				  r11
+				  cc
 				  memory
 			}
 		}
@@ -341,6 +418,7 @@ $if !i386 {
 		$if arm64 {
 			asm volatile arm64 {
 				mov x16, scn
+				and x16, x16, #0xffffff
 				mov x0, arg1
 				mov x1, arg2
 				mov x2, arg3
@@ -348,9 +426,9 @@ $if !i386 {
 				svc 0x80
 				mov res, x0
 				mov err, xzr
-				b.cc bsd4_done
+				b.cc '1f'
 				mov err, x0
-				bsd4_done:
+				1:
 				; =r (res)
 				  =r (err)
 				; r (scn)
@@ -363,27 +441,33 @@ $if !i386 {
 				  x2
 				  x3
 				  x16
+				  cc
 				  memory
 			}
 		} $else {
 			asm volatile amd64 {
+				mov rax, scn
 				mov r10, arg4
+				mov rdx, arg3
 				syscall
 				mov res, rax
-				xor err, err
-				jnc bsd4_done
+				mov err, 0
+				jnc '1f'
 				mov err, rax
-				bsd4_done:
+				1:
 				; =r (res)
 				  =r (err)
-				; 0 (scn)
+				; r (scn)
 				  D (arg1)
 				  S (arg2)
-				  d (arg3)
+				  g (arg3)
 				  g (arg4)
-				; rcx
+				; rax
+				  rdx
+				  rcx
 				  r10
 				  r11
+				  cc
 				  memory
 			}
 		}
@@ -396,6 +480,7 @@ $if !i386 {
 		$if arm64 {
 			asm volatile arm64 {
 				mov x16, scn
+				and x16, x16, #0xffffff
 				mov x0, arg1
 				mov x1, arg2
 				mov x2, arg3
@@ -404,9 +489,9 @@ $if !i386 {
 				svc 0x80
 				mov res, x0
 				mov err, xzr
-				b.cc bsd5_done
+				b.cc '1f'
 				mov err, x0
-				bsd5_done:
+				1:
 				; =r (res)
 				  =r (err)
 				; r (scn)
@@ -421,30 +506,36 @@ $if !i386 {
 				  x3
 				  x4
 				  x16
+				  cc
 				  memory
 			}
 		} $else {
 			asm volatile amd64 {
+				mov rax, scn
 				mov r10, arg4
 				mov r8, arg5
+				mov rdx, arg3
 				syscall
 				mov res, rax
-				xor err, err
-				jnc bsd5_done
+				mov err, 0
+				jnc '1f'
 				mov err, rax
-				bsd5_done:
+				1:
 				; =r (res)
 				  =r (err)
-				; 0 (scn)
+				; r (scn)
 				  D (arg1)
 				  S (arg2)
-				  d (arg3)
+				  g (arg3)
 				  g (arg4)
 				  g (arg5)
-				; rcx
+				; rax
+				  rdx
+				  rcx
 				  r10
 				  r11
 				  r8
+				  cc
 				  memory
 			}
 		}
@@ -457,6 +548,7 @@ $if !i386 {
 		$if arm64 {
 			asm volatile arm64 {
 				mov x16, scn
+				and x16, x16, #0xffffff
 				mov x0, arg1
 				mov x1, arg2
 				mov x2, arg3
@@ -466,9 +558,9 @@ $if !i386 {
 				svc 0x80
 				mov res, x0
 				mov err, xzr
-				b.cc bsd6_done
+				b.cc '1f'
 				mov err, x0
-				bsd6_done:
+				1:
 				; =r (res)
 				  =r (err)
 				; r (scn)
@@ -485,66 +577,42 @@ $if !i386 {
 				  x4
 				  x5
 				  x16
+				  cc
 				  memory
 			}
 		} $else {
 			asm volatile amd64 {
+				mov rax, scn
 				mov r10, arg4
 				mov r8, arg5
 				mov r9, arg6
+				mov rdx, arg3
 				syscall
 				mov res, rax
-				xor err, err
-				jnc bsd6_done
+				mov err, 0
+				jnc '1f'
 				mov err, rax
-				bsd6_done:
+				1:
 				; =r (res)
 				  =r (err)
-				; 0 (scn)
+				; r (scn)
 				  D (arg1)
 				  S (arg2)
-				  d (arg3)
+				  g (arg3)
 				  g (arg4)
 				  g (arg5)
 				  g (arg6)
-				; rcx
+				; rax
+				  rdx
+				  rcx
 				  r10
 				  r11
 				  r8
 				  r9
+				  cc
 				  memory
 			}
 		}
 		return res, err
-	}
-
-	$if amd64 {
-		asm amd64 {
-			.pushsection .text
-			.globl _start
-			_start:
-			xor rbp, rbp
-			mov rdi, [rsp]
-			lea rsi, [rsp + 8]
-			call main
-			mov rdi, rax
-			mov rax, 0x2000001
-			syscall
-			.popsection
-		}
-	} $else $if arm64 {
-		asm arm64 {
-			.pushsection .text
-			.globl _start
-			_start:
-			mov x29, 0
-			mov x30, 0
-			ldr x0, [sp]
-			add x1, sp, 8
-			bl main
-			mov x16, 0x2000001
-			svc 0x80
-			.popsection
-		}
 	}
 }

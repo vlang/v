@@ -40,10 +40,10 @@ $if !i386 {
 		const vlibc_sys_nr_exit_group = u64(94)
 		const vlibc_sys_nr_execve = u64(221)
 		const vlibc_sys_nr_waitid = u64(95)
+		const vlibc_sys_nr_wait4 = u64(260)
 		const vlibc_sys_nr_fcntl = u64(25)
 		const vlibc_sys_nr_ioctl = u64(29)
 		const vlibc_sys_nr_pipe2 = u64(59)
-		const vlibc_sys_nr_dup2 = u64(0) // placeholder, use dup3
 		const vlibc_sys_nr_dup3 = u64(24)
 		const vlibc_sys_nr_mprotect = u64(226)
 		const vlibc_sys_nr_mmap = u64(222)
@@ -96,6 +96,7 @@ $if !i386 {
 		const vlibc_sys_nr_exit_group = u64(231)
 		const vlibc_sys_nr_execve = u64(59)
 		const vlibc_sys_nr_waitid = u64(247)
+		const vlibc_sys_nr_wait4 = u64(61)
 		const vlibc_sys_nr_fcntl = u64(72)
 		const vlibc_sys_nr_ioctl = u64(16)
 		const vlibc_sys_nr_pipe2 = u64(293)
@@ -148,12 +149,14 @@ $if !i386 {
 		return unsafe { VlibcErrno(-i64(rc)) }
 	}
 
+	// vlibc_sys_read reads at most count bytes using the architecture-specific read syscall.
 	pub fn vlibc_sys_read(fd i64, buf &u8, count u64) (i64, VlibcErrno) {
-		return vlibc_split(sys_call3(0, u64(fd), u64(buf), count))
+		return vlibc_split(sys_call3(sys_nr_read, u64(fd), u64(buf), count))
 	}
 
+	// vlibc_sys_write writes at most count bytes using the architecture-specific write syscall.
 	pub fn vlibc_sys_write(fd i64, buf &u8, count u64) (i64, VlibcErrno) {
-		return vlibc_split(sys_call3(1, u64(fd), u64(buf), count))
+		return vlibc_split(sys_call3(sys_nr_write, u64(fd), u64(buf), count))
 	}
 
 	pub fn vlibc_sys_lseek(fd i64, off i64, whence int) (i64, VlibcErrno) {
@@ -276,13 +279,14 @@ $if !i386 {
 		return i64(sys_call1(vlibc_sys_nr_set_tid_address, u64(tidptr)))
 	}
 
+	// vlibc_sys_clone invokes clone with the architecture-specific argument order.
 	pub fn vlibc_sys_clone(flags u64, newsp voidptr, parent_tid voidptr, child_tid voidptr, tls voidptr) i64 {
 		$if arm64 {
 			// arm64 clone arg order: flags, newsp, parent_tid, tls, child_tid
 			return i64(sys_call5(vlibc_sys_nr_clone, flags, u64(newsp), u64(parent_tid), u64(tls), u64(child_tid)))
 		} $else {
-			// x86_64: flags, newsp, parent_tid, tls, child_tid
-			return i64(sys_call5(vlibc_sys_nr_clone, flags, u64(newsp), u64(parent_tid), u64(tls), u64(child_tid)))
+			// x86_64: flags, newsp, parent_tid, child_tid, tls
+			return i64(sys_call5(vlibc_sys_nr_clone, flags, u64(newsp), u64(parent_tid), u64(child_tid), u64(tls)))
 		}
 	}
 
@@ -300,7 +304,13 @@ $if !i386 {
 		return int(sys_call3(vlibc_sys_nr_execve, u64(filename), u64(argv.data), u64(envp.data)))
 	}
 
-	pub fn vlibc_sys_waitid(which WiWhich, pid int, infop &int, options int, ru voidptr) VlibcErrno {
+	// vlibc_sys_wait4 waits for a child and writes the raw POSIX status to an i32.
+	pub fn vlibc_sys_wait4(pid i64, status &i32, options int, ru voidptr) (i64, VlibcErrno) {
+		return vlibc_split(sys_call4(vlibc_sys_nr_wait4, u64(pid), u64(status), u64(options), u64(ru)))
+	}
+
+	// vlibc_sys_waitid waits for a child state change, writing a full kernel siginfo_t to infop.
+	pub fn vlibc_sys_waitid(which WiWhich, pid int, infop voidptr, options int, ru voidptr) VlibcErrno {
 		rc := sys_call5(vlibc_sys_nr_waitid, u64(which), u64(pid), u64(infop), u64(options), u64(ru))
 		if i64(rc) == 0 {
 			return VlibcErrno.enoerror
@@ -316,7 +326,8 @@ $if !i386 {
 		return vlibc_split(sys_call3(vlibc_sys_nr_ioctl, u64(fd), req, u64(arg)))
 	}
 
-	pub fn vlibc_sys_pipe2(filedes &int, flags int) VlibcErrno {
+	// vlibc_sys_pipe2 writes two kernel i32 descriptors to filedes.
+	pub fn vlibc_sys_pipe2(filedes &i32, flags int) VlibcErrno {
 		rc := sys_call2(vlibc_sys_nr_pipe2, u64(filedes), u64(flags))
 		if i64(rc) == 0 {
 			return VlibcErrno.enoerror
@@ -324,8 +335,18 @@ $if !i386 {
 		return unsafe { VlibcErrno(-i64(rc)) }
 	}
 
+	// vlibc_sys_dup2 duplicates oldfd onto newfd, including the same-fd validity check.
 	pub fn vlibc_sys_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
-		return vlibc_split(sys_call2(vlibc_sys_nr_dup2, u64(oldfd), u64(newfd)))
+		$if arm64 {
+			if oldfd == newfd {
+				_, e := vlibc_sys_fcntl(i64(oldfd), 1, 0) // F_GETFD checks oldfd.
+				if e != .enoerror { return -1, e }
+				return i64(newfd), .enoerror
+			}
+			return vlibc_sys_dup3(oldfd, newfd, 0)
+		} $else {
+			return vlibc_split(sys_call2(vlibc_sys_nr_dup2, u64(oldfd), u64(newfd)))
+		}
 	}
 
 	pub fn vlibc_sys_dup3(oldfd int, newfd int, flags int) (i64, VlibcErrno) {
@@ -368,7 +389,8 @@ $if !i386 {
 		return vlibc_split(sys_call3(vlibc_sys_nr_socket, u64(domain), u64(typ), u64(protocol)))
 	}
 
-	pub fn vlibc_sys_socketpair(domain int, typ int, protocol int, sv &int) VlibcErrno {
+	// vlibc_sys_socketpair writes two kernel i32 socket descriptors to sv.
+	pub fn vlibc_sys_socketpair(domain int, typ int, protocol int, sv &i32) VlibcErrno {
 		rc := sys_call4(vlibc_sys_nr_socketpair, u64(domain), u64(typ), u64(protocol), u64(sv))
 		if i64(rc) == 0 {
 			return VlibcErrno.enoerror

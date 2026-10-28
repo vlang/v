@@ -1,33 +1,31 @@
 module builtin
 
 $if !i386 {
-	__global __global_vlibc_thread_fn VlibcThreadFn
-	__global __global_vlibc_thread_arg u64
-	__global __global_vlibc_thread_done &u32
-	__global __global_clone_result i64
-	__global __global_child_done u32
-
-	// ---- atomic helpers ----
+	// vlibc_cas_u32 compares and exchanges a word with acquire/release ordering.
 	pub fn vlibc_cas_u32(ptr &u32, old u32, new u32) bool {
 		mut swapped := u8(0)
 		$if arm64 {
 			asm volatile arm64 {
-				retry_cas:
+				1:
 				ldaxr w4, [ptr]
 				cmp w4, old
-				b.ne cas_fail
+				b.ne '2f'
 				stlxr w5, new, [ptr]
-				cbnz w5, retry_cas
+				cbnz w5, '1b'
 				mov swapped, #1
-				b cas_done
-				cas_fail:
+				b '3f'
+				2:
+				clrex
 				mov swapped, #0
-				cas_done:
+				3:
 				; =r (swapped)
 				; r (ptr)
 				  r (old)
 				  r (new)
-				; memory
+				; x4
+				  x5
+				  cc
+				  memory
 			}
 		} $else {
 			asm volatile amd64 {
@@ -35,26 +33,87 @@ $if !i386 {
 				lock cmpxchg [ptr], new
 				sete swapped
 				; =r (swapped)
-				; a (old)
+				; r (old)
 				  r (ptr)
 				  r (new)
-				; memory
+				; eax
+				  cc
+				  memory
 			}
 		}
 		return swapped != 0
 	}
 
+	// vlibc_load_u32 loads a word with acquire ordering.
 	pub fn vlibc_load_u32(ptr &u32) u32 {
-		return unsafe { *ptr }
+		mut value := u32(0)
+		$if arm64 {
+			asm volatile arm64 {
+				ldar value, [ptr]
+				; =r (value)
+				; r (ptr)
+				; memory
+			}
+		} $else {
+			asm volatile amd64 {
+				mov value, [ptr]
+				; =r (value)
+				; r (ptr)
+				; memory
+			}
+		}
+		return value
 	}
 
+	// vlibc_store_u32 stores a word with release ordering.
 	pub fn vlibc_store_u32(ptr &u32, val u32) {
-		unsafe { *ptr = val }
+		$if arm64 {
+			asm volatile arm64 {
+				stlr val, [ptr]
+				; ; r (ptr)
+				    r (val)
+				; memory
+			}
+		} $else {
+			asm volatile amd64 {
+				mov [ptr], val
+				; ; r (ptr)
+				    r (val)
+				; memory
+			}
+		}
 	}
 
-	// ---- threads ----
+	// Incrementing the condition sequence must not lose concurrent signals.
+	fn vlibc_increment_u32(ptr &u32) {
+		$if arm64 {
+			asm volatile arm64 {
+				1:
+				ldaxr w4, [ptr]
+				add w4, w4, #1
+				stlxr w5, w4, [ptr]
+				cbnz w5, '1b'
+				; ; r (ptr)
+				; x4
+				  x5
+				  memory
+			}
+		} $else {
+			one := u32(1)
+			asm volatile amd64 {
+				lock add [ptr], one
+				; ; r (ptr)
+				    r (one)
+				; cc
+				  memory
+			}
+		}
+	}
+
+	// VlibcThreadFn is the entry point of a freestanding thread.
 	pub type VlibcThreadFn = fn (u64)
 
+	// VlibcThread owns a thread stack until vlibc_thread_join observes kernel exit.
 	pub struct VlibcThread {
 	pub:
 		fn_ptr     VlibcThreadFn
@@ -63,148 +122,125 @@ $if !i386 {
 		stack_size u64
 		done       u32
 		tid        i64
+		tid_addr   &u32 = unsafe { nil }
 	}
 
-	fn vlibc_clone_raw(newsp voidptr, fn_ptr voidptr, arg u64, done_ptr voidptr) i64 {
-		__global_clone_result = 0
+	// The child never returns through the parent's frame. Its entry function and
+	// argument live at its own stack top, and the kernel clears tid_addr on exit.
+	fn vlibc_clone_raw(newsp voidptr, tid_addr &u32) i64 {
+		mut result := i64(0)
 		$if arm64 {
 			asm volatile arm64 {
-				// save inputs in callee-saved regs
-				mov x19, newsp
-				mov x20, fn_ptr
-				mov x21, arg
-				mov x22, done_ptr
-				// clone flags
-				mov x0, #0x00000100
-				orr x0, x0, #0x00010000
-				orr x0, x0, #0x00000400
-				orr x0, x0, #0x00000200
-				orr x0, x0, #0x00000800
-				orr x0, x0, #0x00040000
-				orr x0, x0, #0x00000011
-				mov x1, x19
-				mov x2, #0
+				mov x1, newsp
+				mov x2, tid_addr
+				mov x4, tid_addr
 				mov x3, #0
-				mov x4, #0
+				mov x0, #0x0f00
+				movk x0, #0x35, lsl #16
 				mov x8, #220
 				svc #0
-				cmp x0, #0
-				beq arm_child
-				// parent
-				mov __global_clone_result, x0
-				b arm_done
-				arm_child:
-				// child: call fn(arg)
-				mov x0, x21
-				blr x20
-				// set done = 1
-				mov w9, #1
-				str w9, [x22]
-				// sys_exit(0)
+				cbnz x0, '1f'
+				ldr x9, [sp]
+				ldr x0, [sp, #8]
+				blr x9
 				mov x0, #0
 				mov x8, #93
 				svc #0
-				arm_done:
-				; 
+				1:
+				mov result, x0
+				; =r (result)
 				; r (newsp)
-				  r (fn_ptr)
-				  r (arg)
-				  r (done_ptr)
-				; memory
+				  r (tid_addr)
+				; x0
+				  x1
+				  x2
+				  x3
+				  x4
+				  x8
+				  x9
+				  x30
+				  cc
+				  memory
 			}
 		} $else {
 			asm volatile amd64 {
-				push r12
-				push r13
-				push r14
-				push r15
-				// save inputs in callee-saved regs (preserved across syscall)
-				mov r12, newsp
-				mov r13, fn_ptr
-				mov r14, arg
-				mov r15, done_ptr
-				// clone syscall
-				mov rax, 56
-				mov rdi, 0x00000100
-				or rdi, 0x00010000
-				or rdi, 0x00000400
-				or rdi, 0x00000200
-				or rdi, 0x00000800
-				or rdi, 0x00040000
-				or rdi, 0x00000011
-				mov rsi, r12
-				xor rdx, rdx
-				xor r10, r10
+				mov rsi, newsp
+				mov rdx, tid_addr
+				mov r10, tid_addr
 				xor r8, r8
+				mov rdi, 0x00350f00
+				mov rax, 56
 				syscall
-				cmp rax, 0
-				je amd_child
-				// parent
-				mov __global_clone_result, rax
-				jmp amd_done
-				amd_child:
-				// child: call fn(arg) using globals
-				mov rax, __global_vlibc_thread_fn
-				mov rdi, __global_vlibc_thread_arg
+				test rax, rax
+				jnz '1f'
+				mov rax, [rsp]
+				mov rdi, [rsp + 8]
 				call rax
-				// set done = 1
-				mov __global_child_done, 1
-				// sys_exit(0)
 				mov rax, 60
 				xor rdi, rdi
 				syscall
-				amd_done:
-				pop r15
-				pop r14
-				pop r13
-				pop r12
-				; 
+				1:
+				; =a (result)
 				; r (newsp)
-				  r (fn_ptr)
-				  r (arg)
-				  r (done_ptr)
-				; memory
+				  r (tid_addr)
+				; rdi
+				  rsi
+				  rdx
+				  r10
+				  r8
+				  rcx
+				  r11
+				  cc
+				  memory
 			}
 		}
-		return __global_clone_result
+		return result
 	}
 
+	// vlibc_thread_spawn starts fn_ptr(arg) with per-thread state and a 1 MiB stack.
 	pub fn vlibc_thread_spawn(fn_ptr VlibcThreadFn, arg u64) (VlibcThread, VlibcErrno) {
-		mut t := VlibcThread{}
-		t.fn_ptr = fn_ptr
-		t.arg = arg
-		t.stack_size = 1 << 20 // 1MB
-		mem, e := vlibc_sys_mmap(unsafe { nil }, t.stack_size, 3, 0x22, -1, 0) // RW + PRIVATE|ANON
+		mut t := VlibcThread{ fn_ptr: fn_ptr, arg: arg, stack_size: 1 << 20 }
+		mem, e := vlibc_sys_mmap(unsafe { nil }, t.stack_size, 3, 0x22, -1, 0)
 		if e != .enoerror {
 			return t, e
 		}
 		t.stack = mem
-		t.done = 0
-		__global_vlibc_thread_fn = fn_ptr
-		__global_vlibc_thread_arg = arg
-		__global_child_done = 0
-		// newsp: leave 64 bytes redzone below top
-		newsp := unsafe { voidptr(u64(t.stack) + t.stack_size - 64) }
-		tid := vlibc_clone_raw(newsp, fn_ptr, arg, &t.done)
-		t.tid = tid
-		if tid < 0 {
+		t.tid_addr = unsafe { &u32(mem) }
+		newsp := unsafe { &u64(u64(mem) + t.stack_size - 16) }
+		// The stack mapping owns all data used by the child; spawning again cannot
+		// overwrite it. No heap allocator is needed on either clone return path.
+		unsafe {
+			newsp[0] = u64(fn_ptr)
+			newsp[1] = arg
+		}
+		t.tid = vlibc_clone_raw(newsp, t.tid_addr)
+		if t.tid < 0 {
 			vlibc_sys_munmap(t.stack, t.stack_size)
+			t.stack = unsafe { nil }
+			t.tid_addr = unsafe { nil }
 			return t, unsafe { VlibcErrno(-t.tid) }
 		}
-		// child path is handled inside vlibc_clone_raw (never returns here).
 		return t, VlibcErrno.enoerror
 	}
 
+	// vlibc_thread_join waits for kernel-confirmed exit before releasing the stack.
 	pub fn vlibc_thread_join(mut t VlibcThread) VlibcErrno {
+		if t.stack == unsafe { nil } {
+			return .enoerror
+		}
 		for {
-			if __global_child_done != 0 {
+			tid := vlibc_load_u32(t.tid_addr)
+			if tid == 0 {
 				break
 			}
-			vlibc_sleep_ns(1_000_000)
+			// CLONE_CHILD_CLEARTID wakes shared FUTEX_WAIT, not FUTEX_WAIT_PRIVATE.
+			vlibc_sys_futex(t.tid_addr, 0, tid, unsafe { nil }, unsafe { nil }, 0)
 		}
 		vlibc_sys_munmap(t.stack, t.stack_size)
 		t.stack = unsafe { nil }
-		return VlibcErrno.enoerror
+		t.tid_addr = unsafe { nil }
+		t.done = 1
+		return .enoerror
 	}
 
 	// ---- mutex ----
@@ -249,13 +285,15 @@ $if !i386 {
 		vlibc_mutex_lock(mut m)
 	}
 
+	// vlibc_cond_signal increments the sequence atomically and wakes one waiter.
 	pub fn vlibc_cond_signal(mut c VlibcCond) {
-		vlibc_store_u32(&c.seq, vlibc_load_u32(&c.seq) + 1)
+		vlibc_increment_u32(&c.seq)
 		vlibc_sys_futex(&c.seq, 1, 1, unsafe { nil }, unsafe { nil }, 0)
 	}
 
+	// vlibc_cond_broadcast increments the sequence atomically and wakes all waiters.
 	pub fn vlibc_cond_broadcast(mut c VlibcCond) {
-		vlibc_store_u32(&c.seq, vlibc_load_u32(&c.seq) + 1)
+		vlibc_increment_u32(&c.seq)
 		vlibc_sys_futex(&c.seq, 1, 0x7fffffff, unsafe { nil }, unsafe { nil }, 0)
 	}
 }

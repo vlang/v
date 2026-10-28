@@ -9,6 +9,7 @@ import dlmalloc
 __global global_allocator dlmalloc.Dlmalloc
 __global global_allocator_ready bool
 
+// memcpy copies n bytes from const_src into dest and returns dest.
 @[export: 'memcpy']
 @[unsafe]
 pub fn memcpy(dest voidptr, const_src voidptr, n uint) voidptr {
@@ -45,6 +46,7 @@ fn realloc(old_area voidptr, new_size uint) voidptr {
 	return unsafe { global_allocator.realloc(old_area, new_size) }
 }
 
+// memset fills n bytes at s with c and returns s.
 @[export: 'memset']
 @[unsafe]
 pub fn memset(s voidptr, c int, n uint) voidptr {
@@ -127,6 +129,7 @@ fn vsnprintf(str &char, size uint, format &char, ap &u8) int {
 	panic('vsnprintf(): string interpolation is not supported in `-freestanding`')
 }
 
+// bare_print writes len bytes from buf to standard output.
 pub fn bare_print(buf &u8, len u64) {
 	sys_write(1, buf, len)
 }
@@ -135,6 +138,7 @@ fn bare_eprint(buf &u8, len u64) {
 	sys_write(2, buf, len)
 }
 
+// write writes up to count bytes to fd and returns the number written.
 pub fn write(fd i64, buf &u8, count u64) i64 {
 	x, _ := sys_write(fd, buf, count)
 	return x

@@ -22,6 +22,7 @@ $if !i386 {
 		return vlibc_htons(v)
 	}
 
+	// vlibc_parse_ipv4 packs a dotted IPv4 address into network byte order.
 	pub fn vlibc_parse_ipv4(s string) u32 {
 		// returns network-byte-order u32
 		mut parts := [u32(0), u32(0), u32(0), u32(0)]
@@ -46,17 +47,18 @@ $if !i386 {
 			idx++
 		}
 		// pack in network order (big-endian) into u32
-		return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
+		return vlibc_htonl((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3])
 	}
 
 	pub fn vlibc_socket(domain int, typ int, protocol int) (i64, VlibcErrno) {
 		return vlibc_sys_socket(domain, typ, protocol)
 	}
 
+	// vlibc_socketpair creates two connected sockets and returns their descriptors.
 	pub fn vlibc_socketpair(domain int, typ int, protocol int) ([2]int, VlibcErrno) {
-		mut sv := [0, 0]
+		mut sv := [2]i32{}
 		e := vlibc_sys_socketpair(domain, typ, protocol, &sv[0])
-		return sv, e
+		return [int(sv[0]), int(sv[1])]!, e
 	}
 
 	pub fn vlibc_bind(fd i64, port u16, addr u32) VlibcErrno {

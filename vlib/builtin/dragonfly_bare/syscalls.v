@@ -201,16 +201,19 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		asm volatile amd64 {
+			mov rax, scn
 			syscall
 			mov res, rax
-			xor err, err
-			jnc bsd0_done
+			mov err, 0
+			jnc '1f'
 			mov err, rax
-			bsd0_done:
+			1:
 			; =r (res)
 			  =r (err)
-			; 0 (scn)
-			; rcx
+			; r (scn)
+			; rax
+			  rdx
+				  rcx
 			  r11
 			  memory
 		}
@@ -221,17 +224,20 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		asm volatile amd64 {
+			mov rax, scn
 			syscall
 			mov res, rax
-			xor err, err
-			jnc bsd1_done
+			mov err, 0
+			jnc '1f'
 			mov err, rax
-			bsd1_done:
+			1:
 			; =r (res)
 			  =r (err)
-			; 0 (scn)
+			; r (scn)
 			  D (arg1)
-			; rcx
+			; rax
+			  rdx
+				  rcx
 			  r11
 			  memory
 		}
@@ -242,18 +248,21 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		asm volatile amd64 {
+			mov rax, scn
 			syscall
 			mov res, rax
-			xor err, err
-			jnc bsd2_done
+			mov err, 0
+			jnc '1f'
 			mov err, rax
-			bsd2_done:
+			1:
 			; =r (res)
 			  =r (err)
-			; 0 (scn)
+			; r (scn)
 			  D (arg1)
 			  S (arg2)
-			; rcx
+			; rax
+			  rdx
+				  rcx
 			  r11
 			  memory
 		}
@@ -264,19 +273,23 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		asm volatile amd64 {
+			mov rax, scn
+			mov rdx, arg3
 			syscall
 			mov res, rax
-			xor err, err
-			jnc bsd3_done
+			mov err, 0
+			jnc '1f'
 			mov err, rax
-			bsd3_done:
+			1:
 			; =r (res)
 			  =r (err)
-			; 0 (scn)
+			; r (scn)
 			  D (arg1)
 			  S (arg2)
-			  d (arg3)
-			; rcx
+			  g (arg3)
+			; rax
+			  rdx
+				  rcx
 			  r11
 			  memory
 		}
@@ -287,21 +300,25 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		asm volatile amd64 {
+				mov rax, scn
 			mov r10, arg4
+			mov rdx, arg3
 			syscall
 			mov res, rax
-			xor err, err
-			jnc bsd4_done
+			mov err, 0
+			jnc '1f'
 			mov err, rax
-			bsd4_done:
+			1:
 			; =r (res)
 			  =r (err)
-			; 0 (scn)
+			; r (scn)
 			  D (arg1)
 			  S (arg2)
-			  d (arg3)
+			  g (arg3)
 			  g (arg4)
-			; rcx
+			; rax
+			  rdx
+				  rcx
 			  r10
 			  r11
 			  memory
@@ -313,23 +330,27 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		asm volatile amd64 {
+				mov rax, scn
 			mov r10, arg4
 			mov r8, arg5
+			mov rdx, arg3
 			syscall
 			mov res, rax
-			xor err, err
-			jnc bsd5_done
+			mov err, 0
+			jnc '1f'
 			mov err, rax
-			bsd5_done:
+			1:
 			; =r (res)
 			  =r (err)
-			; 0 (scn)
+			; r (scn)
 			  D (arg1)
 			  S (arg2)
-			  d (arg3)
+			  g (arg3)
 			  g (arg4)
 			  g (arg5)
-			; rcx
+			; rax
+			  rdx
+				  rcx
 			  r10
 			  r11
 			  r8
@@ -342,25 +363,29 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		asm volatile amd64 {
+				mov rax, scn
 			mov r10, arg4
 			mov r8, arg5
 			mov r9, arg6
+			mov rdx, arg3
 			syscall
 			mov res, rax
-			xor err, err
-			jnc bsd6_done
+			mov err, 0
+			jnc '1f'
 			mov err, rax
-			bsd6_done:
+			1:
 			; =r (res)
 			  =r (err)
-			; 0 (scn)
+			; r (scn)
 			  D (arg1)
 			  S (arg2)
-			  d (arg3)
+			  g (arg3)
 			  g (arg4)
 			  g (arg5)
 			  g (arg6)
-			; rcx
+			; rax
+			  rdx
+				  rcx
 			  r10
 			  r11
 			  r8

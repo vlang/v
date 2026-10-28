@@ -39,15 +39,6 @@ $if !i386 {
 		blksize u32
 	}
 
-	// ---- syscalls (defined in syscalls.v) ----
-	// bsd_split converts (rc, er) to (i64, VlibcErrno).
-	fn bsd_split(rc_in u64, er_in u64) (i64, VlibcErrno) {
-		if er_in != 0 {
-			return i64(-1), unsafe { VlibcErrno(er_in) }
-		}
-		return i64(rc_in), VlibcErrno.enoerror
-	}
-
 	// ---- sys wrappers (Solaris numbers) ----
 	pub fn vlibc_sys_openat(dirfd i64, path &u8, flags u64, mode u64) (i64, VlibcErrno) {
 		rc, er := sys_call4(sol_nr_openat, u64(dirfd), u64(path), flags, mode)
@@ -127,6 +118,7 @@ $if !i386 {
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_clock_gettime reads the selected clock into a native timespec.
 	pub fn vlibc_sys_clock_gettime(clk int, tp &VlibcTimespec) VlibcErrno {
 		_, er := sys_call2(sol_nr_clock_gettime, u64(clk), u64(tp))
 		if er == 0 {
@@ -135,6 +127,7 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_nanosleep suspends the calling thread for the requested interval.
 	pub fn vlibc_sys_nanosleep(req &VlibcTimespec, rem &VlibcTimespec) VlibcErrno {
 		_, er := sys_call2(sol_nr_nanosleep, u64(req), u64(rem))
 		if er == 0 {
@@ -143,7 +136,14 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
-	pub fn vlibc_sys_sysctl(name &int, namelen u32, oldp voidptr, oldlenp &u64, newp voidptr, newlen u64) VlibcErrno {
+	// vlibc_sys_sched_yield yields the processor to another runnable thread.
+	pub fn vlibc_sys_sched_yield() VlibcErrno {
+		_, er := sys_call0(sol_nr_sched_yield)
+		return unsafe { VlibcErrno(er) }
+	}
+
+	// vlibc_sys_sysctl invokes sysctl with 32-bit MIB entries.
+	pub fn vlibc_sys_sysctl(name &i32, namelen u32, oldp voidptr, oldlenp &u64, newp voidptr, newlen u64) VlibcErrno {
 		_ = name
 		_ = namelen
 		_ = oldp
@@ -158,8 +158,9 @@ $if !i386 {
 		return i64(rc)
 	}
 
+	// vlibc_sys_getppid returns the parent process ID from the getpid pair.
 	pub fn vlibc_sys_getppid() i64 {
-		rc, _ := sys_call0(sol_nr_getppid)
+		rc, _ := sol_sys_call0_secondary(sol_nr_getpid)
 		return i64(rc)
 	}
 
@@ -168,8 +169,9 @@ $if !i386 {
 		return i64(rc)
 	}
 
+	// vlibc_sys_geteuid returns the effective user ID from the getuid pair.
 	pub fn vlibc_sys_geteuid() i64 {
-		rc, _ := sys_call0(sol_nr_geteuid)
+		rc, _ := sol_sys_call0_secondary(sol_nr_getuid)
 		return i64(rc)
 	}
 
@@ -178,8 +180,9 @@ $if !i386 {
 		return i64(rc)
 	}
 
+	// vlibc_sys_getegid returns the effective group ID from the getgid pair.
 	pub fn vlibc_sys_getegid() i64 {
-		rc, _ := sys_call0(sol_nr_getegid)
+		rc, _ := sol_sys_call0_secondary(sol_nr_getgid)
 		return i64(rc)
 	}
 
@@ -191,12 +194,14 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	// vlibc_sys_fork creates a child and returns zero in the child.
 	pub fn vlibc_sys_fork() i64 {
 		// forksys(0, flags) == fork; flags=0.
-		rc, er := sys_call2(sol_nr_forksys, 0, 0)
+		rc, child, er := sol_sys_call0_pair(sol_nr_forksys)
 		if er != 0 {
 			return -i64(er)
 		}
+		if child != 0 { return 0 }
 		return i64(rc)
 	}
 
@@ -205,7 +210,8 @@ $if !i386 {
 		return -int(er)
 	}
 
-	pub fn vlibc_sys_waitid(idtype int, id i64, infop &int, options int, rusage voidptr) (i64, VlibcErrno) {
+	// vlibc_sys_waitid waits for process state and writes a native siginfo buffer.
+	pub fn vlibc_sys_waitid(idtype int, id i64, infop voidptr, options int, rusage voidptr) (i64, VlibcErrno) {
 		rc, er := sys_call5(sol_nr_waitid, u64(idtype), u64(id), u64(infop), u64(options), u64(rusage))
 		return bsd_split(rc, er)
 	}
@@ -215,17 +221,23 @@ $if !i386 {
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_sys_ioctl invokes the platform ioctl interface.
 	pub fn vlibc_sys_ioctl(fd i64, req u64, arg voidptr) (i64, VlibcErrno) {
 		rc, er := sys_call3(sol_nr_ioctl, u64(fd), req, u64(arg))
 		return bsd_split(rc, er)
 	}
 
-	pub fn vlibc_sys_pipe(filedes &int) VlibcErrno {
-		_, er := sys_call1(sol_nr_pipe, u64(filedes))
-		if er == 0 {
-			return VlibcErrno.enoerror
+	// vlibc_sys_pipe stores the two descriptors returned in rax and rdx.
+	pub fn vlibc_sys_pipe(filedes &i32) VlibcErrno {
+		first, second, er := sol_sys_call0_pair(sol_nr_pipe)
+		if er != 0 {
+			return unsafe { VlibcErrno(er) }
 		}
-		return unsafe { VlibcErrno(er) }
+		unsafe {
+			filedes[0] = i32(first)
+			filedes[1] = i32(second)
+		}
+		return .enoerror
 	}
 
 	pub fn vlibc_sys_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
@@ -270,7 +282,8 @@ $if !i386 {
 		return bsd_split(rc, er)
 	}
 
-	pub fn vlibc_sys_socketpair(domain int, typ int, protocol int, sv &int) VlibcErrno {
+	// vlibc_sys_socketpair writes two 32-bit socket descriptors to the supplied buffer.
+	pub fn vlibc_sys_socketpair(domain int, typ int, protocol int, sv &i32) VlibcErrno {
 		_, er := sys_call4(sol_nr_socketpair, u64(domain), u64(typ), u64(protocol), u64(sv))
 		if er == 0 {
 			return VlibcErrno.enoerror
@@ -392,10 +405,12 @@ $if !i386 {
 		return vlibc_sys_openat(sol_at_fdcwd, path.str, flags, mode)
 	}
 
+	// vlibc_close closes a file descriptor.
 	pub fn vlibc_close(fd i64) VlibcErrno {
 		return vlibc_sys_close(fd)
 	}
 
+	// vlibc_read_all reads until EOF, preserving partial bytes when a read fails.
 	pub fn vlibc_read_all(fd i64) ([]u8, VlibcErrno) {
 		mut cap := int(4096)
 		mut buf := []u8{len: cap}
@@ -409,11 +424,12 @@ $if !i386 {
 				}
 			}
 			n, e := vlibc_sys_read(fd, &u8(buf.data) + total, cap - total)
+			if e == .eintr {
+				continue
+			}
 			if e != .enoerror {
-				if total == 0 {
-					return []u8{}, e
-				}
-				break
+				buf.trim(total)
+				return buf, e
 			}
 			if n == 0 {
 				break
@@ -424,16 +440,18 @@ $if !i386 {
 		return buf, VlibcErrno.enoerror
 	}
 
+	// vlibc_read_file reads a file and reports read or close errors.
 	pub fn vlibc_read_file(path string) ([]u8, VlibcErrno) {
 		fd, e := vlibc_open(path, 0, 0)
 		if e != .enoerror {
 			return []u8{}, e
 		}
 		data, e2 := vlibc_read_all(fd)
-		vlibc_close(fd)
-		return data, e2
+		close_error := vlibc_close(fd)
+		return data, if e2 != .enoerror { e2 } else { close_error }
 	}
 
+	// vlibc_write_file writes all bytes and reports write or close errors.
 	pub fn vlibc_write_file(path string, data []u8) VlibcErrno {
 		fd, e := vlibc_open(path, 0x201, 0o644)
 		if e != .enoerror {
@@ -442,6 +460,9 @@ $if !i386 {
 		mut off := u64(0)
 		for off < u64(data.len) {
 			n, e2 := vlibc_sys_write(fd, &u8(data.data) + off, u64(data.len) - off)
+			if e2 == .eintr {
+				continue
+			}
 			if e2 != .enoerror {
 				vlibc_close(fd)
 				return e2
@@ -452,8 +473,7 @@ $if !i386 {
 			}
 			off += u64(n)
 		}
-		vlibc_close(fd)
-		return VlibcErrno.enoerror
+		return vlibc_close(fd)
 	}
 
 	pub fn vlibc_mkdir(path string, mode u32) VlibcErrno {
@@ -601,14 +621,12 @@ $if !i386 {
 	}
 
 	// ---- proc ----
+	// vlibc_fork creates a child and returns zero in the child.
 	pub fn vlibc_fork() i64 {
-		rc, er := sys_call2(sol_nr_forksys, 0, 0)
-		if er != 0 {
-			return -i64(er)
-		}
-		return i64(rc)
+		return vlibc_sys_fork()
 	}
 
+	// vlibc_execve replaces the current process with the requested executable.
 	pub fn vlibc_execve(path string, argv []string, envp []string) int {
 		mut a := []&u8{cap: argv.len + 1}
 		for s in argv {
@@ -624,15 +642,23 @@ $if !i386 {
 		return -int(er)
 	}
 
+	// vlibc_waitpid waits for a child and returns its process ID.
 	pub fn vlibc_waitpid(pid i64) (i64, VlibcErrno) {
-		mut status := 0
-		return vlibc_sys_waitid(1, pid, &status, 0, unsafe { nil })
+		// LP64 siginfo_t is 256 bytes; the process ID is at byte offset 16.
+		mut info := [32]u64{}
+		for {
+			_, er := vlibc_sys_waitid(0, pid, &info[0], 1, unsafe { nil })
+			if er == .eintr { continue }
+			if er != .enoerror { return -1, er }
+			return i64(i32(info[2])), .enoerror
+		}
 	}
 
+	// vlibc_pipe creates a pipe and returns its read and write descriptors.
 	pub fn vlibc_pipe() ([2]int, VlibcErrno) {
-		mut fds := [0, 0]
+		mut fds := [2]i32{}
 		e := vlibc_sys_pipe(&fds[0])
-		return fds, e
+		return [int(fds[0]), int(fds[1])]!, e
 	}
 
 	pub fn vlibc_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
@@ -662,6 +688,7 @@ $if !i386 {
 		return (v >> 8) | (v << 8)
 	}
 
+	// vlibc_parse_ipv4 packs dotted IPv4 bytes in network byte order.
 	pub fn vlibc_parse_ipv4(s string) u32 {
 		mut parts := [u32(0), u32(0), u32(0), u32(0)]
 		mut idx := 0
@@ -684,17 +711,18 @@ $if !i386 {
 			parts[idx] = cur
 			idx++
 		}
-		return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
+		return vlibc_htonl((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3])
 	}
 
 	pub fn vlibc_socket(domain int, typ int, protocol int) (i64, VlibcErrno) {
 		return vlibc_sys_socket(domain, typ, protocol)
 	}
 
+	// vlibc_socketpair creates a pair of connected socket descriptors.
 	pub fn vlibc_socketpair(domain int, typ int, protocol int) ([2]int, VlibcErrno) {
-		mut sv := [0, 0]
+		mut sv := [2]i32{}
 		e := vlibc_sys_socketpair(domain, typ, protocol, &sv[0])
-		return sv, e
+		return [int(sv[0]), int(sv[1])]!, e
 	}
 
 	pub fn vlibc_bind(fd i64, port u16, addr u32) VlibcErrno {
@@ -735,32 +763,119 @@ $if !i386 {
 		return vlibc_sys_recvfrom(fd, unsafe { voidptr(buf.data) }, u64(buf.len), flags, unsafe { nil }, unsafe { nil })
 	}
 
+	// vlibc_shutdown shuts down the selected socket directions.
 	pub fn vlibc_shutdown(fd i64, how int) VlibcErrno {
 		return vlibc_sys_shutdown(fd, how)
 	}
 
 	// ---- atomic helpers ----
+	// vlibc_cas_u32 compares and exchanges a word with acquire/release ordering.
 	pub fn vlibc_cas_u32(ptr &u32, old u32, new u32) bool {
 		mut swapped := u8(0)
-		asm volatile amd64 {
-			mov eax, old
-			lock cmpxchg [ptr], new
-			sete swapped
-			; =r (swapped)
-			; a (old)
-			  r (ptr)
-			  r (new)
-			; memory
+		$if arm64 {
+			asm volatile arm64 {
+				1:
+				ldaxr w4, [ptr]
+				cmp w4, old
+				b.ne '2f'
+				stlxr w5, new, [ptr]
+				cbnz w5, '1b'
+				mov swapped, #1
+				b '3f'
+				2:
+				clrex
+				mov swapped, #0
+				3:
+				; =r (swapped)
+				; r (ptr)
+				  r (old)
+				  r (new)
+				; x4
+				  x5
+				  cc
+				  memory
+			}
+		} $else {
+			asm volatile amd64 {
+				mov eax, old
+				lock cmpxchg [ptr], new
+				sete swapped
+				; =r (swapped)
+				; r (old)
+				  r (ptr)
+				  r (new)
+				; eax
+				  cc
+				  memory
+			}
 		}
 		return swapped != 0
 	}
 
+	// vlibc_load_u32 loads a word with acquire ordering.
 	pub fn vlibc_load_u32(ptr &u32) u32 {
-		return unsafe { *ptr }
+		mut value := u32(0)
+		$if arm64 {
+			asm volatile arm64 {
+				ldar value, [ptr]
+				; =r (value)
+				; r (ptr)
+				; memory
+			}
+		} $else {
+			asm volatile amd64 {
+				mov value, [ptr]
+				; =r (value)
+				; r (ptr)
+				; memory
+			}
+		}
+		return value
 	}
 
+	// vlibc_store_u32 stores a word with release ordering.
 	pub fn vlibc_store_u32(ptr &u32, val u32) {
-		unsafe { *ptr = val }
+		$if arm64 {
+			asm volatile arm64 {
+				stlr val, [ptr]
+				; ; r (ptr)
+				    r (val)
+				; memory
+			}
+		} $else {
+			asm volatile amd64 {
+				mov [ptr], val
+				; ; r (ptr)
+				    r (val)
+				; memory
+			}
+		}
+	}
+
+	// Incrementing the condition sequence must not lose concurrent signals.
+	fn vlibc_increment_u32(ptr &u32) {
+		$if arm64 {
+			asm volatile arm64 {
+				1:
+				ldaxr w4, [ptr]
+				add w4, w4, #1
+				stlxr w5, w4, [ptr]
+				cbnz w5, '1b'
+				; ; r (ptr)
+				; x4
+				  x5
+				  memory
+			}
+		} $else {
+			one := u32(1)
+			asm volatile amd64 {
+				lock add [ptr], one
+				; ; r (ptr)
+				    r (one)
+				; cc
+				  memory
+			}
+		}
 	}
 
 	// ---- threads: not yet implemented on Solaris (lwp_create + ucontext
@@ -827,11 +942,13 @@ $if !i386 {
 		vlibc_mutex_lock(mut m)
 	}
 
+	// vlibc_cond_signal advances the condition sequence and wakes one waiter.
 	pub fn vlibc_cond_signal(mut c VlibcCond) {
-		vlibc_store_u32(&c.seq, vlibc_load_u32(&c.seq) + 1)
+		vlibc_increment_u32(&c.seq)
 	}
 
+	// vlibc_cond_broadcast advances the condition sequence and wakes all waiters.
 	pub fn vlibc_cond_broadcast(mut c VlibcCond) {
-		vlibc_store_u32(&c.seq, vlibc_load_u32(&c.seq) + 1)
+		vlibc_increment_u32(&c.seq)
 	}
 }
