@@ -1244,6 +1244,19 @@ pub:
 	data         string
 }
 
+// safe_filename extracts a safe bare file name from a multipart `filename`
+// value: only the final path component (after the last `/` or `\`) is kept,
+// and empty, `.`, `..`, or NUL-containing results are rejected. Use it before
+// trusting an uploaded file name for storage, and still validate the result
+// against the directory you write to. Rule ported from Tuntii/viltrum.
+pub fn safe_filename(name string) !string {
+	base := name.all_after_last('/').all_after_last('\\')
+	if base == '' || base == '.' || base == '..' || base.contains('\0') {
+		return error('unsafe file name: ${name}')
+	}
+	return base
+}
+
 pub struct UnexpectedExtraAttributeError {
 	Error
 pub:
