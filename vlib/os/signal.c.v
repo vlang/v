@@ -7,6 +7,8 @@ module os
 
 fn C.v_signal_with_handler_cast(signal i32, handlercb SignalHandler) voidptr
 
+// Note (hosted `-d vlibc`): vlibc_signal is an ENOSYS stub, so signal_opt
+// and signal_ignore intentionally stay on libc here; see vlibc_proc_d_vlibc.v.
 // signal will assign `handler` callback to be called when `signum` signal is received.
 pub fn signal_opt(signum Signal, handler SignalHandler) !SignalHandler {
 	C.errno = 0

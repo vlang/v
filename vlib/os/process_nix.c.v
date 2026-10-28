@@ -320,8 +320,25 @@ fn (mut p Process) unix_is_alive() bool {
 fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_options int) bool {
 	mut cstatus := 0
 	mut ret := -1
-	$if !emscripten ? {
-		ret = C.waitpid(p.pid, &cstatus, waitpid_options)
+	$if vlibc ? {
+		// Hosted `-d vlibc`: waitid()-backed wait that preserves the status
+		// word, so exit codes survive. WNOHANG (1) has the same value in
+		// both APIs and is passed through, so both the blocking wait and the
+		// is_alive paths use vlibc here.
+		ret64, verr := vlibc_waitpid_status(i64(p.pid), &cstatus, waitpid_options)
+		if verr != .enoerror {
+			p.code = -1
+			p.err = posix_get_error_msg(int(verr))
+			return false
+		}
+		if exit_early_on_ret0 && ret64 == 0 {
+			return true
+		}
+		ret = int(ret64)
+	} $else {
+		$if !emscripten ? {
+			ret = C.waitpid(p.pid, &cstatus, waitpid_options)
+		}
 	}
 	p.code = ret
 	if ret == -1 {

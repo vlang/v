@@ -1222,7 +1222,13 @@ pub fn fork() int {
 // After child process terminates, parent continues its execution after wait system call instruction.
 pub fn wait() int {
 	mut pid := -1
-	$if !windows {
+	$if vlibc ? {
+		// Hosted `-d vlibc`: blocking waitid()-backed wait; the status word
+		// is dropped, matching the libc C.wait(0) path below.
+		mut cstatus := 0
+		pid64, _ := vlibc_waitpid_status(-1, &cstatus, 0)
+		pid = int(pid64)
+	} $else $if !windows {
 		$if !emscripten ? {
 			pid = C.wait(0)
 		}
@@ -1308,7 +1314,35 @@ pub fn execvp(cmdpath string, cmdargs []string) ! {
 	}
 	cargs << &char(unsafe { nil })
 	mut res := int(0)
-	$if windows {
+	$if vlibc ? {
+		// Hosted `-d vlibc`: pure-V PATH search (split PATH, join, check
+		// executable), then vlibc_execve. No libc execvp is used here;
+		// default builds keep the libc execvp fallback below.
+		mut exe := cmdpath
+		if !exe.contains('/') {
+			mut found := ''
+			for dir in getenv('PATH').split(path_delimiter) {
+				cand := join_path_single(dir, cmdpath)
+				if is_file(cand) && is_executable(cand) {
+					found = cand
+					break
+				}
+			}
+			if found == '' {
+				return error_failed_to_find_executable()
+			}
+			exe = found
+		}
+		mut vargv := []string{cap: cmdargs.len + 1}
+		vargv << exe
+		vargv << cmdargs
+		mut venvs := []string{}
+		for k, v in environ() {
+			venvs << '${k}=${v}'
+		}
+		vres := vlibc_execve(exe, vargv, venvs)
+		return error('execvp failed with code ${vres}')
+	} $else $if windows {
 		windows_avoid_long_temp_env()
 		res = C._execvp(&char(cmdpath.str), cargs.data)
 	} $else {
