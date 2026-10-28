@@ -282,6 +282,21 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 		return ctx.server_error('could not read resource')
 	}
 	file.close()
+	mtime := os.file_last_mod_unix(file_path)
+	etag := static_file_etag(mtime, i64(file_size))
+	last_modified := time.unix(mtime).http_header_string()
+	// A validator the client already has skips the whole transfer (RFC 7232).
+	// If-None-Match takes precedence over If-Modified-Since.
+	if_none_match := ctx.req.header.get(.if_none_match) or { '' }
+	if if_none_match != '' {
+		if etag_matches(if_none_match, etag) {
+			return ctx.send_not_modified(etag, last_modified)
+		}
+	} else if if_modified_since := ctx.req.header.get(.if_modified_since) {
+		if static_not_modified_since(if_modified_since, mtime) {
+			return ctx.send_not_modified(etag, last_modified)
+		}
+	}
 	// Check which encodings the client accepts
 	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
 	client_accepts_zstd := accept_encoding.contains('zstd')
@@ -338,12 +353,33 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 			eprintln('[veb] error while trying to read file: ${err.msg()}')
 			return ctx.server_error('could not read resource')
 		}
+		// A satisfiable single range is served as 206 straight from the
+		// identity bytes, skipping the compression machinery below.
+		if range_header := ctx.req.header.get(.range) {
+			if if_range_holds(ctx.req.header.get(.if_range) or { '' }, etag, mtime) {
+				if rng := parse_range_header(range_header, i64(data.len)) {
+					if rng.start >= i64(data.len) {
+						return ctx.send_range_not_satisfiable(i64(data.len))
+					}
+					return ctx.send_file_range(content_type, file_path, rng, etag,
+						last_modified)
+				}
+			}
+		}
+		ctx.res.header.set(.etag, etag)
+		ctx.res.header.set(.last_modified, last_modified)
+		ctx.res.header.set(.accept_ranges, 'bytes')
 		return ctx.send_response_to_client(content_type, data)
 	}
-	// Default: serve uncompressed file in streaming mode (zero-copy sendfile)
+	// Default: serve uncompressed file in streaming mode (zero-copy sendfile).
+	// Range requests fall through to the full 200 body here: the streaming
+	// transports have no offset support yet, and a full response is always legal.
 	ctx.return_type = .file
 	ctx.return_file = file_path
 	ctx.res.header.set(.content_length, file_size.str())
+	ctx.res.header.set(.etag, etag)
+	ctx.res.header.set(.last_modified, last_modified)
+	ctx.res.header.set(.accept_ranges, 'bytes')
 	return ctx.send_response_to_client(content_type, '')
 }
 
