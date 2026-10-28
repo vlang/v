@@ -970,7 +970,12 @@ pub fn executable() string {
 		// and https://github.com/ziglang/zig/issues/6718#issuecomment-711134120 .
 		mut pbuf := unsafe { &&u8(&result[0]) }
 		bufsize := uint(max_path_buffer_size)
-		pid := C.getpid()
+		pid := $if vlibc ? {
+			// Hosted -d vlibc on OpenBSD: raw getpid syscall, no libc.
+			i32(vlibc_sys_getpid())
+		} $else {
+			C.getpid()
+		}
 		mib := [sysctl_ctl_kern, openbsd_kern_proc_args, pid, openbsd_kern_proc_argv]! // C `int` mib buffer
 		if unsafe { C.sysctl(&mib[0], mib.len, nil, &bufsize, nil, 0) } == 0 {
 			if bufsize > max_path_buffer_size {

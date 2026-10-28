@@ -268,22 +268,70 @@ pub fn utime(path string, actime i64, modtime i64) ! {
 // See also https://pubs.opengroup.org/onlinepubs/7908799/xsh/sysutsname.h.html
 pub fn uname() Uname {
 	mut u := Uname{}
-	unsafe {
-		d := &C.utsname(malloc_noscan(int(sizeof(C.utsname))))
-		if C.uname(d) == 0 {
-			u.sysname = cstring_to_vstring(d.sysname)
-			u.nodename = cstring_to_vstring(d.nodename)
-			u.release = cstring_to_vstring(d.release)
-			u.version = cstring_to_vstring(d.version)
-			u.machine = cstring_to_vstring(d.machine)
+	$if vlibc ? {
+		vu := vlibc_uname()
+		$if linux {
+			// Linux vlibc_uname returns the raw utsname layout ([65]u8 fields).
+			unsafe {
+				u.sysname = cstring_to_vstring(&char(&vu.sysname[0]))
+				u.nodename = cstring_to_vstring(&char(&vu.nodename[0]))
+				u.release = cstring_to_vstring(&char(&vu.release[0]))
+				u.version = cstring_to_vstring(&char(&vu.version[0]))
+				u.machine = cstring_to_vstring(&char(&vu.machine[0]))
+			}
+		} $else {
+			// BSDs/macOS/Solaris vlibc_uname already returns strings
+			// (sysctl-backed where available).
+			u.sysname = vu.sysname
+			u.nodename = vu.nodename
+			u.release = vu.release
+			u.version = vu.version
+			u.machine = vu.machine
 		}
-		free(d)
+	} $else {
+		unsafe {
+			d := &C.utsname(malloc_noscan(int(sizeof(C.utsname))))
+			if C.uname(d) == 0 {
+				u.sysname = cstring_to_vstring(d.sysname)
+				u.nodename = cstring_to_vstring(d.nodename)
+				u.release = cstring_to_vstring(d.release)
+				u.version = cstring_to_vstring(d.version)
+				u.machine = cstring_to_vstring(d.machine)
+			}
+			free(d)
+		}
 	}
 	return u
 }
 
+// vlibc_hostname returns the hostname without libc (hosted -d vlibc only).
+// On Linux it reads nodename from the uname syscall, the same source that
+// libc gethostname reports. Other targets have no public vlibc hostname
+// helper yet (their sysctl string helper is private to builtin), so
+// hostname() keeps them on the libc path.
+fn vlibc_hostname() string {
+	$if vlibc ? {
+		$if linux {
+			u := vlibc_uname()
+			return unsafe { cstring_to_vstring(&char(&u.nodename[0])) }
+		} $else {
+			return ''
+		}
+	} $else {
+		// Only called from $if vlibc branches; keeps default builds compiling.
+		return ''
+	}
+}
+
 // hostname returns the hostname (system's DNS name) or POSIX error message if the hostname call fails.
 pub fn hostname() !string {
+	$if vlibc ? {
+		$if linux {
+			return vlibc_hostname()
+		}
+		// BSDs/macOS/Solaris: no public vlibc hostname helper yet, so hosted
+		// -d vlibc falls through to the libc path below.
+	}
 	mut hstnme := ''
 	size := 256
 	buf := unsafe { &char(malloc_noscan(size)) }
@@ -586,25 +634,41 @@ pub fn ensure_folder_is_writable(folder string) ! {
 // getpid returns the process ID (PID) of the calling process.
 @[inline]
 pub fn getpid() int {
-	return C.getpid()
+	$if vlibc ? {
+		return int(vlibc_sys_getpid())
+	} $else {
+		return C.getpid()
+	}
 }
 
 // getppid returns the process ID of the parent of the calling process.
 @[inline]
 pub fn getppid() int {
-	return C.getppid()
+	$if vlibc ? {
+		return int(vlibc_sys_getppid())
+	} $else {
+		return C.getppid()
+	}
 }
 
 // getuid returns the real user ID of the calling process.
 @[inline]
 pub fn getuid() int {
-	return C.getuid()
+	$if vlibc ? {
+		return int(vlibc_sys_getuid())
+	} $else {
+		return C.getuid()
+	}
 }
 
 // geteuid returns the effective user ID of the calling process.
 @[inline]
 pub fn geteuid() int {
-	return C.geteuid()
+	$if vlibc ? {
+		return int(vlibc_sys_geteuid())
+	} $else {
+		return C.geteuid()
+	}
 }
 
 // getgid returns the real group ID of the calling process.
