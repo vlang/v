@@ -18428,6 +18428,7 @@ const builtin_attribute_names = [
 	'explicit',
 	'export',
 	'flag',
+	'footer',
 	'freed',
 	'fkey',
 	'generated',
@@ -18439,6 +18440,7 @@ const builtin_attribute_names = [
 	'heap',
 	'host',
 	'implicit',
+	'ignore',
 	'ignore_overflow',
 	'index',
 	'inline',
@@ -18453,6 +18455,7 @@ const builtin_attribute_names = [
 	'markused',
 	'max',
 	'min',
+	'name',
 	'must_use',
 	'noalloc',
 	'nocopy',
@@ -18497,7 +18500,10 @@ const builtin_attribute_names = [
 	'union',
 	'unsafe',
 	'unscoped',
+	'version',
 	'wasm_import_namespace',
+	'doc',
+	'xdoc',
 ]
 
 // is_builtin_attribute_name reports whether `name` names a compiler-known
