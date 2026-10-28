@@ -664,12 +664,9 @@ $if !i386 {
 		return res
 	}
 
-	// _start is the process entry point: the kernel leaves argc at the stack
-	// pointer, followed by the argv array. It calls `main(argc, argv)` and exits
-	// with its result. A top-level asm block lands in whatever section the C
-	// compiler is emitting at that point (gcc: the string literals' `.data`), so
-	// it switches to `.text` itself.
-	$if amd64 {
+	// _start is the process entry point...
+	$if freestanding {
+		$if amd64 {
 		asm amd64 {
 			.pushsection .text
 			.globl _start
@@ -698,4 +695,5 @@ $if !i386 {
 			.popsection
 		}
 	}
+}
 }

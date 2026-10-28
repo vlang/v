@@ -268,9 +268,16 @@ pub fn rename_dir(src string, dst string) ! {
 			return error_posix(msg: 'failed to rename ${src} to ${dst}')
 		}
 	} $else {
-		ret := C.rename(&char(src.str), &char(dst.str))
-		if ret != 0 {
-			return error_posix(msg: 'failed to rename ${src} to ${dst}')
+		$if vlibc ? {
+			e := vlibc_rename(src, dst)
+			if e != .enoerror {
+				return error_posix(msg: 'failed to rename ${src} to ${dst}')
+			}
+		} $else {
+			ret := C.rename(&char(src.str), &char(dst.str))
+			if ret != 0 {
+				return error_posix(msg: 'failed to rename ${src} to ${dst}')
+			}
 		}
 	}
 }
@@ -291,9 +298,16 @@ pub fn rename(src string, dst string) ! {
 			return error_posix(msg: 'failed to rename ${src} to ${dst}')
 		}
 	} $else {
-		ret := C.rename(&char(src.str), &char(rdst.str))
-		if ret != 0 {
-			return error_posix(msg: 'failed to rename ${src} to ${dst}')
+		$if vlibc ? {
+			e := vlibc_rename(src, rdst)
+			if e != .enoerror {
+				return error_posix(msg: 'failed to rename ${src} to ${dst}')
+			}
+		} $else {
+			ret := C.rename(&char(src.str), &char(rdst.str))
+			if ret != 0 {
+				return error_posix(msg: 'failed to rename ${src} to ${dst}')
+			}
 		}
 	}
 }
@@ -650,7 +664,14 @@ pub fn rm(path string) ! {
 			)
 		}
 	} $else {
-		rc = C.remove(&char(path.str))
+		$if vlibc ? {
+			e := vlibc_unlink(path)
+			if e != .enoerror {
+				return error_posix(msg: 'Failed to remove "${path}": ' + posix_get_error_msg(int(e)))
+			}
+		} $else {
+			rc = C.remove(&char(path.str))
+		}
 	}
 	if rc == -1 {
 		return error_posix(msg: 'Failed to remove "${path}": ' + posix_get_error_msg(C.errno))
@@ -984,6 +1005,13 @@ mut:
 
 // chdir changes the current working directory to the new directory in `path`.
 pub fn chdir(path string) ! {
+	$if vlibc ? {
+		e := vlibc_chdir(path)
+		if e != .enoerror {
+			return error_posix()
+		}
+		return
+	}
 	ret := $if windows { C._wchdir(path.to_wide()) } $else { C.chdir(&char(path.str)) }
 	if ret == -1 {
 		return error_posix()
@@ -1002,14 +1030,22 @@ pub fn getwd() string {
 			res := string_from_wide(&u16(&buf[0]))
 			return res
 		} $else {
-			// Use libc-managed buffer to avoid fixed-array address lowering pitfalls in v2.
-			cwd_ptr := C.getcwd(0, 4096)
-			if cwd_ptr == 0 {
-				return ''
+			$if vlibc ? {
+				s, e := vlibc_getcwd()
+				if e != .enoerror {
+					return ''
+				}
+				return s
+			} $else {
+				// Use libc-managed buffer to avoid fixed-array address lowering pitfalls in v2.
+				cwd_ptr := C.getcwd(0, 4096)
+				if cwd_ptr == 0 {
+					return ''
+				}
+				res := tos_clone(byteptr(cwd_ptr))
+				C.free(cwd_ptr)
+				return res
 			}
-			res := tos_clone(byteptr(cwd_ptr))
-			C.free(cwd_ptr)
-			return res
 		}
 	}
 }

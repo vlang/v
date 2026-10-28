@@ -356,6 +356,14 @@ pub fn mkdir(path string, params MkdirParams) ! {
 	if path == '.' {
 		return
 	}
+	$if vlibc ? {
+		apath := real_path(path)
+		e := vlibc_mkdir(apath, params.mode)
+		if e != .enoerror {
+			return error_posix()
+		}
+		return
+	}
 	apath := real_path(path)
 	r := unsafe { C.mkdir(&char(apath.str), params.mode) }
 	if r == -1 {
