@@ -85,12 +85,12 @@ fn test_generic_type_name_matches_keeps_wrapped_value_types() {
 
 fn test_generic_type_application_parts_keeps_map_value_behind_wrappers() {
 	for prefix in ['&', 'mut &', '&mut ', '?', '!', 'chan ', 'shared '] {
-		base, args, ok := generic_type_application_parts('${prefix}map[string]int')
+		base, args, ok := generic_type_application_parts(flat.source_type_id('${prefix}map[string]int'))
 		assert ok, prefix
-		assert base == '${prefix}map', prefix
-		assert args == ['string', 'int'], prefix
+		assert base == flat.source_type_id('${prefix}map'), prefix
+		assert args == [flat.source_type_string, flat.source_type_int], prefix
 	}
-	_, _, ok := generic_type_application_parts('map[string]')
+	_, _, ok := generic_type_application_parts(flat.source_type_id('map[string]'))
 	assert !ok
 }
 

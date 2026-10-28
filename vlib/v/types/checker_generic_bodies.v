@@ -1179,11 +1179,28 @@ fn (tc &TypeChecker) subtree_depends_on_type_params(id flat.NodeId, names map[st
 fn type_id_names_any(type_id u32, names map[string]bool) bool {
 	words := flat.source_type_syntax(type_id).words()
 	for name, _ in names {
-		if flat.source_type_id(name) in words {
+		if source_words_contain_name(words, name) {
 			return true
 		}
 	}
 	return false
+}
+
+// source_words_contain_name reports whether `name` is one of `words`, the
+// interned words of a spelling. A name that was never interned is none of them,
+// so the probe must follow the parse that interned `words`.
+@[inline]
+fn source_words_contain_name(words []u32, name string) bool {
+	name_id := flat.source_type_existing_id(name) or { return false }
+	return name_id in words
+}
+
+// source_type_id_is_name reports whether the interned spelling `id` is `name`,
+// without interning a name that no spelling has yet.
+@[inline]
+fn source_type_id_is_name(id u32, name string) bool {
+	name_id := flat.source_type_existing_id(name) or { return false }
+	return name_id == id
 }
 
 // node_value_names_any includes explicit generic call arguments when the node has

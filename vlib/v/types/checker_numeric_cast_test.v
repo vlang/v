@@ -104,7 +104,9 @@ fn test_numeric_literal_cast_keeps_builtin_spelling_metadata_behavior() {
 		} else {
 			tc.interface_generic_params[flat.source_type_id('u64')] = ['T']
 		}
-		assert (tc.bare_generic_decl_type_name('u64') or { panic('missing generic declaration') }) == 'u64'
+		assert (tc.bare_generic_decl_type_name_id(flat.source_type_u64) or {
+			panic('missing generic declaration')
+		}) == flat.source_type_u64
 		assert tc.qualify_name('u64') == 'u64'
 		assert tc.parse_type(flat.source_type_u64).name() == 'u64'
 		tc.check_cast_expr(cast, *a.node(cast))

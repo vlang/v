@@ -111,7 +111,7 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 		mut depending := (n.kind == .ident && n.value in dependent)
 			|| type_id_names_any(n.typ, params)
 			|| (n.kind !in [.string_literal, .char_literal, .int_literal, .float_literal]
-				&& type_id_names_any(flat.source_type_id(n.value), params))
+				&& n.value.len > 0 && type_id_names_any(n.source_value_id(), params))
 		mut generic_call := n.kind == .call && tc.vls_calls_generic(current, *n)
 		for j in 0 .. n.children_count {
 			child := int(tc.a.child(n, j))
@@ -214,7 +214,7 @@ fn vls_type_params_hold(type_id u32, params map[string]bool) bool {
 	for word in flat.source_type_syntax(type_id).vls_generic_words() {
 		mut found := false
 		for name, _ in params {
-			if word == flat.source_type_id(name) {
+			if source_type_id_is_name(word, name) {
 				found = true
 				break
 			}
@@ -309,7 +309,7 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 fn (tc &TypeChecker) vls_bind_type_params(text_id u32, actual Type, names []string, mut bound map[string]Type) {
 	clean := trimmed_source_type_id(text_id)
 	for name in names {
-		if clean == flat.source_type_id(name) {
+		if source_type_id_is_name(clean, name) {
 			if name !in bound { bound[name] = actual }
 			return
 		}

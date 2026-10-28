@@ -40,7 +40,7 @@ fn (mut tc TypeChecker) vls_hover_declaration(target VlsTarget) string {
 			typ := tc.expr_type(id) or { tc.vls_match_subject_type(id) or { return '' } }
 			enum_type := vls_unwrap_type(typ)
 			if enum_type is Enum {
-				return tc.vls_enum_value_hover(enum_type.name(), node.value)
+				return tc.vls_enum_value_hover(enum_type.name_id, node.value)
 			}
 			return '${tc.vls_type_text(typ).all_after_last('.')}.${node.value}'
 		}
@@ -404,7 +404,7 @@ fn (tc &TypeChecker) vls_implicit_type(binding VlsBinding) ?Type {
 	}
 	site := tc.a.node(binding.site)
 	if site.kind == .block {
-		return *tc.parse_type(flat.source_type_id('IError'))
+		return *tc.parse_type(ierror_source_interface_name)
 	}
 	return tc.vls_array_method_elem(*site)
 }
@@ -722,9 +722,10 @@ fn (tc &TypeChecker) vls_generic_value_text(id flat.NodeId, name string, type_id
 // vls_generic_value_text).
 fn (tc &TypeChecker) vls_value_hover(id flat.NodeId, name string, typ Type) string {
 	text := tc.vls_value_type_text(typ)
+	text_id := flat.source_type_id(text)
 	// `[]T`, or a generic type with a type parameter as its argument, `Box[T]`.
-	if type_contains_unknown(typ) || !vls_type_params_hold(flat.source_type_id(text), map[string]bool{}) {
-		return tc.vls_generic_value_text(id, name, flat.source_type_id(text))
+	if type_contains_unknown(typ) || !vls_type_params_hold(text_id, map[string]bool{}) {
+		return tc.vls_generic_value_text(id, name, text_id)
 	}
 	return '${name} ${text}'
 }
@@ -1153,8 +1154,8 @@ fn (mut tc TypeChecker) vls_hover_selector(node flat.Node) string {
 	receiver_id := tc.a.child(&node, 0)
 	receiver := tc.a.node(receiver_id)
 	// `Enum.value`, also `module.Enum.value`
-	if enum_name := tc.vls_enum_receiver(receiver) {
-		return tc.vls_enum_value_hover(enum_name, node.value)
+	if enum_name_id := tc.vls_enum_receiver(receiver) {
+		return tc.vls_enum_value_hover(enum_name_id, node.value)
 	}
 	// `module.member`: a const, a function or a type of that module.
 	if receiver.kind == .ident && tc.expr_type(receiver_id) == none {
@@ -1171,11 +1172,14 @@ fn (mut tc TypeChecker) vls_hover_selector(node flat.Node) string {
 	return tc.vls_fn_signature(target) or { '' }
 }
 
-// vls_enum_receiver returns the enum a selector's receiver names: `Color`, or
-// `models.Role` written as `models.Role`.
-fn (tc &TypeChecker) vls_enum_receiver(receiver &flat.Node) ?string {
-	if receiver.kind == .ident && tc.vls_is_enum(receiver.value) {
-		return receiver.value
+// vls_enum_receiver returns the spelling of the enum a selector's receiver
+// names: `Color`, or `models.Role` written as `models.Role`.
+fn (tc &TypeChecker) vls_enum_receiver(receiver &flat.Node) ?u32 {
+	if receiver.kind == .ident {
+		name_id := flat.source_type_id(receiver.value)
+		if tc.vls_is_enum(name_id) {
+			return name_id
+		}
 	}
 	if receiver.kind == .selector && receiver.children_count > 0 {
 		module_node := tc.a.child_node(receiver, 0)
@@ -1183,7 +1187,7 @@ fn (tc &TypeChecker) vls_enum_receiver(receiver &flat.Node) ?string {
 			qualified := '${module_node.value}.${receiver.value}'
 			if name_id := flat.source_type_existing_id(qualified) {
 				if name_id in tc.enum_names {
-					return qualified
+					return name_id
 				}
 			}
 		}
@@ -1344,8 +1348,7 @@ fn (tc &TypeChecker) vls_is_global(name string) bool {
 	return name in tc.global_names || tc.qualify_name(name) in tc.global_names
 }
 
-fn (tc &TypeChecker) vls_is_enum(name string) bool {
-	name_id := flat.source_type_id(name)
+fn (tc &TypeChecker) vls_is_enum(name_id u32) bool {
 	return name_id in tc.enum_names || tc.qualify_type_name(name_id) in tc.enum_names
 }
 
@@ -1413,12 +1416,11 @@ fn (tc &TypeChecker) vls_enum_values(decl flat.Node) map[string]string {
 	return texts
 }
 
-// vls_enum_value_hover describes the value `field` of the enum `enum_name`:
-// `Color.green = 5`, `Perm.write = 0b010 (2)`, or `Color.green` alone when its
-// value is not known.
-fn (tc &TypeChecker) vls_enum_value_hover(enum_name string, field string) string {
-	name := '${enum_name.all_after_last('.')}.${field}'
-	enum_name_id := flat.source_type_id(enum_name)
+// vls_enum_value_hover describes the value `field` of the enum spelled
+// `enum_name_id`: `Color.green = 5`, `Perm.write = 0b010 (2)`, or `Color.green`
+// alone when its value is not known.
+fn (tc &TypeChecker) vls_enum_value_hover(enum_name_id u32, field string) string {
+	name := '${flat.source_type_name(flat.source_type_syntax(enum_name_id).unqualified())}.${field}'
 	index := tc.first_type_declaration_ids[enum_name_id] or {
 		tc.first_type_declaration_ids[tc.qualify_type_name(enum_name_id)] or { return name }
 	}
@@ -1449,9 +1451,7 @@ fn (tc &TypeChecker) vls_type_declaration(name string) ?string {
 			return 'interface ${short}'
 		}
 		if variants_source_ids := tc.sum_types.type_ids(key) {
-			variants := flat.TypeTextList{ ids: variants_source_ids }.names()
-
-			texts := variants.map(tc.vls_named_type_text(it))
+			texts := variants_source_ids.map(tc.vls_named_type_text(it))
 			return 'type ${short} = ${texts.join(' | ')}'
 		}
 		if parent_source_id := tc.type_aliases.type_id(key) {
@@ -1700,19 +1700,19 @@ fn (tc &TypeChecker) vls_written_type_text(text_id u32) string {
 fn (tc &TypeChecker) vls_type_text(t Type) string {
 	match t {
 		Struct {
-			return tc.vls_named_type_text(t.name())
+			return tc.vls_named_type_text(t.name_id)
 		}
 		Interface {
-			return tc.vls_named_type_text(t.name())
+			return tc.vls_named_type_text(t.name_id)
 		}
 		Enum {
-			return tc.vls_named_type_text(t.name())
+			return tc.vls_named_type_text(t.name_id)
 		}
 		SumType {
-			return tc.vls_named_type_text(t.name())
+			return tc.vls_named_type_text(t.name_id)
 		}
 		Alias {
-			return tc.vls_named_type_text(t.name())
+			return tc.vls_named_type_text(t.name_id)
 		}
 		Pointer {
 			if t.base_type is Void {
@@ -1779,10 +1779,11 @@ fn (tc &TypeChecker) vls_type_text(t Type) string {
 	}
 }
 
-// vls_named_type_text qualifies a type the program declares with `main.`,
-// and a library's type with the last part of its module, as code names it
-// after `import sync.pool`: `pool.PoolProcessor`.
-fn (tc &TypeChecker) vls_named_type_text(name string) string {
+// vls_named_type_text writes the type spelled `name_id`: qualified with `main.`
+// when the program declares it, and a library's type with the last part of its
+// module, as code names it after `import sync.pool`: `pool.PoolProcessor`.
+fn (tc &TypeChecker) vls_named_type_text(name_id u32) string {
+	name := flat.source_type_name(name_id)
 	base := name.all_before('[')
 	if base.contains('.') {
 		module_path := base.all_before_last('.')
@@ -1791,7 +1792,6 @@ fn (tc &TypeChecker) vls_named_type_text(name string) string {
 	if name.contains('[') {
 		return name
 	}
-	name_id := flat.source_type_existing_id(name) or { return name }
 	index := tc.first_type_declaration_ids[name_id] or { return name }
 	node := tc.a.nodes[index]
 	file := tc.a.source_files[node.pos.id] or { return name }

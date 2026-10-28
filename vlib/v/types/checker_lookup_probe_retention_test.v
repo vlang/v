@@ -92,12 +92,12 @@ fn test_checker_qualified_type_and_error_probes_keep_original_on_miss() {
 	qualified := '${tc.cur_module}.__CheckerLookupProbeBare__'
 	assert flat.source_type_existing_id(qualified) == none
 	assert tc.qualify_type_name_at(name_id, flat.NodeId(-1), tc.cur_module) == name_id
-	assert !tc.unqualified_type_symbol_has_scoped_shadow('__CheckerLookupProbeBare__')
+	assert !tc.unqualified_type_id_has_scoped_shadow(name_id)
 	assert flat.source_type_existing_id(qualified) == none
 	qualified_id := flat.source_type_id(qualified)
 	tc.structs[qualified_id] = []StructField{}
 	assert tc.qualify_type_name_at(name_id, flat.NodeId(-1), tc.cur_module) == qualified_id
-	assert tc.unqualified_type_symbol_has_scoped_shadow('__CheckerLookupProbeBare__')
+	assert tc.unqualified_type_id_has_scoped_shadow(name_id)
 	for name_id_ in [ierror_source_error_name, ierror_source_message_error_name] {
 		name := flat.source_type_name(name_id_)
 		local := '${tc.cur_module}.${name}'
@@ -157,10 +157,9 @@ fn test_checker_hover_and_closure_probes_preserve_misses_and_hits() {
 	assert tc.vls_enum_receiver(&receiver) == none
 	assert flat.source_type_existing_id(qualified) == none
 	tc.enum_names[flat.source_type_id(qualified)] = true
-	assert tc.vls_enum_receiver(&receiver)? == qualified
+	assert tc.vls_enum_receiver(&receiver)? == flat.source_type_id(qualified)
 	missing := '__CheckerLookupProbeHoverNamed__'
-	assert tc.vls_named_type_text(missing) == missing
-	assert flat.source_type_existing_id(missing) == none
+	assert tc.vls_named_type_text(flat.source_type_id(missing)) == missing
 	closure_name := 'closure.__CheckerLookupProbeClosure__'
 	typ := Type(Struct{
 		name_id: flat.source_type_id('C.builtin__closure____CheckerLookupProbeClosure__')
