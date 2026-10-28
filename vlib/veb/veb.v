@@ -724,8 +724,12 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 // handle_route_panic builds the fallback response after a route handler panics.
 // It is specialized by context type, so this reset is emitted once per context
 // type instead of once per controller type.
-fn handle_route_panic[X](mut user_context X, path string, msg string) {
-	eprintln('[veb] handler for route "${path}" panicked: ${msg}')
+fn handle_route_panic[X](mut user_context X, path string, msg any) {
+	mut msg_str := msg.str()
+	if msg is IError {
+		msg_str = msg.msg()
+	}
+	eprintln('[veb] handler for route "${path}" panicked: ${msg_str}')
 	// A takeover handler owns the connection and may already have written to it.
 	if user_context.Context.takeover_mode == .none {
 		// Discard the prepared representation, including file streaming and framing.
