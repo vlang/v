@@ -13171,7 +13171,9 @@ pub fn run(args []string) {
 				'netbsd' { 'netbsd_bare' }
 				'dragonfly' { 'dragonfly_bare' }
 				'macos', 'darwin' { 'macos_bare' }
+				'solaris' { 'solaris_bare' }
 				'android', 'termux' { 'linux_bare' }
+				'vinix' { 'linux_bare' }
 				else { 'linux_bare' }
 			}
 			dir := os.join_path(builtin_dir, candidate)
@@ -13182,10 +13184,13 @@ pub fn run(args []string) {
 	} else if bare_builtin_dir.len > 0 {
 		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
 	}
-	// When -d vlibc is set (hosted or freestanding), include the vlibc syscall
+	// When -d vlibc is set for a hosted build, include the vlibc syscall
 	// layer and API from the per-OS bare directory so that os/time/etc. can
-	// optionally use pure-V syscalls instead of libc.
-	if 'vlibc' in prefs.user_defines && prefs.backend == 'c' {
+	// optionally use pure-V syscalls instead of libc. Under -freestanding the
+	// bare directory above already provides these files; adding them again
+	// would duplicate the syscall layer (including the _start entry point).
+	if 'vlibc' in prefs.user_defines && 'freestanding' !in prefs.user_defines
+		&& prefs.backend == 'c' {
 		os_name := prefs.target.os
 		candidate := match os_name {
 			'freebsd' { 'freebsd_bare' }
@@ -13195,6 +13200,7 @@ pub fn run(args []string) {
 			'macos', 'darwin' { 'macos_bare' }
 			'solaris' { 'solaris_bare' }
 			'android', 'termux' { 'linux_bare' }
+			'vinix' { 'linux_bare' }
 			else { 'linux_bare' }
 		}
 		vlibc_dir := os.join_path(builtin_dir, candidate)
