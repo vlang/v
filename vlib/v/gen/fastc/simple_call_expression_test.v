@@ -222,7 +222,7 @@ fn test_fastc_simple_call_signature_and_parser_guards() {
 	mut type_call := Parser{
 		...type_base
 		declared_types: {
-			'fixture.value': true
+			flat.source_type_id('fixture.value'): true
 		}
 	}
 	assert !type_call.try_read_simple_call_expression(stops, false, true).found

@@ -224,6 +224,11 @@ string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 Select a JSON decoder by the request's content type when handling JSON bodies directly.
 [`veb`](../../veb) makes JSON object fields available in its `ctx.form` map.
 
+Uploaded file names are untrusted input. `http.safe_filename(name)` returns the last path
+component, treating both `/` and `\` as separators, and returns an error for an empty
+component, `.`, `..`, or a component containing NUL. Check the returned name against your
+destination directory and platform's file naming rules before writing the upload.
+
 A `Header` holds at most `http.max_headers` (50) fields. `add_custom` and `set_custom`
 return an `http.HeaderLimitError` for a field that does not fit, and so do
 `http.parse_request`, `http.parse_response` and the other parsers for a message that has

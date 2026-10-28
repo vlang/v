@@ -117,7 +117,7 @@ fn test_cloned_variadic_call_inference_preserves_a_nested_element() {
 	}
 	call_id := a.add_node(call)
 	mut tc := types.TypeChecker.new(&a)
-	tc.fn_generic_params['collect'] = ['T']
+	tc.fn_generic_params['collect'] = types.generic_param_ids(['T'])
 	tc.fn_param_type_texts.set('collect', ['...[]T'])
 	tc.fn_ret_type_texts.set_id('collect', flat.source_type_id('[][]T'))
 	tc.fn_type_modules['collect'] = 'main'

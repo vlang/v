@@ -62,8 +62,8 @@ fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_module = 'unrelated'
-	tc.type_aliases.set('strings.Builder', '[]u8')
-	tc.type_alias_modules['strings.Builder'] = 'strings'
+	tc.type_aliases.set(flat.source_type_id('strings.Builder'), '[]u8')
+	tc.type_alias_modules[flat.source_type_id('strings.Builder')] = 'strings'
 	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
 	tc.fn_ret_types['map.clear'] = types.Type(types.Void{})
 	collector := CallCollector{ a: &a, tc: &tc }
@@ -71,8 +71,8 @@ fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
 	tc.fn_ret_types['strings.Builder.clear'] = types.Type(types.Void{})
 	assert collector.typed_receiver_method_name(flat.source_type_id('strings.Builder'), 'clear', 'strings')? == 'strings.Builder.clear'
 	tc.fn_ret_types.delete('strings.Builder.clear')
-	tc.type_aliases.set('strings.Outer', 'Builder')
-	tc.type_alias_modules['strings.Outer'] = 'strings'
+	tc.type_aliases.set(flat.source_type_id('strings.Outer'), 'Builder')
+	tc.type_alias_modules[flat.source_type_id('strings.Outer')] = 'strings'
 	tc.fn_ret_types['strings.Builder.clear'] = types.Type(types.Void{})
 	assert collector.typed_receiver_method_name(flat.source_type_id('strings.Outer'), 'clear', 'main')? == 'strings.Builder.clear'
 }
@@ -80,13 +80,13 @@ fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
 fn test_collection_alias_methods_use_owner_and_specialized_collections() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('dep.Outer', 'Inner')
-	tc.type_alias_modules['dep.Outer'] = 'dep'
-	tc.type_aliases.set('dep.Inner', '[]u8')
-	tc.type_alias_modules['dep.Inner'] = 'dep'
-	tc.type_aliases.set('Inner', 'map[string]int')
-	tc.type_aliases.set('dep.Values', 'map[string]int')
-	tc.type_alias_modules['dep.Values'] = 'dep'
+	tc.type_aliases.set(flat.source_type_id('dep.Outer'), 'Inner')
+	tc.type_alias_modules[flat.source_type_id('dep.Outer')] = 'dep'
+	tc.type_aliases.set(flat.source_type_id('dep.Inner'), '[]u8')
+	tc.type_alias_modules[flat.source_type_id('dep.Inner')] = 'dep'
+	tc.type_aliases.set(flat.source_type_id('Inner'), 'map[string]int')
+	tc.type_aliases.set(flat.source_type_id('dep.Values'), 'map[string]int')
+	tc.type_alias_modules[flat.source_type_id('dep.Values')] = 'dep'
 	for name in ['array.clear', 'map.clear', 'array.hex', '[]u8.hex', 'map.keys', 'map[string]int.keys',
 		'Inner.hex'] {
 		tc.fn_ret_types[name] = types.Type(types.Void{})
@@ -100,10 +100,10 @@ fn test_collection_alias_methods_use_owner_and_specialized_collections() {
 fn test_collection_alias_methods_preserve_canonical_owner_over_current_imports() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('dep.Bytes', '[]u8')
-	tc.type_alias_modules['dep.Bytes'] = 'dep'
-	tc.type_aliases.set('other.Bytes', 'map[string]int')
-	tc.type_alias_modules['other.Bytes'] = 'other'
+	tc.type_aliases.set(flat.source_type_id('dep.Bytes'), '[]u8')
+	tc.type_alias_modules[flat.source_type_id('dep.Bytes')] = 'dep'
+	tc.type_aliases.set(flat.source_type_id('other.Bytes'), 'map[string]int')
+	tc.type_alias_modules[flat.source_type_id('other.Bytes')] = 'other'
 	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
 	tc.fn_ret_types['map.clear'] = types.Type(types.Void{})
 	tc.cur_module = 'unrelated'
@@ -118,13 +118,13 @@ fn test_collection_alias_methods_preserve_canonical_owner_over_current_imports()
 fn test_collection_alias_methods_leave_cycles_generics_and_structs_conservative() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('CycleA', 'CycleB')
-	tc.type_aliases.set('CycleB', 'CycleA')
-	tc.type_aliases.set('Generic', '[]T')
-	tc.type_alias_generic_params['Generic'] = ['T']
-	tc.type_aliases.set('Outer', 'Inner')
-	tc.type_aliases.set('Inner', 'Item')
-	tc.structs['Item'] = []types.StructField{}
+	tc.type_aliases.set(flat.source_type_id('CycleA'), 'CycleB')
+	tc.type_aliases.set(flat.source_type_id('CycleB'), 'CycleA')
+	tc.type_aliases.set(flat.source_type_id('Generic'), '[]T')
+	tc.type_alias_generic_params[flat.source_type_id('Generic')] = types.generic_param_ids(['T'])
+	tc.type_aliases.set(flat.source_type_id('Outer'), 'Inner')
+	tc.type_aliases.set(flat.source_type_id('Inner'), 'Item')
+	tc.structs[flat.source_type_id('Item')] = []types.StructField{}
 	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
 	tc.fn_ret_types['Inner.clear'] = types.Type(types.Void{})
 	collector := CallCollector{ a: &a, tc: &tc }
@@ -136,7 +136,7 @@ fn test_collection_alias_methods_leave_cycles_generics_and_structs_conservative(
 fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.fn_generic_params['gates.make_gate'] = types.generic_param_ids(['U'])
 	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
 		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	})
@@ -167,7 +167,7 @@ fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 fn test_explicit_generic_factory_substitution_covers_nested_type_forms() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.fn_generic_params['gates.make_gate'] = types.generic_param_ids(['U'])
 	base := a.add_val(.ident, 'make_gate')
 	arg := a.add_val(.ident, 'T')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
@@ -208,7 +208,7 @@ fn test_generic_factory_inference_uses_call_site_shadowing() {
 		for placement in ['before', 'after', 'nested'] {
 			mut a := flat.FlatAst.new()
 			mut tc := types.TypeChecker.new(&a)
-			tc.fn_generic_params['gates.make_gate'] = ['U']
+			tc.fn_generic_params['gates.make_gate'] = types.generic_param_ids(['U'])
 			tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
 				base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			})
@@ -284,7 +284,7 @@ fn test_checker_selected_generic_selector_factory_return_type() {
 		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [factory, arg])
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
 		resolved := if imported_static { 'gates.Gate.make' } else { 'gates.Builder.make' }
-		tc.fn_generic_params[resolved] = ['U']
+		tc.fn_generic_params[resolved] = types.generic_param_ids(['U'])
 		tc.fn_ret_types[resolved] = types.Type(types.Pointer{
 			base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		})
@@ -377,10 +377,10 @@ fn array_literal_root_calls(mut a flat.FlatAst, c &CallCollector, kind flat.Node
 fn test_dynamic_array_iteration_keeps_lowered_get_helper() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('Names', '[]string')
-	tc.type_alias_modules['Names'] = 'main'
-	tc.type_aliases.set('NamesPointer', '&[]string')
-	tc.type_alias_modules['NamesPointer'] = 'main'
+	tc.type_aliases.set(flat.source_type_id('Names'), '[]string')
+	tc.type_alias_modules[flat.source_type_id('Names')] = 'main'
+	tc.type_aliases.set(flat.source_type_id('NamesPointer'), '&[]string')
+	tc.type_alias_modules[flat.source_type_id('NamesPointer')] = 'main'
 	collector := CallCollector{ a: &a, tc: &tc }
 	for type_name in ['[]string', '&[]string', 'Names', '&Names', 'NamesPointer', '&NamesPointer',
 		'[2]string', 'string', 'map[string]string'] {
@@ -507,7 +507,7 @@ fn test_omitted_parameter_defaults_skip_receiver_and_named_arguments() {
 			'consume': FnDeclInfo{ node_id: decl }
 		}
 		struct_decls:    {
-			'Config': StructDeclInfo{ node_id: config }
+			flat.source_type_id('Config'): StructDeclInfo{ node_id: config }
 		}
 		import_contexts: [map[string]string{}]
 	}
@@ -549,7 +549,7 @@ fn test_closure_runtime_import_marks_syntax_need() {
 fn test_explicit_generic_factory_resolves_nested_import_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.fn_generic_params['gates.make_gate'] = types.generic_param_ids(['U'])
 	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	imports := {
 		'alias': 'actual.module'
@@ -581,13 +581,21 @@ fn test_explicit_generic_factory_qualifies_caller_types_and_selective_imports() 
 	source_file := 'consumer/use.v'
 	a.source_files[3] = &token.File{ name: source_file }
 	mut tc := types.TypeChecker.new(&a)
-	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.fn_generic_params['gates.make_gate'] = types.generic_param_ids(['U'])
 	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	for name in ['consumer.Payload', 'consumer.Box', 'items.Selected'] {
-		tc.structs[name] = []types.StructField{}
+		tc.structs[flat.source_type_id(name)] = []types.StructField{}
 	}
-	tc.file_selective_imports[source_file + '\nSelected'] = ['items.Selected']
-	tc.file_selective_imports['other.v\nOtherOnly'] = ['items.Selected']
+	tc.selective_import_files[source_file] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Selected'): [flat.source_type_id('items.Selected')]
+		}
+	}
+	tc.selective_import_files['other.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('OtherOnly'): [flat.source_type_id('items.Selected')]
+		}
+	}
 	forms := {
 		'Payload':               'consumer.Payload'
 		'[]Payload':             '[]consumer.Payload'
@@ -624,7 +632,7 @@ fn test_generic_factory_return_substitutes_receiver_and_method_arguments_togethe
 		['gates.Builder[T]', 'gates.Builder[V]', 'V, W', 'gates.Gate[V, W]'],
 	] {
 		method := '${parts[0]}.make'
-		tc.fn_generic_params[method] = ['U']
+		tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[T, U]') })
 		base := a.add_val(.ident, 'builder')
 		selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make' }, [base])
@@ -645,10 +653,10 @@ fn test_generic_factory_return_substitutes_receiver_and_method_arguments_togethe
 fn test_generic_factory_return_locks_main_module_type_arguments() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Payload'] = []types.StructField{}
-	tc.struct_modules['Payload'] = 'main'
-	tc.structs['gates.Payload'] = []types.StructField{}
-	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.structs[flat.source_type_id('Payload')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('Payload')] = 'main'
+	tc.structs[flat.source_type_id('gates.Payload')] = []types.StructField{}
+	tc.fn_generic_params['gates.make_gate'] = types.generic_param_ids(['U'])
 	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[main.Payload].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
@@ -664,10 +672,10 @@ fn test_generic_factory_return_locks_main_module_type_arguments() {
 fn test_generic_factory_return_keeps_noncolliding_main_type_spelling() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Payload'] = []types.StructField{}
-	tc.structs['main.Payload'] = []types.StructField{}
-	tc.struct_modules['Payload'] = 'main'
-	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.structs[flat.source_type_id('Payload')] = []types.StructField{}
+	tc.structs[flat.source_type_id('main.Payload')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('Payload')] = 'main'
+	tc.fn_generic_params['gates.make_gate'] = types.generic_param_ids(['U'])
 	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[Payload].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
@@ -684,12 +692,12 @@ fn test_generic_factory_return_keeps_noncolliding_main_type_spelling() {
 fn test_generic_factory_return_locks_main_alias_when_target_collides() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('Payload', 'Context')
-	tc.type_alias_modules['Payload'] = 'main'
-	tc.structs['Context'] = []types.StructField{}
-	tc.struct_modules['Context'] = 'main'
-	tc.structs['gates.Context'] = []types.StructField{}
-	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.type_aliases.set(flat.source_type_id('Payload'), 'Context')
+	tc.type_alias_modules[flat.source_type_id('Payload')] = 'main'
+	tc.structs[flat.source_type_id('Context')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('Context')] = 'main'
+	tc.structs[flat.source_type_id('gates.Context')] = []types.StructField{}
+	tc.fn_generic_params['gates.make_gate'] = types.generic_param_ids(['U'])
 	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[main.Payload].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
@@ -707,18 +715,18 @@ fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
-	tc.structs['gates.Builder'] = []types.StructField{}
-	tc.struct_generic_params['gates.Builder'] = ['T']
-	tc.structs['gates.Outer'] = [
+	tc.structs[flat.source_type_id('gates.Builder')] = []types.StructField{}
+	tc.struct_generic_params[flat.source_type_id('gates.Builder')] = types.generic_param_ids(['T'])
+	tc.structs[flat.source_type_id('gates.Outer')] = [
 		types.StructField{
 			name:     'Builder'
 			typ:      types.Type(types.Struct{ name_id: flat.source_type_id('gates.Builder[V]') })
 			is_embed: true
 		},
 	]
-	tc.struct_generic_params['gates.Outer'] = ['V']
+	tc.struct_generic_params[flat.source_type_id('gates.Outer')] = types.generic_param_ids(['V'])
 	method := 'gates.Builder[T].make'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[T, U]') })
 	tc.fn_ret_types['gates.Gate[int, string].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'outer')
@@ -777,8 +785,8 @@ fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg()
 fn test_generic_factory_return_uses_placeholder_signature_text() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Payload'] = []types.StructField{}
-	tc.fn_generic_params['gates.identity'] = ['U']
+	tc.structs[flat.source_type_id('Payload')] = []types.StructField{}
+	tc.fn_generic_params['gates.identity'] = types.generic_param_ids(['U'])
 	tc.fn_ret_types['Payload.backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'identity')
 	arg := a.add_val(.ident, 'Payload')
@@ -808,7 +816,7 @@ fn test_generic_factory_return_uses_placeholder_signature_text() {
 fn test_generic_factory_return_uses_nested_placeholder_signature_text() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.fn_generic_params['gates.make'] = ['U']
+	tc.fn_generic_params['gates.make'] = types.generic_param_ids(['U'])
 	tc.fn_ret_types['[]ReceiverRequest.receiver_kind'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make')
 	arg := a.add_val(.ident, 'ReceiverRequest')
@@ -839,7 +847,7 @@ fn test_generic_factory_return_uses_nested_placeholder_signature_text() {
 fn test_generic_factory_return_keeps_qualified_unknown_module_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.fn_generic_params['unknown_factory.make'] = ['U']
+	tc.fn_generic_params['unknown_factory.make'] = types.generic_param_ids(['U'])
 	tc.fn_ret_types['unknown_factory.make'] = types.Type(types.Struct{
 		name_id: flat.source_type_id('unknown_factory.Gate')
 	})
@@ -859,10 +867,10 @@ fn test_generic_factory_return_keeps_qualified_unknown_module_name() {
 fn test_generic_factory_signature_text_uses_declaration_scope() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.fn_generic_params['gates.make'] = ['U']
+	tc.fn_generic_params['gates.make'] = types.generic_param_ids(['U'])
 	tc.fn_type_modules['gates.make'] = 'gates'
-	tc.structs['gates.Handler'] = []types.StructField{}
-	tc.structs['gates.Key'] = []types.StructField{}
+	tc.structs[flat.source_type_id('gates.Handler')] = []types.StructField{}
+	tc.structs[flat.source_type_id('gates.Key')] = []types.StructField{}
 	base := a.add_val(.ident, 'make')
 	arg := a.add_val(.ident, 'int')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
@@ -888,7 +896,7 @@ fn test_generic_factory_signature_text_uses_declaration_imports() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	method := 'gates.make'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_ret_types[method] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('external.Handler[U]')
 		base_type: &types.Type(types.Unknown{ reason: 'generic U' })
@@ -917,7 +925,7 @@ fn test_unindexed_generic_factory_return_infers_argument_type() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_param_type_texts.set(method, ['U'])
 	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
@@ -941,7 +949,7 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
@@ -978,28 +986,31 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 fn test_generic_factory_infers_semantic_channel_element_types() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Payload'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Payload')] = []types.StructField{}
 	for pattern in ['chan U', 'chan []U', '[]chan U', 'map[string]chan U', '?chan U', '&chan U',
 		'chan ?U', 'chan map[string][]U'] {
 		actual := tc.parse_type(flat.source_type_id(pattern.replace('U', 'Payload')))
-		mut inferred := flat.TypeTextBindings{}
-		markused_infer_alias_generic_type(flat.source_type_id(pattern), actual, ['U'], mut inferred)
-		assert inferred.value('U') == 'Payload', pattern
+		mut inferred := map[u32]u32{}
+		markused_infer_alias_generic_type(flat.source_type_id(pattern), actual, types.generic_param_ids(['U']), mut
+			inferred)
+		assert inferred[flat.source_type_id('U')] == flat.source_type_id('Payload'), pattern
 	}
 	channel := types.Type(types.Channel{ elem_type: &types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) })
 	for actual in [channel, types.Type(types.Pointer{ base_type: &types.Type(channel) }),
 		types.Type(types.Alias{ name_id: flat.source_type_id('Mailbox'), base_type: &types.Type(channel) })] {
-		mut inferred := flat.TypeTextBindings{}
-		markused_infer_alias_generic_type(flat.source_type_id('chan U'), actual, ['U'], mut inferred)
-		assert inferred.value('U') == 'Payload', actual.name()
+		mut inferred := map[u32]u32{}
+		markused_infer_alias_generic_type(flat.source_type_id('chan U'), actual, types.generic_param_ids(['U']), mut
+			inferred)
+		assert inferred[flat.source_type_id('U')] == flat.source_type_id('Payload'), actual.name()
 	}
 	for actual in [
 		types.Type(types.Channel{ elem_type: &types.Type(types.Unknown{}) }),
 		types.Type(types.Array{ elem_type: &types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) }),
 	] {
-		mut inferred := flat.TypeTextBindings{}
-		markused_infer_alias_generic_type(flat.source_type_id('chan U'), actual, ['U'], mut inferred)
-		assert inferred.ids.len == 0
+		mut inferred := map[u32]u32{}
+		markused_infer_alias_generic_type(flat.source_type_id('chan U'), actual, types.generic_param_ids(['U']), mut
+			inferred)
+		assert inferred.len == 0
 	}
 }
 
@@ -1007,13 +1018,13 @@ fn test_unindexed_factory_infers_aliased_channel_element_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
-	tc.structs['Payload'] = []types.StructField{}
-	tc.type_aliases.set('Mailbox', 'chan Payload')
-	tc.type_alias_modules['Mailbox'] = 'main'
-	tc.type_aliases.set('MailboxRef', '&Mailbox')
-	tc.type_alias_modules['MailboxRef'] = 'main'
+	tc.structs[flat.source_type_id('Payload')] = []types.StructField{}
+	tc.type_aliases.set(flat.source_type_id('Mailbox'), 'chan Payload')
+	tc.type_alias_modules[flat.source_type_id('Mailbox')] = 'main'
+	tc.type_aliases.set(flat.source_type_id('MailboxRef'), '&Mailbox')
+	tc.type_alias_modules[flat.source_type_id('MailboxRef')] = 'main'
 	method := 'gates.make_gate'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_param_type_texts.set(method, ['chan U'])
 	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[Payload].backward'] = types.Type(types.int_)
@@ -1039,8 +1050,8 @@ fn test_channel_generic_reachability_inference() {
 	tc := types.TypeChecker.new(&a)
 	actual := types.Type(types.Channel{ elem_type: &types.Type(types.int_) })
 	inferred := tc.infer_generic_reachability_type_args('gates.make_gate', flat.source_type_id('chan U'), actual,
-		['U'])
-	assert inferred['U'] == flat.source_type_int
+		types.generic_param_ids(['U']))
+	assert inferred[flat.source_type_id('U')] == flat.source_type_int
 }
 
 fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
@@ -1049,7 +1060,7 @@ fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
 		mut tc := types.TypeChecker.new(&a)
 		tc.parallel_check_sparse = true
 		method := 'gates.make_gate'
-		tc.fn_generic_params[method] = ['U']
+		tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 		tc.fn_param_type_texts.set(method, [pattern])
 		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		callee := a.add_val(.ident, 'make_gate')
@@ -1073,14 +1084,14 @@ fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
 }
 
 fn test_repeated_generic_parameter_keeps_first_alias_inference() {
-	mut inferred := flat.TypeTextBindings{}
+	mut inferred := map[u32]u32{}
 	for name in ['A', 'B'] {
 		markused_infer_alias_generic_type(flat.source_type_id('U'), types.Type(types.Alias{
 			name_id:   flat.source_type_id(name)
 			base_type: &types.Type(types.int_)
-		}), ['U'], mut inferred)
+		}), types.generic_param_ids(['U']), mut inferred)
 	}
-	assert inferred.value('U') == 'A'
+	assert inferred[flat.source_type_id('U')] == flat.source_type_id('A')
 }
 
 fn test_unindexed_generic_factory_uses_prior_local_type() {
@@ -1088,10 +1099,10 @@ fn test_unindexed_generic_factory_uses_prior_local_type() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_param_type_texts.set(method, ['U'])
 	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
-	tc.structs['Payload'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Payload')] = []types.StructField{}
 	payload_lhs := a.add_val(.ident, 'payload')
 	payload_rhs := a.add_val(.struct_init, 'Payload')
 	payload_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [
@@ -1110,7 +1121,7 @@ fn test_unindexed_generic_factory_uses_prior_local_type() {
 		a:            &a
 		tc:           &tc
 		struct_decls: {
-			'Payload': StructDeclInfo{ module: 'main' }
+			flat.source_type_id('Payload'): StructDeclInfo{ module: 'main' }
 		}
 	}
 	_, local_types, _ := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
@@ -1123,7 +1134,7 @@ fn test_generic_factory_uses_for_in_element_type() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_param_type_texts.set(method, ['U'])
 	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
@@ -1166,11 +1177,11 @@ fn test_generic_factory_uses_custom_iterator_element_type() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	factory := 'gates.make_gate'
-	tc.fn_generic_params[factory] = ['U']
+	tc.fn_generic_params[factory] = types.generic_param_ids(['U'])
 	tc.fn_param_type_texts.set(factory, ['U'])
 	tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
-	tc.struct_generic_params['Iter'] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Iter')] = types.generic_param_ids(['T'])
 	tc.fn_ret_types['Iter[T].next'] = types.Type(types.OptionType{
 		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('T') })
 	})
@@ -1219,7 +1230,7 @@ fn assert_generic_factory_pipe_lambda_array_callback(callback string) {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_param_type_texts.set(method, ['U'])
 	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
@@ -1342,7 +1353,7 @@ fn test_generic_factory_multi_return_decl_uses_component_type() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	method := 'gates.make_pair'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_ret_types[method] = types.Type(types.MultiReturn{
 		types: [
 			types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') }),
@@ -1521,9 +1532,9 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 		a:               &a
 		tc:              &tc
 		struct_decls:    {
-			'A': StructDeclInfo{ module: 'main' }
-			'B': StructDeclInfo{ module: 'main' }
-			'C': StructDeclInfo{ module: 'main' }
+			flat.source_type_id('A'): StructDeclInfo{ module: 'main' }
+			flat.source_type_id('B'): StructDeclInfo{ module: 'main' }
+			flat.source_type_id('C'): StructDeclInfo{ module: 'main' }
 		}
 		import_contexts: [map[string]string{}]
 	}
@@ -1558,7 +1569,7 @@ fn test_unindexed_generic_factory_return_infers_callback_result() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_param_type_texts.set(method, ['fn () U'])
 	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
@@ -1582,18 +1593,18 @@ fn test_unindexed_generic_factory_return_infers_interface_implementer() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
-	tc.fn_generic_params[method] = ['U']
+	tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 	tc.fn_param_type_texts.set(method, ['Iterable[U]'])
 	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[int].backward'] = types.Type(types.int_)
-	tc.interface_names['Iterable'] = true
-	tc.interface_generic_params['Iterable'] = ['U']
-	tc.interface_fields['Iterable'] = [types.StructField{
+	tc.interface_names[flat.source_type_id('Iterable')] = true
+	tc.interface_generic_params[flat.source_type_id('Iterable')] = types.generic_param_ids(['U'])
+	tc.interface_fields[flat.source_type_id('Iterable')] = [types.StructField{
 		name: 'item'
 		typ:  types.Type(types.Struct{ name_id: flat.source_type_id('U') })
 	}]
-	tc.struct_generic_params['List'] = ['T']
-	tc.structs['List'] = [types.StructField{
+	tc.struct_generic_params[flat.source_type_id('List')] = types.generic_param_ids(['T'])
+	tc.structs[flat.source_type_id('List')] = [types.StructField{
 		name: 'item'
 		typ:  types.Type(types.Struct{ name_id: flat.source_type_id('T') })
 	}]
@@ -1620,11 +1631,11 @@ fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
 		mut tc := types.TypeChecker.new(&a)
 		tc.parallel_check_sparse = true
 		method := 'gates.make_gate'
-		tc.fn_generic_params[method] = ['U']
+		tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 		tc.fn_param_type_texts.set(method, ['Params[U]'])
 		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
-		tc.struct_generic_params['gates.Params'] = ['P']
+		tc.struct_generic_params[flat.source_type_id('gates.Params')] = types.generic_param_ids(['P'])
 		count_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'count', typ: flat.source_type_int })
 		items_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'items', typ: flat.source_type_id(pattern) })
 		struct_id := call_helper_node(mut a, flat.Node{ kind: .struct_decl, value: 'Params' }, [
@@ -1650,7 +1661,7 @@ fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
 				method: FnDeclInfo{ node_id: fn_id, module: 'gates' }
 			}
 			struct_decls:    {
-				'gates.Params': StructDeclInfo{ node_id: struct_id, module: 'gates' }
+				flat.source_type_id('gates.Params'): StructDeclInfo{ node_id: struct_id, module: 'gates' }
 			}
 			import_contexts: [map[string]string{}]
 		}
@@ -1677,7 +1688,7 @@ fn test_inferred_factory_callback_arguments_keep_caller_generic_names() {
 			mut tc := types.TypeChecker.new(&a)
 			tc.parallel_check_sparse = true
 			method := 'gates.make_gate'
-			tc.fn_generic_params[method] = ['U']
+			tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 			tc.fn_param_type_texts.set(method, [pattern])
 			tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			expected := 'gates.Gate[${caller}]'
@@ -1711,26 +1722,26 @@ fn test_inferred_factory_interface_arguments_keep_caller_generic_names() {
 			mut tc := types.TypeChecker.new(&a)
 			tc.parallel_check_sparse = true
 			tc.cur_module = 'consumer'
-			tc.structs['consumer.Iterable'] = []types.StructField{}
-			tc.structs['iter.Iterable'] = []types.StructField{}
+			tc.structs[flat.source_type_id('consumer.Iterable')] = []types.StructField{}
+			tc.structs[flat.source_type_id('iter.Iterable')] = []types.StructField{}
 			method := 'gates.make_gate'
 			tc.fn_type_modules[method] = 'gates'
 			tc.fn_type_files[method] = 'gates.v'
 			tc.file_modules['gates.v'] = 'gates'
 			tc.file_imports['gates.v\niter'] = 'gates'
-			tc.fn_generic_params[method] = ['U']
+			tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 			tc.fn_param_type_texts.set(method, [pattern])
 			tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			expected := 'gates.Gate[${caller}]'
 			tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
-			tc.interface_names['gates.Iterable'] = true
-			tc.interface_generic_params['gates.Iterable'] = ['E']
-			tc.interface_fields['gates.Iterable'] = [types.StructField{
+			tc.interface_names[flat.source_type_id('gates.Iterable')] = true
+			tc.interface_generic_params[flat.source_type_id('gates.Iterable')] = types.generic_param_ids(['E'])
+			tc.interface_fields[flat.source_type_id('gates.Iterable')] = [types.StructField{
 				name: 'item'
 				typ:  types.Type(types.Struct{ name_id: flat.source_type_id('E') })
 			}]
-			tc.struct_generic_params['consumer.List'] = ['E']
-			tc.structs['consumer.List'] = [types.StructField{
+			tc.struct_generic_params[flat.source_type_id('consumer.List')] = types.generic_param_ids(['E'])
+			tc.structs[flat.source_type_id('consumer.List')] = [types.StructField{
 				name: 'item'
 				typ:  types.Type(types.Struct{ name_id: flat.source_type_id('E') })
 			}]
@@ -1762,11 +1773,11 @@ fn test_factory_local_inference_preserves_lexical_bindings() {
 		mut tc := types.TypeChecker.new(&a)
 		tc.parallel_check_sparse = true
 		factory := 'gates.make_gate'
-		tc.fn_generic_params[factory] = ['U']
+		tc.fn_generic_params[factory] = types.generic_param_ids(['U'])
 		tc.fn_param_type_texts.set(factory, ['U'])
 		tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		for name in ['A', 'B'] {
-			tc.structs[name] = []types.StructField{}
+			tc.structs[flat.source_type_id(name)] = []types.StructField{}
 			tc.fn_ret_types['${name}.method'] = types.Type(types.int_)
 			tc.fn_ret_types['gates.Gate[${name}].backward'] = types.Type(types.int_)
 		}
@@ -1821,8 +1832,8 @@ fn test_factory_local_inference_preserves_lexical_bindings() {
 			tc:              &tc
 			import_contexts: [map[string]string{}]
 			struct_decls:    {
-				'A': StructDeclInfo{ module: 'main' }
-				'B': StructDeclInfo{ module: 'main' }
+				flat.source_type_id('A'): StructDeclInfo{ module: 'main' }
+				flat.source_type_id('B'): StructDeclInfo{ module: 'main' }
 			}
 		}
 		mut calls := []string{}
@@ -1846,7 +1857,7 @@ fn test_unindexed_factory_infers_variadic_caller_types() {
 		mut tc := types.TypeChecker.new(&a)
 		tc.parallel_check_sparse = true
 		method := 'gates.make_gate'
-		tc.fn_generic_params[method] = ['U']
+		tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 		tc.fn_param_type_texts.set(method, ['...U'])
 		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		expected := 'gates.Gate[${actual}]'
@@ -1899,11 +1910,11 @@ fn test_factory_argument_inference_handles_spreads_modifiers_and_container_alias
 			'Number':  'int'
 			'Numbers': '[]Number'
 		} {
-			tc.type_aliases.set(name, actual)
-			tc.type_alias_modules[name] = 'main'
+			tc.type_aliases.set(flat.source_type_id(name), actual)
+			tc.type_alias_modules[flat.source_type_id(name)] = 'main'
 		}
 		method := 'gates.make_gate'
-		tc.fn_generic_params[method] = ['U']
+		tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 		tc.fn_param_type_texts.set(method, [form[0]])
 		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		expected := 'gates.Gate[${form[2]}]'
@@ -1940,7 +1951,7 @@ fn test_factory_calls_used_directly_as_receivers_keep_specialized_methods() {
 			mut tc := types.TypeChecker.new(&a)
 			tc.parallel_check_sparse = true
 			method := 'gates.make_gate'
-			tc.fn_generic_params[method] = ['U']
+			tc.fn_generic_params[method] = types.generic_param_ids(['U'])
 			tc.fn_param_type_texts.set(method, ['U'])
 			tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
@@ -1987,15 +1998,15 @@ fn test_factory_loop_bindings_use_iterator_next_and_checked_variable_types() {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		tc.parallel_check_sparse = true
-		tc.structs['Iter'] = []types.StructField{}
-		tc.struct_generic_params['Iter'] = ['U']
+		tc.structs[flat.source_type_id('Iter')] = []types.StructField{}
+		tc.struct_generic_params[flat.source_type_id('Iter')] = types.generic_param_ids(['U'])
 		tc.fn_ret_types['Iter[U].next'] = types.Type(types.OptionType{ base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('U') }) })
 		tc.fn_ret_type_texts.set('Iter[U].next', '?U')
 		tc.fn_param_type_texts.set('Iter[U].next', ['&Iter[U]'])
-		tc.type_aliases.set('IteratorAlias', 'Iter[int]')
-		tc.type_alias_modules['IteratorAlias'] = 'main'
+		tc.type_aliases.set(flat.source_type_id('IteratorAlias'), 'Iter[int]')
+		tc.type_alias_modules[flat.source_type_id('IteratorAlias')] = 'main'
 		factory := 'gates.make_gate'
-		tc.fn_generic_params[factory] = ['U']
+		tc.fn_generic_params[factory] = types.generic_param_ids(['U'])
 		tc.fn_param_type_texts.set(factory, ['U'])
 		tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		expected := 'gates.Gate[${form[1]}]'
@@ -2077,7 +2088,7 @@ fn test_factory_local_inference_uses_loop_bindings() {
 			mut tc := types.TypeChecker.new(&a)
 			tc.parallel_check_sparse = true
 			factory := 'gates.make_gate'
-			tc.fn_generic_params[factory] = ['U']
+			tc.fn_generic_params[factory] = types.generic_param_ids(['U'])
 			tc.fn_param_type_texts.set(factory, ['U'])
 			tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			expected := if use_key {
@@ -2123,7 +2134,7 @@ fn test_factory_local_inference_decomposes_multi_return_declarations() {
 		mut tc := types.TypeChecker.new(&a)
 		tc.parallel_check_sparse = true
 		factory := 'gates.make_pair'
-		tc.fn_generic_params[factory] = ['U']
+		tc.fn_generic_params[factory] = types.generic_param_ids(['U'])
 		tc.fn_ret_types[factory] = types.Type(types.MultiReturn{
 			types: [
 				types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') }),
@@ -2176,7 +2187,7 @@ fn test_factory_local_inference_preserves_range_integer_types() {
 				mut tc := types.TypeChecker.new(&a)
 				tc.parallel_check_sparse = true
 				factory := 'gates.make_gate'
-				tc.fn_generic_params[factory] = ['U']
+				tc.fn_generic_params[factory] = types.generic_param_ids(['U'])
 				tc.fn_param_type_texts.set(factory, ['U'])
 				tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 				expected := if literals == 'both' { 'int' } else { bound_type }
@@ -2295,7 +2306,7 @@ fn test_initializer_without_local_bindings_keeps_calls_refs_and_generics() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
-	tc.fn_generic_params['factory'] = ['T']
+	tc.fn_generic_params['factory'] = types.generic_param_ids(['T'])
 	tc.fn_ret_types['factory'] = types.Type(types.int_)
 	callee := a.add_val(.ident, 'factory')
 	arg := a.add_val(.ident, 'payload')

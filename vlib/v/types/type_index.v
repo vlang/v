@@ -15,8 +15,7 @@ pub fn (tc &TypeChecker) type_index(name_id u32) int {
 	mut indirections := 0
 	for flat.source_type_shape(base_id).has(.pointer) {
 		indirections++
-		base := flat.source_type_name(base_id)
-		base_id = flat.source_type_id(base[1..].trim_space())
+		base_id = trimmed_source_type_id(flat.source_type_syntax(base_id).raw_base())
 	}
 	builtin_idx := builtin_type_index(base_id)
 	index := if builtin_idx > 0 {

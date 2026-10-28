@@ -84,8 +84,7 @@ const cached_module_function_names = ['debug.after_call_hook', 'debug.before_cal
 const cached_function_name_patterns = ['*.arg*', '*.free', '*.json', '*.len', '*_aligned', '*_break',
 	'*_callback', '*_clone', '*_continue', '*_free', '*_hash', '*_idx', '*_key_*', '*_map_key',
 	'*_object', '*_source', '*_str', '*_thread_args', '*_value_*', '*data', '*defined', '*nil',
-	'*void', '.arg*', 'arg*', 'main*', 'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*', 'ptr_*',
-	'voidptr*', 'vpc_*_*']
+	'.arg*', 'arg*', 'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*', 'ptr_*', 'vpc_*_*']
 
 // module_lifecycle_function_names are the functions that a program calls for each
 // of its modules that has them, without a call in its source.

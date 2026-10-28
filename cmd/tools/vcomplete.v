@@ -159,6 +159,7 @@ const auto_complete_flags = [
 	'-arch',
 	'-assert',
 	'-show-timings',
+	'-show-instructions',
 	'-show-asserts',
 	'-check-syntax',
 	'-check',

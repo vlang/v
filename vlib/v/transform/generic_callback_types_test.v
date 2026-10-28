@@ -7,24 +7,27 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	mut a := flat.FlatAst.new()
 	id := a.add_val(.ident, 'callback')
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('SharedCb', flat.source_type_id('fn (shared int)'))
-	tc.type_aliases.set_id('PlainCb', flat.source_type_id('fn (int)'))
-	tc.type_aliases.set_id('SharedHandlers', flat.source_type_id('map[string]fn (shared int)'))
-	tc.type_aliases.set_id('PlainHandlers', flat.source_type_id('map[string]fn (int)'))
-	tc.type_aliases.set_id('FastFn', flat.source_type_id('fn (int)'))
-	tc.type_aliases.set_id('CdeclFn', flat.source_type_id('fn (int)'))
-	tc.type_aliases.set_id('FastBox', flat.source_type_id('Box[FastFn]'))
-	tc.type_aliases.set_id('CdeclBox', flat.source_type_id('Box[CdeclFn]'))
+	tc.type_aliases.set_id(flat.source_type_id('SharedCb'), flat.source_type_id('fn (shared int)'))
+	tc.type_aliases.set_id(flat.source_type_id('PlainCb'), flat.source_type_id('fn (int)'))
+	tc.type_aliases.set_id(flat.source_type_id('SharedHandlers'), flat.source_type_id('map[string]fn (shared int)'))
+	tc.type_aliases.set_id(flat.source_type_id('PlainHandlers'), flat.source_type_id('map[string]fn (int)'))
+	tc.type_aliases.set_id(flat.source_type_id('FastFn'), flat.source_type_id('fn (int)'))
+	tc.type_aliases.set_id(flat.source_type_id('CdeclFn'), flat.source_type_id('fn (int)'))
+	tc.type_aliases.set_id(flat.source_type_id('FastBox'), flat.source_type_id('Box[FastFn]'))
+	tc.type_aliases.set_id(flat.source_type_id('CdeclBox'), flat.source_type_id('Box[CdeclFn]'))
 	fast_decl := a.add_node(flat.Node{ kind: .type_decl, value: 'FastFn' })
 	cdecl_decl := a.add_node(flat.Node{ kind: .type_decl, value: 'CdeclFn' })
-	tc.type_declaration_ids['FastFn'] = [int(fast_decl)]
-	tc.type_declaration_ids['CdeclFn'] = [int(cdecl_decl)]
+	tc.type_declaration_ids[flat.source_type_id('FastFn')] = [int(fast_decl)]
+	tc.type_declaration_ids[flat.source_type_id('CdeclFn')] = [int(cdecl_decl)]
 	tc.declaration_attributes[int(fast_decl)] = ['callconv: fastcall']
 	tc.declaration_attributes[int(cdecl_decl)] = ['callconv: cdecl']
-	tc.structs['Box'] = []types.StructField{}
-	tc.struct_generic_params['Box'] = ['T']
-	tc.structs['Pair'] = []types.StructField{}
-	tc.struct_generic_params['Pair'] = ['T', 'U']
+	tc.structs[flat.source_type_id('Box')] = []types.StructField{}
+	tc.struct_generic_params[flat.source_type_id('Box')] = types.generic_param_ids(['T'])
+	tc.structs[flat.source_type_id('Pair')] = []types.StructField{}
+	tc.struct_generic_params[flat.source_type_id('Pair')] = types.generic_param_ids([
+		'T',
+		'U',
+	])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.resolved_receiver_arg_compatible(id, flat.source_type_id('fn ([]int, []int) int'), flat.source_type_id('fn([]int, []int) int'))
 	assert t.resolved_receiver_arg_compatible(id, flat.source_type_id('fn (values []f64, indices []int) f64'), flat.source_type_id('fn([]f64, []int) f64'))
@@ -181,8 +184,8 @@ fn test_specialized_callbacks_keep_alias_modes_after_semantic_resolution() {
 	] {
 		alias := 'ModeCallback${idx}'
 		chain := 'ChainedCallback${idx}'
-		tc.type_aliases.set_id(alias, flat.source_type_id(forms[0]))
-		tc.type_aliases.set_id(chain, flat.source_type_id(alias))
+		tc.type_aliases.set_id(flat.source_type_id(alias), flat.source_type_id(forms[0]))
+		tc.type_aliases.set_id(flat.source_type_id(chain), flat.source_type_id(alias))
 		for raw in [alias, chain] {
 			id := t.a.add_node(flat.Node{ kind: .ident, value: 'callback${idx}${raw}', typ: flat.source_type_id(raw) })
 			assert !t.resolved_receiver_arg_compatible(id, flat.source_type_id(forms[1]), flat.source_type_id(forms[1])), raw
@@ -190,7 +193,7 @@ fn test_specialized_callbacks_keep_alias_modes_after_semantic_resolution() {
 			assert t.resolved_receiver_arg_compatible(id, flat.source_type_id(forms[1]), flat.source_type_id(raw)), raw
 		}
 	}
-	tc.type_aliases.set_id('UnrelatedCallback', flat.source_type_id('fn (shared string)'))
+	tc.type_aliases.set_id(flat.source_type_id('UnrelatedCallback'), flat.source_type_id('fn (shared string)'))
 	unrelated := t.a.add_node(flat.Node{ kind: .ident, value: 'unrelated', typ: flat.source_type_id('UnrelatedCallback') })
 	assert t.resolved_receiver_arg_compatible(unrelated, flat.source_type_id('fn (int)'), flat.source_type_id('fn (int)'))
 }
