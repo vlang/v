@@ -752,6 +752,9 @@ mut:
 	monomorph_worker_scopes []voidptr
 	signature_maps_shared   bool
 	signature_maps_changed  bool
+	// signature_keys_borrowed marks a fork whose shared signature tables belong
+	// to a transformer that outlives it: detaching them can borrow their keys.
+	signature_keys_borrowed bool
 	// Allocations lowering adds that the source does not show, for
 	// -warn-about-allocs; see warn_alloc.
 	alloc_warnings []AllocWarning
@@ -3633,7 +3636,15 @@ fn (mut t Transformer) add_receiver_method_suffix_index(name string) {
 }
 
 fn (mut t Transformer) ensure_private_signature_maps() {
-	if t.signature_maps_shared {
+	if t.signature_maps_shared && t.signature_keys_borrowed {
+		// A fork's private tables die with it, before the parent's keys.
+		t.fn_ret_types = t.fn_ret_types.clone_sharing_keys()
+		unsafe {
+			map_clone_sharing_keys(&t.receiver_method_suffix_index, &t.receiver_method_suffix_index)
+		}
+		t.signature_maps_shared = false
+		t.signature_keys_borrowed = false
+	} else if t.signature_maps_shared {
 		t.fn_ret_types = t.fn_ret_types.clone()
 		t.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
 		t.signature_maps_shared = false
@@ -5949,6 +5960,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		node_context_read_only:                 t.node_context_read_only
 		signature_maps_shared:                  true
 		signature_maps_changed:                 false
+		signature_keys_borrowed:                true
 		struct_maps_shared:                     true
 	}
 }

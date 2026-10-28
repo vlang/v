@@ -1183,24 +1183,28 @@ pub mut:
 	fn_type_modules                  map[string]string
 	transform_signature_maps_shared  bool
 	transform_signature_maps_changed bool
-	transform_signature_names_log    []string
-	transform_struct_maps_shared     bool
-	fn_generic_params                map[string][]string
-	constraints_scanned              bool // program_declares_constraints has looked
-	declares_constraints             bool
-	specialized_generic_fns          map[string]bool
-	fn_variadic                      map[string]bool
-	c_variadic_fns                   map[string]bool
-	fn_implicit_veb_ctx              map[string]bool
-	receiver_method_suffix_index     map[string]string
-	receiver_method_short_names      map[string]bool
-	collection_method_short_names    map[string]bool // short names of `[]T.m` and `map[K]V.m` methods
-	generic_receiver_method_index    map[string][]string
-	structs                          map[u32][]StructField
-	c_struct_scoped_fields           map[u64][]StructField
-	struct_modules                   map[u32]string
-	struct_files                     map[u32]string
-	soa_structs                      map[u32]bool
+	// transform_signature_keys_borrowed marks a transform fork whose shared
+	// signature maps belong to a checker that outlives it, so a detached copy
+	// can borrow their keys instead of cloning every name.
+	transform_signature_keys_borrowed bool
+	transform_signature_names_log     []string
+	transform_struct_maps_shared      bool
+	fn_generic_params                 map[string][]string
+	constraints_scanned               bool // program_declares_constraints has looked
+	declares_constraints              bool
+	specialized_generic_fns           map[string]bool
+	fn_variadic                       map[string]bool
+	c_variadic_fns                    map[string]bool
+	fn_implicit_veb_ctx               map[string]bool
+	receiver_method_suffix_index      map[string]string
+	receiver_method_short_names       map[string]bool
+	collection_method_short_names     map[string]bool // short names of `[]T.m` and `map[K]V.m` methods
+	generic_receiver_method_index     map[string][]string
+	structs                           map[u32][]StructField
+	c_struct_scoped_fields            map[u64][]StructField
+	struct_modules                    map[u32]string
+	struct_files                      map[u32]string
+	soa_structs                       map[u32]bool
 	// Packed source-context ID and type spelling ID keys for every source-level
 	// struct/type/interface/enum declaration, built once in `collect`. Replaces
 	// the former full-node scan in `source_declares_type_in_scope`, which was
@@ -2136,6 +2140,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	// cloning all maps for every scoped batch dominates self-host memory.
 	forked.transform_signature_maps_shared = true
 	forked.transform_signature_maps_changed = false
+	forked.transform_signature_keys_borrowed = true
 	forked.transform_struct_maps_shared = true
 	// Scoped reachability uses a transform fork too. Retain the master's body
 	// policy so it does not eagerly collect the library bodies the check skipped.
@@ -2213,7 +2218,26 @@ pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
 		mut cache := tc.global_store_cache
 		cache.values.clear()
 	}
-	if tc.transform_signature_maps_shared {
+	if tc.transform_signature_maps_shared && tc.transform_signature_keys_borrowed {
+		// The fork's private maps are discarded with its batch, before the parent's
+		// keys, and deleting from them never frees a borrowed key. Cloning every
+		// name of these whole-program tables dominated each detach.
+		unsafe {
+			map_clone_sharing_keys(&tc.fn_ret_types, &tc.fn_ret_types)
+			map_clone_sharing_keys(&tc.fn_param_types, &tc.fn_param_types)
+			map_clone_sharing_keys(&tc.receiver_method_suffix_index, &tc.receiver_method_suffix_index)
+			map_clone_sharing_keys(&tc.receiver_method_short_names, &tc.receiver_method_short_names)
+			map_clone_sharing_keys(&tc.collection_method_short_names, &tc.collection_method_short_names)
+			map_clone_sharing_keys(&tc.fn_variadic, &tc.fn_variadic)
+			map_clone_sharing_keys(&tc.specialized_generic_fns, &tc.specialized_generic_fns)
+			map_clone_sharing_keys(&tc.fn_type_modules, &tc.fn_type_modules)
+			map_clone_sharing_keys(&tc.fn_type_files, &tc.fn_type_files)
+		}
+		tc.generic_receiver_method_index = clone_string_list_map(tc.generic_receiver_method_index)
+		tc.transform_signature_maps_shared = false
+		// Only the tables shared at fork time are known to outlive this fork.
+		tc.transform_signature_keys_borrowed = false
+	} else if tc.transform_signature_maps_shared {
 		tc.fn_ret_types = tc.fn_ret_types.clone()
 		tc.fn_param_types = tc.fn_param_types.clone()
 		tc.receiver_method_suffix_index = tc.receiver_method_suffix_index.clone()

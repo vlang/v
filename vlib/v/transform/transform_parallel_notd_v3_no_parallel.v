@@ -1915,9 +1915,14 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		// name would be reused for different closures, and the module-keyed
 		// signature table would then give one of them the other's signature.
 		w.global_temp_counter = t.global_temp_counter
-		w.fn_ret_types = t.fn_ret_types.fork()
-		w.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
+		// The worker and its tables are released with `scope`, before the keys
+		// of the tables it copies, so the copies borrow those keys.
+		w.fn_ret_types = t.fn_ret_types.fork_sharing_keys()
+		unsafe {
+			map_clone_sharing_keys(&w.receiver_method_suffix_index, &t.receiver_method_suffix_index)
+		}
 		w.signature_maps_shared = false
+		w.signature_keys_borrowed = false
 		w.generic_fn_decls_cache = decls.clone()
 		w.generic_fn_decls_ready = true
 		w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
