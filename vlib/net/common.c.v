@@ -62,14 +62,8 @@ pub fn shutdown(handle int, config ShutdownConfig) int {
 			mut err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
 			mut xyz := 0
 			$if vlibc ? {
-				// SO_ERROR goes through the vlibc syscall on Linux; other
-				// vlibc targets keep the libc call below.
-				$if linux {
-					xyz, err = vlibc_get_so_error(handle)
-				} $else {
-					len := sizeof(err)
-					xyz = C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
-				}
+				// SO_ERROR goes through the vlibc syscall.
+				xyz, err = vlibc_get_so_error(handle)
 			} $else {
 				len := sizeof(err)
 				xyz = C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
@@ -112,14 +106,8 @@ pub fn close(handle int) ! {
 			mut err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
 			mut xyz := 0
 			$if vlibc ? {
-				// SO_ERROR goes through the vlibc syscall on Linux; other
-				// vlibc targets keep the libc call below.
-				$if linux {
-					xyz, err = vlibc_get_so_error(handle)
-				} $else {
-					len := sizeof(err)
-					xyz = C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
-				}
+				// SO_ERROR goes through the vlibc syscall.
+				xyz, err = vlibc_get_so_error(handle)
 			} $else {
 				len := sizeof(err)
 				xyz = C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)

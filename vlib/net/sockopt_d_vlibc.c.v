@@ -1,18 +1,16 @@
 module net
 
-// Hosted `-d vlibc` sockopt/fcntl bridge (Linux-only syscalls).
+// Hosted `-d vlibc` sockopt/fcntl bridge.
 //
-// The helpers below route SO_ERROR reads and the non-blocking fcntl setup
-// through the vlibc syscalls (vlibc_sys_getsockopt/vlibc_sys_fcntl from
-// linux_bare) instead of libc. They are guarded by `$if linux`, so other
-// vlibc targets keep the libc path at the call sites: only linux_bare
-// provides vlibc_sys_setsockopt/getsockopt. `set_option`/`set_read_timeout`
-// call the vlibc syscalls directly at their call sites. Windows is
-// untouched (it never defines `linux`). getpeername stays on libc
-// everywhere: no vlibc_sys_getpeername wrapper exists yet, and in hosted
-// mode libc is still linked, so it works on vlibc-created fds.
+// vlibc_get_so_error routes SO_ERROR reads through the vlibc getsockopt
+// syscall, so it is available on every vlibc target: linux_bare and the
+// BSD/macOS/Solaris bare targets all provide vlibc_sys_setsockopt/
+// getsockopt. `set_option`/`set_read_timeout` call the vlibc syscalls
+// directly at their call sites. Windows is untouched (it never defines
+// `linux`). getpeername stays on libc everywhere: in hosted mode libc is
+// still linked, so it works on vlibc-created fds too.
 
-$if linux {
+$if vlibc ? {
 	// vlibc_get_so_error reads SO_ERROR, mirroring the C.getsockopt call it
 	// replaces: xyz is 0 on success (err holds the pending socket error),
 	// -1 when the syscall itself failed.
@@ -23,8 +21,13 @@ $if linux {
 		}
 		return 0, i32(v)
 	}
+}
 
+$if linux {
 	// vlibc_set_blocking toggles O_NONBLOCK via the vlibc fcntl syscall.
+	// Linux-only: macOS vlibc_sys_fcntl takes a voidptr arg, so this shared
+	// helper does not typecheck there; other vlibc targets keep the libc
+	// fcntl path at the call site in socket.c.v.
 	fn vlibc_set_blocking(handle int, state bool) ! {
 		fl, e := vlibc_sys_fcntl(i64(handle), C.F_GETFL, 0)
 		vlibc_wrap_err(e)!

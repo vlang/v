@@ -308,6 +308,38 @@ $if !i386 {
 		return unsafe { VlibcErrno(er) }
 	}
 
+	pub fn vlibc_sys_getsockname(fd i64, addr voidptr, addrlen &u32) VlibcErrno {
+		_, er := sys_call3(mac_nr_getsockname, u64(fd), u64(addr), u64(addrlen))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_sys_getpeername(fd i64, addr voidptr, addrlen &u32) VlibcErrno {
+		_, er := sys_call3(mac_nr_getpeername, u64(fd), u64(addr), u64(addrlen))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_sys_setsockopt(fd i64, level int, optname int, optval voidptr, optlen u32) VlibcErrno {
+		_, er := sys_call5(mac_nr_setsockopt, u64(fd), u64(level), u64(optname), u64(optval), u64(optlen))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
+	pub fn vlibc_sys_getsockopt(fd i64, level int, optname int, optval voidptr, optlen &u32) VlibcErrno {
+		_, er := sys_call5(mac_nr_getsockopt, u64(fd), u64(level), u64(optname), u64(optval), u64(optlen))
+		if er == 0 {
+			return VlibcErrno.enoerror
+		}
+		return unsafe { VlibcErrno(er) }
+	}
+
 	// ---- time (gettimeofday + select; macOS has no clock_gettime/nanosleep syscalls) ----
 	pub fn vlibc_now_realtime_ns() i64 {
 		mut tv := MacTimeval{}
@@ -691,6 +723,14 @@ $if !i386 {
 		return (v >> 8) | (v << 8)
 	}
 
+	pub fn vlibc_htonl(v u32) u32 {
+		return ((v & 0x000000ff) << 24) | ((v & 0x0000ff00) << 8) | ((v & 0x00ff0000) >> 8) | ((v & 0xff000000) >> 24)
+	}
+
+	pub fn vlibc_ntohs(v u16) u16 {
+		return vlibc_htons(v)
+	}
+
 	pub fn vlibc_parse_ipv4(s string) u32 {
 		mut parts := [u32(0), u32(0), u32(0), u32(0)]
 		mut idx := 0
@@ -768,6 +808,22 @@ $if !i386 {
 
 	pub fn vlibc_shutdown(fd i64, how int) VlibcErrno {
 		return vlibc_sys_shutdown(fd, how)
+	}
+
+	// vlibc_setsockopt_int sets an int-valued socket option via the
+	// setsockopt syscall (used for SO_REUSEADDR, timeouts, buffer sizes...).
+	pub fn vlibc_setsockopt_int(fd i64, level int, optname int, val int) VlibcErrno {
+		v := i32(val) // C socket options are 4-byte `int`
+		return vlibc_sys_setsockopt(fd, level, optname, voidptr(&v), u32(sizeof(v)))
+	}
+
+	// vlibc_getsockopt_int reads an int-valued socket option via the
+	// getsockopt syscall (used for SO_ERROR reads).
+	pub fn vlibc_getsockopt_int(fd i64, level int, optname int) (int, VlibcErrno) {
+		mut v := i32(0)
+		mut olen := u32(sizeof(v))
+		e := vlibc_sys_getsockopt(fd, level, optname, voidptr(&v), &olen)
+		return int(v), e
 	}
 
 	// ---- atomic helpers ----

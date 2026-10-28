@@ -407,15 +407,10 @@ pub fn (mut c TcpConn) set_read_timeout(t time.Duration) {
 			tv_usec: u64(microseconds % 1_000_000)
 		}
 		$if vlibc ? {
-			// SO_RCVTIMEO goes through the vlibc syscall on Linux; other
-			// vlibc targets keep the libc call (no vlibc_sys_setsockopt).
-			$if linux {
-				c.read_timeout_in_socket = vlibc_sys_setsockopt(i64(c.sock.handle), C.SOL_SOCKET,
-					C.SO_RCVTIMEO, voidptr(&timeout), u32(sizeof(timeout))) == .enoerror
-			} $else {
-				c.read_timeout_in_socket = C.setsockopt(c.sock.handle, C.SOL_SOCKET, C.SO_RCVTIMEO,
-					voidptr(&timeout), sizeof(timeout)) == 0
-			}
+			// SO_RCVTIMEO goes through the vlibc setsockopt syscall on
+			// every vlibc target.
+			c.read_timeout_in_socket = vlibc_sys_setsockopt(i64(c.sock.handle), C.SOL_SOCKET,
+				C.SO_RCVTIMEO, voidptr(&timeout), u32(sizeof(timeout))) == .enoerror
 		} $else {
 			c.read_timeout_in_socket = C.setsockopt(c.sock.handle, C.SOL_SOCKET, C.SO_RCVTIMEO,
 				voidptr(&timeout), sizeof(timeout)) == 0
@@ -821,12 +816,9 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
 	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
 	$if vlibc ? {
-		// Linux vlibc issues the raw setsockopt syscall; other vlibc
-		// targets keep the libc call below (no vlibc_sys_setsockopt there).
-		$if linux {
-			vlibc_wrap_err(vlibc_setsockopt_int(i64(s.handle), level, opt, value))!
-			return
-		}
+		// Every vlibc target issues the raw setsockopt syscall.
+		vlibc_wrap_err(vlibc_setsockopt_int(i64(s.handle), level, opt, value))!
+		return
 	}
 	socket_error(C.setsockopt(s.handle, level, opt, voidptr(&v), sizeof(v)))!
 }
@@ -935,14 +927,8 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 			mut err := i32(0) // SO_ERROR is a C `int`; i32 storage keeps &err int* and sizeof 4
 			mut xyz := 0
 			$if vlibc ? {
-				// SO_ERROR goes through the vlibc syscall on Linux; other
-				// vlibc targets keep the libc call below.
-				$if linux {
-					xyz, err = vlibc_get_so_error(s.handle)
-				} $else {
-					len := sizeof(err)
-					xyz = C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
-				}
+				// SO_ERROR goes through the vlibc syscall.
+				xyz, err = vlibc_get_so_error(s.handle)
 			} $else {
 				len := sizeof(err)
 				xyz = C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)

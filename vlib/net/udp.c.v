@@ -386,8 +386,7 @@ fn new_udp_socket(local_addr Addr) !&UdpSocket {
 	// cast to the correct type
 	$if vlibc ? {
 		// AF_INET binds go through the vlibc bind syscall; other families
-		// keep the libc path below. setsockopt above stays on libc (see the
-		// note in udp_d_vlibc.c.v).
+		// keep the libc path below.
 		if family == .ip {
 			vlibc_udp_bind(s.handle, local_addr)!
 		} else {
@@ -505,12 +504,9 @@ fn ipv6_membership_socket_option(join bool) int {
 
 fn (mut s UdpSocket) set_option_raw(level int, opt int, value voidptr, value_len u32) ! {
 	$if vlibc ? {
-		// Linux vlibc issues the raw setsockopt syscall; other vlibc
-		// targets keep the libc call below (no vlibc_sys_setsockopt there).
-		$if linux {
-			vlibc_wrap_err(vlibc_sys_setsockopt(i64(s.handle), level, opt, value, value_len))!
-			return
-		}
+		// Every vlibc target issues the raw setsockopt syscall.
+		vlibc_wrap_err(vlibc_sys_setsockopt(i64(s.handle), level, opt, value, value_len))!
+		return
 	}
 	socket_error(C.setsockopt(s.handle, level, opt, value, value_len))!
 }
