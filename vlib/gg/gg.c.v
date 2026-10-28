@@ -623,9 +623,10 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		}
 	}
 
-	$if windows || (linux && !sokol_wayland ?) {
+	$if windows || ((linux || freebsd || openbsd || netbsd || dragonfly || solaris) && !sokol_wayland ?) {
 		if e.typ == .key_down && e.key_code in [.backspace, .delete, .enter, .tab] {
-			// with Win32 and X11, sokol does not send .char events for some keys;
+			// with Win32 and X11 (the BSDs and Solaris have no Wayland
+			// build), sokol does not send .char events for some keys;
 			// we will emulate them for consistency here:
 			// NOTE: on Wayland (sokol_wayland), the backend already sends real CHAR events for these
 			// keys via xkb_state_key_get_utf8, so this block must not run there or events double-fire.

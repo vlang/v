@@ -2,15 +2,15 @@ module render
 
 import sokol.gfx
 
-const glsl410_vs = r"#version 410
+const glsl330_vs = r"#version 330
 
 uniform vec4 vs_params[8];
-layout(location = 0) in vec4 position;
-layout(location = 3) in float psize;
-layout(location = 0) out vec4 uv;
-layout(location = 1) in vec2 texcoord0;
-layout(location = 1) out vec4 color;
-layout(location = 2) in vec4 color0;
+in vec4 position;
+in float psize;
+out vec4 uv;
+in vec2 texcoord0;
+out vec4 color;
+in vec4 color0;
 
 void main()
 {
@@ -21,13 +21,13 @@ void main()
 }
 "
 
-const glsl410_fs = r"#version 410
+const glsl330_fs = r"#version 330
 
 uniform sampler2D tex_smp;
 
-layout(location = 0) out vec4 frag_color;
-layout(location = 0) in vec4 uv;
-layout(location = 1) in vec4 color;
+out vec4 frag_color;
+in vec4 uv;
+in vec4 color;
 
 void main()
 {
@@ -276,13 +276,13 @@ fs_out main(fs_in inp)
 // sokol_fontstash: the red channel becomes the alpha coverage and rgb stays
 // white, so the vertex color survives the multiply unchanged.
 
-const font_glsl410_fs = r"#version 410
+const font_glsl330_fs = r"#version 330
 
 uniform sampler2D tex_smp;
 
-layout(location = 0) out vec4 frag_color;
-layout(location = 0) in vec4 uv;
-layout(location = 1) in vec4 color;
+out vec4 frag_color;
+in vec4 uv;
+in vec4 color;
 
 void main()
 {
@@ -386,18 +386,18 @@ fs_out main(fs_in inp)
 "
 
 pub fn make_shader() gfx.Shader {
-	return make_shader_with_frag(glsl410_fs, glsl300es_fs, metal_sim_fs, wgsl_fs, hlsl_fs, c'sgl-shader')
+	return make_shader_with_frag(glsl330_fs, glsl300es_fs, metal_sim_fs, wgsl_fs, hlsl_fs, c'sgl-shader')
 }
 
 // make_font_shader builds the shader the text atlas is drawn with: identical
 // vertex stage, fragment stage rewritten so a single-channel atlas's red
 // channel acts as alpha coverage.
 pub fn make_font_shader() gfx.Shader {
-	return make_shader_with_frag(font_glsl410_fs, font_glsl300es_fs, font_metal_sim_fs, font_wgsl_fs, font_hlsl_fs,
+	return make_shader_with_frag(font_glsl330_fs, font_glsl300es_fs, font_metal_sim_fs, font_wgsl_fs, font_hlsl_fs,
 		c'sgl-font-shader')
 }
 
-fn make_shader_with_frag(glsl410 string, glsl300es string, metal string, wgsl string, hlsl string, label &char) gfx.Shader {
+fn make_shader_with_frag(glsl330 string, glsl300es string, metal string, wgsl string, hlsl string, label &char) gfx.Shader {
 	mut desc := gfx.ShaderDesc{}
 	desc.attrs[0].name = c'position'
 	desc.attrs[0].sem_name = c'TEXCOORD'
@@ -441,8 +441,13 @@ fn make_shader_with_frag(glsl410 string, glsl300es string, metal string, wgsl st
 		desc.set_vert_src(wgsl_vs)
 		desc.set_frag_src(wgsl)
 	} $else {
-		desc.set_vert_src(glsl410_vs)
-		desc.set_frag_src(glsl410)
+		// GLSL 330, sokol's own GL floor: the 3.3-only stacks some
+		// distributions still ship compile these.
+		// Nothing needs 4.10, and the in/out locations stay out of the
+		// source — GLSL 330 leaves those to sokol's attribute bindings and
+		// the single implicit fragment output.
+		desc.set_vert_src(glsl330_vs)
+		desc.set_frag_src(glsl330)
 	}
 	return gfx.make_shader(&desc)
 }

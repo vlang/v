@@ -37,6 +37,9 @@ const cgen_veb_result_source_type = flat.source_type_id('veb.Result')
 const cgen_void_pointer_prefix_source_type = flat.source_type_id('&void')
 // portable_uint_c_type is the unsigned counterpart of `types.portable_int_c_type`.
 const portable_uint_c_type = '__v_uint'
+// string_literal_macro_define defines `_S`, the C macro for V string literals. It is
+// emitted in the preamble and again on Solaris after the system headers.
+const string_literal_macro_define = '#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})'
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
@@ -20199,7 +20202,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define E_STRUCT_DECL')
 	g.writeln('#define E_STRUCT')
 	g.writeln('#endif')
-	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
+	g.writeln(string_literal_macro_define)
 	g.writeln('#if !defined(VNORETURN)')
 	g.writeln('#if defined(__TINYC__)')
 	g.writeln('#define VNORETURN __attribute__((noreturn))')
@@ -20509,10 +20512,14 @@ fn (mut g FlatGen) system_libc_headers() {
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
 		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h', 'sys/mman.h',
 		'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h',
-		'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/ptrace.h', 'sys/wait.h', 'termios.h', 'unistd.h',
-		'utime.h'] {
+		'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
 		g.writeln('#include <${header}>')
 	}
+	// Solaris ships no sys/ptrace.h. Only user code declaring fn C.ptrace needs
+	// it, so the include is skipped there rather than failing the build.
+	g.writeln('#if !defined(__sun)')
+	g.writeln('#include <sys/ptrace.h>')
+	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) && defined(__GLIBC__)')
 	g.writeln('#include <sys/poll.h>')
 	g.writeln('#else')
@@ -20534,6 +20541,18 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.writeln('#if defined(__FreeBSD__) || defined(__OpenBSD__)')
 	g.writeln('#include <sys/sysctl.h>')
+	g.writeln('#endif')
+	// Solaris's <iso/ctype_iso.h> claims the single-letter-underscore names
+	// (_U, _L, _N, _S, ...) as the character-class bits its ctype macros are
+	// written over, and V's string-literal macro is spelled _S — the header's
+	// object macro wins over V's earlier definition. Nothing in the generated
+	// C calls the ctype macros, whose bodies are the only readers of the
+	// flags, so take the name back once every system header is in. Known
+	// limit: V code calling `C.isspace` on Solaris then fails to compile,
+	// because that ctype macro reads the restored `_S`.
+	g.writeln('#if defined(__sun)')
+	g.writeln('#undef _S')
+	g.writeln(string_literal_macro_define)
 	g.writeln('#endif')
 	g.system_execinfo_declarations()
 	g.writeln('')

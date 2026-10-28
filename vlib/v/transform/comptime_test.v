@@ -793,6 +793,7 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 	assert first.len == 1
 	assert first[0].name == 'first'
 	assert first[0].attrs == ['first_attr']
+	assert flat.source_type_name(first[0].attribute_module_id) == 'first'
 	assert first[0].is_pub
 
 	t.cur_module = 'second'
@@ -800,6 +801,7 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 	assert second.len == 1
 	assert second[0].name == 'second'
 	assert second[0].attrs == ['second_attr']
+	assert flat.source_type_name(second[0].attribute_module_id) == 'second'
 	assert second[0].is_mut
 }
 
@@ -1277,4 +1279,70 @@ fn test_reflected_method_escape_analysis_restores_ast_buffers() {
 		assert a.children.data == initial_children_data
 		assert a.node(loop).kind == .comptime_for
 	}
+}
+
+fn test_comptime_schema_registry_is_lazy_and_worker_owned() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'schemas')
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert isnil(t.comptime_attribute_schema_state)
+	ordinary := a.add_val(.struct_decl, 'Ordinary')
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(ordinary)}'
+		payload: flat.node_payload(['inline'])
+	})
+	assert t.comptime_attribute_schemas().len == 0
+	assert isnil(t.comptime_attribute_schema_state)
+	marked := a.add_val(.struct_decl, 'Marker')
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(marked)}'
+		payload: flat.node_payload(['attribute', 'attribute'])
+	})
+	assert t.comptime_attribute_schemas().len == 1
+	assert t.comptime_attribute_schema_state.decls.len == 1
+	assert t.comptime_attribute_schema_state.cache[0].module == 'schemas'
+	mut worker := t.fork_program_view(&a, &tc, map[string]bool{}, false)
+	assert isnil(worker.comptime_attribute_schema_state)
+	assert worker.comptime_attribute_schemas().len == 1
+	assert voidptr(worker.comptime_attribute_schema_state) != voidptr(t.comptime_attribute_schema_state)
+	worker.comptime_attribute_schema_state.decls.clear()
+	assert t.comptime_attribute_schema_state.decls.len == 1
+	// Replacing the AST invalidates indexed node ids and the worker-owned registry.
+	a.nodes = a.nodes[..1]
+	assert t.comptime_attribute_schemas().len == 0
+	assert isnil(t.comptime_attribute_schema_state)
+}
+
+fn test_comptime_schema_instance_narrowing_does_not_change_legacy_metadata_or_siblings() {
+	legacy := comptime_attribute_metas_from_raw(['inline', "route: '/home'"], [0, 1])
+	assert legacy[0].name == 'inline'
+	assert legacy[1].arg == '/home'
+	for attr in legacy {
+		assert isnil(attr.schema)
+		assert !attr.narrowed().schema_narrowed
+	}
+	schema := AttributeSchemaInfo{
+		name:      'Route'
+		module:    'routes'
+		fields:    [AttributeSchemaFieldInfo{ name: 'name', kind: .string_ }]
+		supported: true
+	}
+	attr := comptime_attribute_schema_instance('Route', schema, RawAttributeData{
+		attrs: ["Route: '/home'"]
+		kinds: [1]
+	}, [0]) or { panic('schema instance must bind') }
+	assert !isnil(attr.schema)
+	assert attr.schema.module == 'routes'
+	assert attr.schema.values == ["'/home'"]
+	assert subst_attribute_schema_field_cond('attr.name == Route', 'attr', attr) == 'attr.name == Route'
+	instances := [attr, attr].clone()
+	narrowed := instances[0].narrowed()
+	assert narrowed.schema_narrowed
+	assert !instances[1].schema_narrowed
+	assert !attr.schema_narrowed
+	assert subst_attribute_schema_field_cond('attr.name', 'attr', narrowed) == "'/home'"
+	assert narrowed.schema.values == instances[1].schema.values
 }
