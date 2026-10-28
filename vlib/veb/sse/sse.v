@@ -59,27 +59,47 @@ pub fn start_connection(mut ctx veb.Context) &SSEConnection {
 	}
 }
 
+// encode serializes the message to the SSE wire format.
+// Multi-line `data` is split into one `data:` line per line, as required by
+// the SSE specification: a bare newline inside `data` would otherwise terminate
+// the field early and corrupt the event framing. CRLF and lone CR line endings
+// are normalized to LF before splitting.
+pub fn (m SSEMessage) encode() string {
+	mut sb := strings.new_builder(512)
+	if m.id != '' {
+		sb.write_string('id: ')
+		// `id` and `event` must be single-line; strip line breaks to avoid
+		// injecting extra fields or terminating the event early.
+		sb.write_string(m.id.replace('\r', '').replace('\n', ''))
+		sb.write_string('\n')
+	}
+	if m.event != '' {
+		sb.write_string('event: ')
+		sb.write_string(m.event.replace('\r', '').replace('\n', ''))
+		sb.write_string('\n')
+	}
+	if m.data != '' {
+		normalized := m.data.replace('\r\n', '\n').replace('\r', '\n')
+		for line in normalized.split('\n') {
+			sb.write_string('data: ')
+			sb.write_string(line)
+			sb.write_string('\n')
+		}
+	}
+	if m.retry != 0 {
+		sb.write_string('retry: ${m.retry}\n')
+	}
+	sb.write_string('\n')
+	return sb.str()
+}
+
 // send_message sends a single message to the http client that listens for SSE.
 // It does not close the connection, so you can use it many times in a loop.
 pub fn (mut sse SSEConnection) send_message(message SSEMessage) ! {
 	if sse.conn == unsafe { nil } {
 		return error('SSE connection is not available (no TCP connection)')
 	}
-	mut sb := strings.new_builder(512)
-	if message.id != '' {
-		sb.write_string('id: ${message.id}\n')
-	}
-	if message.event != '' {
-		sb.write_string('event: ${message.event}\n')
-	}
-	if message.data != '' {
-		sb.write_string('data: ${message.data}\n')
-	}
-	if message.retry != 0 {
-		sb.write_string('retry: ${message.retry}\n')
-	}
-	sb.write_string('\n')
-	sse.conn.write(sb)!
+	sse.conn.write(message.encode().bytes())!
 }
 
 // send a 'close' event and close the tcp connection.
