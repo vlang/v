@@ -190,8 +190,21 @@ pub fn (mut m MachOObject) write_elf(path string) {
 	for _, old_i in local_indices {
 		name := m.symbols[old_i].name
 		mut elf_name := name
-		if name.starts_with('_') {
-			elf_name = name[1..]
+		if m.symbols[old_i].type_ == 0x01 {
+			if elf_name.starts_with('_') {
+				elf_name = elf_name[1..]
+			}
+			if elf_name == '__stdoutp' {
+				elf_name = 'stdout'
+			} else if elf_name == '__stderrp' {
+				elf_name = 'stderr'
+			} else if elf_name == '__stdinp' {
+				elf_name = 'stdin'
+			} else if elf_name == '__error' {
+				elf_name = '__errno_location'
+			}
+		} else if elf_name.starts_with('_') {
+			elf_name = elf_name[1..]
 		}
 		name_off := elf_strtab.len
 		elf_strtab << elf_name.bytes()
@@ -201,8 +214,21 @@ pub fn (mut m MachOObject) write_elf(path string) {
 	for _, old_i in global_indices {
 		name := m.symbols[old_i].name
 		mut elf_name := name
-		if name.starts_with('_') {
-			elf_name = name[1..]
+		if m.symbols[old_i].type_ == 0x01 {
+			if elf_name.starts_with('_') {
+				elf_name = elf_name[1..]
+			}
+			if elf_name == '__stdoutp' {
+				elf_name = 'stdout'
+			} else if elf_name == '__stderrp' {
+				elf_name = 'stderr'
+			} else if elf_name == '__stdinp' {
+				elf_name = 'stdin'
+			} else if elf_name == '__error' {
+				elf_name = '__errno_location'
+			}
+		} else if elf_name.starts_with('_') {
+			elf_name = elf_name[1..]
 		}
 		name_off := elf_strtab.len
 		elf_strtab << elf_name.bytes()
@@ -222,7 +248,7 @@ pub fn (mut m MachOObject) write_elf(path string) {
 	}
 	for _, old_i in local_indices {
 		sym := m.symbols[old_i]
-		bind := stb_local
+		bind := stb_global
 		mut typ := stt_notype
 		mut shndx := u16(0)
 		if sym.type_ == 0x01 {
