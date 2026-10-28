@@ -10446,7 +10446,27 @@ fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident_id u32, method stri
 // unchanged; forget_transform_static_method_names covers a removal. The caller owns
 // this checker: no other thread may be resolving through it.
 pub fn (tc &TypeChecker) refresh_transform_static_method_names() {
+	tc.refresh_transform_static_method_names_added([]string{})
+}
+
+// refresh_transform_static_method_names_added is refresh_transform_static_method_names
+// given `added`, the signatures the caller registered since the last refresh: when they
+// account for every new signature, only they are decoded.
+pub fn (tc &TypeChecker) refresh_transform_static_method_names_added(added []string) {
 	if tc.transform_static_method_count == tc.fn_ret_types.len {
+		return
+	}
+	if tc.transform_static_method_count >= 0
+		&& tc.transform_static_method_count + added.len == tc.fn_ret_types.len {
+		mut extended := tc.transform_static_method_names.clone()
+		for name in added {
+			if _, method := flat.decode_static_type_method_name(name) {
+				extended[method] = true
+			}
+		}
+		mut owner := unsafe { tc }
+		owner.transform_static_method_names = extended.move()
+		owner.transform_static_method_count = tc.fn_ret_types.len
 		return
 	}
 	mut names := map[string]bool{}

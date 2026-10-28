@@ -4851,16 +4851,30 @@ fn (t &Transformer) enum_type_name_for_expected(expected_enum_id u32, owner_mod 
 		if cache.misses[cache_key] { return 0 }
 	}
 	mut found := u32(0)
-	for enum_id, _ in t.enum_types {
-		if flat.source_type_syntax(enum_id).unqualified() != clean_id { continue }
-		if found != 0 && found != enum_id {
-			if !isnil(t.enum_expected_cache) {
-				mut cache := t.enum_expected_cache
-				cache.misses[cache_key] = true
+	if !isnil(t.enum_unqualified_index) && t.enum_unqualified_index.count == t.enum_types.len {
+		// The same enums in the same order as the scan below visits them.
+		for enum_id in t.enum_unqualified_index.ids[clean_id] {
+			if found != 0 && found != enum_id {
+				if !isnil(t.enum_expected_cache) {
+					mut cache := t.enum_expected_cache
+					cache.misses[cache_key] = true
+				}
+				return 0
 			}
-			return 0
+			found = enum_id
 		}
-		found = enum_id
+	} else {
+		for enum_id, _ in t.enum_types {
+			if flat.source_type_syntax(enum_id).unqualified() != clean_id { continue }
+			if found != 0 && found != enum_id {
+				if !isnil(t.enum_expected_cache) {
+					mut cache := t.enum_expected_cache
+					cache.misses[cache_key] = true
+				}
+				return 0
+			}
+			found = enum_id
+		}
 	}
 	if !isnil(t.enum_expected_cache) {
 		mut cache := t.enum_expected_cache

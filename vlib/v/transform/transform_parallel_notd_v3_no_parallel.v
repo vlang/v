@@ -2674,6 +2674,9 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	// ensure_private_call_param_types_decl_cache): once it has been detached, a
 	// batch fork would otherwise clone the whole map.
 	t.call_param_types_decl_shared = true
+	// The checker lists static methods afresh for the first batch; later batches
+	// only add the signatures merged since the previous one.
+	t.static_method_added_names.clear()
 	// Batches reuse one scratch arena: each batch's results are published into
 	// longer-lived storage before the next batch starts, so the arena is rewound
 	// instead of being freed and faulted in again for every batch. With helpers
@@ -2701,7 +2704,8 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		if t.merge_scratch_scope == unsafe { nil } {
 			// The stage arena is current here and outlives every batch checker. An
 			// earlier batch may have published signatures since the last list.
-			t.tc.refresh_transform_static_method_names()
+			t.tc.refresh_transform_static_method_names_added(t.static_method_added_names)
+			t.static_method_added_names.clear()
 			t.refresh_alias_receiver_fns()
 		}
 		if scratch_scope == unsafe { nil }

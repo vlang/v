@@ -1059,6 +1059,14 @@ fn (t &Transformer) alias_receiver_method_candidates(method string) []string {
 		}
 		return candidates
 	}
+	if t.alias_method_candidates_ready && t.alias_receiver_fns_signatures >= 0
+		&& t.alias_receiver_fns_signatures <= t.tc.fn_param_types.len
+		&& t.alias_receiver_fns_aliases == t.tc.type_aliases.ids.len && method.len > 0
+		&& method.index_u8(`.`) < 0 {
+		if probed := t.alias_receiver_method_candidates_probed(method, method_suffix) {
+			return probed
+		}
+	}
 	for name, params in t.tc.fn_param_types {
 		if params.len == 0 || !name.ends_with(method_suffix) {
 			continue
@@ -1073,6 +1081,54 @@ fn (t &Transformer) alias_receiver_method_candidates(method string) []string {
 		}
 	}
 	return candidates
+}
+
+// alias_receiver_method_candidates_probed lists the same names as the signature scan in
+// alias_receiver_method_candidates, without visiting every signature: a signature
+// qualifies only as `<alias>.<method>` for a declared alias, so probe one key per alias.
+// The scan's order is the signature map's insertion order. Signatures listed for the
+// method in the last alias receiver snapshot keep that order; the map has only been
+// appended to since (a removal resets the snapshot count to -1), so later
+// registrations follow them. Their mutual order is unknown: with more than one,
+// return none and let the caller scan.
+fn (t &Transformer) alias_receiver_method_candidates_probed(method string, method_suffix string) ?[]string {
+	mut found := []string{}
+	for alias_id, _ in t.tc.type_aliases.ids {
+		receiver_name := flat.source_type_name(alias_id)
+		if receiver_name.len == 0 {
+			continue
+		}
+		name := receiver_name + method_suffix
+		params := t.tc.fn_param_types[name] or { continue }
+		if params.len == 0 {
+			continue
+		}
+		// The scan maps a receiver spelling to its identity; keep only the alias that
+		// owns this spelling, so each signature is listed once.
+		receiver_id := flat.source_type_existing_id(receiver_name) or { continue }
+		if receiver_id != alias_id {
+			continue
+		}
+		found << name
+	}
+	if found.len <= 1 {
+		return found
+	}
+	mut ordered := []string{cap: found.len}
+	for name in t.alias_receiver_fns[method] {
+		if name in found {
+			ordered << name
+		}
+	}
+	if found.len - ordered.len > 1 {
+		return none
+	}
+	for name in found {
+		if name !in ordered {
+			ordered << name
+		}
+	}
+	return ordered
 }
 
 // alias_target_type_preserving_main_lock returns the underlying type while retaining

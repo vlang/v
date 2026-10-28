@@ -708,8 +708,12 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 		}
 	}
 	if base_node.kind == .ident {
-		if typ_source_id := t.const_type_name('${base_node.value}.${field_name}') {
-			return typ_source_id
+		// const_type_name filters the spelling by its last segment, `field_name`'s;
+		// ask the filter before building the spelling.
+		if t.const_selector_may_match(field_name) {
+			if typ_source_id := t.const_type_name('${base_node.value}.${field_name}') {
+				return typ_source_id
+			}
 		}
 		if enum_may_match {
 			if fields := t.enum_types[base_node.source_value_id()] {
@@ -818,10 +822,10 @@ fn (t &Transformer) builtin_selector_type(base_type_id u32, field_name string) ?
 		}
 	}
 	if field_name == 'len' && (clean_source_id == flat.source_type_string || clean_shape.has(.map_type) || t.is_fixed_array_type(clean_source_id)
-		|| clean_source_id == flat.source_type_id('chan') || clean_shape.has(.channel_type)) {
+		|| clean_source_id == transform_source_type_chan || clean_shape.has(.channel_type)) {
 		return flat.source_type_int
 	}
-	if clean_source_id == flat.source_type_id('chan') || clean_shape.has(.channel_type) {
+	if clean_source_id == transform_source_type_chan || clean_shape.has(.channel_type) {
 		if field_name == 'cap' {
 			return flat.source_type_int
 		}
