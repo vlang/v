@@ -1141,14 +1141,6 @@ pub fn (mut server Server) run() ! {
 		eprintln('Windows is not supported yet')
 		return
 	}
-	// Ignore SIGPIPE process-wide. Writing to a disconnected socket raises
-	// SIGPIPE by default, which kills the process. Every `C.send` here already
-	// passes MSG_NOSIGNAL and every sendfile(2) runs under a scoped SIGPIPE
-	// block, so this is a safety net for any path that misses those (e.g. a
-	// zero-return sendfile that still queues SIGPIPE, or a future write that
-	// forgets the flag). It mirrors the BSD backend, which ignores SIGPIPE in
-	// its own run(). See https://github.com/vlang/v/issues/31228 .
-	C.signal(C.SIGPIPE, C.SIG_IGN)
 	// Resolve the bind address once, up front: each worker binds its own
 	// SO_REUSEPORT socket, so resolving per-worker could round-robin a hostname
 	// onto different addresses. Doing it here also lets an invalid/unresolvable
