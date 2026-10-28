@@ -1898,8 +1898,27 @@ fn c_object_file_signature(path string, refresh bool, mut stats CObjectCacheStat
 	} else if canonical in stats.file_signatures {
 		return stats.file_signatures[canonical]
 	}
-	content := os.read_bytes(canonical) or { return '' }
-	signature := c_hash_bytes(u64(1469598103934665603), content).hex()
+	mut file := os.open(canonical) or { return '' }
+	defer { file.close() }
+	// Hash without retaining dependency contents, including when the compiler
+	// uses an arena allocator. The same files are refreshed after compilation.
+	mut buffer := [64 * 1024]u8{}
+	mut hash := u64(1469598103934665603)
+	for {
+		read := file.read_into_ptr(&buffer[0], buffer.len) or {
+			if err is os.Eof {
+				break
+			}
+			return ''
+		}
+		if read == 0 {
+			break
+		}
+		for i in 0 .. read {
+			hash = (hash ^ u64(buffer[i])) * u64(1099511628211)
+		}
+	}
+	signature := hash.hex()
 	stats.file_signatures[canonical] = signature
 	stats.dependency_file_reads++
 	return signature
@@ -18659,6 +18678,8 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 // bodies, which declaration-only headers cannot rediscover by scanning syntax.
 fn cache_record_closure_dependencies(bodies map[string]string, prefix string, scope voidptr, mut state V3ModuleCacheState) {
 	closure_module := cache_state_module_name(state, 'builtin.closure') or { return }
+	mut declarations := ''
+	mut has_declarations := false
 	for raw_name, body in bodies {
 		module_name := cache_state_module_name(state, raw_name) or { continue }
 		if module_name == closure_module || module_name !in state.headers {
@@ -18668,7 +18689,11 @@ fn cache_record_closure_dependencies(bodies map[string]string, prefix string, sc
 		if _ := c_source_referenced_identifier_with_prefix(body, map[string]bool{}, 'closure__') {
 			needs_closure = true
 		} else if prefix.contains(v3_program_wrappers_begin) {
-			retained := prune_foreign_program_wrappers(modulecache.declaration_header(prefix), body)
+			if !has_declarations {
+				declarations = modulecache.declaration_header(prefix)
+				has_declarations = true
+			}
+			retained := prune_foreign_program_wrappers(declarations, body)
 			for item in v3_program_wrapper_items(retained.split_into_lines()) {
 				if item.declares {
 					continue
