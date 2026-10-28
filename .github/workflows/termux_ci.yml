@@ -180,7 +180,7 @@ jobs:
             sh ./configure --cc=clang --prefix="$HOME/tcc-install" \
               --crtprefix="$PREFIX/lib" \
               --libpaths="$PREFIX/lib" \
-              --sysincludepaths="{B}/include:$PREFIX/include" \
+              --sysincludepaths="{B}/include:$PREFIX/include:$PREFIX/include/aarch64-linux-android" \
               --elfinterp=/system/bin/linker64
             # bionic sys/cdefs.h rejects an unversioned target triple unless
             # __ANDROID_MIN_SDK_VERSION__ is set, and the tcc lib build is the
