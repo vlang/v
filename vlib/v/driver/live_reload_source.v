@@ -30,6 +30,7 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	mut cur_file := ''
 	mut live_mangled := []string{}
 	mut seen := map[string]bool{}
+	mut source_files := []string{}
 	for i in 0 .. a.nodes.len {
 		node := a.nodes[i]
 		if node.kind == .file {
@@ -40,6 +41,12 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 			if target_idx >= 0 && target_idx < a.nodes.len && a.nodes[target_idx].kind == .fn_decl {
 				attrs := node.generic_params()
 				if 'live' in attrs {
+					if cur_file != '' {
+						path := os.real_path(cur_file)
+						if path !in source_files {
+							source_files << path
+						}
+					}
 					decl_name := a.nodes[target_idx].value_text()
 					mangled := decl_name.replace('.', '__')
 					if mangled !in seen {
@@ -53,27 +60,10 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	if live_mangled.len == 0 {
 		return ''
 	}
-	mut source_file := ''
-	cur_file = ''
-	for i in 0 .. a.nodes.len {
-		node := a.nodes[i]
-		if node.kind == .file {
-			cur_file = node.value_text()
-		}
-		if node.kind == .directive && node.value.starts_with('@attributes:') {
-			target_idx := node.value['@attributes:'.len..].int()
-			if target_idx >= 0 && target_idx < a.nodes.len && a.nodes[target_idx].kind == .fn_decl {
-				attrs := node.generic_params()
-				if 'live' in attrs && source_file == '' {
-					source_file = cur_file
-				}
-			}
-		}
+	if source_files.len == 0 {
+		source_files << os.real_path(input_file)
 	}
-	if source_file == '' {
-		source_file = input_file
-	}
-	source_file = os.real_path(source_file)
+	source_file := source_files[0]
 	opts_str := rebuild_opts.map(os.quoted_path(it)).join(' ') + ' -enable-globals'
 
 	mut live_param_types := [][]string{}
@@ -113,7 +103,13 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	out += 'fn C.remove(path &u8) int\n'
 	out += 'fn C.fflush(f voidptr) int\n'
 	out += 'fn C.getpid() int\n'
-	out += '\n__global live_mtime i64 = os.file_last_mod_unix(live_source_file)\n__global live_code_pages []voidptr\n'
+	out += '\n__global live_code_pages []voidptr\n'
+	mut unchanged_checks := []string{}
+	for idx, path in source_files {
+		stamp := if idx == 0 { 'live_mtime' } else { 'live_mtime_${idx}' }
+		out += '__global ${stamp} i64 = os.file_last_mod_unix(${v3_v_string_literal(path)})\n'
+		unchanged_checks << 'live_nm_${idx} == ${stamp}'
+	}
 	for idx, m in live_mangled {
 		storage := m.bytes().hex()
 		params := live_param_types[idx].join(', ')
@@ -124,10 +120,13 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 		}
 		out += '\n__global live_${storage} LiveFn_${m} = ${live_source_names[idx]}\n'
 	}
-	out += '\nconst live_source_file = ${v3_v_string_literal(source_file)}\n'
 	out += 'const live_command_prefix = ${v3_v_string_literal(os.quoted_path(vexe) + ' ' + opts_str)}\n'
 	out += 'const live_quoted_source = ${v3_v_string_literal(os.quoted_path(source_file))}\n\n'
-	out += 'fn live_reload_check() {\n\tlive_nm := os.file_last_mod_unix(live_source_file)\n\tif live_nm <= live_mtime { return }\n\tmut live_ok := true\n'
+	out += 'fn live_reload_check() {\n'
+	for idx, path in source_files {
+		out += '\tlive_nm_${idx} := os.file_last_mod_unix(${v3_v_string_literal(path)})\n'
+	}
+	out += '\tif ${unchanged_checks.join(' && ')} { return }\n\tmut live_ok := true\n'
 	for m in live_mangled {
 		storage := m.bytes().hex()
 		out += '\tmut live_next_${storage} := voidptr(unsafe { nil })\n'
@@ -180,7 +179,11 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 		out += '\t\tlive_code_pages << live_next_${storage}\n'
 		out += '\t\tlive_${storage} = LiveFn_${m}(live_next_${storage})\n'
 	}
-	out += '\t\tlive_mtime = live_nm\n\t} else {\n'
+	for idx, _ in source_files {
+		stamp := if idx == 0 { 'live_mtime' } else { 'live_mtime_${idx}' }
+		out += '\t\t${stamp} = live_nm_${idx}\n'
+	}
+	out += '\t} else {\n'
 	for m in live_mangled {
 		storage := m.bytes().hex()
 		out += '\t\tif live_next_${storage} != unsafe { nil } { live_page_free(live_next_${storage}) }\n'

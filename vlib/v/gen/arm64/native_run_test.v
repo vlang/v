@@ -292,3 +292,66 @@ fn test_native_live_reload_installs_new_code_after_an_edit() {
 		assert saw_again, os.read_file(log) or { '' }
 	}
 }
+
+fn test_native_live_reload_watches_each_source_file() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_live_files_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		main_path := os.join_path(root, 'main.v')
+		other_path := os.join_path(root, 'other.v')
+		output := os.join_path(root, 'program')
+		log := os.join_path(root, 'program.log')
+		source := 'module main\nfn C.puts(s &u8) int\nfn C.fflush(f voidptr) int\nfn C.usleep(us u32) int\n@[live]\nfn hot_a(n int) int { return n + 1 }\nfn main() { for { a := hot_a(7); b := hot_b(7); if a == 8 && b == 8 { C.puts(c"before") } else if a == 8 && b == 9 { C.puts(c"secondary changed") } else if a == 9 && b == 9 { C.puts(c"both changed") }; C.fflush(unsafe { nil }); C.usleep(100000) } }\n'
+		other_source := 'module main\n@[live]\nfn hot_b(n int) int { return n + 1 }\n'
+		os.write_file(main_path, source)!
+		os.write_file(other_path, other_source)!
+		initial_mtime := os.file_last_mod_unix(main_path)
+		built := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+			'-nocache', '-b', 'arm64', '-o', output, root])
+		assert built.exit_code == 0, built.output
+		mut process := os.new_process('/bin/sh')
+		process.set_args(['-c', 'exec ${os.quoted_path(output)} > ${os.quoted_path(log)} 2>&1'])
+		process.run()
+		defer {
+			if process.is_alive() { process.signal_kill() }
+			process.wait()
+			process.close()
+		}
+		mut saw_before := false
+		for _ in 0 .. 100 {
+			if (os.read_file(log) or { '' }).contains('before') {
+				saw_before = true
+				break
+			}
+			if !process.is_alive() { break }
+			time.sleep(50 * time.millisecond)
+		}
+		assert saw_before, os.read_file(log) or { '' }
+		os.write_file(other_path, other_source.replace('return n + 1', 'return n + 2'))!
+		os.utime(other_path, initial_mtime + 10, initial_mtime + 10)!
+		mut saw_secondary := false
+		for _ in 0 .. 600 {
+			if (os.read_file(log) or { '' }).contains('secondary changed') {
+				saw_secondary = true
+				break
+			}
+			if !process.is_alive() { break }
+			time.sleep(50 * time.millisecond)
+		}
+		assert saw_secondary, os.read_file(log) or { '' }
+		// This timestamp remains below the other file's: a single maximum would miss it.
+		os.write_file(main_path, source.replace('return n + 1', 'return n + 2'))!
+		os.utime(main_path, initial_mtime + 2, initial_mtime + 2)!
+		mut saw_both := false
+		for _ in 0 .. 600 {
+			if (os.read_file(log) or { '' }).contains('both changed') {
+				saw_both = true
+				break
+			}
+			if !process.is_alive() { break }
+			time.sleep(50 * time.millisecond)
+		}
+		assert saw_both, os.read_file(log) or { '' }
+	}
+}

@@ -11725,6 +11725,8 @@ the reloader updates with freshly compiled machine code. Reload checks run in
 loops in `main`; changes are installed before the next iteration. Published code
 pages remain executable so saved function pointers continue to work. Failed
 rebuilds keep the old function and are retried on the next check.
+Each file containing `@[live]` functions is watched with its own modification time,
+so editing another live source file also triggers a reload.
 
 ```bash
 v -b arm64 run native_counter.v
