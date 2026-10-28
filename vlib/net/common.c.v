@@ -140,6 +140,31 @@ pub fn close(handle int) ! {
 	}
 }
 
+// select_one issues a single select(2) wait and returns the ready count.
+// Under `-d vlibc` on macOS it goes through the raw vlibc select syscall
+// (macOS is the only vlibc target with an in-tree select number); every
+// other target keeps the libc call below, which also serves vlibc-created
+// fds since they live in the same process table. Raw-syscall errors keep
+// the socket_error message/code shape, so the EINTR-restart check in
+// select_deadline_chunked keeps working.
+fn select_one(handle int, r &C.fd_set, w &C.fd_set, x &C.fd_set, tv &C.timeval, sec i64, usec i64, has_timeout bool) !int {
+	$if vlibc ? {
+		$if macos {
+			n, e := vlibc_select_wait(handle, voidptr(r), voidptr(w), voidptr(x), sec, usec,
+				has_timeout)
+			if e != .enoerror {
+				return error_with_code('net: socket error: ${int(e)}', int(e))
+			}
+			return int(n)
+		} $else {
+			// No select/pselect6 number in-tree for this vlibc target.
+			return socket_error(C.select(handle, r, w, x, tv))
+		}
+	} $else {
+		return socket_error(C.select(handle, r, w, x, tv))
+	}
+}
+
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn select(handle int, test Select, timeout time.Duration) !bool {
 	set := C.fd_set{}
@@ -151,13 +176,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	if timeout == infinite_timeout {
 		match test {
 			.read {
-				socket_error(C.select(handle + 1, &set, unsafe { nil }, unsafe { nil }, &C.timeval(unsafe { nil })))!
+				select_one(handle + 1, &set, unsafe { nil }, unsafe { nil }, unsafe { nil }, 0, 0, false)!
 			}
 			.write {
-				socket_error(C.select(handle + 1, unsafe { nil }, &set, unsafe { nil }, &C.timeval(unsafe { nil })))!
+				select_one(handle + 1, unsafe { nil }, &set, unsafe { nil }, unsafe { nil }, 0, 0, false)!
 			}
 			.except {
-				socket_error(C.select(handle + 1, unsafe { nil }, unsafe { nil }, &set, &C.timeval(unsafe { nil })))!
+				select_one(handle + 1, unsafe { nil }, unsafe { nil }, &set, unsafe { nil }, 0, 0, false)!
 			}
 		}
 	} else {
@@ -169,13 +194,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		}
 		match test {
 			.read {
-				socket_error(C.select(handle + 1, &set, unsafe { nil }, unsafe { nil }, &tt))!
+				select_one(handle + 1, &set, unsafe { nil }, unsafe { nil }, &tt, seconds, microseconds, true)!
 			}
 			.write {
-				socket_error(C.select(handle + 1, unsafe { nil }, &set, unsafe { nil }, &tt))!
+				select_one(handle + 1, unsafe { nil }, &set, unsafe { nil }, &tt, seconds, microseconds, true)!
 			}
 			.except {
-				socket_error(C.select(handle + 1, unsafe { nil }, unsafe { nil }, &set, &tt))!
+				select_one(handle + 1, unsafe { nil }, unsafe { nil }, &set, &tt, seconds, microseconds, true)!
 			}
 		}
 	}

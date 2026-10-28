@@ -127,8 +127,18 @@ pub fn fd_is_pending(fd int) bool {
 			}
 		}
 	} $else {
-		if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
-			return bytes_avail > 0
+		$if vlibc ? {
+			// FIONREAD goes through the vlibc ioctl syscall, which exists
+			// on all six bare targets. On error, fall through to the
+			// select probe below, like the libc path does.
+			_, e := vlibc_sys_ioctl(i64(fd), u64(C.FIONREAD), voidptr(&bytes_avail))
+			if e == .enoerror {
+				return bytes_avail > 0
+			}
+		} $else {
+			if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
+				return bytes_avail > 0
+			}
 		}
 	}
 	read_set := C.fd_set{}
@@ -138,7 +148,23 @@ pub fn fd_is_pending(fd int) bool {
 		tv_sec:  0
 		tv_usec: 0
 	}
-	res := C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
+	mut res := 0
+	$if vlibc ? {
+		$if macos {
+			// Raw vlibc select: macOS is the only vlibc target with an
+			// in-tree select number. Errors (including EINTR) mean
+			// "not ready", mirroring the libc path below.
+			n, e := vlibc_select_wait(fd + 1, voidptr(&read_set), unsafe { nil }, unsafe { nil }, 0,
+				0, true)
+			res = if e == .enoerror { int(n) } else { -1 }
+		} $else {
+			// No select/pselect6 number in-tree for this vlibc target;
+			// stay on libc (same-process fds work with either).
+			res = C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
+		}
+	} $else {
+		res = C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
+	}
 	if res > 0 {
 		if C.FD_ISSET(fd, &read_set) != 0 {
 			return true

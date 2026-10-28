@@ -8,11 +8,13 @@ import net
 // (AF_UNIX socket create, bind, listen, accept, connect, send, recv) goes
 // through the vlibc syscalls, while the sockaddr_un bytes stay shared with
 // the libc path (net.Addr layout, passed by pointer with addr.len()).
-// unlink/select/fcntl/close stay on libc: the fds created via raw syscalls
-// live in the same process table and libc is still linked in hosted mode.
-// setsockopt/getpeername/getsockname stay on libc as well: there is no
-// portable one-line vlibc helper (vlibc_sys_setsockopt and
-// vlibc_sys_getsockname exist on linux_bare only).
+// unlink/close stay on libc: the fds created via raw syscalls live in the
+// same process table and libc is still linked in hosted mode. select and
+// the non-blocking fcntl setup route through the net helpers, which use
+// the vlibc syscalls where a number exists in-tree (fcntl on all six bare
+// targets, select on macOS only). setsockopt/getpeername/getsockname stay
+// on libc as well: there is no portable one-line vlibc helper
+// (vlibc_sys_setsockopt and vlibc_sys_getsockname exist on linux_bare only).
 
 @[inline]
 fn vlibc_wrap_err(e VlibcErrno) ! {

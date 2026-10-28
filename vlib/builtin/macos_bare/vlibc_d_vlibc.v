@@ -134,6 +134,21 @@ $if !i386 {
 		return bsd_split(rc, er)
 	}
 
+	// vlibc_select_wait wraps vlibc_sys_select for hosted fd waits
+	// (os.fd_is_pending fallback, net/unix select): rfds/wfds/efds are
+	// fd_set pointers (or nil); sec/usec form the timeout, ignored when
+	// has_timeout is false (a nil timeval is passed for an infinite wait).
+	pub fn vlibc_select_wait(nfds int, rfds voidptr, wfds voidptr, efds voidptr, sec i64, usec i64, has_timeout bool) (i64, VlibcErrno) {
+		if has_timeout {
+			mut tv := MacTimeval{
+				sec:  sec
+				usec: i32(usec)
+			}
+			return vlibc_sys_select(nfds, rfds, wfds, efds, &tv)
+		}
+		return vlibc_sys_select(nfds, rfds, wfds, efds, &MacTimeval(unsafe { nil }))
+	}
+
 	pub fn vlibc_sys_sysctl(name &int, namelen u32, oldp voidptr, oldlenp &u64, newp voidptr, newlen u64) VlibcErrno {
 		_, er := sys_call6(mac_nr_sysctl, u64(name), u64(namelen), u64(oldp), u64(oldlenp), u64(newp), newlen)
 		if er == 0 {

@@ -20,12 +20,11 @@ pub fn set_blocking(handle int, state bool) ! {
 		socket_error(C.ioctlsocket(handle, fionbio, voidptr(&t)))!
 	} $else {
 		$if vlibc ? {
-			// fcntl exists in vlibc; Linux issues the raw syscall, other
-			// vlibc targets keep the libc calls below. Windows is untouched.
-			$if linux {
-				vlibc_set_blocking(handle, state)!
-				return
-			}
+			// vlibc_sys_fcntl exists on all six bare targets, so every
+			// hosted `-d vlibc` build issues the raw syscall here.
+			// Windows is untouched (separate branch above).
+			vlibc_set_blocking(handle, state)!
+			return
 		}
 		mut flags := C.fcntl(handle, C.F_GETFL, 0)
 		if state {
