@@ -16052,6 +16052,8 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				g.power_expr_string(lhs, rhs, g.usable_expr_type(id))
 			} else if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
 				'((u64)(${lhs})) << (${rhs})'
+			} else if g.int_literal_arith_needs_64bit_widening(&node) {
+				'((i64)(${lhs})) ${g.op_str(node.op)} (${rhs})'
 			} else if node.op in [.left_shift, .right_shift, .right_shift_unsigned]
 				&& g.expr_is_in_translated_file(id) {
 				lhs_id := g.a.child(&node, 0)
@@ -17254,6 +17256,17 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write('((u64)(')
 				g.gen_expr(lhs_id)
 				g.write(') << (')
+				g.gen_expr(rhs_id)
+				g.write('))')
+				g.expected_enum = old_expected_enum
+				return
+			}
+			// `100000 * 100000` is 64-bit arithmetic when `int` is 64 bits, but C
+			// would perform it at its own 32-bit `int` width and wrap.
+			if g.int_literal_arith_needs_64bit_widening(node) {
+				g.write('((i64)(')
+				g.gen_expr(lhs_id)
+				g.write(') ${g.op_str(node.op)} (')
 				g.gen_expr(rhs_id)
 				g.write('))')
 				g.expected_enum = old_expected_enum
@@ -27485,6 +27498,34 @@ fn (g &FlatGen) shift_needs_64bit_widening(node &flat.Node) bool {
 	}
 	rhs_value := g.shift_count_const_value(g.a.child(node, 1), []string{}) or { return false }
 	return rhs_value >= 31 && rhs_value < 64
+}
+
+// int_literal_arith_needs_64bit_widening reports whether `lhs op rhs` with op
+// `+`, `-` or `*` is built only from untyped integer literals. Such an expression
+// has the 64-bit `int` literal type, but C evaluates unsuffixed literals at its
+// own 32-bit `int` width, so the product of two literals below INT_MAX can wrap.
+fn (g &FlatGen) int_literal_arith_needs_64bit_widening(node &flat.Node) bool {
+	if node.kind != .infix || node.op !in [.plus, .minus, .mul] || node.children_count < 2 {
+		return false
+	}
+	return g.int_literal_arith_operand(g.a.child(node, 0)) && g.int_literal_arith_operand(g.a.child(node, 1))
+}
+
+fn (g &FlatGen) int_literal_arith_operand(id flat.NodeId) bool {
+	if !g.valid_node_id(id) {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	return match node.kind {
+		// A translated file keeps C's literal types and 32-bit wrapping.
+		.int_literal { !g.expr_is_in_translated_file(id) }
+		.paren { node.children_count == 1 && g.int_literal_arith_operand(g.a.child(&node, 0)) }
+		.prefix {
+			node.op == .minus && node.children_count == 1 && g.int_literal_arith_operand(g.a.child(&node, 0))
+		}
+		.infix { g.int_literal_arith_needs_64bit_widening(&node) }
+		else { false }
+	}
 }
 
 fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
