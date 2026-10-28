@@ -235,6 +235,11 @@ v -b fastc -nocache -o v_fastc1 cmd/v
 
 Each generation retains the full command-line entry and can compile programs with either
 the C or FastC backend. `-nocache` forces each generation to rebuild its generated C units.
+Clang production self-builds also exercise this full-compiler FastC path during PGO training
+when FastC is included. Compiler sources must stay within the FastC self-hosting subset for
+that training to complete.
+This path preserves enum shorthand types in parallel assignments and imported call arguments,
+and lowers flag enum `.has(flag)` calls on variables and imported function results.
 On macOS ARM64, standard full-compiler builds compile the owned native support files together
 so TinyCC processes shared SDK declarations once. Debug builds, custom preprocessing flags,
 and other native source sets retain separate compilation. FastC does not read their C headers.

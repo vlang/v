@@ -53,7 +53,7 @@ fn test_match_parent_cache_keeps_outer_matches_and_function_boundaries() {
 	match_parent_cache_wrap(mut a, .fn_decl, outer)
 	mut tc := TypeChecker.new(&a)
 	tc.build_direct_parent_index(&a)
-	tc.sum_types.set('Value', ['int', 'string'])
+	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.cur_scope.insert('other', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	for _ in 0 .. 3 {
@@ -79,13 +79,13 @@ fn test_match_parent_cache_resolves_types_after_a_cached_topology_miss() {
 	match_parent_cache_wrap(mut a, .fn_decl, match_node)
 	mut tc := TypeChecker.new(&a)
 	tc.build_direct_parent_index(&a)
-	tc.sum_types.set('Value', ['string'])
+	tc.sum_types.set(flat.source_type_id('Value'), ['string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.arm_body_resolve_memo(0, a.nodes.len - 1)
 	assert tc.lexical_match_smartcast_type(value) == none
 	// A miss in type resolution is not cached: declaration metadata can acquire
 	// a variant while the parsed parent links remain unchanged.
-	tc.sum_types.set('Value', ['int', 'string'])
+	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.type_cache.sum_variant_pattern_entries.clear()
 	assert tc.lexical_match_smartcast_type(value)? == Type(int_)
 }
@@ -107,7 +107,7 @@ fn test_match_parent_cache_preserves_the_64_parent_limit_for_shorter_suffixes() 
 		match_parent_cache_wrap(mut a, .fn_decl, match_node)
 		mut tc := TypeChecker.new(&a)
 		tc.build_direct_parent_index(&a)
-		tc.sum_types.set('Value', ['int', 'string'])
+		tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 		tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 		tc.arm_body_resolve_memo(0, a.nodes.len - 1)
 		if wrappers <= 61 {
@@ -173,7 +173,7 @@ fn test_match_parent_cache_refreshes_rewritten_ancestors_without_a_new_body() {
 	match_parent_cache_wrap(mut a, .fn_decl, match_node)
 	mut tc := TypeChecker.new(&a)
 	tc.build_direct_parent_index(&a)
-	tc.sum_types.set('Value', ['int', 'string'])
+	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.arm_body_resolve_memo(0, a.nodes.len - 1)
 	assert tc.lexical_match_smartcast_type(value)? == Type(int_)
@@ -204,7 +204,7 @@ fn test_match_parent_cache_rechecks_parents_added_by_prepared_collect() {
 	value := a.add_val(.ident, 'value')
 	mut tc := TypeChecker.new(&a)
 	tc.build_direct_parent_index(&a)
-	tc.sum_types.set('Value', ['int', 'string'])
+	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.arm_body_resolve_memo(0, a.nodes.len - 1)
 	assert tc.lexical_match_smartcast_type(value) == none

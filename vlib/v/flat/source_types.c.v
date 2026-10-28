@@ -40,11 +40,18 @@ pub const source_type_f32 = source_type_id('f32')
 pub const source_type_f64 = source_type_id('f64')
 
 struct SourceTypeEntry {
-	text  string
-	hash  u64
+	bytes &u8
+	len   int
+	hash  u32
 	shape SourceTypeShape
 	id    u32
 	query SourceTypeQuery
+}
+
+// The bytes are process-owned; the borrowed string needs no stored ownership flag.
+@[inline]
+fn (entry &SourceTypeEntry) text() string {
+	return unsafe { string{ str: entry.bytes, len: entry.len } }
 }
 
 // SourceTypeShape records spelling syntax once when a type is interned.
@@ -81,6 +88,7 @@ pub enum SourceTypeShape {
 	generic_c_name
 	context_independent
 	unusable_decl
+	shared_parameter_candidate
 }
 
 fn source_type_spelling_shape(text string) SourceTypeShape {
@@ -105,6 +113,9 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	if text.starts_with('thread ') { shape.set(.thread_type) }
 	if text.starts_with('fn(') { shape.set(.function_compact) }
 	if text.starts_with('fn (') { shape.set(.function_spaced) }
+	if text.len > 0 && text[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
+		shape.set(.shared_parameter_candidate)
+	}
 	if text.starts_with('&[]') { shape.set(.pointer_array) }
 	if text.starts_with('&map[') { shape.set(.pointer_map) }
 	if text.starts_with('&?') { shape.set(.pointer_option) }
@@ -130,6 +141,108 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 		shape.set(.bare_generic)
 	}
 	return shape
+}
+
+// Classify plain raw names together: these have no wrappers, padding, or
+// delimiters. All other spellings retain the complete legacy classifiers.
+@[direct_array_access]
+fn source_type_spelling_flags(text string) (SourceTypeShape, SourceTypeQuery) {
+	mut shape := unsafe { SourceTypeShape(0) }
+	mut query := unsafe { SourceTypeQuery(0) }
+	if text.len == 0 {
+		shape = source_type_spelling_shape(text)
+		return shape, source_type_spelling_query(text, shape)
+	}
+	for i, c in text {
+		if c == `.` {
+			shape.set(.dotted)
+		} else if !source_type_query_ident(c) {
+			shape = source_type_spelling_shape(text)
+			return shape, source_type_spelling_query(text, shape)
+		}
+		if c >= `A` && c <= `Z`
+			&& (i == 0 || !source_type_query_ident(text[i - 1]))
+			&& (i + 1 == text.len || !source_type_query_ident(text[i + 1])) {
+			query.set(.generic_token)
+		}
+	}
+	query.set(.complete)
+	builtin := match text.len {
+		2 { text in ['i8', 'u8'] }
+		3 { text in ['int', 'i16', 'i32', 'i64', 'u16', 'u32', 'u64', 'f32', 'f64'] }
+		4 { text in ['bool', 'void', 'rune', 'uint'] }
+		5 { text in ['isize', 'usize'] }
+		6 { text == 'string' }
+		7 { text in ['voidptr', 'byteptr', 'charptr'] }
+		else { false }
+	}
+	if builtin {
+		shape.set(.builtin_alias)
+	} else {
+		query.set(.struct_candidate)
+	}
+	if builtin || text in ['char', 'nil', 'none', 'i128', 'u128'] {
+		shape.set(.context_independent)
+	}
+	if text.contains('typeof') { shape.set(.typeof_name) }
+	if text.contains('_T_') { shape.set(.generic_c_name) }
+	if text.contains('generic') { query.set(.generic_word) }
+	unknown := text.contains('unknown')
+	if unknown { query.set(.unknown_fragment) }
+	if unknown || text in ['array', 'map', 'struct']
+		|| (text.starts_with('Option') && (text.len == 'Option'.len || text['Option'.len] == `_`))
+		|| (text.starts_with('__v_option') && (text.len == '__v_option'.len
+			|| text['__v_option'.len] == `_`))
+		|| (text.starts_with('Result') && (text.len == 'Result'.len || text['Result'.len] == `_`)) {
+		shape.set(.unusable_decl)
+	}
+	if text.contains('Arc_') { query.set(.map_arc_key) }
+	last := text.len - 1
+	if (text.len == 1 || text[last - 1] == `.`) {
+		if text[last] >= `A` && text[last] <= `Z` { query.set(.generic_fn_name) }
+		if text[last] in [`T`, `U`, `V`, `K`] { query.set(.generic_name) }
+	}
+	if text.len == 1 && text[0] >= `A` && text[0] <= `Z` && text[0] != `C` {
+		shape.set(.bare_generic)
+	}
+	if text == 'chan' { query.set(.channel) }
+	if text == 'struct' || text.ends_with('.struct') { shape.set(.anonymous_struct) }
+	if text.ends_with('.thread') { query.set(.thread_suffix) }
+	if text.ends_with('_Ctx') { query.set(.ctx_suffix) }
+	match text[0] {
+		`.` {
+			if text.starts_with('...') { shape.set(.variadic) }
+		}
+		`s` { shape.set(.shared_parameter_candidate) }
+		`C` {
+			if text.starts_with('C.') { query.set(.c_prefix) }
+		}
+		`m` {
+			if text.starts_with('main.') { query.set(.main_prefix) }
+		}
+		`A` {
+			if text.starts_with('Array_') { query.set(.c_array_prefix) }
+			if text.starts_with('AnonStruct_') { query.set(.anon_struct_prefix) }
+			if text.starts_with('AnonUnion_') { query.set(.anon_union_prefix) }
+		}
+		`F` {
+			if text.starts_with('FixedArray_') { query.set(.c_fixed_array_prefix) }
+		}
+		`M` {
+			if text.starts_with('Map_') { query.set(.c_map_prefix) }
+		}
+		`t` {
+			if text.starts_with('thread') { query.set(.thread_prefix) }
+		}
+		`_` {
+			if text.starts_with('__vf_thread_') { query.set(.c_thread_prefix) }
+		}
+		`J` {
+			if text.starts_with('JS.') { query.set(.js_prefix) }
+		}
+		else {}
+	}
+	return shape, query
 }
 
 // Declaration fallback rejects these provisional spellings before alias resolution.
@@ -317,7 +430,7 @@ fn (mut table SourceTypeTable) grow() {
 	}
 	for id in u32(1) .. table.count + 1 {
 		entry := source_type_entry(table, id)
-		mut slot := u32(entry.hash) & (capacity - 1)
+		mut slot := entry.hash & (capacity - 1)
 		unsafe {
 			for slots[slot] != 0 {
 				slot = (slot + 1) & (capacity - 1)
@@ -336,11 +449,11 @@ fn (mut table SourceTypeTable) grow() {
 	source_type_index_publish(table, index)
 }
 
-fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string, hashed u64) u32 {
+fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string, hashed u32) u32 {
 	if isnil(index) {
 		return 0
 	}
-	mut slot := u32(hashed) & (index.capacity - 1)
+	mut slot := hashed & (index.capacity - 1)
 	for {
 		// An acquired slot makes the entry's bytes and chunk pointer visible.
 		id := unsafe { C.atomic_load_u32(&index.slots[slot]) }
@@ -348,11 +461,41 @@ fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string,
 			return 0
 		}
 		entry := source_type_entry(table, id)
-		if entry.hash == hashed && entry.text == text {
+		if entry.hash == hashed && entry.text() == text {
 			return id
 		}
 		slot = (slot + 1) & (index.capacity - 1)
 	}
+}
+
+// source_type_existing_id returns an interned spelling ID without inserting it.
+// The empty spelling is always present as zero. Borrowed input bytes are not retained.
+@[direct_array_access; inline]
+pub fn source_type_existing_id(text string) ?u32 {
+	if text.len == 0 {
+		return u32(0)
+	}
+	slot := source_type_recent_slot(text)
+	cached := source_type_recent_entry(slot)
+	if !isnil(cached) && cached.text() == text {
+		return cached.id
+	}
+	table := source_type_table_load()
+	if isnil(table) {
+		return none
+	}
+	id := source_type_find(table, source_type_index_load(table), text, u32(hash.sum64_string(text,
+		0)))
+	if id == 0 {
+		return none
+	}
+	entry := source_type_entry(table, id)
+	$if x32 {
+		C.atomic_store_u32(voidptr(&g_source_type_recent_entries[slot]), u32(voidptr(entry)))
+	} $else {
+		C.atomic_store_u64(voidptr(&g_source_type_recent_entries[slot]), u64(voidptr(entry)))
+	}
+	return id
 }
 
 // source_type_id interns an owned source spelling and returns its stable u32 ID.
@@ -368,7 +511,7 @@ pub fn source_type_id(text string) u32 {
 	// a disposable arena, so every hit still checks the canonical spelling.
 	slot := source_type_recent_slot(text)
 	cached := source_type_recent_entry(slot)
-	if !isnil(cached) && cached.text == text {
+	if !isnil(cached) && cached.text() == text {
 		return cached.id
 	}
 	id := source_type_id_uncached(text)
@@ -415,7 +558,8 @@ fn source_type_id_uncached(text string) u32 {
 	if text.len == 0 {
 		return 0
 	}
-	hashed := hash.sum64_string(text, 0)
+	// The fingerprint filters candidates; complete spelling equality resolves collisions.
+	hashed := u32(hash.sum64_string(text, 0))
 	mut table := source_type_table_load()
 	if !isnil(table) {
 		id := source_type_find(table, source_type_index_load(table), text, hashed)
@@ -425,8 +569,7 @@ fn source_type_id_uncached(text string) u32 {
 	}
 	// Spelling classification is independent of the shared table. Keep it out
 	// of the insertion critical section so other writers can publish meanwhile.
-	shape := source_type_spelling_shape(text)
-	query := source_type_spelling_query(text, shape)
+	shape, query := source_type_spelling_flags(text)
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
 	table = source_type_table_load()
@@ -446,14 +589,14 @@ fn source_type_id_uncached(text string) u32 {
 	}
 	// Another writer may have inserted the spelling, or grown the index, while
 	// this caller waited for the lock. Probe the current generation again.
-	mut slot := u32(hashed) & (index.capacity - 1)
+	mut slot := hashed & (index.capacity - 1)
 	for {
 		id := unsafe { C.atomic_load_u32(&index.slots[slot]) }
 		if id == 0 {
 			break
 		}
 		entry := source_type_entry(table, id)
-		if entry.hash == hashed && entry.text == text {
+		if entry.hash == hashed && entry.text() == text {
 			return id
 		}
 		slot = (slot + 1) & (index.capacity - 1)
@@ -481,7 +624,8 @@ fn source_type_id_uncached(text string) u32 {
 		vmemcpy(bytes, text.str, text.len)
 		entry := &SourceTypeEntry(chunk) + (idx & (source_type_chunk_size - 1))
 		*entry = SourceTypeEntry{
-			text:  tos(bytes, text.len)
+			bytes: &u8(bytes)
+			len:   text.len
 			hash:  hashed
 			shape: shape
 			id:    id
@@ -505,6 +649,12 @@ fn source_type_read_entry(id u32) &SourceTypeEntry {
 	if !isnil(cached) && cached.id == id {
 		return cached
 	}
+	return source_type_read_entry_miss(id, slot)
+}
+
+// Keep publication validation and cache insertion out of the hot lookup body.
+@[direct_array_access; noinline]
+fn source_type_read_entry_miss(id u32, slot int) &SourceTypeEntry {
 	table := source_type_table_load()
 	if isnil(table) || id > C.atomic_load_u32(&table.count) {
 		panic('invalid source type ID')
@@ -526,7 +676,7 @@ pub fn source_type_name(id u32) string {
 	if id == 0 {
 		return ''
 	}
-	return source_type_read_entry(id).text
+	return source_type_read_entry(id).text()
 }
 
 // source_type_shape returns syntax properties without resolving spelling bytes.
@@ -540,9 +690,5 @@ pub fn source_type_shape(id u32) SourceTypeShape {
 @[inline]
 pub fn source_type_query(id u32) SourceTypeQuery {
 	if id == 0 { return .complete }
-	table := source_type_table_load()
-	if isnil(table) || id > C.atomic_load_u32(&table.count) {
-		panic('invalid source type ID')
-	}
-	return source_type_entry(table, id).query
+	return source_type_read_entry(id).query
 }

@@ -11,7 +11,7 @@ fn test_specialized_method_calls_use_selected_declaration_symbols() {
 	a.specialized_fn_modules[int(node_id)] = 'mcp'
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_module = 'mcp'
-	tc.structs['mcp.CompletionRequestParams'] = []types.StructField{}
+	tc.structs[flat.source_type_id('mcp.CompletionRequestParams')] = []types.StructField{}
 	tc.specialized_generic_fns['mcp.Request[CompletionRequestParams].decode_params'] = true
 	tc.fn_ret_types['mcp.Request[CompletionRequestParams].decode_params'] = types.Type(types.string_)
 	mut g := FlatGen.new()
@@ -34,8 +34,8 @@ fn test_specialized_method_symbols_preserve_same_named_argument_owners() {
 		a.specialized_fn_modules[int(id)] = 'mcp'
 	}
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['first.Params'] = []types.StructField{}
-	tc.structs['second.Params'] = []types.StructField{}
+	tc.structs[flat.source_type_id('first.Params')] = []types.StructField{}
+	tc.structs[flat.source_type_id('second.Params')] = []types.StructField{}
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

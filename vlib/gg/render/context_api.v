@@ -508,7 +508,7 @@ pub fn (ctx &Context) draw() {
 	if st.update_frame_id != st.frame_id {
 		st.update_frame_id = st.frame_id
 		if gfx.is_valid() {
-			rng := gfx.Range{ ptr: &st.verts[0], size: usize(st.vertex_count) * usize(sizeof(Vertex)) }
+			rng := gfx.Range{ ptr: &st.verts[0], size: uint(st.vertex_count) * uint(sizeof(Vertex)) }
 			gfx.update_buffer(st.vbuf, &rng)
 		}
 	}

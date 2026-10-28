@@ -98,8 +98,8 @@ fn test_generic_whole_spelling_ids_keep_file_resolution_and_trimmed_substrings()
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	tc.cur_module = 'main'
-	tc.structs['one.Widget'] = []StructField{}
-	tc.structs['two.Widget'] = []StructField{}
+	tc.structs[flat.source_type_id('one.Widget')] = []StructField{}
+	tc.structs[flat.source_type_id('two.Widget')] = []StructField{}
 	tc.cur_file = 'one.v'
 	tc.register_file_import('dep', 'one')
 	tc.cur_file = 'two.v'

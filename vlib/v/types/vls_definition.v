@@ -168,7 +168,7 @@ fn (tc &TypeChecker) vls_function_definition(resolved string) ?VlsPos {
 	if interface_name == resolved {
 		return none
 	}
-	member := tc.vls_interface_member(interface_name, resolved.all_after_last('.'))?
+	member := tc.vls_interface_member(flat.source_type_id(interface_name), resolved.all_after_last('.'))?
 	return VlsPos{int(member.pos.id), int(member.pos.offset)}
 }
 
@@ -312,8 +312,9 @@ fn vls_part_starting_with(source string, from int, to int, word string) ?int {
 // `struct`, `interface`, `enum` or `type`.
 fn (tc &TypeChecker) vls_type_definition(name string) ?VlsPos {
 	short := name.all_after_last('.')
-	index := tc.first_type_declaration_ids[tc.qualify_name(name)] or {
-		tc.first_type_declaration_ids[name] or { return none }
+	name_id := flat.source_type_id(name)
+	index := tc.first_type_declaration_ids[tc.qualify_type_name(name_id)] or {
+		tc.first_type_declaration_ids[name_id] or { return none }
 	}
 	decl := tc.a.nodes[index]
 	file_id := int(decl.pos.id)
@@ -374,8 +375,7 @@ fn (tc &TypeChecker) vls_module_member_definition(module_name string, member str
 // the field `field`, or the struct it embeds that declares it: `u.id` for the
 // `id` of a `Base` that `u`'s struct embeds.
 fn (tc &TypeChecker) vls_field_definition(type_name_id u32, field string) ?VlsPos {
-	type_name := flat.source_type_name(type_name_id)
-	index := tc.first_type_declaration_ids[type_name] or { return none }
+	index := tc.first_type_declaration_ids[type_name_id] or { return none }
 	decl := tc.a.nodes[index]
 	for i in 0 .. decl.children_count {
 		member := tc.a.child_node(&decl, i)
@@ -395,8 +395,7 @@ fn (tc &TypeChecker) vls_enum_value_definition(typ Type, value string) ?VlsPos {
 	if typ !is Enum {
 		return none
 	}
-	name := (typ as Enum).name()
-	index := tc.first_type_declaration_ids[name] or { return none }
+	index := tc.first_type_declaration_ids[typ.source_type_id()] or { return none }
 	decl := tc.a.nodes[index]
 	for i in 0 .. decl.children_count {
 		field := tc.a.child_node(&decl, i)

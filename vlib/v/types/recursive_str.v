@@ -2524,7 +2524,7 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 	mut has_unprogressed := false
 	mut is_recursive_str_method := false
 	mut storage_id := bindings[0].storage_id
-	mut typ_name := bindings[0].typ_name_text()
+	mut typ_name := bindings[0].typ_name
 	mut max_elements := 0
 	mut element_keys := bindings[0].element_keys.clone()
 	mut repeated_element := true
@@ -2539,8 +2539,8 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 		if binding.storage_id != storage_id {
 			storage_id = 0
 		}
-		if typ_name.len == 0 {
-			typ_name = binding.typ_name_text()
+		if typ_name == 0 {
+			typ_name = binding.typ_name
 		}
 		max_elements = int_max(max_elements, binding.elements.len)
 		if binding.element_keys != element_keys {
@@ -2614,7 +2614,7 @@ fn (tc &TypeChecker) recursive_str_merge_bindings(bindings []RecursiveStrBinding
 		numeric_deltas:          numeric_deltas
 		is_recursive_str_method: is_recursive_str_method
 		storage_id:              storage_id
-		typ_name:                flat.source_type_id(typ_name)
+		typ_name:                typ_name
 		elements:                elements
 		element_keys:            element_keys
 		repeated_element:        repeated_element && elements.len > 0
@@ -4202,10 +4202,4 @@ fn recursive_str_merge_param_effects(effects []RecursiveStrParamEffect) Recursiv
 		}
 	}
 	return first
-}
-
-// typ_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &RecursiveStrBinding) typ_name_text() string {
-	return flat.source_type_name(value.typ_name)
 }

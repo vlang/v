@@ -189,7 +189,7 @@ fn (mut g Parser) read_match_expression() !string {
 				is_mut:       smartcast_saved.is_mut
 				is_reference: smartcast_is_reference
 				typ:          (if smartcast_is_reference {
-					flat.source_type_id(flat.source_type_name(smartcast_type) + '*')
+					flat.source_type_composition_two(.concat, smartcast_type, flat.source_type_id('*'))
 				} else {
 					smartcast_type
 				})

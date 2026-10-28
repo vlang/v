@@ -43,12 +43,12 @@ fn fastc_plain_member_parser(selfhost bool) Parser {
 		struct_field_info:   fields
 		struct_field_lookup: fastc_build_struct_field_lookup(fields)
 		declared_kinds:      {
-			'Record': .struct_
-			'Leaf':   .struct_
-			'Alias':  .alias_
-			'Iface':  .interface_
-			'Number': .enum_
-			'Union':  .union_
+			flat.source_type_id('Record'): .struct_
+			flat.source_type_id('Leaf'):   .struct_
+			flat.source_type_id('Alias'):  .alias_
+			flat.source_type_id('Iface'):  .interface_
+			flat.source_type_id('Number'): .enum_
+			flat.source_type_id('Union'):  .union_
 		}
 		alias_base_types:    aliases
 		sum_types:           {
@@ -246,15 +246,15 @@ fn test_fastc_plain_member_arguments_limit_field_representations() {
 				'holder': FastcLocal{ typ: flat.source_type_id('Holder'), c_name: '__holder' }
 			}
 			declared_kinds:      {
-				'Holder':           .struct_
-				'Leaf':             .struct_
-				'AliasField':       .alias_
-				'Choice':           .alias_
-				'Iface':            .interface_
-				'Enum':             .enum_
-				'Option':           .struct_
-				'__v_result':       .struct_
-				'FixedArray_2_int': .struct_
+				flat.source_type_id('Holder'):           .struct_
+				flat.source_type_id('Leaf'):             .struct_
+				flat.source_type_id('AliasField'):       .alias_
+				flat.source_type_id('Choice'):           .alias_
+				flat.source_type_id('Iface'):            .interface_
+				flat.source_type_id('Enum'):             .enum_
+				flat.source_type_id('Option'):           .struct_
+				flat.source_type_id('__v_result'):       .struct_
+				flat.source_type_id('FixedArray_2_int'): .struct_
 			}
 			alias_base_types:    aliases
 			sum_types:           {

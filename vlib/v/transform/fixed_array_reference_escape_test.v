@@ -105,25 +105,25 @@ fn add_fixed_array_reference_generic_struct(mut t Transformer, name string, fiel
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(decl, 'worker', '/tmp/worker.v')
 	t.mark_node_context(field, 'worker', '/tmp/worker.v')
-	t.tc.type_declaration_ids['worker.${name}'] = [int(decl)]
-	t.tc.struct_generic_params['worker.${name}'] = ['T']
+	t.tc.type_declaration_ids[flat.source_type_id('worker.${name}')] = [int(decl)]
+	t.tc.struct_generic_params[flat.source_type_id('worker.${name}')] = ['T']
 	// Deliberately mimic cached checker metadata resolving a source T to worker.T.
-	t.tc.structs['worker.${name}'] = [types.StructField{ name: 'value', typ: types.Type(types.Struct{ name_id: flat.source_type_id('worker.T') }) }]
+	t.tc.structs[flat.source_type_id('worker.${name}')] = [types.StructField{ name: 'value', typ: types.Type(types.Struct{ name_id: flat.source_type_id('worker.T') }) }]
 }
 
 fn test_fixed_array_reference_generic_fields_preserve_type_owners() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Inner'] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
-	tc.struct_modules['Inner'] = 'main'
-	tc.structs['worker.Inner'] = [types.StructField{ name: 'n', typ: types.Type(types.int_) }]
-	tc.struct_modules['worker.Inner'] = 'worker'
-	tc.structs['worker.T'] = [types.StructField{ name: 'n', typ: types.Type(types.int_) }]
-	tc.struct_modules['worker.T'] = 'worker'
+	tc.structs[flat.source_type_id('Inner')] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
+	tc.struct_modules[flat.source_type_id('Inner')] = 'main'
+	tc.structs[flat.source_type_id('worker.Inner')] = [types.StructField{ name: 'n', typ: types.Type(types.int_) }]
+	tc.struct_modules[flat.source_type_id('worker.Inner')] = 'worker'
+	tc.structs[flat.source_type_id('worker.T')] = [types.StructField{ name: 'n', typ: types.Type(types.int_) }]
+	tc.struct_modules[flat.source_type_id('worker.T')] = 'worker'
 	tc.file_modules['/tmp/worker.v'] = 'worker'
 	tc.file_imports[file_import_key('/tmp/worker.v', 'main')] = 'leaf'
-	tc.structs['leaf.T'] = [types.StructField{ name: 'n', typ: types.Type(types.int_) }]
-	tc.struct_modules['leaf.T'] = 'leaf'
+	tc.structs[flat.source_type_id('leaf.T')] = [types.StructField{ name: 'n', typ: types.Type(types.int_) }]
+	tc.struct_modules[flat.source_type_id('leaf.T')] = 'leaf'
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	add_fixed_array_reference_generic_struct(mut t, 'Holder', 'T')
 	add_fixed_array_reference_generic_struct(mut t, 'Decoy', 'worker.T')
@@ -153,7 +153,7 @@ fn test_fixed_array_reference_generic_fields_preserve_type_owners() {
 fn test_fixed_array_reference_generic_call_uses_conservative_escape_scan() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Holder'] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
+	tc.structs[flat.source_type_id('Holder')] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
 	tc.fn_param_types['forward'] = [types.Type(types.Pointer{ base_type: types.Type(types.Unknown{ reason: 'generic placeholder `T`' }) })]
 	tc.fn_ret_types['forward'] = types.Type(types.Array{ elem_type: types.Type(types.int_) })
 	tc.cur_scope.insert('holder', types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }))
@@ -208,8 +208,8 @@ fn test_fixed_array_reference_pointer_field_does_not_promote_its_containing_valu
 	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 9 })
 	coordinator := types.Type(types.Struct{ name_id: flat.source_type_id('Coordinator') })
 	coordinator_ptr := types.Type(types.Pointer{ base_type: coordinator })
-	tc.structs['Coordinator'] = [types.StructField{ name: 'reasons', typ: fixed }]
-	tc.structs['Dispatch'] = [types.StructField{ name: 'coordinator', typ: coordinator_ptr }]
+	tc.structs[flat.source_type_id('Coordinator')] = [types.StructField{ name: 'reasons', typ: fixed }]
+	tc.structs[flat.source_type_id('Dispatch')] = [types.StructField{ name: 'coordinator', typ: coordinator_ptr }]
 	tc.trust_checked_expr_types = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('dispatch', flat.source_type_id('Dispatch'))
@@ -299,7 +299,7 @@ fn test_fixed_array_reference_stack_pointer_projections_keep_original_root() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
-	tc.structs['Holder'] = [types.StructField{ name: 'values', typ: fixed }]
+	tc.structs[flat.source_type_id('Holder')] = [types.StructField{ name: 'values', typ: fixed }]
 	tc.trust_checked_expr_types = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('p', flat.source_type_id('&Holder'))
@@ -340,8 +340,8 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('fixed', flat.source_type_id('[3]int'))
 	tc.cur_scope.insert('fixed', fixed)
-	tc.type_aliases.set_id('FixedPtr', flat.source_type_id('&[3]int'))
-	tc.type_aliases.set_id('FixedPtrAlias', flat.source_type_id('FixedPtr'))
+	tc.type_aliases.set_id(flat.source_type_id('FixedPtr'), flat.source_type_id('&[3]int'))
+	tc.type_aliases.set_id(flat.source_type_id('FixedPtrAlias'), flat.source_type_id('FixedPtr'))
 	for parenthesized in [false, true] {
 		value := t.make_ident('fixed')
 		tc.register_synth_type(value, fixed)
@@ -415,7 +415,7 @@ fn test_generated_fixed_guard_bindings_receive_durable_storage() {
 fn test_fixed_array_reference_zero_argument_method_marks_receiver() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Holder'] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
+	tc.structs[flat.source_type_id('Holder')] = [types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) }]
 	tc.fn_param_types['Holder.keep'] = [types.Type(types.Pointer{ base_type: types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }) })]
 	tc.fn_ret_types['Holder.keep'] = types.Type(types.Array{ elem_type: types.Type(types.int_) })
 	tc.cur_scope.insert('holder', types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }))
@@ -499,7 +499,7 @@ fn test_promoted_fixed_array_storage_preserves_nested_element_alignment() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'Aligned' })
-	tc.structs['Aligned'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Aligned')] = []types.StructField{}
 	tc.collect(&a)
 	tc.declaration_attributes[int(decl)] = ['aligned: 64']
 	for typ in ['Aligned', '[2]Aligned', '[2][3]Aligned'] {
@@ -518,11 +518,11 @@ fn test_fresh_aligned_fixed_array_addresses_promote_storage_but_existing_values_
 			mut a := flat.FlatAst.new()
 			decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'Aligned' })
 			mut tc := types.TypeChecker.new(&a)
-			tc.structs['Aligned'] = []types.StructField{}
+			tc.structs[flat.source_type_id('Aligned')] = []types.StructField{}
 			tc.collect(&a)
 			tc.declaration_attributes[int(decl)] = ['aligned: 64']
-			tc.sum_types.set('Choice', ['Aligned', 'int'])
-			tc.type_aliases.set_id('ChoicePair', flat.source_type_id('[2]Choice'))
+			tc.sum_types.set(flat.source_type_id('Choice'), ['Aligned', 'int'])
+			tc.type_aliases.set_id(flat.source_type_id('ChoicePair'), flat.source_type_id('[2]Choice'))
 			mut t := new_transformer(mut a, &tc, map[string]bool{})
 			type_id := flat.source_type_id(type_name)
 			literal := a.add_node(flat.Node{ kind: .array_literal, typ: type_id })
@@ -570,8 +570,8 @@ fn test_fresh_aligned_fixed_array_addresses_promote_storage_but_existing_values_
 fn test_fixed_array_argument_ordering_handles_variadic_tail_and_reference_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Slice', flat.source_type_id('[]int'))
-	tc.type_aliases.set_id('SliceRef', flat.source_type_id('&[]int'))
+	tc.type_aliases.set_id(flat.source_type_id('Slice'), flat.source_type_id('[]int'))
+	tc.type_aliases.set_id(flat.source_type_id('SliceRef'), flat.source_type_id('&[]int'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('fixed', flat.source_type_id('[2]int'))
 	t.set_var_type('dynamic', flat.source_type_id('&[]int'))
@@ -670,11 +670,11 @@ fn test_fixed_array_reference_sums_own_inline_variant_storage() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
-	tc.structs['FixedPayload'] = [types.StructField{ name: 'values', typ: fixed }]
-	tc.structs['Wrapper'] = [types.StructField{ name: 'payload', typ: types.Type(types.SumType{ name_id: flat.source_type_id('Payload') }) }]
-	tc.sum_types.set('Payload', ['int', 'FixedPayload'])
-	tc.sum_types.set('Generic', ['int', 'T'])
-	tc.sum_generic_params['Generic'] = ['T']
+	tc.structs[flat.source_type_id('FixedPayload')] = [types.StructField{ name: 'values', typ: fixed }]
+	tc.structs[flat.source_type_id('Wrapper')] = [types.StructField{ name: 'payload', typ: types.Type(types.SumType{ name_id: flat.source_type_id('Payload') }) }]
+	tc.sum_types.set(flat.source_type_id('Payload'), ['int', 'FixedPayload'])
+	tc.sum_types.set(flat.source_type_id('Generic'), ['int', 'T'])
+	tc.sum_generic_params[flat.source_type_id('Generic')] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for name in ['Payload', 'Generic[FixedPayload]'] {
 		mut seen := map[u32]bool{}
@@ -695,12 +695,12 @@ fn test_fixed_array_reference_nominal_cache_keeps_complete_walk_results() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
-	tc.structs['FixedPayload'] = [types.StructField{ name: 'values', typ: fixed }]
-	tc.sum_types.set('Empty', ['int', 'string'])
-	tc.sum_types.set('Payload', ['Other', 'FixedPayload'])
-	tc.sum_types.set('Other', ['Payload', 'int'])
-	tc.sum_types.set('Generic', ['int', 'T'])
-	tc.sum_generic_params['Generic'] = ['T']
+	tc.structs[flat.source_type_id('FixedPayload')] = [types.StructField{ name: 'values', typ: fixed }]
+	tc.sum_types.set(flat.source_type_id('Empty'), ['int', 'string'])
+	tc.sum_types.set(flat.source_type_id('Payload'), ['Other', 'FixedPayload'])
+	tc.sum_types.set(flat.source_type_id('Other'), ['Payload', 'int'])
+	tc.sum_types.set(flat.source_type_id('Generic'), ['int', 'T'])
+	tc.sum_generic_params[flat.source_type_id('Generic')] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for _ in 0 .. 2 {
 		for name in ['Payload', 'Other', 'Generic[FixedPayload]', 'Generic[int]', 'Empty'] {
@@ -718,8 +718,8 @@ fn test_fixed_array_reference_nominal_cache_keeps_complete_walk_results() {
 fn test_fixed_array_reference_nominal_cache_caches_complete_negative_component() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types.set('Left', ['Right', 'int'])
-	tc.sum_types.set('Right', ['Left', 'string'])
+	tc.sum_types.set(flat.source_type_id('Left'), ['Right', 'int'])
+	tc.sum_types.set(flat.source_type_id('Right'), ['Left', 'string'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	left := types.Type(types.SumType{ name_id: flat.source_type_id('Left') })
 	right := types.Type(types.SumType{ name_id: flat.source_type_id('Right') })

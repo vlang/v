@@ -134,7 +134,7 @@ fn test_fastc_compound_fixed_array_dimension_scanner_keeps_type_boundaries() {
 		scan.init(file, source)
 		first := scan.scan()
 		type_id, next := fastc_scan_type(mut scan, first, 'dimension', 'main', map[string]string{},
-			map[string]bool{}, false) or { panic(err) }
+			map[u32]bool{}, false) or { panic(err) }
 		assert next in [.eof, .semicolon]
 		if source == '[]u64' {
 			assert type_id == flat.source_type_id('Array_u64')
@@ -150,7 +150,7 @@ fn test_fastc_compound_fixed_array_dimension_scanner_keeps_type_boundaries() {
 		scan.init(file, source)
 		first := scan.scan()
 		if _, _ := fastc_scan_type(mut scan, first, 'dimension', 'main', map[string]string{},
-			map[string]bool{}, false) {
+			map[u32]bool{}, false) {
 			assert false, source
 		}
 	}

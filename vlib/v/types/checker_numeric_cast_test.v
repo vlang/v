@@ -82,8 +82,8 @@ fn test_numeric_literal_cast_retains_generic_target_declaration_validation() {
 	cast := a.add_node(flat.Node{ kind: .cast_expr, value: 'Choice', children_start: children, children_count: 1 })
 	mut tc := TypeChecker.new(&a)
 	tc.diagnose_unknown_calls = true
-	tc.sum_types.set('Choice', ['int'])
-	tc.sum_generic_params['Choice'] = ['T']
+	tc.sum_types.set(flat.source_type_id('Choice'), ['int'])
+	tc.sum_generic_params[flat.source_type_id('Choice')] = ['T']
 	tc.check_cast_expr(cast, *a.node(cast))
 	assert tc.errors.len == 1, tc.errors.str()
 	assert tc.errors[0].msg == 'generic sumtype `Choice` must specify type parameter, e.g. Choice[int]'
@@ -98,11 +98,11 @@ fn test_numeric_literal_cast_keeps_builtin_spelling_metadata_behavior() {
 	for sum_type in [true, false] {
 		mut tc := TypeChecker.new(&a)
 		tc.diagnose_unknown_calls = true
-		tc.type_aliases.set_id('u64', flat.source_type_i8)
+		tc.type_aliases.set_id(flat.source_type_id('u64'), flat.source_type_i8)
 		if sum_type {
-			tc.sum_generic_params['u64'] = ['T']
+			tc.sum_generic_params[flat.source_type_id('u64')] = ['T']
 		} else {
-			tc.interface_generic_params['u64'] = ['T']
+			tc.interface_generic_params[flat.source_type_id('u64')] = ['T']
 		}
 		assert (tc.bare_generic_decl_type_name('u64') or { panic('missing generic declaration') }) == 'u64'
 		assert tc.qualify_name('u64') == 'u64'

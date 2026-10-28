@@ -716,13 +716,16 @@ fn test_clone_after_transform_keeps_cached_vlib_flag_ownership() {
 	source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'segfault_handler_nix.c.v')
 	mut a := flat.FlatAst.new()
 	a.cached_header_sources[header] = source
+	a.cached_header_module_sources[header] = [source]
 	a.add_node(flat.Node{ kind: .file, value: header })
 	a.add_node(flat.Node{ kind: .module_decl, value: 'builtin' })
 	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('@VEXEROOT/vlib/builtin/segfault_handler_nix.o') })
 	cloned := clone_flat_ast_after_transform(&a)
 	// Changing the original map must not reclassify the clone's vlib directive.
 	a.cached_header_sources[header] = os.join_path(os.vtmp_dir(), 'project', 'main.v')
+	a.cached_header_module_sources[header] = [os.join_path(os.vtmp_dir(), 'project', 'main.v')]
 	assert cloned.cached_header_sources[header] == source
+	assert cloned.cached_header_module_sources[header] == [source]
 	flags := cgen.cache_project_flag_groups(cloned, @VEXEROOT, pref.host_target(),
 		map[string]string{}, map[string]bool{})
 	assert flags == []
@@ -734,13 +737,13 @@ fn test_scoped_type_metadata_preserves_generic_interface_parameters() {
 	}
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Store'] = true
+	tc.interface_names[flat.source_type_id('Store')] = true
 	tc.fn_ret_types['Store[T].get'] = types.Type(types.int_)
 	scope := prealloc_scope_begin_for_v3()
-	tc.interface_generic_params['Store'.clone()] = ['T'.clone()]
+	tc.interface_generic_params[flat.source_type_id('Store'.clone())] = ['T'.clone()]
 	prealloc_scope_leave_for_v3(scope)
 	promote_scoped_type_metadata(mut tc)
-	params := tc.interface_generic_params['Store']
+	params := tc.interface_generic_params[flat.source_type_id('Store')]
 	assert !scoped_value_owned(scope, params.data)
 	assert !scoped_value_owned(scope, params[0].str)
 	prealloc_scope_free_for_v3(scope)

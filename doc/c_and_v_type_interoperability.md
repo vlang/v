@@ -37,9 +37,9 @@ Use `C.ptrdiff_t` for signed pointer-width parameters and return values, includi
 ### C names for V's platform types
 
 Generated C spells `int` as `i64` on 64-bit targets and `i32` on 32-bit ones, and
-`uint` as `size_t`. C code that shares the generated translation unit (`#include` or
-`#insert`) can use the target-independent names instead, because generated C defines
-them before any user header is included:
+`uint` as `size_t`. C code included after the compiler's preamble can use the
+target-independent names instead. Generated C defines them before ordinary quoted
+`#include` and `#insert` directives:
 
 | V type | C name | Defined in generated C as |
 | --- | --- | --- |
@@ -54,6 +54,18 @@ has the same function type as the generated one on every target:
 ```c
 __v_int get_count(__v_int id); // matches the generated `i64 get_count(i64 id)`
 ```
+
+Place this declaration in a header included with quotes:
+
+```v ignore
+#include "v_counts.h"
+```
+
+`#preinclude` directives and angle-bracket headers such as `#include <v_counts.h>`
+are emitted before the compiler's preamble, so they cannot use these generated
+type names. Use standard C types in those early headers, or include a header that
+uses V's generated names with quotes instead. This ordering lets early headers
+configure the system libraries before V includes them.
 
 Use `__v_uint` (or `size_t`) for V `uint`, which a `fn C.` signature also lowers to
 `size_t`. The `isize` and `usize` typedefs remain for C code that already uses them,

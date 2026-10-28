@@ -894,6 +894,9 @@ pub mut:
 	// judge a warm header by the code it stands for rather than by where the
 	// cache directory happens to be.
 	cached_header_sources map[string]string
+	// cached_header_module_sources maps each of those headers to all the sources
+	// of its module: a header holds what each of them declares.
+	cached_header_module_sources map[string][]string
 	// file_node_ids records every .file node the parser creates, in creation
 	// order: (marker, trailing) pairs per source file. The trailing node's
 	// children are the file's top-level declarations, letting collect build

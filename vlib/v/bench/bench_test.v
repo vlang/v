@@ -148,3 +148,33 @@ fn test_shorten_home_path() {
 	assert shorten_home_path('${home}_other/code/project/main.v') == '${home}_other/code/project/main.v'
 	assert shorten_home_path('/tmp/project/main.v') == '/tmp/project/main.v'
 }
+
+fn test_instruction_count_formatting() {
+	assert format_instructions(1_234_567_890) == '   1.235 G instructions'
+	assert instruction_suffix('') == ''
+	assert instruction_suffix('1 G instructions') == '   1 G instructions'
+}
+
+fn test_instruction_counts_are_off_by_default() {
+	b := new()
+	assert !b.show_instructions
+	assert b.step_instructions() == ''
+}
+
+fn test_enable_instruction_counts() {
+	mut b := new()
+	b.set_quiet()
+	b.enable_instruction_counts()
+	assert b.show_instructions
+	$if macos {
+		start := current_instruction_count() or { 0 }
+		assert start > 0
+		assert b.last_instructions > 0
+		assert b.last_instructions <= start
+		assert b.step_instructions().ends_with(' G instructions')
+		b.step('work')
+		assert b.last_instructions >= start
+	} $else {
+		assert b.step_instructions() == ''
+	}
+}

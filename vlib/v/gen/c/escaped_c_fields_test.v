@@ -48,10 +48,10 @@ fn test_escaped_v_field_names_keep_their_existing_spelling() {
 fn test_escaped_c_initializer_field_names_resolve_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['C.EscapedFields'] = []types.StructField{}
-	tc.structs['EscapedFields'] = []types.StructField{}
-	tc.type_aliases.set_id('Fields', flat.source_type_id('C.EscapedFields'))
-	tc.type_alias_modules['Fields'] = 'main'
+	tc.structs[flat.source_type_id('C.EscapedFields')] = []types.StructField{}
+	tc.structs[flat.source_type_id('EscapedFields')] = []types.StructField{}
+	tc.type_aliases.set_id(flat.source_type_id('Fields'), flat.source_type_id('C.EscapedFields'))
+	tc.type_alias_modules[flat.source_type_id('Fields')] = 'main'
 	tc.cur_module = 'main'
 	mut g := FlatGen.new()
 	g.a = &a
@@ -70,12 +70,12 @@ fn test_escaped_c_initializer_field_names_resolve_aliases() {
 fn test_sizeof_c_field_names_follow_alias_pointer_owners() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['C.Record'] = [types.StructField{ name: 'index', typ: types.Type(types.u64_) }]
-	tc.structs['Record'] = tc.structs['C.Record']
-	tc.type_aliases.set_id('RecordAlias', flat.source_type_id('C.Record'))
-	tc.type_aliases.set_id('RecordPointer', flat.source_type_id('&RecordAlias'))
-	tc.type_alias_modules['RecordAlias'] = 'main'
-	tc.type_alias_modules['RecordPointer'] = 'main'
+	tc.structs[flat.source_type_id('C.Record')] = [types.StructField{ name: 'index', typ: types.Type(types.u64_) }]
+	tc.structs[flat.source_type_id('Record')] = tc.structs[flat.source_type_id('C.Record')]
+	tc.type_aliases.set_id(flat.source_type_id('RecordAlias'), flat.source_type_id('C.Record'))
+	tc.type_aliases.set_id(flat.source_type_id('RecordPointer'), flat.source_type_id('&RecordAlias'))
+	tc.type_alias_modules[flat.source_type_id('RecordAlias')] = 'main'
+	tc.type_alias_modules[flat.source_type_id('RecordPointer')] = 'main'
 	tc.cur_module = 'main'
 	tc.push_scope()
 	tc.cur_scope.insert('record', tc.parse_type(flat.source_type_id('RecordAlias')))
@@ -96,11 +96,11 @@ fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
 		mut tc := types.TypeChecker.new(&a)
 		callback_type := types.Type(tc.fn_type([types.Type(types.int_)], &types.Type(types.int_), []bool{}))
 		tc.cur_module = 'main'
-		tc.structs['C.CallbackHolder'] = [types.StructField{ name: 'type', typ: callback_type, is_mut: true }]
-		tc.type_aliases.set_id('CallbackAlias', flat.source_type_id('C.CallbackHolder'))
-		tc.type_aliases.set_id('CallbackPointerAlias', flat.source_type_id('&CallbackAlias'))
-		tc.type_alias_modules['CallbackAlias'] = 'main'
-		tc.type_alias_modules['CallbackPointerAlias'] = 'main'
+		tc.structs[flat.source_type_id('C.CallbackHolder')] = [types.StructField{ name: 'type', typ: callback_type, is_mut: true }]
+		tc.type_aliases.set_id(flat.source_type_id('CallbackAlias'), flat.source_type_id('C.CallbackHolder'))
+		tc.type_aliases.set_id(flat.source_type_id('CallbackPointerAlias'), flat.source_type_id('&CallbackAlias'))
+		tc.type_alias_modules[flat.source_type_id('CallbackAlias')] = 'main'
+		tc.type_alias_modules[flat.source_type_id('CallbackPointerAlias')] = 'main'
 		tc.struct_field_c_abi_fns[flat.source_type_id('C.CallbackHolder')]['type'] = 'fn_ptr:int|int'
 		tc.fn_param_types['callback'] = [types.Type(types.int_)]
 		tc.fn_ret_types['callback'] = types.Type(types.int_)
@@ -131,8 +131,8 @@ fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
 fn test_c_callback_metadata_fallback_keeps_v_field_identity() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Holder'] = []types.StructField{}
-	tc.structs['C.Holder'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Holder')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.Holder')] = []types.StructField{}
 	tc.struct_field_c_abi_fns[flat.source_type_id('Holder')]['type'] = 'fn_ptr:int|int'
 	tc.struct_field_c_abi_fns[flat.source_type_id('C.Holder')]['type'] = 'fn_ptr:int|int'
 	tc.struct_field_c_abi_fns[flat.source_type_id('C.Holder')]['@type'] = 'fn_ptr:int|void*'

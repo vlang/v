@@ -38,7 +38,7 @@ fn test_anonymous_placeholder_queries_keep_exact_ids_and_ignore_module_context()
 fn test_alias_method_negative_index_does_not_hide_a_new_declaration() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Alias', flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('Alias'), flat.source_type_int)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.collect_alias_methods()
 	assert t.resolve_alias_receiver_method(flat.source_type_id('Alias'), 'touch') == none

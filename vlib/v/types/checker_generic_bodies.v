@@ -194,8 +194,8 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 		w.type_param_texts = flat.TypeTextBindings{ ids: texts.clone() }
 		w.type_cache.parse_enabled = false
 		w.fn_context.generic_params = []string{}
-		return_type := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
-			flat.source_type_id(node.typ_text().trim_right('?'))
+		return_type := if !flat.source_type_shape(node.typ).has(.option_type) {
+			flat.source_type_syntax(node.typ).question_trimmed()
 		} else {
 			node.typ
 		}
@@ -240,7 +240,7 @@ fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
 		args << text_id
 		name_set[name] = true
 	}
-	if names.len == 0 || !type_text_names_any(flat.source_type_name(typ_id), name_set) {
+	if names.len == 0 || !type_id_names_any(typ_id, name_set) {
 		_, result := tc.intern_type(tc.parse_type_uncached(typ_id))
 		return *result
 	}
@@ -253,7 +253,7 @@ fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
 	for name, _ in tc.type_param_texts.ids {
 		mut one := map[string]bool{}
 		one[name] = true
-		if !tc.type_params_expanding[name] && args.any(type_text_names_any(flat.source_type_name(it), one)) {
+		if !tc.type_params_expanding[name] && args.any(type_id_names_any(it, one)) {
 			fork.type_params_expanding[name] = true
 			expanding << name
 		}
@@ -853,13 +853,12 @@ fn closed_type_param_texts(combination map[string]u32) map[string]u32 {
 // close_type_param_text puts into `text` the types of the type parameters of
 // `combination` that it names, but those on `path`, the ones being put in.
 fn close_type_param_text(text_id u32, combination map[string]u32, mut path map[string]bool) u32 {
-	text := flat.source_type_name(text_id)
 	mut names := []string{}
 	mut args := []u32{}
 	for name, other in combination {
 		mut one := map[string]bool{}
 		one[name] = true
-		if name in path || !type_text_names_any(text, one) { continue }
+		if name in path || !type_id_names_any(text_id, one) { continue }
 		path[name] = true
 		names << name
 		args << close_type_param_text(other, combination, mut path)
@@ -896,7 +895,7 @@ fn type_param_occurrence_reason(types flat.TypeTextListBindings, texts map[strin
 		missing := options.filter(it !in taken)
 		what := if missing.len > 0 && missing.len < taken.len {
 			if missing.len == 1 {
-				'not `${flat.source_type_name(missing[0]).all_after_last('.')}`'
+				'not `${flat.source_type_name(flat.source_type_syntax(missing[0]).unqualified())}`'
 			} else {
 				'none of ${type_names_text(missing, 'and')}'
 			}
@@ -913,7 +912,7 @@ fn type_param_occurrence_reason(types flat.TypeTextListBindings, texts map[strin
 fn type_names_text(names []u32, word string) string {
 	mut shown := []string{}
 	for name in names#[..3] {
-		shown << '`${flat.source_type_name(name).all_after_last('.')}`'
+		shown << '`${flat.source_type_name(flat.source_type_syntax(name).unqualified())}`'
 	}
 	if names.len > 3 {
 		return '${shown.join(', ')} ${word} ${names.len - 3} more'
@@ -936,7 +935,7 @@ fn fold_type_param_expansions(msg string, constraints map[string]GenericConstrai
 	}
 	mut folds := map[string]string{}
 	for name, constraint in constraints {
-		if type_text_names_any(constraint.name_text(), names) {
+		if type_id_names_any(constraint.name, names) {
 			folds[constraint.name_text()] = name
 		}
 	}
@@ -1025,7 +1024,7 @@ fn (tc &TypeChecker) type_param_dependent_names(fn_node flat.Node, params map[st
 		child_id := tc.a.child(&fn_node, i)
 		child := tc.a.node(child_id)
 		if child.kind == .param {
-			if child.value.len > 0 && type_text_names_any(child.typ_text(), params) {
+			if child.value.len > 0 && type_id_names_any(child.typ, params) {
 				names[child.value] = true
 			}
 		} else {
@@ -1060,7 +1059,7 @@ fn (tc &TypeChecker) type_param_dependent_names(fn_node flat.Node, params map[st
 					for i in 0 .. node.children_count {
 						param := tc.a.child_node(node, i)
 						if param.kind == .param && param.value.len > 0 && param.value !in names
-							&& type_text_names_any(param.typ_text(), params) {
+							&& type_id_names_any(param.typ, params) {
 							names[param.value] = true
 							changed = true
 						}
@@ -1162,11 +1161,11 @@ fn (tc &TypeChecker) subtree_depends_on_type_params(id flat.NodeId, names map[st
 		if node.kind == .ident && node.value in names {
 			return true
 		}
-		if type_text_names_any(node.typ_text(), params) {
+		if type_id_names_any(node.typ, params) {
 			return true
 		}
 		if node.kind !in [.string_literal, .char_literal, .int_literal, .float_literal]
-			&& type_text_names_any(node.value_text(), params) {
+			&& node_value_names_any(node, params) {
 			return true
 		}
 		for i in 0 .. node.children_count {
@@ -1176,23 +1175,27 @@ fn (tc &TypeChecker) subtree_depends_on_type_params(id flat.NodeId, names map[st
 	return false
 }
 
-// type_text_names_any reports whether `text` has a name of `names` among the
-// names it is written with: `T`, `[]T`, `map[string]T`, `Box[T]`, `fn (T) bool`.
-fn type_text_names_any(text string, names map[string]bool) bool {
-	mut start := -1
-	for i := 0; i <= text.len; i++ {
-		is_name_byte := i < text.len && (text[i].is_letter() || text[i].is_digit() || text[i] == `_`)
-		if is_name_byte {
-			if start < 0 {
-				start = i
-			}
-			continue
+// type_id_names_any reports whether the source type names any of `names`.
+fn type_id_names_any(type_id u32, names map[string]bool) bool {
+	words := flat.source_type_syntax(type_id).words()
+	for name, _ in names {
+		if flat.source_type_id(name) in words {
+			return true
 		}
-		if start >= 0 {
-			if text[start..i] in names {
-				return true
-			}
-			start = -1
+	}
+	return false
+}
+
+// node_value_names_any includes explicit generic call arguments when the node has
+// no separate operand spelling, matching the value_text rendering boundary.
+fn node_value_names_any(node &flat.Node, names map[string]bool) bool {
+	value_id := node.source_value_id()
+	if value_id != 0 || node.kind != .call {
+		return type_id_names_any(value_id, names)
+	}
+	for arg in node.call_type_args() {
+		if type_id_names_any(arg, names) {
+			return true
 		}
 	}
 	return false

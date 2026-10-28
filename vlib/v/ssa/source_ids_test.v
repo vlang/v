@@ -24,9 +24,9 @@ fn test_numeric_primitive_dispatch_keeps_exact_annotation_spelling() {
 fn test_function_type_ids_follow_aliases_and_stop_at_cycles() {
 	a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Callable', flat.source_type_id('fn (int) string'))
-	tc.type_aliases.set_id('Alias', flat.source_type_id('Callable'))
-	tc.type_aliases.set_id('Cycle', flat.source_type_id('Cycle'))
+	tc.type_aliases.set_id(flat.source_type_id('Callable'), flat.source_type_id('fn (int) string'))
+	tc.type_aliases.set_id(flat.source_type_id('Alias'), flat.source_type_id('Callable'))
+	tc.type_aliases.set_id(flat.source_type_id('Cycle'), flat.source_type_id('Cycle'))
 	b := Builder{ tc: &tc }
 	assert b.is_function_type_name(flat.source_type_id('Alias'))
 	assert !b.is_function_type_name(flat.source_type_id('Cycle'))

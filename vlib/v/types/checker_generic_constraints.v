@@ -167,7 +167,7 @@ fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type,
 		}
 	}
 	mut expanding := false
-	for variant_source_id in tc.sum_types.type_ids(flat.source_type_name(base)) or { []u32{} } {
+	for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
 		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.source_type_id(), variant_source_id))
 		inner := unalias_type(concrete)
 		if inner is SumType {
@@ -194,15 +194,17 @@ fn (tc &TypeChecker) sum_constraint_cycle_expands(base_id u32, path []SumConstra
 	if params.len == 0 {
 		return false
 	}
-	mut symbols := []string{cap: params.len}
+	mut symbols := []u32{cap: params.len}
 	for i in 0 .. params.len {
-		symbols << tc.qualify_name('__v_constraint_argument_${i}__')
+		symbols << tc.qualify_type_name(flat.source_type_id('__v_constraint_argument_${i}__'))
 	}
 	for start, step in path {
 		if tc.sum_base_name(step.sum_name) != base_id {
 			continue
 		}
-		mut instance := flat.source_type_id('${flat.source_type_name(base_id)}[${symbols.join(', ')}]')
+		mut parts := [base_id]
+		parts << symbols
+		mut instance := flat.source_type_composition(.generic, parts)
 		mut complete := true
 		for next in path[start..] {
 			if tc.sum_base_name(instance) != tc.sum_base_name(next.sum_name) {
@@ -221,11 +223,12 @@ fn (tc &TypeChecker) sum_constraint_cycle_expands(base_id u32, path []SumConstra
 		if !complete {
 			continue
 		}
-		cycle_base, args, ok := generic_type_application_parts(flat.source_type_name(instance))
-		if !ok || tc.sum_base_name(flat.source_type_id(cycle_base)) != base_id || args.len != symbols.len {
+		syntax := flat.source_type_syntax(instance)
+		if !syntax.application_valid() || tc.sum_base_name(syntax.application_base()) != base_id
+			|| syntax.application_args().len != symbols.len {
 			continue
 		}
-		if sum_constraint_arguments_expand(args, symbols) {
+		if sum_constraint_argument_ids_expand(syntax.application_args(), symbols) {
 			return true
 		}
 	}
@@ -233,11 +236,16 @@ fn (tc &TypeChecker) sum_constraint_cycle_expands(base_id u32, path []SumConstra
 }
 
 fn sum_constraint_arguments_expand(args []string, symbols []string) bool {
+	return sum_constraint_argument_ids_expand(flat.TypeTextList.from_names(args).ids,
+		flat.TypeTextList.from_names(symbols).ids)
+}
+
+fn sum_constraint_argument_ids_expand(args []u32, symbols []u32) bool {
 	mut edges := [][]int{len: symbols.len, init: []int{len: symbols.len}}
 	for i, arg in args {
 		for j, symbol in symbols {
-			if type_text_contains_symbol(arg, symbol) {
-				edges[i][j] = if arg.trim_space() == symbol { 1 } else { 2 }
+			if symbol in flat.source_type_syntax(arg).symbols() {
+				edges[i][j] = if trimmed_source_type_id(arg) == symbol { 1 } else { 2 }
 			}
 		}
 	}
@@ -271,10 +279,10 @@ fn sum_constraint_arguments_expand(args []string, symbols []string) bool {
 // type_has_nested_instance permits descending into a finite type argument,
 // including an alias of a nested instance of the same generic sum.
 fn (tc &TypeChecker) type_has_nested_instance(parent_id u32, nested_id u32) bool {
-	_, args, _ := generic_type_application_parts(flat.source_type_name(parent_id))
+	args := flat.source_type_syntax(parent_id).application_args()
 	mut seen := map[u32]bool{}
 	for arg in args {
-		if tc.type_argument_contains(flat.source_type_id(arg), nested_id, mut seen) {
+		if tc.type_argument_contains(arg, nested_id, mut seen) {
 			return true
 		}
 	}
@@ -295,9 +303,9 @@ fn (tc &TypeChecker) type_argument_contains(text_id u32, nested_id u32, mut seen
 		}
 		else {}
 	}
-	_, args, _ := generic_type_application_parts(typ.name())
+	args := flat.source_type_syntax(typ.source_type_id()).application_args()
 	for arg in args {
-		if tc.type_argument_contains(flat.source_type_id(arg), nested_id, mut seen) {
+		if tc.type_argument_contains(arg, nested_id, mut seen) {
 			return true
 		}
 	}
@@ -403,23 +411,25 @@ fn (tc &TypeChecker) generic_constraints_of(decl flat.Node) map[string]GenericCo
 	if receiver.kind != .param {
 		return interfaces
 	}
-	receiver_type := receiver.typ_text().trim_left('&').all_after('mut ').trim_space()
-	if !receiver_type.contains('[') || !receiver_type.ends_with(']') {
+	receiver_id := flat.source_type_syntax(receiver.typ).constraint_receiver_base()
+	receiver_syntax := flat.source_type_syntax(receiver_id)
+	if !flat.source_type_shape(receiver_id).has(.bracketed) || !receiver_syntax.closing_bracket() {
 		return interfaces
 	}
-	struct_decl := tc.generic_type_decl(flat.source_type_id(receiver_type.all_before('['))) or { return interfaces }
+	struct_decl := tc.generic_type_decl(receiver_syntax.generic_base()) or { return interfaces }
 	struct_constraints := struct_decl.generic_constraint_ids()
 	struct_names := struct_decl.generic_params()
-	receiver_names := split_params(receiver_type.all_after('[').all_before_last(']'))
+	receiver_names := receiver_syntax.receiver_raw_app_args()
 	if struct_constraints.len != struct_names.len || receiver_names.len != struct_names.len {
 		return interfaces
 	}
-	for i, name in receiver_names {
-		if struct_constraints[i] == 0 || name.trim_space() in interfaces {
+	for i, name_id in receiver_names {
+		name := flat.source_type_name(trimmed_source_type_id(name_id))
+		if struct_constraints[i] == 0 || name in interfaces {
 			continue
 		}
 		if constraint := tc.generic_constraint(struct_decl, struct_constraints[i]) {
-			interfaces[name.trim_space()] = constraint
+			interfaces[name] = constraint
 		}
 	}
 	return interfaces
@@ -428,10 +438,20 @@ fn (tc &TypeChecker) generic_constraints_of(decl flat.Node) map[string]GenericCo
 // generic_type_decl is the declaration of the generic type `name`: a struct,
 // an interface, or a sum type or an alias with type parameters.
 fn (tc &TypeChecker) generic_type_decl(name_id u32) ?flat.Node {
-	name := flat.source_type_name(name_id)
-	for candidate in [flat.source_type_id(tc.qualify_decl_name(name)), name_id,
-		flat.source_type_id(name.trim_string_left('main.'))] {
-		if idx := tc.first_type_declaration_ids[flat.source_type_name(candidate)] {
+	qualified_id := if flat.source_type_shape(name_id).has(.dotted) {
+		tc.resolve_imported_type_text(name_id)
+	} else if tc.cur_module.len == 0 || tc.cur_module in ['main', 'builtin'] {
+		name_id
+	} else {
+		flat.source_type_composition_two(.qualified, flat.source_type_id(tc.cur_module), name_id)
+	}
+	main_base := if flat.source_type_query(name_id).has(.main_prefix) {
+		flat.source_type_syntax(name_id).main_base()
+	} else {
+		name_id
+	}
+	for candidate in [qualified_id, name_id, main_base] {
+		if idx := tc.first_type_declaration_ids[candidate] {
 			node := tc.a.nodes[idx]
 			if node.kind in [.struct_decl, .interface_decl, .type_decl] {
 				return node
@@ -458,7 +478,7 @@ fn (mut tc TypeChecker) check_generic_constraint_decls(node_id flat.NodeId, node
 		}
 		text := flat.source_type_name(text_id)
 		pos := tc.generic_constraint_pos(node, names[i], text)
-		if !tc.type_name_known_in_scope(text.all_before('['), file.name, decl_module) {
+		if !tc.type_name_known_in_scope_id(flat.source_type_syntax(text_id).generic_base(), file.name, decl_module) {
 			tc.record_error_at(.unknown_type, 'unknown type `${text}`', node_id, pos)
 			continue
 		}
@@ -470,8 +490,8 @@ fn (mut tc TypeChecker) check_generic_constraint_decls(node_id flat.NodeId, node
 			}
 		}
 		// `[U Tree[int]]` writes `Tree[int]`, which is checked as written anywhere.
-		if text.contains('[') && pos.end - pos.offset == text.len {
-			tc.check_written_type_constraints(node_id, text, pos.offset, tc.type_param_scope(node))
+		if flat.source_type_shape(text_id).has(.bracketed) && pos.end - pos.offset == text.len {
+			tc.check_written_type_constraints(node_id, text_id, pos.offset, tc.type_param_scope(node))
 		}
 	}
 }
@@ -563,7 +583,7 @@ fn (tc &TypeChecker) generic_param_binding_site(call_id flat.NodeId, call flat.N
 			break
 		}
 		arg_id := tc.call_arg_value(tc.a.child(&call, arg_index))
-		if param.typ_text().trim_left('&').all_after('mut ').trim_space() == name {
+		if flat.source_type_syntax(param.typ).constraint_receiver_base() == flat.source_type_id(name) {
 			return arg_id, tc.call_argument_diagnostic_pos(arg_id)
 		}
 		arg_index++
@@ -619,7 +639,7 @@ fn (mut tc TypeChecker) check_attribute_type_argument(id flat.NodeId, pos token.
 	clean := unalias_type(unwrap_pointer(tc.parse_type(arg_id)))
 	if clean is Struct {
 		if tc.type_has_declaration_attribute(Type(clean as Struct), 'attribute') {
-			arg_name := flat.source_type_name(arg_id).trim_space()
+			arg_name := flat.source_type_name(trimmed_source_type_id(arg_id))
 			tc.record_error_at(.assignment_mismatch, 'attribute `${arg_name}` cannot be used as a type argument', id, pos)
 		}
 	}
@@ -644,11 +664,12 @@ fn (mut tc TypeChecker) check_generic_type_constraints(id flat.NodeId, pos token
 			continue
 		}
 		constraint := tc.generic_constraint(decl, text_id) or { continue }
-		arg := flat.source_type_name(args_ids[i]).trim_space()
+		arg := flat.source_type_name(trimmed_source_type_id(args_ids[i]))
 		if arg in scope.names {
 			// `Box[T]` inside a declaration of `T`: its constraint has to do.
-			display := flat.source_type_name(subst_generic_text(text_id, args_ids.map(trimmed_source_type_id(it)), params.map(it.trim_space())))
-			if reason := tc.constraint_unmet_reason(scope.constraints, arg, constraint, display) {
+			display_id := subst_generic_text(text_id, args_ids.map(trimmed_source_type_id(it)), params.map(it.trim_space()))
+			if reason := tc.constraint_unmet_reason(scope.constraints, arg, constraint, display_id) {
+				display := flat.source_type_name(display_id)
 				application := '${flat.source_type_name(base_id).all_after_last('.')}[${args_ids.map(flat.source_type_name(it).trim_space()).join(', ')}]'
 				tc.record_error_at(.call_arg_mismatch, '`${application}` needs `${arg}` to ${constraint_need(constraint, display)}: ${reason}', id, pos)
 			}
@@ -689,24 +710,22 @@ fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stac
 		}
 		node := tc.a.node(item.id)
 		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
-		mut texts := written_type_texts(*node)
-		if generic_body && node.kind == .struct_init && !node.value_text().starts_with('chan ') {
-			texts << node.value_text()
+		mut type_ids := written_type_ids(*node)
+		if generic_body && node.kind == .struct_init && !flat.source_type_shape(node.source_value_id()).has(.channel_type) {
+			type_ids << node.source_value_id()
 		}
-		for text in texts {
-			if text.contains('[') {
-				tc.check_written_type_constraints(anchor, text, tc.written_type_start(*node,
-					anchor, text), scope)
+		for type_id in type_ids {
+			if flat.source_type_shape(type_id).has(.bracketed) {
+				tc.check_written_type_constraints(anchor, type_id, tc.written_type_start(*node,
+					anchor, flat.source_type_name(type_id)), scope)
 			}
 		}
 		if node.kind == .call && tc.call_has_explicit_generic_type_args(*node) {
 			// `make[Box[int]]()`: the types in the brackets of what it calls.
 			callee_id := tc.a.child(node, 0)
 			for text_source_id in tc.generic_call_type_arg_names(tc.a.node(callee_id)) {
-				text := flat.source_type_name(text_source_id)
-
-				if text.contains('[') {
-					tc.check_written_type_constraints(callee_id, text, none, scope)
+				if flat.source_type_shape(text_source_id).has(.bracketed) {
+					tc.check_written_type_constraints(callee_id, text_source_id, none, scope)
 				}
 			}
 		}
@@ -721,79 +740,79 @@ struct WrittenTypeItem {
 	anchor flat.NodeId // the nearest node with a place in the source
 }
 
-// written_type_texts are the types that `node` writes: in `typ` for the kinds
-// that keep a type there, in the source operand for array, map and channel literals,
-// the casts, the tests and `sizeof` or `typeof` of a type.
+// written_type_texts renders the types that node writes for source-facing callers.
 fn written_type_texts(node flat.Node) []string {
-	mut texts := []string{}
+	return written_type_ids(node).map(flat.source_type_name(it))
+}
+
+// written_type_ids are the types that node writes: in typ for declarations,
+// or in its source operand for type expressions and channel literals.
+fn written_type_ids(node flat.Node) []u32 {
+	mut type_ids := []u32{}
 	if node.typ != 0 && node.kind in [.param, .fn_decl, .interface_field, .field_decl, .type_decl,
 		.global_decl, .const_field, .fn_literal, .array_init, .decl_assign] {
-		texts << node.typ_text()
+		type_ids << node.typ
 	}
+	// Only type-bearing operands need an interned value spelling. Most AST nodes
+	// have ordinary values that none of the following branches can use.
+	uses_value_type := (node.kind == .ident && node.pos.end > 0)
+		|| (node.kind == .interface_field && node.op != .dot && node.typ == 0
+			&& node.value.len > 0)
+		|| node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init, .struct_init]
+		|| (node.kind in [.sizeof_expr, .typeof_expr] && node.children_count == 0)
+	if !uses_value_type { return type_ids }
+	// Uninterned names are source input. Ordinary identifiers cannot contain a
+	// written generic application, so retain them outside the type interner.
+	if node.value.len > 0 && node.kind in [.ident, .interface_field]
+		&& !node.value.contains('[') {
+		return type_ids
+	}
+	value_id := node.source_value_id()
 	// The variants of a sum type, `type Sum = Box[int] | string`.
-	if node.kind == .ident && node.value_text().contains('[') && node.pos.end > 0 {
-		texts << node.value_text()
+	if node.kind == .ident && flat.source_type_shape(value_id).has(.bracketed) && node.pos.end > 0 {
+		type_ids << value_id
 	}
-	// An interface that an interface embeds, `Shelf[T]`, written as its name.
+	// An interface that an interface embeds writes its type as its name.
 	if node.kind == .interface_field && node.op != .dot && node.typ == 0
-		&& node.value.contains('[') {
-		texts << node.value_text()
+		&& node.value.len > 0 && flat.source_type_shape(value_id).has(.bracketed) {
+		type_ids << value_id
 	}
-	// A struct literal, `Box[int]{}`, is checked where it is checked; a channel,
-	// `chan Box[int]{}`, is one only by its syntax.
+	// Struct literals are checked elsewhere; channels have their own syntax.
 	if (node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init]
 		|| (node.kind in [.sizeof_expr, .typeof_expr] && node.children_count == 0)
-		|| (node.kind == .struct_init && node.value_text().starts_with('chan '))) && node.source_value_id() != 0 {
-		texts << node.value_text()
+		|| (node.kind == .struct_init && flat.source_type_shape(value_id).has(.channel_type))) && value_id != 0 {
+		type_ids << value_id
 	}
-	return texts
+	return type_ids
 }
 
 // check_written_type_constraints checks every generic application that the type
 // `text`, written at `id`, holds, at any depth: `map[string][]Box[Box[User]]`
 // checks both `Box`es. `map[K]V` and a fixed array's size are no applications.
 // `start` is where `text` starts in the source, when it is known.
-fn (mut tc TypeChecker) check_written_type_constraints(id flat.NodeId, text string, start ?int, scope TypeParamScope) {
-	mut i := 0
-	for i < text.len {
-		c := text[i]
-		if !(c.is_letter() || c == `_`) || (i > 0 && (text[i - 1].is_alnum()
-			|| text[i - 1] in [`_`, `.`])) {
-			i++
-			continue
-		}
-		mut end := i
-		for end < text.len && (text[end].is_alnum() || text[end] in [`_`, `.`]) {
-			end++
-		}
-		base := text[i..end]
-		if end >= text.len || text[end] != `[` || base == 'map' {
-			i = end
-			continue
-		}
-		close := find_matching_bracket(text, end)
-		if close >= text.len {
-			return
-		}
-		application := text[i..close + 1]
-		args := split_params(text[end + 1..close])
+fn (mut tc TypeChecker) check_written_type_constraints(id flat.NodeId, text_id u32, start ?int, scope TypeParamScope) {
+	syntax := flat.source_type_syntax(text_id)
+	for k, application_id in syntax.written_applications() {
+		application_syntax := flat.source_type_syntax(application_id)
+		offset := int(syntax.written_application_offsets()[k])
+		end := offset + application_syntax.byte_len()
 		pos := if text_start := start {
 			node := tc.a.node(id)
-			token.new_span(node.pos.id, text_start + i, text_start + close + 1)
+			token.new_span(node.pos.id, text_start + offset, text_start + end)
 		} else {
 			// Where a declaration writes its type, `keyed map[Box[int]]string`: at
 			// `Box`, not at `map`.
-			whole := tc.type_diagnostic_pos(id, text)
-			if whole.end - whole.offset == text.len {
-				token.new_span(whole.id, whole.offset + i, whole.offset + close + 1)
+			whole := tc.type_diagnostic_pos(id, flat.source_type_name(text_id))
+			if whole.end - whole.offset == syntax.byte_len() {
+				token.new_span(whole.id, whole.offset + offset, whole.offset + end)
 			} else {
-				tc.type_diagnostic_pos(id, application)
+				tc.type_diagnostic_pos(id, flat.source_type_name(application_id))
 			}
 		}
 		errors_start := tc.errors.len
-		tc.check_generic_type_constraints(id, pos, flat.source_type_id(base), flat.TypeTextList.from_names(args).ids, scope)
+		tc.check_generic_type_constraints(id, pos, application_syntax.generic_base(),
+			application_syntax.checker_raw_bracket_components(), scope)
 		tc.drop_repeated_errors(errors_start)
-		i = end
 	}
 }
 
@@ -1291,19 +1310,17 @@ fn (mut tc TypeChecker) constraint_walk_interface_method_type(node flat.Node) ?T
 	if receiver !is Interface {
 		return none
 	}
-	base, args, is_generic := generic_type_application_parts(receiver.name())
-	if !is_generic {
-		return none
-	}
-	decl := tc.generic_type_decl(flat.source_type_id(base)) or { return none }
+	syntax := flat.source_type_syntax(receiver.source_type_id())
+	if !syntax.application_valid() { return none }
+	decl := tc.generic_type_decl(syntax.application_base()) or { return none }
 	params := decl.generic_params().map(it.trim_space())
-	if decl.kind != .interface_decl || params.len != args.len {
+	if decl.kind != .interface_decl || params.len != syntax.application_args().len {
 		return none
 	}
 	for i in 0 .. decl.children_count {
 		member := tc.a.child_node(&decl, i)
 		if member.kind == .interface_field && member.op == .dot && member.value == callee.value {
-			return tc.constraint_walk_named_type(subst_generic_text(member.typ, flat.TypeTextList.from_names(args.map(it.trim_space())).ids,
+			return tc.constraint_walk_named_type(subst_generic_text(member.typ, syntax.application_args().map(trimmed_source_type_id(it)),
 				params))
 		}
 	}
@@ -1333,9 +1350,10 @@ fn (mut tc TypeChecker) constraint_walk_call_bindings(id flat.NodeId, node flat.
 	callee := tc.a.child_node(&node, 0)
 	mut receiver_id := flat.NodeId(-1)
 	if info.has_receiver {
-		_, receiver_params, receiver_is_generic := generic_type_application_parts(info.name.all_before_last('.'))
-		if receiver_is_generic {
-			for param in receiver_params {
+		receiver_syntax := flat.source_type_syntax(flat.source_type_id(info.name.all_before_last('.')))
+		if receiver_syntax.application_valid() {
+			for param_id in receiver_syntax.application_args() {
+				param := flat.source_type_name(param_id)
 				if param !in names {
 					names << param
 				}
@@ -1406,48 +1424,45 @@ fn (mut tc TypeChecker) constraint_walk_call_info(id flat.NodeId, node flat.Node
 // of what a call passes there. A generic struct binds its type arguments,
 // `Box[T]` against `Box[U]`; infer_generic_type_value_from_type does the rest.
 fn (mut tc TypeChecker) constraint_walk_infer(param_id u32, actual Type, names []string, mut inferred map[string]Type) {
-	tc.constraint_walk_infer_bytes(flat.source_type_name(param_id), actual, names, mut inferred)
-}
-
-fn (mut tc TypeChecker) constraint_walk_infer_bytes(param_text string, actual Type, names []string, mut inferred map[string]Type) {
-	clean := trimmed_space(param_text)
-	if clean.starts_with('&') {
-		tc.constraint_walk_infer_bytes(clean[1..], unwrap_pointer(actual), names, mut inferred)
+	clean_id := trimmed_source_type_id(param_id)
+	shape := flat.source_type_shape(clean_id)
+	syntax := flat.source_type_syntax(clean_id)
+	if shape.has(.pointer) {
+		tc.constraint_walk_infer(syntax.raw_base(), unwrap_pointer(actual), names, mut inferred)
 		return
 	}
-	if clean.starts_with('mut ') {
-		tc.constraint_walk_infer_bytes(clean[4..], actual, names, mut inferred)
+	if shape.has(.mutable_type) {
+		tc.constraint_walk_infer(syntax.raw_base(), actual, names, mut inferred)
 		return
 	}
-	if clean.starts_with('[]') {
+	if shape.has(.array_type) {
 		if array := array_type_from_receiver(actual) {
-			tc.constraint_walk_infer_bytes(clean[2..], array.elem_type, names, mut inferred)
+			tc.constraint_walk_infer(syntax.raw_base(), array.elem_type, names, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('?') || clean.starts_with('!') {
+	if shape.has(.optional) {
 		held := unalias_type(actual)
 		base := match held {
 			OptionType { held.base_type }
 			ResultType { held.base_type }
 			else { held }
 		}
-		tc.constraint_walk_infer_bytes(clean[1..], base, names, mut inferred)
+		tc.constraint_walk_infer(syntax.raw_base(), base, names, mut inferred)
 		return
 	}
-	if generic_type_application(clean) {
-		param_base, param_args, _ := generic_type_application_parts(clean)
-		actual_base, actual_args, actual_is_generic := generic_type_application_parts(flat.source_type_name(tc.generic_infer_type_text(unwrap_pointer(actual))))
-		if actual_is_generic && param_args.len == actual_args.len
-			&& tc.generic_type_base_matches(tc.generic_param_type_text(flat.source_type_id(param_base)), flat.source_type_id(actual_base)) {
-			for i in 0 .. param_args.len {
-				tc.constraint_walk_infer_bytes(param_args[i], tc.constraint_walk_named_type(flat.source_type_id(actual_args[i])),
+	if syntax.application_valid() {
+		actual_syntax := flat.source_type_syntax(tc.generic_infer_type_text(unwrap_pointer(actual)))
+		if actual_syntax.application_valid() && syntax.application_args().len == actual_syntax.application_args().len
+			&& tc.generic_type_base_matches(tc.generic_param_type_text(syntax.application_base()), actual_syntax.application_base()) {
+			for i, arg in syntax.application_args() {
+				tc.constraint_walk_infer(arg, tc.constraint_walk_named_type(actual_syntax.application_args()[i]),
 					names, mut inferred)
 			}
 			return
 		}
 	}
-	tc.infer_generic_type_value_from_type_bytes(clean, actual, names, mut inferred)
+	tc.infer_generic_type_value_from_type(clean_id, actual, names, mut inferred)
 }
 
 // infer_type_params_from_constraints binds in `inferred` each type parameter
@@ -1468,15 +1483,12 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 			actual_text_source_id := inferred[name] or { continue }
 
 			text_id := trimmed_source_type_id(texts[i])
-			text := flat.source_type_name(text_id)
-			if text.len == 0 {
+			if text_id == 0 {
 				continue
 			}
 			mut missing := []string{}
 			for other in names {
-				mut one := map[string]bool{}
-				one[other] = true
-				if other !in inferred && type_text_names_any(text, one) {
+				if other !in inferred && flat.source_type_id(other) in flat.source_type_syntax(text_id).words() {
 					missing << other
 				}
 			}
@@ -1499,16 +1511,13 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 // a call passes there: the types of its methods and fields against those of
 // the members of the interface, `User` for a `get() User` against `get() T`.
 pub fn (mut tc TypeChecker) infer_type_params_from_interface(param_id u32, actual_id u32, names []string, mut inferred map[string]u32) {
-	param_text := flat.source_type_name(param_id)
 	mut missing := []string{}
 	for name in names {
-		mut one := map[string]bool{}
-		one[name] = true
-		if name !in inferred && type_text_names_any(param_text, one) {
+		if name !in inferred && flat.source_type_id(name) in flat.source_type_syntax(param_id).words() {
 			missing << name
 		}
 	}
-	if missing.len == 0 || !generic_type_application(param_text.trim_space()) {
+	if missing.len == 0 || !flat.source_type_syntax(trimmed_source_type_id(param_id)).application_valid() {
 		return
 	}
 	tc.infer_from_constraint(trimmed_source_type_id(param_id), tc.parse_type(actual_id), missing, mut
@@ -1521,23 +1530,20 @@ pub fn (mut tc TypeChecker) infer_type_params_from_interface(param_id u32, actua
 // against `Pair[int]`, or the types of the members of a generic interface,
 // `get() T` of `Container[T]` against the `get` of `actual`.
 fn (mut tc TypeChecker) infer_from_constraint(text_id u32, actual Type, missing []string, mut inferred map[string]u32) {
-	text := flat.source_type_name(text_id)
-	base, args, is_generic := generic_type_application_parts(text)
-	if !is_generic {
-		return
-	}
+	syntax := flat.source_type_syntax(text_id)
+	if !syntax.application_valid() { return }
 	clean := unwrap_pointer(actual)
-	decl := tc.generic_type_decl(flat.source_type_id(base)) or { return }
+	decl := tc.generic_type_decl(syntax.application_base()) or { return }
 	if decl.kind != .interface_decl {
 		tc.infer_generic_type_text_from_type(text_id, clean, missing, mut inferred)
 		return
 	}
 	params := decl.generic_params().map(it.trim_space())
 	concrete := method_type_name(clean)
-	if params.len != args.len || concrete == 0 {
+	if params.len != syntax.application_args().len || concrete == 0 {
 		return
 	}
-	bound_args := args.map(it.trim_space())
+	bound_args := syntax.application_args().map(trimmed_source_type_id(it))
 	for i in 0 .. decl.children_count {
 		member := tc.a.child_node(&decl, i)
 		if member.kind != .interface_field || member.value.len == 0 {
@@ -1546,15 +1552,15 @@ fn (mut tc TypeChecker) infer_from_constraint(text_id u32, actual Type, missing 
 		if member.op != .dot {
 			if member.typ != 0 {
 				field := tc.struct_field_type(concrete, member.value) or { continue }
-				tc.infer_generic_type_text_from_type_bytes(flat.source_type_name(subst_generic_text(member.typ, flat.TypeTextList.from_names(bound_args).ids,
-					params)), field, missing, mut inferred)
+				tc.infer_generic_type_text_from_type(subst_generic_text(member.typ, bound_args,
+					params), field, missing, mut inferred)
 			}
 			continue
 		}
 		ret, method_params := tc.concrete_method_types(concrete, member.value) or { continue }
 		if member.typ != 0 {
-			tc.infer_generic_type_text_from_type_bytes(flat.source_type_name(subst_generic_text(member.typ, flat.TypeTextList.from_names(bound_args).ids,
-				params)), ret, missing, mut inferred)
+			tc.infer_generic_type_text_from_type(subst_generic_text(member.typ, bound_args,
+				params), ret, missing, mut inferred)
 		}
 		mut k := 0
 		for j in 0 .. member.children_count {
@@ -1563,8 +1569,8 @@ fn (mut tc TypeChecker) infer_from_constraint(text_id u32, actual Type, missing 
 				continue
 			}
 			if k < method_params.len {
-				tc.infer_generic_type_text_from_type_bytes(flat.source_type_name(subst_generic_text(param.typ, flat.TypeTextList.from_names(bound_args).ids,
-					params)), method_params[k], missing, mut inferred)
+				tc.infer_generic_type_text_from_type(subst_generic_text(param.typ, bound_args,
+					params), method_params[k], missing, mut inferred)
 			}
 			k++
 		}
@@ -1616,12 +1622,14 @@ fn (tc &TypeChecker) type_param_scope(node flat.Node) TypeParamScope {
 	if node.kind == .fn_decl {
 		if node.children_count > 0 && node.value.contains('.') {
 			receiver := tc.a.child_node(&node, 0)
-			receiver_type := receiver.typ_text().trim_left('&').all_after('mut ').trim_space()
-			if receiver.kind == .param && receiver_type.contains('[')
-				&& receiver_type.ends_with(']') {
-				for name in split_params(receiver_type.all_after('[').all_before_last(']')) {
-					if name.trim_space() !in names {
-						names << name.trim_space()
+			receiver_id := flat.source_type_syntax(receiver.typ).constraint_receiver_base()
+			receiver_syntax := flat.source_type_syntax(receiver_id)
+			if receiver.kind == .param && flat.source_type_shape(receiver_id).has(.bracketed)
+				&& receiver_syntax.closing_bracket() {
+				for name_id in receiver_syntax.receiver_raw_app_args() {
+					name := flat.source_type_name(trimmed_source_type_id(name_id))
+					if name !in names {
+						names << name
 					}
 				}
 			}
@@ -1655,17 +1663,17 @@ fn constraint_need(constraint GenericConstraint, display string) string {
 // `constraints` says of it, does not satisfy `need`, written as `display` with
 // the type parameters of where it is asked, `Comparable[U]`; none when it does:
 // its constraint implements the interface, or its set is part of the set.
-fn (tc &TypeChecker) constraint_unmet_reason(constraints map[string]GenericConstraint, param string, need GenericConstraint, display string) ?string {
+fn (tc &TypeChecker) constraint_unmet_reason(constraints map[string]GenericConstraint, param string, need GenericConstraint, display_id u32) ?string {
 	have := constraints[param] or {
-		return '`${param}` has no constraint: give it one, `[${param} ${display}]`'
+		return '`${param}` has no constraint: give it one, `[${param} ${flat.source_type_name(display_id)}]`'
 	}
 	if have.is_interface {
 		if !need.is_interface {
 			return 'its constraint `${have.name_text()}` is not a set of types'
 		}
-		if flat.source_type_shape(have.name).has(.bracketed) || display.contains('[') {
+		if flat.source_type_shape(have.name).has(.bracketed) || flat.source_type_shape(display_id).has(.bracketed) {
 			// A generic interface, `Comparable[U]`, with its own type arguments.
-			if have.name_text().replace(' ', '') == display.replace(' ', '') {
+			if flat.source_type_syntax(have.name).space_removed() == flat.source_type_syntax(display_id).space_removed() {
 				return none
 			}
 		} else if tc.interface_metadata_name(have.iface.source_type_id()) == tc.interface_metadata_name(need.iface.source_type_id())
@@ -1730,12 +1738,13 @@ fn (mut tc TypeChecker) check_generic_call_in_body(id flat.NodeId, node flat.Nod
 			if param !in scope.names {
 				continue
 			}
-			mut bound_texts := []string{cap: own.len}
+			mut bound_ids := []u32{cap: own.len}
 			for own_name in own {
-				bound_texts << binding_text(binding, own_name)
+				bound_ids << binding_type_id(binding, own_name)
 			}
-			display := flat.source_type_name(subst_generic_text(need.name, flat.TypeTextList.from_names(bound_texts).ids, own))
-			if reason := tc.constraint_unmet_reason(constraints, param, need, display) {
+			display_id := subst_generic_text(need.name, bound_ids, own)
+			if reason := tc.constraint_unmet_reason(constraints, param, need, display_id) {
+				display := flat.source_type_name(display_id)
 				callee := binding.info.name.all_after_last('.')
 				tc.record_error_at(.call_arg_mismatch, '`${callee}` needs `${param}` to ${constraint_need(need, display)}: ${reason}', id, pos)
 			}
@@ -1747,14 +1756,14 @@ fn (mut tc TypeChecker) check_generic_call_in_body(id flat.NodeId, node flat.Nod
 	}
 }
 
-// binding_text is how the type that `binding` binds the type parameter `name`
+// binding_type_id is how the type that `binding` binds the type parameter `name`
 // to is written: the name of a type parameter, or of a type.
-fn binding_text(binding CallBinding, name string) string {
-	t := binding.types[name] or { return name }
+fn binding_type_id(binding CallBinding, name string) u32 {
+	t := binding.types[name] or { return flat.source_type_id(name) }
 	if t is Unknown {
-		return generic_placeholder_from_unknown(t) or { name }
+		return flat.source_type_id(generic_placeholder_from_unknown(t) or { name })
 	}
-	return t.name().all_after_last('.')
+	return flat.source_type_syntax(t.source_type_id()).unqualified()
 }
 
 // generic_param_arg_pos is where a call passes the first argument whose
@@ -1780,7 +1789,7 @@ fn (tc &TypeChecker) generic_param_arg_pos(node flat.Node, info CallInfo, name s
 // struct in the body of the walk whose type arguments come from its fields,
 // `Box{ item: x }`: what they are bound to, as check_generic_call_in_body does.
 fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.Node, scope TypeParamScope, constraints map[string]GenericConstraint) {
-	if node.value_text().contains('[') {
+	if flat.source_type_shape(node.source_value_id()).has(.bracketed) {
 		return
 	}
 	decl := tc.generic_type_decl(node.source_value_id()) or { return }
@@ -1806,10 +1815,12 @@ fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.
 // of a call in the body of the walk, names there: a type parameter of the caller,
 // or a type.
 fn (tc &TypeChecker) constraint_walk_named_type(name_id u32) Type {
-	name := flat.source_type_name(name_id)
-	if is_bare_generic_param(name)
-		&& (name in tc.fn_context.generic_params || tc.active_generic_param(name)) {
-		return unknown_type('generic placeholder `${name}`')
+	syntax := flat.source_type_syntax(name_id)
+	if syntax.trimmed() == name_id && syntax.bare_generic() {
+		name := flat.source_type_name(name_id)
+		if name in tc.fn_context.generic_params || tc.active_generic_param(name) {
+			return unknown_type('generic placeholder `${name}`')
+		}
 	}
 	return *tc.parse_type(name_id)
 }
@@ -2004,12 +2015,12 @@ fn (tc &TypeChecker) fn_param_type_param(fn_node flat.Node, name string, names [
 		if param.kind != .param || param.value != name {
 			continue
 		}
-		mut typ := param.typ_text().trim_space()
-		if param.is_mut && param.op != .amp && typ.starts_with('&') {
-			typ = typ[1..]
+		mut typ_id := trimmed_source_type_id(param.typ)
+		if param.is_mut && param.op != .amp && flat.source_type_shape(typ_id).has(.pointer) {
+			typ_id = flat.source_type_syntax(typ_id).raw_base()
 		}
-		if typ in names {
-			return typ
+		for type_param in names {
+			if typ_id == flat.source_type_id(type_param) { return type_param }
 		}
 		return none
 	}
@@ -2446,7 +2457,7 @@ fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool
 	if clean is Channel && member in ['len', 'cap', 'closed'] {
 		return true
 	}
-	if builtin_id != 0 && (tc.structs[flat.source_type_name(builtin_id)] or { []StructField{} }).any(it.name == member) {
+	if builtin_id != 0 && (tc.structs[builtin_id] or { []StructField{} }).any(it.name == member) {
 		return true
 	}
 	return name_id != 0 && tc.struct_field_type(name_id, member) != none

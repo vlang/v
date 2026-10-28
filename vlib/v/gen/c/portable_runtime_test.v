@@ -29,14 +29,14 @@ fn test_allocation_runtime_prototypes_match_legacy_and_modern_sizes() {
 fn test_partial_c_closure_view_keeps_the_v_runtime_layout() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.structs['closure.Closure'] = [types.StructField{
+	tc.structs[flat.source_type_id('closure.Closure')] = [types.StructField{
 		name: 'closure_ptr'
 		typ:  types.Pointer{ base_type: types.Type(types.void_) }
 	}, types.StructField{
 		name: 'closure_cap'
 		typ:  types.Type(types.int_)
 	}]
-	tc.structs['C.builtin__closure__Closure'] = [types.StructField{
+	tc.structs[flat.source_type_id('C.builtin__closure__Closure')] = [types.StructField{
 		name: 'closure_cap'
 		typ:  types.Type(types.int_)
 	}]

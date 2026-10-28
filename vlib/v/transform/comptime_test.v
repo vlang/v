@@ -6,7 +6,7 @@ import v.types
 fn test_comptime_canonical_type_is_not_rebound_by_another_module_import() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['config.Cfg'] = []types.StructField{}
+	tc.structs[flat.source_type_id('config.Cfg')] = []types.StructField{}
 	tc.imports['config'] = 'rand.config'
 	tc.imports['cfg'] = 'config'
 	t := Transformer{
@@ -22,8 +22,8 @@ fn test_comptime_canonical_type_is_not_rebound_by_another_module_import() {
 fn test_comptime_explicit_file_alias_precedes_a_same_spelled_canonical_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['config.Cfg'] = []types.StructField{}
-	tc.structs['alternate.Cfg'] = []types.StructField{}
+	tc.structs[flat.source_type_id('config.Cfg')] = []types.StructField{}
+	tc.structs[flat.source_type_id('alternate.Cfg')] = []types.StructField{}
 	tc.file_imports[file_import_key('alias.v', 'config')] = 'alternate'
 	t := Transformer{
 		a:          &a
@@ -101,8 +101,8 @@ fn test_comptime_method_selector_keeps_unregistered_local_receivers() {
 		'checked_generated_shadow'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Dummy'] = []types.StructField{}
-		tc.structs['generated'] = []types.StructField{}
+		tc.structs[flat.source_type_id('Dummy')] = []types.StructField{}
+		tc.structs[flat.source_type_id('generated')] = []types.StructField{}
 		tc.fn_param_types['Dummy.sample'] = [
 			types.Type(types.Struct{ name_id: flat.source_type_id('Dummy') }),
 			types.Type(types.String{}),
@@ -144,11 +144,11 @@ fn test_comptime_method_selector_preserves_type_namespace_function_values() {
 	for name in ['Dummy', 'Alias', 'T', 'string', 'generated', 'dep.Dummy', 'receiver'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Dummy'] = []types.StructField{}
-		tc.structs['generated'] = []types.StructField{}
-		tc.structs['dep.Dummy'] = []types.StructField{}
-		tc.structs['dep.receiver'] = []types.StructField{}
-		tc.type_aliases.set_id('Alias', flat.source_type_id('Dummy'))
+		tc.structs[flat.source_type_id('Dummy')] = []types.StructField{}
+		tc.structs[flat.source_type_id('generated')] = []types.StructField{}
+		tc.structs[flat.source_type_id('dep.Dummy')] = []types.StructField{}
+		tc.structs[flat.source_type_id('dep.receiver')] = []types.StructField{}
+		tc.type_aliases.set_id(flat.source_type_id('Alias'), flat.source_type_id('Dummy'))
 		tc.generated_files['generated.v'] = true
 		tc.file_selective_imports[file_import_key('generated.v', 'receiver')] = ['dep.receiver']
 		receiver_type := match name {
@@ -193,7 +193,7 @@ fn test_comptime_method_selector_preserves_type_namespace_function_values() {
 fn test_comptime_generated_type_namespace_respects_unlowered_same_type_local() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['receiver'] = []types.StructField{}
+	tc.structs[flat.source_type_id('receiver')] = []types.StructField{}
 	tc.fn_param_types['receiver.sample'] = [types.Type(types.Struct{ name_id: flat.source_type_id('receiver') })]
 	tc.fn_ret_types['receiver.sample'] = types.Type(types.int_)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -259,15 +259,15 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 		children_count: 2
 	}
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Context'] = []types.StructField{}
-	tc.interface_names['IError'] = true
-	tc.interface_abstract_methods['IError'] = ['msg']
+	tc.structs[flat.source_type_id('Context')] = []types.StructField{}
+	tc.interface_names[flat.source_type_id('IError')] = true
+	tc.interface_abstract_methods[flat.source_type_id('IError')] = ['msg']
 	tc.fn_implicit_veb_ctx['App.show'] = true
 	tc.fn_param_types['App.show'] = [
 		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
 		tc.parse_type(flat.source_type_id('mut Context')),
 	]
-	tc.params_structs['RouteParams'] = true
+	tc.params_structs[flat.source_type_id('RouteParams')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	base_method := MethodMeta{
 		name:        'show'
@@ -381,8 +381,8 @@ fn test_comptime_method_call_arity_binds_context_value_to_declared_interface() {
 		children_count: 2
 	}
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Context'] = []types.StructField{}
-	tc.interface_names['RouteArg'] = true
+	tc.structs[flat.source_type_id('Context')] = []types.StructField{}
+	tc.interface_names[flat.source_type_id('RouteArg')] = true
 	tc.fn_implicit_veb_ctx['App.show'] = true
 	tc.fn_param_types['App.show'] = [
 		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
@@ -446,8 +446,8 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		children_count: 5
 	}
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Context'] = []types.StructField{}
-	tc.structs['RouteParams'] = [
+	tc.structs[flat.source_type_id('Context')] = []types.StructField{}
+	tc.structs[flat.source_type_id('RouteParams')] = [
 		types.StructField{
 			name: 'a'
 			typ:  tc.parse_type(flat.source_type_int)
@@ -457,11 +457,11 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 			typ:  tc.parse_type(flat.source_type_int)
 		},
 	]
-	tc.structs['OtherParams'] = [types.StructField{
+	tc.structs[flat.source_type_id('OtherParams')] = [types.StructField{
 		name: 'a'
 		typ:  tc.parse_type(flat.source_type_int)
 	}]
-	tc.structs['RequiredParams'] = [
+	tc.structs[flat.source_type_id('RequiredParams')] = [
 		types.StructField{
 			name: 'a'
 			typ:  tc.parse_type(flat.source_type_int)
@@ -481,11 +481,11 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		tc.parse_type(flat.source_type_id('mut Context')),
 		tc.parse_type(flat.source_type_id('RouteParams')),
 	]
-	tc.params_structs['RouteParams'] = true
-	tc.params_structs['OtherParams'] = true
-	tc.params_structs['RequiredParams'] = true
+	tc.params_structs[flat.source_type_id('RouteParams')] = true
+	tc.params_structs[flat.source_type_id('OtherParams')] = true
+	tc.params_structs[flat.source_type_id('RequiredParams')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['RouteParams'] = StructInfo{
+	t.structs[flat.source_type_id('RouteParams')] = StructInfo{
 		name:      flat.source_type_id('RouteParams')
 		is_params: true
 		fields:    [
@@ -501,7 +501,7 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 			},
 		]
 	}
-	t.structs['OtherParams'] = StructInfo{
+	t.structs[flat.source_type_id('OtherParams')] = StructInfo{
 		name:      flat.source_type_id('OtherParams')
 		is_params: true
 		fields:    [
@@ -512,7 +512,7 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 			},
 		]
 	}
-	t.structs['RequiredParams'] = StructInfo{
+	t.structs[flat.source_type_id('RequiredParams')] = StructInfo{
 		name:      flat.source_type_id('RequiredParams')
 		is_params: true
 		fields:    [
@@ -579,7 +579,7 @@ fn test_comptime_method_attrs_index_cond_keeps_member_access_attached() {
 fn test_comptime_sum_variants_normalize_main_specialization_lock() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{ a: &a }
-	t.sum_types.set('Sum', ['int', 'string'])
+	t.sum_types.set(flat.source_type_id('Sum'), ['int', 'string'])
 	variants := t.comptime_sum_variants(flat.source_type_id('main.Sum'))
 	assert variants.len == 2
 	assert variants[0].typ_text() == 'int'
@@ -760,7 +760,7 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 			}
 		}
 		structs:                       {
-			'first.Config':  StructInfo{
+			flat.source_type_id('first.Config'):  StructInfo{
 				name:   flat.source_type_id('Config')
 				module: 'first'
 				fields: [
@@ -771,7 +771,7 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 					},
 				]
 			}
-			'second.Config': StructInfo{
+			flat.source_type_id('second.Config'): StructInfo{
 				name:   flat.source_type_id('Config')
 				module: 'second'
 				fields: [
@@ -812,7 +812,7 @@ fn test_comptime_field_metadata_cache_normalizes_main_qualified_name() {
 			}
 		}
 		structs:                       {
-			'main.Config': StructInfo{
+			flat.source_type_id('main.Config'): StructInfo{
 				name:   flat.source_type_id('main.Config')
 				module: 'main'
 				fields: [
@@ -930,10 +930,10 @@ fn test_comptime_method_metadata_keeps_resolved_module_and_file_context() {
 	add_comptime_test_method(mut a, 'App', 'show', 'string', '')
 	add_comptime_test_method(mut a, 'Alias', 'extra', 'string', '')
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['first.App'] = []types.StructField{}
-	tc.structs['second.App'] = []types.StructField{}
-	tc.type_aliases.set_id('first.Alias', flat.source_type_id('first.App'))
-	tc.type_aliases.set_id('second.Alias', flat.source_type_id('second.App'))
+	tc.structs[flat.source_type_id('first.App')] = []types.StructField{}
+	tc.structs[flat.source_type_id('second.App')] = []types.StructField{}
+	tc.type_aliases.set_id(flat.source_type_id('first.Alias'), flat.source_type_id('first.App'))
+	tc.type_aliases.set_id(flat.source_type_id('second.Alias'), flat.source_type_id('second.App'))
 	tc.file_imports[file_import_key('first.v', 'dep')] = 'first'
 	tc.file_imports[file_import_key('second.v', 'dep')] = 'second'
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -968,7 +968,7 @@ fn test_comptime_method_metadata_keeps_generic_receiver_specializations() {
 	a.add_val(.module_decl, 'main')
 	add_comptime_test_method(mut a, 'Box[T]', 'replace', 'T', 'T')
 	mut tc := types.TypeChecker.new(&a)
-	tc.struct_generic_params['Box'] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	for typ in ['int', 'string', 'uint'] {
@@ -989,8 +989,8 @@ fn test_comptime_method_metadata_keeps_specialization_main_type_provenance() {
 	a.add_val(.module_decl, 'reflection')
 	add_comptime_test_method(mut a, 'App', 'show', 'string', '')
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['App'] = []types.StructField{}
-	tc.structs['reflection.App'] = []types.StructField{}
+	tc.structs[flat.source_type_id('App')] = []types.StructField{}
+	tc.structs[flat.source_type_id('reflection.App')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'reflection'
 	for main_type in [false, true, false] {
@@ -1007,7 +1007,7 @@ fn test_comptime_method_metadata_keeps_module_sensitive_generic_arguments() {
 	a.add_val(.module_decl, 'main')
 	add_comptime_test_method(mut a, 'Box[T]', 'replace', 'T', 'T')
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['first.A'] = []types.StructField{}
+	tc.structs[flat.source_type_id('first.A')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for module_name in ['first', 'second', 'first'] {
 		t.cur_module = module_name
@@ -1070,7 +1070,7 @@ fn test_comptime_method_metadata_observes_erased_generic_methods() {
 		payload: flat.node_payload(['concrete'])
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.struct_generic_params['Box'] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	initial := t.comptime_method_metas(flat.source_type_id('Box[int]'))
@@ -1228,7 +1228,7 @@ fn test_reflected_method_escape_analysis_restores_ast_buffers() {
 	add_comptime_test_method(mut a, 'App', 'first', 'int', '')
 	add_comptime_test_method(mut a, 'App', 'second', 'int', '')
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['App'] = []types.StructField{}
+	tc.structs[flat.source_type_id('App')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	body := t.make_block([t.make_int_literal(7)])

@@ -1,21 +1,15 @@
 module fontstash
 
 #flag -I @VEXEROOT/thirdparty/fontstash
-
-@[use_once]
-#define FONTSTASH_IMPLEMENTATION
+#flag @VEXEROOT/vlib/fontstash/fontstash_impl.c
 
 $if gcboehm ? {
-	// The implementation header expands the collector's allocation macros.
+	#flag -DFONTSTASH_USE_GCBOEHM
 	$if tinyc && linux {
 		#include <gc/gc.h>
 	} $else {
 		#include <gc.h>
 	}
-	#define FONTSTASH_MALLOC GC_MALLOC
-	#define FONTSTASH_REALLOC GC_REALLOC
-	#define FONTSTASH_FREE GC_FREE
-	#define FONTSTASH_MALLOC_ATOMIC GC_MALLOC_ATOMIC
 }
 
 #include "fontstash.h"
