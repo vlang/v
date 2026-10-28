@@ -101,7 +101,7 @@ fn (mut b BatchSources) release(start int, end int) {
 // reads the file the ordinary way, which reports the error. Every stream that
 // fopen opens takes a process-wide lock, which the tasks of a parallel parse
 // contended for.
-fn read_batch_source(path string) string {
+pub fn read_batch_source(path string) string {
 	$if windows {
 		return ''
 	} $else {

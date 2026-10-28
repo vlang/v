@@ -126,3 +126,26 @@ fn test_cpu_complex_scene_deterministic() {
 	}
 	assert nonzero > 500
 }
+
+fn test_rewind_discards_recorded_commands() {
+	ctx := new_context(Desc{
+		max_vertices: 1024
+		max_commands: 64
+	})
+	ctx.defaults()
+	ctx.begin_triangles()
+	ctx.v2f(0, 0)
+	ctx.v2f(10, 0)
+	ctx.v2f(0, 10)
+	ctx.end()
+	assert ctx.num_vertices() == 3
+	assert ctx.num_commands() == 1
+	ctx.rewind()
+	assert ctx.num_vertices() == 0
+	assert ctx.num_commands() == 0
+	assert ctx.error() == .no_error
+	frame := ctx.render_cpu(16, 16, 0x000000ff)
+	for p in frame.pixels {
+		assert p == 0x000000ff
+	}
+}

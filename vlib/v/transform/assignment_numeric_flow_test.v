@@ -49,8 +49,8 @@ fn numeric_addressability_test_node(mut a flat.FlatAst, kind flat.NodeKind, chil
 fn test_numeric_addressability_preserves_index_and_selector_whitespace_rules() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('PointerAlias', flat.source_type_id('&int'))
-	tc.type_aliases.set_id('MapPointerAlias', flat.source_type_id('&map[string]int'))
+	tc.type_aliases.set_id(flat.source_type_id('PointerAlias'), flat.source_type_id('&int'))
+	tc.type_aliases.set_id(flat.source_type_id('MapPointerAlias'), flat.source_type_id('&map[string]int'))
 	names := ['&int', '&&int', '&string', '&map[string]int', 'int', ' &int ', 'PointerAlias',
 		'MapPointerAlias']
 	indexed := [true, true, false, false, false, false, true, false]

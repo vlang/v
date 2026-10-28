@@ -143,19 +143,19 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		g.type_from_expression_tokens(tokens[..open]) or { u32(0) }
 	}
 	if c_type == 0 && is_c_struct_literal {
-		c_type = flat.source_type_id(if '#Cstruct#${tokens[2].lit}' in g.declared_types {
+		c_type = flat.source_type_id(if fastc_source_type_key_exists(g.declared_types, '#Cstruct#${tokens[2].lit}') {
 			'struct ${tokens[2].lit}'
 		} else {
 			tokens[2].lit
 		})
 	}
 	mut layout_type := fastc_trim_pointer_type(c_type)
-	if flat.source_type_name(layout_type).starts_with('Array_') {
+	if flat.source_type_query(layout_type).has(.c_array_prefix) {
 		layout_type = flat.source_type_id('array')
 	}
 	// `Alias{}` where `Alias = u8` (a primitive alias, e.g. ast.EmptyExpr) has no fields, so
 	// the "struct literal" is really the primitive's zero value; C rejects the empty `{}`.
-	if c_type != 0 && open + 1 == close && fastc_primitive_c_type(flat.source_type_name(fastc_normalize_inferred_type(g.underlying_alias_type(c_type)))) != none {
+	if c_type != 0 && open + 1 == close && fastc_primitive_c_type_id(fastc_normalize_inferred_type(g.underlying_alias_type(c_type))) != none {
 		return FastcRenderedExpression{
 			source: if fastc_normalize_inferred_type(g.underlying_alias_type(c_type)) in [
 				fastc_type_array,
@@ -171,7 +171,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			typ:    c_type
 		}
 	}
-	if c_type == 0 || (!is_c_struct_literal && flat.source_type_name(layout_type) !in g.struct_fields && g.declared_kinds[flat.source_type_name(g.semantic_type_key(c_type))] !in [
+	if c_type == 0 || (!is_c_struct_literal && flat.source_type_name(layout_type) !in g.struct_fields && g.declared_kinds[g.semantic_type_key(c_type)] !in [
 		.struct_,
 		.union_,
 	]) {
@@ -212,7 +212,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				}
 			}
 			source := if flat.source_type_query(c_type).has(.c_pointer_suffix) {
-				'&(${flat.source_type_name(c_type).trim_right('*')}){${values.join(',')}}'
+				'&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${values.join(',')}}'
 			} else {
 				'(${flat.source_type_name(c_type)}){${values.join(',')}}'
 			}
@@ -362,7 +362,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				// Initializing an embedded field by its type name:
 				// `Derived{ Base: Base{...} }` sets the `__embedded_N` field.
 				for embed_field in g.struct_field_info[flat.source_type_name(layout_type)] {
-					if embed_field.name.starts_with('__embedded_') && (embed_field.typ_text() == field_name || embed_field.typ_text().all_after_last('__') == field_name) {
+					if embed_field.name.starts_with('__embedded_') && (embed_field.typ == flat.source_type_id(field_name) || flat.source_type_syntax(embed_field.typ).last_double_underscore_suffix() == flat.source_type_id(field_name)) {
 						c_field_name = embed_field.name
 						expected_type = embed_field.typ
 						break
@@ -464,14 +464,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		rendered_fields = ordered_fields.clone()
 	}
 	if layout_type == fastc_type_array && update_source == ''
-		&& flat.source_type_name(c_type).trim_right('*').starts_with('Array_') {
+		&& flat.source_type_query(c_type).has(.c_array_prefix) {
 		array_type_id := fastc_trim_pointer_type(c_type)
 		array_type := flat.source_type_name(array_type_id)
 		element_type := g.array_element_type(array_type_id) or { return none }
 		storage_type := g.collection_storage_type(element_type)
 		length := field_values['len'] or { '0' }
 		capacity := field_values['cap'] or { '0' }
-		inner_array_element_type := if flat.source_type_name(element_type).starts_with('Array_') {
+		inner_array_element_type := if flat.source_type_query(element_type).has(.c_array_prefix) {
 			g.array_element_type(element_type) or { u32(0) }
 		} else {
 			u32(0)
@@ -516,7 +516,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			assignments << '__vf_struct_update${field};'
 		}
 		if flat.source_type_query(c_type).has(.c_pointer_suffix) {
-			base_type := flat.source_type_name(c_type).trim_right('*')
+			base_type := flat.source_type_name(fastc_trim_pointer_type(c_type))
 			copy_statements := fixed_array_copies.join(' ')
 			return FastcRenderedExpression{
 				source: '({ ${base_type} __vf_struct_update = *(${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} (${flat.source_type_name(c_type)})v_fastc_interface_box(&__vf_struct_update, sizeof(${base_type})); })'
@@ -543,15 +543,15 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	}
 	literal_source := if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 		if g.c_global_static_initializer {
-			'&(${flat.source_type_name(c_type).trim_right('*')}){${rendered_fields.join(',')}}'
+			'&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${rendered_fields.join(',')}}'
 		} else {
-			'(${flat.source_type_name(c_type)})v_fastc_interface_box(&(${flat.source_type_name(c_type).trim_right('*')}){${rendered_fields.join(',')}}, sizeof(${flat.source_type_name(c_type).trim_right('*')}))'
+			'(${flat.source_type_name(c_type)})v_fastc_interface_box(&(${flat.source_type_name(fastc_trim_pointer_type(c_type))}){${rendered_fields.join(',')}}, sizeof(${flat.source_type_name(fastc_trim_pointer_type(c_type))}))'
 		}
 	} else {
 		'(${flat.source_type_name(c_type)}){${rendered_fields.join(',')}}'
 	}
 	if fixed_array_copies.len > 0 {
-		base_type := flat.source_type_name(c_type).trim_right('*')
+		base_type := flat.source_type_name(fastc_trim_pointer_type(c_type))
 		copies := fixed_array_copies.join(' ')
 		result := if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 			'(${flat.source_type_name(c_type)})v_fastc_interface_box(&__vf_struct_fixed, sizeof(${base_type}))'

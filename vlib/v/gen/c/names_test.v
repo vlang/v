@@ -269,12 +269,12 @@ fn test_struct_init_main_type_lock_matches_only_a_type_component() {
 fn test_struct_init_main_alias_target_keeps_declaration_scope() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Context'] = []types.StructField{}
-	tc.struct_modules['Context'] = 'main'
-	tc.structs['veb.Context'] = []types.StructField{}
-	tc.struct_modules['veb.Context'] = 'veb'
-	tc.type_aliases.set_id('AliasContext', flat.source_type_id('Context'))
-	tc.type_alias_modules['AliasContext'] = 'main'
+	tc.structs[flat.source_type_id('Context')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('Context')] = 'main'
+	tc.structs[flat.source_type_id('veb.Context')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('veb.Context')] = 'veb'
+	tc.type_aliases.set_id(flat.source_type_id('AliasContext'), flat.source_type_id('Context'))
+	tc.type_alias_modules[flat.source_type_id('AliasContext')] = 'main'
 	tc.cur_module = 'veb'
 	mut g := FlatGen.new()
 	g.a = &a
@@ -293,14 +293,14 @@ fn test_c_name_generated_string_symbol_collision() {
 fn test_direct_call_uses_custom_enum_method_symbol() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.enum_names['token.Kind'] = true
+	tc.enum_names[flat.source_type_id('token.Kind')] = true
 	tc.cur_module = 'ast'
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
 	assert g.direct_call_name('token.Kind.str') == 'token__Kind_str'
 	assert g.direct_call_name_for_call(flat.empty_node, 'token.Kind.str') == 'token__Kind_str'
-	tc.enum_names['ast.Kind'] = true
+	tc.enum_names[flat.source_type_id('ast.Kind')] = true
 	assert g.direct_call_name('Kind.str') == 'Kind_str'
 }
 
@@ -345,7 +345,7 @@ fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	tc.structs['C.sqlite3'] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.sqlite3')] = []types.StructField{}
 
 	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
 	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
@@ -434,7 +434,7 @@ fn test_target_libc_opaque_packed_struct_restores_packing() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	name := 'C.TargetOpaque'
-	tc.structs[name] = []types.StructField{}
+	tc.structs[flat.source_type_id(name)] = []types.StructField{}
 	node_id := a.add_node(flat.Node{
 		kind:  .struct_decl
 		value: name
@@ -454,9 +454,9 @@ fn aligned_struct_decl_c(ccompiler string, attrs string, union_decl bool) string
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	name := 'Aligned'
-	tc.structs[name] = []types.StructField{}
+	tc.structs[flat.source_type_id(name)] = []types.StructField{}
 	if union_decl {
-		tc.unions[name] = true
+		tc.unions[flat.source_type_id(name)] = true
 	}
 	node_id := a.add_node(flat.Node{
 		kind:  .struct_decl
@@ -493,16 +493,16 @@ fn test_collect_cache_native_c_symbols_only_records_type_declarations() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	tc.structs['C.HeaderTag'] = []types.StructField{}
-	tc.structs['C.HeaderAlias'] = []types.StructField{}
-	tc.structs['C.HeaderEnum'] = []types.StructField{}
-	tc.structs['C.HeaderScalar'] = []types.StructField{}
-	tc.structs['C.HeaderOther'] = []types.StructField{}
-	tc.structs['C.CommentOnly'] = []types.StructField{}
-	tc.structs['C.StringOnly'] = []types.StructField{}
-	tc.structs['C.UnrelatedOpaque'] = []types.StructField{}
-	tc.structs['C.HEADER_ENUM_VALUE'] = []types.StructField{}
-	tc.structs['C.BOOL'] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.HeaderTag')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.HeaderAlias')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.HeaderEnum')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.HeaderScalar')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.HeaderOther')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.CommentOnly')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.StringOnly')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.UnrelatedOpaque')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.HEADER_ENUM_VALUE')] = []types.StructField{}
+	tc.structs[flat.source_type_id('C.BOOL')] = []types.StructField{}
 
 	g.collect_cache_native_c_symbols('// typedef int CommentOnly;\n"typedef int StringOnly;";\nint f(int UnrelatedOpaque);\ntypedef struct HeaderTag { int field_name; } HeaderAlias;\nenum HeaderEnum { HEADER_ENUM_VALUE };\ntypedef int HeaderScalar, HeaderOther;')
 
@@ -553,7 +553,7 @@ fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
 	g.a = &a
 	g.tc = &tc
 	tc.cur_module = 'veb'
-	tc.structs['main.Context'] = [
+	tc.structs[flat.source_type_id('main.Context')] = [
 		types.StructField{
 			name:     'veb.Context'
 			typ:      types.Type(types.Struct{
@@ -592,8 +592,8 @@ fn test_context_lookup_cache_tracks_source_file_imports() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.file_imports['one.v\nkind'] = 'first.token'
 	tc.file_imports['two.v\nkind'] = 'second.token'
-	tc.enum_names['first.token.Kind'] = true
-	tc.enum_names['second.token.Kind'] = true
+	tc.enum_names[flat.source_type_id('first.token.Kind')] = true
+	tc.enum_names[flat.source_type_id('second.token.Kind')] = true
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -667,8 +667,8 @@ fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
 fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types.set('a.tast.Value', ['a.tast.First', 'a.tast.Target'])
-	tc.sum_types.set('b.tast.Value', ['b.tast.Target', 'b.tast.Second'])
+	tc.sum_types.set(flat.source_type_id('a.tast.Value'), ['a.tast.First', 'a.tast.Target'])
+	tc.sum_types.set(flat.source_type_id('b.tast.Value'), ['b.tast.Target', 'b.tast.Second'])
 	mut g := FlatGen.new()
 	g.tc = &tc
 	assert g.sum_type_index(flat.source_type_id('tast.Value'), flat.source_type_id('b.tast.Target')) == 0
@@ -677,8 +677,8 @@ fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 fn test_sum_name_lookup_preserves_qualified_type_identity() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.sum_types.set('left.Value', ['left.Item', 'right.Item'])
-	tc.sum_types.set('right.Value', ['int', 'string'])
+	tc.sum_types.set(flat.source_type_id('left.Value'), ['left.Item', 'right.Item'])
+	tc.sum_types.set(flat.source_type_id('right.Value'), ['int', 'string'])
 	mut g := FlatGen.new()
 	g.tc = &tc
 	g.precompute_sum_name_lookup()
@@ -691,7 +691,7 @@ fn test_sum_name_lookup_preserves_qualified_type_identity() {
 	assert g.sum_type_index(flat.source_type_id('left.Value'), flat.source_type_id('right.Item')) == 2
 	assert g.resolve_variant(flat.source_type_id('left.Value'), flat.source_type_id('left.Item')) == flat.source_type_id('left.Item')
 	assert g.resolve_variant(flat.source_type_id('left.Value'), flat.source_type_id('right.Item')) == flat.source_type_id('right.Item')
-	tc.sum_types.set('extra.left__Value', ['Raw__Name', 'Raw.Name'])
+	tc.sum_types.set(flat.source_type_id('extra.left__Value'), ['Raw__Name', 'Raw.Name'])
 	g.precompute_sum_name_lookup()
 	assert g.resolve_sum_name(flat.source_type_id('left__Value')) == flat.source_type_id('left.Value')
 	assert g.resolve_variant(flat.source_type_id('extra.left__Value'), flat.source_type_id('Raw__Name')) == flat.source_type_id('Raw__Name')
@@ -721,8 +721,8 @@ fn test_typeof_type_index_is_independent_of_sum_variant_order() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_module = 'main'
-	tc.sum_types.set('main.Value', ['main.Foo', 'main.Bar'])
-	tc.sum_types.set('main.Other', ['main.Baz', 'main.Qux'])
+	tc.sum_types.set(flat.source_type_id('main.Value'), ['main.Foo', 'main.Bar'])
+	tc.sum_types.set(flat.source_type_id('main.Other'), ['main.Baz', 'main.Qux'])
 	names := ['main.Foo', 'main.Bar', 'main.Baz', 'main.Qux']
 	tc.runtime_type_indexes = types.stable_type_indexes(names.map(flat.source_type_id(it)))
 	mut g := FlatGen.new()
@@ -1519,9 +1519,9 @@ fn test_referenced_c_struct_type_operands_preserve_ast_and_checker_context() {
 	tc.cur_module = 'original'
 	tc.file_modules['body.v'] = 'body'
 	for name in ['C.SizeOnly', 'C.OffsetOnly', 'C.Nested', 'C.Unused'] {
-		tc.structs[name] = []types.StructField{}
+		tc.structs[flat.source_type_id(name)] = []types.StructField{}
 	}
-	tc.structs['C.SizeOnly'] = [types.StructField{
+	tc.structs[flat.source_type_id('C.SizeOnly')] = [types.StructField{
 		name: 'nested'
 		typ:  types.Struct{ name_id: flat.source_type_id('C.Nested') }
 	}]
@@ -1889,10 +1889,10 @@ fn test_sum_type_index_preserves_import_context_and_builtin_variants() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.qualify_name_cache = &types.QualifyNameCache{}
 	tc.cur_module = 'main'
-	tc.structs['left.Item'] = []types.StructField{}
-	tc.structs['right.Item'] = []types.StructField{}
-	tc.sum_types.set('left.Value', ['left.Item', 'int'])
-	tc.sum_types.set('right.Value', ['int', 'right.Item'])
+	tc.structs[flat.source_type_id('left.Item')] = []types.StructField{}
+	tc.structs[flat.source_type_id('right.Item')] = []types.StructField{}
+	tc.sum_types.set(flat.source_type_id('left.Value'), ['left.Item', 'int'])
+	tc.sum_types.set(flat.source_type_id('right.Value'), ['int', 'right.Item'])
 	tc.cur_file = 'left.v'
 	tc.register_file_import('dep', 'left')
 	tc.cur_file = 'right.v'

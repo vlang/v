@@ -266,3 +266,62 @@ fn test_comptime_array_bindings_restore_after_a_nested_statement_scope() {
 	}
 	assert saw_inner
 }
+
+fn test_comptime_array_text_preserves_exposed_storage() {
+	for source in [
+		'fn main() { values := [1, 2]; mut view := unsafe { values[..] }; view[0] = 9 }',
+		'fn main() { values := [1, 2]; address := &values }',
+		'fn main() { values := [1, 2]; change(values) }',
+		'fn main() { values := [1, 2]; alias := values; change(alias) }',
+		'fn main() { values := [1, 2]; change(values[..]) }',
+		'fn main() { values := [1, 2]; values.change() }',
+		'type ArrayAlias = []int\nfn main() { values := [1, 2]; ArrayAlias(values).str() }',
+		'fn main() { values := [1, 2]; holder.values = values; change(holder.values) }',
+		'fn main() { values := [1, 2]; rows[0] = values; change(rows[0]) }',
+		'fn main() { values := [1, 2]; alias := if cond { side_effect(); values } else { []int{} }; change(alias) }',
+		'fn main() { values := [1, 2]; for alias in [values] { change(alias) } }',
+		'fn main() { values := [1, 2]; mut rows := [][]int{}; rows << values; change(rows[0]) }',
+		'fn main() { values := [1, 2]; data := values.data }',
+		'fn main() { values := [1, 2]; f := fn [values] () { mut view := unsafe { values[..] }; view[0] = 9 }; f() }',
+	] {
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_text('array_storage_escape.v', source)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := types.TypeChecker.new(a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		mut found := false
+		for i, node in a.nodes {
+			if node.kind == .fn_decl && node.value == 'main' {
+				found = true
+				assert t.node_writes_array_local(flat.NodeId(i), 'values'), source
+			}
+		}
+		assert found
+	}
+}
+
+fn test_comptime_array_text_can_fold_read_only_storage() {
+	for source in [
+		'fn main() { values := [1, 2]; println(values) }',
+		'fn main() { values := [1, 2]; println(values.str()); eprintln(values) }',
+		'fn main() { values := [1, 2]; consume("\${values}"); consume(values[0]) }',
+		'fn main() { values := [1, 2]; text := values.str(); number := values[0] }',
+		'fn main() { values := [1, 2]; for number in values { consume(number) }; println(values) }',
+		'fn main() { values := [1, 2]; f := fn () { values := [3]; mut view := unsafe { values[..] }; view[0] = 9 }; f(); println(values) }',
+		'fn main() { values := [1, 2]; other := [3]; mut view := unsafe { other[..] }; view[0] = 9; println(values) }',
+	] {
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_text('array_storage_read.v', source)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := types.TypeChecker.new(a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		mut found := false
+		for i, node in a.nodes {
+			if node.kind == .fn_decl && node.value == 'main' {
+				found = true
+				assert !t.node_writes_array_local(flat.NodeId(i), 'values'), source
+			}
+		}
+		assert found
+	}
+}

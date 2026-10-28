@@ -26,7 +26,7 @@ fn test_static_fn_value_fallback_rejects_local_root_without_checker_metadata() {
 	name := flat.encode_static_type_method_name('staticfnref.MyStruct', 'new')
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['staticfnref.MyStruct'] = StructInfo{}
+	t.structs[flat.source_type_id('staticfnref.MyStruct')] = StructInfo{}
 	t.fn_ret_types.set_id(name, flat.source_type_id('staticfnref.MyStruct'))
 	// No checker expression types or resolved function value entry, as in a
 	// cloned generic body. An unbound namespace still names the static fn.

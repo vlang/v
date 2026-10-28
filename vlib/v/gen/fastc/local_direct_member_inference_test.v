@@ -22,11 +22,11 @@ fn direct_member32_parser() Parser {
 	mut aliases := flat.TypeTextBindings{}
 	aliases.set('AliasMode', 'Mode')
 	declared := {
-		'Record':    true
-		'Leaf':      true
-		'Mode':      true
-		'AliasMode': true
-		'Iface':     true
+		flat.source_type_id('Record'):    true
+		flat.source_type_id('Leaf'):      true
+		flat.source_type_id('Mode'):      true
+		flat.source_type_id('AliasMode'): true
+		flat.source_type_id('Iface'):     true
 	}
 	return Parser{
 		prefs:                     prefs
@@ -37,11 +37,11 @@ fn direct_member32_parser() Parser {
 		declared_type_c_names:     fastc_declared_type_c_names(declared)
 		declared_type_key_by_name: fastc_declared_type_key_by_name(declared)
 		declared_kinds:            {
-			'Record':    .struct_
-			'Leaf':      .struct_
-			'Mode':      .enum_
-			'AliasMode': .alias_
-			'Iface':     .interface_
+			flat.source_type_id('Record'):    .struct_
+			flat.source_type_id('Leaf'):      .struct_
+			flat.source_type_id('Mode'):      .enum_
+			flat.source_type_id('AliasMode'): .alias_
+			flat.source_type_id('Iface'):     .interface_
 		}
 		alias_base_types:          aliases
 		struct_fields:             {
@@ -224,12 +224,12 @@ fn test_direct_member32_preserves_explicit_old_precedence() {
 	assert g.infer_expression_type(tokens) or { panic(err) } == flat.source_type_string
 	direct_member32_assert_legacy(&g, tokens)
 	mut imported_types := g.declared_types.clone()
-	imported_types['external.count'] = true
+	imported_types[flat.source_type_id('external.count')] = true
 	imported_type := Parser{
 		...g
 		// A fresh declaration context cannot keep expression/name memo entries.
 		type_memo:                 map[i64]u32{}
-		declared_type_key_memo:    map[string]FastcMemoEntry{}
+		declared_type_key_memo:    map[u32]FastcMemoEntry{}
 		declared_types:            imported_types
 		declared_type_c_names:     fastc_declared_type_c_names(imported_types)
 		declared_type_key_by_name: fastc_declared_type_key_by_name(imported_types)

@@ -11,11 +11,11 @@ import v.types
 fn test_option_and_result_have_distinct_layouts() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.interface_names['IError'] = true
+	tc.interface_names[flat.source_type_id('IError')] = true
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	g.interfaces['IError'] = []string{}
+	g.interfaces[flat.source_type_id('IError')] = []string{}
 	option := types.Type(types.OptionType{ base_type: &types.Type(types.i64_) })
 	result := types.Type(types.ResultType{ base_type: &types.Type(types.i64_) })
 	option_name := g.optional_type_name(option)
@@ -40,19 +40,19 @@ fn test_option_and_result_have_distinct_layouts() {
 fn test_option_with_pointer_payload_has_pointer_sized_ok() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.interface_names['IError'] = true
-	tc.structs['sample.Node'] = [types.StructField{
+	tc.interface_names[flat.source_type_id('IError')] = true
+	tc.structs[flat.source_type_id('sample.Node')] = [types.StructField{
 		name: 'name'
 		typ:  types.string_
 	}]
-	tc.structs['sample.Pos'] = [types.StructField{
+	tc.structs[flat.source_type_id('sample.Pos')] = [types.StructField{
 		name: 'line'
 		typ:  types.i32_
 	}]
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	g.interfaces['IError'] = []string{}
+	g.interfaces[flat.source_type_id('IError')] = []string{}
 	for value_type in ['string', 'Array', 'map', 'u8*', 'sample__Node'] {
 		assert g.emit_optional_typedef('__v_option_${value_type}', value_type)
 	}
@@ -200,7 +200,7 @@ fn main() {
 fn test_ierror_uses_only_interface_metadata() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.interface_names['IError'] = true
+	tc.interface_names[flat.source_type_id('IError')] = true
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc

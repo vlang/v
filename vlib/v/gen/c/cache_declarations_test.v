@@ -85,15 +85,15 @@ fn test_final_cached_signatures_declare_tuple_payloads_before_wrappers() {
 		mut a := flat.FlatAst.new()
 		fn_id := a.add_node(flat.Node{ kind: .fn_decl, value: 'pair' })
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['dep.Box'] = [types.StructField{
+		tc.structs[flat.source_type_id('dep.Box')] = [types.StructField{
 			name: 'child'
 			typ:  types.Struct{ name_id: flat.source_type_id('dep.Child') }
 		}]
-		tc.structs['dep.Child'] = [types.StructField{
+		tc.structs[flat.source_type_id('dep.Child')] = [types.StructField{
 			name: 'value'
 			typ:  types.int_
 		}]
-		tc.structs['dep.Unused'] = []types.StructField{}
+		tc.structs[flat.source_type_id('dep.Unused')] = []types.StructField{}
 		payload := types.Type(types.MultiReturn{
 			types: [
 				types.Type(types.Struct{ name_id: flat.source_type_id('dep.Box') }),
@@ -158,7 +158,7 @@ fn test_cache_declaration_references_ignore_literals_and_comments() {
 fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['sample.Parent'] = [types.StructField{
+	tc.structs[flat.source_type_id('sample.Parent')] = [types.StructField{
 		name: 'callback'
 		typ:  tc.intern_type_reference(types.Type(types.FnType{
 			params:      [types.FnParam{
@@ -172,13 +172,13 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 			return_type: &types.Type(types.void_)
 		}))
 	}]
-	tc.structs['sample.Child'] = [types.StructField{
+	tc.structs[flat.source_type_id('sample.Child')] = [types.StructField{
 		name: 'parent'
 		typ:  tc.intern_type_reference(types.Type(types.Pointer{
 			base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Parent') })
 		}))
 	}]
-	tc.structs['sample.Unused'] = []types.StructField{}
+	tc.structs[flat.source_type_id('sample.Unused')] = []types.StructField{}
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -194,9 +194,9 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 fn test_cache_demand_keeps_fixed_array_alias_element_layouts() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['sample.Box'] = []types.StructField{}
-	tc.structs['sample.Unused'] = []types.StructField{}
-	tc.type_aliases.set_id('sample.Boxes', flat.source_type_id('[2]sample.Box'))
+	tc.structs[flat.source_type_id('sample.Box')] = []types.StructField{}
+	tc.structs[flat.source_type_id('sample.Unused')] = []types.StructField{}
+	tc.type_aliases.set_id(flat.source_type_id('sample.Boxes'), flat.source_type_id('[2]sample.Box'))
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -210,9 +210,9 @@ fn test_cache_demand_keeps_fixed_array_alias_element_layouts() {
 fn test_cache_demand_keeps_shared_wrapper_payload_layouts() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['sample.Box'] = []types.StructField{}
-	tc.struct_modules['sample.Box'] = 'sample'
-	tc.structs['sample.Unused'] = []types.StructField{}
+	tc.structs[flat.source_type_id('sample.Box')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('sample.Box')] = 'sample'
+	tc.structs[flat.source_type_id('sample.Unused')] = []types.StructField{}
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -258,8 +258,8 @@ fn test_cache_map_key_helpers_follow_their_builtin_prototypes() {
 fn test_cache_signature_collection_omits_unused_function_payloads() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['sample.Used'] = []types.StructField{}
-	tc.structs['sample.Unused'] = []types.StructField{}
+	tc.structs[flat.source_type_id('sample.Used')] = []types.StructField{}
+	tc.structs[flat.source_type_id('sample.Unused')] = []types.StructField{}
 	tc.fn_ret_types['sample.used'] = types.OptionType{
 		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Used') })
 	}
@@ -293,7 +293,7 @@ fn test_cache_support_demand_collects_enum_and_lifecycle_callees() {
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.enum_names['sample.Mode'] = true
+	tc.enum_names[flat.source_type_id('sample.Mode')] = true
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -319,12 +319,12 @@ fn test_cache_support_demand_collects_enum_and_lifecycle_callees() {
 fn test_cache_demand_keeps_unused_constant_wrappers_and_their_field_graph_out() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['sample.Used'] = []types.StructField{}
-	tc.structs['sample.Unused'] = [types.StructField{
+	tc.structs[flat.source_type_id('sample.Used')] = []types.StructField{}
+	tc.structs[flat.source_type_id('sample.Unused')] = [types.StructField{
 		name: 'child'
 		typ:  types.Struct{ name_id: flat.source_type_id('sample.UnusedChild') }
 	}]
-	tc.structs['sample.UnusedChild'] = [types.StructField{
+	tc.structs[flat.source_type_id('sample.UnusedChild')] = [types.StructField{
 		name: 'parent'
 		typ:  types.Pointer{ base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Unused') }) }
 	}]

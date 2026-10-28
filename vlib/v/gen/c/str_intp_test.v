@@ -37,8 +37,8 @@ fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
 		typ:   flat.source_type_id('fn ()')
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['gg.WindowReadbackId'] = []types.StructField{}
-	tc.struct_modules['gg.WindowReadbackId'] = 'gg'
+	tc.structs[flat.source_type_id('gg.WindowReadbackId')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('gg.WindowReadbackId')] = 'gg'
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
