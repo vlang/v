@@ -341,7 +341,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	mut generic_type_bases := map[u32]bool{}
 	if detect_reachable_generics {
-		for node in a.nodes {
+		for node_idx in 0 .. a.nodes.len {
+			// Read the node in place: the loop copies only the few declarations.
+			node := unsafe { &a.nodes[node_idx] }
 			if node.kind in [.struct_decl, .type_decl] && node.generic_params().len > 0 {
 				generic_type_bases[node.source_value_id()] = true
 			}
@@ -762,7 +764,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	for name in c_interface_roots {
 		enqueue(name, mut used, mut queue)
 	}
-	if a.nodes.any(it.kind == .debugger_stmt) {
+	if markused_has_node_kind(a, .debugger_stmt) {
 		enqueue('debug.Debugger.interact', mut used, mut queue)
 		enqueue_debugger_custom_str_methods(tc, mut used, mut queue)
 	}
@@ -891,8 +893,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		mu_sw.restart()
 	}
 	needs_closure_runtime := if reachable_runtime_helpers {
-		a.nodes.any(it.kind == .import_decl && it.value == 'builtin.closure'
-			&& it.typ != markused_source_type_closure_runtime)
+		markused_has_closure_runtime_import(a)
 	} else if use_prepared && prepared.needs_closure_runtime {
 		true
 	} else {
@@ -1406,6 +1407,12 @@ mut:
 	ierror_keys_enqueued bool
 	// used.len after the last call that found nothing new; an unchanged len means an unchanged set.
 	settled_used_len int = -1
+	// Every dispatch key of every method. A method can only become reached
+	// through one of these names entering `used`.
+	dispatch_keys map[string]bool
+	// used.len and queue.len when the last full scan started, or -1 before it.
+	scanned_used_len  int = -1
+	scanned_queue_len int
 }
 
 struct InterfaceDispatchGroup {
@@ -1450,12 +1457,16 @@ fn (mut scan InterfaceDispatchScan) build(tc &types.TypeChecker) {
 		}
 		for method in methods {
 			dispatch_key := '${iface_name}.${method}'
-			group.methods << InterfaceDispatchMethod{
+			dispatch_method := InterfaceDispatchMethod{
 				name:      method
 				key:       dispatch_key
 				c_key:     markused_c_name(dispatch_key)
 				short_key: '${short_name}.${method}'
 			}
+			scan.dispatch_keys[dispatch_method.key] = true
+			scan.dispatch_keys[dispatch_method.c_key] = true
+			scan.dispatch_keys[dispatch_method.short_key] = true
+			group.methods << dispatch_method
 		}
 		scan.groups << group
 	}
@@ -1471,6 +1482,29 @@ fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used 
 	if start_len == scan.settled_used_len {
 		return false
 	}
+	// A scan finds a method only once one of its dispatch keys is in `used`;
+	// keys that were there when the last scan started were all seen by it. When
+	// every name added since was also queued, as `enqueue` does, look for a
+	// dispatch key among those queued names before scanning every method again.
+	if scan.scanned_used_len >= 0
+		&& start_len - scan.scanned_used_len == queue.len - scan.scanned_queue_len {
+		mut reached_dispatch := false
+		for i in scan.scanned_queue_len .. queue.len {
+			if queue[i] in scan.dispatch_keys {
+				reached_dispatch = true
+				break
+			}
+		}
+		if !reached_dispatch {
+			// What a full scan from here would have found: nothing to add.
+			scan.settled_used_len = start_len
+			scan.scanned_used_len = start_len
+			scan.scanned_queue_len = queue.len
+			return false
+		}
+	}
+	scan.scanned_used_len = start_len
+	scan.scanned_queue_len = queue.len
 	mut added := false
 	for mut group in scan.groups {
 		if group.pending == 0 {
@@ -2929,8 +2963,12 @@ fn enqueue_main_module_roots(fn_decls map[string]FnDeclInfo, mut used map[string
 
 // is_auto_root_fn reports whether is auto root fn applies in markused.
 fn is_auto_root_fn(name string) bool {
-	short_name := name.all_after_last('.')
-	return short_name in ['init', 'builtin_init', 'cleanup']
+	// Compare the text after the last `.` in place: every declaration name is
+	// tested, and only a few end in one of these.
+	short_len := name.len - name.last_index_u8(`.`) - 1
+	return (short_len == 4 && name.ends_with('init'))
+		|| (short_len == 12 && name.ends_with('builtin_init'))
+		|| (short_len == 7 && name.ends_with('cleanup'))
 }
 
 fn markused_fn_has_attribute(a &flat.FlatAst, node_idx int, name string) bool {
@@ -3131,10 +3169,11 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 		if scan.select_closure_runtime {
 			scan.direct_call_callees = []bool{len: a.nodes.len}
 			scan.assignment_targets = []bool{len: a.nodes.len}
-			for call in a.nodes {
+			for call_idx in 0 .. a.nodes.len {
+				call := unsafe { &a.nodes[call_idx] }
 				if call.kind in [.assign, .selector_assign, .index_assign]
 					&& call.children_count > 0 {
-					mut target := a.child(&call, 0)
+					mut target := a.child(call, 0)
 					for a.node(target).kind == .paren && a.node(target).children_count > 0 {
 						target = a.child(a.node(target), 0)
 					}
@@ -3143,7 +3182,7 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 					}
 				}
 				if call.kind == .call && call.children_count > 0 {
-					callee := a.child(&call, 0)
+					callee := a.child(call, 0)
 					if int(callee) >= 0 && int(callee) < a.nodes.len {
 						scan.direct_call_callees[int(callee)] = true
 					}
@@ -4081,7 +4120,9 @@ fn markused_type_lowers_to_map_str(typ0 types.Type) bool {
 fn markused_auto_str_skipped_fields(a &flat.FlatAst) map[u32]&MarkusedSkippedFields {
 	mut skipped := map[u32]&MarkusedSkippedFields{}
 	mut module_name := 'main'
-	for node in a.nodes {
+	for node_idx in 0 .. a.nodes.len {
+		// Read the node in place: most nodes are neither modules nor structs.
+		node := unsafe { &a.nodes[node_idx] }
 		if node.kind == .module_decl {
 			module_name = if node.value.len > 0 { node.value } else { 'main' }
 			continue
@@ -4095,7 +4136,7 @@ fn markused_auto_str_skipped_fields(a &flat.FlatAst) map[u32]&MarkusedSkippedFie
 			'${module_name}.${node.value}'
 		}
 		for i in 0 .. node.children_count {
-			field := a.child_node(&node, i)
+			field := a.child_node(node, i)
 			if field.kind != .field_decl {
 				continue
 			}
@@ -4115,6 +4156,30 @@ fn markused_auto_str_skipped_fields(a &flat.FlatAst) map[u32]&MarkusedSkippedFie
 		}
 	}
 	return skipped
+}
+
+// markused_has_node_kind reports whether the AST has a node of `kind`, reading
+// the nodes in place instead of copying each one as `a.nodes.any()` does.
+fn markused_has_node_kind(a &flat.FlatAst, kind flat.NodeKind) bool {
+	for node_idx in 0 .. a.nodes.len {
+		if unsafe { a.nodes[node_idx].kind } == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// markused_has_closure_runtime_import reports whether a file imports the closure
+// runtime other than through the import that every program gets.
+fn markused_has_closure_runtime_import(a &flat.FlatAst) bool {
+	for node_idx in 0 .. a.nodes.len {
+		node := unsafe { &a.nodes[node_idx] }
+		if node.kind == .import_decl && node.value == 'builtin.closure'
+			&& node.typ != markused_source_type_closure_runtime {
+			return true
+		}
+	}
+	return false
 }
 
 fn markused_add_skipped_field(mut skipped map[u32]&MarkusedSkippedFields, owner u32, field string) {
@@ -5018,12 +5083,14 @@ fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn
 }
 
 fn enqueue_function_value_selectors_with_entry_main(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
-	for file_idx, file_node in a.nodes {
+	for file_idx in 0 .. a.nodes.len {
+		// Only file nodes matter; read the others in place instead of copying them.
+		file_node := unsafe { &a.nodes[file_idx] }
 		if file_node.kind != .file {
 			continue
 		}
 		for i in 0 .. file_node.children_count {
-			child_id := a.child(&file_node, i)
+			child_id := a.child(file_node, i)
 			child := a.node(child_id)
 			if child.kind == .fn_decl {
 				continue

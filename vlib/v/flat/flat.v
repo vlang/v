@@ -463,10 +463,18 @@ pub fn (n Node) source_value_id() u32 {
 	return n.source_value
 }
 
+// source_value_kinds has bit `k` set for every node kind `k` whose value is a
+// type operand. All of these kinds are below 64.
+pub const source_value_kinds = u64(1) << u8(NodeKind.struct_init) | u64(1) << u8(NodeKind.assoc) |
+	u64(1) << u8(NodeKind.cast_expr) | u64(1) << u8(NodeKind.as_expr) |
+	u64(1) << u8(NodeKind.is_expr) | u64(1) << u8(NodeKind.map_init) |
+	u64(1) << u8(NodeKind.array_init) | u64(1) << u8(NodeKind.array_literal) |
+	u64(1) << u8(NodeKind.sizeof_expr) | u64(1) << u8(NodeKind.typeof_expr) |
+	u64(1) << u8(NodeKind.offsetof_expr)
+
 @[inline]
 fn (n Node) has_source_value_kind() bool {
-	return n.kind in [.struct_init, .assoc, .cast_expr, .as_expr, .is_expr, .map_init, .array_init,
-		.array_literal, .sizeof_expr, .typeof_expr, .offsetof_expr]
+	return u8(n.kind) < 64 && (source_value_kinds >> u8(n.kind)) & 1 != 0
 }
 
 // set_value_text preserves indexed type operands and ordinary node text separately.

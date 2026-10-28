@@ -5958,13 +5958,15 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	t.merge_worker_capture_contexts(w)
 	scoped := w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil }
 	for name, used in w.used_fns {
-		if used {
+		// A worker forked with a copy of the used set: most names are known here
+		// already, and mark_used_fn_key would ignore them. Copy only new names.
+		if used && !t.used_fn_contains_name(name) {
 			owned_name := if scoped && (!t.retain_worker_results || w.merge_scratch_scope != unsafe { nil }) {
 				name.clone()
 			} else {
 				name
 			}
-			t.mark_used_fn_key(owned_name)
+			t.record_used_fn_key(owned_name)
 		}
 	}
 	for name, used in w.used_struct_operator_fns {
@@ -6185,6 +6187,19 @@ fn transform_scope_owns(scope voidptr, ptr voidptr) bool {
 		return unsafe { prealloc_scope_owns(scope, ptr) }
 	}
 	return false
+}
+
+// transform_scope_unowned_interval returns the widest address interval around
+// ptr that holds no block of `scope`, or `0, 0` when transform_scope_owns would
+// report ptr as owned.
+fn transform_scope_unowned_interval(scope voidptr, ptr voidptr) (uint, uint) {
+	$if prealloc {
+		unsafe {
+			lo, hi := prealloc_scope_unowned_interval(scope, ptr)
+			return lo, hi
+		}
+	}
+	return 0, ~uint(0)
 }
 
 // transform_scope_address_range returns the union address range of the blocks
@@ -6598,14 +6613,21 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
 			t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
 		}
-		for idx, ignored in w.ignored_comptime_for_nodes {
-			if !ignored {
-				continue
+		// The worker's flags cover the whole AST but only a few are set; jump
+		// between them as apply_ignored_comptime_for_nodes does.
+		flags := w.ignored_comptime_for_nodes
+		mut idx := 0
+		for idx < flags.len {
+			found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, uint(flags.len - idx))) }
+			if isnil(found) {
+				break
 			}
+			idx = int(unsafe { found - &u8(flags.data) })
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
 			if shifted >= 0 && shifted < t.ignored_comptime_for_nodes.len {
 				t.ignored_comptime_for_nodes[shifted] = true
 			}
+			idx++
 		}
 	}
 	if w.ignored_comptime_for_log.len > 0 {

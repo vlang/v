@@ -3927,9 +3927,11 @@ fn (mut t Transformer) prepare_parallel_call_param_types() {
 	}
 	t.ensure_call_param_types_decl_index()
 	mut seen := map[int]bool{}
-	seen.reserve(u32(t.call_param_types_decl_index.len / 2 + 1))
 	for name, decl in t.call_param_types_decl_index {
-		if seen[decl.idx] {
+		// A cached declaration needs no work: call_param_types_from_decl would only
+		// return the cached list. Monomorphization re-prepares after every round, and
+		// nearly all of the index is cached by then.
+		if decl.idx in t.call_param_types_decl_cache || seen[decl.idx] {
 			continue
 		}
 		seen[decl.idx] = true
