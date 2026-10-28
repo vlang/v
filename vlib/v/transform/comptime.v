@@ -809,7 +809,7 @@ fn comptime_attribute_schema_field_kind(typ types.Type) ?(AttributeSchemaFieldKi
 		return AttributeSchemaFieldKind.integer, typ.source_type_id()
 	}
 	if clean.source_type_id() == flat.source_type_bool {
-		return AttributeSchemaFieldKind.boolean, flat.source_type_bool
+		return AttributeSchemaFieldKind.boolean, typ.source_type_id()
 	}
 	if clean is types.Enum {
 		return AttributeSchemaFieldKind.enum_, clean.name_id
@@ -1033,8 +1033,14 @@ fn comptime_attribute_schema_instance(base string, schema AttributeSchemaInfo, d
 			return none
 		}
 	}
+	base_idx := use_idx[0]
+	base_kind := if base_idx < data.kinds.len { data.kinds[base_idx] } else { 0 }
+	metadata := comptime_attribute_metas_from_raw([data.attrs[base_idx]], [base_kind])[0]
 	return AttributeMeta{
 		name:          base
+		arg:           metadata.arg
+		has_arg:       metadata.has_arg
+		kind:          metadata.kind
 		schema_name:   schema.name
 		schema_module: schema.module
 		schema_fields: schema.fields
@@ -1683,7 +1689,12 @@ fn (mut t Transformer) make_attribute_schema_field_literal(field AttributeSchema
 			}
 		}
 		.boolean {
-			t.make_bool_literal(raw == 'true')
+			literal := t.make_bool_literal(raw == 'true')
+			if field.type_id == flat.source_type_bool {
+				literal
+			} else {
+				t.make_cast(field.type_id, literal, field.type_id)
+			}
 		}
 		.integer {
 			literal := t.make_int_literal_typed(raw, field.type_id)

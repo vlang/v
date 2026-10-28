@@ -1,6 +1,6 @@
 // Typed custom attribute materialization (vlang/rfcs#35): a use whose name
-// matches a registered `@[attribute]` schema yields that struct in
-// `$for attr in X.attributes`, narrowed by `$if attr is Schema`.
+// matches a registered `@[attribute]` schema exposes its fields in
+// `$for attr in X.attributes` when narrowed by `$if attr is Schema`.
 @[attribute]
 struct TestRoute {
 	path   string
@@ -111,6 +111,7 @@ fn test_attribute_schema_fields_override_metadata_only_when_narrowed() {
 
 type SchemaPath = string
 type SchemaNumber = uint
+type SchemaBoolean = bool
 
 @[attribute]
 struct SchemaResolvedTypes {
@@ -118,9 +119,10 @@ struct SchemaResolvedTypes {
 	count  uint
 	letter rune
 	number SchemaNumber
+	active SchemaBoolean
 }
 
-@[SchemaResolvedTypes('/alias', count: 8, letter: 65, number: 9)]
+@[SchemaResolvedTypes('/alias', count: 8, letter: 65, number: 9, active: true)]
 fn schema_resolved_types() {}
 
 fn test_attribute_schema_resolves_aliases_and_integer_types() {
@@ -131,14 +133,17 @@ fn test_attribute_schema_resolves_aliases_and_integer_types() {
 			count := attr.count
 			letter := attr.letter
 			number := attr.number
+			active := attr.active
 			assert typeof(path).name == 'SchemaPath'
 			assert typeof(count).name == 'uint'
 			assert typeof(letter).name == 'rune'
 			assert typeof(number).name == 'SchemaNumber'
+			assert typeof(active).name == 'SchemaBoolean'
 			assert path == SchemaPath('/alias')
 			assert count == 8
 			assert letter == `A`
 			assert number == SchemaNumber(9)
+			assert active == SchemaBoolean(true)
 			seen = true
 		}
 	}
