@@ -200,7 +200,11 @@ fn test_global_function_values_are_snapshotted_before_later_preludes() {
 			else { 'producer.callback' }
 		}
 		if context == 'imported' {
-			tc.file_selective_imports[file_import_key('consumer.v', 'callback')] = [global_name]
+			tc.selective_import_files['consumer.v'] = &types.FileImportInfo{
+				selective_imports: {
+					flat.source_type_id('callback'): [flat.source_type_id(global_name)]
+				}
+			}
 		}
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.cur_module = if context == 'main' { 'main' } else { 'consumer' }

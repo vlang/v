@@ -117,7 +117,7 @@ fn test_ownership_prescan_detached_mut_array_sum_return_summaries() {
 			tc.sum_types.set(flat.source_type_id('Choice'), ['[]int', '&Cell'])
 			tc.sum_types.set(flat.source_type_id('Layer'), ['Choice', 'bool'])
 			tc.sum_types.set(flat.source_type_id('Generic'), ['[]T', 'int'])
-			tc.sum_generic_params[flat.source_type_id('Generic')] = ['T']
+			tc.sum_generic_params[flat.source_type_id('Generic')] = generic_param_ids(['T'])
 			tc.sum_types.set(flat.source_type_id('RefChoice'), ['&[]int', 'int'])
 			tc.sum_types.set(flat.source_type_id('MixedChoice'), ['[]int', '&[]int'])
 			tc.sum_types.set(flat.source_type_id('ValueInner'), ['[]int', 'bool'])
@@ -246,7 +246,7 @@ fn test_ownership_prescan_wrapped_mut_sum_returns_acquire_owned_storage() {
 			tc.sum_types.set(flat.source_type_id('Choice'), ['[]int', 'int'])
 			tc.sum_types.set(flat.source_type_id('Layer'), ['Choice', 'bool'])
 			tc.sum_types.set(flat.source_type_id('Generic'), ['[]T', 'int'])
-			tc.sum_generic_params[flat.source_type_id('Generic')] = ['T']
+			tc.sum_generic_params[flat.source_type_id('Generic')] = generic_param_ids(['T'])
 			tc.sum_types.set(flat.source_type_id('MixedChoice'), ['[]int', '&int'])
 			tc.sum_types.set(flat.source_type_id('NestedPointerChoice'), ['Choice', 'MixedChoice'])
 			tc.sum_types.set(flat.source_type_id('AliasPointerChoice'), ['[]int', 'IntPointer'])

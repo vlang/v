@@ -8,6 +8,24 @@ $if macos || linux {
 	// defines both together too.
 	#flag -DUSE_MMAP=1
 	#flag -DUSE_MUNMAP=1
+	// The same applies to HANDLE_FORK, which libgc's configure also records in that
+	// part of the amalgamation. Without it the collector installs no pthread_atfork
+	// handlers, so a child that forks from a program with other threads and keeps
+	// running (no exec) still has the parent's threads in its thread table. Its first
+	// collection then tries to stop them and aborts with `pthread_kill failed at
+	// suspend`. With it, the handlers lock the allocator around the fork and rebuild
+	// the thread table in the child. The prebuilt libgc of default TCC builds on
+	// Linux amd64 and macOS has fork handling too; this makes the collector that V
+	// compiles from source agree with it.
+	$if !no_gc_threads ? {
+		// Only multi-threaded collectors need it. Without GC threads it only makes
+		// macOS refuse `-gc boehm_incr` (gc.c's GC_dirty_init, MPROTECT_VDB).
+		$if !(arm32 && tinyc) {
+			// TinyCC on 32-bit ARM cannot call glibc's Thumb-2 `pthread_atfork`; see
+			// thirdparty/build_scripts/thirdparty-linux-armv7_bdwgc.sh.
+			#flag -DHANDLE_FORK=1
+		}
+	}
 }
 
 $if !no_gc_threads ? {
@@ -29,6 +47,23 @@ $if !no_gc_threads ? {
 		// and makes the compiler prefer the source-built bundled libgc path.
 		// See issues #27486, #27488 and #27553.
 		#flag -DTHREAD_LOCAL_ALLOC=1
+	}
+	$if linux || macos {
+		$if gc_parallel_mark ? {
+			// `-d gc_parallel_mark` enables Boehm's parallel marking in the bundled
+			// `gc.c` that V compiles from source (e.g. `-prod` with gcc/clang). The
+			// amalgamation was generated with `--enable-parallel-mark`, but that
+			// setting lives in its `config.h` part, which is only used with
+			// HAVE_CONFIG_H, so without this flag the marker code is compiled out.
+			// With it, up to `nproc - 1` helper threads (at most 15, `GC_MARKERS=n`
+			// overrides) are started at startup and mark with the collecting thread.
+			// That shortens pauses and total GC time for large live heaps, but the
+			// extra wakeups and lock traffic slow down programs with small live heaps
+			// that allocate a lot, and programs with many allocating threads, so it
+			// is opt-in. The prebuilt `thirdparty/tcc/lib/libgc.a` always has
+			// parallel marking; `GC_MARKERS=1` turns it off at run time.
+			#flag -DPARALLEL_MARK=1
+		}
 	}
 }
 

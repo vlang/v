@@ -1189,7 +1189,8 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, node_index int,
 		candidate_id := flat.source_type_existing_id(candidate) or { continue }
 		params := g.tc.struct_generic_params[candidate_id] or { continue }
 		for arg in args {
-			if arg.trim_space() in params {
+			arg_id := flat.source_type_existing_id(arg.trim_space()) or { continue }
+			if arg_id in params {
 				return true
 			}
 		}
@@ -2727,7 +2728,7 @@ fn (g &FlatGen) receiver_method_registered(type_name_id u32, method string) bool
 	mut receivers := []string{}
 	for receiver in [type_name,
 		flat.source_type_name(flat.source_type_syntax(type_name_id).unqualified()),
-		g.tc.qualify_name(type_name)] {
+		flat.source_type_name(g.tc.qualify_type_name(type_name_id))] {
 		if receiver.len > 0 && receiver !in receivers {
 			receivers << receiver
 		}
@@ -3311,14 +3312,12 @@ fn generic_method_type_arg_from_return(ret &types.Type) ?u32 {
 // `type SimdFloat4 = vec.Vec4[f32]`). Returns the fn key, or none if `type_ident`
 // is not a type or has no such static method.
 fn (g &FlatGen) static_method_fn_name(type_ident_id u32, method string) ?string {
-	type_ident := flat.source_type_name(type_ident_id)
 	qtype_id := g.tc.qualify_type_name(type_ident_id)
 	mut type_candidates := []u32{cap: 4}
 	if !flat.source_type_shape(type_ident_id).has(.dotted) {
-		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_ident) or {
-			[]string{}
+		for candidate_id in g.tc.file_selective_import_ids(g.tc.cur_file, type_ident_id) or {
+			[]u32{}
 		} {
-			candidate_id := flat.source_type_id(candidate)
 			if candidate_id !in type_candidates {
 				type_candidates << candidate_id
 			}
@@ -10415,7 +10414,7 @@ fn (g &FlatGen) specialized_interface_name_for_method_call(node flat.Node, iface
 	if params.len == 0 {
 		return iface_name_id
 	}
-	mut inferred := map[string]u32{}
+	mut inferred := map[u32]u32{}
 	if is_generic && iface_args.len == params.len {
 		mut all_concrete := true
 		for i, arg in iface_args {
@@ -11704,35 +11703,56 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 					return g.optional_type_name(specialized_ret)
 				}
 			}
-			mut concrete_optional_return := false
-			if resolved := g.tc.resolved_call_name(id) {
-				concrete_optional_return = g.call_uses_concrete_optional_params(resolved)
-			}
-			if !concrete_optional_return {
-				target := g.call_target_name(g.a.child(&node, 0))
-				concrete_optional_return = g.call_uses_concrete_optional_params(target)
-					|| g.call_uses_concrete_optional_params(g.normalize_call_key(target))
-					|| g.call_uses_concrete_optional_params(g.direct_call_name_for_call(id, target))
-			}
-			if concrete_optional_return {
-				declared := g.declared_call_return_type(id)
-				if type_is_optional_result(declared) {
+			// A callee with a concrete optional ABI names its declared return type
+			// (or `typ`) first; any other call prefers a shared payload return, then
+			// the declared type. Those orders only disagree when a shared return
+			// exists, so the costly ABI check runs only then. All three lookups are
+			// memoized queries.
+			declared := g.declared_call_return_type(id)
+			declared_optional := type_is_optional_result(declared)
+			declared_direct := declared is types.OptionType || declared is types.ResultType
+			if declared_optional && !declared_direct {
+				if g.call_returns_concrete_optional(id, node) {
 					return g.optional_type_name(declared)
 				}
-				if type_is_optional_result(typ) {
-					return g.optional_type_name(typ)
+				if shared_return := g.shared_optional_call_type(id, node) {
+					return g.optional_type_name(shared_return)
 				}
+				return g.optional_type_name(typ)
 			}
-			if shared_return := g.shared_optional_call_type(id, node) {
+			shared_return := g.shared_optional_call_type(id, node) or {
+				if declared_optional {
+					return g.optional_type_name(declared)
+				}
+				return g.optional_type_name(typ)
+			}
+			if declared_optional {
+				if g.call_returns_concrete_optional(id, node) {
+					return g.optional_type_name(declared)
+				}
 				return g.optional_type_name(shared_return)
 			}
-			declared := g.declared_call_return_type(id)
-			if declared is types.OptionType || declared is types.ResultType {
-				return g.optional_type_name(declared)
+			if type_is_optional_result(typ) && g.call_returns_concrete_optional(id, node) {
+				return g.optional_type_name(typ)
 			}
+			return g.optional_type_name(shared_return)
 		}
 	}
 	return g.optional_type_name(typ)
+}
+
+// call_returns_concrete_optional reports whether the callee of call `id` uses the
+// concrete optional ABI of a specialized generic or a concrete optional parameter.
+fn (mut g FlatGen) call_returns_concrete_optional(id flat.NodeId, node flat.Node) bool {
+	if resolved := g.tc.resolved_call_name(id) {
+		if g.call_uses_concrete_optional_params(resolved) {
+			return true
+		}
+	}
+	target := g.call_target_name(g.a.child(&node, 0))
+	return g.call_uses_concrete_optional_params(target)
+		|| g.call_uses_concrete_optional_params(g.normalize_call_key(target))
+		|| g.call_uses_concrete_optional_params(g.direct_call_name_for_call(id, target))
 }
 
 fn (g &FlatGen) call_declared_return_type_text(id flat.NodeId, node flat.Node) ?u32 {
@@ -11985,10 +12005,27 @@ fn (g &FlatGen) normalize_call_key_uncached(name string) string {
 	if qname in g.tc.fn_param_types || qname in g.tc.fn_ret_types {
 		return qname
 	}
+	// Most names reaching this loop are found under no import. Probe each
+	// `module.name` spelling from a scratch buffer and copy only a hit.
+	mut probe_buf := [256]u8{}
 	for _, mod_name in g.tc.imports {
-		imported := '${mod_name}.${name}'
-		if imported in g.tc.fn_param_types || imported in g.tc.fn_ret_types {
-			return imported
+		probe_len := mod_name.len + 1 + name.len
+		if probe_len > probe_buf.len {
+			imported := '${mod_name}.${name}'
+			if imported in g.tc.fn_param_types || imported in g.tc.fn_ret_types {
+				return imported
+			}
+			continue
+		}
+		unsafe {
+			vmemcpy(&probe_buf[0], mod_name.str, mod_name.len)
+			vmemcpy(&probe_buf[mod_name.len + 1], name.str, name.len)
+		}
+		probe_buf[mod_name.len] = `.`
+		// The probe borrows the buffer only for these map lookups.
+		probe := unsafe { tos(&probe_buf[0], probe_len) }
+		if probe in g.tc.fn_param_types || probe in g.tc.fn_ret_types {
+			return probe.clone()
 		}
 	}
 	return qname
@@ -11999,7 +12036,9 @@ fn (g &FlatGen) selective_import_call_key_in_file(name string, file string) ?str
 		return none
 	}
 	mut resolved := ''
-	for candidate in g.file_selective_import_candidates(file, name) or { return none } {
+	for candidate_id in g.tc.file_selective_import_ids_by_name(file, name) or { return none } {
+		// Function tables are keyed by declaration names.
+		candidate := flat.source_type_name(candidate_id)
 		if candidate !in g.tc.fn_param_types && candidate !in g.tc.fn_ret_types {
 			continue
 		}
@@ -13710,7 +13749,7 @@ fn (mut g FlatGen) inferred_generic_plain_fn_name_for_call(id flat.NodeId, node 
 	generic_params := g.tc.fn_generic_params[base] or { return none }
 	if generic_params.len == 0 { return none }
 	param_types := g.tc.fn_param_type_texts.type_ids(base) or { return none }
-	mut inferred := map[string]u32{}
+	mut inferred := map[u32]u32{}
 	// Contextual return types must win over default-typed literal arguments. In
 	// `fn values() []Vec2[f64] { return [vec2(1.0, 1.0)] }`, a large combined
 	// test program can retain the literal arguments as untyped floats even though
@@ -13864,7 +13903,7 @@ fn (g &FlatGen) generic_call_type_arg_name(id flat.NodeId) u32 {
 	return node.source_value_id()
 }
 
-fn (g &FlatGen) infer_codegen_generic_call_type_args(node flat.Node, base string, param_texts_ids []u32, mut inferred map[string]u32) {
+fn (g &FlatGen) infer_codegen_generic_call_type_args(node flat.Node, base string, param_texts_ids []u32, mut inferred map[u32]u32) {
 	is_variadic := g.codegen_generic_fn_is_variadic(base)
 	for i, param_type in param_texts_ids {
 		arg_idx := i + 1
@@ -14156,7 +14195,7 @@ fn (g &FlatGen) generic_call_return_type_text_for_inference(id flat.NodeId, node
 	params := g.tc.fn_generic_params[base] or { return none }
 	if params.len == 0 { return none }
 	param_types := g.tc.fn_param_type_texts.type_ids(base) or { return none }
-	mut inferred := map[string]u32{}
+	mut inferred := map[u32]u32{}
 	g.infer_codegen_generic_call_type_args(node, base, param_types, mut inferred)
 	mut args := []u32{cap: params.len}
 	for param in params {
@@ -14166,7 +14205,7 @@ fn (g &FlatGen) generic_call_return_type_text_for_inference(id flat.NodeId, node
 	}
 	ret_type := g.tc.fn_ret_type_texts.type_id(base) or { node.typ }
 	if ret_type == 0 { return none }
-	ret := substitute_shared_generic_type_text(ret_type, params, args)
+	ret := substitute_shared_generic_type_id(ret_type, params, args)
 	if codegen_type_text_is_usable_for_generic_inference(ret) { return ret }
 	return none
 }
@@ -14331,7 +14370,7 @@ fn codegen_push_unique(mut values []string, value string) {
 	}
 }
 
-fn infer_codegen_generic_type_args(param_type u32, arg_type u32, mut inferred map[string]u32) {
+fn infer_codegen_generic_type_args(param_type u32, arg_type u32, mut inferred map[u32]u32) {
 	param := flat.source_type_syntax(param_type).trimmed()
 	arg := flat.source_type_syntax(arg_type).trimmed()
 	if param == 0 || arg == 0 || arg in [flat.source_type_unknown, flat.source_type_generic] {
@@ -14340,9 +14379,8 @@ fn infer_codegen_generic_type_args(param_type u32, arg_type u32, mut inferred ma
 	p_syntax := flat.source_type_syntax(param)
 	a_syntax := flat.source_type_syntax(arg)
 	if p_syntax.cgen_generic_placeholder() {
-		name := flat.source_type_name(param)
-		if name !in inferred {
-			inferred[name] = arg
+		if param !in inferred {
+			inferred[param] = arg
 		}
 		return
 	}

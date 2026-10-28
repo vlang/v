@@ -142,6 +142,15 @@ mut:
 	entries    map[string]i8
 	last_name  string
 	last_value i8
+	// parked keeps the entries of contexts switched away from, as in
+	// ContextStringLookupCache.
+	parked map[string]&ContextNameFacts
+}
+
+@[heap]
+struct ContextNameFacts {
+mut:
+	entries map[string]i8
 }
 
 @[inline]
@@ -193,9 +202,20 @@ fn (mut c ContextNameFactCache) select_context(file string, module_name string) 
 		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
+	if c.entries.len > 0 {
+		c.parked[context_lookup_key(c.file, c.module)] = &ContextNameFacts{
+			entries: c.entries.move()
+		}
+	}
 	c.file = file
 	c.module = module_name
-	c.entries = map[string]i8{}
+	key := context_lookup_key(file, module_name)
+	if mut parked := c.parked[key] {
+		c.entries = parked.entries.move()
+		c.parked.delete(key)
+	} else {
+		c.entries = map[string]i8{}
+	}
 	c.last_name = ''
 	c.last_value = 0
 }
@@ -239,9 +259,10 @@ fn (mut c AliasMethodLookupCache) put(target_id u32, method string, value string
 }
 
 // ContextStringLookupCache memoizes string lookups whose answers depend on the
-// current source file and module. Cgen visits functions in source order, so
-// replacing on a context switch avoids allocating a compound key on every hot
-// lookup while retaining almost all hits.
+// current source file and module. Hot lookups use the active context's map
+// directly, so they never allocate a compound key. Function items are not
+// grouped by file, so a context switch parks the active entries under their
+// context instead of discarding them, and a returning context resumes them.
 @[heap]
 struct ContextStringLookupCache {
 mut:
@@ -251,6 +272,13 @@ mut:
 	last_name  string
 	last_value string
 	last_valid bool
+	parked     map[string]&ContextStringEntries
+}
+
+@[heap]
+struct ContextStringEntries {
+mut:
+	entries map[string]string
 }
 
 @[inline]
@@ -283,12 +311,30 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
+	if c.entries.len > 0 {
+		c.parked[context_lookup_key(c.file, c.module)] = &ContextStringEntries{
+			entries: c.entries.move()
+		}
+	}
 	c.file = file
 	c.module = module_name
-	c.entries = map[string]string{}
+	key := context_lookup_key(file, module_name)
+	if mut parked := c.parked[key] {
+		c.entries = parked.entries.move()
+		c.parked.delete(key)
+	} else {
+		c.entries = map[string]string{}
+	}
 	c.last_name = ''
 	c.last_value = ''
 	c.last_valid = false
+}
+
+// context_lookup_key names a (file, module) lookup context. A newline cannot
+// occur in either part.
+@[inline]
+fn context_lookup_key(file string, module_name string) string {
+	return '${file}\n${module_name}'
 }
 
 struct SourceTypeLookupRecentEntry {
@@ -360,7 +406,6 @@ fn (mut c ContextSourceTypeLookupCache) select_context(file string, module_name 
 fn (mut g FlatGen) reset_context_lookup_caches() {
 	g.normalize_call_cache = &ContextStringLookupCache{}
 	g.import_key_cache = &util.KeyRecentCache{}
-	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
 	g.enum_selector_cache = &ContextSourceTypeLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}

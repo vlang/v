@@ -463,6 +463,8 @@ fn (mut g FlatGen) collect_interface_impls() {
 	}
 	mut iface_names := g.interfaces.keys()
 	iface_names.sort_with_compare(compare_interface_source_type_ids)
+	// The implementer queries of this loop share one checker context.
+	memo_opened := g.tc.begin_interface_impl_queries()
 	for iface_id in iface_names {
 		mut impls := []u32{}
 		mut base_impls := []u32{}
@@ -501,6 +503,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 			g.collect_ierror_method_emit_names(impls)
 		}
 	}
+	g.tc.end_interface_impl_queries(memo_opened)
 }
 
 fn compare_interface_source_type_ids(a &u32, b &u32) int {
@@ -514,8 +517,8 @@ fn (g &FlatGen) interface_impl_is_open_generic(name_id u32) bool {
 		return false
 	}
 	for candidate_id in [name_id, g.tc.qualify_type_name(name_id)] {
-		if (g.tc.struct_generic_params[candidate_id] or { []string{} }).len > 0 || (g.tc.interface_generic_params[candidate_id] or {
-			[]string{}
+		if (g.tc.struct_generic_params[candidate_id] or { []u32{} }).len > 0 || (g.tc.interface_generic_params[candidate_id] or {
+			[]u32{}
 		}).len > 0 {
 			return true
 		}
@@ -1662,7 +1665,7 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name_id u32, method string)
 fn (g &FlatGen) open_interface_dispatch_needs_specialization(iface_name_id u32, method string) bool {
 	iface_name := flat.source_type_name(iface_name_id)
 	_, _, is_specialized := parse_shared_generic_app_parts(iface_name)
-	if is_specialized || (g.tc.interface_generic_params[iface_name_id] or { []string{} }).len == 0 {
+	if is_specialized || (g.tc.interface_generic_params[iface_name_id] or { []u32{} }).len == 0 {
 		return false
 	}
 	decl_key := g.interface_method_signature_key(iface_name_id, method) or { return false }
@@ -2562,7 +2565,7 @@ fn (mut g FlatGen) interface_custom_str_expr(type_name_id u32, typ types.Type, e
 	method_key := g.tc.concrete_method_signature_key(type_name_id, 'str') or { return none }
 	if typ is types.Alias {
 		direct_key := '${type_name}.str'
-		qualified_key := '${g.tc.qualify_name(type_name)}.str'
+		qualified_key := '${flat.source_type_name(g.tc.qualify_type_name(type_name_id))}.str'
 		if method_key != direct_key && method_key != qualified_key {
 			return none
 		}

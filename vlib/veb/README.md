@@ -665,6 +665,13 @@ app.serve_static('/path/main.css',  'static/css/main.css')!
 
 ### Dealing with MIME types
 
+`ctx.file(path)` uses an explicit `ctx.content_type`, a custom MIME mapping, or the known
+file extension first. When none provides a type, it uses `http.detect_content_type` to
+inspect the beginning of the file. Unknown binary content is served as
+`application/octet-stream`. Sniffed HTML can run scripts from your origin; set an explicit
+safe content type when serving untrusted uploads. Static folder registration still requires
+extension mappings as described below.
+
 By default, veb will map the extension of a file to a MIME type. If any of your static file's
 extensions do not have a default MIME type in veb, veb will throw an error and you
 have to add your MIME type to `.static_mime_types` yourself.
@@ -1345,6 +1352,22 @@ ctx.json(User{
 // send response HTTP_NO_CONTENT (204) without a content-type and body
 ctx.no_content()
 ```
+
+#### Reusing a JSON buffer
+
+`ctx.json_buf(value, mut buffer)` produces the same response as `ctx.json(value)`, while
+reusing a caller-owned `[]u8` for intermediate encoding. It clears the buffer first and
+copies the result into the response, so the buffer can be reused as soon as the call returns.
+
+```v ignore
+mut buffer := []u8{cap: 2048}
+ctx.json_buf(User{name: 'test', age: 20}, mut buffer)
+```
+
+For encoding without sending a response, `veb.json_encode_into(value, mut buffer)` appends
+JSON to the buffer; call `buffer.clear()` first when replacing its previous contents.
+Keep reusable buffers local to a request worker or borrow them exclusively from a pool.
+Concurrent requests must not encode into the same buffer at the same time.
 
 #### Sending files
 

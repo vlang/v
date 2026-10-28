@@ -105,10 +105,10 @@ fn main() {}
 			id := tc.a.child(node, 0)
 			typ := tc.const_types['values'] or { panic('missing values') }
 			assert tc.known_numeric_const_initializer(id, typ)
-			tc.sum_generic_params[flat.source_type_id('u64')] = ['T']
+			tc.sum_generic_params[flat.source_type_id('u64')] = generic_param_ids(['T'])
 			assert !tc.known_numeric_const_initializer(id, typ)
 			tc.sum_generic_params.delete(flat.source_type_id('u64'))
-			tc.interface_generic_params[flat.source_type_id('u64')] = ['T']
+			tc.interface_generic_params[flat.source_type_id('u64')] = generic_param_ids(['T'])
 			assert !tc.known_numeric_const_initializer(id, typ)
 			_ = idx
 		}
