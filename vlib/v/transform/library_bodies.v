@@ -318,7 +318,7 @@ fn (mut t Transformer) library_type_parts(text_id u32) ?[]u32 {
 		for field in fields { parts << library_type_text(field.typ.source_type_id()) }
 	} else if is_app {
 		fields := t.tc.structs[name_id] or { return none }
-		params := t.tc.struct_generic_params[name_id] or { []string{} }
+		params := types.generic_param_texts(t.tc.struct_generic_params[name_id] or { []u32{} })
 		args_ids := syntax.generic_app_args()
 		for field in fields {
 			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.source_type_id(),

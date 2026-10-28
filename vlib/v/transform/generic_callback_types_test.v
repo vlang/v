@@ -22,9 +22,12 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	tc.declaration_attributes[int(fast_decl)] = ['callconv: fastcall']
 	tc.declaration_attributes[int(cdecl_decl)] = ['callconv: cdecl']
 	tc.structs[flat.source_type_id('Box')] = []types.StructField{}
-	tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('Box')] = types.generic_param_ids(['T'])
 	tc.structs[flat.source_type_id('Pair')] = []types.StructField{}
-	tc.struct_generic_params[flat.source_type_id('Pair')] = ['T', 'U']
+	tc.struct_generic_params[flat.source_type_id('Pair')] = types.generic_param_ids([
+		'T',
+		'U',
+	])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.resolved_receiver_arg_compatible(id, flat.source_type_id('fn ([]int, []int) int'), flat.source_type_id('fn([]int, []int) int'))
 	assert t.resolved_receiver_arg_compatible(id, flat.source_type_id('fn (values []f64, indices []int) f64'), flat.source_type_id('fn([]f64, []int) f64'))

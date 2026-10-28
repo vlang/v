@@ -108,7 +108,7 @@ pub fn seeded_fn_names() []string {
 
 // mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false)
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
 	return used
 }
 
@@ -120,26 +120,39 @@ pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 // mark_used_with_generic_usage also reports whether reachable code uses a generic
 // function, struct, or sum type and therefore requires monomorphization.
 pub fn mark_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false)
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
+}
+
+// mark_used_with_generic_usage_cached is mark_used_with_generic_usage that keeps
+// its declaration indexes in `decl_cache`, so a later pass over the same
+// declarations (after semantic checks of more library bodies) reuses them.
+pub fn mark_used_with_generic_usage_cached(a &flat.FlatAst, tc &types.TypeChecker, decl_cache &MarkusedDeclCache) (map[string]bool, bool) {
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, decl_cache)
+}
+
+// mark_used_with_generic_usage_full_runtime_cached is the decl_cache variant of
+// mark_used_with_generic_usage_full_runtime.
+pub fn mark_used_with_generic_usage_full_runtime_cached(a &flat.FlatAst, tc &types.TypeChecker, decl_cache &MarkusedDeclCache) (map[string]bool, bool) {
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, false, unsafe { nil }, unsafe { nil }, false, decl_cache)
 }
 
 // mark_used_with_generic_usage_full_runtime disables the literal-output shortcut so
 // compatibility fixtures retain helpers referenced by the complete builtin runtime.
 pub fn mark_used_with_generic_usage_full_runtime(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, false, unsafe { nil }, unsafe { nil }, false)
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, false, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
 }
 
 // mark_used_without_generic_detection is the self-host variant for inputs whose caller
 // already guarantees that monomorphization is unnecessary.
 pub fn mark_used_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, unsafe { nil }, unsafe { nil }, false)
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
 	return used
 }
 
 // mark_used_without_generic_detection_prepared consumes declaration indexes
 // built concurrently with checking for the no-generic self-host path.
 pub fn mark_used_without_generic_detection_prepared(a &flat.FlatAst, tc &types.TypeChecker, mut prepared PreparedMarkusedDecls) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, prepared, unsafe { nil }, false)
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, prepared, unsafe { nil }, false, unsafe { nil })
 	return used
 }
 
@@ -150,7 +163,7 @@ pub fn mark_used_for_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false)
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
 }
 
 // mark_all_used_with_generic_usage roots every concrete function while preserving
@@ -160,7 +173,7 @@ pub fn mark_all_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, 
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, true, true, unsafe { nil }, unsafe { nil }, false)
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false, true, true, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
 }
 
 // mark_used_for_cache roots every concrete function in modules being built for the object cache.
@@ -176,7 +189,7 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true, false, true, unsafe { nil }, unsafe { nil }, false)
+	return mark_used_with_test_files(a, tc, file_map, source_modules, true, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
 }
 
 // mark_used_for_cache_without_generic_detection is the self-host cache variant for inputs
@@ -186,7 +199,7 @@ pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.
 	for file in test_files {
 		file_map[file] = true
 	}
-	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false, false, true, unsafe { nil }, unsafe { nil }, false)
+	used, _ := mark_used_with_test_files(a, tc, file_map, source_modules, true, false, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil })
 	return used
 }
 
@@ -210,7 +223,7 @@ pub fn can_check_library_body_frontiers(a &flat.FlatAst, tc &types.TypeChecker) 
 pub fn mark_used_checking_library_bodies(a &flat.FlatAst, mut tc types.TypeChecker, parallel bool) (map[string]bool, bool) {
 	tc.library_body_convergence_complete = false
 	return mark_used_with_test_files(a, &tc, map[string]bool{}, map[string]bool{}, false, true,
-		false, true, unsafe { nil }, unsafe { voidptr(&tc) }, parallel)
+		false, true, unsafe { nil }, unsafe { voidptr(&tc) }, parallel, unsafe { nil })
 }
 
 // reachable_const_exprs returns const initializer expressions referenced by the supplied
@@ -284,8 +297,319 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 	return result
 }
 
+// MarkusedDeclScan holds the declaration indexes that one reachability pass
+// derives from the top-level AST and the checker's declaration tables.
+struct MarkusedDeclScan {
+mut:
+	fn_decls                     map[string]FnDeclInfo
+	fn_decl_lists                map[string][]FnDeclInfo
+	struct_decls                 map[u32]StructDeclInfo
+	const_decls                  map[string]ConstDeclInfo
+	fn_name_suffixes             map[string]bool
+	const_name_suffixes          map[string]bool
+	suffix_map                   map[string][]string
+	import_contexts              []map[string]string
+	body_ids                     []int
+	body_modules                 []string
+	body_import_contexts         []int
+	cache_roots                  []string
+	cached_header_enum_str_roots []u32
+	c_interface_roots            []string
+	marked_roots                 []string
+	convergence_index_complete   bool
+	fn_count                     int
+	fn_with_dot                  int
+	contains2_total              int
+}
+
+// build_markused_decl_scan indexes every top-level declaration. Its result is a
+// function of the AST, `tc.top_level_idx`, and the checker's file, module and
+// function-file tables only.
+fn build_markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode bool, cache_modules map[string]bool) MarkusedDeclScan {
+	mut result := MarkusedDeclScan{
+		fn_decls:                   map[string]FnDeclInfo{}
+		fn_decl_lists:              map[string][]FnDeclInfo{}
+		struct_decls:               map[u32]StructDeclInfo{}
+		const_decls:                map[string]ConstDeclInfo{}
+		fn_name_suffixes:           map[string]bool{}
+		const_name_suffixes:        map[string]bool{}
+		suffix_map:                 map[string][]string{}
+		import_contexts:            []map[string]string{cap: 256}
+		body_ids:                   []int{cap: 8192}
+		body_modules:               []string{cap: 8192}
+		body_import_contexts:       []int{cap: 8192}
+		convergence_index_complete: true
+	}
+	result.import_contexts << map[string]string{}
+	// The checker already knows the declaration cardinalities. Reserve once here
+	// instead of repeatedly growing the alias-heavy reachability indexes.
+	result.fn_decls.reserve(u32(tc.fn_ret_types.len))
+	result.fn_decl_lists.reserve(u32(tc.fn_ret_types.len))
+	result.struct_decls.reserve(u32(tc.structs.len * 2))
+	result.const_decls.reserve(u32(tc.const_types.len))
+	result.fn_name_suffixes.reserve(u32(tc.fn_ret_types.len))
+	result.const_name_suffixes.reserve(u32(tc.const_types.len))
+	result.suffix_map.reserve(u32(tc.fn_ret_types.len / 2))
+	mut cur_module := ''
+	mut cur_file := ''
+	mut import_context_by_file := map[string]int{}
+	mut cur_import_context := 0
+	// Body-call metadata feeds the reachability BFS's discovery of lowering-introduced
+	// implicit helpers, which is required on every path (not just generics detection).
+	collect_body_metadata := true
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = ''
+			result.import_contexts << markused_top_level_file_imports(a, node)
+			cur_import_context = result.import_contexts.len - 1
+			import_context_by_file[cur_file] = cur_import_context
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind == .import_decl {
+			if cur_import_context >= 0 && cur_import_context < result.import_contexts.len {
+				result.import_contexts[cur_import_context][node.typ_text()] = node.value
+			}
+			continue
+		}
+		decl_file := if source_file := a.source_files[node.pos.id] {
+			source_file.name
+		} else {
+			cur_file
+		}
+		decl_module := tc.file_modules[decl_file] or { cur_module }
+		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
+		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+			result.cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
+		}
+		if node.kind == .struct_decl {
+			name_id := node.source_value_id()
+			full_name := markused_qualify_source_type(decl_module, name_id)
+			info := StructDeclInfo{
+				node_id:        flat.NodeId(node_idx)
+				module:         decl_module
+				import_context: decl_import_context
+			}
+			result.struct_decls[full_name] = info
+			if name_id !in result.struct_decls {
+				result.struct_decls[name_id] = info
+			}
+			continue
+		}
+		if node.kind == .const_decl || node.kind == .global_decl {
+			for i in 0 .. node.children_count {
+				field_id := a.child(&node, i)
+				field := a.node(field_id)
+				if field.kind != .const_field || field.children_count == 0 {
+					continue
+				}
+				info := ConstDeclInfo{
+					expr_id:        a.child(field, 0)
+					module:         decl_module
+					import_context: decl_import_context
+				}
+				result.const_decls[field.value] = info
+				add_candidate_suffix(mut result.const_name_suffixes, field.value)
+				full_name := qualify_fn(decl_module, field.value)
+				if full_name != field.value {
+					result.const_decls[full_name] = info
+					add_candidate_suffix(mut result.const_name_suffixes, full_name)
+				}
+			}
+			continue
+		}
+		if node.kind == .fn_decl || node.kind == .c_fn_decl {
+			decl_qname := qualify_fn(decl_module, node.value)
+			fn_decl_file := tc.fn_type_files[decl_qname] or { decl_file }
+			fn_decl_module := tc.fn_type_modules[decl_qname] or { decl_module }
+			if fn_decl_module != decl_module {
+				result.convergence_index_complete = false
+			}
+			fn_decl_import_context := import_context_by_file[fn_decl_file] or {
+				decl_import_context
+			}
+			if collect_body_metadata {
+				result.body_ids << node_idx
+				result.body_modules << fn_decl_module
+				result.body_import_contexts << fn_decl_import_context
+			}
+			has_dot := node.value.index_u8(`.`) >= 0
+			can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
+			if trace_markused {
+				result.fn_count++
+				if has_dot {
+					result.fn_with_dot++
+					if result.fn_with_dot <= 5 {
+						eprintln('  fn with dot: "${node.value}"')
+					}
+				}
+			}
+			info := FnDeclInfo{
+				node_id:           flat.NodeId(node_idx)
+				module:            fn_decl_module
+				import_context:    fn_decl_import_context
+				positional_params: markused_positional_param_count(a, &node)
+			}
+			add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info)
+			if can_suffix_match {
+				add_candidate_suffix(mut result.fn_name_suffixes, node.value)
+			}
+			lowered_name := markused_c_name(node.value)
+			if lowered_name != node.value {
+				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_name, info)
+				if can_suffix_match {
+					add_candidate_suffix(mut result.fn_name_suffixes, lowered_name)
+				}
+			}
+			qname := qualify_fn(fn_decl_module, node.value)
+			if markused_fn_has_attribute(a, node_idx, 'markused') {
+				result.marked_roots << qname
+			}
+			// Cached headers retain bodies only when the warm pass must recreate
+			// generated specializations or closure support symbols. Root those bodies
+			// even though their ordinary caller can live entirely in another cached
+			// object and therefore be invisible to the program AST.
+			cached_header_body := fn_decl_file.ends_with('.vh') && !node.is_mut
+			if cache_mode && node.kind == .fn_decl && node.generic_params().len == 0
+				&& (cache_modules[fn_decl_module] || cached_header_body) {
+				result.cache_roots << qname
+			}
+			if qname != node.value {
+				add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, qname, info)
+				if can_suffix_match {
+					add_candidate_suffix(mut result.fn_name_suffixes, qname)
+				}
+				lowered_qname := markused_c_name(qname)
+				if lowered_qname != qname {
+					add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, lowered_qname, info)
+					if can_suffix_match {
+						add_candidate_suffix(mut result.fn_name_suffixes, lowered_qname)
+					}
+				}
+			}
+			// Build result.suffix_map entries
+			if has_dot && can_suffix_match {
+				if trace_markused {
+					result.contains2_total++
+				}
+				short := node.value.all_after_last('.')
+				add_suffix_candidate(mut result.suffix_map, short, node.value)
+				if qname != node.value {
+					add_suffix_candidate(mut result.suffix_map, short, qname)
+				}
+			}
+			if qname != node.value && qname.index_u8(`.`) >= 0 && can_suffix_match {
+				short := qname.all_after_last('.')
+				add_suffix_candidate(mut result.suffix_map, short, qname)
+			}
+			if fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v') {
+				result.c_interface_roots << node.value
+				if qname != node.value {
+					result.c_interface_roots << qname
+				}
+				lowered_qname := markused_c_name(qname)
+				if lowered_qname != qname {
+					result.c_interface_roots << lowered_qname
+				}
+			}
+		}
+	}
+	return result
+}
+
+// MarkusedDeclCache lets a later reachability pass reuse the declaration scan
+// of an earlier one (see mark_used_with_generic_usage_cached). The indexes live
+// in the cache's own arena until `release`.
+@[heap]
+pub struct MarkusedDeclCache {
+mut:
+	scope               voidptr
+	ready               bool
+	ast                 voidptr
+	node_count          int
+	children_count      int
+	source_files_len    int
+	file_modules_len    int
+	fn_type_files_len   int
+	fn_type_modules_len int
+	top_level           []i32
+	scan                MarkusedDeclScan
+}
+
+// new_markused_decl_cache returns an empty declaration-scan cache.
+pub fn new_markused_decl_cache() &MarkusedDeclCache {
+	return &MarkusedDeclCache{}
+}
+
+// release frees the cached declaration indexes. The caller must have copied
+// every reachability result that can name their strings.
+pub fn (mut cache MarkusedDeclCache) release() {
+	scope := cache.scope
+	cache.scope = unsafe { nil }
+	// `matches` checks this first; the stale index headers are never read.
+	cache.ready = false
+	markused_worker_scope_free(scope)
+}
+
+// matches reports whether the scan inputs are unchanged: no node, child or
+// top-level declaration was added, and no file module or function file was
+// registered. Semantic body checks never rewrite those inputs in place.
 @[direct_array_access]
-fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool, allow_trivial_literal_output bool, prepared &PreparedMarkusedDecls, library_body_checker voidptr, library_check_parallel bool) (map[string]bool, bool) {
+fn (cache &MarkusedDeclCache) matches(a &flat.FlatAst, tc &types.TypeChecker) bool {
+	if !cache.ready || cache.ast != voidptr(a) || cache.node_count != a.nodes.len
+		|| cache.children_count != a.children.len || cache.source_files_len != a.source_files.len
+		|| cache.file_modules_len != tc.file_modules.len
+		|| cache.fn_type_files_len != tc.fn_type_files.len
+		|| cache.fn_type_modules_len != tc.fn_type_modules.len
+		|| cache.top_level.len != tc.top_level_idx.len {
+		return false
+	}
+	for i, idx in cache.top_level {
+		if tc.top_level_idx[i] != idx {
+			return false
+		}
+	}
+	return true
+}
+
+// markused_decl_scan returns the declaration indexes for this pass, reusing or
+// filling `decl_cache` when the caller supplied one.
+fn markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode bool, cache_modules map[string]bool, decl_cache &MarkusedDeclCache) MarkusedDeclScan {
+	if isnil(decl_cache) || cache_mode || cache_modules.len > 0 {
+		return build_markused_decl_scan(a, tc, cache_mode, cache_modules)
+	}
+	mut cache := unsafe { decl_cache }
+	if cache.matches(a, tc) {
+		return cache.scan
+	}
+	if cache.ready {
+		// The declarations changed under an earlier pass. Its results were
+		// already copied out of the cache arena; index this pass afresh.
+		cache.release()
+	}
+	scope := markused_worker_scope_begin(true)
+	cache.scan = build_markused_decl_scan(a, tc, false, map[string]bool{})
+	cache.top_level = tc.top_level_idx.clone()
+	markused_worker_scope_leave(scope)
+	cache.scope = scope
+	cache.ast = voidptr(a)
+	cache.node_count = a.nodes.len
+	cache.children_count = a.children.len
+	cache.source_files_len = a.source_files.len
+	cache.file_modules_len = tc.file_modules.len
+	cache.fn_type_files_len = tc.fn_type_files.len
+	cache.fn_type_modules_len = tc.fn_type_modules.len
+	cache.ready = true
+	return cache.scan
+}
+
+@[direct_array_access]
+fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool, allow_trivial_literal_output bool, prepared &PreparedMarkusedDecls, library_body_checker voidptr, library_check_parallel bool, decl_cache &MarkusedDeclCache) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
 	trivial_literal_output := allow_trivial_literal_output && !cache_mode && cache_modules.len == 0
 		&& test_files.len == 0 && !all_functions
@@ -317,28 +641,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	if rt_scan_parallel {
 		rt_scan_threads << spawn markused_rt_helpers_thread(mut rt_scan)
 	}
-	mut cur_module := ''
-	mut cur_file := ''
-	mut import_contexts := []map[string]string{cap: 256}
-	import_contexts << map[string]string{}
-	mut import_context_by_file := map[string]int{}
-	mut cur_import_context := 0
+	mut import_contexts := []map[string]string{}
 	mut fn_decls := map[string]FnDeclInfo{}
 	mut fn_decl_lists := map[string][]FnDeclInfo{}
 	mut struct_decls := map[u32]StructDeclInfo{}
 	mut const_decls := map[string]ConstDeclInfo{}
 	mut fn_name_suffixes := map[string]bool{}
 	mut const_name_suffixes := map[string]bool{}
-	// The checker already knows the declaration cardinalities. Reserve once here
-	// instead of repeatedly growing the alias-heavy reachability indexes.
-	if !use_prepared {
-		fn_decls.reserve(u32(tc.fn_ret_types.len))
-		fn_decl_lists.reserve(u32(tc.fn_ret_types.len))
-		struct_decls.reserve(u32(tc.structs.len * 2))
-		const_decls.reserve(u32(tc.const_types.len))
-		fn_name_suffixes.reserve(u32(tc.fn_ret_types.len))
-		const_name_suffixes.reserve(u32(tc.const_types.len))
-	}
 	mut generic_type_bases := map[u32]bool{}
 	if detect_reachable_generics {
 		for node_idx in 0 .. a.nodes.len {
@@ -352,18 +661,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 
 	// Reverse index: short name (after last '.') -> list of full qualified names
 	mut suffix_map := map[string][]string{}
-	if !use_prepared {
-		suffix_map.reserve(u32(tc.fn_ret_types.len / 2))
-	}
 
 	// Every fn_decl/c_fn_decl node (and its module), in AST order: the worklist
 	// for the parallel body-call precollection below.
-	mut body_ids := []int{cap: 8192}
-	mut body_modules := []string{cap: 8192}
-	mut body_import_contexts := []int{cap: 8192}
-	// Body-call metadata feeds the reachability BFS's discovery of lowering-introduced
-	// implicit helpers, which is required on every path (not just generics detection).
-	collect_body_metadata := true
+	mut body_ids := []int{}
+	mut body_modules := []string{}
+	mut body_import_contexts := []int{}
 	mut cache_roots := []string{}
 	mut cached_header_enum_str_roots := []u32{}
 	mut c_interface_roots := []string{}
@@ -396,168 +699,29 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut fn_with_dot := 0
 	mut contains2_total := 0
 	if !use_prepared {
-		for node_idx in tc.top_level_idx {
-			node := a.nodes[node_idx]
-			if node.kind == .file {
-				cur_file = node.value
-				cur_module = ''
-				import_contexts << markused_top_level_file_imports(a, node)
-				cur_import_context = import_contexts.len - 1
-				import_context_by_file[cur_file] = cur_import_context
-				continue
-			}
-			if node.kind == .module_decl {
-				cur_module = node.value
-				continue
-			}
-			if node.kind == .import_decl {
-				if cur_import_context >= 0 && cur_import_context < import_contexts.len {
-					import_contexts[cur_import_context][node.typ_text()] = node.value
-				}
-				continue
-			}
-			decl_file := if source_file := a.source_files[node.pos.id] {
-				source_file.name
-			} else {
-				cur_file
-			}
-			decl_module := tc.file_modules[decl_file] or { cur_module }
-			decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
-			if node.kind == .enum_decl && decl_file.ends_with('.vh') {
-				cached_header_enum_str_roots << markused_qualify_source_type(decl_module, node.source_value_id())
-			}
-			if node.kind == .struct_decl {
-				name_id := node.source_value_id()
-				full_name := markused_qualify_source_type(decl_module, name_id)
-				info := StructDeclInfo{
-					node_id:        flat.NodeId(node_idx)
-					module:         decl_module
-					import_context: decl_import_context
-				}
-				struct_decls[full_name] = info
-				if name_id !in struct_decls {
-					struct_decls[name_id] = info
-				}
-				continue
-			}
-			if node.kind == .const_decl || node.kind == .global_decl {
-				for i in 0 .. node.children_count {
-					field_id := a.child(&node, i)
-					field := a.node(field_id)
-					if field.kind != .const_field || field.children_count == 0 {
-						continue
-					}
-					info := ConstDeclInfo{
-						expr_id:        a.child(field, 0)
-						module:         decl_module
-						import_context: decl_import_context
-					}
-					const_decls[field.value] = info
-					add_candidate_suffix(mut const_name_suffixes, field.value)
-					full_name := qualify_fn(decl_module, field.value)
-					if full_name != field.value {
-						const_decls[full_name] = info
-						add_candidate_suffix(mut const_name_suffixes, full_name)
-					}
-				}
-				continue
-			}
-			if node.kind == .fn_decl || node.kind == .c_fn_decl {
-				decl_qname := qualify_fn(decl_module, node.value)
-				fn_decl_file := tc.fn_type_files[decl_qname] or { decl_file }
-				fn_decl_module := tc.fn_type_modules[decl_qname] or { decl_module }
-				if fn_decl_module != decl_module {
-					convergence_index_complete = false
-				}
-				fn_decl_import_context := import_context_by_file[fn_decl_file] or {
-					decl_import_context
-				}
-				if collect_body_metadata {
-					body_ids << node_idx
-					body_modules << fn_decl_module
-					body_import_contexts << fn_decl_import_context
-				}
-				has_dot := node.value.index_u8(`.`) >= 0
-				can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
-				if trace_markused {
-					fn_count++
-					if has_dot {
-						fn_with_dot++
-						if fn_with_dot <= 5 {
-							eprintln('  fn with dot: "${node.value}"')
-						}
-					}
-				}
-				info := FnDeclInfo{
-					node_id:           flat.NodeId(node_idx)
-					module:            fn_decl_module
-					import_context:    fn_decl_import_context
-					positional_params: markused_positional_param_count(a, &node)
-				}
-				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, node.value, info)
-				if can_suffix_match {
-					add_candidate_suffix(mut fn_name_suffixes, node.value)
-				}
-				lowered_name := markused_c_name(node.value)
-				if lowered_name != node.value {
-					add_fn_decl_info(mut fn_decls, mut fn_decl_lists, lowered_name, info)
-					if can_suffix_match {
-						add_candidate_suffix(mut fn_name_suffixes, lowered_name)
-					}
-				}
-				qname := qualify_fn(fn_decl_module, node.value)
-				if markused_fn_has_attribute(a, node_idx, 'markused') {
-					marked_roots << qname
-				}
-				// Cached headers retain bodies only when the warm pass must recreate
-				// generated specializations or closure support symbols. Root those bodies
-				// even though their ordinary caller can live entirely in another cached
-				// object and therefore be invisible to the program AST.
-				cached_header_body := fn_decl_file.ends_with('.vh') && !node.is_mut
-				if cache_mode && node.kind == .fn_decl && node.generic_params().len == 0
-					&& (cache_modules[fn_decl_module] || cached_header_body) {
-					cache_roots << qname
-				}
-				if qname != node.value {
-					add_fn_decl_info(mut fn_decls, mut fn_decl_lists, qname, info)
-					if can_suffix_match {
-						add_candidate_suffix(mut fn_name_suffixes, qname)
-					}
-					lowered_qname := markused_c_name(qname)
-					if lowered_qname != qname {
-						add_fn_decl_info(mut fn_decls, mut fn_decl_lists, lowered_qname, info)
-						if can_suffix_match {
-							add_candidate_suffix(mut fn_name_suffixes, lowered_qname)
-						}
-					}
-				}
-				// Build suffix_map entries
-				if has_dot && can_suffix_match {
-					if trace_markused {
-						contains2_total++
-					}
-					short := node.value.all_after_last('.')
-					add_suffix_candidate(mut suffix_map, short, node.value)
-					if qname != node.value {
-						add_suffix_candidate(mut suffix_map, short, qname)
-					}
-				}
-				if qname != node.value && qname.index_u8(`.`) >= 0 && can_suffix_match {
-					short := qname.all_after_last('.')
-					add_suffix_candidate(mut suffix_map, short, qname)
-				}
-				if fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v') {
-					c_interface_roots << node.value
-					if qname != node.value {
-						c_interface_roots << qname
-					}
-					lowered_qname := markused_c_name(qname)
-					if lowered_qname != qname {
-						c_interface_roots << lowered_qname
-					}
-				}
-			}
+		scan := markused_decl_scan(a, tc, cache_mode, cache_modules, decl_cache)
+		// The scan's indexes are read-only below; share them instead of copying.
+		unsafe {
+			fn_decls = scan.fn_decls
+			fn_decl_lists = scan.fn_decl_lists
+			struct_decls = scan.struct_decls
+			const_decls = scan.const_decls
+			fn_name_suffixes = scan.fn_name_suffixes
+			const_name_suffixes = scan.const_name_suffixes
+			suffix_map = scan.suffix_map
+			import_contexts = scan.import_contexts
+			body_ids = scan.body_ids
+			body_modules = scan.body_modules
+			body_import_contexts = scan.body_import_contexts
+			cache_roots = scan.cache_roots
+			cached_header_enum_str_roots = scan.cached_header_enum_str_roots
+			c_interface_roots = scan.c_interface_roots
+			marked_roots = scan.marked_roots
 		}
+		convergence_index_complete = scan.convergence_index_complete
+		fn_count = scan.fn_count
+		fn_with_dot = scan.fn_with_dot
+		contains2_total = scan.contains2_total
 	}
 
 	// BFS from main
@@ -2662,18 +2826,15 @@ fn markused_interface_param_gate(tc &types.TypeChecker) map[string]bool {
 
 fn markused_selective_alias_targets(tc &types.TypeChecker) map[u32][]u32 {
 	mut result := map[u32][]u32{}
-	for key, candidates in tc.file_selective_imports {
-		mut name_id := u32(0)
-		for candidate in candidates {
-			candidate_id := flat.source_type_existing_id(candidate) or { continue }
-			target := tc.type_aliases.type_id(candidate_id) or { continue }
-			if name_id == 0 {
-				name_id = flat.source_type_id(key.all_after_last('\n'))
-			}
-			mut targets := result[name_id]
-			if target !in targets {
-				targets << target
-				result[name_id] = targets
+	for _, info in tc.selective_import_files {
+		for name_id, candidates in info.selective_imports {
+			for candidate_id in candidates {
+				target := tc.type_aliases.type_id(candidate_id) or { continue }
+				mut targets := result[name_id]
+				if target !in targets {
+					targets << target
+					result[name_id] = targets
+				}
 			}
 		}
 	}
@@ -3043,7 +3204,6 @@ mut:
 	ierror_equality_cache      map[u32]int
 	interface_dispatch         InterfaceDispatchScan
 	map_type_cache             map[u32]int
-	unknown_map_type_cache     map[string]int
 	auto_str_skipped_fields    map[u32]&MarkusedSkippedFields
 	stringification_seen       map[string]&StringifiedTypes
 	stringification_node_count int
@@ -3791,16 +3951,9 @@ fn (mut scan RuntimeHelpersScan) type_needs_map_runtime(typ types.Type, tc &type
 		else {}
 	}
 	if typ is types.Unknown {
-		if cached := scan.unknown_map_type_cache[typ.reason] {
-			return cached == 1
-		}
-		// Unknown reasons are provenance bytes, distinct from source spelling IDs.
-		scan.unknown_map_type_cache[typ.reason] = 2
 		// Markused precedes monomorphization. A reached generic value may
 		// become a map even when its placeholder has no concrete type yet.
-		needed := typ.reason.starts_with('generic placeholder ')
-		scan.unknown_map_type_cache[typ.reason] = if needed { 1 } else { -1 }
-		return needed
+		return typ.generic
 	}
 	key := typ.source_type_id()
 	if cached := scan.map_type_cache[key] {
@@ -4387,7 +4540,7 @@ fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeCh
 			// Before monomorphization an implicit interface implementer can still
 			// expose its declaration's generic field type. Keep both float widths
 			// until the concrete field selected by the boxer is available.
-			if !tc.nofloat && typ.reason.starts_with('generic placeholder ') {
+			if !tc.nofloat && typ.generic {
 				enqueue_stringified_primitive_helpers(flat.source_type_f32, mut used, mut queue)
 				enqueue_stringified_primitive_helpers(flat.source_type_f64, mut used, mut queue)
 			}
@@ -4673,13 +4826,13 @@ fn generic_stringification_type_candidates(type_name_id u32, cur_module string, 
 			continue
 		}
 		mut parts := [base_candidate]
-		parts << flat.TypeTextList.from_names(params).ids
+		parts << params
 		candidates << flat.source_type_composition(.generic, parts)
 	}
 	return candidates
 }
 
-fn generic_stringification_params(base_candidate_id u32, tc &types.TypeChecker) ?[]string {
+fn generic_stringification_params(base_candidate_id u32, tc &types.TypeChecker) ?[]u32 {
 	if params := tc.struct_generic_params[base_candidate_id] {
 		return params
 	}
@@ -4991,9 +5144,11 @@ fn (c &CallCollector) generic_fn_value_name(node &flat.Node, base &flat.Node, cu
 			return if c.is_known_fn_name(qname) { qname } else { base.value }
 		}
 		source := c.a.source_files[node.pos.id] or { return none }
-		for candidate in c.tc.file_selective_imports['${source.name}\n${base.value}'] or {
+		for candidate_id in c.tc.file_selective_import_ids_by_name(source.name, base.value) or {
 			return none
 		} {
+			// Generic functions are keyed by declaration names.
+			candidate := flat.source_type_name(candidate_id)
 			if candidate in c.tc.fn_generic_params {
 				return candidate
 			}
@@ -6017,7 +6172,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 						// `h.first[int]`: the method the check resolved it to (see
 						// types.TypeChecker.check_generic_method_value).
 						if name := c.tc.resolved_call_name(child_id) {
-							if (c.tc.fn_generic_params[name] or { []string{} }).len > 0 {
+							if (c.tc.fn_generic_params[name] or { []u32{} }).len > 0 {
 								calls << name
 								uses_generics = true
 							}
@@ -7748,7 +7903,7 @@ fn (c &CallCollector) collect_generic_alias_operator_usage(call &flat.Node, reso
 
 		inferred := c.infer_alias_generic_args(call, candidate, param_texts_source_ids.clone(), generic_params,
 			cur_module, imports, local_values, local_types)
-		if inferred.ids.len == 0 {
+		if inferred.len == 0 {
 			continue
 		}
 		specialized_locals := c.generic_alias_local_type_names(fn_node, info.module, imports, inferred)
@@ -7808,11 +7963,11 @@ fn (c &CallCollector) generic_candidate_is_generic(name string) bool {
 	return false
 }
 
-fn (c &CallCollector) generic_fn_param_names(name string, fn_node &flat.Node) []string {
+fn (c &CallCollector) generic_fn_param_names(name string, fn_node &flat.Node) []u32 {
 	if params := c.tc.fn_generic_params[name] {
 		return params
 	}
-	return fn_node.generic_params().clone()
+	return types.generic_param_ids(fn_node.generic_params())
 }
 
 fn (c &CallCollector) generic_fn_param_type_texts(name string, fn_node &flat.Node) []u32 {
@@ -7829,8 +7984,8 @@ fn (c &CallCollector) generic_fn_param_type_texts(name string, fn_node &flat.Nod
 	return result
 }
 
-fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, param_texts_ids []u32, generic_params []string, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings) flat.TypeTextBindings {
-	mut inferred := c.new_local_types()
+fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, param_texts_ids []u32, generic_params []u32, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings) map[u32]u32 {
+	mut inferred := map[u32]u32{}
 	if call.children_count == 0 || param_texts_ids.len == 0 || generic_params.len == 0 {
 		return inferred
 	}
@@ -7865,7 +8020,7 @@ fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, 
 	return inferred
 }
 
-fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern_id u32, arg_id flat.NodeId, generic_params []string, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings, mut inferred flat.TypeTextBindings) {
+fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern_id u32, arg_id flat.NodeId, generic_params []u32, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings, mut inferred map[u32]u32) {
 	arg := c.a.node(arg_id)
 	if flat.source_type_shape(pattern_id).has(.variadic) && arg.kind == .prefix && arg.value == '...'
 		&& arg.children_count > 0 {
@@ -7876,20 +8031,20 @@ fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern_id u3
 	if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
 		markused_infer_alias_generic_type(pattern_id, actual, generic_params, mut inferred)
 	}
-	if inferred.ids.len < generic_params.len {
+	if inferred.len < generic_params.len {
 		actual_text_source_id := c.top_level_expr_type_name(arg_id, cur_module, imports, local_values,
 			local_types, false)
 		if actual_text_source_id != 0 && actual_text_source_id != flat.source_type_unknown {
 			markused_infer_generic_type_text(pattern_id, actual_text_source_id, generic_params, mut inferred)
 		}
 	}
-	if inferred.ids.len < generic_params.len {
+	if inferred.len < generic_params.len {
 		if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
 			for generic, concrete in c.tc.infer_generic_reachability_type_args(fn_name,
 				pattern_id, actual, generic_params) {
-				if !inferred.contains(generic) && concrete != flat.source_type_unknown
+				if generic !in inferred && concrete != flat.source_type_unknown
 					&& concrete != flat.source_type_generic {
-					inferred.set_id(generic, concrete)
+					inferred[generic] = concrete
 				}
 			}
 		}
@@ -7939,7 +8094,7 @@ fn (c &CallCollector) generic_factory_short_struct_field_type_text(fn_name strin
 			continue
 		}
 		params := c.tc.struct_generic_params[candidate] or {
-			c.tc.struct_generic_params[base] or { []string{} }
+			c.tc.struct_generic_params[base] or { []u32{} }
 		}
 		return types.subst_generic_text(field_type, args, params)
 	}
@@ -8099,11 +8254,11 @@ fn markused_generic_call_arg_value(a &flat.FlatAst, id flat.NodeId) flat.NodeId 
 	return id
 }
 
-fn markused_infer_alias_generic_type(param_id u32, actual types.Type, generic_params []string, mut inferred flat.TypeTextBindings) {
-	markused_infer_alias_generic_type_inner(param_id, actual, flat.TypeTextList.from_names(generic_params).ids, mut inferred)
+fn markused_infer_alias_generic_type(param_id u32, actual types.Type, generic_params []u32, mut inferred map[u32]u32) {
+	markused_infer_alias_generic_type_inner(param_id, actual, generic_params, mut inferred)
 }
 
-fn markused_infer_alias_generic_type_inner(param_id u32, actual types.Type, generic_params []u32, mut inferred flat.TypeTextBindings) {
+fn markused_infer_alias_generic_type_inner(param_id u32, actual types.Type, generic_params []u32, mut inferred map[u32]u32) {
 	clean := markused_trimmed_source_type(param_id)
 	if clean == 0 { return }
 	shape := flat.source_type_shape(clean)
@@ -8169,25 +8324,23 @@ fn markused_infer_alias_generic_type_inner(param_id u32, actual types.Type, gene
 		return
 	}
 	if clean in generic_params && !markused_type_has_unknown(actual) {
-		name := flat.source_type_name(clean)
-		if !inferred.contains(name) {
+		if clean !in inferred {
 			type_name := resolve_type_name(actual)
-			if type_name != 0 { inferred.set_id(name, type_name) }
+			if type_name != 0 { inferred[clean] = type_name }
 		}
 	}
 }
 
-fn markused_infer_generic_type_text(pattern_id u32, actual_id u32, generic_params []string, mut inferred flat.TypeTextBindings) {
-	markused_infer_generic_type_inner(pattern_id, actual_id, flat.TypeTextList.from_names(generic_params).ids, mut inferred)
+fn markused_infer_generic_type_text(pattern_id u32, actual_id u32, generic_params []u32, mut inferred map[u32]u32) {
+	markused_infer_generic_type_inner(pattern_id, actual_id, generic_params, mut inferred)
 }
 
-fn markused_infer_generic_type_inner(pattern_id u32, actual_id u32, generic_params []u32, mut inferred flat.TypeTextBindings) {
+fn markused_infer_generic_type_inner(pattern_id u32, actual_id u32, generic_params []u32, mut inferred map[u32]u32) {
 	clean := markused_trimmed_source_type(pattern_id)
 	value := markused_trimmed_source_type(actual_id)
 	if clean == 0 || value == 0 { return }
 	if clean in generic_params {
-		name := flat.source_type_name(clean)
-		if !inferred.contains(name) { inferred.set_id(name, value) }
+		if clean !in inferred { inferred[clean] = value }
 		return
 	}
 	shape := flat.source_type_shape(clean)
@@ -8236,7 +8389,7 @@ fn markused_infer_generic_type_inner(pattern_id u32, actual_id u32, generic_para
 	}
 }
 
-fn (c &CallCollector) generic_alias_local_type_names(fn_node &flat.Node, cur_module string, imports map[string]string, inferred flat.TypeTextBindings) flat.TypeTextBindings {
+fn (c &CallCollector) generic_alias_local_type_names(fn_node &flat.Node, cur_module string, imports map[string]string, inferred map[u32]u32) flat.TypeTextBindings {
 	mut result := c.new_local_types()
 	mut stack := []flat.NodeId{cap: int(fn_node.children_count)}
 	for i in 0 .. fn_node.children_count {
@@ -8285,10 +8438,10 @@ fn (c &CallCollector) generic_alias_local_type_names(fn_node &flat.Node, cur_mod
 	return result
 }
 
-fn markused_substitute_alias_generics(type_id u32, inferred flat.TypeTextBindings) u32 {
+fn markused_substitute_alias_generics(type_id u32, inferred map[u32]u32) u32 {
 	clean := markused_trimmed_source_type(type_id)
-	if inferred.ids.len > 0 {
-		if replacement := inferred.type_id(flat.source_type_name(clean)) { return replacement }
+	if inferred.len > 0 {
+		if replacement := inferred[clean] { return replacement }
 	}
 	shape := flat.source_type_shape(clean)
 	for i, wrapper in [flat.SourceTypeShape.pointer, .mutable_type, .array_type, .variadic,
@@ -8952,7 +9105,7 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 			cur_module, imports)
 	}
 	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
-		generic_params := c.tc.fn_generic_params[candidate] or { []string{} }
+		generic_params := c.tc.fn_generic_params[candidate] or { []u32{} }
 		if generic_params.len == 0 {
 			if receiver_type != 0 && c.generic_receiver_method_name_is_known(candidate) {
 				return_type_source_id_3 := c.generic_factory_return_type_text(candidate, cur_module,
@@ -8982,7 +9135,7 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 		mut args := []u32{cap: generic_params.len}
 		mut complete := true
 		for param in generic_params {
-			if actual_source_id := inferred.type_id(param) {
+			if actual_source_id := inferred[param] {
 				args << c.generic_factory_qualified_type_text(actual_source_id, call_id, cur_module,
 					imports)
 			} else {
@@ -9820,6 +9973,9 @@ mut:
 struct DeclNameCache {
 mut:
 	modules map[string]&DeclNameResults
+	// markused_c_name results of the receiver-method names this collector
+	// spells; that function depends on its argument only.
+	c_names map[string]string
 }
 
 fn (c &CallCollector) name_has_candidate_decl(name string, cur_module string, imports map[string]string, include_consts bool) bool {
@@ -10241,7 +10397,7 @@ fn (c &CallCollector) typed_receiver_method_name_uncached(type_name_id u32, meth
 		if c.is_known_fn_name(candidate) {
 			return candidate
 		}
-		lowered := markused_c_name(candidate)
+		lowered := c.cached_c_name(candidate)
 		if lowered != candidate && c.is_known_fn_name(lowered) {
 			return lowered
 		}
@@ -10266,7 +10422,7 @@ fn (c &CallCollector) collection_alias_receiver_method_name(type_name_id u32, me
 		} else {
 			return none
 		}
-		if alias_id in aliases || (c.tc.type_alias_generic_params[alias_id] or { []string{} }).len > 0 {
+		if alias_id in aliases || (c.tc.type_alias_generic_params[alias_id] or { []u32{} }).len > 0 {
 			return none
 		}
 		aliases << alias_id
@@ -10541,10 +10697,26 @@ fn markused_unqualified_receiver_type_name(type_id u32) u32 {
 
 fn (c &CallCollector) add_typed_receiver_method_name(method_name string, mut calls []string) {
 	calls << method_name
-	lowered := markused_c_name(method_name)
+	lowered := c.cached_c_name(method_name)
 	if lowered != method_name {
 		calls << lowered
 	}
+}
+
+// cached_c_name memoizes markused_c_name for the method names that repeat across
+// the bodies of one pass. The cache belongs to this collector (each worker fork
+// has its own), like the declaration-name results beside it.
+fn (c &CallCollector) cached_c_name(name string) string {
+	if isnil(c.decl_name_cache) {
+		return markused_c_name(name)
+	}
+	mut cache := unsafe { c.decl_name_cache }
+	if lowered := cache.c_names[name] {
+		return lowered
+	}
+	lowered := markused_c_name(name)
+	cache.c_names[name] = lowered
+	return lowered
 }
 
 fn (c &CallCollector) value_type_name(name string, cur_module string, imports map[string]string) u32 {
@@ -10611,12 +10783,12 @@ fn (c &CallCollector) value_name_candidates(name string, cur_module string, impo
 
 // Resolve qualified identifiers throughout a type without changing its container syntax.
 fn (c &CallCollector) generic_factory_qualified_type_text(text_id u32, id flat.NodeId, cur_module string, imports map[string]string) u32 {
-	return c.qualified_type_text_preserving_params(text_id, id, cur_module, imports, []string{})
+	return c.qualified_type_text_preserving_params(text_id, id, cur_module, imports, []u32{})
 }
 
-fn (c &CallCollector) qualified_type_text_preserving_params(text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_params []string) u32 {
+fn (c &CallCollector) qualified_type_text_preserving_params(text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_params []u32) u32 {
 	syntax := flat.source_type_syntax(text_id)
-	param_ids := flat.TypeTextList.from_names(generic_params).ids
+	param_ids := generic_params
 	mut parts := []u32{cap: syntax.symbol_parts().len}
 	mut changed := false
 	for i, part in syntax.symbol_parts() {
@@ -10872,7 +11044,7 @@ fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info Struct
 	node := c.a.node(info.node_id)
 	imports := c.imports(info.import_context)
 	_, generic_args, _ := markused_generic_app_parts(struct_name_id)
-	generic_params := node.generic_params()
+	generic_params := types.generic_param_ids(node.generic_params())
 	for i in 0 .. node.children_count {
 		field_id := c.a.child(node, i)
 		field := c.a.node(field_id)
@@ -10918,7 +11090,7 @@ fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info Struct
 }
 
 // specialized_struct_default_type substitutes arguments without rebasing their module ownership.
-fn (c &CallCollector) specialized_struct_default_type(type_text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_args_ids []u32, generic_params []string) types.Type {
+fn (c &CallCollector) specialized_struct_default_type(type_text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_args_ids []u32, generic_params []u32) types.Type {
 	if generic_args_ids.len == 0 || generic_args_ids.len != generic_params.len {
 		return c.value_type_in_source(type_text_id, c.a.node(id), imports)
 	}

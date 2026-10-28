@@ -121,7 +121,7 @@ fn test_interface_concrete_method_keys_include_dispatch_methods() {
 fn test_generic_interface_signature_substitutes_named_return_types() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.interface_generic_params[flat.source_type_id('BoxedValue')] = ['T']
+	tc.interface_generic_params[flat.source_type_id('BoxedValue')] = generic_param_ids(['T'])
 	tc.fn_param_types['BoxedValue.get'] = [
 		Type(Interface{
 			name_id: flat.source_type_id('BoxedValue[T]')
@@ -144,7 +144,7 @@ fn test_generic_interface_signature_substitutes_named_return_types() {
 
 	interface_type := tc.substitute_generic_type(Type(Interface{
 		name_id: flat.source_type_id('BoxedValue[T]')
-	}), flat.TypeTextList.from_names(['int']).ids, ['T'])
+	}), flat.TypeTextList.from_names(['int']).ids, generic_param_ids(['T']))
 	assert interface_type.name() == 'BoxedValue[int]'
 }
 
@@ -211,7 +211,7 @@ fn test_prepared_interface_requirements_keep_exact_source_spelling_keys() {
 	// Preparation publishes both the source table spelling and its resolved
 	// metadata name; the concrete application remains an exact additional key.
 	tc.interface_names[flat.source_type_id('pkg.Contract[int]')] = true
-	tc.interface_generic_params[flat.source_type_id('pkg.Contract')] = ['T']
+	tc.interface_generic_params[flat.source_type_id('pkg.Contract')] = generic_param_ids(['T'])
 	tc.interface_embeds.set(flat.source_type_id('pkg.Contract'), ['pkg.Parent'])
 	tc.interface_abstract_methods[flat.source_type_id('pkg.Parent')] = ['parent']
 	tc.interface_abstract_methods[flat.source_type_id('pkg.Contract')] = ['required']
