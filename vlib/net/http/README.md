@@ -194,6 +194,15 @@ fn client_ip(req http.Request) string {
 }
 ```
 
+## Content type detection
+
+`http.detect_content_type(bytes)` recognizes common image, audio, video, document and archive
+signatures. It examines at most 512 bytes, plus up to three bytes to finish a UTF-8 sequence
+crossing that boundary. Text without a recognized document signature returns
+`text/plain; charset=utf-8`; other unknown content returns `application/octet-stream`.
+Use sniffing only when no explicit content type is available. In particular, serving sniffed
+HTML from your application origin permits that content to run scripts.
+
 ## Cookies, headers and multipart
 
 Header value validation also works in `-check-overflow` builds: permitted TAB bytes are kept.
@@ -223,6 +232,11 @@ string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 `http.parse_form` decodes URL-encoded fields only; it does not detect or decode JSON.
 Select a JSON decoder by the request's content type when handling JSON bodies directly.
 [`veb`](../../veb) makes JSON object fields available in its `ctx.form` map.
+
+Uploaded file names are untrusted input. `http.safe_filename(name)` returns the last path
+component, treating both `/` and `\` as separators, and returns an error for an empty
+component, `.`, `..`, or a component containing NUL. Check the returned name against your
+destination directory and platform's file naming rules before writing the upload.
 
 A `Header` holds at most `http.max_headers` (50) fields. `add_custom` and `set_custom`
 return an `http.HeaderLimitError` for a field that does not fit, and so do

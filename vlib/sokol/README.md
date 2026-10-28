@@ -9,6 +9,15 @@ Each `.h` file in the sokol source code is well-documented as can be seen here:
 
 [sokol_audio.h](https://github.com/floooh/sokol/blob/master/sokol_audio.h)
 
+## Native input and pixel format values
+
+`gfx.PixelFormatInfo` includes `compressed` and `bytes_per_pixel`. The latter is an `i32`,
+matching the native C field, and is zero for compressed formats. Compressed formats require
+block-based storage calculations instead of multiplying this field by the pixel count.
+
+`sapp.TouchPoint.identifier` is a pointer-width `uint`. `sapp.MouseButton.invalid` has the
+native sentinel value `0x100`; the left, right and middle buttons have values 0, 1 and 2.
+
 ## Windows graphics backend
 
 On Windows, sokol uses OpenGL by default. Compile with `-d sokol_d3d11` to opt in
