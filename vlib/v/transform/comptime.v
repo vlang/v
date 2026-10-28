@@ -3628,6 +3628,10 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 	mut cur_mod := ''
 	for idx in 0 .. t.a.nodes.len {
 		kind := t.a.nodes[idx].kind
+		if kind == .file {
+			cur_mod = ''
+			continue
+		}
 		if kind == .module_decl {
 			cur_mod = t.a.nodes[idx].value
 			continue
