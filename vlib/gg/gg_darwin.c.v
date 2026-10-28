@@ -24,6 +24,11 @@ fn C.CGContextSetStrokeColorWithColor(ctx voidptr, color voidptr)
 fn C.CGContextSetLineWidth(ctx voidptr, width f64)
 fn C.CGContextSaveGState(ctx voidptr)
 fn C.CGContextRestoreGState(ctx voidptr)
+fn C.CGContextBeginPath(ctx voidptr)
+fn C.CGContextMoveToPoint(ctx voidptr, x f64, y f64)
+fn C.CGContextAddLineToPoint(ctx voidptr, x f64, y f64)
+fn C.CGContextStrokePath(ctx voidptr)
+fn C.CGColorRelease(color voidptr)
 
 fn C.dispatch_get_main_queue() voidptr
 fn C.dispatch_async_f(queue voidptr, context voidptr, work voidptr)
@@ -127,6 +132,23 @@ pub fn darwin_draw_rect(x f32, y f32, width f32, height f32, c Color) {
 	}
 	C.CGContextSetFillColorWithColor(context, cgcolor(c))
 	C.gg_darwin_fill_rect(context, f64(x), f64(y), f64(width), f64(height))
+}
+
+// darwin_stroke_line draws a one-point line in native graphics coordinates.
+fn darwin_stroke_line(context voidptr, x f32, y f32, x2 f32, y2 f32, c Color) {
+	if context == unsafe { nil } {
+		return
+	}
+	color := cgcolor(c)
+	defer { C.CGColorRelease(color) }
+	C.CGContextSaveGState(context)
+	defer { C.CGContextRestoreGState(context) }
+	C.CGContextSetStrokeColorWithColor(context, color)
+	C.CGContextSetLineWidth(context, 1)
+	C.CGContextBeginPath(context)
+	C.CGContextMoveToPoint(context, f64(x), f64(y))
+	C.CGContextAddLineToPoint(context, f64(x2), f64(y2))
+	C.CGContextStrokePath(context)
 }
 
 fn mark_view_tree_needs_display(view macos.Id) {

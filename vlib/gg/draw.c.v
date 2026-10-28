@@ -56,9 +56,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
 			// Make horizontal/vertical lines more clear on hi dpi screens
-			// by drawing a rectangle. An axis-aligned rectangle cannot
-			// represent a diagonal line, so those fall through to the
-			// sokol path below.
+			// by drawing a rectangle. Diagonals use the same native surface.
 			if x == x2 || y == y2 {
 				// Normalize the origin, so the rect covers the segment
 				// regardless of the order of the points.
@@ -74,6 +72,9 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c Color) {
 				ctx.draw_rect_filled(rx, ry, f32(width), f32(height), c)
 				return
 			}
+			darwin_stroke_line(current_cg_context(), x, ctx.height - y, x2, ctx.height - y2,
+				c)
+			return
 		}
 	}
 
@@ -89,6 +90,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c Color) {
 }
 
 // draw_line_with_config draws a line between the points `x,y` and `x2,y2` using `PenConfig`.
+// Coordinates, thickness and dash spacing are in logical pixels.
 pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config PenConfig) {
 	if config.color.a != 255 {
 		ctx.r.load_pipeline(ctx.pipeline.alpha)
@@ -117,7 +119,6 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 
 	ctx.r.translate(nx, ny, 0)
 	ctx.r.rotate(theta, 0, 0, 1)
-	ctx.r.translate(-nx, -ny, 0)
 
 	ctx.r.begin_quads()
 	if config.line_type == .solid {
@@ -126,25 +127,22 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 		ctx.r.v2f(length, thickness)
 		ctx.r.v2f(0, thickness)
 	} else {
-		size := if config.line_type == .dotted { thickness } else { thickness * 3 }
-		space := if size == 1 { 2 } else { size }
-
-		mut available := length
+		logical_size := if config.line_type == .dotted {
+			config.thickness
+		} else {
+			config.thickness * 3
+		}
+		size := logical_size * ctx.scale
+		space := (if logical_size == 1 { f32(2) } else { logical_size }) * ctx.scale
 		mut start_x := f32(0)
 
-		for i := 0; available > 0; i++ {
-			if i % 2 == 0 {
-				ctx.r.v2f(start_x, 0)
-				ctx.r.v2f(start_x + size, 0)
-				ctx.r.v2f(start_x + size, thickness)
-				ctx.r.v2f(start_x, thickness)
-				available -= size
-				start_x += size
-				continue
-			}
-
-			available -= space
-			start_x += space
+		for start_x < length {
+			end_x := math.min(start_x + size, length)
+			ctx.r.v2f(start_x, 0)
+			ctx.r.v2f(end_x, 0)
+			ctx.r.v2f(end_x, thickness)
+			ctx.r.v2f(start_x, thickness)
+			start_x += size + space
 		}
 	}
 	ctx.r.end()
@@ -195,7 +193,6 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c Color) {
 		y := points[i * 2 + 1] * ctx.scale
 		ctx.r.v2f(x, y)
 		// Re-emit the shared first vertex on even steps to continue the strip.
-		// Note: `&` binds tighter than `==`, so the parentheses are required.
 		if i % 2 == 0 {
 			ctx.r.v2f(x0, y0)
 		}
@@ -1483,7 +1480,7 @@ pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th
 	ctx.r.end()
 }
 
-// draw_ellipse_filled draws an opaque ellipse.
+// draw_ellipse_filled_rotate draws an opaque rotated ellipse.
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
 // `rh` defines the *height* radius of the ellipse.
