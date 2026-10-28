@@ -1,8 +1,6 @@
 import strings
 
 // Pure unit tests for the shared `http.SSEEvent` encoder. No network involved.
-// Note: `strings` is already available through `net.http`, importing it again
-// is an error.
 import net.http
 
 fn test_sse_event_single_line_data() {

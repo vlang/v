@@ -194,6 +194,15 @@ fn client_ip(req http.Request) string {
 }
 ```
 
+## Server-sent event encoding
+
+`http.SSEEvent` formats server-sent events independently of a connection. Set its `id`,
+`event`, `data` and `retry` fields, then call `encode()` for a string or
+`encode_into(mut builder)` to append to a `strings.Builder`. Each event ends with a blank
+line. Data normalizes CRLF and CR line endings to LF and emits a `data:` field per line;
+CR and LF are removed from `id` and `event`. Empty fields and zero `retry` are omitted,
+so an empty event encodes as a single LF and does not dispatch a browser message.
+
 ## Cookies, headers and multipart
 
 Header value validation also works in `-check-overflow` builds: permitted TAB bytes are kept.
