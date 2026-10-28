@@ -35,6 +35,13 @@ fn check(e VlibcErrno) {
 }
 
 fn main() {
+	mut words := [u32(0x11223344), u32(0), u32(0xaabbccdd), u32(0)]!
+	vlibc_store_u32(&words[1], 7)
+	assert words[0] == 0x11223344 && words[2] == 0xaabbccdd
+	assert vlibc_load_u32(&words[1]) == 7
+	assert !vlibc_cas_u32(&words[1], 8, 9) && words[1] == 7
+	assert vlibc_cas_u32(&words[1], 7, 9) && words[1] == 9
+	assert words[0] == 0x11223344 && words[2] == 0xaabbccdd
 	mut state := State{mutex: vlibc_mutex_init(), cond: vlibc_cond_init()}
 	slow := Work{state: &state, index: 0, delay: 50000000}
 	fast := Work{state: &state, index: 1, delay: 0}
