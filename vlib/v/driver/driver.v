@@ -12077,8 +12077,8 @@ pub fn run(args []string) {
 	if os.getenv(v3_embedded_env) != '1' {
 		maybe_delegate_v3_to_vvmrc(input_file, verbose)
 	}
-	// The JS compatibility path returns before the common backend validation below.
-	if 'vlibc' in user_defines && backend == 'js' {
+	// JS and FastC dispatch before the common runtime-injection validation below.
+	if 'vlibc' in user_defines && backend != 'c' {
 		eprintln('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target')
 		exit(1)
 	}

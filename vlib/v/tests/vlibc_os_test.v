@@ -73,13 +73,16 @@ fn test_vlibc_rejects_unsupported_backend_and_target() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn main() {}')!
-	for target_flags in [['-os', 'windows'], ['-b', 'js'], ['-os', 'solaris', '-arch', 'arm64']] {
-		mut args := [@VEXE, '-nocache', '-d', 'vlibc']
-		args << target_flags
-		args << ['-o', os.join_path(root, 'out.c'), source]
-		result := os.exec(args)
-		assert result.exit_code != 0
-		assert result.output.contains('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target'), result.output
+	os.write_file(source, 'import os\nfn main() { println(os.args.len) }')!
+	for target_flags in [['-os', 'windows'], ['-b', 'js'], ['-b', 'fastc'],
+		['-os', 'solaris', '-arch', 'arm64']] {
+		for define in ['vlibc', 'vlibc=1'] {
+			mut args := [@VEXE, '-nocache', '-d', define]
+			args << target_flags
+			args << ['-o', os.join_path(root, 'out.c'), source]
+			result := os.exec(args)
+			assert result.exit_code != 0
+			assert result.output.contains('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target'), result.output
+		}
 	}
 }
