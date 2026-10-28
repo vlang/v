@@ -322,7 +322,7 @@ fn send_compressed_response(mut ctx Context, encoding ContentEncoding) bool {
 		return true
 	}
 	encoding_name := if encoding == .zstd { 'zstd' } else { 'gzip' }
-	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
+	accept_encoding := ctx.req.header.values(.accept_encoding).join(',')
 	if !client_accepts_encoding(accept_encoding, encoding_name) {
 		return true
 	}
@@ -441,7 +441,7 @@ pub fn encode_auto[T]() MiddlewareOptions[T] {
 
 			// Check Accept-Encoding header to determine best compression,
 			// honouring q-values (`gzip;q=0` refuses compression).
-			accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
+			accept_encoding := ctx.req.header.values(.accept_encoding).join(',')
 
 			// Try zstd first (better compression ratio), fallback to gzip
 			if client_accepts_encoding(accept_encoding, 'zstd') {
