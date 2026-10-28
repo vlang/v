@@ -117,6 +117,11 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 				operand_types, registers)
 		}
 	}
+	if header.is_raw && !header.is_intel && sections.len > 0
+		&& header.arch in inline_asm_raw_x86_arches {
+		types := tc.inline_asm_raw_att_operand_types(node, block, sections)
+		tc.check_inline_asm_raw_att_widths(id, node, block, start, sections[0], header.arch, types)
+	}
 	if registers.len == 0 {
 		// Without a register table for this instruction set every name looks unknown.
 		return
