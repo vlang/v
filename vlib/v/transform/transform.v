@@ -397,6 +397,9 @@ mut:
 	comptime_method_index_nodes            int
 	comptime_method_index_module           string
 	comptime_method_index_file             string
+	comptime_attribute_schema_decls        []ComptimeAttributeSchemaDecl
+	comptime_attribute_schemas_cache       []AttributeSchemaInfo
+	comptime_attribute_schemas_built       int
 	comptime_method_line_offsets           map[string][]int
 	comptime_reflected_for_roles           map[string]u8
 	comptime_reflected_for_ready           bool
