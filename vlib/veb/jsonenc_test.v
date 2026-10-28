@@ -52,7 +52,13 @@ fn test_json_encode_into_matches_encode_for_nested_arrays_maps() {
 
 	mut listbuf := []u8{cap: 4096}
 	users := [
-		JsonencUser{ id: 1, name: 'a', email: 'a@x.io', active: true, score: 2.0 },
+		JsonencUser{
+			id:     1
+			name:   'a'
+			email:  'a@x.io'
+			active: true
+			score:  2.0
+		},
 		JsonencUser{
 			id:     2
 			name:   'b'

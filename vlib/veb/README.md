@@ -1346,6 +1346,22 @@ ctx.json(User{
 ctx.no_content()
 ```
 
+#### Reusing a JSON buffer
+
+`ctx.json_buf(value, mut buffer)` produces the same response as `ctx.json(value)`, while
+reusing a caller-owned `[]u8` for intermediate encoding. It clears the buffer first and
+copies the result into the response, so the buffer can be reused as soon as the call returns.
+
+```v ignore
+mut buffer := []u8{cap: 2048}
+ctx.json_buf(User{name: 'test', age: 20}, mut buffer)
+```
+
+For encoding without sending a response, `veb.json_encode_into(value, mut buffer)` appends
+JSON to the buffer; call `buffer.clear()` first when replacing its previous contents.
+Keep reusable buffers local to a request worker or borrow them exclusively from a pool.
+Concurrent requests must not encode into the same buffer at the same time.
+
 #### Sending files
 
 **Example:**
