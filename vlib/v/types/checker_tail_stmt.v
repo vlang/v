@@ -14700,11 +14700,14 @@ fn source_field_decl_is_embed(field flat.Node, field_type_id u32) bool {
 	if (meta.len > 0 && meta[0].contains('e')) || field.typ == 0 || field.value.len == 0 {
 		return true
 	}
-	// Preserve the invalid-embed diagnostic for uppercase named fields.
+	// Preserve the invalid-embed diagnostic for uppercase named fields. Only
+	// those are compared, so lowercase names are not interned.
+	if !field.value[0].is_capital() {
+		return false
+	}
 	field_name_id := field.source_value_id()
-	return field.value[0].is_capital() && (field_name_id == field_type_id
-		|| (flat.source_type_shape(field_type_id).has(.dotted)
-			&& field_name_id == flat.source_type_syntax(field_type_id).unqualified()))
+	return field_name_id == field_type_id || (flat.source_type_shape(field_type_id).has(.dotted)
+		&& field_name_id == flat.source_type_syntax(field_type_id).unqualified())
 }
 
 fn (tc &TypeChecker) embedded_field_is_scoped_builtin_error(field StructField, embedded_name_id u32, struct_file string, struct_module string) bool {
@@ -16399,6 +16402,15 @@ fn embedded_field_type(field StructField) ?Type {
 	}
 	if field.name.len == 0 {
 		return field.typ
+	}
+	// The name matches the type or its generic base only as the whole spelling or
+	// a raw suffix after a dot of it: a name that ends neither is not interned.
+	if !flat.source_type_name(field_type_id).ends_with(field.name) {
+		base_syntax := flat.source_type_syntax(field_type_id)
+		if !base_syntax.application_valid()
+			|| !flat.source_type_name(base_syntax.application_base()).ends_with(field.name) {
+			return none
+		}
 	}
 	field_name_id := flat.source_type_id(field.name)
 	if embedded_type_name_matches(field_name_id, field_type_id) {
