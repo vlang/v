@@ -72,7 +72,7 @@ $if !i386 {
 
 	// vlibc_sys_lseek changes a descriptor's byte offset relative to whence.
 	pub fn vlibc_sys_lseek(fd i64, off i64, whence int) (i64, VlibcErrno) {
-		rc, er := sys_call3(nb_nr_lseek, u64(fd), u64(off), u64(whence))
+		rc, er := sys_call4(nb_nr_lseek, u64(fd), 0, u64(off), u64(whence))
 		return bsd_split(rc, er)
 	}
 
@@ -354,7 +354,7 @@ $if !i386 {
 
 	// vlibc_sys_mmap maps memory using native protection and mapping flags.
 	pub fn vlibc_sys_mmap(addr voidptr, len u64, prot int, flags int, fd i64, off u64) (voidptr, VlibcErrno) {
-		rc, er := sys_call6(nb_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), off)
+		rc, er := sys_call7(nb_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), 0, off)
 		if er != 0 {
 			return unsafe { nil }, unsafe { VlibcErrno(er) }
 		}

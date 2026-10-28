@@ -584,6 +584,89 @@ $if !i386 {
 		return res, err
 	}
 
+	// sys_call7 includes the padded mmap offset required by this kernel ABI.
+	fn sys_call7(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64, arg6 u64, arg7 u64) (u64, u64) {
+		mut res := u64(0)
+		mut err := u64(0)
+		$if arm64 {
+			asm volatile arm64 {
+				mov x17, scn
+				mov x0, arg1
+				mov x1, arg2
+				mov x2, arg3
+				mov x3, arg4
+				mov x4, arg5
+				mov x5, arg6
+				mov x6, arg7
+				svc 0
+				mov res, x0
+				mov err, xzr
+				b.cc '1f'
+				mov err, x0
+				1:
+				; =r (res)
+				  =r (err)
+				; r (scn)
+				  r (arg1)
+				  r (arg2)
+				  r (arg3)
+				  r (arg4)
+				  r (arg5)
+				  r (arg6)
+				  r (arg7)
+				; x0
+				  x1
+				  x2
+				  x3
+				  x4
+				  x5
+				  x6
+				  x17
+				  cc
+				  memory
+			}
+		} $else {
+			asm volatile amd64 {
+				mov rax, scn
+				mov r10, arg4
+				mov r8, arg5
+				mov r9, arg6
+				mov rdx, arg3
+				mov r11, arg7
+				// The kernel reads argument seven at rsp+8. Keep this below the C red zone.
+				sub rsp, 144
+				mov [rsp + 8], r11
+				syscall
+				mov res, rax
+				mov err, 0
+				jnc '1f'
+				mov err, rax
+				1:
+				add rsp, 144
+				; =r (res)
+				  =r (err)
+				; r (scn)
+				  D (arg1)
+				  S (arg2)
+				  g (arg3)
+				  g (arg4)
+				  g (arg5)
+				  g (arg6)
+				  r (arg7)
+				; rax
+				  rdx
+				  rcx
+				  r10
+				  r11
+				  r8
+				  r9
+				  cc
+				  memory
+			}
+		}
+		return res, err
+	}
+
 	$if amd64 {
 		asm amd64 {
 			.pushsection .text
