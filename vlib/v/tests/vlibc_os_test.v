@@ -35,7 +35,7 @@ fn main() {
 "
 
 fn test_vlibc_os_file_operations() {
-	$if !(linux || macos || freebsd || openbsd || netbsd || dragonfly) {
+	$if !(linux || macos || freebsd || openbsd || netbsd || dragonfly || solaris) {
 		return
 	}
 	$if !amd64 && !arm64 {
