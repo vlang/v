@@ -14652,7 +14652,7 @@ fn (mut t Transformer) collect_generic_param_names_from_type_id(typ_id u32, modu
 		}
 		return
 	}
-	if syntax.bracket_closed() && syntax.bracket_prefix() != 0 {
+	if syntax.bracket_closed() && !shape.has(.leading_bracket) {
 		for arg in syntax.bracket_generic_parts() {
 			t.collect_generic_param_names_from_type_id(arg, module_name, mut names)
 		}
