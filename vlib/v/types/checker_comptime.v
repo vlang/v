@@ -675,6 +675,11 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 		}
 	}
 	if loop_kind == 'attributes' {
+		// A schema can use the metadata member names too. After narrowing its
+		// declared field type takes precedence over the VAttribute view.
+		if typ := tc.comptime_attribute_union_member_type(member) {
+			return typ
+		}
 		return match member {
 			'name', 'arg' {
 				*tc.parse_type(flat.source_type_string)
