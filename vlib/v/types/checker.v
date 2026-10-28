@@ -15074,7 +15074,7 @@ fn decl_assign_is_shared_marker(value string) bool {
 }
 
 fn (tc &TypeChecker) implicit_veb_ctx_type() Type {
-	return *tc.parse_type(flat.source_type_id('mut Context'))
+	return *tc.parse_type(checker_source_mut_context)
 }
 
 fn (tc &TypeChecker) fn_needs_implicit_veb_ctx(node flat.Node) bool {
@@ -15083,7 +15083,7 @@ fn (tc &TypeChecker) fn_needs_implicit_veb_ctx(node flat.Node) bool {
 
 fn (tc &TypeChecker) fn_is_veb_app_handler(node flat.Node) bool {
 	return tc.fn_returns_veb_result(node) && tc.fn_has_receiver_param(node)
-		&& !tc.fn_receiver_type_is_context(node) && tc.type_name_known_in_current_module(flat.source_type_id('Context'))
+		&& !tc.fn_receiver_type_is_context(node) && tc.type_name_known_in_current_module(checker_source_context)
 }
 
 fn (tc &TypeChecker) fn_implicit_veb_ctx_insert_index(node flat.Node) int {
@@ -15111,7 +15111,7 @@ fn (tc &TypeChecker) fn_receiver_type_is_context(node flat.Node) bool {
 		return false
 	}
 	first := tc.a.child_node(&node, 0)
-	return flat.source_type_syntax(flat.source_type_syntax(first.typ).pointer_raw_base()).unqualified() == flat.source_type_id('Context')
+	return flat.source_type_syntax(flat.source_type_syntax(first.typ).pointer_raw_base()).unqualified() == checker_source_context
 }
 
 fn (tc &TypeChecker) fn_has_veb_context_param(node flat.Node) bool {
@@ -15130,7 +15130,7 @@ fn (tc &TypeChecker) fn_has_veb_context_param(node flat.Node) bool {
 		// a qualified `other.Context` (for example an imported alias of `string`)
 		// shares the leaf name but is not a veb context, so it must fall through to
 		// the semantic check below.
-		if veb_receiver_source_type_id(p.typ) == flat.source_type_id('Context') {
+		if veb_receiver_source_type_id(p.typ) == checker_source_context {
 			return true
 		}
 		if tc.source_type_embeds_veb_context(p.typ) {
@@ -15227,7 +15227,7 @@ fn (tc &TypeChecker) fn_returns_veb_result(node flat.Node) bool {
 	}
 	// Most declarations cannot return veb.Result. Avoid resolving unrelated
 	// expression-derived return types such as `typeof(value)` during collection.
-	if flat.source_type_syntax(raw_type_id).unqualified() != flat.source_type_id('Result') {
+	if flat.source_type_syntax(raw_type_id).unqualified() != checker_source_result {
 		return false
 	}
 	ret := tc.parse_type(raw_type_id)

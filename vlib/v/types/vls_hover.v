@@ -404,7 +404,7 @@ fn (tc &TypeChecker) vls_implicit_type(binding VlsBinding) ?Type {
 	}
 	site := tc.a.node(binding.site)
 	if site.kind == .block {
-		return *tc.parse_type(flat.source_type_id('IError'))
+		return *tc.parse_type(ierror_source_interface_name)
 	}
 	return tc.vls_array_method_elem(*site)
 }

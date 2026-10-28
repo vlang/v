@@ -5116,7 +5116,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
-	if node.source_value_id() == flat.source_type_id('any') {
+	if node.source_value_id() == checker_tail_source_any {
 		tc.record_error(.unknown_type, 'cannot use type `any` here', id)
 		return
 	}
@@ -5206,7 +5206,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.assignment_mismatch, 'expression does not return a value so it cannot be cast', child_id, tc.a.nodes[int(child_id)].pos)
 		return
 	}
-	if node.is_mut && node.source_value_id() == flat.source_type_id('&u8') && actual is String {
+	if node.is_mut && node.source_value_id() == checker_source_u8_reference && actual is String {
 		// Production `$embed_file` materializes its internal byte buffer using
 		// this parser-marked cast. It is compiler-owned, not a user pointer cast.
 		tc.register_synth_type(id, target)
@@ -6602,7 +6602,7 @@ fn (mut tc TypeChecker) check_cast_from_string(id flat.NodeId, node flat.Node, c
 		enum_id := clean_target.source_type_id()
 		enum_dotted := flat.source_type_shape(enum_id).has(.dotted)
 		enum_name_id := if enum_dotted && flat.source_type_syntax(enum_id).first_dot_prefix() == 0 {
-			flat.source_type_composition_two(.concat, flat.source_type_id('main'), enum_id)
+			flat.source_type_composition_two(.concat, checker_source_main_module, enum_id)
 		} else if enum_dotted {
 			enum_id
 		} else {
@@ -6646,7 +6646,7 @@ fn (tc &TypeChecker) expr_is_synthetic_embed_file_value(id flat.NodeId) bool {
 		}
 		parent := tc.a.node(parent_id)
 		if parent.kind == .struct_init {
-			return parent.source_value_id() == flat.source_type_id('embed_file.EmbedFileData')
+			return parent.source_value_id() == checker_tail_source_embed_file_data
 		}
 		current = parent_id
 	}
@@ -7125,7 +7125,7 @@ fn (mut tc TypeChecker) record_unhandled_result_call(call_id flat.NodeId, result
 }
 
 fn type_id_contains_any(type_id u32) bool {
-	return flat.source_type_id('any') in flat.source_type_syntax(type_id).words()
+	return checker_tail_source_any in flat.source_type_syntax(type_id).words()
 }
 
 fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
@@ -11101,7 +11101,7 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	tc.push_scope()
 	if tc.has_ierror_interface() && (tc.failure_has_error(inner_id)
 		|| int(id) == tc.channel_send_or_expr_id) {
-		tc.cur_scope.insert('err', tc.parse_type(flat.source_type_id('IError')))
+		tc.cur_scope.insert('err', tc.parse_type(ierror_source_interface_name))
 	}
 	saved_expected_expr_id := tc.expected_expr_id
 	saved_expected_expr_type := tc.expected_expr_type
@@ -12298,9 +12298,9 @@ fn (mut tc TypeChecker) check_sql_expr(id flat.NodeId, node flat.Node) {
 		} else {
 			db_name_id := db_type.source_type_id()
 			if db_name_id != 0 && db_type !is Unknown
-				&& !tc.named_type_implements_interface(db_name_id, flat.source_type_id('orm.Connection')) {
+				&& !tc.named_type_implements_interface(db_name_id, checker_source_orm_connection) {
 				db_name := flat.source_type_name(db_name_id)
-				for method in tc.interface_abstract_method_names(flat.source_type_id('orm.Connection')) {
+				for method in tc.interface_abstract_method_names(checker_source_orm_connection) {
 					tc.record_error_at(.call_arg_mismatch, "`${db_name}` doesn't implement method `${method}` of interface `orm.Connection`", db_id, tc.a.node(db_id).pos)
 				}
 			}
@@ -14123,18 +14123,18 @@ fn sql_aggregate_optional_type_name(aggregate string, field_type Type) u32 {
 		return sql_aggregate_optional_type_name(aggregate, field_type.base_type)
 	}
 	if aggregate == 'avg' {
-		return flat.source_type_id('?f64')
+		return checker_source_option_f64
 	}
 	if field_type is String {
-		return flat.source_type_id('?string')
+		return checker_source_option_string
 	}
 	if field_type is Struct && field_type.source_type_id() == comptime_source_type_time {
-		return flat.source_type_id('?time.Time')
+		return checker_source_option_time_time
 	}
 	if field_type is Primitive && field_type.props.has(.float) {
-		return flat.source_type_id('?f64')
+		return checker_source_option_f64
 	}
-	return flat.source_type_id('?int')
+	return checker_source_option_int
 }
 
 fn (tc &TypeChecker) call_has_argument_count_error(id flat.NodeId) bool {
@@ -14258,8 +14258,8 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	for i in 0 .. node.children_count {
 		capture := tc.a.child_node(&node, i)
 		capture_modifier := capture.kind == .ident && capture.typ in [
-			flat.source_type_id('shared'),
-			flat.source_type_id('atomic'),
+			checker_source_shared,
+			checker_source_atomic,
 		]
 		if capture.kind == .ident && capture.value.len > 0 {
 			explicit_captures[capture.value] = true
@@ -14408,7 +14408,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if child.kind == .ident && (child.is_mut || child.typ == flat.source_type_id('atomic')) && child.value.len > 0 {
+		if child.kind == .ident && (child.is_mut || child.typ == checker_source_atomic) && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
 				tc.prepare_mut_local_owner_write()
 				tc.fn_context.mut_local_owners[child.value] = owner
@@ -14419,7 +14419,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if child.kind == .ident && child.typ == flat.source_type_id('shared') && child.value.len > 0 {
+		if child.kind == .ident && child.typ == checker_source_shared && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
 				tc.mark_shared_binding_owner(child.value, owner)
 			}
@@ -14624,7 +14624,7 @@ fn fn_literal_capture_generic_dependency_text(capture_type Type, capture_type_id
 	// aggregate storage types are already fixed by the captured value.
 	capture_syntax := flat.source_type_syntax(trimmed_source_type_id(capture_type_id))
 	if capture_syntax.fn_prefix() && capture_syntax.function_closed() && capture_syntax.function_result() != 0 {
-		return flat.source_type_composition_two(.concat, flat.source_type_id(' '), capture_syntax.function_result())
+		return flat.source_type_composition_two(.concat, checker_source_space, capture_syntax.function_result())
 	}
 	if capture_fn := fn_type_from_type(capture_type) {
 		return capture_fn.return_type.source_type_id()

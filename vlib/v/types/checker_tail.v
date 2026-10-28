@@ -9849,7 +9849,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				'close' {
 					return CallInfo{
 						name:         'chan.close'
-						params:       tarr2(base_type, tc.parse_type(flat.source_type_id('IError')))
+						params:       tarr2(base_type, tc.parse_type(ierror_source_interface_name))
 						return_type:  builtin_void_type
 						has_receiver: true
 						is_variadic:  true
@@ -9862,7 +9862,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						params:       tarr2(base_type, Type(Pointer{
 							base_type: clean.elem_type
 						}))
-						return_type:  tc.parse_type(flat.source_type_id('ChanState'))
+						return_type:  tc.parse_type(checker_source_chan_state)
 						has_receiver: true
 						params_known: true
 					}
@@ -9873,7 +9873,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						params:       tarr2(base_type, Type(Pointer{
 							base_type: clean.elem_type
 						}))
-						return_type:  tc.parse_type(flat.source_type_id('ChanState'))
+						return_type:  tc.parse_type(checker_source_chan_state)
 						has_receiver: true
 						params_known: true
 					}
@@ -10584,7 +10584,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			return CallInfo{
 				name:         fn_node.value
 				params:       params
-				return_type:  tc.parse_type(flat.source_type_id('IError'))
+				return_type:  tc.parse_type(ierror_source_interface_name)
 				params_known: true
 			}
 		}
@@ -21236,7 +21236,7 @@ fn (tc &TypeChecker) is_synthesized_anon_struct(name_id u32) bool {
 }
 
 fn is_contextual_anonymous_struct_literal(name_id u32) bool {
-	return name_id == flat.source_type_id('struct')
+	return name_id == checker_source_struct
 		|| is_anonymous_struct_id(name_id)
 }
 
@@ -23055,7 +23055,7 @@ fn (mut tc TypeChecker) check_if_else_branch(cond_id flat.NodeId, else_id flat.N
 	if names_err {
 		tc.push_scope()
 		if tc.has_ierror_interface() {
-			tc.cur_scope.insert('err', tc.parse_type(flat.source_type_id('IError')))
+			tc.cur_scope.insert('err', tc.parse_type(ierror_source_interface_name))
 		}
 	}
 	tc.check_branch_node(else_id, value_context)
