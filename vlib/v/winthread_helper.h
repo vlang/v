@@ -22,8 +22,10 @@ typedef struct {
 /* Boehm only scans threads it created or registered. This TU does not include
  * gc.h, so gc.h's CreateThread -> GC_CreateThread redirect never applies here.
  * A plain CreateThread worker that allocates then aborts the next collection with
- * "Collecting from unknown thread". GC_CreateThread registers the worker itself. */
-#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)
+ * "Collecting from unknown thread". GC_CreateThread registers the worker itself.
+ * The cached native object is built with V_GCBOEHM_NATIVE only, not with the
+ * CUSTOM_DEFINE_gcboehm that the generated C sets, so both must select it. */
+#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm) || defined(V_GCBOEHM_NATIVE)
 #ifndef GC_H
 /* gc.h renames GC_CreateThread under GC_UNDERSCORE_STDCALL. Mirror that rename so the
  * declaration matches the libgc export. */
