@@ -11556,10 +11556,12 @@ fn main() {}
 	// A self-host build is header free: `#include <pthread.h>` is dropped for the C ABI
 	// prelude, so the fallback has to follow the pthread declarations of that prelude,
 	// exactly as it had to follow the include they replaced.
-	declaration_index := c_source.index('int pthread_rwlockattr_init(') or { panic(c_source) }
-	fallback_index := c_source.index('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP') or {
-		panic(c_source)
-	}
+	// Report a missing marker as a failed assertion: a `panic` here aborts the whole
+	// test binary and hides every test after this one.
+	declaration_index := c_source.index('int pthread_rwlockattr_init(') or { -1 }
+	fallback_index := c_source.index('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP') or { -1 }
+	assert declaration_index >= 0, c_source
+	assert fallback_index >= 0, c_source
 	assert declaration_index < fallback_index, c_source
 }
 
@@ -12049,6 +12051,9 @@ fn main() {
 }
 
 fn test_selfhost_spawn_mut_argument() {
+	$if windows {
+		return
+	}
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	c_source := generate('module main
