@@ -341,6 +341,8 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	// Match controller paths first
 	$if A is ControllerInterface {
 		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url, host) {
+			mut armed := unsafe { &Context(completed_context) }
+			armed.spawn_after_timer_if_armed()
 			return completed_context
 		}
 	}
@@ -351,6 +353,7 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	}
 	// Preserve the handled context on the heap before the stack-local user context goes away.
 	ctx.preserve_for_response_writer(user_context.Context)
+	ctx.spawn_after_timer_if_armed()
 	return ctx
 }
 

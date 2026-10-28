@@ -63,6 +63,14 @@ mut:
 	// requests a middleware refuses skip the after-middleware, so an
 	// after-middleware could not free them reliably.
 	throttle_leases []ThrottleLease
+	// Deferred response state, armed by `Context.after`: `deferred_cb` runs no
+	// sooner than `deferred_ms` milliseconds after the handler returns, with
+	// `deferred_arg`. `handle_request_and_route` spawns the timer thread once
+	// the handled context is preserved on the heap.
+	deferred     bool
+	deferred_ms  int
+	deferred_arg u64
+	deferred_cb  AfterCallback = unsafe { nil }
 	// trusted_proxies are the socket peer addresses whose forwarding headers
 	// `ip()` may believe. The framework copies this from a `trusted_proxies`
 	// field on the app struct into every request context; an app that does not
