@@ -486,11 +486,17 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		// V does not allow `return` in one, so recovery prepares its response here and
 		// skips the after-middleware through the else branch.
 		if msg := recover() {
-			finish_panicked_route[X](mut user_context, url.path, msg)
+			handle_route_panic[X](mut user_context, url.path, msg)
 		} else {
 			finish_route[A, X](app, mut user_context, route, url.path, not_found,
 				middleware_has_sent_response)
 		}
+	// Free the handler slots a throttle took for this request on every way
+	// out, including the 404 and refusing-middleware paths that skip the
+	// after-middleware above.
+	if user_context.Context.throttle_leases.len > 0 {
+		user_context.Context.release_throttle_leases()
+	}
 	}
 
 	is_root_path := url.path.len == 0 || url.path == '/'
@@ -682,10 +688,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	return
 }
 
-// finish_panicked_route builds the fallback response after a handler panic.
-// Keeping it out of handle_route's defer avoids copying this cleanup block into
-// every unrolled route dispatch return.
-fn finish_panicked_route[X](mut user_context X, path string, msg string) {
+// handle_route_panic builds the fallback response after a route handler panics.
+// It is specialized by context type, so this reset is emitted once per context
+// type instead of once per controller type.
+fn handle_route_panic[X](mut user_context X, path string, msg string) {
 	eprintln('[veb] handler for route "${path}" panicked: ${msg}')
 	// A takeover handler owns the connection and may already have written to it.
 	if user_context.Context.takeover_mode == .none {
@@ -703,12 +709,9 @@ fn finish_panicked_route[X](mut user_context X, path string, msg string) {
 		}
 		user_context.server_error('Internal Server Error')
 	}
-	if user_context.Context.throttle_leases.len > 0 {
-		user_context.Context.release_throttle_leases()
-	}
 }
 
-// finish_route runs after-handlers and releases request resources. It is shared
+// finish_route runs after-handlers. It is shared
 // by every return in the comptime-unrolled dispatcher, preventing the defer body
 // from being copied into each generated route branch.
 fn finish_route[A, X](app &A, mut user_context X, route Route, path string, not_found bool, middleware_has_sent_response bool) {
@@ -747,12 +750,7 @@ fn finish_route[A, X](app &A, mut user_context X, route Route, path string, not_
 		// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
 	}
 	// Context.takeover_mode is set, so the user must send a response.
-	// Free the handler slots a throttle took for this request on every way
-	// out, including the 404 and refusing-middleware paths that skip the
-	// after-middleware above.
-	if user_context.Context.throttle_leases.len > 0 {
-		user_context.Context.release_throttle_leases()
-	}
+
 }
 
 // RouteMatch holds runtime routing work shared by all controller types. Only the
