@@ -44,5 +44,45 @@ fn main() {
 Each element is a `VAttribute` with `name`/`has_arg`/`arg`/`kind`, exactly
 like `Type.attributes` on declarations: `@['x']` has the `.string` kind and
 `@[x]` the `.plain` kind. A runtime `for a in field.attributes` reads the same
-values. Typed schema materialization (`$if attr is Route`) follows in a later
-slice.
+values.
+
+## Reading attributes at compile time
+
+An attribute whose name matches a registered schema exposes its fields when a
+`$for attr in X.attributes` loop is unrolled.
+Narrow with `$if attr is Schema` before touching schema fields; other names
+keep the `VAttribute` view (`name`/`has_arg`/`arg`/`kind`) exactly as before:
+
+```v
+@[attribute]
+struct Route {
+	path   string
+	method string
+}
+
+@[Route('/index', method: 'get')]
+@[deprecated: 'old']
+fn index() {}
+
+fn main() {
+	$for attr in index.attributes {
+		$if attr is Route {
+			println('route: ${attr.path} ${attr.method}')
+		} $else {
+			println('other: ${attr.name}')
+		}
+	}
+}
+```
+
+Supported schema field types are `string`, integer types (including `uint` and `rune`),
+`bool`, enums, and aliases of those types.
+A use the checker rejects (unknown field, wrong arity) keeps the legacy pieces
+so the checker diagnostic stays authoritative. Copies of the loop variable
+(`r := attr`) keep the `VAttribute` view; narrowing applies to direct `attr`
+uses. Inside that narrowed branch, schema fields named `name`, `arg`, `has_arg`, or
+`kind` take precedence over the metadata members. Method calls such as `attr.str()`
+keep the `VAttribute` method even when a schema declares a `str` field.
+Outside narrowing, metadata members
+retain the `VAttribute` view. Checker enforcement of schema narrowing and schema field
+access in compile-time conditions are separate follow-up work.
