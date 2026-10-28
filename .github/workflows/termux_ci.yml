@@ -214,8 +214,12 @@ jobs:
             # The Makefile only recognises a literal `-cc tcc`, so put the
             # built tcc first on PATH.
             export PATH="$HOME/tcc-install/bin:$PATH"
-            V_ANDROID_TCC=1 VFLAGS="-cc tcc" make 2>&1 | tee /logs/v-bootstrap.log
-            ./v -cc "$tcc" run examples/hello_world.v 2>&1 | tee /logs/hello_world.log
+            # Diagnostic only: bionic headers need __ANDROID_MIN_SDK_VERSION__ on
+            # every tcc compile, and V does not add it. Passing it here lets tcc
+            # compile V's C output. Users would need the same flag or a V change.
+            tcc_cflags="-cflags -D__ANDROID_MIN_SDK_VERSION__=24"
+            V_ANDROID_TCC=1 VFLAGS="-cc tcc $tcc_cflags" make 2>&1 | tee /logs/v-bootstrap.log
+            ./v -cc "$tcc" $tcc_cflags run examples/hello_world.v 2>&1 | tee /logs/hello_world.log
             # V falls back to cc with a warning when a tcc link test fails, so a
             # green build alone does not show tcc was used. Fail on that warning.
             if grep -q "falling back" /logs/v-bootstrap.log /logs/hello_world.log; then
