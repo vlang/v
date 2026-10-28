@@ -407,9 +407,6 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			}
 			match node.kind {
 				.call {
-					if t.generic_call_spec_settled[i] {
-						continue
-					}
 					// Past this point a call carries a recorded specialization, names its
 					// callee's specialization exactly, or, in a source file, can name a
 					// generic declaration.
@@ -422,6 +419,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 						}
 					}
 					if skip {
+						continue
+					}
+					if !isnil(t.generic_call_spec_settled) && t.generic_call_spec_settled.entries[i] {
 						continue
 					}
 					if t.call_is_recorded_struct_operator(node)
@@ -1124,10 +1124,10 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 		if node.kind != .call {
 			continue
 		}
-		if t.generic_call_spec_settled[i] {
+		if t.node_file_or(i, '').len == 0 && i !in t.generic_call_spec_cache && !t.synthetic_generic_call_has_exact_callee(node) {
 			continue
 		}
-		if t.node_file_or(i, '').len == 0 && i !in t.generic_call_spec_cache && !t.synthetic_generic_call_has_exact_callee(node) {
+		if !isnil(t.generic_call_spec_settled) && t.generic_call_spec_settled.entries[i] {
 			continue
 		}
 		if t.call_is_recorded_struct_operator(node)
@@ -12681,7 +12681,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 	if node.kind == .call && (retargeted_typ_source_id != 0 || static_assoc_typ_source_id != 0) {
 		// The clone-time retarget resolved this nested call with the live concrete
 		// scope. It no longer needs a later whole-program inference pass.
-		t.generic_call_spec_settled[int(clone_id)] = true
+		t.mark_generic_call_settled(int(clone_id))
 	}
 	if node.kind == .map_init && !isnil(t.tc) {
 		map_type := (if flat.source_type_shape(cloned_source_value).has(.map_type) {
@@ -14028,7 +14028,7 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl, concrete_call_args_source_ids), concrete_call_args_source_ids)
 		}
 	}
-	t.generic_call_spec_settled[int(clone_id)] = true
+	t.mark_generic_call_settled(int(clone_id))
 	if is_receiver {
 		t.rewrite_generic_method_call(clone_id, clone, decl, concrete_call_args_source_ids)
 	} else {

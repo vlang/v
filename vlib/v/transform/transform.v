@@ -608,7 +608,7 @@ mut:
 	parallel_monomorph_struct_specs    map[u32]u32
 	parallel_monomorph_sum_specs       map[u32]GenericSpecContext
 	generic_call_spec_cache            map[int]GenericCallSpec
-	generic_call_spec_settled          map[int]bool
+	generic_call_spec_settled          &SettledGenericCalls = unsafe { nil }
 	generic_call_spec_misses           map[int]bool
 	stringify_stack                    []u32
 	stringify_depth_cap                int = max_stringify_nesting_depth
@@ -1531,6 +1531,20 @@ struct GenericFnDecl {
 struct GenericCallSpec {
 	decl_key string
 	args     flat.TypeTextList
+}
+
+// SettledGenericCalls is allocated only when cloning resolves a concrete call.
+// Each transformer owns its entries; worker merges copy relocated node IDs.
+struct SettledGenericCalls {
+mut:
+	entries map[int]bool
+}
+
+fn (mut t Transformer) mark_generic_call_settled(id int) {
+	if isnil(t.generic_call_spec_settled) {
+		t.generic_call_spec_settled = &SettledGenericCalls{}
+	}
+	t.generic_call_spec_settled.entries[id] = true
 }
 
 // Each transformer keeps its own recent signature answers. String records
@@ -5589,7 +5603,7 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
-	w.generic_call_spec_settled = map[int]bool{}
+	w.generic_call_spec_settled = unsafe { nil }
 	w.generic_call_spec_misses = map[int]bool{}
 	// run_parallel_transform snapshots declaration signatures before workers
 	// start. Keep the shared read-only index and signature cache; rebuilding
@@ -5735,7 +5749,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
-	w.generic_call_spec_settled = map[int]bool{}
+	w.generic_call_spec_settled = unsafe { nil }
 	w.generic_call_spec_misses = map[int]bool{}
 	w.node_module_map_cache = []u16{}
 	w.node_module_map_nodes = -1
@@ -5989,7 +6003,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		pending_generic_fn_spec_keys:           GenericFnSpecBoolMap{}
 		generic_receiver_methods_by_name:       map[string][]string{}
 		generic_call_spec_cache:                map[int]GenericCallSpec{}
-		generic_call_spec_settled:              map[int]bool{}
+		generic_call_spec_settled:              unsafe { nil }
 		generic_call_spec_misses:               map[int]bool{}
 		monomorph_error_seen:                   map[string]bool{}
 		skip_generics:                          t.skip_generics
@@ -6679,17 +6693,20 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			continue
 		}
 		shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-		if shifted !in t.generic_call_spec_cache && !t.generic_call_spec_settled[shifted] {
+		if shifted !in t.generic_call_spec_cache && (isnil(t.generic_call_spec_settled)
+			|| !t.generic_call_spec_settled.entries[shifted]) {
 			t.generic_call_spec_misses[shifted] = true
 		}
 	}
-	for idx, settled in w.generic_call_spec_settled {
-		if !settled {
-			continue
+	if !isnil(w.generic_call_spec_settled) {
+		for idx, settled in w.generic_call_spec_settled.entries {
+			if !settled {
+				continue
+			}
+			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
+			t.mark_generic_call_settled(shifted)
+			t.generic_call_spec_misses.delete(shifted)
 		}
-		shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-		t.generic_call_spec_settled[shifted] = true
-		t.generic_call_spec_misses.delete(shifted)
 	}
 	for idx, typ in w.refined_node_types {
 		if idx < base_nodes {
@@ -11256,7 +11273,9 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 				t.refined_node_types.delete(idx)
 				t.mut_value_ident_nodes.delete(idx)
 				t.generic_call_spec_cache.delete(idx)
-				t.generic_call_spec_settled.delete(idx)
+				if !isnil(t.generic_call_spec_settled) {
+					t.generic_call_spec_settled.entries.delete(idx)
+				}
 				t.generic_call_spec_misses.delete(idx)
 				if !isnil(t.tc) && !isnil(t.tc.fork_overlay) {
 					t.tc.fork_overlay.resolved_call_names.delete(idx)
