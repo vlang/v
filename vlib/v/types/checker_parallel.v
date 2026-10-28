@@ -3288,10 +3288,11 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 // spells `Octet` as `string` and `pack` is a method of `Octet`.
 fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []u32) bool {
 	type_name, member := concrete_member_error_parts(msg) or { return false }
-	type_name_id := flat.source_type_id(type_name)
 	for arg in args {
 		typ := unwrap_pointer(tc.parse_type(arg))
-		if typ is Alias && unalias_type(typ).source_type_id() == type_name_id
+		// The base spelling is built before the probe, so a name that only it
+		// interns still matches.
+		if typ is Alias && source_type_id_is_name(unalias_type(typ).source_type_id(), type_name)
 			&& tc.alias_declares_method(typ, member) {
 			return true
 		}
@@ -4059,8 +4060,9 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			}
 			if is_non_local_type && !is_builtin_array_override && !is_local_collection {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
-				receiver_generics := tc.fn_context.generic_params.filter(type_id_contains_symbol(receiver.typ,
-					flat.source_type_id(it)))
+				receiver_symbols := flat.source_type_syntax(receiver.typ).symbols()
+				receiver_generics := tc.fn_context.generic_params.filter(it.len > 0
+					&& source_words_contain_name(receiver_symbols, it))
 				alias_name := if receiver_generics.len == 0 {
 					'AliasName'
 				} else {
@@ -4257,7 +4259,7 @@ fn (tc &TypeChecker) source_module_declares_type(type_name_id u32) bool {
 	base_syntax := flat.source_type_syntax(qualified_base)
 	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
 	if flat.source_type_shape(qualified_base).has(.dotted) {
-		if base_syntax.qualifier() != flat.source_type_id(current_module) {
+		if !source_type_id_is_name(base_syntax.qualifier(), current_module) {
 			return false
 		}
 	}
@@ -4873,8 +4875,8 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 				}
 				if current.kind == .array_init {
 					if bound_id := fixed_array_bound_id(current.typ) {
-						name_id := flat.source_type_id(name)
-						if bound_id == name_id || name_id in flat.source_type_syntax(bound_id).symbols() {
+						if source_type_id_is_name(bound_id, name)
+							|| source_words_contain_name(flat.source_type_syntax(bound_id).symbols(), name) {
 							used_names[name] = true
 						}
 					}
@@ -4953,7 +4955,7 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 }
 
 fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u32) bool {
-	if param_type_id == u32(0) || !node.generic_params().any(flat.source_type_id(it) == param_type_id) {
+	if param_type_id == u32(0) || !node.generic_params().any(source_type_id_is_name(param_type_id, it)) {
 		return false
 	}
 	mut stack := []flat.NodeId{}

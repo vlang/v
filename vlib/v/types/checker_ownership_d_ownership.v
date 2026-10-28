@@ -2241,10 +2241,13 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 			if !method_name.ends_with('.free') {
 				continue
 			}
-			receiver := method_name.all_before_last('.')
-			if flat.source_type_id(receiver) in tc.structs {
-				st.drop_structs[flat.source_type_id(receiver)] = true
-				st.owned_structs[flat.source_type_id(receiver)] = true
+			// A receiver that was never interned names no collected struct.
+			receiver_id := flat.source_type_existing_id(method_name.all_before_last('.')) or {
+				continue
+			}
+			if receiver_id in tc.structs {
+				st.drop_structs[receiver_id] = true
+				st.owned_structs[receiver_id] = true
 			}
 		}
 	}
@@ -9096,15 +9099,16 @@ fn (tc &TypeChecker) ownership_struct_decl_node(struct_name_id u32) ?flat.Node {
 				cur_module = node.value
 			}
 			.struct_decl {
-				qname := ownership_qualify_name(cur_module, node.value)
-				module_qname := if cur_module.len > 0 {
-					'${cur_module}.${node.value}'
+				// `ownership_qualify_name(cur_module, node.value)` is one of these two.
+				name_id := node.source_value_id()
+				module_qname_id := if cur_module.len > 0 {
+					flat.source_type_composition_two(.qualified, flat.source_type_id(cur_module),
+						name_id)
 				} else {
-					node.value
+					name_id
 				}
-				if target_id == ownership_generic_base_type_name(flat.source_type_id(qname))
-					|| target_id == ownership_generic_base_type_name(flat.source_type_id(module_qname))
-					|| target_id == ownership_generic_base_type_name(node.source_value_id()) {
+				if target_id == ownership_generic_base_type_name(module_qname_id)
+					|| target_id == ownership_generic_base_type_name(name_id) {
 					return node
 				}
 			}
@@ -14066,49 +14070,7 @@ fn (value &MovedVar) type_name_text() string {
 
 // type_name_text resolves the indexed source type spelling.
 @[inline]
-fn (value &OwnershipKeySnapshot) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipReturnDescendant) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipArrayShiftEntry) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipParamDescendant) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipCaptureBinding) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
 pub fn (value &OwnershipDropEntry) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipDropTarget) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipNameSnapshot) type_name_text() string {
 	return flat.source_type_name(value.type_name)
 }
 

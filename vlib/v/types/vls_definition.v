@@ -338,10 +338,14 @@ fn (tc &TypeChecker) vls_selector_definition(node flat.Node) ?VlsPos {
 	}
 	receiver_id := tc.a.child(&node, 0)
 	receiver := tc.a.node(receiver_id)
-	if enum_name := tc.vls_enum_receiver(receiver) {
-		qualified := if enum_name.contains('.') { enum_name } else { tc.qualify_name(enum_name) }
+	if enum_name_id := tc.vls_enum_receiver(receiver) {
+		qualified_id := if flat.source_type_shape(enum_name_id).has(.dotted) {
+			enum_name_id
+		} else {
+			tc.qualify_type_name(enum_name_id)
+		}
 		return tc.vls_enum_value_definition(Type(Enum{
-			name_id: flat.source_type_id(qualified)
+			name_id: qualified_id
 		}), node.value)
 	}
 	if receiver.kind == .ident && tc.expr_type(receiver_id) == none {

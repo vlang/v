@@ -583,7 +583,7 @@ fn (tc &TypeChecker) generic_param_binding_site(call_id flat.NodeId, call flat.N
 			break
 		}
 		arg_id := tc.call_arg_value(tc.a.child(&call, arg_index))
-		if flat.source_type_syntax(param.typ).constraint_receiver_base() == flat.source_type_id(name) {
+		if source_type_id_is_name(flat.source_type_syntax(param.typ).constraint_receiver_base(), name) {
 			return arg_id, tc.call_argument_diagnostic_pos(arg_id)
 		}
 		arg_index++
@@ -717,7 +717,7 @@ fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stac
 		for type_id in type_ids {
 			if flat.source_type_shape(type_id).has(.bracketed) {
 				tc.check_written_type_constraints(anchor, type_id, tc.written_type_start(*node,
-					anchor, flat.source_type_name(type_id)), scope)
+					anchor, type_id), scope)
 			}
 		}
 		if node.kind == .call && tc.call_has_explicit_generic_type_args(*node) {
@@ -816,15 +816,17 @@ fn (mut tc TypeChecker) check_written_type_constraints(id flat.NodeId, text_id u
 	}
 }
 
-// written_type_start is where the type `text` of `node` starts in the source,
-// found from what surrounds it: the type of a cast comes right before its
-// value, `Box[int](x)`, the type of an `is` or an `as` right after the value
-// it tests, and the return type of a function literal after its parameters.
-// none leaves the place to type_diagnostic_pos, as for a declaration.
-fn (tc &TypeChecker) written_type_start(node flat.Node, anchor flat.NodeId, text string) ?int {
+// written_type_start is where the type spelled `type_id` of `node` starts in
+// the source, found from what surrounds it: the type of a cast comes right
+// before its value, `Box[int](x)`, the type of an `is` or an `as` right after
+// the value it tests, and the return type of a function literal after its
+// parameters. none leaves the place to type_diagnostic_pos, as for a declaration.
+fn (tc &TypeChecker) written_type_start(node flat.Node, anchor flat.NodeId, type_id u32) ?int {
 	if node.kind !in [.cast_expr, .is_expr, .as_expr, .fn_literal] || node.children_count == 0 {
 		return none
 	}
+	// The spelling is searched for in the source text.
+	text := flat.source_type_name(type_id)
 	source := tc.vls_source(int(tc.a.node(anchor).pos.id))
 	child := tc.a.child_node(&node, 0)
 	match node.kind {
@@ -1488,7 +1490,8 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 			}
 			mut missing := []string{}
 			for other in names {
-				if other !in inferred && flat.source_type_id(other) in flat.source_type_syntax(text_id).words() {
+				if other !in inferred
+					&& source_words_contain_name(flat.source_type_syntax(text_id).words(), other) {
 					missing << other
 				}
 			}
@@ -1513,7 +1516,8 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 pub fn (mut tc TypeChecker) infer_type_params_from_interface(param_id u32, actual_id u32, names []string, mut inferred map[string]u32) {
 	mut missing := []string{}
 	for name in names {
-		if name !in inferred && flat.source_type_id(name) in flat.source_type_syntax(param_id).words() {
+		if name !in inferred
+			&& source_words_contain_name(flat.source_type_syntax(param_id).words(), name) {
 			missing << name
 		}
 	}
@@ -1772,9 +1776,8 @@ fn binding_type_id(binding CallBinding, name string) u32 {
 fn (tc &TypeChecker) generic_param_arg_pos(node flat.Node, info CallInfo, name string) token.Pos {
 	texts := tc.fn_param_type_texts.type_ids(info.name) or { []u32{} }
 	first := if info.has_receiver { 1 } else { 0 }
-	name_id := flat.source_type_id(name)
 	for param_idx in first .. texts.len {
-		if trimmed_source_type_id(texts[param_idx]) != name_id {
+		if !source_type_id_is_name(trimmed_source_type_id(texts[param_idx]), name) {
 			continue
 		}
 		arg_idx := param_idx - first + 1 + info.arg_offset
@@ -2020,7 +2023,7 @@ fn (tc &TypeChecker) fn_param_type_param(fn_node flat.Node, name string, names [
 			typ_id = flat.source_type_syntax(typ_id).raw_base()
 		}
 		for type_param in names {
-			if typ_id == flat.source_type_id(type_param) { return type_param }
+			if source_type_id_is_name(typ_id, type_param) { return type_param }
 		}
 		return none
 	}
@@ -3052,18 +3055,6 @@ fn (tc &TypeChecker) constraint_bracket_pos(node flat.Node, base flat.Node) toke
 @[inline]
 fn (value &GenericConstraint) family_struct_text() string {
 	return flat.source_type_name(value.family_struct)
-}
-
-// sum_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &SumConstraintStep) sum_name_text() string {
-	return flat.source_type_name(value.sum_name)
-}
-
-// variant_text resolves the indexed source type spelling.
-@[inline]
-fn (value &SumConstraintStep) variant_text() string {
-	return flat.source_type_name(value.variant)
 }
 
 // name_text resolves the generic constraint source spelling.
