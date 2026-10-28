@@ -82,6 +82,7 @@ $if !i386 {
 		return vlibc_sys_close(fd)
 	}
 
+	// vlibc_read_all reads to EOF, retrying interrupted reads and retaining data on error.
 	pub fn vlibc_read_all(fd i64) ([]u8, VlibcErrno) {
 		mut cap := int(4096)
 		mut buf := []u8{len: cap}
@@ -97,10 +98,15 @@ $if !i386 {
 			}
 			n, e := vlibc_sys_read(fd, &u8(buf.data) + total, cap - total)
 			if e != .enoerror {
+				if e == .eintr {
+					continue
+				}
 				if total == 0 {
+					unsafe { buf.free() }
 					return []u8{}, e
 				}
-				break
+				buf.trim(total)
+				return buf, e
 			}
 			if n == 0 {
 				break
@@ -111,16 +117,18 @@ $if !i386 {
 		return buf, VlibcErrno.enoerror
 	}
 
+	// vlibc_read_file reads a file and reports read errors before any close error.
 	pub fn vlibc_read_file(path string) ([]u8, VlibcErrno) {
 		fd, e := vlibc_open(path, 0, 0)
 		if e != .enoerror {
 			return []u8{}, e
 		}
 		data, e2 := vlibc_read_all(fd)
-		vlibc_close(fd)
-		return data, e2
+		close_error := vlibc_close(fd)
+		return data, if e2 != .enoerror { e2 } else { close_error }
 	}
 
+	// vlibc_write_file writes all bytes, retries interruptions, and reports close failures.
 	pub fn vlibc_write_file(path string, data []u8) VlibcErrno {
 		fd, e := vlibc_open(path, 0x241, 0o644) // O_WRONLY|O_CREAT|O_TRUNC
 		if e != .enoerror {
@@ -130,6 +138,9 @@ $if !i386 {
 		for off < u64(data.len) {
 			n, e2 := vlibc_sys_write(fd, &u8(data.data) + off, u64(data.len) - off)
 			if e2 != .enoerror {
+				if e2 == .eintr {
+					continue
+				}
 				vlibc_close(fd)
 				return e2
 			}
@@ -139,8 +150,7 @@ $if !i386 {
 			}
 			off += u64(n)
 		}
-		vlibc_close(fd)
-		return VlibcErrno.enoerror
+		return vlibc_close(fd)
 	}
 
 	pub fn vlibc_mkdir(path string, mode u32) VlibcErrno {
@@ -186,8 +196,10 @@ $if !i386 {
 		name   string
 	}
 
+	// vlibc_list_dir lists directory entries using the architecture-specific O_DIRECTORY flag.
 	pub fn vlibc_list_dir(path string) ([]string, VlibcErrno) {
-		fd, e := vlibc_open(path, 0x10000 | 0, 0) // O_DIRECTORY
+		directory_flag := $if arm64 { 0x4000 } $else { 0x10000 }
+		fd, e := vlibc_open(path, directory_flag, 0) // O_DIRECTORY
 		if e != .enoerror {
 			// retry without O_DIRECTORY (some kernels accept plain open)
 			fd2, e2 := vlibc_open(path, 0, 0)

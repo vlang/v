@@ -68,8 +68,11 @@ const prealloc_block_size = 16 * 1024 * 1024
 // size of the first chunk for a scoped prealloc arena. Request-scoped arenas
 // should not force a 16MB libc allocation for every request.
 const prealloc_scope_block_size = 256 * 1024
-// Bound retained scope blocks to 2 MiB per thread, including compiler workers.
-const prealloc_recycle_cache_slots = 8
+// Bound retained scope blocks per thread, including compiler workers. Scopes
+// grow to 1M blocks; a cache that holds only two of them unmaps the rest at
+// every scope end, and the next scope faults the same pages in again.
+const prealloc_recycle_cache_slots = 16
+const prealloc_recycle_cache_max_bytes = 16 * 1024 * 1024
 
 // `malloc` has to return memory suitably aligned for any V value. Keep the
 // default at the common max alignment used by libc malloc on current targets.
@@ -78,6 +81,7 @@ const prealloc_default_align = sizeof(voidptr) * 2
 __global g_memory_block &VMemoryBlock
 __global g_prealloc_allocation_count i64
 __global g_prealloc_allocated_bytes i64
+__global g_prealloc_keep_at_exit bool
 
 // prealloc_recyclable_block_size reports whether a block belongs to one of
 // the scope size classes (256K..1M, the geometric scope growth ladder) that
@@ -551,7 +555,7 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 							}
 							cache_limit := prealloc_recycle_cache_limit()
 							if cache != 0 && cache.count < cache_limit
-								&& cache.bytes + int(size) <= int(prealloc_scope_block_size) * cache_limit {
+								&& cache.bytes + int(size) <= int(prealloc_recycle_cache_max_bytes) {
 								cache.starts[cache.count] = voidptr(mb.start)
 								cache.sizes[cache.count] = int(size)
 								cache.bytes += int(size)
@@ -714,9 +718,20 @@ fn prealloc_vcleanup() {
 			C.fprintf(C.stderr, c'prealloc_vcleanup total dump size in bytes: %lld\n', total_used)
 		}
 	}
+	if g_prealloc_keep_at_exit {
+		return
+	}
 	unsafe {
 		prealloc_thread_cleanup()
 	}
+}
+
+// prealloc_keep_memory_at_exit makes the exit handler leave the arenas of the
+// main thread mapped. The OS reclaims them at process exit with less work than
+// unmapping each block. Only call it from programs that end with the process.
+@[unsafe]
+pub fn prealloc_keep_memory_at_exit() {
+	g_prealloc_keep_at_exit = true
 }
 
 // prealloc_scope_begin starts a nested arena on the current thread. All V
@@ -1062,6 +1077,37 @@ pub fn prealloc_scope_owns(scope_ptr voidptr, ptr voidptr) bool {
 		// Read the field in place: copying the @[heap] range struct into a local
 		// would heap-allocate on every probe, and callers probe once per AST node.
 		return address < scope.ranges[lo - 1].stop
+	}
+}
+
+// prealloc_scope_unowned_interval returns the bounds `lo` and `hi` of the widest
+// address interval around ptr that holds no block of scope_ptr, or `0, 0` when
+// scope_ptr owns ptr. A caller probing many nearby pointers of a settled scope
+// can skip prealloc_scope_owns for every one that falls in `[lo, hi)`.
+@[unsafe]
+pub fn prealloc_scope_unowned_interval(scope_ptr voidptr, ptr voidptr) (uint, uint) {
+	if scope_ptr == unsafe { nil } {
+		return 0, ~uint(0)
+	}
+	unsafe {
+		scope := &VPreallocScope(scope_ptr)
+		address := uint(ptr)
+		mut lo := 0
+		mut hi := scope.ranges_len
+		for lo < hi {
+			mid := lo + (hi - lo) / 2
+			if scope.ranges[mid].start <= address {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo > 0 && address < scope.ranges[lo - 1].stop {
+			return 0, 0
+		}
+		gap_lo := if lo > 0 { scope.ranges[lo - 1].stop } else { uint(0) }
+		gap_hi := if lo < scope.ranges_len { scope.ranges[lo].start } else { ~uint(0) }
+		return gap_lo, gap_hi
 	}
 }
 

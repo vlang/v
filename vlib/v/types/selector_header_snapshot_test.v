@@ -19,8 +19,8 @@ fn test_enum_selector_base_helper_keeps_qualified_names_and_header_guards() {
 	tc.cur_file = 'main.v'
 	tc.cur_module = 'main'
 	tc.register_file_import('dep', 'one')
-	tc.enum_names['one.Color'] = true
-	tc.enum_fields['one.Color'] = ['red']
+	tc.enum_names[flat.source_type_id('one.Color')] = true
+	tc.enum_fields[flat.source_type_id('one.Color')] = ['red']
 	header := a.nodes[int(selector)]
 	wrapped := tc.enum_selector_type(&header) or { panic('qualified wrapper missing') }
 	assert wrapped.source_type_id() == flat.source_type_id('one.Color')

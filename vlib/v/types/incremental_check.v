@@ -898,7 +898,7 @@ pub fn (mut tc TypeChecker) complete_incremental_check_for_instances() {
 	for i in state.skipped {
 		f := state.functions[i]
 		if state.earlier.entries[f.earlier].generic
-			|| tc.infer_decl_generic_param_names(tc.a.nodes[f.item.fn_idx]).len > 0 {
+			|| tc.infer_decl_generic_param_ids(tc.a.nodes[f.item.fn_idx]).len > 0 {
 			state.to_complete << i
 		}
 	}
@@ -1005,7 +1005,7 @@ fn (tc &TypeChecker) incremental_instances_reason(by_key map[string]int) string 
 // incremental_body_is_generic reports whether `f` is the body of a generic
 // function, or holds an anonymous generic function: its text makes instances.
 fn (tc &TypeChecker) incremental_body_is_generic(f IncrementalFunction) bool {
-	if tc.infer_decl_generic_param_names(tc.a.nodes[f.item.fn_idx]).len > 0 {
+	if tc.infer_decl_generic_param_ids(tc.a.nodes[f.item.fn_idx]).len > 0 {
 		return true
 	}
 	for idx in f.item.range_lo .. f.item.fn_idx {
@@ -1052,7 +1052,8 @@ fn (tc &TypeChecker) incremental_touches_generics(f IncrementalFunction, generic
 		if node.kind in [.ident, .selector] && incremental_names_generic_fn(node.value, generic_fns) {
 			return true
 		}
-		if type_text_mentions_generic_application(node.typ_text()) {
+		if flat.source_type_shape(node.typ).has(.bracketed)
+			&& flat.source_type_syntax(node.typ).incremental_generic_application() {
 			return true
 		}
 		id := flat.NodeId(idx)
@@ -1117,30 +1118,6 @@ fn type_mentions_generic_application(typ &Type) bool {
 		MultiReturn { typ.types.any(type_mentions_generic_application(it)) }
 		else { false }
 	}
-}
-
-// type_text_mentions_generic_application reports whether the type text `text`
-// applies a generic type, as `Box[int]` and `[]Box[int]` do and `[]int`, `[3]int`
-// and `map[string]int` do not: a `[` right after a name other than `map`.
-fn type_text_mentions_generic_application(text string) bool {
-	for i := 1; i < text.len; i++ {
-		if text[i] != `[` || !incremental_is_name_byte(text[i - 1]) {
-			continue
-		}
-		mut start := i - 1
-		for start > 0 && incremental_is_name_byte(text[start - 1]) {
-			start--
-		}
-		if !(i - start == 3 && text[start] == `m` && text[start + 1] == `a`
-			&& text[start + 2] == `p`) {
-			return true
-		}
-	}
-	return false
-}
-
-fn incremental_is_name_byte(c u8) bool {
-	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`
 }
 
 // verify_incremental_check compares what the bodies left out reported once

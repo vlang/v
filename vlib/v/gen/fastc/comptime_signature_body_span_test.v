@@ -38,12 +38,12 @@ fn tail() {}
 		mut prefs := pref.new_preferences()
 		prefs.building_v = true
 		if picked { prefs.user_defines << 'picked' }
-		mut declared := map[string]bool{}
-		mut kinds := map[string]FastcDeclaredTypeKind{}
-		mut enum_flags := map[string]bool{}
+		mut declared := map[u32]bool{}
+		mut kinds := map[u32]FastcDeclaredTypeKind{}
+		mut enum_flags := map[u32]bool{}
 		mut params_structs := map[string]bool{}
-		mut declaration_paths := map[string]string{}
-		mut declaration_modules := map[string]string{}
+		mut declaration_paths := map[u32]string{}
+		mut declaration_modules := map[u32]string{}
 		mut type_source := strings.new_builder(128)
 		mut source_origins := []FastcSourceOrigin{}
 		mut body_spans := []int{}
@@ -116,7 +116,7 @@ fn last() {}
 	}
 	mut signatures := map[string]FastcFunctionSignature{}
 	collect_function_signatures_at(source, 137, 'selected_slice.v', header, prefs, []int{},
-		map[string]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut signatures) or {
+		map[u32]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut signatures) or {
 		panic(err)
 	}
 	assert signatures.len == 3

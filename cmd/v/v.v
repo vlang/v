@@ -114,6 +114,11 @@ fn retry_state(value &RetryState) &RetryState {
 }
 
 fn main() {
+	$if prealloc {
+		// The compiler's arenas live until the process ends; the OS reclaims them
+		// with less work than unmapping each block in the exit handler.
+		unsafe { prealloc_keep_memory_at_exit() }
+	}
 	vexe := os.real_path(os.executable())
 	// Ownership helpers reset VEXE for their own tool dispatch, but module cache
 	// isolation must keep identifying the primary compiler that launched them.

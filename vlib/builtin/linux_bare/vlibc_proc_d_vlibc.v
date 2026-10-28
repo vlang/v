@@ -25,19 +25,21 @@ $if !i386 {
 		return vlibc_sys_execve(path.str, a, e)
 	}
 
+	// vlibc_waitpid waits for pid to exit and returns the reaped process id.
 	pub fn vlibc_waitpid(pid i64) (i64, VlibcErrno) {
-		mut status := 0
-		e := vlibc_sys_waitid(.p_pid, int(pid), &status, 0x00000004 | 0x00000002 | 0x00000001, unsafe { nil })
-		if e != .enoerror {
-			return -1, e
+		mut status := i32(0)
+		for {
+			waited, e := vlibc_sys_wait4(pid, &status, 0, unsafe { nil })
+			if e == .eintr { continue }
+			return waited, e
 		}
-		return i64(pid), VlibcErrno.enoerror
 	}
 
+	// vlibc_pipe creates a pipe using the kernel's 32-bit descriptor layout.
 	pub fn vlibc_pipe() ([2]int, VlibcErrno) {
-		mut fds := [0, 0]
+		mut fds := [2]i32{}
 		e := vlibc_sys_pipe2(&fds[0], 0)
-		return fds, e
+		return [int(fds[0]), int(fds[1])]!, e
 	}
 
 	pub fn vlibc_dup2(oldfd int, newfd int) (i64, VlibcErrno) {
