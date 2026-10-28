@@ -236,7 +236,6 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	return out
 }
 
-
 fn v3_live_reload_os_shim(target_os string) string {
 	mut out := ''
 	match target_os {
