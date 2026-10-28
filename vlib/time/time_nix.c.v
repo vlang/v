@@ -89,6 +89,9 @@ pub fn sys_mono_now() u64 {
 
 // Note: vpc_now is used by `v -profile` .
 // It should NOT call *any other v function*, just C functions and casts.
+// That is also why it intentionally has no `$if vlibc ?` branch:
+// vlibc_sys_clock_gettime is a V wrapper in builtin, not a C function, and
+// hosted `-d vlibc` builds still link libc, so C.clock_gettime stays correct.
 @[inline]
 fn vpc_now() u64 {
 	ts := C.timespec{}
@@ -145,29 +148,70 @@ fn win_utc() Time {
 
 // return absolute timespec for now()+d
 pub fn (d Duration) timespec() C.timespec {
-	mut ts := C.timespec{}
-	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-	d_sec := d / second
-	d_nsec := d % second
-	ts.tv_sec += d_sec
-	ts.tv_nsec += d_nsec
-	if ts.tv_nsec > i64(second) {
-		ts.tv_nsec -= i64(second)
-		ts.tv_sec++
+	$if vlibc ? {
+		mut vts := VlibcTimespec{}
+		vlibc_sys_clock_gettime(0, &vts)
+		mut ts := C.timespec{
+			tv_sec:  vts.sec
+			tv_nsec: vts.nsec
+		}
+		d_sec := d / second
+		d_nsec := d % second
+		ts.tv_sec += d_sec
+		ts.tv_nsec += d_nsec
+		if ts.tv_nsec > i64(second) {
+			ts.tv_nsec -= i64(second)
+			ts.tv_sec++
+		}
+		return ts
+	} $else {
+		mut ts := C.timespec{}
+		C.clock_gettime(C.CLOCK_REALTIME, &ts)
+		d_sec := d / second
+		d_nsec := d % second
+		ts.tv_sec += d_sec
+		ts.tv_nsec += d_nsec
+		if ts.tv_nsec > i64(second) {
+			ts.tv_nsec -= i64(second)
+			ts.tv_sec++
+		}
+		return ts
 	}
-	return ts
 }
 
 // sleep suspends the execution of the calling thread for a given duration (in nanoseconds).
 pub fn sleep(duration Duration) {
-	mut req := C.timespec{duration / second, duration % second}
-	rem := C.timespec{}
-	for C.nanosleep(&req, &rem) < 0 {
-		if C.errno == C.EINTR {
-			// Interrupted by a signal handler
-			req = rem
-		} else {
+	$if vlibc ? {
+		// Same EINTR/resume-with-remaining semantics as the libc path below.
+		// vlibc_sleep_ns is single-shot over u64 (it cannot express a negative
+		// duration or return the remaining time), so loop on the raw syscall.
+		mut req := VlibcTimespec{
+			sec:  i64(duration / second)
+			nsec: i64(duration % second)
+		}
+		mut rem := VlibcTimespec{}
+		for {
+			err := vlibc_sys_nanosleep(&req, &rem)
+			if err == .enoerror {
+				break
+			}
+			if err == .eintr {
+				// Interrupted by a signal handler
+				req = rem
+				continue
+			}
 			break
+		}
+	} $else {
+		mut req := C.timespec{duration / second, duration % second}
+		rem := C.timespec{}
+		for C.nanosleep(&req, &rem) < 0 {
+			if C.errno == C.EINTR {
+				// Interrupted by a signal handler
+				req = rem
+			} else {
+				break
+			}
 		}
 	}
 }
