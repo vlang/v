@@ -1555,7 +1555,8 @@ reading the file in bounded chunks on every request, even when its body is strea
 change within one timestamp second still receive different ETags. `Last-Modified` has HTTP's
 second precision; prefer ETags for files that can change more frequently.
 
-`If-None-Match` takes precedence over `If-Modified-Since`. A match returns 304 for GET and HEAD,
+`If-None-Match` combines all repeated fields and takes precedence over `If-Modified-Since`.
+A match returns 304 for GET and HEAD,
 without a body or Content-Length, and 412 for other methods. `If-Modified-Since` is ignored for
 other methods. Identity responses retain `Vary: Accept-Encoding` along with
 existing Vary fields. Encoded static responses currently omit these validators, so an identity

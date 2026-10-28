@@ -146,6 +146,30 @@ fn test_static_preconditions_and_ranges_respect_request_method() {
 	assert !head.res.header.contains(.content_length)
 }
 
+fn test_static_if_none_match_combines_repeated_fields() {
+	path := conditional_fixture()
+	defer { os.rm(path) or {} }
+	first := conditional_send_file(path, {}, false)
+	etag := first.res.header.get(.etag) or { panic('missing etag') }
+	for takeover in [false, true] {
+		for method in [http.Method.get, .head, .post] {
+			mut req := conditional_test_request({'If-None-Match': '"missing"'})
+			req.method = method
+			req.header.add(.if_none_match, 'W/' + etag)
+			mut ctx := &Context{req: req}
+			if takeover {
+				ctx.takeover_mode = .manual
+			}
+			ctx.send_file('text/plain', path)
+			assert ctx.res.status_code == if method == .post { 412 } else { 304 }
+			assert ctx.res.body == ''
+			if method != .post {
+				assert !ctx.res.header.contains(.content_length)
+			}
+		}
+	}
+}
+
 fn test_static_uncompressed_carries_validators() {
 	path := conditional_fixture()
 	defer {
