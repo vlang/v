@@ -201,6 +201,11 @@ jobs:
             echo "HOME=$HOME PWD=$PWD PREFIX=$PREFIX"
             ls -la "$HOME/tcc-install" || true
             ls -la "$HOME/tcc-install/bin" || true
+            # The tcc binary rpath points at $PREFIX/lib, not the install lib
+            # directory where libtcc.so went, so bionic cannot find libtcc.so.
+            # Put the install lib directory on the search path for tcc and for
+            # the V bootstrap that runs it.
+            export LD_LIBRARY_PATH="$HOME/tcc-install/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
             tcc="$HOME/tcc-install/bin/tcc"
             "$tcc" -v
             cd ~/vproject
