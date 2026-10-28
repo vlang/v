@@ -749,10 +749,11 @@ fn (tc &TypeChecker) inline_asm_att_operand_width(operand InlineAsmRawOperand, t
 			return inline_asm_att_register_width(operand.name, arch_bits)
 		}
 		.operand_ref {
+			// Modifiers do not establish a register width for memory or mixed constraints.
+			typ := types[operand.name] or { return 0 }
 			if operand.modifier != 0 {
 				return inline_asm_att_modifier_width(operand.modifier)
 			}
-			typ := types[operand.name] or { return 0 }
 			return tc.inline_asm_att_type_width(typ, arch_bits)
 		}
 		else {

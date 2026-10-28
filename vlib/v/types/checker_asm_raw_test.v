@@ -661,3 +661,33 @@ fn main() {
 	assert bad.len == 1, bad.str()
 	assert bad[0].starts_with('`movw` operates on 16-bit operands here, but `%[x]` is 32-bit'), bad[0]
 }
+
+fn test_att_modifiers_require_a_register_only_constraint() {
+	for constraint in ['m', 'rm', 'g'] {
+		errors := att_width_errors('modified_memory_${constraint}', 'module main
+fn main() {
+ x := u64(42)
+ mut out := u64(0)
+ asm amd64 raw {
+  "movq %k[x], %[out]"
+  ; [out] "=r" (out)
+  ; [x] "${constraint}" (x)
+ }
+}
+')
+		assert errors.len == 0, errors.str()
+	}
+	errors := att_width_errors('modified_register', 'module main
+fn main() {
+ x := u64(42)
+ mut out := u64(0)
+ asm amd64 raw {
+  "movq %k[x], %[out]"
+  ; [out] "=r" (out)
+  ; [x] "r" (x)
+ }
+}
+')
+	assert errors.len == 1, errors.str()
+	assert errors[0].starts_with('`movq` operates on 64-bit operands here, but `%k[x]` is 32-bit'), errors[0]
+}
