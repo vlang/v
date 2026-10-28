@@ -16420,10 +16420,10 @@ fn (mut tc TypeChecker) check_struct_implements(node_id flat.NodeId, node flat.N
 		}
 		if is_generic && interface_params.len > 0 {
 			mut unknown_arg := ''
+			decl_params := generic_param_ids(node.generic_params())
 			for arg_id in args {
-				arg := flat.source_type_name(arg_id)
-				if arg !in node.generic_params() && tc.type_text_has_generic_placeholder(arg_id) {
-					unknown_arg = arg
+				if arg_id !in decl_params && tc.type_text_has_generic_placeholder(arg_id) {
+					unknown_arg = flat.source_type_name(arg_id)
 					break
 				}
 			}

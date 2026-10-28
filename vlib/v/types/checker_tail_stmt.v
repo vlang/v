@@ -5252,7 +5252,7 @@ fn (tc &TypeChecker) generic_struct_field_unknown_type_message(struct_name_id u3
 	}
 	decl_file := tc.struct_files[lookup_id] or { tc.cur_file }
 	decl_module := tc.struct_modules[lookup_id] or { tc.cur_module }
-	generic_params := flat.TypeTextList.from_names(decl.generic_params()).ids
+	generic_params := generic_param_ids(decl.generic_params())
 	for i in 0 .. decl.children_count {
 		field_id := tc.a.child(&decl, i)
 		field := tc.a.node(field_id)
@@ -8611,10 +8611,9 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if name := tc.generic_call_base_name(generic_base_node) {
-		type_args := flat.TypeTextList{ ids: tc.generic_call_type_arg_names(node) }.names()
 		mut has_unresolved_generic := false
-		for type_arg in type_args {
-			if is_bare_generic_param(type_arg) && !tc.active_generic_param(type_arg) {
+		for type_arg in tc.generic_call_type_arg_names(node) {
+			if source_type_is_bare_generic_param(type_arg) && !tc.active_generic_param_id(type_arg) {
 				has_unresolved_generic = true
 				break
 			}
@@ -18465,7 +18464,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 	// component of `!module.M` looks generic while the complete wrapper is absent
 	// from the declared-type tables, even though `module.M` is concrete.
 	if syntax.named_type() && source_type_is_bare_generic_param(syntax.unqualified())
-		&& (tc.active_generic_param(flat.source_type_name(source_id)) || !tc.is_known_type_text(source_id)) {
+		&& (tc.active_generic_param_id(source_id) || !tc.is_known_type_text(source_id)) {
 		return generic_placeholder_type(source_id)
 	}
 	qtyp_id := if tc.resolution_type_mode {

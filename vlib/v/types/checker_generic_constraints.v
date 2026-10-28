@@ -2928,10 +2928,11 @@ fn (mut tc TypeChecker) check_constraint_operator(id flat.NodeId, node flat.Node
 			constraint := interfaces[param]
 			for typ in tc.constraint_operator_types(constraint) {
 				if !tc.constraint_assign_allowed(typ, op, other) {
+					param_name := flat.source_type_name(param)
 					what := if other == .same {
-						'operator `${assign_op}` is not defined on type `${flat.source_type_name(param)}`'
+						'operator `${assign_op}` is not defined on type `${param_name}`'
 					} else {
-						'operator `${assign_op}` is not defined on type `${flat.source_type_name(param)}` and `${tc.constraint_operand_name(rhs_id, other)}`'
+						'operator `${assign_op}` is not defined on type `${param_name}` and `${tc.constraint_operand_name(rhs_id, other)}`'
 					}
 					tc.record_constraint_operator_error(id, tc.constraint_assign_operator_pos(node, assign_op),
 						what, constraint, typ)
@@ -2979,12 +2980,13 @@ fn (mut tc TypeChecker) check_constraint_binary(id flat.NodeId, node flat.Node, 
 		if tc.constraint_binary_allowed(typ, op, other, left) {
 			continue
 		}
+		param_name := flat.source_type_name(param)
 		what := if other == .same {
-			'operator `${op}` is not defined on type `${flat.source_type_name(param)}`'
+			'operator `${op}` is not defined on type `${param_name}`'
 		} else if left {
-			'operator `${op}` is not defined on `${tc.constraint_operand_name(other_id, other)}` and type `${flat.source_type_name(param)}`'
+			'operator `${op}` is not defined on `${tc.constraint_operand_name(other_id, other)}` and type `${param_name}`'
 		} else {
-			'operator `${op}` is not defined on type `${flat.source_type_name(param)}` and `${tc.constraint_operand_name(other_id, other)}`'
+			'operator `${op}` is not defined on type `${param_name}` and `${tc.constraint_operand_name(other_id, other)}`'
 		}
 		tc.record_constraint_operator_error(id, tc.infix_operator_pos(node, op), what, constraint,
 			typ)

@@ -106,25 +106,14 @@ fn sort_generic_param_ids(mut ids []u32) {
 	})
 }
 
-// The one capital letter spellings `A`..`Z`, indexed by letter.
-const generic_param_letter_ids = generic_param_letter_spellings()
-
-fn generic_param_letter_spellings() []u32 {
-	mut ids := []u32{cap: 26}
-	for letter := u8(`A`); letter <= `Z`; letter++ {
-		ids << flat.source_type_id(letter.ascii_str())
-	}
-	return ids
-}
-
 // generic_param_letter_mask returns the enclosing-parameter mask bit of a one
-// capital letter type parameter, or 0 for any other spelling.
+// capital letter type parameter, `T`, or 0 for any other spelling. The bit is
+// the letter's own, so the mask needs the spelling's text.
 fn generic_param_letter_mask(param u32) u32 {
-	idx := generic_param_letter_ids.index(param)
-	if idx < 0 {
+	if !source_type_is_bare_generic_param(param) {
 		return 0
 	}
-	return u32(1) << u32(idx)
+	return u32(1) << u32(flat.source_type_name(param)[0] - `A`)
 }
 
 // generic_param_layout_name spells a generic declaration applied to its own
