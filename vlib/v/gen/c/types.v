@@ -3167,7 +3167,7 @@ fn (mut g FlatGen) type_alias_decls_at_phase(emit_fn_ptr_aliases bool, after_arr
 			continue
 		}
 		name := flat.source_type_name(registry_name_id)
-		alias_module := module_from_qualified_name(name)
+		alias_module := module_from_source_type_name(registry_name_id)
 		g.tc.cur_module = if alias_module.len > 0 {
 			alias_module
 		} else if main_aliases[registry_name_id] {

@@ -17799,13 +17799,13 @@ fn (t &Transformer) receiver_method_name_is_open_generic(method_name string) boo
 			}
 		}
 	}
-	method_id := flat.source_type_id(method_name)
-	if flat.source_type_shape(method_id).has(.dotted) {
-		receiver := flat.source_type_syntax(method_id).qualifier()
+	if method_name.contains('.') {
+		receiver_name := method_name.all_before_last('.')
 		// Collection and generic application receivers both require a bracket.
-		if !flat.source_type_shape(receiver).has(.bracketed) {
+		if !receiver_name.contains('[') {
 			return false
 		}
+		receiver := flat.source_type_id(receiver_name)
 		if collection_receiver := receiver_collection_method_type(receiver) {
 			return t.generic_arg_is_unresolved_collection_type(collection_receiver)
 		}
@@ -17911,7 +17911,8 @@ fn is_builder_type_name(typ_id u32, module_name string) bool {
 	if flat.source_type_shape(clean).has(.pointer) {
 		clean = flat.source_type_syntax(clean).raw_base()
 	}
-	return clean == flat.source_type_id('strings.Builder') || (clean == flat.source_type_id('Builder') && module_name == 'strings')
+	return clean == transform_source_type_strings_builder
+		|| (clean == transform_source_type_builder && module_name == 'strings')
 }
 
 // resolved_call_uses_receiver_type
@@ -19337,9 +19338,8 @@ fn (t &Transformer) receiver_method_param_offset_with_type(base_id flat.NodeId, 
 
 fn (t &Transformer) receiver_param_matches_method_name(first u32, method_name string) bool {
 	if first == 0 || method_name == '' { return false }
-	method_id := flat.source_type_id(method_name)
-	if !flat.source_type_shape(method_id).has(.dotted) { return false }
-	receiver := t.trim_pointer_type(flat.source_type_syntax(method_id).qualifier())
+	if !method_name.contains('.') { return false }
+	receiver := t.trim_pointer_type(flat.source_type_id(method_name.all_before_last('.')))
 	if receiver == 0 { return false }
 	first_syntax := flat.source_type_syntax(first)
 	receiver_syntax := flat.source_type_syntax(receiver)

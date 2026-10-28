@@ -14282,8 +14282,13 @@ fn (t &Transformer) fn_decl_receiver_is_open_generic(node flat.Node, module_name
 		// Generic parameter identifiers enter through declaration metadata.
 		params := t.tc.struct_generic_params[candidate] or { continue }
 		for arg in syntax.generic_app_args() {
+			arg_id := t.trimmed_type_id(arg)
 			for param in params {
-				if t.trimmed_type_id(arg) == flat.source_type_id(param) { return true }
+				// A parameter that was never interned cannot match an interned argument.
+				param_id := flat.source_type_existing_id(param) or { continue }
+				if arg_id == param_id {
+					return true
+				}
 			}
 		}
 	}

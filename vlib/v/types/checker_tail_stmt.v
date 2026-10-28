@@ -12810,8 +12810,8 @@ pub fn (tc &TypeChecker) interface_impl_set_signature() string {
 	mut found := map[u32]bool{}
 	for iface_name in iface_names {
 		iface_name_id := iface_name
-		impl_names := if iface_name in [flat.source_type_id('IError'),
-			flat.source_type_id('builtin.IError')] {
+		impl_names := if iface_name in [ierror_source_interface_name,
+			ierror_source_builtin_interface_name] {
 			tc.ierror_impl_names()
 		} else {
 			tc.interface_impl_names(iface_name_id)
@@ -12941,8 +12941,8 @@ pub fn (tc &TypeChecker) interface_concrete_method_keys() []string {
 	mut seen := map[string]bool{}
 	for iface_name in iface_names {
 		iface_name_id := iface_name
-		impl_ids := if iface_name in [flat.source_type_id('IError'),
-			flat.source_type_id('builtin.IError')] {
+		impl_ids := if iface_name in [ierror_source_interface_name,
+			ierror_source_builtin_interface_name] {
 			tc.ierror_impl_names()
 		} else {
 			tc.interface_impl_names(iface_name_id)
@@ -13532,9 +13532,9 @@ fn (tc &TypeChecker) named_type_implements_ierror_methods(concrete_name_id u32) 
 	// the exact global names count: a module-local `pkg.IError` would otherwise be
 	// picked up by the short-name fallback of `interface_metadata_name`, but it is
 	// not the builtin error protocol.
-	iface_name_id := if flat.source_type_id('builtin.IError') in tc.interface_names {
+	iface_name_id := if ierror_source_builtin_interface_name in tc.interface_names {
 		ierror_source_builtin_interface_name
-	} else if flat.source_type_id('IError') in tc.interface_names {
+	} else if ierror_source_interface_name in tc.interface_names {
 		ierror_source_interface_name
 	} else {
 		return false
@@ -14184,7 +14184,7 @@ fn (tc &TypeChecker) interface_method_names(iface_name_id u32) []string {
 // It is absent with `-no-builtin`: option/result wrappers then carry no `err`
 // field, and `or {}` blocks and if-guard `else` branches bind no implicit `err`.
 pub fn (tc &TypeChecker) has_ierror_interface() bool {
-	return flat.source_type_id('IError') in tc.interface_names || flat.source_type_id('builtin.IError') in tc.interface_names
+	return ierror_source_interface_name in tc.interface_names || ierror_source_builtin_interface_name in tc.interface_names
 }
 
 // interface_abstract_method_names returns the methods an implementer must provide:
