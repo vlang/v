@@ -33030,7 +33030,6 @@ fn (mut t Transformer) collect_live_functions() {
 	t.live_reload_runtime = false
 	node_count := t.a.nodes.len
 	mut mutable_cur_file := ''
-	mut mutable_cur_module := ''
 	for i in 0 .. node_count {
 		node := t.a.nodes[i]
 		kind_id := int(node.kind)

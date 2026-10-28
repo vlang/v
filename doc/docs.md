@@ -11717,18 +11717,21 @@ the running binary instead of loading a shared library. Build with
 the reloader updates with freshly compiled machine code:
 
 ```bash
-v -b arm64 run message.v
+v -b arm64 run native_counter.v
 ```
 
 Single functions can be extracted as raw machine code with `-hot-fn`:
 
 ```bash
-v -b arm64 -hot-fn print_message -o print_message.bin message.v
+v -b arm64 -hot-fn next_value -o next_value.bin native_counter.v
 ```
 
 Only self-contained `@[live]` functions are supported for now: functions
 needing address fixups (calls, string literals, globals) are rejected at
 extract time instead of emitting silently broken machine code.
+`examples/hot_reload/message.v` is therefore not supported by the native
+path (its live function calls other functions and prints strings); it
+remains an example for the C shared-library workflow.
 
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).

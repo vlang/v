@@ -39,6 +39,49 @@ fn test_native_live_reload_program_compiles() {
 	}
 }
 
+fn test_native_hot_fn_extracts_self_contained_function() {
+	$if macos && arm64 {
+		path := os.join_path(os.vtmp_dir(), 'arm64_hot_self_${os.getpid()}.v')
+		output := os.join_path(os.vtmp_dir(), 'arm64_hot_self_${os.getpid()}.bin')
+		linked := os.join_path(os.vtmp_dir(), 'arm64_hot_self_${os.getpid()}')
+		defer {
+			os.rm(path) or {}
+			os.rm(output) or {}
+			os.rm(linked) or {}
+		}
+		os.cp(os.join_path(@VEXEROOT, 'examples', 'hot_reload', 'native_counter.v'), path) or {
+			panic(err)
+		}
+		link := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+			'-nocache', '-b', 'arm64', '-os', 'macos', '-o', linked, path])
+		assert link.exit_code == 0, link.output
+		extract := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+			'-nocache', '-b', 'arm64', '-os', 'macos', '-hot-fn', 'next_value', '-o', output, path])
+		assert extract.exit_code == 0, extract.output
+		assert os.file_size(output) > 0, 'extracted function must not be empty'
+	}
+}
+
+fn test_native_hot_fn_rejects_function_needing_fixups() {
+	$if macos && arm64 {
+		path := os.join_path(os.vtmp_dir(), 'arm64_hot_reject_${os.getpid()}.v')
+		output := os.join_path(os.vtmp_dir(), 'arm64_hot_reject_${os.getpid()}.bin')
+		defer {
+			os.rm(path) or {}
+			os.rm(output) or {}
+		}
+		os.cp(os.join_path(@VEXEROOT, 'examples', 'hot_reload', 'message.v'), path) or {
+			panic(err)
+		}
+		// `print_message` calls other functions and uses string literals, so
+		// extraction must fail instead of emitting broken machine code.
+		extract := exec_native(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+			'-nocache', '-b', 'arm64', '-os', 'macos', '-hot-fn', 'print_message', '-o', output,
+			path])
+		assert extract.exit_code != 0, extract.output
+	}
+}
+
 fn test_native_run_forwards_arguments_and_exit_status() {
 	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'arm64_run_dispatch_${os.getpid()}.v')

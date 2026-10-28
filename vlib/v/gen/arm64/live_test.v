@@ -33,3 +33,28 @@ fn test_extract_function_rejects_function_with_relocations() {
 	code := g.extract_function('foo')
 	assert code.len == 0
 }
+
+fn test_extract_function_rejects_direct_call_without_reloc() {
+	mut m := ssa.Module.new()
+	mut g := Gen.new(m)
+	// `foo` calls the earlier-defined helper `bar` via a direct BL with
+	// its displacement baked in (no relocation entry): BL @0 targeting 8
+	// is 0x94000002, followed by RET (0xD65F03C0).
+	g.macho.text_data = [u8(0x02), 0x00, 0x00, 0x94, 0xC0, 0x03, 0x5F, 0xD6, 0xC0, 0x03, 0x5F,
+		0xD6]
+	g.macho.add_symbol('_foo', 0, false, 1)
+	g.macho.add_symbol('_bar', 8, false, 1)
+	code := g.extract_function('foo')
+	assert code.len == 0
+}
+
+fn test_extract_function_accepts_recursive_call() {
+	mut m := ssa.Module.new()
+	mut g := Gen.new(m)
+	// BL to self (0x94000000): the target moves with the copy, so the
+	// displacement stays valid.
+	g.macho.text_data = [u8(0x00), 0x00, 0x00, 0x94]
+	g.macho.add_symbol('_foo', 0, false, 1)
+	code := g.extract_function('foo')
+	assert code == [u8(0x00), 0x00, 0x00, 0x94]
+}

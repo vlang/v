@@ -9,7 +9,9 @@ module arm64
 // Only self-contained functions are supported: if the function body needs
 // address fixups at its load address (calls, string literals, globals), the
 // raw bytes cannot be relocated by a plain copy, so extraction is rejected.
-// Callers (notably `-hot-fn`) treat an empty result as a build error.
+// This covers both recorded relocations and direct PC-relative instructions
+// that carry no relocation entry. Callers (notably `-hot-fn`) treat an
+// empty result as a build error.
 pub fn (mut g Gen) extract_function(fn_name string) []u8 {
 	target_sym := '_' + fn_name
 
@@ -70,5 +72,37 @@ pub fn (mut g Gen) extract_function(fn_name string) []u8 {
 		}
 	}
 
-	return g.macho.text_data[int(fn_start)..int(fn_end)].clone()
+	code := g.macho.text_data[int(fn_start)..int(fn_end)].clone()
+	// Relocation records do not cover every address-dependent instruction:
+	// a call to an already-emitted function is a direct `BL` with its
+	// relative displacement baked in and no relocation entry. Copying such
+	// bytes to a new page keeps the displacement but changes the absolute
+	// target, so decode PC-relative instructions and reject any whose
+	// target lies outside this function. Intra-function branches
+	// (including recursion) move with the copy and stay valid.
+	for i := 0; i + 4 <= code.len; i += 4 {
+		instr := u32(code[i]) | (u32(code[i + 1]) << 8) | (u32(code[i + 2]) << 16) | (u32(code[i + 3]) << 24)
+		if instr & u32(0x9F000000) == u32(0x90000000)
+			|| instr & u32(0x9F000000) == u32(0x10000000) {
+			// ADRP/ADR of literals, globals or GOT entries; never
+			// intra-function, so a plain copy breaks the reference.
+			eprintln('extract_function: "${target_sym}" uses a page-address instruction at offset ${int(fn_start) + i}; only self-contained functions can be hot-reloaded')
+			return []u8{}
+		}
+		if instr & u32(0xFC000000) == u32(0x94000000)
+			|| instr & u32(0xFC000000) == u32(0x14000000) {
+			// BL or B with a 26-bit signed word offset from this instruction.
+			mut imm := i32(instr & u32(0x03FFFFFF))
+			if imm & i32(0x02000000) != 0 {
+				imm -= i32(0x04000000)
+			}
+			target := i64(fn_start) + i64(i) + i64(imm) * 4
+			if target < i64(fn_start) || target >= i64(fn_end) {
+				eprintln('extract_function: "${target_sym}" branches outside itself (offset ${int(fn_start) + i} targets ${target}); only self-contained functions can be hot-reloaded')
+				return []u8{}
+			}
+		}
+	}
+
+	return code
 }
