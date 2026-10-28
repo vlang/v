@@ -72,12 +72,10 @@ pub mut:
 	is_livemain           bool
 	is_liveshared         bool
 	is_shared             bool
-	// hot_fn extracts raw machine code for a single function only (hot reload).
-	hot_fn              string
-	subsystem           Subsystem
-	no_builtin          bool
-	no_preludes         bool
-	module_search_paths []string
+	subsystem             Subsystem
+	no_builtin            bool
+	no_preludes           bool
+	module_search_paths   []string
 	// module_resolution_root is the directory that owns the entry sources. It
 	// distinguishes a project's retired `modules/` lookup level from a project
 	// whose own root happens to carry that name.
@@ -110,6 +108,9 @@ pub:
 	build_date      string
 	build_time      string
 	build_timestamp string
+pub mut:
+	// hot_fn extracts raw machine code for a single function only (hot reload).
+	hot_fn string
 }
 
 // without_excluded returns files, minus the ones matched by a `-exclude` pattern.

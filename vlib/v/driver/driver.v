@@ -13403,22 +13403,24 @@ pub fn run(args []string) {
 		[]string{}
 	}
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
-	if backend == 'arm64' {
-		live_reload_source := v3_live_reload_source(p.a, input_file, prefs.vexe, v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
-		if live_reload_source != '' {
-			enable_globals_compat = true
-			prefs.enable_globals = true
-			live_reload_file := os.join_path(os.vtmp_dir(), 'v3_live_reload_${os.getpid()}.v')
-			os.write_file(live_reload_file, live_reload_source) or {
-				eprintln(err)
-				exit(1)
+	$if !skip_arm64 ? {
+		if backend == 'arm64' {
+			live_reload_source := v3_live_reload_source(p.a, input_file, prefs.vexe, v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
+			if live_reload_source != '' {
+				enable_globals_compat = true
+				prefs.enable_globals = true
+				live_reload_file := os.join_path(os.vtmp_dir(), 'v3_live_reload_${os.getpid()}.v')
+				os.write_file(live_reload_file, live_reload_source) or {
+					eprintln(err)
+					exit(1)
+				}
+				live_reload_os_file := os.join_path(os.vtmp_dir(), 'v3_live_reload_os_${os.getpid()}.v')
+				os.write_file(live_reload_os_file, v3_live_reload_os_shim(target.os)) or {
+					eprintln(err)
+					exit(1)
+				}
+				parse_files_dispatch_profiled(mut p, [live_reload_file, live_reload_os_file], false, mut parse_timing)
 			}
-			live_reload_os_file := os.join_path(os.vtmp_dir(), 'v3_live_reload_os_${os.getpid()}.v')
-			os.write_file(live_reload_os_file, v3_live_reload_os_shim(target.os)) or {
-				eprintln(err)
-				exit(1)
-			}
-			parse_files_dispatch_profiled(mut p, [live_reload_file, live_reload_os_file], false, mut parse_timing)
 		}
 	}
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))

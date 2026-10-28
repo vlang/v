@@ -201,33 +201,28 @@ mut:
 	alias_method_candidates_ready bool
 	globals                       flat.TypeTextBindings
 	global_qualified_names        map[string][]string
-	// live reload metadata collected from @[live] function attributes.
-	live_fns                     map[string]string
-	live_methods                 map[string]string
-	live_source_file             string
-	live_reload_runtime          bool
-	sum_types                    flat.SourceTypeListBindings
-	sum_variant_parents          map[u32][]u32
-	sum_variant_names            map[u32]bool
-	sum_variant_fields           flat.TypeTextBindings
-	qualified_types              flat.SourceTypeBindings
-	fn_ret_types                 flat.TypeTextBindings
-	fn_ret_types_by_module       flat.TypeTextBindings
-	fn_ret_types_log             []string
-	tc_signature_names_log       []string
-	generated_capture_contexts   []string
-	struct_maps_shared           bool
-	multi_return_fn_ret_types    map[string][]types.Type
-	receiver_method_suffix_index map[string]string
-	declared_fn_name_counts      map[string]u8
-	variadic_suffix_index        map[string]i8
-	const_selector_filter        &ConstSelectorNameFilter = unsafe { nil }
-	const_suffixes               map[string]string
-	source_parent_ids            []i32
-	array_append_tree_factories  map[string]bool // immutable freshness proof, shared by workers
-	shared_local_decl_names      map[string]bool
-	has_shared_decls             bool            // any `shared` variable, parameter, global or field, see shared_map_autolock_possible
-	shared_field_names           map[string]bool // names of `shared` fields and globals
+	sum_types                     flat.SourceTypeListBindings
+	sum_variant_parents           map[u32][]u32
+	sum_variant_names             map[u32]bool
+	sum_variant_fields            flat.TypeTextBindings
+	qualified_types               flat.SourceTypeBindings
+	fn_ret_types                  flat.TypeTextBindings
+	fn_ret_types_by_module        flat.TypeTextBindings
+	fn_ret_types_log              []string
+	tc_signature_names_log        []string
+	generated_capture_contexts    []string
+	struct_maps_shared            bool
+	multi_return_fn_ret_types     map[string][]types.Type
+	receiver_method_suffix_index  map[string]string
+	declared_fn_name_counts       map[string]u8
+	variadic_suffix_index         map[string]i8
+	const_selector_filter         &ConstSelectorNameFilter = unsafe { nil }
+	const_suffixes                map[string]string
+	source_parent_ids             []i32
+	array_append_tree_factories   map[string]bool // immutable freshness proof, shared by workers
+	shared_local_decl_names       map[string]bool
+	has_shared_decls              bool            // any `shared` variable, parameter, global or field, see shared_map_autolock_possible
+	shared_field_names            map[string]bool // names of `shared` fields and globals
 	// const_array_fixed_storage_ready marks the cache below as fully populated
 	// (by the overlapped pre-dispatch scan), making the precompute a no-op.
 	const_array_fixed_storage_ready bool
@@ -779,6 +774,11 @@ mut:
 	// The statements that write the options passed to a method's `mut a ?T` parameters
 	// back after the call (transform_call_expr).
 	mut_optional_call_writebacks []flat.NodeId
+	// Keep native live metadata last so ordinary transform fields retain their offsets.
+	live_fns            map[string]string
+	live_methods        map[string]string
+	live_source_file    string
+	live_reload_runtime bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -5017,7 +5017,9 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	dpsw.restart()
 	t.precompute_const_array_fixed_storage()
 	t.timing_profile('  [ttime]   dsp const fixed  ${f64(dpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	t.collect_live_functions()
+	$if !skip_arm64 ? {
+		t.collect_live_functions()
+	}
 	dpsw.restart()
 	// Every forked worker checker otherwise lazily rebuilds the source-error
 	// embedding index by rescanning all struct declarations; build it once in
@@ -26360,13 +26362,15 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if static_fn := t.static_fn_value_name(id, node) {
 		return t.lower_static_fn_value(id, node, static_fn)
 	}
-	// The generated loader initializes an unbound method pointer with Type.method.
-	// Native SSA needs the resolved function ident rather than a field selector.
-	if t.live_reload_runtime && !t.in_call_callee
-		&& os.base(t.cur_file).starts_with('v3_live_reload_') {
-		if method := t.tc.resolved_fn_value_name(id) {
-			if method in t.live_methods {
-				return t.lower_static_fn_value(id, node, method)
+	$if !skip_arm64 ? {
+		// The generated loader initializes an unbound method pointer with Type.method.
+		// Native SSA needs the resolved function ident rather than a field selector.
+		if t.live_reload_runtime && !t.in_call_callee
+			&& os.base(t.cur_file).starts_with('v3_live_reload_') {
+			if method := t.tc.resolved_fn_value_name(id) {
+				if method in t.live_methods {
+					return t.lower_static_fn_value(id, node, method)
+				}
 			}
 		}
 	}
