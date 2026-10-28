@@ -13919,13 +13919,10 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	} else {
 		t.node_module_or(int(_id), t.cur_module)
 	}
-	// A checked literal can carry its complete function-value type here; the
-	// synthesized declaration itself needs only that signature's return type.
-	raw_ret_type := (if node.typ != 0 {
-		fn_type_return_type_text(node.typ) or { node.typ }
-	} else {
-		flat.source_type_void
-	})
+	// The literal's `typ` is its declared return type, which can itself be a
+	// function type (`fn (a int) fn (int) int { ... }`); it is not a function-value
+	// type whose result would have to be extracted.
+	raw_ret_type := if node.typ != 0 { node.typ } else { flat.source_type_void }
 	mut param_types := []types.Type{}
 	mut param_type_ids := []u32{}
 	mut param_ids := []flat.NodeId{}
