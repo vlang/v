@@ -3133,3 +3133,68 @@ fn test_add_index_with_where_mysql() {
 	}) or { error_message = err.msg() }
 	assert error_message == 'MySQL does not support partial indexes with WHERE'
 }
+
+fn test_create_table_with_options_sqlite() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .sqlite)
+	ctx.create_table(Table{
+		name:    'users'
+		options: 'STRICT'
+	})!
+	// SQLite rejects AUTOINCREMENT on WITHOUT ROWID tables, so that option
+	// needs an explicit non-autoincrement primary key.
+	ctx.create_table(Table{
+		name:    'kv'
+		id:      false
+		options: 'WITHOUT ROWID, STRICT'
+		columns: [
+			Column{
+				name:        'k'
+				kind:        .text
+				primary_key: true
+			},
+		]
+	})!
+	assert recorder.queries == [
+		'CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT) STRICT;',
+		'CREATE TABLE "kv" ("k" TEXT PRIMARY KEY NOT NULL) WITHOUT ROWID, STRICT;',
+	]
+}
+
+fn test_create_table_with_options_pg() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	ctx.create_table(Table{
+		name:    'users'
+		options: 'WITH (fillfactor = 80)'
+	})!
+	assert recorder.queries == [
+		'CREATE TABLE "users" ("id" BIGSERIAL PRIMARY KEY) WITH (fillfactor = 80);',
+	]
+}
+
+fn test_create_table_with_options_mysql() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	ctx.create_table(Table{
+		name:    'users'
+		options: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+	})!
+	assert recorder.queries == [
+		'CREATE TABLE `users` (`id` BIGINT AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;',
+	]
+}
+
+fn test_create_table_with_options_empty_string_is_omitted() {
+	for dialect in [Dialect.sqlite, .pg, .mysql] {
+		mut recorder := &RecordingConnection{}
+		mut ctx := new_context(recorder, dialect)
+		ctx.create_table(Table{ name: 'users', options: '' })!
+		expected := match dialect {
+			.sqlite { 'CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT);' }
+			.pg { 'CREATE TABLE "users" ("id" BIGSERIAL PRIMARY KEY);' }
+			.mysql { 'CREATE TABLE `users` (`id` BIGINT AUTO_INCREMENT PRIMARY KEY);' }
+		}
+		assert recorder.queries == [expected]
+	}
+}
