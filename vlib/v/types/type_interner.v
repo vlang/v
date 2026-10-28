@@ -487,7 +487,7 @@ fn semantic_types_equal_nested(a &Type, b &Type) bool {
 			if voidptr(a.UnknownDataRef) == voidptr(b.UnknownDataRef) {
 				return true
 			}
-			return a.reason == b.reason
+			return a.reason == b.reason && a.placeholder == b.placeholder && a.generic == b.generic
 		}
 		Primitive {
 			if b !is Primitive {

@@ -63,13 +63,18 @@ fn test_unqualified_builtin_type_selective_imports_keep_shadow_priority() {
 		tc.cur_file = 'consumer.v'
 		tc.cur_module = 'consumer'
 		tc.struct_modules[flat.source_type_id('Error')] = 'builtin'
-		candidates := if owner == 'ambiguous' { []string{} } else { ['${owner}.Error'] }
-		tc.file_selective_imports[file_import_key(tc.cur_file, 'Error')] = candidates
-		tc.file_imports_by_file[tc.cur_file] = &FileImportInfo{
+		candidates := if owner == 'ambiguous' {
+			[]u32{}
+		} else {
+			[flat.source_type_id('${owner}.Error')]
+		}
+		info := &FileImportInfo{
 			selective_imports: {
-				'Error': candidates
+				flat.source_type_id('Error'): candidates
 			}
 		}
+		tc.file_imports_by_file[tc.cur_file] = info
+		tc.selective_import_files[tc.cur_file] = info
 		if owner != 'ambiguous' {
 			tc.structs[flat.source_type_id('${owner}.Error')] = []StructField{}
 			tc.struct_modules[flat.source_type_id('${owner}.Error')] = owner

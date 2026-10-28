@@ -23,12 +23,12 @@ fn test_active_generic_parameter_shadows_same_named_concrete_type() {
 	tc.cur_file = 'generic_shadow.v'
 	tc.structs[flat.source_type_id('T')] = []StructField{}
 	assert tc.parse_type(flat.source_type_id('T')) is Struct
-	tc.fn_context.generic_params = ['T']
+	tc.fn_context.generic_params = generic_param_ids(['T'])
 	assert tc.parse_type(flat.source_type_id('T')) is Unknown
 	for spelling in ['[]T', '&T', '?T', '!T', 'map[string]T', 'fn (T) T'] {
 		assert tc.parse_type(flat.source_type_id(spelling)).name().contains('unknown'), spelling
 	}
 	assert tc.parse_type(flat.source_type_id('main.T')) is Struct
-	tc.fn_context.generic_params = []string{}
+	tc.fn_context.generic_params = []u32{}
 	assert tc.parse_type(flat.source_type_id('T')) is Struct
 }

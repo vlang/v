@@ -112,7 +112,7 @@ fn test_layout_distinguishes_finite_nested_arguments_and_expansion() {
 	mut ast := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&ast)
 	tc.sum_types.set(flat.source_type_id('Part'), ['T', 'bool'])
-	tc.sum_generic_params[flat.source_type_id('Part')] = ['T']
+	tc.sum_generic_params[flat.source_type_id('Part')] = generic_param_ids(['T'])
 	finite := [
 		'Part[Part[int]]',
 		'Part[?Part[int]]',
@@ -130,7 +130,7 @@ fn test_layout_distinguishes_finite_nested_arguments_and_expansion() {
 	outer := Type(SumType{ name_id: flat.source_type_id('Outer') })
 	assert !tc.value_type_has_cycle(outer, mut states)
 	tc.sum_types.set(flat.source_type_id('Expanding'), ['T', 'Part[Expanding[[]T]]'])
-	tc.sum_generic_params[flat.source_type_id('Expanding')] = ['T']
+	tc.sum_generic_params[flat.source_type_id('Expanding')] = generic_param_ids(['T'])
 	tc.sum_types.set(flat.source_type_id('Holder'), ['int', 'Expanding[int]'])
 	states.clear()
 	holder := Type(SumType{ name_id: flat.source_type_id('Holder') })

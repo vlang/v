@@ -78,7 +78,7 @@ fn test_generic_sum_storage_keeps_its_specialization() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sum_types.set(flat.source_type_id('model.Value'), ['int', 'model.Item[T]'])
-	tc.sum_generic_params[flat.source_type_id('model.Value')] = ['T']
+	tc.sum_generic_params[flat.source_type_id('model.Value')] = types.generic_param_ids(['T'])
 	sum_name := 'model.Value[payload.Token]'
 	variants := ['int', 'model.Item[payload.Token]']
 	t.set_var_type('value', flat.source_type_id(sum_name))
