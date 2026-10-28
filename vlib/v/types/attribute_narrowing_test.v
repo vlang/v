@@ -1,6 +1,7 @@
 module types
 
 import os
+import v.flat
 
 const attribute_narrowing_prefix = "@[attribute]
 struct Route { path string }
@@ -91,4 +92,26 @@ fn test_attribute_narrowing_requires_every_possible_schema_to_agree() {
 	condition := check_attribute_narrowing_source('$for attr in target.attributes {\n$if attr is Route {\n$if attr.path == "/r" {}\n}\n}')
 	assert condition.exit_code != 0
 	assert condition.output.contains('unknown field `path` from attr'), condition.output
+}
+
+fn test_attribute_narrowing_scope_state_is_lazy_and_fork_safe() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	assert isnil(tc.comptime_attr_narrow_state)
+	assert tc.comptime_attribute_union_member_type('path') == none
+	parent_state := &ComptimeAttributeNarrowState{ names: ['', 'main.Route', 'main.Get'] }
+	tc.comptime_attr_narrow_state = parent_state
+	mut forked := tc.fork_program_view(&a, map[int][]SymbolId{})
+	assert voidptr(forked.comptime_attr_narrow_state) == voidptr(parent_state)
+	forked.comptime_attr_narrow_state = &ComptimeAttributeNarrowState{ names: ['main.Route'] }
+	assert tc.comptime_attribute_narrowing_names() == ['', 'main.Route', 'main.Get']
+	assert forked.comptime_attribute_narrowing_names() == ['main.Route']
+	forked.comptime_attr_narrow_state = parent_state
+	assert forked.comptime_attribute_narrowing_names() == tc.comptime_attribute_narrowing_names()
+	item := ComptimeStaticValueCase{ attr_schema_id: flat.source_type_id('main.Route') }
+	narrowed := ComptimeStaticValueCase{ ...item, attr_schema_narrowed: true }
+	assert flat.source_type_name(item.attr_schema_id) == 'main.Route'
+	assert narrowed.attr_schema_id == item.attr_schema_id
+	assert !item.attr_schema_narrowed && narrowed.attr_schema_narrowed
+	assert ComptimeStaticValueCase{}.attr_schema_id == 0
 }

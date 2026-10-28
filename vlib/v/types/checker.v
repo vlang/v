@@ -1388,7 +1388,7 @@ pub mut:
 	cur_fn_mut_local_binding_owners         map[string]ScopeBindingOwner
 	cur_fn_shared_binding_owners            map[string]ScopeBindingOwner
 	cur_comptime_variant_loop_vars          []string
-	comptime_attr_narrow_schemas            []string
+	comptime_attr_narrow_state              &ComptimeAttributeNarrowState = unsafe { nil }
 	expr_type_values                        []&Type // node_id -> complex/contextual resolved type
 	expr_type_set                           []bool
 	lexical_smartcast_misses                []bool
@@ -1989,7 +1989,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		direct_dependencies_by_fn:             direct_dependencies_by_fn
 		method_values_by_fn:                   tc.method_values_by_fn
 		cur_comptime_variant_loop_vars:        tc.cur_comptime_variant_loop_vars
-		comptime_attr_narrow_schemas:          tc.comptime_attr_narrow_schemas
+		comptime_attr_narrow_state:            tc.comptime_attr_narrow_state
 		expr_type_values:                      tc.expr_type_values
 		expr_type_set:                         tc.expr_type_set
 		lexical_smartcast_misses:              tc.lexical_smartcast_misses
@@ -21972,10 +21972,16 @@ struct ComptimeStaticValueCase {
 	// value_from_c marks an enum member whose value V can not evaluate, because it, or
 	// the explicit value it follows, comes from C (`a = C.FOO`). `value` is a guess then.
 	value_from_c bool
-	// Fully qualified schema identity after grouping one declaration attribute use.
-	attr_schema string
 	// Schema fields shadow VAttribute metadata only after this case is narrowed.
 	attr_schema_narrowed bool
+	// Process-owned interned schema identity; 0 represents legacy attributes.
+	attr_schema_id u32
+}
+
+// Each scope owns an immutable set. Forks may share it; branch checks replace
+// and restore the pointer instead of mutating a parent's narrowed schema set.
+struct ComptimeAttributeNarrowState {
+	names []string
 }
 
 struct ComptimeStaticAttributeCondNarrowing {
@@ -22080,12 +22086,12 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	}
 	tc.push_scope()
 	tc.cur_scope.insert(parts[0], *tc.parse_type(comptime_static_metadata_type_id(parts[1])))
-	saved_attribute_schemas := tc.comptime_attr_narrow_schemas
+	saved_attribute_state := tc.comptime_attr_narrow_state
 	if parts[1] == 'attributes' {
-		tc.comptime_attr_narrow_schemas = tc.comptime_attribute_schema_universe()
+		tc.comptime_attr_narrow_state = &ComptimeAttributeNarrowState{ names: tc.comptime_attribute_schema_universe() }
 	}
 	defer {
-		tc.comptime_attr_narrow_schemas = saved_attribute_schemas
+		tc.comptime_attr_narrow_state = saved_attribute_state
 	}
 	defer {
 		tc.pop_scope()
@@ -22480,8 +22486,9 @@ fn (mut tc TypeChecker) check_comptime_attribute_members(id flat.NodeId, var_nam
 	}
 	mut schemas := []string{}
 	for item in value_cases.cases {
-		if item.attr_schema !in schemas {
-			schemas << item.attr_schema
+		name := flat.source_type_name(item.attr_schema_id)
+		if name !in schemas {
+			schemas << name
 		}
 	}
 	tc.check_comptime_attribute_body(id, var_name, schemas, narrow_schemas)
@@ -22584,7 +22591,17 @@ fn (tc &TypeChecker) comptime_attribute_has_member(member string) bool {
 // comptime_attribute_union_member_type resolves fields from the current
 // narrowed schemas. Multiple schemas must agree on the field's declared type.
 fn (tc &TypeChecker) comptime_attribute_union_member_type(member string) ?Type {
-	return tc.comptime_attribute_member_type_for_schemas(member, tc.comptime_attr_narrow_schemas)
+	if isnil(tc.comptime_attr_narrow_state) {
+		return none
+	}
+	return tc.comptime_attribute_member_type_for_schemas(member, tc.comptime_attr_narrow_state.names)
+}
+
+fn (tc &TypeChecker) comptime_attribute_narrowing_names() []string {
+	if isnil(tc.comptime_attr_narrow_state) {
+		return []string{}
+	}
+	return tc.comptime_attr_narrow_state.names
 }
 
 fn (tc &TypeChecker) comptime_attribute_member_type_for_schemas(member string, names []string) ?Type {
@@ -22919,7 +22936,7 @@ fn (tc &TypeChecker) comptime_static_attribute_cases(source string) ComptimeStat
 				}
 				cases << ComptimeStaticValueCase{
 					...item
-					attr_schema: schema_name
+					attr_schema_id: flat.source_type_id(schema_name)
 				}
 			}
 			return ComptimeStaticValueCases{
@@ -23689,7 +23706,7 @@ fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Nod
 		condition_item := if narrowing.then_branch || narrowing.else_branch {
 			ComptimeStaticValueCase{
 				...item
-				attr_schema_narrowed: item.attr_schema != ''
+				attr_schema_narrowed: item.attr_schema_id != 0
 			}
 		} else {
 			item
@@ -23702,12 +23719,12 @@ fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Nod
 		then_item := ComptimeStaticValueCase{
 			...item
 			attr_schema_narrowed: item.attr_schema_narrowed
-				|| (narrowing.then_branch && item.attr_schema != '')
+				|| (narrowing.then_branch && item.attr_schema_id != 0)
 		}
 		else_item := ComptimeStaticValueCase{
 			...item
 			attr_schema_narrowed: item.attr_schema_narrowed
-				|| (narrowing.else_branch && item.attr_schema != '')
+				|| (narrowing.else_branch && item.attr_schema_id != 0)
 		}
 		if comptime_text_references_var(cond, var_name) {
 			then_cases << then_item
@@ -23726,26 +23743,26 @@ fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Nod
 		}
 	}
 	if then_cases.len > 0 && node.children_count > 0 {
-		saved := tc.comptime_attr_narrow_schemas
+		saved := tc.comptime_attr_narrow_state
 		if loop_kind == 'attributes' {
-			tc.comptime_attr_narrow_schemas = tc.comptime_attribute_branch_schemas(node.value, var_name, saved, true)
+			tc.comptime_attr_narrow_state = &ComptimeAttributeNarrowState{ names: tc.comptime_attribute_branch_schemas(node.value, var_name, tc.comptime_attribute_narrowing_names(), true) }
 		}
 		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases, ComptimeStaticValueCases{
 			known: true
 			cases: then_cases
 		})
-		tc.comptime_attr_narrow_schemas = saved
+		tc.comptime_attr_narrow_state = saved
 	}
 	if else_cases.len > 0 && node.children_count > 1 {
-		saved := tc.comptime_attr_narrow_schemas
+		saved := tc.comptime_attr_narrow_state
 		if loop_kind == 'attributes' {
-			tc.comptime_attr_narrow_schemas = tc.comptime_attribute_branch_schemas(node.value, var_name, saved, false)
+			tc.comptime_attr_narrow_state = &ComptimeAttributeNarrowState{ names: tc.comptime_attribute_branch_schemas(node.value, var_name, tc.comptime_attribute_narrowing_names(), false) }
 		}
 		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases, ComptimeStaticValueCases{
 			known: true
 			cases: else_cases
 		})
-		tc.comptime_attr_narrow_schemas = saved
+		tc.comptime_attr_narrow_state = saved
 	}
 }
 
@@ -23922,7 +23939,7 @@ fn (tc &TypeChecker) comptime_static_subst_deferred_cond(cond string, var_name s
 			result = comptime_static_replace_unquoted(result, '${var_name}.kind !=.', '${kind} != .')
 			result = comptime_static_replace_unquoted(result, '${var_name}.kind', kind)
 		}
-		result = tc.comptime_static_subst_attribute_is_cond(result, var_name, item.attr_schema)
+		result = tc.comptime_static_subst_attribute_is_cond(result, var_name, flat.source_type_name(item.attr_schema_id))
 	}
 	return result
 }
@@ -23930,11 +23947,12 @@ fn (tc &TypeChecker) comptime_static_subst_deferred_cond(cond string, var_name s
 // Keep schema-field conditions unresolved here: the transform substitutes their
 // bound values; guessing legacy metadata would prune the wrong branch.
 fn (tc &TypeChecker) comptime_attribute_narrow_has_field(member string, item ComptimeStaticValueCase) bool {
-	if !item.attr_schema_narrowed || item.attr_schema == '' {
+	if !item.attr_schema_narrowed || item.attr_schema_id == 0 {
 		return false
 	}
-	for schema in tc.attribute_schemas[item.attr_schema.all_after_last('.')] or { []AttributeSchema{} } {
-		if '${schema.module}.${schema.name}' != item.attr_schema {
+	name := flat.source_type_name(item.attr_schema_id)
+	for schema in tc.attribute_schemas[name.all_after_last('.')] or { []AttributeSchema{} } {
+		if '${schema.module}.${schema.name}' != name {
 			continue
 		}
 		for field in schema.fields {
@@ -23969,7 +23987,7 @@ fn (tc &TypeChecker) comptime_static_attribute_cond_narrowing(cond string, var_n
 	mut result := ComptimeStaticAttributeCondNarrowing{}
 	for term in terms {
 		target, positive := tc.comptime_attribute_narrow_from_condition(term, var_name) or { continue }
-		term_value := (item.attr_schema == target) == positive
+		term_value := (flat.source_type_name(item.attr_schema_id) == target) == positive
 		if is_disjunction {
 			if term_value {
 				return ComptimeStaticAttributeCondNarrowing{

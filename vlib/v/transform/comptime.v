@@ -53,39 +53,39 @@ fn (t &Transformer) vmod_root() string {
 
 // FieldMeta is the compile-time metadata exposed by the `$for field in T.fields` loop variable.
 struct FieldMeta {
-	name               string
-	typ                u32
-	unaliased_typ      u32
-	comptime_typ       u32
-	comptime_unaliased u32
-	typ_id             int
-	unaliased_id       int
-	is_option          bool
-	is_embed           bool
-	is_array           bool
-	is_map             bool
-	is_chan            bool
-	is_struct          bool
-	is_enum            bool
-	is_alias           bool
-	is_shared          bool
-	is_atomic          bool
-	is_mut             bool
-	is_pub             bool
-	attr_kinds         u32
-	attrs              []string
-	attribute_module   string
-	indirections       int
+	name                string
+	typ                 u32
+	unaliased_typ       u32
+	comptime_typ        u32
+	comptime_unaliased  u32
+	typ_id              int
+	unaliased_id        int
+	is_option           bool
+	is_embed            bool
+	is_array            bool
+	is_map              bool
+	is_chan             bool
+	is_struct           bool
+	is_enum             bool
+	is_alias            bool
+	is_shared           bool
+	is_atomic           bool
+	is_mut              bool
+	is_pub              bool
+	attr_kinds          u32
+	attribute_module_id u32
+	attrs               []string
+	indirections        int
 }
 
 struct EnumValueMeta {
-	name             string
-	value            i64
-	value_from_c     bool
-	attr_kinds       u32
-	attrs            []string
-	attribute_module string
-	enum_name        u32
+	name                string
+	value               i64
+	value_from_c        bool
+	attr_kinds          u32
+	attrs               []string
+	enum_name           u32
+	attribute_module_id u32
 }
 
 // raw_attribute_data decodes field attribute kinds only for a reflection consumer.
@@ -149,19 +149,22 @@ struct AttributeMeta {
 	name    string
 	arg     string
 	has_arg bool
-	kind    int
-	// schema_name is the short schema name when this instance groups one
-	// `@[Schema(...)]` use into its schema struct; empty for legacy
-	// `VAttribute` pieces (vlang/rfcs#35, typed materialization).
-	schema_name   string
-	schema_module string
-	schema_fields []AttributeSchemaFieldInfo
-	// schema_values holds the raw argument bound to each schema field.
-	schema_values []string
 	// schema_narrowed is set while cloning code that a `$if attr is Schema`
 	// test selected for this instance: there, schema fields win over the
 	// `VAttribute` members of the same name.
 	schema_narrowed bool
+	kind            int
+	// Legacy VAttribute pieces do not allocate typed-schema metadata. The
+	// pointed-to fields and bound values are immutable, including in clones.
+	schema &AttributeSchemaInstance = unsafe { nil }
+}
+
+// AttributeSchemaInstance holds the cold data for one grouped `@[Schema(...)]` use.
+struct AttributeSchemaInstance {
+	name   string
+	module string
+	fields []AttributeSchemaFieldInfo
+	values []string
 }
 
 // AttributeSchemaFieldKind is the argument kind a schema field accepts. Field
@@ -195,6 +198,14 @@ struct AttributeSchemaInfo {
 struct ComptimeAttributeSchemaDecl {
 	node_id     int
 	module_name string
+}
+
+// ComptimeAttributeSchemaState is allocated only when a worker indexes a schema.
+struct ComptimeAttributeSchemaState {
+mut:
+	decls []ComptimeAttributeSchemaDecl
+	cache []AttributeSchemaInfo
+	built int
 }
 
 // AttributeCondNarrowing is what the `is` tests of a `$if` condition imply
@@ -805,22 +816,28 @@ fn (t &Transformer) comptime_attribute_decl(source string, loop_id flat.NodeId) 
 // transformer, and again only when the index finds new schema declarations.
 fn (mut t Transformer) comptime_attribute_schemas() []AttributeSchemaInfo {
 	t.ensure_comptime_method_index()
-	if t.comptime_attribute_schemas_built != t.comptime_attribute_schema_decls.len {
-		t.comptime_attribute_schemas_cache = t.build_comptime_attribute_schemas()
-		t.comptime_attribute_schemas_built = t.comptime_attribute_schema_decls.len
+	if isnil(t.comptime_attribute_schema_state) {
+		return []AttributeSchemaInfo{}
 	}
-	return t.comptime_attribute_schemas_cache
+	if t.comptime_attribute_schema_state.built != t.comptime_attribute_schema_state.decls.len {
+		t.comptime_attribute_schema_state.cache = t.build_comptime_attribute_schemas()
+		t.comptime_attribute_schema_state.built = t.comptime_attribute_schema_state.decls.len
+	}
+	return t.comptime_attribute_schema_state.cache
 }
 
 // build_comptime_attribute_schemas reads the fields of every indexed schema
 // declaration from the checker, which resolved their types in the schema's
 // own module.
 fn (t &Transformer) build_comptime_attribute_schemas() []AttributeSchemaInfo {
-	mut schemas := []AttributeSchemaInfo{cap: t.comptime_attribute_schema_decls.len}
+	if isnil(t.comptime_attribute_schema_state) {
+		return []AttributeSchemaInfo{}
+	}
+	mut schemas := []AttributeSchemaInfo{cap: t.comptime_attribute_schema_state.decls.len}
 	if isnil(t.tc) {
 		return schemas
 	}
-	for decl in t.comptime_attribute_schema_decls {
+	for decl in t.comptime_attribute_schema_state.decls {
 		node := t.a.nodes[decl.node_id]
 		if node.kind != .struct_decl {
 			continue
@@ -1124,14 +1141,16 @@ fn comptime_attribute_schema_instance(base string, schema AttributeSchemaInfo, d
 	base_kind := if base_idx < data.kinds.len { data.kinds[base_idx] } else { 0 }
 	metadata := comptime_attribute_metas_from_raw([data.attrs[base_idx]], [base_kind])[0]
 	return AttributeMeta{
-		name:          base
-		arg:           metadata.arg
-		has_arg:       metadata.has_arg
-		kind:          metadata.kind
-		schema_name:   schema.name
-		schema_module: schema.module
-		schema_fields: schema.fields
-		schema_values: bound_values
+		name:    base
+		arg:     metadata.arg
+		has_arg: metadata.has_arg
+		kind:    metadata.kind
+		schema:  &AttributeSchemaInstance{
+			name:   schema.name
+			module: schema.module
+			fields: schema.fields
+			values: bound_values
+		}
 	}
 }
 
@@ -1368,9 +1387,7 @@ fn (mut t Transformer) ensure_comptime_method_index() {
 		t.comptime_method_index_nodes = 0
 		t.comptime_method_index_module = ''
 		t.comptime_method_index_file = ''
-		t.comptime_attribute_schema_decls.clear()
-		t.comptime_attribute_schemas_cache.clear()
-		t.comptime_attribute_schemas_built = 0
+		t.comptime_attribute_schema_state = unsafe { nil }
 	}
 	mut changed := false
 	for node_id in t.comptime_method_index_nodes .. t.a.nodes.len {
@@ -1386,11 +1403,19 @@ fn (mut t Transformer) ensure_comptime_method_index() {
 			if node.value == '@attributes:${target}' && target !in t.comptime_raw_attribute_nodes {
 				t.comptime_raw_attribute_nodes[target] = node_id
 				changed = true
-				if target >= 0 && target < t.a.nodes.len && t.a.nodes[target].kind == .struct_decl
-					&& node.generic_params().any(comptime_attribute_piece_named(it, 'attribute')) {
-					t.comptime_attribute_schema_decls << ComptimeAttributeSchemaDecl{
-						node_id:     target
-						module_name: t.comptime_method_index_module
+				if target >= 0 && target < t.a.nodes.len && t.a.nodes[target].kind == .struct_decl {
+					for attr in node.generic_params() {
+						if !comptime_attribute_piece_named(attr, 'attribute') {
+							continue
+						}
+						if isnil(t.comptime_attribute_schema_state) {
+							t.comptime_attribute_schema_state = &ComptimeAttributeSchemaState{}
+						}
+						t.comptime_attribute_schema_state.decls << ComptimeAttributeSchemaDecl{
+							node_id:     target
+							module_name: t.comptime_method_index_module
+						}
+						break
 					}
 				}
 			}
@@ -1740,28 +1765,28 @@ fn (t &Transformer) comptime_attribute_is_test_value(rhs string, attr AttributeM
 	if !known {
 		return none
 	}
-	if attr.schema_name == '' {
+	if isnil(attr.schema) {
 		return false
 	}
-	if attr.schema_name != short {
+	if attr.schema.name != short {
 		return false
 	}
 	if qualifier.len > 0 {
-		return attr.schema_module == target_module
+		return attr.schema.module == target_module
 	}
-	return comptime_attribute_modules_compatible(attr.schema_module, t.cur_module)
+	return comptime_attribute_modules_compatible(attr.schema.module, t.cur_module)
 }
 
 // clone_attribute_schema_field lowers `attr.field` for a grouped schema use to
 // the bound argument literal. It returns none for legacy pieces and unknown
 // members, preserving the `VAttribute` path.
 fn (mut t Transformer) clone_attribute_schema_field(member string, attr AttributeMeta) ?flat.NodeId {
-	if attr.schema_name == '' {
+	if isnil(attr.schema) {
 		return none
 	}
-	for i, field in attr.schema_fields {
+	for i, field in attr.schema.fields {
 		if field.name == member {
-			return t.make_attribute_schema_field_literal(field, attr.schema_values[i])
+			return t.make_attribute_schema_field_literal(field, attr.schema.values[i])
 		}
 	}
 	return none
@@ -1813,16 +1838,16 @@ fn (mut t Transformer) make_attribute_schema_field_literal(field AttributeSchema
 // `arg`, `has_arg`, `kind`) is replaced only where the use is narrowed;
 // elsewhere that name keeps meaning the `VAttribute` member.
 fn subst_attribute_schema_field_cond(cond string, var_name string, attr AttributeMeta) string {
-	if attr.schema_name == '' || !cond.contains('${var_name}.') {
+	if isnil(attr.schema) || !cond.contains('${var_name}.') {
 		return cond
 	}
 	mut result := cond
-	for i, field in attr.schema_fields {
+	for i, field in attr.schema.fields {
 		if !attr.schema_narrowed && field.name in ['name', 'arg', 'has_arg', 'kind'] {
 			continue
 		}
 		member := '${var_name}.${field.name}'
-		value := comptime_attribute_schema_field_cond_value(field, attr.schema_values[i])
+		value := comptime_attribute_schema_field_cond_value(field, attr.schema.values[i])
 		if field.kind == .enum_ {
 			// Conditions are stored without the space before an enum shorthand.
 			result = comptime_cond_replace_unquoted(result, '${member} ==.', '${value} == .')
@@ -1861,7 +1886,7 @@ fn comptime_attribute_schema_field_cond_value(field AttributeSchemaFieldInfo, ra
 fn (attr AttributeMeta) narrowed() AttributeMeta {
 	return AttributeMeta{
 		...attr
-		schema_narrowed: attr.schema_name != ''
+		schema_narrowed: !isnil(attr.schema)
 	}
 }
 
@@ -3728,19 +3753,23 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 				field_values[f.name] = val
 			}
 			values << EnumValueMeta{
-				name:             f.name
-				value_from_c:     from_c
-				value:            if has_materialized_value {
+				name:                f.name
+				value_from_c:        from_c
+				value:               if has_materialized_value {
 					materialized_value
 				} else if is_flag {
 					i64(u64(1) << u64(val))
 				} else {
 					val
 				}
-				attrs:            f.attrs.clone()
-				attr_kinds:       f.attr_kinds
-				attribute_module: cur_mod
-				enum_name:        qualified_id
+				attrs:               f.attrs.clone()
+				attr_kinds:          f.attr_kinds
+				attribute_module_id: if f.attrs.len > 0 {
+					flat.source_type_id(cur_mod)
+				} else {
+					u32(0)
+				}
+				enum_name:           qualified_id
 			}
 			next_val = val + 1
 			next_from_c = from_c
@@ -4001,7 +4030,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 	attr_var := comptime_reflected_attributes_loop_var(node, var_name)
 	if attr_var == var_name {
 		// `$for value in value.attributes` shadows the enum value in its body.
-		return t.unroll_reflected_attributes_loop(id, attr_var, item.raw_attribute_data(), item.attribute_module, inner_vars)
+		return t.unroll_reflected_attributes_loop(id, attr_var, item.raw_attribute_data(), flat.source_type_name(item.attribute_module_id), inner_vars)
 	}
 	if comptime_for_declares_var(node, var_name) {
 		return t.clone_node_preserving_children(node)
@@ -4078,7 +4107,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 		children_count: flat.child_count(children.len)
 	})
 	if attr_var.len > 0 {
-		return t.unroll_reflected_attributes_loop(clone_id, attr_var, item.raw_attribute_data(), item.attribute_module, inner_vars)
+		return t.unroll_reflected_attributes_loop(clone_id, attr_var, item.raw_attribute_data(), flat.source_type_name(item.attribute_module_id), inner_vars)
 	}
 	return clone_id
 }
@@ -5280,29 +5309,33 @@ fn (t &Transformer) field_meta_for(name string, ftyp_id u32, resolved_typ_id u32
 	unaliased_shape := flat.source_type_shape(unaliased_core_id)
 	is_alias := t.field_type_is_alias(core_id, decl_module)
 	return FieldMeta{
-		name:               name
-		typ:                ftyp_id
-		unaliased_typ:      unaliased_source_id
-		comptime_typ:       t.comptime_field_type_id_key(ftyp_id, decl_module)
-		comptime_unaliased: t.comptime_field_type_id_key(unaliased_source_id, decl_module)
-		typ_id:             t.type_index(ftyp_id, decl_module)
-		unaliased_id:       t.type_index(unaliased_source_id, decl_module)
-		is_option:          is_option
-		is_embed:           is_embed
-		is_array:           unaliased_shape.has(.array_type) || t.is_fixed_array_type(unaliased_core_id)
-		is_map:             unaliased_shape.has(.map_type)
-		is_chan:            unaliased_shape.has(.channel_type)
-		is_struct:          t.comptime_field_type_is_struct(unaliased_core_id)
-		is_enum:            t.comptime_enum_type_known(unaliased_core_id)
-		is_alias:           is_alias
-		is_shared:          is_shared
-		is_atomic:          is_atomic
-		is_mut:             extra.is_mut
-		is_pub:             extra.is_pub
-		attrs:              extra.attrs
-		attr_kinds:         extra.attr_kinds
-		attribute_module:   decl_module
-		indirections:       indir
+		name:                name
+		typ:                 ftyp_id
+		unaliased_typ:       unaliased_source_id
+		comptime_typ:        t.comptime_field_type_id_key(ftyp_id, decl_module)
+		comptime_unaliased:  t.comptime_field_type_id_key(unaliased_source_id, decl_module)
+		typ_id:              t.type_index(ftyp_id, decl_module)
+		unaliased_id:        t.type_index(unaliased_source_id, decl_module)
+		is_option:           is_option
+		is_embed:            is_embed
+		is_array:            unaliased_shape.has(.array_type) || t.is_fixed_array_type(unaliased_core_id)
+		is_map:              unaliased_shape.has(.map_type)
+		is_chan:             unaliased_shape.has(.channel_type)
+		is_struct:           t.comptime_field_type_is_struct(unaliased_core_id)
+		is_enum:             t.comptime_enum_type_known(unaliased_core_id)
+		is_alias:            is_alias
+		is_shared:           is_shared
+		is_atomic:           is_atomic
+		is_mut:              extra.is_mut
+		is_pub:              extra.is_pub
+		attrs:               extra.attrs
+		attr_kinds:          extra.attr_kinds
+		attribute_module_id: if extra.attrs.len > 0 {
+			flat.source_type_id(decl_module)
+		} else {
+			u32(0)
+		}
+		indirections:        indir
 	}
 }
 
@@ -5574,7 +5607,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		} else {
 			t.clone_field_subst_children(node, var_name, fm, inner_vars) or { return none }
 		}
-		return t.unroll_reflected_attributes_loop(loop_id, attr_var, fm.raw_attribute_data(), fm.attribute_module, inner_vars)
+		return t.unroll_reflected_attributes_loop(loop_id, attr_var, fm.raw_attribute_data(), flat.source_type_name(fm.attribute_module_id), inner_vars)
 	}
 	if comptime_for_declares_var(node, var_name) {
 		return t.clone_node_preserving_children_with_type(node, t.clone_field_subst_type(node, var_name, fm))
