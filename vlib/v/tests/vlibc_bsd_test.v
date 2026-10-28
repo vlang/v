@@ -3,7 +3,13 @@ import os
 
 const vexe = @VEXE
 
-const vlibc_bsd_program = "struct State {
+const vlibc_bsd_program = "struct AlignmentProbe {
+	prefix u8
+	mutex VlibcMutex
+	cond VlibcCond
+}
+
+struct State {
 mut:
 	mutex VlibcMutex
 	cond VlibcCond
@@ -35,6 +41,11 @@ fn check(e VlibcErrno) {
 }
 
 fn main() {
+	$if macos {
+		aligned := AlignmentProbe{}
+		assert u64(&aligned.mutex) % 8 == 0
+		assert u64(&aligned.cond) % 8 == 0
+	}
 	mut state := State{mutex: vlibc_mutex_init(), cond: vlibc_cond_init()}
 	slow := Work{state: &state, index: 0, delay: 50000000}
 	fast := Work{state: &state, index: 1, delay: 0}
@@ -42,9 +53,13 @@ fn main() {
 	check(e1)
 	mut two, e2 := vlibc_thread_spawn(worker, u64(&fast))
 	check(e2)
+	vlibc_mutex_lock(mut state.mutex)
+	for state.count < 20000 { vlibc_cond_wait(mut state.cond, mut state.mutex) }
+	vlibc_mutex_unlock(mut state.mutex)
 	check(vlibc_thread_join(mut one))
 	check(vlibc_thread_join(mut two))
 	assert state.count == 20000
+	$if !macos { assert state.cond.seq == 20000 }
 	assert state.done[0] == 1 && state.done[1] == 2
 	println('threads and atomics ok')
 
