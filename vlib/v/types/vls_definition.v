@@ -216,7 +216,7 @@ fn (tc &TypeChecker) vls_type_param_definition(id flat.NodeId, word string) ?Vls
 // receiver of a method, `T` of `fn (b Box[T]) get() T`. A type written among the
 // parameters, `(x Box[T])`, is a use of it.
 fn (tc &TypeChecker) vls_type_param_declared_at(decl flat.Node, word string) ?VlsPos {
-	if word !in tc.type_param_scope(decl).names {
+	if !generic_param_ids_contain_name(tc.type_param_scope(decl).names, word) {
 		return none
 	}
 	file_id := int(decl.pos.id)
@@ -338,10 +338,14 @@ fn (tc &TypeChecker) vls_selector_definition(node flat.Node) ?VlsPos {
 	}
 	receiver_id := tc.a.child(&node, 0)
 	receiver := tc.a.node(receiver_id)
-	if enum_name := tc.vls_enum_receiver(receiver) {
-		qualified := if enum_name.contains('.') { enum_name } else { tc.qualify_name(enum_name) }
+	if enum_name_id := tc.vls_enum_receiver(receiver) {
+		qualified_id := if flat.source_type_shape(enum_name_id).has(.dotted) {
+			enum_name_id
+		} else {
+			tc.qualify_type_name(enum_name_id)
+		}
 		return tc.vls_enum_value_definition(Type(Enum{
-			name_id: flat.source_type_id(qualified)
+			name_id: qualified_id
 		}), node.value)
 	}
 	if receiver.kind == .ident && tc.expr_type(receiver_id) == none {

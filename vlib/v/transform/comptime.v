@@ -237,10 +237,7 @@ fn (t &Transformer) comptime_resolve_selective_import_type(raw_id u32) u32 {
 		}
 		return clean_id
 	}
-	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(clean_id))] or {
-		[]string{}
-	} {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	for candidate_id in t.tc.file_selective_import_ids(t.cur_file, clean_id) or { []u32{} } {
 		if t.tc.type_aliases.contains(candidate_id) || candidate_id in t.tc.structs
 			|| candidate_id in t.tc.interface_names || candidate_id in t.tc.flag_enums
 			|| candidate_id in t.tc.enum_names || t.tc.sum_types.contains(candidate_id) {
@@ -266,9 +263,9 @@ fn (t &Transformer) comptime_resolve_selective_import_reflection_source(raw stri
 	if resolved_type != clean_id {
 		return flat.source_type_name(resolved_type)
 	}
-	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
-		[]string{}
-	} {
+	for candidate_id in t.tc.file_selective_import_ids(t.cur_file, clean_id) or { []u32{} } {
+		// Function tables are keyed by declaration names.
+		candidate := flat.source_type_name(candidate_id)
 		if candidate in t.tc.fn_ret_types || candidate in t.tc.fn_param_types {
 			return candidate
 		}
@@ -4043,7 +4040,7 @@ fn (mut t Transformer) comptime_interface_field_metas(base_type_id u32) ?[]Field
 	mut iface_name := clean
 	if !t.generic_checker_interface_name_known(iface_name) {
 		// Qualification consults declaration and import names at their resolution boundary.
-		qualified := flat.source_type_id(t.tc.qualify_name(flat.source_type_name(clean)))
+		qualified := t.tc.qualify_type_name(clean)
 		if !t.generic_checker_interface_name_known(qualified) {
 			return none
 		}

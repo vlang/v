@@ -5334,7 +5334,11 @@ fn test_struct_lookup_name_prefers_selected_struct_over_imported_enum_short_name
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs[flat.source_type_id('shapes.Lang')] = []types.StructField{}
 	tc.struct_modules[flat.source_type_id('shapes.Lang')] = 'shapes'
-	tc.file_selective_imports[file_import_key('main.v', 'Lang')] = ['shapes.Lang']
+	tc.selective_import_files['main.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Lang'): [flat.source_type_id('shapes.Lang')]
+		}
+	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.cur_file = 'main.v'
@@ -5388,9 +5392,11 @@ fn test_struct_lookup_name_preserves_builtin_struct_over_imported_enum_short_nam
 	t.enum_types[flat.source_type_id('sample.SliceIndex')] = ['local']
 	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == ''
 	t.enum_types.delete(flat.source_type_id('sample.SliceIndex'))
-	tc.file_selective_imports[file_import_key('sample.v', 'SliceIndex')] = [
-		'other.SliceIndex',
-	]
+	tc.selective_import_files['sample.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('SliceIndex'): [flat.source_type_id('other.SliceIndex')]
+		}
+	}
 	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == ''
 }
 

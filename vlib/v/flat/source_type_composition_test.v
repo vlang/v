@@ -10,7 +10,7 @@ fn test_source_type_composition_collisions_preserve_owned_exact_tuples() {
 	// Force the otherwise impractical full-hash collision. Equal bucket/hash,
 	// tuple length and endpoints must still compare every numeric component.
 	hash := u64(0x4f39_a7b2_529d_06cd)
-	slot := int(hash & 4095)
+	slot := int(hash & u64(source_type_composition_slots - 1))
 	first := source_type_composition_miss(slot, .multi_return, borrowed, hash)
 	borrowed[1] = replacement
 	changed := source_type_composition_miss(slot, .multi_return, borrowed, hash)
@@ -47,7 +47,7 @@ fn test_source_type_composition_caches_empty_spelling() {
 	// Force a known key so the exact cache entry can be checked, even when its
 	// spelling ID is zero. A miss must differ from a cached empty spelling.
 	hash := u64(0x61b3_46c2_68aa_b208)
-	slot := int(hash & 4095)
+	slot := int(hash & u64(source_type_composition_slots - 1))
 	parts := []u32{}
 	assert source_type_composition_miss(slot, .concat, parts, hash) == 0
 	entry := source_type_composition_find(slot, .concat, parts, hash)
@@ -138,7 +138,13 @@ fn test_source_type_composition_numeric_keys_share_immutable_entry_allocation() 
 	assert source_type_composition_find(slot, .concat, original, hash) == entry
 }
 
-fn source_type_composition_in_recycled_scope() [3]u32 {
+struct SourceTypeCompositionScopeResult {
+	generic u32
+	joined  u32
+	pointer u32
+}
+
+fn source_type_composition_in_recycled_scope() SourceTypeCompositionScopeResult {
 	$if prealloc {
 		scope := unsafe { prealloc_scope_begin() }
 		left := source_type_id('composition_scratch_scope632.Left'.clone())
@@ -160,13 +166,19 @@ fn source_type_composition_in_recycled_scope() [3]u32 {
 			unsafe { prealloc_scope_end(reused) }
 		}
 		unsafe { prealloc_thread_cleanup() }
-		return [generic, joined, pointer]!
+		return SourceTypeCompositionScopeResult{
+			generic: generic
+			joined:  joined
+			pointer: pointer
+		}
 	} $else {
 		left := source_type_id('composition_scratch_scope632.Left')
 		right := source_type_id('composition_scratch_scope632.Right')
-		return [source_type_composition(.generic, [left, right]),
-			source_type_composition(.multi_return, [left, right]),
-			source_type_composition_one(.pointer, left)]!
+		return SourceTypeCompositionScopeResult{
+			generic: source_type_composition(.generic, [left, right])
+			joined:  source_type_composition(.multi_return, [left, right])
+			pointer: source_type_composition_one(.pointer, left)
+		}
 	}
 }
 
@@ -175,12 +187,12 @@ fn test_source_type_composition_outlives_render_and_caller_scratch_arenas() {
 	ids := handle.wait()
 	left := source_type_id('composition_scratch_scope632.Left')
 	right := source_type_id('composition_scratch_scope632.Right')
-	assert ids[0] == source_type_id('composition_scratch_scope632.Left[composition_scratch_scope632.Right]')
-	assert ids[1] == source_type_id('(composition_scratch_scope632.Left, composition_scratch_scope632.Right)')
-	assert ids[2] == source_type_id('&composition_scratch_scope632.Left')
-	assert source_type_composition(.generic, [left, right]) == ids[0]
-	assert source_type_composition(.multi_return, [left, right]) == ids[1]
-	assert source_type_composition_one(.pointer, left) == ids[2]
+	assert ids.generic == source_type_id('composition_scratch_scope632.Left[composition_scratch_scope632.Right]')
+	assert ids.joined == source_type_id('(composition_scratch_scope632.Left, composition_scratch_scope632.Right)')
+	assert ids.pointer == source_type_id('&composition_scratch_scope632.Left')
+	assert source_type_composition(.generic, [left, right]) == ids.generic
+	assert source_type_composition(.multi_return, [left, right]) == ids.joined
+	assert source_type_composition_one(.pointer, left) == ids.pointer
 }
 
 fn test_source_type_composition_small_render_preserves_raw_pieces() {

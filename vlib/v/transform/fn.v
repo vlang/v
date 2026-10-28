@@ -96,9 +96,11 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 						}
 					}
 				}
-				for imported in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
-					[]string{}
+				for imported_id in t.tc.file_selective_import_ids_by_name(t.cur_file, name) or {
+					[]u32{}
 				} {
+					// Function tables are keyed by declaration names.
+					imported := flat.source_type_name(imported_id)
 					if t.is_known_fn_name(imported) {
 						return imported
 					}
@@ -1059,6 +1061,14 @@ fn (t &Transformer) alias_receiver_method_candidates(method string) []string {
 		}
 		return candidates
 	}
+	if t.alias_method_candidates_ready && t.alias_receiver_fns_signatures >= 0
+		&& t.alias_receiver_fns_signatures <= t.tc.fn_param_types.len
+		&& t.alias_receiver_fns_aliases == t.tc.type_aliases.ids.len && method.len > 0
+		&& method.index_u8(`.`) < 0 {
+		if probed := t.alias_receiver_method_candidates_probed(method, method_suffix) {
+			return probed
+		}
+	}
 	for name, params in t.tc.fn_param_types {
 		if params.len == 0 || !name.ends_with(method_suffix) {
 			continue
@@ -1073,6 +1083,54 @@ fn (t &Transformer) alias_receiver_method_candidates(method string) []string {
 		}
 	}
 	return candidates
+}
+
+// alias_receiver_method_candidates_probed lists the same names as the signature scan in
+// alias_receiver_method_candidates, without visiting every signature: a signature
+// qualifies only as `<alias>.<method>` for a declared alias, so probe one key per alias.
+// The scan's order is the signature map's insertion order. Signatures listed for the
+// method in the last alias receiver snapshot keep that order; the map has only been
+// appended to since (a removal resets the snapshot count to -1), so later
+// registrations follow them. Their mutual order is unknown: with more than one,
+// return none and let the caller scan.
+fn (t &Transformer) alias_receiver_method_candidates_probed(method string, method_suffix string) ?[]string {
+	mut found := []string{}
+	for alias_id, _ in t.tc.type_aliases.ids {
+		receiver_name := flat.source_type_name(alias_id)
+		if receiver_name.len == 0 {
+			continue
+		}
+		name := receiver_name + method_suffix
+		params := t.tc.fn_param_types[name] or { continue }
+		if params.len == 0 {
+			continue
+		}
+		// The scan maps a receiver spelling to its identity; keep only the alias that
+		// owns this spelling, so each signature is listed once.
+		receiver_id := flat.source_type_existing_id(receiver_name) or { continue }
+		if receiver_id != alias_id {
+			continue
+		}
+		found << name
+	}
+	if found.len <= 1 {
+		return found
+	}
+	mut ordered := []string{cap: found.len}
+	for name in t.alias_receiver_fns[method] {
+		if name in found {
+			ordered << name
+		}
+	}
+	if found.len - ordered.len > 1 {
+		return none
+	}
+	for name in found {
+		if name !in ordered {
+			ordered << name
+		}
+	}
+	return ordered
 }
 
 // alias_target_type_preserving_main_lock returns the underlying type while retaining
@@ -3927,9 +3985,11 @@ fn (mut t Transformer) prepare_parallel_call_param_types() {
 	}
 	t.ensure_call_param_types_decl_index()
 	mut seen := map[int]bool{}
-	seen.reserve(u32(t.call_param_types_decl_index.len / 2 + 1))
 	for name, decl in t.call_param_types_decl_index {
-		if seen[decl.idx] {
+		// A cached declaration needs no work: call_param_types_from_decl would only
+		// return the cached list. Monomorphization re-prepares after every round, and
+		// nearly all of the index is cached by then.
+		if decl.idx in t.call_param_types_decl_cache || seen[decl.idx] {
 			continue
 		}
 		seen[decl.idx] = true
@@ -4054,7 +4114,7 @@ fn (t &Transformer) decl_param_type_in_scope(typ_id u32, module_name string, fil
 	}
 	if file_name != '' && !isnil(t.tc) {
 		if selected := t.selective_signature_type_symbol_id(file_name, clean_id) {
-			return flat.source_type_id(selected)
+			return selected
 		}
 		if shape.has(.dotted) {
 			return t.tc.resolve_imported_type_text_in_file(clean_id, file_name)
@@ -5019,9 +5079,9 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 	if name == '' || name.contains('.') || isnil(t.tc) || t.cur_file.len == 0 {
 		return none
 	}
-	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
-		[]string{}
-	} {
+	for candidate_id in t.tc.file_selective_import_ids_by_name(t.cur_file, name) or { []u32{} } {
+		// Globals are keyed by declaration names.
+		candidate := flat.source_type_name(candidate_id)
 		if candidate in t.globals.ids {
 			return candidate
 		}
@@ -11365,13 +11425,12 @@ fn (t &Transformer) resolve_flag_enum_type_name(typ_id u32) ?u32 {
 			// A known ordinary enum must not inherit another module's flag methods.
 			return none
 		}
-		clean := flat.source_type_name(clean_id)
 		if clean_id in t.tc.flag_enums {
 			return clean_id
 		}
-		qualified := t.tc.qualify_name(clean)
-		if flat.source_type_id(qualified) in t.tc.flag_enums {
-			return flat.source_type_id(qualified)
+		qualified := t.tc.qualify_type_name(clean_id)
+		if qualified in t.tc.flag_enums {
+			return qualified
 		}
 		if !flat.source_type_shape(clean_id).has(.dotted) {
 			mut found := ''
@@ -15735,7 +15794,7 @@ fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?f
 	}
 	if fn_node.kind == .ident && !fn_node.value.ends_with(']')
 		&& !flat.source_type_shape(fn_node.typ).has(.map_type)
-		&& (isnil(t.tc) || t.tc.file_selective_imports.len == 0) {
+		&& (isnil(t.tc) || t.tc.selective_import_files.len == 0) {
 		return none
 	}
 	// A monomorphized method callee such as `Tree[int].size` contains a generic
@@ -17799,13 +17858,13 @@ fn (t &Transformer) receiver_method_name_is_open_generic(method_name string) boo
 			}
 		}
 	}
-	method_id := flat.source_type_id(method_name)
-	if flat.source_type_shape(method_id).has(.dotted) {
-		receiver := flat.source_type_syntax(method_id).qualifier()
+	if method_name.contains('.') {
+		receiver_name := method_name.all_before_last('.')
 		// Collection and generic application receivers both require a bracket.
-		if !flat.source_type_shape(receiver).has(.bracketed) {
+		if !receiver_name.contains('[') {
 			return false
 		}
+		receiver := flat.source_type_id(receiver_name)
 		if collection_receiver := receiver_collection_method_type(receiver) {
 			return t.generic_arg_is_unresolved_collection_type(collection_receiver)
 		}
@@ -17911,7 +17970,8 @@ fn is_builder_type_name(typ_id u32, module_name string) bool {
 	if flat.source_type_shape(clean).has(.pointer) {
 		clean = flat.source_type_syntax(clean).raw_base()
 	}
-	return clean == flat.source_type_id('strings.Builder') || (clean == flat.source_type_id('Builder') && module_name == 'strings')
+	return clean == transform_source_type_strings_builder
+		|| (clean == transform_source_type_builder && module_name == 'strings')
 }
 
 // resolved_call_uses_receiver_type
@@ -19337,9 +19397,8 @@ fn (t &Transformer) receiver_method_param_offset_with_type(base_id flat.NodeId, 
 
 fn (t &Transformer) receiver_param_matches_method_name(first u32, method_name string) bool {
 	if first == 0 || method_name == '' { return false }
-	method_id := flat.source_type_id(method_name)
-	if !flat.source_type_shape(method_id).has(.dotted) { return false }
-	receiver := t.trim_pointer_type(flat.source_type_syntax(method_id).qualifier())
+	if !method_name.contains('.') { return false }
+	receiver := t.trim_pointer_type(flat.source_type_id(method_name.all_before_last('.')))
 	if receiver == 0 { return false }
 	first_syntax := flat.source_type_syntax(first)
 	receiver_syntax := flat.source_type_syntax(receiver)
@@ -19850,7 +19909,7 @@ fn (t &Transformer) generic_call_declared_return_type(id flat.NodeId, node flat.
 	if name.len == 0 {
 		return none
 	}
-	params := t.tc.fn_generic_params[name] or { return none }
+	params := types.generic_param_texts(t.tc.fn_generic_params[name] or { return none })
 	if params.len == 0 {
 		return none
 	}
@@ -20025,7 +20084,8 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
-	if params := t.tc.fn_generic_params[name] {
+	if param_ids := t.tc.fn_generic_params[name] {
+		params := types.generic_param_texts(param_ids)
 		if params == ['T'] {
 			if ret_text_source_id := t.tc.fn_ret_type_texts.type_id(name) {
 				syntax := flat.source_type_syntax(ret_text_source_id)

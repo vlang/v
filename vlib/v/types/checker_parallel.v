@@ -1135,6 +1135,13 @@ fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	mut pfsw := time.new_stopwatch()
 	error_count := tc.errors.len
+	if !isnil(tc.a) {
+		tc.check_decl_indexes = tc.new_check_decl_indexes()
+		tc.source_type_keyword_memo = &SourceTypeKeywordMemo{}
+	}
+	defer {
+		tc.retire_check_decl_indexes()
+	}
 	tc.prepare_check_name_filters()
 	// Later stages write the flag tables without going through registration.
 	defer {
@@ -1617,12 +1624,17 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 		} else if skip_file_semantics && node.kind != .module_decl {
 			continue
 		}
+		// The generic-type walk also looks for a nested option or result type, so
+		// that the walk which reports one only runs when there is one.
+		mut no_nested_option_types := false
 		if do_signatures && node.kind in [.fn_decl, .struct_decl, .interface_decl, .type_decl,
 			.global_decl, .const_decl] {
-			tc.check_written_generic_types(flat.NodeId(i), mut written_types)
+			no_nested_option_types = tc.check_written_generic_types(flat.NodeId(i), mut
+				written_types)
 		}
-		if do_signatures && (node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .interface_decl,
-			.type_decl, .global_decl, .const_decl] || is_top_level_statement_kind(node.kind)) {
+		if do_signatures && !no_nested_option_types && (node.kind in [.fn_decl, .c_fn_decl,
+			.struct_decl, .interface_decl, .type_decl, .global_decl, .const_decl]
+			|| is_top_level_statement_kind(node.kind)) {
 			tc.check_written_nested_option_types(flat.NodeId(i), mut written_types)
 		}
 		match node.kind {
@@ -3281,10 +3293,11 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 // spells `Octet` as `string` and `pack` is a method of `Octet`.
 fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []u32) bool {
 	type_name, member := concrete_member_error_parts(msg) or { return false }
-	type_name_id := flat.source_type_id(type_name)
 	for arg in args {
 		typ := unwrap_pointer(tc.parse_type(arg))
-		if typ is Alias && unalias_type(typ).source_type_id() == type_name_id
+		// The base spelling is built before the probe, so a name that only it
+		// interns still matches.
+		if typ is Alias && source_type_id_is_name(unalias_type(typ).source_type_id(), type_name)
 			&& tc.alias_declares_method(typ, member) {
 			return true
 		}
@@ -3813,12 +3826,12 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 		tc.fn_context = saved_fn_context
 	}
 	fast_valid_build := tc.building_v_fast
-	inferred_generic_params := tc.infer_decl_generic_param_names(node)
+	inferred_generic_params := tc.infer_decl_generic_param_ids(node)
 	is_concrete_generic_receiver := node.value.contains('.')
 		&& node.value.all_before_last('.').contains('[') && inferred_generic_params.len == 0
 	is_specialized := tc.a.specialized_fn_nodes[fn_idx] || is_concrete_generic_receiver
 	tc.fn_context.generic_params = if is_specialized {
-		[]string{}
+		[]u32{}
 	} else {
 		inferred_generic_params
 	}
@@ -3905,12 +3918,12 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 					}
 					raw_param_type := tc.parse_scope_param_type(diagnostic_type_id)
 					if tc.is_params_struct_type(raw_param_type) {
-						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos(param_id, flat.source_type_name(diagnostic_type_id)))
+						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos_id(param_id, diagnostic_type_id))
 					}
 					param_type := unalias_type(raw_param_type)
 					if !is_specialized && !mut_param_type_is_allowed(raw_param_type) {
 						type_name := param_type.name()
-						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos(param_id, flat.source_type_name(diagnostic_type_id)))
+						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos_id(param_id, diagnostic_type_id))
 					}
 				}
 				tc.check_reserved_parameter_name(param_id)
@@ -3944,7 +3957,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	// The source-level global-shadow rule does not depend on concrete types, so inspect
 	// those bindings now before deferring expression and control-flow checks.
 	generic_params := if is_specialized {
-		map[string]bool{}
+		map[u32]bool{}
 	} else {
 		tc.infer_decl_generic_params(node)
 	}
@@ -4020,7 +4033,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		if receiver.kind == .param && receiver.op == .dot {
 			receiver_type := unwrap_all_pointers(tc.parse_type(receiver.typ))
 			if unalias_type(receiver_type) is MultiReturn {
-				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ_text()))
+				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos_id(receiver_id, receiver.typ))
 			}
 			is_non_local_type := tc.cur_module != 'builtin' && match receiver_type {
 				Primitive, String, Char, Rune, ISize, USize, Array, ArrayFixed, Channel, Map,
@@ -4052,12 +4065,13 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			}
 			if is_non_local_type && !is_builtin_array_override && !is_local_collection {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
-				receiver_generics := tc.fn_context.generic_params.filter(type_id_contains_symbol(receiver.typ,
-					flat.source_type_id(it)))
+				receiver_symbols := flat.source_type_syntax(receiver.typ).symbols()
+				receiver_generics := tc.fn_context.generic_params.filter(it != 0
+					&& it in receiver_symbols)
 				alias_name := if receiver_generics.len == 0 {
 					'AliasName'
 				} else {
-					'AliasName[${receiver_generics.join(', ')}]'
+					'AliasName[${generic_param_ids_join(receiver_generics, ', ')}]'
 				}
 				receiver_hint := if receiver_generics.len == 0 {
 					''
@@ -4167,7 +4181,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			}
 			if receiver_type_id != param_type_id {
 				operator_params_match = false
-				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos(param_id, param_type.name()))
+				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos_id(param_id, param_type.source_type_id()))
 			}
 		}
 	}
@@ -4250,7 +4264,7 @@ fn (tc &TypeChecker) source_module_declares_type(type_name_id u32) bool {
 	base_syntax := flat.source_type_syntax(qualified_base)
 	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
 	if flat.source_type_shape(qualified_base).has(.dotted) {
-		if base_syntax.qualifier() != flat.source_type_id(current_module) {
+		if !source_type_id_is_name(base_syntax.qualifier(), current_module) {
 			return false
 		}
 	}
@@ -4866,8 +4880,8 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 				}
 				if current.kind == .array_init {
 					if bound_id := fixed_array_bound_id(current.typ) {
-						name_id := flat.source_type_id(name)
-						if bound_id == name_id || name_id in flat.source_type_syntax(bound_id).symbols() {
+						if source_type_id_is_name(bound_id, name)
+							|| source_words_contain_name(flat.source_type_syntax(bound_id).symbols(), name) {
 							used_names[name] = true
 						}
 					}
@@ -4946,7 +4960,7 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 }
 
 fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u32) bool {
-	if param_type_id == u32(0) || !node.generic_params().any(flat.source_type_id(it) == param_type_id) {
+	if param_type_id == u32(0) || !node.generic_params().any(source_type_id_is_name(param_type_id, it)) {
 		return false
 	}
 	mut stack := []flat.NodeId{}
@@ -5203,7 +5217,7 @@ fn sql_text_contains_ident(text string, name string) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[string]bool) bool {
+fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[u32]bool) bool {
 	if tc.type_contains_open_generic_placeholder(tc.fn_context.return_type) {
 		return true
 	}
@@ -5236,7 +5250,7 @@ fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_p
 	return tc.stmt_is_terminal_void_propagation(last_stmt, mode)
 }
 
-fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[string]bool) bool {
+fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[u32]bool) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -5279,8 +5293,10 @@ fn (mut tc TypeChecker) generic_comptime_branch_terminates(id flat.NodeId) bool 
 	return false
 }
 
-fn comptime_condition_references_generic_param(cond string, generic_params map[string]bool) bool {
-	for param, _ in generic_params {
+fn comptime_condition_references_generic_param(cond string, generic_params map[u32]bool) bool {
+	for param_id, _ in generic_params {
+		// The condition is source text that spells the type parameter.
+		param := flat.source_type_name(param_id)
 		mut offset := 0
 		for offset + param.len <= cond.len {
 			if cond[offset..offset + param.len] == param {
@@ -5320,8 +5336,8 @@ fn (mut tc TypeChecker) prewarm_shared_type_cache() {
 	}
 	tc.prepare_tail_decl_ids()
 	_ = tc.local_fn_decl_exists('__v3_prewarm__')
-	_ = tc.unique_qualified_type_name(flat.source_type_id('__V3Prewarm__')) or { u32(0) }
-	_ = tc.source_struct_has_non_builtin_error_embed(flat.source_type_id('__V3Prewarm__'), '', '')
+	_ = tc.unique_qualified_type_name(checker_source_v3_prewarm) or { u32(0) }
+	_ = tc.source_struct_has_non_builtin_error_embed(checker_source_v3_prewarm, '', '')
 }
 
 // install_type_cache_overlay freezes the master's warm type cache as the
@@ -5426,6 +5442,9 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	}
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
 	w.capture_items = tc.capture_items
+	if !isnil(tc.source_type_keyword_memo) {
+		w.source_type_keyword_memo = &SourceTypeKeywordMemo{}
+	}
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
 	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set

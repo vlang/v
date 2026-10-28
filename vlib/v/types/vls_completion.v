@@ -193,7 +193,7 @@ fn (tc &TypeChecker) vls_field_is_usable(typ Type, owner u32, field string) bool
 	if receiver is Alias {
 		return !tc.alias_struct_field_is_private_outside_module(receiver, field)
 	}
-	if visibility := tc.private_declaration(flat.source_type_name(owner)) {
+	if visibility := tc.private_type_declaration(owner) {
 		return tc.is_synthesized_anon_struct(owner)
 			&& tc.anonymous_struct_field_is_public(owner, field, visibility.module_name)
 	}

@@ -31,12 +31,12 @@ fn test_generic_param_cache_keeps_empty_and_inferred_parameters() {
 	identity_id := tc.fn_decl_short_name_ids['identity'] or { panic('missing identity declaration') }
 	get_id := tc.fn_decl_short_name_ids['get'] or { panic('missing get declaration') }
 	assert plain_id in tc.enclosing_generic_params_by_node
-	assert tc.enclosing_generic_params_by_node[plain_id] == []string{}
+	assert tc.enclosing_generic_params_by_node[plain_id] == []u32{}
 	assert 'plain' !in tc.fn_generic_params
-	assert tc.enclosing_generic_params_by_node[identity_id] == ['U']
+	assert tc.enclosing_generic_params_by_node[identity_id] == generic_param_ids(['U'])
 	// The method's generic parameter comes from its receiver rather than a `[T]` fn list.
 	assert a.nodes[get_id].generic_params().len == 0
-	assert tc.enclosing_generic_params_by_node[get_id] == ['T']
+	assert tc.enclosing_generic_params_by_node[get_id] == generic_param_ids(['T'])
 	assert !tc.node_has_enclosing_generic_param(flat.NodeId(plain_id), 'T')
 	assert tc.node_has_enclosing_generic_param(flat.NodeId(get_id), 'T')
 }
@@ -211,7 +211,7 @@ fn test_generic_instantiation_falls_back_for_uncached_declarations() {
 		cached := tc.generic_compile_error_instantiation(call, info) or {
 			panic('missing cached generic instantiation')
 		}
-		assert cached.generic_params == ['U']
+		assert cached.generic_params == generic_param_ids(['U'])
 		assert cached.concrete_args_text() == ['int']
 		tc.enclosing_generic_params_by_node.delete(decl_id)
 		fallback := tc.generic_compile_error_instantiation(call, info) or {
@@ -281,9 +281,9 @@ fn test_generic_method_metadata_routes_remain_independent() {
 		key := if route == 2 { 'Box[u8].read' } else { '${name}.read' }
 		tc.fn_ret_types[key] = tc.parse_type(flat.source_type_u64)
 		if route == 0 {
-			tc.struct_generic_params[flat.source_type_id('Box')] = ['T']
+			tc.struct_generic_params[flat.source_type_id('Box')] = generic_param_ids(['T'])
 		} else if route == 1 {
-			tc.type_alias_generic_params[flat.source_type_id('Alias')] = ['T']
+			tc.type_alias_generic_params[flat.source_type_id('Alias')] = generic_param_ids(['T'])
 		} else {
 			tc.register_generated_fn_param_types(key, []Type{})
 		}

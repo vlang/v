@@ -25,7 +25,11 @@ fn test_ordinary_alias_factory_is_refreshed_by_monomorphize_driver() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.type_aliases.set_id(flat.source_type_id('FnMultiReturn'), flat.source_type_id('fn (I) (O, R)'))
-	tc.type_alias_generic_params[flat.source_type_id('FnMultiReturn')] = ['I', 'O', 'R']
+	tc.type_alias_generic_params[flat.source_type_id('FnMultiReturn')] = types.generic_param_ids([
+		'I',
+		'O',
+		'R',
+	])
 	tc.fn_ret_types['make_splitter'] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('FnMultiReturn[string, string, string]')
 		base_type: &types.Type(types.void_)

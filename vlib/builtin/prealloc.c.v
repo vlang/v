@@ -1080,6 +1080,37 @@ pub fn prealloc_scope_owns(scope_ptr voidptr, ptr voidptr) bool {
 	}
 }
 
+// prealloc_scope_unowned_interval returns the bounds `lo` and `hi` of the widest
+// address interval around ptr that holds no block of scope_ptr, or `0, 0` when
+// scope_ptr owns ptr. A caller probing many nearby pointers of a settled scope
+// can skip prealloc_scope_owns for every one that falls in `[lo, hi)`.
+@[unsafe]
+pub fn prealloc_scope_unowned_interval(scope_ptr voidptr, ptr voidptr) (uint, uint) {
+	if scope_ptr == unsafe { nil } {
+		return 0, ~uint(0)
+	}
+	unsafe {
+		scope := &VPreallocScope(scope_ptr)
+		address := uint(ptr)
+		mut lo := 0
+		mut hi := scope.ranges_len
+		for lo < hi {
+			mid := lo + (hi - lo) / 2
+			if scope.ranges[mid].start <= address {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo > 0 && address < scope.ranges[lo - 1].stop {
+			return 0, 0
+		}
+		gap_lo := if lo > 0 { scope.ranges[lo - 1].stop } else { uint(0) }
+		gap_hi := if lo < scope.ranges_len { scope.ranges[lo].start } else { ~uint(0) }
+		return gap_lo, gap_hi
+	}
+}
+
 // prealloc_scope_address_range returns the lowest and one-past-highest
 // addresses of the blocks owned by scope_ptr, so callers probing many pointers
 // can reject most of them before the per-block search in prealloc_scope_owns.

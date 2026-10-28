@@ -93,14 +93,14 @@ fn test_generic_type_name_indexes_refresh_struct_enum_and_parameter_views() {
 	assert t.generic_enum_type_name_known(flat.source_type_id('LaterKind'))
 	assert t.generic_main_arg_checker_declaration_known(flat.source_type_id('LaterKind'))
 
-	tc.struct_generic_params[flat.source_type_id('foreign.Box')] = ['T']
+	tc.struct_generic_params[flat.source_type_id('foreign.Box')] = types.generic_param_ids(['T'])
 	assert t.generic_type_base_requires_args(flat.source_type_id('foreign.Box'))
 	assert !t.generic_type_base_requires_args(flat.source_type_id('Box'))
 	assert !t.generic_type_base_requires_args(flat.source_type_id('Choice'))
-	tc.sum_generic_params[flat.source_type_id('Choice')] = ['T']
+	tc.sum_generic_params[flat.source_type_id('Choice')] = types.generic_param_ids(['T'])
 	assert t.generic_type_base_requires_args(flat.source_type_id('Choice'))
 	assert !t.generic_type_base_requires_args(flat.source_type_id('Alias'))
-	tc.type_alias_generic_params[flat.source_type_id('Alias')] = ['T']
+	tc.type_alias_generic_params[flat.source_type_id('Alias')] = types.generic_param_ids(['T'])
 	assert t.generic_type_base_requires_args(flat.source_type_id('Alias'))
 	assert !t.generic_type_base_requires_args(flat.source_type_id('Alias[int]'))
 }

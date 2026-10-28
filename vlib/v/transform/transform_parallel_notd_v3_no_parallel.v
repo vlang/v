@@ -1847,6 +1847,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 	if specs.len == 0 {
 		return false
 	}
+	// A transformer that owns its declaration parameter maps lends them to each
+	// batch's workers only while they run (see the batch loop below).
+	param_types_owned := !t.call_param_types_decl_shared
 	// Workers treat declaration parameter metadata as immutable. Build the lazy
 	// index in the parent arena before a scoped worker can grow its backing map.
 	t.prepare_parallel_call_param_types()
@@ -1895,21 +1898,52 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 				t.register_specialized_fn_signature_value(spec.decl, value, spec.args.ids)
 			}
 		}
+		if param_types_owned {
+			// The batch's workers read the maps in place; a worker that has to
+			// write them detaches its own copy first.
+			t.call_param_types_decl_shared = true
+		}
 		scope := transform_worker_scope_begin(true)
 		mut wast := shared_region_view(t.a, base_nodes, t.a.nodes.cap, base_children, t.a.children.cap)
 		wast.specialized_fn_nodes = map[int]bool{}
 		mut wtc := t.tc.fork_for_parallel_transform(wast)
 		wtc.ensure_private_transform_signatures()
-		mut w := t.fork_worker(wast, wtc)
+		// The batch runs on this thread while this transformer is idle, so the
+		// worker reads the used set in place through its parent instead of
+		// copying it, and keeps only its own additions for the merge below.
+		mut w := if t.retain_worker_results {
+			t.fork_worker(wast, wtc)
+		} else {
+			t.fork_worker_with_state(wast, wtc, false, true)
+		}
+		// Log the worker's writes to the shared nodes below the batch, so that
+		// publication after the batch can skip every node the batch left alone.
+		w.scoped_base_nodes = base_nodes
+		if param_types_owned && w.call_param_types_decl_shared {
+			// Every specialization registers its declaration, so the worker detaches
+			// the lent declaration parameter maps on its first write. Make that
+			// private copy here, borrowing the keys of this transformer's maps: they
+			// outlive the copy, which is released with `scope`.
+			unsafe {
+				map_clone_sharing_keys(&w.call_param_types_decl_index, &t.call_param_types_decl_index)
+			}
+			w.call_param_types_decl_cache = t.call_param_types_decl_cache.clone()
+			w.call_param_types_decl_shared = false
+		}
 		// Lifted function literals and other synthesized symbols are named from
 		// this counter. Batches run one after another, so let every batch continue
 		// the master's sequence: with a per-batch counter the same `__anon_fn_N`
 		// name would be reused for different closures, and the module-keyed
 		// signature table would then give one of them the other's signature.
 		w.global_temp_counter = t.global_temp_counter
-		w.fn_ret_types = t.fn_ret_types.fork()
-		w.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
+		// The worker and its tables are released with `scope`, before the keys
+		// of the tables it copies, so the copies borrow those keys.
+		w.fn_ret_types = t.fn_ret_types.fork_sharing_keys()
+		unsafe {
+			map_clone_sharing_keys(&w.receiver_method_suffix_index, &t.receiver_method_suffix_index)
+		}
 		w.signature_maps_shared = false
+		w.signature_keys_borrowed = false
 		w.generic_fn_decls_cache = decls.clone()
 		w.generic_fn_decls_ready = true
 		w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
@@ -1949,6 +1983,12 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		transform_stage_scope_resume(scope, worker_scope_state)
 		w.worker_scope = scope
 		transform_worker_scope_leave(scope)
+		if param_types_owned {
+			// The workers ran on this thread and are done: the maps that they read
+			// belong to this transformer alone again. The declarations registered
+			// below extend them in place instead of cloning them once per batch.
+			t.call_param_types_decl_shared = false
+		}
 		// The batch consumed part of the synthesized-name sequence; keep numbering
 		// the next batch (and the following materialization passes) after it.
 		t.global_temp_counter = w.global_temp_counter
@@ -2004,6 +2044,16 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			generated << name.clone()
 		}
 		if t.stage_scope != unsafe { nil } {
+			// The worker logged every node below `base_nodes` that it wrote (see
+			// `w.scoped_base_nodes` above). A node the batch did not write cannot
+			// name its arena, so only those nodes and the appended range need the
+			// publication pass. Read the worker's log before its arena is released.
+			restricted := w.scope_parallel_workers && w.scoped_base_nodes == base_nodes
+			written_base := if restricted {
+				sorted_unique_written_base_nodes(w.scoped_owned_base_log, base_nodes)
+			} else {
+				[]int{}
+			}
 			parent_state := transform_stage_scope_suspend(t.stage_scope)
 			// A batch leaves its texts in a few nodes. A node without a payload
 			// whose value text lies outside the addresses of the batch arena owns
@@ -2012,13 +2062,22 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			// this check. (`node.typ.str` here would be a method value on the u32,
 			// which allocated a closure per node.)
 			scope_lo, scope_hi := transform_scope_address_range(scope)
-			for idx in 0 .. t.a.nodes.len {
-				node := unsafe { &t.a.nodes[idx] }
-				value_address := uint(node.value.str)
-				if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi) {
-					continue
+			// The blocks of the batch arena are spread over the address space, so
+			// about half of the AST falls between scope_lo and scope_hi. Remember the
+			// last interval found to hold no block of the arena: neighbouring nodes
+			// mostly point into the same source or text block.
+			mut unowned := ScopedTextInterval{}
+			if restricted {
+				for idx in written_base {
+					t.publish_scoped_batch_node(idx, scope, scope_lo, scope_hi, mut unowned)
 				}
-				t.clone_scoped_worker_node(idx, scope)
+				for idx in base_nodes .. t.a.nodes.len {
+					t.publish_scoped_batch_node(idx, scope, scope_lo, scope_hi, mut unowned)
+				}
+			} else {
+				for idx in 0 .. t.a.nodes.len {
+					t.publish_scoped_batch_node(idx, scope, scope_lo, scope_hi, mut unowned)
+				}
 			}
 			transform_stage_scope_resume(t.stage_scope, parent_state)
 		} else {
@@ -2030,6 +2089,83 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		start = end
 	}
 	return true
+}
+
+// ScopedTextInterval caches the last address interval known to hold no block
+// of a settled batch arena.
+struct ScopedTextInterval {
+mut:
+	lo uint
+	hi uint
+}
+
+// sorted_unique_written_base_nodes returns the distinct logged node ids below
+// `base_nodes` in ascending order, the order of a full AST publication pass.
+fn sorted_unique_written_base_nodes(log []flat.NodeId, base_nodes int) []int {
+	mut ids := []int{cap: log.len}
+	for id in log {
+		idx := int(id)
+		if idx >= 0 && idx < base_nodes {
+			ids << idx
+		}
+	}
+	if ids.len < 2 {
+		return ids
+	}
+	ids.sort_with_compare(compare_scoped_node_ids)
+	mut unique := []int{cap: ids.len}
+	for idx in ids {
+		if unique.len == 0 || unique[unique.len - 1] != idx {
+			unique << idx
+		}
+	}
+	return unique
+}
+
+fn compare_scoped_node_ids(a &int, b &int) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// publish_scoped_batch_node re-homes the texts and payload of node `idx` that
+// still live in the settled batch arena `scope`.
+@[direct_array_access]
+fn (mut t Transformer) publish_scoped_batch_node(idx int, scope voidptr, scope_lo uint, scope_hi uint, mut unowned ScopedTextInterval) {
+	mut node := unsafe { &t.a.nodes[idx] }
+	if node.payload != 0 {
+		t.clone_scoped_worker_node(idx, scope)
+		return
+	}
+	value_address := uint(node.value.str)
+	if value_address < scope_lo || value_address >= scope_hi || node.value.len == 0 {
+		return
+	}
+	// The rest of clone_scoped_worker_node for a node without a payload.
+	// canonicalize_source_value only rewrites a node with an indexed type
+	// operand; test that here instead of calling it for every node.
+	if node.source_value != 0 || (u8(node.kind) < 64
+		&& (flat.source_value_kinds >> u8(node.kind)) & 1 != 0) {
+		node.canonicalize_source_value()
+		if node.value.len == 0 {
+			return
+		}
+	}
+	if value_address >= unowned.lo && value_address < unowned.hi {
+		return
+	}
+	lo, hi := transform_scope_unowned_interval(scope, node.value.str)
+	if hi > lo {
+		unowned.lo = lo
+		unowned.hi = hi
+		return
+	}
+	_, value := t.a.intern_text(node.value)
+	node.value = value
 }
 
 fn monomorph_spec_worker(key GenericFnSpecKey, worker_count int) int {
@@ -2625,6 +2761,9 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	// ensure_private_call_param_types_decl_cache): once it has been detached, a
 	// batch fork would otherwise clone the whole map.
 	t.call_param_types_decl_shared = true
+	// The checker lists static methods afresh for the first batch; later batches
+	// only add the signatures merged since the previous one.
+	t.static_method_added_names.clear()
 	// Batches reuse one scratch arena: each batch's results are published into
 	// longer-lived storage before the next batch starts, so the arena is rewound
 	// instead of being freed and faulted in again for every batch. With helpers
@@ -2652,7 +2791,8 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		if t.merge_scratch_scope == unsafe { nil } {
 			// The stage arena is current here and outlives every batch checker. An
 			// earlier batch may have published signatures since the last list.
-			t.tc.refresh_transform_static_method_names()
+			t.tc.refresh_transform_static_method_names_added(t.static_method_added_names)
+			t.static_method_added_names.clear()
 			t.refresh_alias_receiver_fns()
 		}
 		if scratch_scope == unsafe { nil }
