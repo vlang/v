@@ -8,6 +8,16 @@ $if macos || linux {
 	// defines both together too.
 	#flag -DUSE_MMAP=1
 	#flag -DUSE_MUNMAP=1
+	// The same applies to HANDLE_FORK, which libgc's configure also records in that
+	// part of the amalgamation. Without it the collector installs no pthread_atfork
+	// handlers, so a child that forks from a program with other threads and keeps
+	// running (no exec) still has the parent's threads in its thread table. Its first
+	// collection then tries to stop them and aborts with `pthread_kill failed at
+	// suspend`. With it, the handlers lock the allocator around the fork and rebuild
+	// the thread table in the child. The prebuilt thirdparty/tcc/lib/libgc.a is built
+	// with --enable-handle-fork=yes; this makes the collector that V compiles from
+	// source agree with it.
+	#flag -DHANDLE_FORK=1
 }
 
 $if !no_gc_threads ? {
