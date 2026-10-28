@@ -923,12 +923,14 @@ pub type StencilAttachmentAction = C.sg_stencil_attachment_action
 
 pub struct C.sg_pixelformat_info {
 pub:
-	sample bool // pixel format can be sampled in shaders
-	filter bool // pixel format can be sampled with filtering
-	render bool // pixel format can be used as render target
-	blend  bool // alpha-blending is supported
-	msaa   bool // pixel format can be used as MSAA render target
-	depth  bool // pixel format is a depth format
+	sample          bool // pixel format can be sampled in shaders
+	filter          bool // pixel format can be sampled with filtering
+	render          bool // pixel format can be used as render target
+	blend           bool // alpha-blending is supported
+	msaa            bool // pixel format can be used as MSAA render target
+	depth           bool // pixel format is a depth format
+	compressed      bool // true if this is a hardware-compressed format
+	bytes_per_pixel int
 }
 
 pub type PixelFormatInfo = C.sg_pixelformat_info
