@@ -32,17 +32,41 @@ pub fn getenv_opt(key string) ?string {
 			}
 			return string_from_wide(s)
 		} $else {
-			s := C.getenv(&char(key.str))
-			if s == nil {
+			$if vlibc ? {
+				// Hosted -d vlibc: C.getenv stays authoritative. setenv/
+				// unsetenv below stay on libc (there is no setenv syscall),
+				// so the vlibc initial-environment snapshot cannot observe
+				// mutations: overwriting an inherited key (e.g. PATH in
+				// process_test.v, XDG_CACHE_HOME in path_ops_test.v) and
+				// reading it back must see the libc value. Consult libc
+				// first; use the vlibc snapshot only on a libc miss.
+				s := C.getenv(&char(key.str))
+				if s != nil {
+					// Note: C.getenv *requires* that the result be copied.
+					return cstring_to_vstring(s)
+				}
+				val, ok := vlibc_getenv(key)
+				if ok {
+					return val
+				}
 				return none
+			} $else {
+				s := C.getenv(&char(key.str))
+				if s == nil {
+					return none
+				}
+				// Note: C.getenv *requires* that the result be copied.
+				return cstring_to_vstring(s)
 			}
-			// Note: C.getenv *requires* that the result be copied.
-			return cstring_to_vstring(s)
 		}
 	}
 }
 
 // setenv sets the value of an environment variable with `name` to `value`.
+// NOTE(vlibc): kept on libc even under -d vlibc. There is no setenv
+// syscall, so the vlibc initial-environment snapshot cannot observe
+// mutations; routing setenv anywhere else would make later getenv calls
+// go stale.
 pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
 		format := '${name}=${value}'.to_wide()
@@ -69,6 +93,8 @@ pub fn setenv(name string, value string, overwrite bool) int {
 }
 
 // unsetenv clears an environment variable with `name`.
+// NOTE(vlibc): kept on libc even under -d vlibc, same as setenv above:
+// only libc observes the mutation, so only libc can report it.
 pub fn unsetenv(name string) int {
 	$if windows {
 		format := '${name}='.to_wide()
@@ -110,6 +136,21 @@ pub fn environ() map[string]string {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
 			i++
+		}
+		$if vlibc ? {
+			// Hosted -d vlibc: the live C.environ walk above stays
+			// authoritative (see the setenv note: only libc observes
+			// mutations, e.g. the PATH overwrite process _spawn relies on
+			// for the child environment). Fill gaps from the vlibc
+			// snapshot; live entries always win.
+			for key in vlibc_environ_keys() {
+				if key !in res {
+					val, ok := vlibc_getenv(key)
+					if ok {
+						res[key] = val
+					}
+				}
+			}
 		}
 	}
 	return res
