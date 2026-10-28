@@ -403,23 +403,27 @@ fn (filter TextureFilter) gfx_filter() gfx.Filter {
 	}
 }
 
+fn (ctx &Context) image_from_draw_config(config DrawImageConfig) ?&Image {
+	if !isnil(config.img) {
+		return config.img
+	}
+	if config.img_id < 0 || config.img_id >= ctx.image_cache.len {
+		return none
+	}
+	return &ctx.image_cache[config.img_id]
+}
+
 // draw_image_with_config takes in a config that details how the
 // provided image should be drawn onto the screen
 pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	$if macos {
 		if ctx.native_rendering {
 			unsafe {
-				mut img := config.img
-				if config.img == nil {
-					// Get image by id
-					if config.img_id > 0 && config.img_id < ctx.image_cache.len {
-						img = &ctx.image_cache[config.img_id]
-					} else {
-						$if !noggverbose ? {
-							eprintln('gg: failed to get image to draw natively')
-						}
-						return
+				img := ctx.image_from_draw_config(config) or {
+					$if !noggverbose ? {
+						eprintln('gg: failed to get image to draw natively')
 					}
+					return
 				}
 				if img.id < 0 || img.id >= ctx.image_cache.len {
 					eprintln('gg: draw_image() bad img id ${img.id} (img cache len = ${ctx.image_cache.len})')
