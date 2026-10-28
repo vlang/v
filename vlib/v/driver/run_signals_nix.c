@@ -483,17 +483,32 @@ int v3_run_signals_set_pid(int child_pid) {
  * shell's original job and restores its terminal, without re-signalling the app. */
 static int v3_run_suspend_owner(int stop_signal, int forwarded_stop) {
     v3_run_restore_terminal();
-    v3_run_bridging_stop = 1;
+    /* Only the owner's own copy of this group stop is swallowed. A forwarded stop
+     * sends none, and a stop that arrives as the job resumes is a new one. */
     if (v3_run_terminal_fd >= 0 && !forwarded_stop
         && (stop_signal == V3_RUN_TSTP || stop_signal == V3_RUN_TTIN
             || stop_signal == V3_RUN_TTOU)) {
+        v3_run_bridging_stop = 1;
         kill(-v3_run_owner_group, stop_signal);
     }
-    kill((int)v3_run_owner_pid, V3_RUN_STOP);
-    v3_run_bridging_stop = 0;
-    if (v3_run_foreground_child()) return -1;
-    kill(-(int)v3_run_child_pid, V3_RUN_CONT);
-    return 0;
+    sigset_t previous_mask;
+    for (;;) {
+        v3_run_forwarded_stop = 0;
+        kill((int)v3_run_owner_pid, V3_RUN_STOP);
+        v3_run_bridging_stop = 0;
+        /* A later stop must reach the app after its SIGCONT, not before it. */
+        if (v3_run_block_signals(&previous_mask)) return -1;
+        /* A stop forwarded while the app was still stopped, such as a pipeline
+         * peer reading the terminal right after `bg`, suspends the job again. */
+        if (!v3_run_forwarded_stop) break;
+        v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+    }
+    int result = v3_run_foreground_child();
+    if (!result) kill(-(int)v3_run_child_pid, V3_RUN_CONT);
+    int saved_errno = errno;
+    v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+    errno = saved_errno;
+    return result ? -1 : 0;
 }
 
 void v3_run_signals_kill(int child_pid) {
