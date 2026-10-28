@@ -17,6 +17,11 @@ Text drawing temporarily selects the font shader and restores the previously sel
 pipeline afterward, including for translucent text. On Android, resizing or rotating the window
 recomputes `Context.scale` to fit the configured design dimensions to the new framebuffer.
 
+Drawing coordinates use logical pixels. Configured line lengths, thicknesses, dash spacing,
+and ellipse radii scale with `Context.scale`, including rotated ellipses. A configured line
+starts at its first endpoint and clips its final dash at the second endpoint. On macOS,
+`native_rendering` draws both axis-aligned and diagonal lines on the native Cocoa surface.
+
 ## Image buffers and cache IDs
 
 Image loaders produce four-channel RGBA pixels. When initializing an `Image` directly with

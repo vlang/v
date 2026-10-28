@@ -72,6 +72,28 @@ running.
 All the code, including HTML templates, is in one binary file. That's all you need to deploy.
 Use the `-prod` flag when building for production.
 
+## Signed-cookie sessions
+
+`ctx.session(veb.SessionOptions{secret: secret})` loads a string map from a signed cookie.
+Use a strong, unpredictable secret shared by the instances serving your application. Missing,
+expired or invalid cookies start an empty session; an empty secret disables loading and saving.
+
+```v ignore
+opts := veb.SessionOptions{secret: app.session_secret, secure: true}
+mut session := ctx.session(opts)
+session.set('user', 'ada')
+ctx.save_session(session)
+user := session.get('user') or { 'guest' }
+// To delete the cookie, use ctx.clear_session(opts).
+```
+
+All state is stored in the cookie: it is signed, but **not encrypted**. Clients can read its
+contents. Keep values small enough for browser cookie limits, and store confidential data on
+the server. Keys and values may be empty strings. `SessionOptions` controls the cookie name,
+path, lifetime in seconds, `secure` and `http_only` flags; HTTP-only defaults to true and
+`secure` defaults to false, so enable it when serving over HTTPS. Call `save_session` after
+changes; `set` alone only changes the in-memory session.
+
 ## Getting Started
 
 To start, you must import the module `veb` and define a structure which will
@@ -664,6 +686,13 @@ app.serve_static('/path/main.css',  'static/css/main.css')!
 ```
 
 ### Dealing with MIME types
+
+`ctx.file(path)` uses an explicit `ctx.content_type`, a custom MIME mapping, or the known
+file extension first. When none provides a type, it uses `http.detect_content_type` to
+inspect the beginning of the file. Unknown binary content is served as
+`application/octet-stream`. Sniffed HTML can run scripts from your origin; set an explicit
+safe content type when serving untrusted uploads. Static folder registration still requires
+extension mappings as described below.
 
 By default, veb will map the extension of a file to a MIME type. If any of your static file's
 extensions do not have a default MIME type in veb, veb will throw an error and you
@@ -1346,6 +1375,22 @@ ctx.json(User{
 ctx.no_content()
 ```
 
+#### Reusing a JSON buffer
+
+`ctx.json_buf(value, mut buffer)` produces the same response as `ctx.json(value)`, while
+reusing a caller-owned `[]u8` for intermediate encoding. It clears the buffer first and
+copies the result into the response, so the buffer can be reused as soon as the call returns.
+
+```v ignore
+mut buffer := []u8{cap: 2048}
+ctx.json_buf(User{name: 'test', age: 20}, mut buffer)
+```
+
+For encoding without sending a response, `veb.json_encode_into(value, mut buffer)` appends
+JSON to the buffer; call `buffer.clear()` first when replacing its previous contents.
+Keep reusable buffers local to a request worker or borrow them exclusively from a pool.
+Concurrent requests must not encode into the same buffer at the same time.
+
 #### Sending files
 
 **Example:**
@@ -1546,3 +1591,16 @@ fn main() {
 	veb.run[App, Context](mut app, 8080)
 }
 ```
+
+## In-process raw HTTP requests
+
+`veb.handle_raw[App, Context](mut app, request_bytes)` parses raw HTTP/1 request bytes and
+runs the normal dispatcher without opening a socket. It returns complete serialized responses,
+including file bodies. Pipelined requests produce concatenated responses in request order until
+EOF, a parse error, or `Connection: close`. Parse errors produce the corresponding HTTP error;
+invalid route configuration produces HTTP 500. A file that cannot be read while serializing also
+produces HTTP 500 and ends processing.
+
+This helper buffers requests and responses in memory, including static files. Use it for in-process
+wire-parser and routing tests. Socket takeover, live SSE streams, and WebSocket connections require
+a network transport. For an already parsed `http.Request`, use `veb.render_request` instead.
