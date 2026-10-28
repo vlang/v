@@ -740,11 +740,6 @@ struct WrittenTypeItem {
 	anchor flat.NodeId // the nearest node with a place in the source
 }
 
-// written_type_texts renders the types that node writes for source-facing callers.
-fn written_type_texts(node flat.Node) []string {
-	return written_type_ids(node).map(flat.source_type_name(it))
-}
-
 // written_type_ids are the types that node writes: in typ for declarations,
 // or in its source operand for type expressions and channel literals.
 fn written_type_ids(node flat.Node) []u32 {
@@ -802,11 +797,11 @@ fn (mut tc TypeChecker) check_written_type_constraints(id flat.NodeId, text_id u
 		} else {
 			// Where a declaration writes its type, `keyed map[Box[int]]string`: at
 			// `Box`, not at `map`.
-			whole := tc.type_diagnostic_pos(id, flat.source_type_name(text_id))
+			whole := tc.type_diagnostic_pos_id(id, text_id)
 			if whole.end - whole.offset == syntax.byte_len() {
 				token.new_span(whole.id, whole.offset + offset, whole.offset + end)
 			} else {
-				tc.type_diagnostic_pos(id, flat.source_type_name(application_id))
+				tc.type_diagnostic_pos_id(id, application_id)
 			}
 		}
 		errors_start := tc.errors.len

@@ -4158,7 +4158,7 @@ fn (mut tc TypeChecker) check_dump_expr(node flat.Node) {
 	}
 	private_type_ref := private_type
 	if private_type is Struct {
-		if visibility := tc.private_declaration(private_type.name()) {
+		if visibility := tc.private_type_declaration(private_type.source_type_id()) {
 			if tc.concrete_method_signature_key(private_type.source_type_id(), 'str') == none {
 				type_name := tc.diagnostic_type_name(private_type_ref)
 				module_name := if type_name.contains('.') {
@@ -5974,7 +5974,7 @@ fn (tc &TypeChecker) interface_diagnostic_param_names(signature_key string, meth
 				if open < 0 || close <= open {
 					return ['x']
 				}
-				params, _ := fn_diagnostic_type_parts('fn (${line[open + 1..close]})')
+				params, _ := fn_diagnostic_type_parts_id(flat.source_type_id('fn (${line[open + 1..close]})'))
 				mut names := ['x']
 				for param in params {
 					names << param.name
@@ -12431,7 +12431,7 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 			continue
 		}
 		if converted := tc.sql_orm_alias_conversion_type(tokens, i) {
-			if tc.private_declaration(converted.name()) != none {
+			if tc.private_type_declaration(converted.source_type_id()) != none {
 				tc.record_sql_error_at(.unknown_type, 'type `${converted.name()}` is private', id,
 					tc.sql_expr_text_pos(node, '${tokens[i]}(', 0, tokens[i].len))
 			}

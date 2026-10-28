@@ -136,8 +136,8 @@ fn (tc &TypeChecker) compound_assignment_operator_pos(lhs_id flat.NodeId, rhs_id
 fn (tc &TypeChecker) diagnostic_expr_type_id(id flat.NodeId, typ &Type) u32 {
 	clean := unalias_type(typ)
 	if clean is FnType {
-		if display := tc.expr_diagnostic_fn_type(id) {
-			return flat.source_type_id(display)
+		if display_id := tc.expr_diagnostic_fn_type(id) {
+			return display_id
 		}
 		return diagnostic_fn_spacing_type_id(tc.type_name(clean))
 	}
@@ -4944,7 +4944,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				if enum_name_source_id := tc.resolve_enum_name(receiver.source_value_id()) {
 					enum_name := flat.source_type_name(enum_name_source_id)
 
-					if _ := tc.private_declaration(enum_name) {
+					if _ := tc.private_type_declaration(enum_name_source_id) {
 						display_name := tc.diagnostic_qualified_name(enum_name) or { enum_name }
 						module_name := display_name.all_before_last('.')
 						tc.record_error_at(.unknown_type, 'module `${module_name}` type `${display_name}` is private',
@@ -5927,7 +5927,7 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 				direct_type = direct_type.base_type
 			}
 			if callee.value == 'str' && direct_type is Struct {
-				if visibility := tc.private_declaration(direct_type.name()) {
+				if visibility := tc.private_type_declaration(direct_type.source_type_id()) {
 					receiver_name_id := method_type_name(direct_type)
 					receiver_name := flat.source_type_name(receiver_name_id)
 					mut has_direct_str := '${receiver_name}.str' in tc.fn_ret_types
@@ -6294,6 +6294,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 			bound << name
 		}
 	}
+	bound_ids := bound.map(flat.source_type_id(it))
 	mut missing := ''
 	for param in generic_params {
 		arg_source_id_3 := inferred[param] or {
@@ -6305,7 +6306,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 			break
 		}
 
-		if tc.type_text_has_unbound_generic_placeholder(arg_source_id_3, bound) {
+		if tc.type_text_has_unbound_generic_placeholder_ids(arg_source_id_3, bound_ids) {
 			missing = param
 			break
 		}
@@ -14583,8 +14584,8 @@ fn (tc &TypeChecker) call_fn_typed_param_is_mut(call flat.Node, param_idx int) b
 		if param.kind != .param || param.value != callee.value {
 			continue
 		}
-		raw_type := tc.source_fn_alias_type_text(param.typ_text()) or { param.typ_text() }
-		modes := fn_diagnostic_parameter_modes(raw_type)
+		raw_type_id := tc.source_fn_alias_type_text_id(param.typ) or { param.typ }
+		modes := fn_diagnostic_parameter_modes_id(raw_type_id)
 		return param_idx < modes.len && modes[param_idx] == 'mut'
 	}
 	return false
@@ -14621,8 +14622,8 @@ fn (tc &TypeChecker) selector_fn_value_param_is_mut(callee &flat.Node, param_idx
 		return false
 	}
 	field_type := tc.struct_field_type(receiver_type.source_type_id(), callee.value) or { return false }
-	if source_type, _ := tc.struct_field_diagnostic_fn_type(receiver_type.source_type_id(), callee.value, 0) {
-		modes := fn_diagnostic_parameter_modes(source_type)
+	if source_type_id, _ := tc.struct_field_diagnostic_fn_type(receiver_type.source_type_id(), callee.value, 0) {
+		modes := fn_diagnostic_parameter_modes_id(source_type_id)
 		if param_idx >= 0 && param_idx < modes.len {
 			return modes[param_idx] == 'mut'
 		}
@@ -14633,7 +14634,7 @@ fn (tc &TypeChecker) selector_fn_value_param_is_mut(callee &flat.Node, param_idx
 		else { field_type }
 	}
 	raw_fn_type_id := if callable_type is Alias {
-		flat.source_type_id(tc.source_fn_alias_type_text(callable_type.name()) or { '' })
+		tc.source_fn_alias_type_text_id(callable_type.source_type_id()) or { u32(0) }
 	} else {
 		callable_type.source_type_id()
 	}
@@ -16162,7 +16163,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				continue
 			}
 			param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
-			if _ := tc.private_declaration(param_struct.name()) {
+			if _ := tc.private_type_declaration(param_struct.source_type_id()) {
 				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
 				display_name := tc.diagnostic_type_name(Type(param_struct))
 				tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${display_name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, pos)
@@ -16422,9 +16423,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					expected_name := tc.collapsed_field_diagnostic_type(raw_arg.value, collapsed_target, expected)
 					actual_name := if unalias_type(expected) is FnType
 						&& unalias_type(actual) is FnType {
-						tc.expr_diagnostic_fn_type(arg_id) or {
-							tc.diagnostic_expr_type_name(arg_id, actual)
-						}
+						flat.source_type_name(tc.expr_diagnostic_fn_type(arg_id) or {
+							tc.diagnostic_expr_type_id(arg_id, actual)
+						})
 					} else {
 						tc.diagnostic_expr_type_name(arg_id, actual)
 					}
@@ -17076,7 +17077,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			expected_value
 		}
 		if clean_expected_for_interface is Interface && unalias_type(actual) !is Interface
-			&& tc.private_declaration(clean_expected_for_interface.name()) != none {
+			&& tc.private_type_declaration(clean_expected_for_interface.source_type_id()) != none {
 			actual_name := tc.diagnostic_expr_type_name(arg_id, actual)
 			expected_name := tc.diagnostic_type_name(clean_expected_for_interface)
 			tc.record_error_at(.call_arg_mismatch, '`${actual_name}` cannot implement private interface `${expected_name}` of other module', arg_id, tc.call_argument_diagnostic_pos(arg_id))
@@ -17468,8 +17469,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`'
 			}
 			if unalias_type(expected) is FnType && unalias_type(actual) is FnType {
-				expected_alias := if expected is Alias { expected.name() } else { '' }
-				details := tc.fn_assignment_mismatch_details(expected_display, expected_alias, actual_display, arg_id)
+				expected_alias_id := if expected is Alias {
+					expected.source_type_id()
+				} else {
+					u32(0)
+				}
+				details := tc.fn_assignment_mismatch_details(flat.source_type_id(expected_display),
+					expected_alias_id, flat.source_type_id(actual_display), arg_id)
 				if details.len > 0 {
 					tc.record_error_with_details_at(.call_arg_mismatch, message, arg_id, tc.call_argument_diagnostic_pos(arg_id), details)
 					continue
@@ -17580,7 +17586,8 @@ fn (tc &TypeChecker) immutable_local_is_unsafe_nil(id flat.NodeId) bool {
 
 fn (tc &TypeChecker) collapsed_field_diagnostic_type(field_name string, target &Type, expected &Type) string {
 	if param_struct := struct_type_from_type(unwrap_pointer(target)) {
-		if expected_text, _ := tc.struct_field_diagnostic_fn_type(param_struct.source_type_id(), field_name, 0) {
+		if expected_id, _ := tc.struct_field_diagnostic_fn_type(param_struct.source_type_id(), field_name, 0) {
+			expected_text := flat.source_type_name(expected_id)
 			semantic_text := call_argument_type_name(expected)
 			imports := tc.current_file_import_info()
 			if !isnil(imports) {
@@ -17610,10 +17617,15 @@ fn (tc &TypeChecker) collapsed_field_diagnostic_type(field_name string, target &
 			return expected_text
 		}
 	}
-	return tc.diagnostic_fntype_alias_display(expected) or { expected.name() }
+	if display_id := tc.diagnostic_fntype_alias_display(expected) {
+		return flat.source_type_name(display_id)
+	}
+	return expected.name()
 }
 
-fn (tc &TypeChecker) diagnostic_fntype_alias_display(typ &Type) ?string {
+// diagnostic_fntype_alias_display is the displayed function type of a function
+// alias, with the type arguments of a generic alias substituted.
+fn (tc &TypeChecker) diagnostic_fntype_alias_display(typ &Type) ?u32 {
 	alias := if typ is Alias {
 		typ
 	} else {
@@ -17625,18 +17637,17 @@ fn (tc &TypeChecker) diagnostic_fntype_alias_display(typ &Type) ?string {
 	} else {
 		alias.source_type_id()
 	}
-	lookup := flat.source_type_name(lookup_id)
-	raw := tc.source_fn_alias_type_text(lookup) or { return none }
+	raw_id := tc.source_fn_alias_type_text_id(lookup_id) or { return none }
 	if !syntax.application_valid() {
-		return tc.diagnostic_fn_type_text(raw)
+		return tc.diagnostic_fn_type_id(raw_id)
 	}
 	params := tc.type_alias_generic_params[lookup_id] or {
 		tc.type_alias_generic_params[tc.qualify_type_name(lookup_id)] or { return none }
 	}
 	if params.len != syntax.application_args().len {
-		return tc.diagnostic_fn_type_text(raw)
+		return tc.diagnostic_fn_type_id(raw_id)
 	}
-	return tc.diagnostic_fn_type_text(flat.source_type_name(subst_generic_text(flat.source_type_id(raw), syntax.application_args(), params)))
+	return tc.diagnostic_fn_type_id(subst_generic_text(raw_id, syntax.application_args(), params))
 }
 
 fn (tc &TypeChecker) bare_generic_fntype_call_param_display(fn_name string, param_idx int) ?string {
@@ -17645,7 +17656,6 @@ fn (tc &TypeChecker) bare_generic_fntype_call_param_display(fn_name string, para
 		return none
 	}
 	name_id := tc.bare_generic_decl_type_name_id(param_texts[param_idx]) or { return none }
-	name := flat.source_type_name(name_id)
 	qualified := tc.qualify_type_name(name_id)
 	params := tc.type_alias_generic_params[name_id] or {
 		tc.type_alias_generic_params[qualified] or { return none }
@@ -17653,9 +17663,9 @@ fn (tc &TypeChecker) bare_generic_fntype_call_param_display(fn_name string, para
 	if params.len == 0 {
 		return none
 	}
-	raw := tc.source_fn_alias_type_text(name) or { return none }
+	raw_id := tc.source_fn_alias_type_text_id(name_id) or { return none }
 	if unalias_type(tc.parse_type(name_id)) is FnType {
-		return tc.diagnostic_fn_type_text(raw)
+		return flat.source_type_name(tc.diagnostic_fn_type_id(raw_id))
 	}
 	return none
 }
@@ -18611,7 +18621,7 @@ fn (mut tc TypeChecker) record_array_compare_callback_param_errors(method string
 			if param_index < 2 {
 				actual := tc.parse_type(param.typ)
 				if !tc.method_param_signature_compatible(actual, expected) {
-					tc.record_error_at(.call_arg_mismatch, '${method} callback function parameter `${param.value}` with type `${actual.name()}` should be `${expected.name()}`', param_id, tc.type_diagnostic_pos(param_id, param.typ_text()))
+					tc.record_error_at(.call_arg_mismatch, '${method} callback function parameter `${param.value}` with type `${actual.name()}` should be `${expected.name()}`', param_id, tc.type_diagnostic_pos_id(param_id, param.typ))
 				}
 			}
 			param_index++

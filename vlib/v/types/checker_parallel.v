@@ -3913,12 +3913,12 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 					}
 					raw_param_type := tc.parse_scope_param_type(diagnostic_type_id)
 					if tc.is_params_struct_type(raw_param_type) {
-						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos(param_id, flat.source_type_name(diagnostic_type_id)))
+						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos_id(param_id, diagnostic_type_id))
 					}
 					param_type := unalias_type(raw_param_type)
 					if !is_specialized && !mut_param_type_is_allowed(raw_param_type) {
 						type_name := param_type.name()
-						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos(param_id, flat.source_type_name(diagnostic_type_id)))
+						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos_id(param_id, diagnostic_type_id))
 					}
 				}
 				tc.check_reserved_parameter_name(param_id)
@@ -4028,7 +4028,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		if receiver.kind == .param && receiver.op == .dot {
 			receiver_type := unwrap_all_pointers(tc.parse_type(receiver.typ))
 			if unalias_type(receiver_type) is MultiReturn {
-				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ_text()))
+				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos_id(receiver_id, receiver.typ))
 			}
 			is_non_local_type := tc.cur_module != 'builtin' && match receiver_type {
 				Primitive, String, Char, Rune, ISize, USize, Array, ArrayFixed, Channel, Map,
@@ -4176,7 +4176,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			}
 			if receiver_type_id != param_type_id {
 				operator_params_match = false
-				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos(param_id, param_type.name()))
+				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos_id(param_id, param_type.source_type_id()))
 			}
 		}
 	}

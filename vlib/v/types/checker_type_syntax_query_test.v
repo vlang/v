@@ -13,14 +13,18 @@ fn test_numeric_generic_placeholder_queries_keep_recursive_spelling_rules() {
 	for typ in ['os. T', 'map[T', 'fn(T', 'Box[T + 1]', 'Box[16]'] {
 		assert !tc.type_text_has_generic_placeholder(flat.source_type_id(typ)), typ
 	}
-	assert !tc.type_text_has_unbound_generic_placeholder(flat.source_type_id('fn (T) int'), [])
-	assert tc.type_text_has_unbound_generic_placeholder(flat.source_type_id('fn (Box[T]) int'), [])
-	assert !tc.type_text_has_unbound_generic_placeholder(flat.source_type_id('map[os.T]V'), [
-		'T',
-		'V',
+	assert !tc.type_text_has_unbound_generic_placeholder_ids(flat.source_type_id('fn (T) int'), [])
+	assert tc.type_text_has_unbound_generic_placeholder_ids(flat.source_type_id('fn (Box[T]) int'), [])
+	assert !tc.type_text_has_unbound_generic_placeholder_ids(flat.source_type_id('map[os.T]V'), [
+		flat.source_type_id('T'),
+		flat.source_type_id('V'),
 	])
-	assert tc.type_text_has_unbound_generic_placeholder(flat.source_type_id('map[os.T]V'), ['V'])
-	assert tc.type_text_has_unbound_generic_placeholder(flat.source_type_id(' T '), [' T '])
+	assert tc.type_text_has_unbound_generic_placeholder_ids(flat.source_type_id('map[os.T]V'), [
+		flat.source_type_id('V'),
+	])
+	assert tc.type_text_has_unbound_generic_placeholder_ids(flat.source_type_id(' T '), [
+		flat.source_type_id(' T '),
+	])
 }
 
 fn test_numeric_reflection_type_queries_keep_function_wrapper_order() {

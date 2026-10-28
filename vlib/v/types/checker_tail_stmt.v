@@ -4418,7 +4418,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		for arg_id in generic_args {
 			if unalias_type(tc.parse_type(arg_id)) is MultiReturn {
 				tc.record_error_at(.unsupported_generic, 'cannot use multi return as generic concrete type',
-					id, tc.type_diagnostic_pos(id, flat.source_type_name(arg_id)))
+					id, tc.type_diagnostic_pos_id(id, arg_id))
 				tc.register_synth_type(id, tc.parse_type(generic_base_id))
 				for i in 0 .. node.children_count {
 					tc.check_node(tc.a.child(&node, i))
@@ -4546,7 +4546,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if unalias_type(init_type) is Enum {
 		if tc.node_is_in_translated_file(id) && node.children_count == 0 {
-			if _ := tc.private_declaration(init_type.name()) {
+			if _ := tc.private_type_declaration(init_type.source_type_id()) {
 				tc.record_error_at(.unknown_type, 'type `${init_type.name()}` is private', id,
 					node.pos)
 				return
@@ -4594,7 +4594,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		// and stays subject to the check, as does a type a user happened to call
 		// `AnonStruct_...`: neither is a name the parser made up for a literal.
 		if init_type_id != checker_tail_source_struct && !tc.a.contextual_anon_struct_types[init_type_id] {
-			if _ := tc.private_declaration(init_struct.name()) {
+			if _ := tc.private_type_declaration(init_struct.source_type_id()) {
 				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
 				tc.record_error_at(.unknown_type, 'struct `${init_struct.name()}` was declared as private to module `${init_struct.name().all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
 				tc.record_error_at(.unknown_type, 'type `${init_struct.name()}` is private', id, node.pos)
@@ -4943,15 +4943,15 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					continue
 				}
 				if clean_expected is FnType {
-					expected_fn_text, expected_alias := tc.struct_field_diagnostic_fn_type(init_name_id, field.value, i) or { '', '' }
-					actual_fn_text := tc.expr_diagnostic_fn_type(value_id) or { '' }
-					if expected_fn_text.len > 0 && actual_fn_text.len > 0
-						&& expected_fn_text != actual_fn_text && (fn_diagnostic_parameter_modes(expected_fn_text) != fn_diagnostic_parameter_modes(actual_fn_text)
+					expected_fn_id, expected_alias_id := tc.struct_field_diagnostic_fn_type(init_name_id, field.value, i) or { u32(0), u32(0) }
+					actual_fn_id := tc.expr_diagnostic_fn_type(value_id) or { u32(0) }
+					if expected_fn_id != 0 && actual_fn_id != 0
+						&& expected_fn_id != actual_fn_id && (fn_diagnostic_parameter_modes_id(expected_fn_id) != fn_diagnostic_parameter_modes_id(actual_fn_id)
 						|| !tc.fn_types_match_ignoring_module_qualification(clean_expected, clean_actual))
 						&& !tc.method_value_matches_voidptr_callback(value_id, actual, expected)
 						&& !tc.fn_callback_adapter_compatible(source_actual, clean_expected) {
-						details := tc.fn_assignment_mismatch_details(expected_fn_text, expected_alias, actual_fn_text, value_id)
-						message := 'cannot assign to field `${field.value}`: expected `${expected_fn_text}`, not `${actual_fn_text}`'
+						details := tc.fn_assignment_mismatch_details(expected_fn_id, expected_alias_id, actual_fn_id, value_id)
+						message := 'cannot assign to field `${field.value}`: expected `${flat.source_type_name(expected_fn_id)}`, not `${flat.source_type_name(actual_fn_id)}`'
 						if details.len > 0 {
 							tc.record_error_with_details_at(.assignment_mismatch, message, field_id, tc.struct_init_field_value_pos(field, value_id), details)
 						} else {
@@ -5384,31 +5384,33 @@ fn (tc &TypeChecker) source_struct_decl_id_for_name(name_id u32) ?flat.NodeId {
 	return none
 }
 
-fn (tc &TypeChecker) struct_field_diagnostic_fn_type(struct_name_id u32, field_name string, field_index int) ?(string, string) {
+// struct_field_diagnostic_fn_type returns the displayed function type of a struct
+// field and the spelling of the function alias the field is declared with, or 0.
+fn (tc &TypeChecker) struct_field_diagnostic_fn_type(struct_name_id u32, field_name string, field_index int) ?(u32, u32) {
 	key := '${struct_name_id}\x00${field_name}\x00${field_index}'
 	mut cache := tc.type_cache
 	if !isnil(cache) {
 		if cached := cache.struct_field_fn_diagnostics[key] {
-			separator := cached.index_u8(0)
-			if separator <= 0 {
+			// A displayed function type is never empty; 0 caches a miss.
+			if cached == 0 {
 				return none
 			}
-			return cached[..separator], cached[separator + 1..]
+			return u32(cached >> 32), u32(cached)
 		}
 	}
 	expected, alias := tc.struct_field_diagnostic_fn_type_uncached(struct_name_id, field_name, field_index) or {
 		if !isnil(cache) {
-			cache.struct_field_fn_diagnostics[key] = '\x00'
+			cache.struct_field_fn_diagnostics[key] = 0
 		}
 		return none
 	}
 	if !isnil(cache) {
-		cache.struct_field_fn_diagnostics[key] = '${expected}\x00${alias}'
+		cache.struct_field_fn_diagnostics[key] = (u64(expected) << 32) | u64(alias)
 	}
 	return expected, alias
 }
 
-fn (tc &TypeChecker) struct_field_diagnostic_fn_type_uncached(struct_name_id u32, field_name string, field_index int) ?(string, string) {
+fn (tc &TypeChecker) struct_field_diagnostic_fn_type_uncached(struct_name_id u32, field_name string, field_index int) ?(u32, u32) {
 	decl := tc.source_struct_decl_for_name(struct_name_id) or { return none }
 	syntax := flat.source_type_syntax(struct_name_id)
 	concrete_args := syntax.application_args()
@@ -5437,13 +5439,12 @@ fn (tc &TypeChecker) struct_field_diagnostic_fn_type_uncached(struct_name_id u32
 			} else {
 				trimmed_source_type_id(source_type_id)
 			}
-			raw := flat.source_type_name(raw_id)
 			shape := flat.source_type_shape(raw_id)
 			if shape.has(.function_compact) || shape.has(.function_spaced) {
-				return tc.diagnostic_fn_type_text(raw), ''
+				return tc.diagnostic_fn_type_id(raw_id), u32(0)
 			}
-			if alias_raw := tc.source_fn_alias_type_text_id(raw_id) {
-				return tc.diagnostic_fn_type_text(alias_raw), raw
+			if alias_raw_id := tc.source_fn_alias_type_text_id(raw_id) {
+				return tc.diagnostic_fn_type_id(alias_raw_id), raw_id
 			}
 			return none
 		}
@@ -5499,10 +5500,6 @@ fn subst_fn_diagnostic_type_id(raw_id u32, args []u32, params []string) u32 {
 		return flat.source_type_composition(.function_type_spaced, rendered)
 	}
 	return flat.source_type_composition(.void_function_type_spaced, rendered)
-}
-
-fn fn_diagnostic_parameter_modes(raw string) []string {
-	return fn_diagnostic_parameter_modes_id(flat.source_type_id(raw))
 }
 
 fn fn_diagnostic_parameter_modes_id(raw_id u32) []string {
@@ -5756,12 +5753,9 @@ fn (tc &TypeChecker) first_childless_type_decl(name string) flat.NodeId {
 	return flat.empty_node
 }
 
-fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
-	return tc.source_fn_alias_type_text_id(flat.source_type_id(name))
-}
-
-// source_fn_alias_type_text_id is source_fn_alias_type_text for a spelling ID.
-fn (tc &TypeChecker) source_fn_alias_type_text_id(name_id u32) ?string {
+// source_fn_alias_type_text_id returns the function type spelling that the
+// function alias spelled `name_id` stands for, following alias chains.
+fn (tc &TypeChecker) source_fn_alias_type_text_id(name_id u32) ?u32 {
 	mut target_id := trimmed_source_type_id(name_id)
 	for _ in 0 .. 8 {
 		syntax := flat.source_type_syntax(target_id)
@@ -5807,28 +5801,28 @@ fn (tc &TypeChecker) source_fn_alias_type_text_id(name_id u32) ?string {
 					return subst_generic_diagnostic_fn_text(clean_id, syntax.application_args(), params)
 				}
 			}
-			return flat.source_type_name(clean_id)
+			return clean_id
 		}
 		target_id = clean_id
 	}
 	return none
 }
 
-fn subst_generic_diagnostic_fn_text(raw_id u32, args []u32, params []string) string {
+fn subst_generic_diagnostic_fn_text(raw_id u32, args []u32, params []string) u32 {
 	clean_id := trimmed_source_type_id(raw_id)
 	syntax := flat.source_type_syntax(clean_id)
 	if !syntax.function_closed() {
-		return flat.source_type_name(subst_generic_text(clean_id, args, params))
+		return subst_generic_text(clean_id, args, params)
 	}
-	mut rendered_params := []string{}
+	mut parts := []u32{}
 	for part_id in syntax.checker_function_params() {
-		rendered_params << flat.source_type_name(subst_generic_text(part_id, args, params))
+		parts << subst_generic_text(part_id, args, params)
 	}
-	return 'fn (${rendered_params.join(', ')})${if syntax.function_result() != 0 {
-		' ${flat.source_type_name(subst_generic_text(syntax.function_result(), args, params))}'
-	} else {
-		''
-	}}'
+	if syntax.function_result() != 0 {
+		parts << subst_generic_text(syntax.function_result(), args, params)
+		return flat.source_type_composition(.function_type_spaced, parts)
+	}
+	return flat.source_type_composition(.void_function_type_spaced, parts)
 }
 
 fn (tc &TypeChecker) source_type_alias_rhs(file_name string, alias_name string) ?string {
@@ -5900,18 +5894,17 @@ fn (tc &TypeChecker) source_type_keyword_index(file_name string, source string, 
 	return none
 }
 
-fn (tc &TypeChecker) expr_diagnostic_fn_type(id flat.NodeId) ?string {
-	raw := tc.expr_raw_fn_type_text(id) or { return none }
-	return tc.diagnostic_fn_type_text(raw)
+fn (tc &TypeChecker) expr_diagnostic_fn_type(id flat.NodeId) ?u32 {
+	return tc.diagnostic_fn_type_id(tc.expr_raw_fn_type_id(id)?)
 }
 
-fn (tc &TypeChecker) expr_raw_fn_type_text(id flat.NodeId) ?string {
+fn (tc &TypeChecker) expr_raw_fn_type_id(id flat.NodeId) ?u32 {
 	if !tc.valid_node_id(id) {
 		return none
 	}
 	node := tc.a.node(id)
 	if node.kind == .fn_literal {
-		return tc.fn_node_source_type_text(node)
+		return flat.source_type_id(tc.fn_node_source_type_text(node))
 	}
 	if node.kind == .selector && node.children_count > 0 && tc.expr_is_method_value(id) {
 		base_type := unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(node, 0))))
@@ -5928,7 +5921,7 @@ fn (tc &TypeChecker) expr_raw_fn_type_text(id flat.NodeId) ?string {
 				}
 				if decl.value == candidate
 					|| checker_qualified_fn_name(module_name, decl.value) == candidate {
-					return tc.bound_method_node_source_type_text(decl)
+					return flat.source_type_id(tc.bound_method_node_source_type_text(decl))
 				}
 			}
 		}
@@ -5936,7 +5929,7 @@ fn (tc &TypeChecker) expr_raw_fn_type_text(id flat.NodeId) ?string {
 	if node.kind == .ident {
 		if local_type := tc.non_file_scope_type(node.value) {
 			if fn_type := fn_type_from_type(local_type) {
-				return Type(fn_type).name()
+				return Type(fn_type).source_type_id()
 			}
 		}
 		// The short-name index also holds methods (`EventLoop.did_change`), but a
@@ -5944,7 +5937,7 @@ fn (tc &TypeChecker) expr_raw_fn_type_text(id flat.NodeId) ?string {
 		if index := tc.fn_decl_short_name_ids[node.value] {
 			decl := tc.a.node(flat.NodeId(index))
 			if !tc.fn_has_receiver_param(decl) {
-				return tc.fn_node_source_type_text(decl)
+				return flat.source_type_id(tc.fn_node_source_type_text(decl))
 			}
 		}
 		// Declarations appended after collect (monomorphization) miss the
@@ -5953,12 +5946,12 @@ fn (tc &TypeChecker) expr_raw_fn_type_text(id flat.NodeId) ?string {
 			decl := tc.a.node(flat.NodeId(index))
 			if decl.kind == .fn_decl && embedded_name_matches(node.value, decl.value)
 				&& !tc.fn_has_receiver_param(decl) {
-				return tc.fn_node_source_type_text(decl)
+				return flat.source_type_id(tc.fn_node_source_type_text(decl))
 			}
 		}
 	}
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		return tc.expr_raw_fn_type_text(tc.a.child(node, 0))
+		return tc.expr_raw_fn_type_id(tc.a.child(node, 0))
 	}
 	return none
 }
@@ -6018,23 +6011,27 @@ fn (tc &TypeChecker) fn_node_source_type_text(node flat.Node) string {
 	}}'
 }
 
-fn (tc &TypeChecker) diagnostic_fn_type_text(raw string) string {
-	params, suffix := fn_diagnostic_type_parts(raw)
-	mut display := []string{cap: params.len}
+// diagnostic_fn_type_id is the spelling diagnostics display for the function
+// type `raw_id`: parameter types without names, `mut` kept.
+fn (tc &TypeChecker) diagnostic_fn_type_id(raw_id u32) u32 {
+	params, result := fn_diagnostic_type_parts_id(raw_id)
+	mut parts := []u32{cap: params.len + 1}
 	for param in params {
-		display << param.typ_text()
+		parts << param.typ
 	}
-	return 'fn (${display.join(', ')})${suffix}'
+	if result != 0 {
+		parts << result
+		return flat.source_type_composition(.function_type_spaced, parts)
+	}
+	return flat.source_type_composition(.void_function_type_spaced, parts)
 }
 
-fn fn_diagnostic_type_parts(raw string) ([]FnDiagnosticParam, string) {
-	return fn_diagnostic_type_parts_id(flat.source_type_id(raw))
-}
-
-fn fn_diagnostic_type_parts_id(raw_id u32) ([]FnDiagnosticParam, string) {
+// fn_diagnostic_type_parts_id returns the parameters and the result spelling
+// (0 for none) of the function type `raw_id`.
+fn fn_diagnostic_type_parts_id(raw_id u32) ([]FnDiagnosticParam, u32) {
 	syntax := flat.source_type_syntax(raw_id)
 	if !syntax.function_closed() {
-		return []FnDiagnosticParam{}, ''
+		return []FnDiagnosticParam{}, u32(0)
 	}
 	mut params := []FnDiagnosticParam{}
 	for param_id in syntax.function_params() {
@@ -6069,26 +6066,24 @@ fn fn_diagnostic_type_parts_id(raw_id u32) ([]FnDiagnosticParam, string) {
 				|| text_id in [flat.source_type_voidptr, checker_source_void_reference])
 		}
 	}
-	suffix := if syntax.function_result() != 0 {
-		' ${flat.source_type_name(syntax.function_result())}'
-	} else {
-		''
-	}
-	return params, suffix
+	return params, syntax.function_result()
 }
 
-fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_text string, expected_alias string, actual_text string, actual_id flat.NodeId) []string {
-	expected_params, _ := fn_diagnostic_type_parts(expected_text)
-	actual_params, _ := fn_diagnostic_type_parts(actual_text)
+// fn_assignment_mismatch_details explains a function type mismatch between the
+// displayed spellings `expected_id` and `actual_fn_id`; `expected_alias_id` is
+// the function alias the expected type is declared with, or 0.
+fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_id u32, expected_alias_id u32, actual_fn_id u32, actual_id flat.NodeId) []string {
+	expected_params, _ := fn_diagnostic_type_parts_id(expected_id)
+	actual_params, _ := fn_diagnostic_type_parts_id(actual_fn_id)
 	mut expected_named := []FnDiagnosticParam{}
-	if expected_alias != '' {
-		if raw := tc.source_fn_alias_type_text(expected_alias) {
-			expected_named, _ = fn_diagnostic_type_parts(raw)
+	if expected_alias_id != 0 {
+		if raw_id := tc.source_fn_alias_type_text_id(expected_alias_id) {
+			expected_named, _ = fn_diagnostic_type_parts_id(raw_id)
 		}
 	}
 	mut actual_named := []FnDiagnosticParam{}
-	if raw := tc.expr_raw_fn_type_text(actual_id) {
-		actual_named, _ = fn_diagnostic_type_parts(raw)
+	if raw_id := tc.expr_raw_fn_type_id(actual_id) {
+		actual_named, _ = fn_diagnostic_type_parts_id(raw_id)
 	}
 	for i in 0 .. int_min(expected_params.len, actual_params.len) {
 		if expected_params[i].is_pointer == actual_params[i].is_pointer {
@@ -6104,9 +6099,9 @@ fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_text string, expect
 		} else {
 			'is NOT a pointer'
 		}
-		if expected_alias != '' && i < expected_named.len && i < actual_named.len
+		if expected_alias_id != 0 && i < expected_named.len && i < actual_named.len
 			&& expected_named[i].name.len > 0 && actual_named[i].name.len > 0 {
-			mut alias_name := tc.qualify_name(expected_alias)
+			mut alias_name := flat.source_type_name(tc.qualify_type_name(expected_alias_id))
 			if !alias_name.contains('.') {
 				alias_name = '${if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }}.${alias_name}'
 			}
@@ -7558,7 +7553,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	}
 	if visibility_recv is Struct {
 		if !tc.expr_is_rooted_in_c_namespace(base_id) {
-			if visibility := tc.private_declaration(visibility_recv.name()) {
+			if visibility := tc.private_type_declaration(visibility_recv.source_type_id()) {
 				if tc.is_synthesized_anon_struct(visibility_recv.source_type_id()) {
 					// An anonymous struct has no name of its own that could be private: another
 					// module can only reach it through a field or value of some other declaration.
@@ -12833,16 +12828,19 @@ fn (tc &TypeChecker) interface_has_no_requirements(iface_name_id u32) bool {
 		&& tc.interface_field_list(iface_name_id).len == 0
 }
 
-fn struct_decl_implements_from_typ(typ string) []string {
-	mut out := []string{}
-	for part in struct_decl_typ_parts(typ) {
+// struct_decl_implements_ids returns the interface spellings that the struct
+// attribute text `typ_id` lists after `implements=`.
+fn struct_decl_implements_ids(typ_id u32) []u32 {
+	mut out := []u32{}
+	// The attribute list is source text; each interface name enters as a spelling.
+	for part in struct_decl_typ_parts(flat.source_type_name(typ_id)) {
 		if !part.starts_with('implements=') {
 			continue
 		}
 		for iface in part['implements='.len..].split('|') {
 			clean := trimmed_space(iface)
 			if clean.len > 0 {
-				out << clean
+				out << flat.source_type_id(clean)
 			}
 		}
 	}
