@@ -831,7 +831,8 @@ serve `.zst` if the client supports zstd, otherwise `.gz` if gzip is supported.
   Dynamic compression skips bodies below 256 bytes, statuses without a body, streaming files,
   already compressed content, and noncompressible media types. Compressed output is used only
   when it is smaller. Encoding names are case insensitive; explicit `q=0` refusals override
-  wildcard offers. Positive quality values allow a coding; `encode_auto` prefers zstd over gzip.
+  wildcard offers. Repeated `Accept-Encoding` fields are combined before selecting a coding.
+  Positive quality values allow a coding; `encode_auto` prefers zstd over gzip.
   Eligible responses include `Vary: Accept-Encoding` even when sent without compression, while
   preserving existing `Vary` fields.
   Compression weakens any existing strong ETag because the encoded bytes differ.

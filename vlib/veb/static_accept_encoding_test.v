@@ -45,4 +45,17 @@ fn test_static_sidecars_obey_encoding_offers_and_refusals() {
 		assert ctx.return_file == '${path}${ext}', offer
 		assert ctx.already_compressed == (expected != '')
 	}
+	for refusal in ['gzip;q=0, zstd;q=0', 'gzip;\tq=0, zstd;q=0'] {
+		mut ctx := Context{
+			enable_static_compression:   true
+			static_compression_max_size: 0
+		}
+		ctx.req.header.add(.accept_encoding, '*')
+		ctx.req.header.add(.accept_encoding, refusal)
+		ctx.send_file('text/plain', path)
+		assert !ctx.res.header.contains(.content_encoding)
+		assert ctx.return_type == .file
+		assert ctx.return_file == path
+		assert !ctx.already_compressed
+	}
 }

@@ -126,3 +126,32 @@ fn test_compression_weakens_identity_etag() {
 		assert (ctx.res.header.get(.etag) or { '' }) == 'W/"identity"'
 	}
 }
+
+fn test_compression_combines_repeated_encoding_fields() {
+	for middleware in [encode_auto[CompressionEligibilityContext](),
+		encode_gzip[CompressionEligibilityContext](), encode_zstd[CompressionEligibilityContext]()] {
+		mut ctx := CompressionEligibilityContext{}
+		ctx.req.header.add(.accept_encoding, '*')
+		ctx.req.header.add(.accept_encoding, 'gzip;\tq=0, zstd;q=0')
+		ctx.res.body = 'compressible content '.repeat(100)
+		original := ctx.res.body
+		assert middleware.handler(mut ctx)
+		assert ctx.res.body == original
+		assert !ctx.res.header.contains(.content_encoding)
+	}
+}
+
+fn test_encode_auto_combines_repeated_fields_before_selecting_encoding() {
+	for refused, expected in {
+		'zstd;q=0': 'gzip'
+		'gzip;q=0': 'zstd'
+	} {
+		mut ctx := CompressionEligibilityContext{}
+		ctx.req.header.add(.accept_encoding, '*')
+		ctx.req.header.add(.accept_encoding, refused)
+		ctx.res.body = 'compressible content '.repeat(100)
+		middleware := encode_auto[CompressionEligibilityContext]()
+		assert !middleware.handler(mut ctx)
+		assert (ctx.res.header.get(.content_encoding) or { '' }) == expected
+	}
+}

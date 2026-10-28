@@ -283,7 +283,7 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	}
 	file.close()
 	// Check which encodings the client accepts
-	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
+	accept_encoding := ctx.req.header.values(.accept_encoding).join(',')
 	client_accepts_zstd := client_accepts_encoding(accept_encoding, 'zstd')
 	client_accepts_gzip := client_accepts_encoding(accept_encoding, 'gzip')
 	max_size_bytes := ctx.static_compression_max_size
