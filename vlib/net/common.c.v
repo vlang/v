@@ -59,9 +59,21 @@ pub fn shutdown(handle int, config ShutdownConfig) int {
 			write_result := select_deadline(handle, .write, time.now().add(connect_timeout)) or {
 				false
 			}
-			err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
-			len := sizeof(err)
-			xyz := C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			mut err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
+			mut xyz := 0
+			$if vlibc ? {
+				// SO_ERROR goes through the vlibc syscall on Linux; other
+				// vlibc targets keep the libc call below.
+				$if linux {
+					xyz, err = vlibc_get_so_error(handle)
+				} $else {
+					len := sizeof(err)
+					xyz = C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+				}
+			} $else {
+				len := sizeof(err)
+				xyz = C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			}
 			if xyz == 0 && err == 0 {
 				return 0
 			}
@@ -97,9 +109,21 @@ pub fn close(handle int) ! {
 		if (is_windows && ecode == int(error_ewouldblock)) || (!is_windows && res == -1
 			&& ecode in [int(error_einprogress), int(error_eagain), C.EINTR]) {
 			write_result := select_deadline(handle, .write, time.now().add(connect_timeout))!
-			err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
-			len := sizeof(err)
-			xyz := C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			mut err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
+			mut xyz := 0
+			$if vlibc ? {
+				// SO_ERROR goes through the vlibc syscall on Linux; other
+				// vlibc targets keep the libc call below.
+				$if linux {
+					xyz, err = vlibc_get_so_error(handle)
+				} $else {
+					len := sizeof(err)
+					xyz = C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+				}
+			} $else {
+				len := sizeof(err)
+				xyz = C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			}
 			if xyz == 0 && err == 0 {
 				return
 			}

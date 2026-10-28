@@ -504,6 +504,14 @@ fn ipv6_membership_socket_option(join bool) int {
 }
 
 fn (mut s UdpSocket) set_option_raw(level int, opt int, value voidptr, value_len u32) ! {
+	$if vlibc ? {
+		// Linux vlibc issues the raw setsockopt syscall; other vlibc
+		// targets keep the libc call below (no vlibc_sys_setsockopt there).
+		$if linux {
+			vlibc_wrap_err(vlibc_sys_setsockopt(i64(s.handle), level, opt, value, value_len))!
+			return
+		}
+	}
 	socket_error(C.setsockopt(s.handle, level, opt, value, value_len))!
 }
 

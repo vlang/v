@@ -8,10 +8,9 @@ module net
 // libc path (net.Addr layout). Only `.ip` sockets are bridged; `.ip6`/`.unix`
 // keep the libc path at the call sites in udp.c.v. DNS resolution (fuzzy
 // resolve), multicast, and all `$if windows` branches are untouched.
-// setsockopt/getpeername/getsockname stay on libc: the fds created via raw
-// syscalls live in the same process table, libc is still linked in hosted
-// mode, and there is no portable one-line vlibc helper (vlibc_sys_setsockopt
-// and vlibc_sys_getsockname exist on linux_bare only).
+// setsockopt/getsockopt/getsockname/fcntl go through vlibc on Linux
+// (see sockopt_d_vlibc.c.v); getpeername stays on libc everywhere (no
+// vlibc_sys_getpeername wrapper exists yet).
 
 // vlibc_new_udp_socket creates a SOCK_DGRAM socket via the vlibc socket syscall.
 fn vlibc_new_udp_socket(family AddrFamily) !int {

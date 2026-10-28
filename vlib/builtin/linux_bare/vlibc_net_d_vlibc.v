@@ -100,4 +100,20 @@ $if !i386 {
 	pub fn vlibc_shutdown(fd i64, how int) VlibcErrno {
 		return vlibc_sys_shutdown(fd, how)
 	}
+
+	// vlibc_setsockopt_int sets an int-valued socket option via the
+	// setsockopt syscall (used for SO_REUSEADDR, timeouts, buffer sizes...).
+	pub fn vlibc_setsockopt_int(fd i64, level int, optname int, val int) VlibcErrno {
+		v := i32(val) // C socket options are 4-byte `int`
+		return vlibc_sys_setsockopt(fd, level, optname, voidptr(&v), u32(sizeof(v)))
+	}
+
+	// vlibc_getsockopt_int reads an int-valued socket option via the
+	// getsockopt syscall (used for SO_ERROR reads).
+	pub fn vlibc_getsockopt_int(fd i64, level int, optname int) (int, VlibcErrno) {
+		mut v := i32(0)
+		mut olen := u32(sizeof(v))
+		e := vlibc_sys_getsockopt(fd, level, optname, voidptr(&v), &olen)
+		return int(v), e
+	}
 }

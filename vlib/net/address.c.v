@@ -333,11 +333,23 @@ pub fn addr_from_socket_handle(handle int) Addr {
 		}
 	}
 	mut size := u32(sizeof(addr))
+	$if vlibc ? {
+		// getsockname is family-agnostic: the kernel fills the same
+		// sockaddr bytes. Linux vlibc issues the raw syscall; other vlibc
+		// targets keep the libc call below (no vlibc_sys_getsockname there).
+		$if linux {
+			vlibc_sys_getsockname(i64(handle), voidptr(&addr), &size)
+			return addr
+		}
+	}
 	C.getsockname(handle, voidptr(&addr), &size)
 	return addr
 }
 
-// peer_addr_from_socket_handle retrieves the ip address and port number, given a socket handle
+// peer_addr_from_socket_handle retrieves the ip address and port number, given a socket handle.
+// It stays on libc even with -d vlibc: no vlibc_sys_getpeername wrapper
+// exists yet, and in hosted mode libc is still linked, so it works on
+// vlibc-created fds too.
 pub fn peer_addr_from_socket_handle(handle int) !Addr {
 	mut addr := Addr{
 		addr: AddrData{

@@ -406,8 +406,20 @@ pub fn (mut c TcpConn) set_read_timeout(t time.Duration) {
 			tv_sec:  u64(microseconds / 1_000_000)
 			tv_usec: u64(microseconds % 1_000_000)
 		}
-		c.read_timeout_in_socket = C.setsockopt(c.sock.handle, C.SOL_SOCKET, C.SO_RCVTIMEO,
-			voidptr(&timeout), sizeof(timeout)) == 0
+		$if vlibc ? {
+			// SO_RCVTIMEO goes through the vlibc syscall on Linux; other
+			// vlibc targets keep the libc call (no vlibc_sys_setsockopt).
+			$if linux {
+				c.read_timeout_in_socket = vlibc_sys_setsockopt(i64(c.sock.handle), C.SOL_SOCKET,
+					C.SO_RCVTIMEO, voidptr(&timeout), u32(sizeof(timeout))) == .enoerror
+			} $else {
+				c.read_timeout_in_socket = C.setsockopt(c.sock.handle, C.SOL_SOCKET, C.SO_RCVTIMEO,
+					voidptr(&timeout), sizeof(timeout)) == 0
+			}
+		} $else {
+			c.read_timeout_in_socket = C.setsockopt(c.sock.handle, C.SOL_SOCKET, C.SO_RCVTIMEO,
+				voidptr(&timeout), sizeof(timeout)) == 0
+		}
 		c.socket_read_timeout_value = t
 		c.socket_read_timeout_handle = c.sock.handle
 	}
@@ -808,6 +820,14 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 
 fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
 	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
+	$if vlibc ? {
+		// Linux vlibc issues the raw setsockopt syscall; other vlibc
+		// targets keep the libc call below (no vlibc_sys_setsockopt there).
+		$if linux {
+			vlibc_wrap_err(vlibc_setsockopt_int(i64(s.handle), level, opt, value))!
+			return
+		}
+	}
 	socket_error(C.setsockopt(s.handle, level, opt, voidptr(&v), sizeof(v)))!
 }
 
@@ -857,6 +877,15 @@ pub fn (mut s TcpSocket) bind(addr string) ! {
 	// TODO(logic to pick here)
 	a := addrs[0]
 
+	$if vlibc ? {
+		// AF_INET binds go through the vlibc bind syscall on Linux; other
+		// vlibc targets keep the libc call below.
+		$if linux {
+			vlibc_tcp_bind(s.handle, a)!
+			return
+		}
+	}
+
 	// cast to the correct type
 	alen := a.len()
 	socket_error_message(C.bind(s.handle, voidptr(&a), alen), 'binding to ${addr} failed') or {
@@ -903,9 +932,21 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 			// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
 			// ex‐ plaining the reason for the failure).
 			write_result := select(s.handle, .write, connect_timeout)!
-			err := i32(0) // SO_ERROR is a C `int`; i32 storage keeps &err int* and sizeof 4
-			len := sizeof(err)
-			xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			mut err := i32(0) // SO_ERROR is a C `int`; i32 storage keeps &err int* and sizeof 4
+			mut xyz := 0
+			$if vlibc ? {
+				// SO_ERROR goes through the vlibc syscall on Linux; other
+				// vlibc targets keep the libc call below.
+				$if linux {
+					xyz, err = vlibc_get_so_error(s.handle)
+				} $else {
+					len := sizeof(err)
+					xyz = C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+				}
+			} $else {
+				len := sizeof(err)
+				xyz = C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			}
 			if xyz == 0 && err == 0 {
 				return
 			}

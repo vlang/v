@@ -19,6 +19,14 @@ pub fn set_blocking(handle int, state bool) ! {
 		// voidptr converts implicitly in C, so every compiler accepts it.
 		socket_error(C.ioctlsocket(handle, fionbio, voidptr(&t)))!
 	} $else {
+		$if vlibc ? {
+			// fcntl exists in vlibc; Linux issues the raw syscall, other
+			// vlibc targets keep the libc calls below. Windows is untouched.
+			$if linux {
+				vlibc_set_blocking(handle, state)!
+				return
+			}
+		}
 		mut flags := C.fcntl(handle, C.F_GETFL, 0)
 		if state {
 			flags &= ~C.O_NONBLOCK

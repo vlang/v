@@ -13,10 +13,11 @@ module net
 //
 // Only the `.ip` (AF_INET) family is bridged; `.ip6`/`.unix` fall back
 // to the libc path at the call sites in tcp.c.v. DNS resolution
-// (resolve_addrs), TLS/SSL, select/setsockopt/getsockname/fcntl/close
-// and all `$if windows` branches are intentionally untouched: in hosted
-// mode libc is still linked, so fds created via raw syscalls keep
-// working with it.
+// (resolve_addrs), TLS/SSL, select/getpeername/close and all `$if windows`
+// branches are intentionally untouched: in hosted mode libc is still
+// linked, so fds created via raw syscalls keep working with it.
+// setsockopt/getsockopt/getsockname/fcntl go through vlibc on Linux
+// (see sockopt_d_vlibc.c.v); other vlibc targets keep the libc path.
 
 // vlibc_ipv4_split extracts the host-order port and the network-order
 // u32 address (vlibc_parse_ipv4 convention) from an AF_INET Addr.
