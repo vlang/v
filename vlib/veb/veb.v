@@ -486,7 +486,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		// V does not allow `return` in one, so recovery prepares its response here and
 		// skips the after-middleware through the else branch.
 		if msg := recover() {
-			finish_panicked_route(mut user_context.Context, url.path, msg)
+			finish_panicked_route[X](mut user_context, url.path, msg)
 		} else {
 			finish_route[A, X](app, mut user_context, route, url.path, not_found,
 				middleware_has_sent_response)
@@ -685,26 +685,26 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 // finish_panicked_route builds the fallback response after a handler panic.
 // Keeping it out of handle_route's defer avoids copying this cleanup block into
 // every unrolled route dispatch return.
-fn finish_panicked_route(mut ctx Context, path string, msg string) {
+fn finish_panicked_route[X](mut user_context X, path string, msg string) {
 	eprintln('[veb] handler for route "${path}" panicked: ${msg}')
 	// A takeover handler owns the connection and may already have written to it.
-	if ctx.takeover_mode == .none {
+	if user_context.Context.takeover_mode == .none {
 		// Discard the prepared representation, including file streaming and framing.
 		// server_error replaces and frees the old body through send_response_to_client.
-		ctx.done = false
-		ctx.return_type = .normal
-		ctx.return_file = ''
-		ctx.content_type = ''
-		ctx.already_compressed = false
+		user_context.Context.done = false
+		user_context.Context.return_type = .normal
+		user_context.Context.return_file = ''
+		user_context.Context.content_type = ''
+		user_context.Context.already_compressed = false
 		for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
 			.transfer_encoding, .trailer, .content_range, .content_disposition, .accept_ranges,
 			.etag, .last_modified, .cache_control, .expires, .age, .location] {
-			ctx.res.header.delete(header)
+			user_context.Context.res.header.delete(header)
 		}
-		ctx.server_error('Internal Server Error')
+		user_context.server_error('Internal Server Error')
 	}
-	if ctx.throttle_leases.len > 0 {
-		ctx.release_throttle_leases()
+	if user_context.Context.throttle_leases.len > 0 {
+		user_context.Context.release_throttle_leases()
 	}
 }
 

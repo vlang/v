@@ -51,9 +51,9 @@ struct Third {
 }
 
 fn main() {
-	_ := json2.decode[First]('{}') or { First{} }
-	_ := json2.decode[Second]('{}') or { Second{} }
-	_ := json2.decode[Third]('{}') or { Third{} }
+	_ := json2.decode[First]('{}', json5: true) or { First{} }
+	_ := json2.decode[Second]('{}', json5: true) or { Second{} }
+	_ := json2.decode[Third]('{}', json5: true) or { Third{} }
 }
 "
 
@@ -89,5 +89,6 @@ fn test_json5_parser_setup_is_shared_across_decoded_types() {
 	c := generated_c('shared_json5_setup', shared_json5_setup_program)
 	// The prototype, the one shared setup call, and the definition. Before the
 	// setup was shared, every decode[T] cloned another complete Json5Parser setup.
-	assert c.count('json2__new_json5_scanner(') <= 3, c.count('json2__new_json5_scanner(').str()
+	count := c.count('json2__new_json5_scanner(')
+	assert count > 0 && count <= 3, count.str()
 }
