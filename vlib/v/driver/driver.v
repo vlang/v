@@ -15783,7 +15783,11 @@ pub fn run(args []string) {
 				return
 			}
 
-			g.write_and_link(bin_file)
+			if backend == 'arm64' && target.os == 'linux' {
+				g.write_and_link_linux(bin_file)
+			} else {
+				g.write_and_link(bin_file)
+			}
 			b.step('link')
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if should_run {
