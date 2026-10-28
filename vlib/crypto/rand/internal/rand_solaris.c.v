@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module internal
 
+// NOTE(vlibc): deliberately left on libc, even under -d vlibc.
+// solaris_bare wires no raw getrandom kernel ABI (no verified syscall
+// number there), so the libc getrandom path below is kept.
+
 #include <sys/random.h>
 
 fn C.getrandom(p &u8, n uint, flags u32) i32

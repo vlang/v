@@ -3,6 +3,11 @@
 // that can be found in the LICENSE file.
 module internal
 
+// NOTE(vlibc): deliberately left on libc, even under -d vlibc. OpenBSD
+// exposes randomness through the arc4random libc API, and no verified raw
+// getrandom/getentropy syscall number is wired in openbsd_bare, so there
+// is no pure-V syscall path to use here.
+
 #include <stdlib.h>
 
 fn C.arc4random_buf(p &u8, n uint)

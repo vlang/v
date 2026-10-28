@@ -168,6 +168,8 @@ $if !i386 {
 	const fb_nr_fstatat = u64(552)
 	const fb_nr_getdirentries = u64(554)
 	const fb_nr_getcwd = u64(326)
+	// SYS_getrandom (sys/sys/syscall.h).
+	const fb_nr_getrandom = u64(563)
 
 	// UMTX ops for mutex/cond (sys/sys/umtx.h).
 	const fb_umtx_op_wait_uint_private = u64(15)

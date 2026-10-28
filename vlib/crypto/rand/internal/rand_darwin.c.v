@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module internal
 
+// NOTE(vlibc): deliberately left on libc, even under -d vlibc. macos_bare
+// wires no raw getentropy kernel ABI (no verified syscall number there),
+// so the libc getentropy path below is kept.
+
 #include <sys/random.h>
 
 fn C.getentropy(buf voidptr, buflen uint) i32

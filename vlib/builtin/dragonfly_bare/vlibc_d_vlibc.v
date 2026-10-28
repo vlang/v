@@ -908,4 +908,15 @@ $if !i386 {
 	pub fn vlibc_cond_broadcast(mut c VlibcCond) {
 		vlibc_store_u32(&c.seq, vlibc_load_u32(&c.seq) + 1)
 	}
+
+	// vlibc_sys_getrandom fills buf with n random bytes via the getrandom
+	// syscall (SYS_getrandom 550). Returns bytes read or negative errno,
+	// mirroring linux_bare's helper.
+	pub fn vlibc_sys_getrandom(buf voidptr, n uint, flags uint) i64 {
+		rc, er := sys_call3(df_nr_getrandom, u64(buf), u64(n), u64(flags))
+		if er != 0 {
+			return -i64(er)
+		}
+		return i64(rc)
+	}
 }

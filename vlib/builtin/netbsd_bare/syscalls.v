@@ -172,6 +172,8 @@ $if !i386 {
 	const nb_nr_wait6 = u64(481)
 	const nb_nr_getdents = u64(390)
 	const nb_nr_socket = u64(394)
+	// SYS_getrandom (sys/sys/syscall.h).
+	const nb_nr_getrandom = u64(91)
 
 	// __clone flags (sys/sys/sched.h).
 	const nb_clone_vm = u64(0x100)

@@ -177,6 +177,8 @@ $if !i386 {
 	const df_nr_readlinkat = u64(527)
 	const df_nr_pipe2 = u64(538)
 	const df_nr_accept4 = u64(541)
+	// SYS_getrandom (sys/sys/syscall.h).
+	const df_nr_getrandom = u64(550)
 
 	// extexit modes (sys/sys/unistd.h): EXTEXIT_LWP | EXTEXIT_SIMPLE.
 	const df_extexit_lwp = u64(0x10000)
