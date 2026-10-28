@@ -191,8 +191,8 @@ fn decode_session_values(payload string) ?DecodedSession {
 		if kv.len != 2 {
 			return none
 		}
-		// Keys are never empty; values may be (empty string is a value too).
-		key := decode_base64url_str(kv[0]) or { return none }
+		// Empty keys and values are valid map entries and encode as empty strings.
+		key := if kv[0] == '' { '' } else { decode_base64url_str(kv[0]) or { return none } }
 		value := if kv[1] == '' { '' } else { decode_base64url_str(kv[1]) or { return none } }
 		values[key] = value
 	}

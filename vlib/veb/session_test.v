@@ -64,6 +64,24 @@ fn test_session_roundtrip() {
 	}
 }
 
+fn test_session_roundtrip_empty_keys_and_values() {
+	opts := SessionOptions{
+		secret: 'test-secret-that-is-long-enough'
+	}
+	loaded := session_roundtrip(opts, {
+		'':      'empty key'
+		'empty': ''
+		'user':  'ada'
+	})
+	assert loaded.get('') or { panic('missing empty key') } == 'empty key'
+	assert loaded.get('empty') or { panic('missing empty value') } == ''
+	assert loaded.get('user') or { panic('missing user') } == 'ada'
+	blank := session_roundtrip(opts, {
+		'': ''
+	})
+	assert blank.get('') or { panic('missing empty entry') } == ''
+}
+
 fn test_session_rejects_tampering() {
 	opts := SessionOptions{
 		secret: 'test-secret-that-is-long-enough'
