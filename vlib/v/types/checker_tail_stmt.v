@@ -23365,6 +23365,36 @@ fn infix_operator_name(op flat.Op) ?string {
 }
 
 // prim_c_type_from supports prim c type from handling for types.
+// prim_c_source_type_id is the spelling id of prim_c_type_from's C type name.
+fn prim_c_source_type_id(props Properties, size u8) u32 {
+	if props.has(.boolean) {
+		return flat.source_type_bool
+	}
+	if props.has(.integer) {
+		if props.has(.unsigned) {
+			return match size {
+				8 { flat.source_type_u8 }
+				16 { flat.source_type_u16 }
+				32 { flat.source_type_u32 }
+				64 { flat.source_type_u64 }
+				else { flat.source_type_id('u${size}') }
+			}
+		}
+		return match size {
+			0 { flat.source_type_int }
+			8 { flat.source_type_i8 }
+			16 { flat.source_type_i16 }
+			32 { flat.source_type_i32 }
+			64 { flat.source_type_i64 }
+			else { flat.source_type_id('i${size}') }
+		}
+	}
+	if props.has(.float) {
+		return if size == 32 { checker_source_float } else { checker_source_double }
+	}
+	return flat.source_type_int
+}
+
 fn prim_c_type_from(props Properties, size u8) string {
 	if props.has(.boolean) {
 		return 'bool'

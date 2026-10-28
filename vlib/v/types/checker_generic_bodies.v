@@ -333,7 +333,7 @@ fn comptime_in_term(cond string) ?ComptimeInTerm {
 fn (tc &TypeChecker) instance_comptime_in_value(term ComptimeInTerm) ?bool {
 	mut matched := false
 	for item in term.items {
-		if tc.comptime_type_matches(term.left, item)? {
+		if tc.comptime_type_matches(flat.source_type_id(term.left), flat.source_type_id(item))? {
 			matched = true
 			break
 		}

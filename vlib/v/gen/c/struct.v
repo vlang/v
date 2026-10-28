@@ -5785,8 +5785,8 @@ fn (g &FlatGen) embedded_field_type_name(field types.StructField) u32 {
 	// alias name so promoted methods on the alias receive the embedded callback,
 	// rather than the outer struct.
 	if clean_type is types.FnType {
-		for candidate in [field.name, g.tc.qualify_name(field.name)] {
-			candidate_id := flat.source_type_existing_id(candidate) or { continue }
+		embedded_name_id := flat.source_type_id(field.name)
+		for candidate_id in [embedded_name_id, g.tc.qualify_type_name(embedded_name_id)] {
 			if !g.tc.type_aliases.contains(candidate_id) {
 				continue
 			}

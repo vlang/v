@@ -1987,9 +1987,13 @@ fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
 			left := trimmed_space(clean[..op_idx])
 			right := trimmed_space(clean[op_idx + op.len..])
 			matches := if left.starts_with('$') && !right.starts_with('$') {
-				tc.comptime_type_matches(right, left) or { return none }
+				tc.comptime_type_matches(flat.source_type_id(right), flat.source_type_id(left)) or {
+					return none
+				}
 			} else {
-				tc.comptime_type_matches(left, right) or { return none }
+				tc.comptime_type_matches(flat.source_type_id(left), flat.source_type_id(right)) or {
+					return none
+				}
 			}
 			return if op == ' is ' { matches } else { !matches }
 		}
@@ -8514,9 +8518,13 @@ fn (tc &TypeChecker) comptime_type_condition_value(cond string) ?bool {
 			left := trimmed_space(clean[..op_idx])
 			right := trimmed_space(clean[op_idx + op.len..])
 			matches := if left.starts_with('$') && !right.starts_with('$') {
-				tc.comptime_type_matches(right, left) or { return none }
+				tc.comptime_type_matches(flat.source_type_id(right), flat.source_type_id(left)) or {
+					return none
+				}
 			} else {
-				tc.comptime_type_matches(left, right) or { return none }
+				tc.comptime_type_matches(flat.source_type_id(left), flat.source_type_id(right)) or {
+					return none
+				}
 			}
 			return if op == ' is ' { matches } else { !matches }
 		}
@@ -8571,8 +8579,11 @@ fn comptime_condition_scalar_value(raw string) ?string {
 	return none
 }
 
-fn (tc &TypeChecker) comptime_type_matches(actual string, expected string) ?bool {
-	mut actual_id := tc.instance_type_text(flat.source_type_id(trimmed_space(actual)))
+// comptime_type_matches decides `actual is expected` in a `$if` for the spellings
+// of its two sides; `expected` can be a type group such as `$int`.
+fn (tc &TypeChecker) comptime_type_matches(actual_source_id u32, expected_source_id u32) ?bool {
+	mut actual_id := tc.instance_type_text(trimmed_source_type_id(actual_source_id))
+	// The left side can also name a value: smartcasts and scopes are keyed by text.
 	actual_symbol := flat.source_type_name(actual_id)
 	if smartcast := tc.smartcasts[actual_symbol] {
 		actual_id = smartcast.source_type_id()
@@ -8582,72 +8593,72 @@ fn (tc &TypeChecker) comptime_type_matches(actual string, expected string) ?bool
 		}
 		actual_id = semantic_type.source_type_id()
 	}
-	clean_expected := trimmed_space(expected)
-	if actual_id == 0 || clean_expected.len == 0
+	clean_expected := trimmed_source_type_id(expected_source_id)
+	if actual_id == 0 || clean_expected == 0
 		|| (flat.source_type_syntax(actual_id).bare_generic() && !tc.type_name_known(actual_id)) {
 		return none
 	}
 	actual_type := tc.comptime_type_match_type(actual_id)
 	normalized_id := actual_type.source_type_id()
 	match clean_expected {
-		'$array' {
+		checker_source_dollar_array {
 			return actual_type is Array || actual_type is ArrayFixed
 		}
-		'$array_dynamic' {
+		checker_source_dollar_array_dynamic {
 			return actual_type is Array
 		}
-		'$array_fixed' {
+		checker_source_dollar_array_fixed {
 			return actual_type is ArrayFixed
 		}
-		'$map' {
+		checker_source_dollar_map {
 			return actual_type is Map
 		}
-		'$function' {
+		checker_source_dollar_function {
 			return actual_type is FnType
 		}
-		'$option' {
+		checker_source_dollar_option {
 			return actual_type is OptionType
 		}
-		'$shared' {
+		checker_source_dollar_shared {
 			return tc.comptime_type_is_shared(actual_id)
 		}
-		'$pointer' {
+		checker_source_dollar_pointer {
 			return actual_type is Pointer
 		}
-		'$voidptr' {
+		checker_source_dollar_voidptr {
 			return fn_param_is_voidptr_type(actual_type)
 		}
-		'$int' {
+		checker_source_dollar_int {
 			// Comptime `$int` follows v1's type group, which deliberately excludes
 			// the distinct `rune` type even though it has integer operations.
 			return actual_type.is_integer() && actual_type !is Rune
 		}
-		'$float' {
+		checker_source_dollar_float {
 			return actual_type.is_float()
 		}
-		'$string' {
+		checker_source_dollar_string {
 			return actual_type is String
 		}
-		'$struct' {
+		checker_source_dollar_struct {
 			return actual_type is Struct && normalized_id in tc.structs
 		}
-		'$enum' {
+		checker_source_dollar_enum {
 			return normalized_id in tc.enum_names
 		}
-		'$alias' {
+		checker_source_dollar_alias {
 			return tc.type_aliases.contains(actual_id)
 				|| tc.qualify_type_name(actual_id) in tc.type_aliases.ids
 		}
-		'$sumtype' {
+		checker_source_dollar_sumtype {
 			return tc.sum_types.contains(normalized_id)
 		}
-		'$interface' {
+		checker_source_dollar_interface {
 			return normalized_id in tc.interface_names
 		}
 		else {}
 	}
 
-	expected_type := tc.comptime_type_match_type(flat.source_type_id(clean_expected))
+	expected_type := tc.comptime_type_match_type(clean_expected)
 	if expected_type is Interface {
 		return tc.type_implements_interface(actual_type, expected_type)
 	}

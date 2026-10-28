@@ -10780,8 +10780,9 @@ fn (tc &TypeChecker) is_builtin_hex_receiver(typ &Type) bool {
 		return true
 	}
 	if clean is Primitive {
-		return prim_c_type_from(clean.props, clean.size) in ['u8', 'i8', 'u16', 'i16', 'u32', 'int',
-			'u64', 'i64']
+		return prim_c_source_type_id(clean.props, clean.size) in [flat.source_type_u8,
+			flat.source_type_i8, flat.source_type_u16, flat.source_type_i16, flat.source_type_u32,
+			flat.source_type_int, flat.source_type_u64, flat.source_type_i64]
 	}
 	return clean is Rune || clean is Char
 }
@@ -10815,10 +10816,11 @@ fn (tc &TypeChecker) builtin_receiver_method_call_info(base_type Type, method st
 		}
 		return none
 	}
-	method_receiver := builtin_receiver_method_type_name(clean)
-	if method_receiver.len == 0 {
+	method_receiver_id := builtin_receiver_method_type_id(clean)
+	if method_receiver_id == 0 {
 		return none
 	}
+	method_receiver := flat.source_type_name(method_receiver_id)
 	return CallInfo{
 		name:         '${method_receiver}.${method}'
 		params:       tarr1(base_type)
@@ -10942,20 +10944,22 @@ fn (tc &TypeChecker) c_struct_method_module_visible(name string) bool {
 	return false
 }
 
-fn builtin_receiver_method_type_name(clean &Type) string {
+// builtin_receiver_method_type_id is the receiver spelling that the methods of
+// a primitive, rune or char type are registered under: its C type name.
+fn builtin_receiver_method_type_id(clean &Type) u32 {
 	if clean is Alias {
-		return builtin_receiver_method_type_name(clean.base_type)
+		return builtin_receiver_method_type_id(clean.base_type)
 	}
 	if clean is Primitive {
-		return prim_c_type_from(clean.props, clean.size)
+		return prim_c_source_type_id(clean.props, clean.size)
 	}
 	if clean is Rune {
-		return 'rune'
+		return flat.source_type_rune
 	}
 	if clean is Char {
-		return 'char'
+		return flat.source_type_char
 	}
-	return ''
+	return 0
 }
 
 fn (tc &TypeChecker) current_receiver_param_method_call_info(base_id flat.NodeId, method string) ?CallInfo {
@@ -21772,7 +21776,7 @@ fn (tc &TypeChecker) builtin_method_value_type(base_type Type, method string) ?T
 		qualify_source_type_map
 	} else {
 		// Primitive receivers are named by their C type text.
-		flat.source_type_id(builtin_receiver_method_type_name(clean))
+		builtin_receiver_method_type_id(clean)
 	}
 	if receiver_name_id != 0 {
 		if typ := tc.method_value_type(receiver_name_id, method) {
