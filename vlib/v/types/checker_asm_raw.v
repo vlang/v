@@ -610,3 +610,256 @@ fn (mut tc TypeChecker) check_inline_asm_raw_labels(id flat.NodeId, node flat.No
 		}
 	}
 }
+
+// inline_asm_att_suffix_families are the mnemonics whose one size suffix sizes every operand.
+const inline_asm_att_suffix_families = ['mov', 'add', 'sub', 'and', 'or', 'xor', 'cmp', 'test',
+	'inc', 'dec', 'neg', 'not', 'shl', 'shr', 'sar', 'lea', 'push', 'pop']!
+
+// inline_asm_att_shift_families take their count in `%cl` or an immediate, so only the
+// destination of a shift has the suffix width.
+const inline_asm_att_shift_families = ['shl', 'shr', 'sar']!
+
+// inline_asm_att_mnemonic_widths returns the source and destination operand widths that a
+// GNU x86 mnemonic states through its size suffix, or zeros when it states none. `movzbl`
+// and `movslq` carry two suffixes: the first sizes the source and the second the destination.
+// The shift family takes its count in `%cl`, so `is_shift` limits the check to the destination.
+fn inline_asm_att_mnemonic_widths(name string) (int, int, bool) {
+	if name.len == 6 && (name.starts_with('movz') || name.starts_with('movs')) {
+		src := inline_asm_att_suffix_width(name[4])
+		dst := inline_asm_att_suffix_width(name[5])
+		is_movz := name.starts_with('movz')
+		if src > 0 && dst > src && (!is_movz || name[4] != `l`) {
+			return src, dst, false
+		}
+		return 0, 0, false
+	}
+	if name.len < 3 {
+		return 0, 0, false
+	}
+	base := name[..name.len - 1]
+	if base !in inline_asm_att_suffix_families {
+		return 0, 0, false
+	}
+	width := inline_asm_att_suffix_width(name[name.len - 1])
+	return width, width, base in inline_asm_att_shift_families
+}
+
+// inline_asm_att_suffix_width maps a GNU size suffix letter to its operand width in bits.
+fn inline_asm_att_suffix_width(c u8) int {
+	return match c {
+		`b` { 8 }
+		`w` { 16 }
+		`l` { 32 }
+		`q` { 64 }
+		else { 0 }
+	}
+}
+
+// inline_asm_att_modifier_width maps a GNU x86 operand modifier letter to the register width
+// it selects: `%k` is the 32-bit view, `%w` the 16-bit one, and `%b` and `%h` the 8-bit ones.
+fn inline_asm_att_modifier_width(modifier u8) int {
+	return match modifier {
+		`k` { 32 }
+		`w` { 16 }
+		`b`, `h` { 8 }
+		`q` { 64 }
+		else { 0 }
+	}
+}
+
+// inline_asm_raw_gpr_constraint reports whether a constraint can only place its operand in a
+// general-purpose register. A `g`, `m` or `i` constraint may print a memory address or an
+// immediate, which carries no register width.
+fn inline_asm_raw_gpr_constraint(constraint string) bool {
+	mut letters := 0
+	for c in constraint {
+		if c in [`+`, `=`, `&`] {
+			continue
+		}
+		if c !in [`r`, `q`, `Q`, `R`, `a`, `b`, `c`, `d`, `S`, `D`] {
+			return false
+		}
+		letters++
+	}
+	return letters > 0
+}
+
+// inline_asm_att_arch_bits returns the general register width of an x86 instruction set:
+// 64 for amd64 and 32 for the i386 family.
+fn inline_asm_att_arch_bits(arch string) int {
+	return if arch in ['amd64', 'x64', 'x86_64'] { 64 } else { 32 }
+}
+
+// inline_asm_att_register_width returns the width that a literal register fixes in an AT&T
+// instruction of a block whose general registers are `arch_bits` wide, or 0 when it fixes
+// none. Segment registers move to and from general registers of every width, and control
+// and debug registers have the general register width of the instruction set.
+fn inline_asm_att_register_width(name string, arch_bits int) int {
+	register := name.to_lower_ascii()
+	if register in ['cs', 'ss', 'ds', 'es', 'fs', 'gs'] {
+		return 0
+	}
+	if register.starts_with('cr') || register.starts_with('dr') {
+		return arch_bits
+	}
+	return inline_asm_intel_register_width(register)
+}
+
+// inline_asm_att_enum_explicit_backing_type returns the `as` backing type of an enum, or none
+// when the enum is declared without one.
+fn (tc &TypeChecker) inline_asm_att_enum_explicit_backing_type(name_id u32) ?Type {
+	name_syntax := flat.source_type_syntax(name_id)
+	short_name_id := name_syntax.unqualified()
+	is_qualified := flat.source_type_shape(name_id).has(.dotted)
+	for index in tc.top_level_idx {
+		decl := tc.a.nodes[index]
+		if decl.kind != .enum_decl || !inline_asm_enum_decl_is_named(decl.value, short_name_id) {
+			continue
+		}
+		file := tc.a.source_files[decl.pos.id] or { continue }
+		module_name := tc.file_modules[file.name] or { '' }
+		if is_qualified && !inline_asm_enum_module_is_qualifier(module_name, name_syntax.qualifier()) {
+			continue
+		}
+		if decl.enum_backing_type_id() != 0 {
+			return *tc.parse_type(decl.enum_backing_type_id())
+		}
+		break
+	}
+	return none
+}
+
+// inline_asm_att_type_width returns the width of the register that an unmodified `%[name]`
+// prints for an operand of type `typ`, or 0 when it prints no general register. V's `int`,
+// `isize`, `usize` and pointers have the target's pointer width, which is `arch_bits` on any
+// target that assembles the block. On the i386 family GCC keeps a 64-bit value in a register
+// pair and `%[name]` prints its low 32-bit register.
+fn (tc &TypeChecker) inline_asm_att_type_width(typ Type, arch_bits int) int {
+	clean := unalias_type(typ)
+	mut width := 0
+	match clean {
+		Primitive {
+			if clean.props.has(.float) {
+				return 0
+			}
+			width = if clean.props.has(.integer) && clean.size == 0 {
+				arch_bits
+			} else {
+				tc.inline_asm_intel_operand_width(clean) or { 0 }
+			}
+		}
+		ISize, USize, Pointer {
+			width = arch_bits
+		}
+		Enum {
+			// An enum without an `as` backing type is a C `int`, which is 32 bits wide.
+			backing := tc.inline_asm_att_enum_explicit_backing_type(clean.source_type_id()) or {
+				return 32
+			}
+			width = tc.inline_asm_att_type_width(backing, arch_bits)
+		}
+		else {
+			width = tc.inline_asm_intel_operand_width(clean) or { 0 }
+		}
+	}
+	return int_min(width, arch_bits)
+}
+
+// inline_asm_att_operand_width returns the register width that a raw AT&T operand fixes, or 0
+// when it fixes none. Immediates, memory operands, floats and unbound names fix no width.
+fn (tc &TypeChecker) inline_asm_att_operand_width(operand InlineAsmRawOperand, types map[string]Type, arch_bits int) int {
+	match operand.kind {
+		.register {
+			return inline_asm_att_register_width(operand.name, arch_bits)
+		}
+		.operand_ref {
+			// Modifiers do not establish a register width for memory or mixed constraints.
+			typ := types[operand.name] or { return 0 }
+			if operand.modifier != 0 {
+				return inline_asm_att_modifier_width(operand.modifier)
+			}
+			return tc.inline_asm_att_type_width(typ, arch_bits)
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// inline_asm_raw_att_operand_types maps the names of general-register operands in a raw
+// template to their V types. Operands with other constraints are left out.
+fn (mut tc TypeChecker) inline_asm_raw_att_operand_types(node flat.Node, block string, sections []InlineAsmRange) map[string]Type {
+	mut types := map[string]Type{}
+	mut child_offset := 0
+	for index in 1 .. 3 {
+		if index >= sections.len {
+			break
+		}
+		ios := inline_asm_ios(block, sections[index])
+		for io_index, io in ios {
+			child_index := child_offset + io_index
+			if io.alias.len > 0 && inline_asm_is_ident(io.expr)
+				&& inline_asm_raw_gpr_constraint(io.constraint)
+				&& child_index < int(node.children_count) {
+				types[io.alias] = tc.resolve_type(tc.a.child(&node, child_index))
+			}
+		}
+		child_offset += ios.len
+	}
+	return types
+}
+
+// check_inline_asm_raw_att_widths reports a GNU x86 mnemonic whose size suffix disagrees with
+// the register width of an operand it acts on, such as `movl` applied to a 64-bit register.
+// Mnemonics without a suffix, and instructions with vector or other non-general operands,
+// are not checked. The GNU assembler rejects the same mismatches.
+fn (mut tc TypeChecker) check_inline_asm_raw_att_widths(id flat.NodeId, node flat.Node, block string, base int, section InlineAsmRange, arch string, types map[string]Type) {
+	template := inline_asm_raw_template(block, section, arch)
+	instructions := inline_asm_raw_parse_instructions(&template, [])
+	arch_bits := inline_asm_att_arch_bits(arch)
+	for instruction in instructions {
+		if instruction.is_directive || instruction.operands.len == 0 {
+			continue
+		}
+		src_width, dst_width, is_shift := inline_asm_att_mnemonic_widths(instruction.mnemonic)
+		if src_width == 0 {
+			continue
+		}
+		mut widths := []int{len: instruction.operands.len}
+		mut has_vector := false
+		for index, operand in instruction.operands {
+			widths[index] = tc.inline_asm_att_operand_width(operand, types, arch_bits)
+			if widths[index] > 64 {
+				has_vector = true
+			}
+		}
+		if has_vector {
+			continue
+		}
+		last := instruction.operands.len - 1
+		for index, operand in instruction.operands {
+			if is_shift && index != last {
+				continue
+			}
+			expected := if index == last {
+				dst_width
+			} else if index == 0 {
+				src_width
+			} else {
+				0
+			}
+			if expected == 0 || widths[index] == 0 || widths[index] == expected {
+				continue
+			}
+			start, end := template.span(operand.start, operand.end)
+			// Operand modifiers only apply to `%[name]` operands; a literal register is renamed.
+			alternative := if operand.kind == .register {
+				'a ${expected}-bit register'
+			} else {
+				'an operand modifier that selects a ${expected}-bit register'
+			}
+			tc.record_error_at(.compile_error, '`${instruction.mnemonic}` operates on ${expected}-bit operands here, but `${operand.text}` is ${widths[index]}-bit; use a size suffix that matches the operand, or ${alternative}',
+				id, token.new_span(node.pos.id, base + start, base + end))
+		}
+	}
+}

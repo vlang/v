@@ -3703,6 +3703,10 @@ typedef struct {
   PFNGLXSWAPINTERVALEXTPROC SwapIntervalEXT;
   PFNGLXSWAPINTERVALMESAPROC SwapIntervalMESA;
   PFNGLXCREATECONTEXTATTRIBSARBPROC CreateContextAttribsARB;
+  // glXCreateContext's own typedef is absent from some older mesa glxext.h
+  // generations, so the pointer is spelled out like GetIntegerv above; it is
+  // the fallback path's entry point when the core-profile request fails.
+  GLXContext (*CreateContext)(Display *, XVisualInfo *, GLXContext, int);
 
   // special case glGetIntegerv
   void (*GetIntegerv)(uint32_t pname, int32_t *data);
@@ -13664,6 +13668,9 @@ _SOKOL_PRIVATE void _sapp_glx_init(void) {
             "glXCreateContextAttribsARB");
     _sapp.glx.ARB_create_context = 0 != _sapp.glx.CreateContextAttribsARB;
   }
+  _sapp.glx.CreateContext =
+      (GLXContext(*)(Display *, XVisualInfo *, GLXContext,
+                     int))_sapp_glx_getprocaddr("glXCreateContext");
   _sapp.glx.ARB_create_context_profile =
       _sapp_glx_extsupported("GLX_ARB_create_context_profile", exts);
 }
@@ -13774,9 +13781,6 @@ _SOKOL_PRIVATE void _sapp_glx_create_context(void) {
   if (0 == native) {
     _SAPP_PANIC(LINUX_GLX_NO_SUITABLE_GLXFBCONFIG);
   }
-  if (!(_sapp.glx.ARB_create_context && _sapp.glx.ARB_create_context_profile)) {
-    _SAPP_PANIC(LINUX_GLX_REQUIRED_EXTENSIONS_MISSING);
-  }
   _sapp_x11_grab_error_handler();
   const int attribs[] = {GLX_CONTEXT_MAJOR_VERSION_ARB,
                          _sapp.desc.gl.major_version,
@@ -13788,12 +13792,35 @@ _SOKOL_PRIVATE void _sapp_glx_create_context(void) {
                          GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
                          0,
                          0};
-  _sapp.glx.ctx = _sapp.glx.CreateContextAttribsARB(_sapp.x11.display, native,
-                                                    NULL, True, attribs);
+  _sapp.glx.ctx = 0;
+  if (_sapp.glx.ARB_create_context && _sapp.glx.ARB_create_context_profile &&
+      _sapp.glx.CreateContextAttribsARB) {
+    _sapp.glx.ctx = _sapp.glx.CreateContextAttribsARB(_sapp.x11.display, native,
+                                                      NULL, True, attribs);
+    if (!_sapp.glx.ctx) {
+      _SAPP_WARN(LINUX_GLX_CREATE_CONTEXT_FAILED);
+    }
+  } else {
+    _SAPP_WARN(LINUX_GLX_REQUIRED_EXTENSIONS_MISSING);
+  }
+  if (!_sapp.glx.ctx && _sapp.glx.CreateContext) {
+    // Stacks without GLX_ARB_create_context (indirect GLX, older Xorg), or
+    // whose core-profile request fails, can still create a legacy context;
+    // on Mesa it is a compatibility profile that covers the GL core backend.
+    // glXCreateContext takes the XVisualInfo of the FBConfig, not the
+    // FBConfig itself.
+    XVisualInfo *vi =
+        _sapp.glx.GetVisualFromFBConfig(_sapp.x11.display, native);
+    if (vi) {
+      _sapp.glx.ctx =
+          _sapp.glx.CreateContext(_sapp.x11.display, vi, NULL, True);
+      XFree(vi);
+    }
+  }
+  _sapp_x11_release_error_handler();
   if (!_sapp.glx.ctx) {
     _SAPP_PANIC(LINUX_GLX_CREATE_CONTEXT_FAILED);
   }
-  _sapp_x11_release_error_handler();
   _sapp.glx.window =
       _sapp.glx.CreateWindow(_sapp.x11.display, native, _sapp.x11.window, NULL);
   if (!_sapp.glx.window) {

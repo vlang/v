@@ -54,6 +54,7 @@ const comptime_field_members = [
 	'is_pub',
 	'indirections',
 	'attrs',
+	'attributes',
 	'str',
 	'typ',
 	'unaliased_typ',
@@ -63,6 +64,7 @@ const comptime_enum_value_members = [
 	'name',
 	'value',
 	'attrs',
+	'attributes',
 ]!
 
 const comptime_variant_members = [
@@ -1664,6 +1666,8 @@ mut:
 	enclosing_generic_params_by_node map[int][]u32
 	enclosing_generic_param_masks    []u32
 	first_type_declaration_ids       map[u32]int
+	// Immutable attribute-kind sidecars collected with declaration_attributes.
+	declaration_attribute_kinds map[int]u32
 }
 
 fn (tc &TypeChecker) timing_profile(message string) {
@@ -2045,6 +2049,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		comptime_methods_scan_ast:             tc.comptime_methods_scan_ast
 		comptime_methods_scan_len:             tc.comptime_methods_scan_len
 		comptime_methods_loop_found:           tc.comptime_methods_loop_found
+		declaration_attribute_kinds:           tc.declaration_attribute_kinds
 		declaration_attributes:                tc.declaration_attributes
 		attribute_schemas:                     tc.attribute_schemas
 		type_declaration_ids:                  tc.type_declaration_ids
@@ -2613,6 +2618,7 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.value_used_nodes = []bool{len: a.nodes.len}
 	tc.fn_check_costs = if tc.building_v_fast { []i32{len: a.nodes.len} } else { []i32{} }
 	tc.declaration_attributes = map[int][]string{}
+	tc.declaration_attribute_kinds = map[int]u32{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
 	tc.translated_files = map[string]bool{}
 	tc.generated_files = map[string]bool{}
@@ -2810,6 +2816,9 @@ fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, par
 			decl_id := node.value['@attributes:'.len..].int()
 			if decl_id >= 0 && decl_id < a.nodes.len {
 				tc.declaration_attributes[decl_id] = node.generic_params()
+				if node.typ != 0 {
+					tc.declaration_attribute_kinds[decl_id] = node.typ
+				}
 				decl := a.nodes[decl_id]
 				if decl.kind == .module_decl {
 					if source_file := a.source_files[decl.pos.id] {
@@ -18950,7 +18959,22 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 // declaration, field, or enum value against the registered schemas. `lo` and
 // `hi` bound the source range the attributes of this node occupy.
 fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int, mut warning_heads map[string][]AttributeWarningHead) {
-	uses := tc.attribute_use_schemas(pieces, module)
+	// Schema interpretation needs the parser's no-argument identity: the legacy
+	// strings alone make @['Schema'] indistinguishable from @[Schema].
+	mut kinds_id := node.attribute_kinds_id()
+	if node.kind !in [.field_decl, .enum_field] {
+		kinds_id = tc.declaration_attribute_kinds[int(node_id)]
+	}
+	kinds := if kinds_id != 0 { flat.source_type_name(kinds_id).split(',') } else { []string{} }
+	mut schema_pieces := []string{cap: pieces.len}
+	for i, piece in pieces {
+		if i < kinds.len && kinds[i].int() >= 0
+			&& kinds[i].int() & flat.attribute_kind_no_arg != 0 {
+			continue
+		}
+		schema_pieces << piece
+	}
+	uses := tc.attribute_use_schemas(schema_pieces, module)
 	for use in uses {
 		pos := tc.attribute_use_pos(node, use.base, lo, hi)
 		if use.schema.targets.len > 0
@@ -18958,7 +18982,7 @@ fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node fla
 			tc.record_error_at(.assignment_mismatch, 'attribute `${use.base}` cannot be applied to `${attribute_target_kind_word(node.kind)}`', node_id, pos)
 			continue
 		}
-		tc.check_attribute_use_args(node_id, use.schema, use.base, pieces, pos, module)
+		tc.check_attribute_use_args(node_id, use.schema, use.base, schema_pieces, pos, module)
 	}
 	tc.warn_unknown_attribute_names(node_id, node, pieces, module, uses, mut warning_heads)
 }
@@ -22789,10 +22813,16 @@ fn comptime_static_source_location(path string, encoded_offset int, line_offsets
 fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase {
 	clean := trimmed_space(raw)
 	colon := clean.index_u8(`:`)
-	has_arg := colon >= 0 && !(kind == 1
-		&& !comptime_static_attr_is_string_literal(trimmed_space(clean[colon + 1..])))
+	whole_string := kind >= 0 && kind & flat.attribute_kind_no_arg != 0
+	has_arg := colon >= 0 && !whole_string
 	mut name := if has_arg { trimmed_space(clean[..colon]) } else { clean }
-	if name.len >= 2 && name[0] in [`'`, `"`] && name[name.len - 1] == name[0] {
+	if whole_string {
+		if kind & flat.attribute_kind_raw_string != 0 {
+			name = name[2..name.len - 1]
+		} else {
+			name = comptime_static_unescape(name)
+		}
+	} else if name.len >= 2 && name[0] in [`'`, `"`] && name[name.len - 1] == name[0] {
 		name = name[1..name.len - 1]
 	}
 	mut arg := if has_arg { trimmed_space(clean[colon + 1..]) } else { '' }
@@ -22808,11 +22838,6 @@ fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase 
 		has_attr_meta: true
 		attr_kind:     kind
 	}
-}
-
-fn comptime_static_attr_is_string_literal(raw string) bool {
-	return (raw.len >= 2 && raw[0] in [`'`, `"`] && raw[raw.len - 1] == raw[0])
-		|| (raw.len >= 3 && raw[0] == `r` && raw[1] in [`'`, `"`] && raw[raw.len - 1] == raw[1])
 }
 
 fn (tc &TypeChecker) comptime_deferred_decl_source(source string, allow_type bool) ?ComptimeDeferredDeclSource {
@@ -23755,7 +23780,12 @@ fn comptime_static_deferred_type(typ_id u32) string {
 	})
 }
 
-fn comptime_static_attribute_kind_value(kind int) string {
+fn comptime_static_attribute_kind_value(recorded_kind int) string {
+	kind := if recorded_kind >= 0 {
+		recorded_kind & flat.attribute_kind_mask
+	} else {
+		recorded_kind
+	}
 	return match kind {
 		1 { '.string' }
 		2 { '.number' }
