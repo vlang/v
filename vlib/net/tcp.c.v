@@ -197,11 +197,27 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 			if !socket_read_timeout {
 				c.wait_for_read()!
 			}
-			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
+			$if vlibc ? {
+				res = vlibc_tcp_recv(c.sock.handle, buf_ptr, len, 0) or {
+					ecode = err.code()
+					-1
+				}
+			} $else {
+				res = C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
+			}
 		} else {
-			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			$if vlibc ? {
+				res = vlibc_tcp_recv(c.sock.handle, buf_ptr, len, msg_dontwait) or {
+					ecode = err.code()
+					-1
+				}
+			} $else {
+				res = C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			}
 		}
-		ecode = error_code()
+		$if !vlibc ? {
+			ecode = error_code()
+		}
 	}
 	if res == 0 {
 		return io.Eof{}
@@ -222,13 +238,25 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	}
 	if ecode in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
-		res = $if is_coroutine ? {
-			C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
-		} $else {
-			if c.is_blocking {
-				C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
-			} else {
-				C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+		$if vlibc ? {
+			$if is_coroutine ? {
+				res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+			} $else {
+				rflags := if c.is_blocking { 0 } else { msg_dontwait }
+				res = vlibc_tcp_recv(c.sock.handle, buf_ptr, len, rflags) or {
+					return error_with_code('net: socket error: ${err.code()}', err.code())
+				}
+			}
+		}
+		$if !vlibc ? {
+			res = $if is_coroutine ? {
+				C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+			} $else {
+				if c.is_blocking {
+					C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
+				} else {
+					C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+				}
 			}
 		}
 		if res == 0 {
@@ -286,12 +314,27 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
-			mut sent := $if is_coroutine ? {
-				C.photon_send(c.sock.handle, ptr, remaining, msg_nosignal, c.write_timeout)
-			} $else {
-				C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+			mut code := 0
+			mut sent := 0
+			$if vlibc ? {
+				$if is_coroutine ? {
+					sent = C.photon_send(c.sock.handle, ptr, remaining, msg_nosignal, c.write_timeout)
+					code = error_code()
+				} $else {
+					sent = vlibc_tcp_send(c.sock.handle, ptr, remaining, msg_nosignal) or {
+						code = err.code()
+						-1
+					}
+				}
 			}
-			code := error_code()
+			$if !vlibc ? {
+				sent = $if is_coroutine ? {
+					C.photon_send(c.sock.handle, ptr, remaining, msg_nosignal, c.write_timeout)
+				} $else {
+					C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+				}
+				code = error_code()
+			}
 			$if trace_tcp_data_write ? {
 				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
@@ -517,6 +560,26 @@ fn listen_tcp_addr(addr Addr, saddr string, options ListenOptions) !&TcpListener
 	}
 	s.set_dualstack(options.dualstack) or {}
 
+	$if vlibc ? {
+		// AF_INET listeners go through the vlibc syscalls; other families
+		// fall through to the libc path below.
+		if addr.family() == .ip {
+			vlibc_tcp_bind(s.handle, addr)!
+			vlibc_tcp_listen(s.handle, options.backlog)!
+			keep_socket = true
+			mut listener := &TcpListener{
+				sock:            s
+				accept_deadline: no_deadline
+				accept_timeout:  infinite_timeout
+			}
+			// The blocking / non-blocking mode is determined before the connection is established.
+			$if net_nonblocking_sockets ? {
+				listener.is_blocking = false
+			}
+			return listener
+		}
+	}
+
 	// cast to the correct type
 	alen := addr.len()
 	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${saddr} failed')!
@@ -602,6 +665,18 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 		}
 	}
 
+	$if vlibc ? {
+		$if !is_coroutine ? {
+			new_handle := vlibc_tcp_accept(l.sock.handle)!
+			return &TcpConn{
+				handle:        new_handle
+				read_timeout:  tcp_default_read_timeout
+				write_timeout: tcp_default_write_timeout
+				is_blocking:   l.is_blocking
+			}
+		}
+	}
+
 	mut new_handle := $if is_coroutine ? {
 		C.photon_accept(l.sock.handle, 0, 0, tcp_default_read_timeout)
 	} $else {
@@ -670,10 +745,16 @@ pub struct TcpSocket {
 // `noline` ensure that in `-prod` mode(CFLAG = `-O3 -flto`), gcc does not generate wrong instruction sequence
 @[noinline]
 pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
-	handle := $if is_coroutine ? {
-		socket_error(C.photon_socket(i32(family), i32(SocketType.tcp), 0))!
-	} $else {
-		socket_error(C.socket(i32(family), i32(SocketType.tcp), 0))!
+	mut handle := 0
+	$if vlibc ? {
+		handle = vlibc_new_tcp_socket(family)!
+	}
+	$if !vlibc ? {
+		handle = $if is_coroutine ? {
+			socket_error(C.photon_socket(i32(family), i32(SocketType.tcp), 0))!
+		} $else {
+			socket_error(C.socket(i32(family), i32(SocketType.tcp), 0))!
+		}
 	}
 	mut s := TcpSocket{
 		handle: handle
@@ -791,6 +872,14 @@ fn (mut s TcpSocket) close() ! {
 const connect_timeout = 5 * time.second
 
 fn (mut s TcpSocket) connect(a Addr) ! {
+	$if vlibc ? {
+		// AF_INET connects go through the vlibc syscall; other families
+		// fall through to the libc path below.
+		if a.family() == .ip {
+			vlibc_tcp_connect(s.handle, a)!
+			return
+		}
+	}
 	$if net_nonblocking_sockets ? {
 		res := $if is_coroutine ? {
 			C.photon_connect(s.handle, voidptr(&a), a.len(), tcp_default_read_timeout)

@@ -34,14 +34,26 @@ pub:
 // In non-blocking mode, `shutdown()` may not succeed immediately,
 // so `select` is also used to make sure that the function doesn't return an incorrect result.
 pub fn shutdown(handle int, config ShutdownConfig) int {
-	res := C.shutdown(handle, int(config.how))
+	mut res := 0
+	$if vlibc ? {
+		res = vlibc_shutdown_result(handle, int(config.how))
+	}
+	$if !vlibc ? {
+		res = C.shutdown(handle, int(config.how))
+	}
 	$if !net_nonblocking_sockets ? {
 		return res
 	} $else {
 		if res == 0 {
 			return 0
 		}
-		ecode := error_code()
+		// With -d vlibc, res already encodes -errno (C.errno is untouched
+		// by raw syscalls), so recover the code from res instead.
+		ecode := $if vlibc ? {
+			-res
+		} $else {
+			error_code()
+		}
 		if (is_windows && ecode == int(error_ewouldblock)) || (!is_windows && res == -1
 			&& ecode in [int(error_einprogress), int(error_eagain), C.EINTR]) {
 			write_result := select_deadline(handle, .write, time.now().add(connect_timeout)) or {
