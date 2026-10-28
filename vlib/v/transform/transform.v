@@ -610,9 +610,6 @@ mut:
 	generic_call_spec_cache            map[int]GenericCallSpec
 	generic_call_spec_settled          map[int]bool
 	generic_call_spec_misses           map[int]bool
-	generic_call_inference_cache       map[string]GenericCallSpec
-	generic_call_miss_signatures       map[int]string
-	generic_call_miss_shape_cache      map[string]bool
 	stringify_stack                    []u32
 	stringify_depth_cap                int = max_stringify_nesting_depth
 	struct_autostr_recurse_types       map[u32]bool
@@ -5594,9 +5591,6 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
 	w.generic_call_spec_settled = map[int]bool{}
 	w.generic_call_spec_misses = map[int]bool{}
-	w.generic_call_inference_cache = map[string]GenericCallSpec{}
-	w.generic_call_miss_signatures = map[int]string{}
-	w.generic_call_miss_shape_cache = map[string]bool{}
 	// run_parallel_transform snapshots declaration signatures before workers
 	// start. Keep the shared read-only index and signature cache; rebuilding
 	// either would read fn_decl nodes while shared-base workers rewrite them.
@@ -5743,9 +5737,6 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
 	w.generic_call_spec_settled = map[int]bool{}
 	w.generic_call_spec_misses = map[int]bool{}
-	w.generic_call_inference_cache = map[string]GenericCallSpec{}
-	w.generic_call_miss_signatures = map[int]string{}
-	w.generic_call_miss_shape_cache = map[string]bool{}
 	w.node_module_map_cache = []u16{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
@@ -6000,9 +5991,6 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		generic_call_spec_cache:                map[int]GenericCallSpec{}
 		generic_call_spec_settled:              map[int]bool{}
 		generic_call_spec_misses:               map[int]bool{}
-		generic_call_inference_cache:           map[string]GenericCallSpec{}
-		generic_call_miss_signatures:           map[int]string{}
-		generic_call_miss_shape_cache:          map[string]bool{}
 		monomorph_error_seen:                   map[string]bool{}
 		skip_generics:                          t.skip_generics
 		no_checked_numeric_infix:               t.no_checked_numeric_infix
@@ -6702,29 +6690,6 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
 		t.generic_call_spec_settled[shifted] = true
 		t.generic_call_spec_misses.delete(shifted)
-	}
-	for signature, spec in w.generic_call_inference_cache {
-		if signature !in t.generic_call_inference_cache {
-			t.generic_call_inference_cache[signature] = GenericCallSpec{
-				decl_key: if w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil } {
-					spec.decl_key.clone()
-				} else {
-					spec.decl_key
-				}
-				args:     spec.args.clone()
-			}
-		}
-	}
-	for idx, signature in w.generic_call_miss_signatures {
-		shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-		if shifted !in t.generic_call_spec_settled {
-			t.generic_call_miss_signatures[shifted] = signature.clone()
-		}
-	}
-	for signature, missed in w.generic_call_miss_shape_cache {
-		if missed {
-			t.generic_call_miss_shape_cache[signature.clone()] = true
-		}
 	}
 	for idx, typ in w.refined_node_types {
 		if idx < base_nodes {
@@ -11293,7 +11258,6 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 				t.generic_call_spec_cache.delete(idx)
 				t.generic_call_spec_settled.delete(idx)
 				t.generic_call_spec_misses.delete(idx)
-				t.generic_call_miss_signatures.delete(idx)
 				if !isnil(t.tc) && !isnil(t.tc.fork_overlay) {
 					t.tc.fork_overlay.resolved_call_names.delete(idx)
 					t.tc.fork_overlay.resolved_fn_values.delete(idx)
