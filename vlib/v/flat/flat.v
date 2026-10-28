@@ -211,6 +211,10 @@ pub:
 	generated_variant_type u32
 	// Optional mutable argument views retain their source identity independently of typ.
 	mut_optional_arg_view_type u32
+	// Struct and enum field attributes keep each attribute's VAttribute kind as the spelling
+	// of a comma-separated list aligned with the attribute names, like the `@attributes:`
+	// directive of a declaration. The names unquote `@['x']`, so they cannot tell its kind.
+	attribute_kinds u32
 }
 
 // Comment retains source comments for syntax-preserving tools such as vfmt.
@@ -271,7 +275,7 @@ pub fn node_payload_with_constraint_ids(params []string, constraints []u32) u32 
 // node_payload_with_type_metadata registers names and independent source type metadata.
 // Names follow node_payload ownership rules; the debugger ID list is copied from the caller.
 pub fn node_payload_with_type_metadata(generic_params []string, enum_backing_type u32, debugger_types []u32) u32 {
-	return node_payload_with_types(generic_params, TypeTextList{}, enum_backing_type, TypeTextList{ ids: debugger_types.clone() }, TypeTextList{}, 0, 0, 0)
+	return node_payload_with_types(generic_params, TypeTextList{}, enum_backing_type, TypeTextList{ ids: debugger_types.clone() }, TypeTextList{}, 0, 0, 0, 0)
 }
 
 // node_payload_with_debugger_types registers binding/display names with ordered source type IDs.
@@ -283,27 +287,33 @@ pub fn node_payload_with_debugger_types(generic_params []string, debugger_types 
 // node_payload_with_fn_value_type registers marker names and an independent source type identity.
 // Names follow node_payload ownership rules; the source identity remains process-wide.
 pub fn node_payload_with_fn_value_type(params []string, type_id u32) u32 {
-	return node_payload_with_types(params, TypeTextList{}, 0, TypeTextList{}, TypeTextList{}, type_id, 0, 0)
+	return node_payload_with_types(params, TypeTextList{}, 0, TypeTextList{}, TypeTextList{}, type_id, 0, 0, 0)
 }
 
 // node_payload_with_generated_variant_type registers marker names and an independent source type identity.
 // Names follow node_payload ownership rules; the source identity remains process-wide.
 pub fn node_payload_with_generated_variant_type(params []string, type_id u32) u32 {
-	return node_payload_with_types(params, TypeTextList{}, 0, TypeTextList{}, TypeTextList{}, 0, type_id, 0)
+	return node_payload_with_types(params, TypeTextList{}, 0, TypeTextList{}, TypeTextList{}, 0, type_id, 0, 0)
 }
 
 // node_payload_with_mut_optional_arg_view_type registers marker names and an independent source type identity.
 // Names follow node_payload ownership rules; the source identity remains process-wide.
 pub fn node_payload_with_mut_optional_arg_view_type(params []string, type_id u32) u32 {
-	return node_payload_with_types(params, TypeTextList{}, 0, TypeTextList{}, TypeTextList{}, 0, 0, type_id)
+	return node_payload_with_types(params, TypeTextList{}, 0, TypeTextList{}, TypeTextList{}, 0, 0, type_id, 0)
+}
+
+// node_payload_with_attribute_kinds registers field attribute names with the spelling id of
+// their comma-separated VAttribute kinds (see NodePayload.attribute_kinds).
+pub fn node_payload_with_attribute_kinds(params []string, attribute_kinds u32) u32 {
+	return node_payload_with_types(params, TypeTextList{}, 0, TypeTextList{}, TypeTextList{}, 0, 0, 0, attribute_kinds)
 }
 
 fn node_payload_with_type_constraints(generic_params []string, generic_constraints TypeTextList) u32 {
-	return node_payload_with_types(generic_params, generic_constraints, 0, TypeTextList{}, TypeTextList{}, 0, 0, 0)
+	return node_payload_with_types(generic_params, generic_constraints, 0, TypeTextList{}, TypeTextList{}, 0, 0, 0, 0)
 }
 
-fn node_payload_with_types(generic_params []string, generic_constraints TypeTextList, enum_backing_type u32, debugger_value_types TypeTextList, call_type_args TypeTextList, fn_value_type u32, generated_variant_type u32, mut_optional_arg_view_type u32) u32 {
-	if generic_params.len == 0 && generic_constraints.ids.len == 0 && enum_backing_type == 0 && debugger_value_types.ids.len == 0 && call_type_args.ids.len == 0 && fn_value_type == 0 && generated_variant_type == 0 && mut_optional_arg_view_type == 0 {
+fn node_payload_with_types(generic_params []string, generic_constraints TypeTextList, enum_backing_type u32, debugger_value_types TypeTextList, call_type_args TypeTextList, fn_value_type u32, generated_variant_type u32, mut_optional_arg_view_type u32, attribute_kinds u32) u32 {
+	if generic_params.len == 0 && generic_constraints.ids.len == 0 && enum_backing_type == 0 && debugger_value_types.ids.len == 0 && call_type_args.ids.len == 0 && fn_value_type == 0 && generated_variant_type == 0 && mut_optional_arg_view_type == 0 && attribute_kinds == 0 {
 		return 0
 	}
 	payload := &NodePayload{
@@ -315,6 +325,7 @@ fn node_payload_with_types(generic_params []string, generic_constraints TypeText
 		fn_value_type:              fn_value_type
 		generated_variant_type:     generated_variant_type
 		mut_optional_arg_view_type: mut_optional_arg_view_type
+		attribute_kinds:            attribute_kinds
 	}
 	node_payload_lock()
 	mut table := node_payload_table_load()
@@ -655,12 +666,22 @@ pub fn (n &Node) enum_backing_type_id() u32 {
 	return node_payload_at(n.payload).enum_backing_type
 }
 
+// attribute_kinds_id returns the spelling id of a field's comma-separated attribute kinds,
+// or zero when the parser did not record them.
+@[inline]
+pub fn (n &Node) attribute_kinds_id() u32 {
+	if n.payload == 0 {
+		return 0
+	}
+	return node_payload_at(n.payload).attribute_kinds
+}
+
 // set_enum_backing_type_id replaces the source storage type while preserving other metadata.
 // Generic parameter and attribute names remain separate from this source spelling identity.
 @[inline]
 pub fn (mut n Node) set_enum_backing_type_id(type_id u32) {
 	payload := n.payload_metadata()
-	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), type_id, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), type_id, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // debugger_value_type_ids returns the source type IDs ordered with debugger child expressions.
@@ -676,7 +697,7 @@ pub fn (n &Node) debugger_value_type_ids() []u32 {
 @[inline]
 pub fn (mut n Node) set_debugger_value_type_ids(type_ids []u32) {
 	payload := n.payload_metadata()
-	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, TypeTextList{ ids: type_ids.clone() }, payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, TypeTextList{ ids: type_ids.clone() }, payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // call_type_args returns the ordered source-spelling IDs of explicit generic call arguments.
@@ -694,7 +715,7 @@ pub fn (n Node) call_type_args() []u32 {
 @[inline]
 pub fn (mut n Node) set_call_type_args(args []u32) {
 	payload := n.payload_metadata()
-	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), TypeTextList{ ids: args.clone() }, payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), TypeTextList{ ids: args.clone() }, payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // fn_value_type_id returns the lowered source type identity, or zero when absent.
@@ -711,7 +732,7 @@ pub fn (n Node) fn_value_type_id() u32 {
 @[inline]
 pub fn (mut n Node) set_fn_value_type_id(type_id u32) {
 	payload := n.payload_metadata()
-	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), type_id, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), type_id, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // set_generic_params_and_fn_value_type_id replaces marker names and the lowered source identity.
@@ -724,7 +745,7 @@ pub fn (mut n Node) set_generic_params_and_fn_value_type_id(params []string, typ
 		constraints.clone()
 	} else {
 		TypeTextList{}
-	}, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), type_id, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+	}, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), type_id, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // generated_variant_type_id returns the lowered source type identity, or zero when absent.
@@ -741,7 +762,7 @@ pub fn (n Node) generated_variant_type_id() u32 {
 @[inline]
 pub fn (mut n Node) set_generated_variant_type_id(type_id u32) {
 	payload := n.payload_metadata()
-	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, type_id, payload.mut_optional_arg_view_type)
+	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, type_id, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // set_generic_params_and_generated_variant_type_id replaces marker names and the lowered source identity.
@@ -754,7 +775,7 @@ pub fn (mut n Node) set_generic_params_and_generated_variant_type_id(params []st
 		constraints.clone()
 	} else {
 		TypeTextList{}
-	}, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, type_id, payload.mut_optional_arg_view_type)
+	}, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, type_id, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // mut_optional_arg_view_type_id returns the lowered source type identity, or zero when absent.
@@ -771,7 +792,7 @@ pub fn (n Node) mut_optional_arg_view_type_id() u32 {
 @[inline]
 pub fn (mut n Node) set_mut_optional_arg_view_type_id(type_id u32) {
 	payload := n.payload_metadata()
-	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, type_id)
+	n.payload = node_payload_with_types(payload.generic_params.clone(), payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, type_id, payload.attribute_kinds)
 }
 
 // set_generic_params_and_mut_optional_arg_view_type_id replaces marker names and the lowered source identity.
@@ -784,7 +805,7 @@ pub fn (mut n Node) set_generic_params_and_mut_optional_arg_view_type_id(params 
 		constraints.clone()
 	} else {
 		TypeTextList{}
-	}, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, type_id)
+	}, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, type_id, payload.attribute_kinds)
 }
 
 // has_lowered_type_metadata reports whether a payload retains an independent lowered type.
@@ -809,7 +830,7 @@ pub fn (mut n Node) set_generic_params(params []string) {
 		constraints.clone()
 	} else {
 		TypeTextList{}
-	}, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+	}, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // set_generic_params_and_constraints replaces this node's generic params and the
@@ -817,7 +838,7 @@ pub fn (mut n Node) set_generic_params(params []string) {
 @[inline]
 pub fn (mut n Node) set_generic_params_and_constraints(params []string, constraints []string) {
 	payload := n.payload_metadata()
-	n.payload = node_payload_with_types(params, TypeTextList.from_names(constraints), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+	n.payload = node_payload_with_types(params, TypeTextList.from_names(constraints), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // set_generic_params_and_constraint_ids replaces generic names and source constraint identities.
@@ -825,7 +846,7 @@ pub fn (mut n Node) set_generic_params_and_constraints(params []string, constrai
 @[inline]
 pub fn (mut n Node) set_generic_params_and_constraint_ids(params []string, constraints []u32) {
 	payload := n.payload_metadata()
-	n.payload = node_payload_with_types(params, TypeTextList{ ids: constraints.clone() }, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+	n.payload = node_payload_with_types(params, TypeTextList{ ids: constraints.clone() }, payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 }
 
 // FlatAst represents flat ast data used by flat.
@@ -1289,7 +1310,7 @@ fn (mut a FlatAst) intern_node_texts_range_wide(start int, end int) {
 				canonical := a.intern_text_ptr_probed(item, mut probe)
 				canonical_params << canonical
 			}
-			node.payload = node_payload_with_types(canonical_params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+			node.payload = node_payload_with_types(canonical_params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 		}
 	}
 }
@@ -1364,7 +1385,7 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 		for item in params {
 			canonical_params << a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
 		}
-		node.payload = node_payload_with_types(canonical_params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+		node.payload = node_payload_with_types(canonical_params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 	}
 }
 
@@ -1585,7 +1606,7 @@ pub fn (n Node) clone_owned() Node {
 		payload:        if n.payload == canonical_comptime_type_payload {
 			canonical_comptime_type_payload
 		} else {
-			node_payload_with_types(params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type)
+			node_payload_with_types(params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 		}
 		pos:            n.pos
 		children_start: n.children_start

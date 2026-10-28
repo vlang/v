@@ -34,12 +34,15 @@ struct Cfg {
 fn main() {
 	$for field in Cfg.fields {
 		$for a in field.attributes {
-			println('${a.name}|${a.has_arg}|${a.arg}')
+			// user_name: json|true|userName, then user_name: required|false|
+			println('${field.name}: ${a.name}|${a.has_arg}|${a.arg}')
 		}
 	}
 }
 ```
 
 Each element is a `VAttribute` with `name`/`has_arg`/`arg`/`kind`, exactly
-like `Type.attributes` on declarations. Typed schema materialization
-(`$if attr is Route`) follows in a later slice.
+like `Type.attributes` on declarations: `@['x']` has the `.string` kind and
+`@[x]` the `.plain` kind. A runtime `for a in field.attributes` reads the same
+values. Typed schema materialization (`$if attr is Route`) follows in a later
+slice.
