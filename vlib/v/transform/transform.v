@@ -32640,10 +32640,7 @@ fn (t &Transformer) interface_pattern_candidates(pattern_id u32) []u32 {
 	if !flat.source_type_shape(pattern_id).has(.dotted) {
 		mut has_scoped_candidate := false
 		if t.cur_file.len > 0 {
-			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(pattern_id))] or {
-				[]string{}
-			} {
-				candidate_id := flat.source_type_id(candidate)
+			for candidate_id in t.tc.file_selective_import_ids(t.cur_file, pattern_id) or { []u32{} } {
 				if t.interface_pattern_candidate_known(candidate_id) {
 					candidates << candidate_id
 					has_scoped_candidate = true

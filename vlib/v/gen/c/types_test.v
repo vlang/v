@@ -583,7 +583,11 @@ fn test_enum_autostr_c_name_ignores_current_file_imports() {
 	tc.cur_module = 'main'
 	tc.file_imports['/tmp/main.v\nreal_a'] = 'a'
 	tc.file_imports['/tmp/main.v\na'] = 'b'
-	tc.file_selective_imports['/tmp/main.v\nKind'] = ['b.Kind']
+	tc.selective_import_files['/tmp/main.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Kind'): [flat.source_type_id('b.Kind')]
+		}
+	}
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc

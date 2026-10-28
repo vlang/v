@@ -3311,14 +3311,12 @@ fn generic_method_type_arg_from_return(ret &types.Type) ?u32 {
 // `type SimdFloat4 = vec.Vec4[f32]`). Returns the fn key, or none if `type_ident`
 // is not a type or has no such static method.
 fn (g &FlatGen) static_method_fn_name(type_ident_id u32, method string) ?string {
-	type_ident := flat.source_type_name(type_ident_id)
 	qtype_id := g.tc.qualify_type_name(type_ident_id)
 	mut type_candidates := []u32{cap: 4}
 	if !flat.source_type_shape(type_ident_id).has(.dotted) {
-		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_ident) or {
-			[]string{}
+		for candidate_id in g.tc.file_selective_import_ids(g.tc.cur_file, type_ident_id) or {
+			[]u32{}
 		} {
-			candidate_id := flat.source_type_id(candidate)
 			if candidate_id !in type_candidates {
 				type_candidates << candidate_id
 			}
@@ -11999,7 +11997,9 @@ fn (g &FlatGen) selective_import_call_key_in_file(name string, file string) ?str
 		return none
 	}
 	mut resolved := ''
-	for candidate in g.file_selective_import_candidates(file, name) or { return none } {
+	for candidate_id in g.tc.file_selective_import_ids_by_name(file, name) or { return none } {
+		// Function tables are keyed by declaration names.
+		candidate := flat.source_type_name(candidate_id)
 		if candidate !in g.tc.fn_param_types && candidate !in g.tc.fn_ret_types {
 			continue
 		}

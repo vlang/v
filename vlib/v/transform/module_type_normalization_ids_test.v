@@ -47,9 +47,18 @@ fn test_module_type_normalization_ids_keep_selective_import_fallbacks() {
 	tc.structs[flat.source_type_id('alpha.Item')] = []types.StructField{}
 	tc.structs[flat.source_type_id('beta.Item')] = []types.StructField{}
 	tc.structs[flat.source_type_id('dep.Item')] = []types.StructField{}
-	tc.file_selective_imports[file_import_key('single.v', 'Item')] = ['missing.Item', 'alpha.Item',
-		'alpha.Item']
-	tc.file_selective_imports[file_import_key('ambiguous.v', 'Item')] = ['alpha.Item', 'beta.Item']
+	tc.selective_import_files['single.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Item'): [flat.source_type_id('missing.Item'),
+				flat.source_type_id('alpha.Item'), flat.source_type_id('alpha.Item')]
+		}
+	}
+	tc.selective_import_files['ambiguous.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Item'): [flat.source_type_id('alpha.Item'),
+				flat.source_type_id('beta.Item')]
+		}
+	}
 	mut t := Transformer{
 		tc:                &tc
 		cur_module:        'dep'

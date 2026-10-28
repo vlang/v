@@ -586,8 +586,16 @@ fn test_explicit_generic_factory_qualifies_caller_types_and_selective_imports() 
 	for name in ['consumer.Payload', 'consumer.Box', 'items.Selected'] {
 		tc.structs[flat.source_type_id(name)] = []types.StructField{}
 	}
-	tc.file_selective_imports[source_file + '\nSelected'] = ['items.Selected']
-	tc.file_selective_imports['other.v\nOtherOnly'] = ['items.Selected']
+	tc.selective_import_files[source_file] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Selected'): [flat.source_type_id('items.Selected')]
+		}
+	}
+	tc.selective_import_files['other.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('OtherOnly'): [flat.source_type_id('items.Selected')]
+		}
+	}
 	forms := {
 		'Payload':               'consumer.Payload'
 		'[]Payload':             '[]consumer.Payload'

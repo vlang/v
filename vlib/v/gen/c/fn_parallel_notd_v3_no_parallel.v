@@ -3452,7 +3452,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cur_fn_ret_base:                    g.cur_fn_ret_base
 		memo_usable_expr_types:             g.memo_usable_expr_types
 		import_key_cache:                   &util.KeyRecentCache{}
-		selective_import_key_cache:         &util.KeyRecentCache{}
 		cache_struct_fields:                g.cache_struct_fields
 		dedup_fn_decl_aliases:              g.dedup_fn_decl_aliases
 		prefix_param_scan:                  g.prefix_param_scan
@@ -3615,7 +3614,6 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		const_suffixes:                        g.tc.const_suffixes
 		imports:                               g.tc.imports
 		file_imports:                          g.tc.file_imports
-		file_selective_imports:                g.tc.file_selective_imports
 		selective_import_files:                g.tc.selective_import_files
 		file_modules:                          g.tc.file_modules
 		file_scope:                            g.tc.file_scope

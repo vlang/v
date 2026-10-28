@@ -917,9 +917,11 @@ fn (t &Transformer) explicit_generic_fn_value_decl_candidates(id flat.NodeId, ba
 				}
 			}
 			file_name := t.node_file_or(int(id), t.node_file_or(int(base_id), t.cur_file))
-			for imported in t.tc.file_selective_imports[file_import_key(file_name, base.value_text())] or {
-				[]string{}
+			for imported_id in t.tc.file_selective_import_ids_by_name(file_name, base.value_text()) or {
+				[]u32{}
 			} {
+				// Candidate function names are declaration keys.
+				imported := flat.source_type_name(imported_id)
 				if imported !in candidates {
 					candidates << imported
 				}
@@ -4181,9 +4183,8 @@ fn (t &Transformer) selective_import_generic_struct_base(base_id u32, file_name 
 	if isnil(t.tc) || flat.source_type_shape(base_id).has(.dotted) || file_name == '' {
 		return none
 	}
-	candidates := t.tc.file_selective_imports[file_import_key(file_name, flat.source_type_name(base_id))] or { return none }
-	for candidate in candidates {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	candidates := t.tc.file_selective_import_ids(file_name, base_id) or { return none }
+	for candidate_id in candidates {
 		if candidate_id in decls {
 			return candidate_id
 		}
@@ -4195,9 +4196,8 @@ fn (t &Transformer) selective_import_generic_sum_base(base_id u32, file_name str
 	if isnil(t.tc) || flat.source_type_shape(base_id).has(.dotted) || file_name == '' {
 		return none
 	}
-	candidates := t.tc.file_selective_imports[file_import_key(file_name, flat.source_type_name(base_id))] or { return none }
-	for candidate in candidates {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	candidates := t.tc.file_selective_import_ids(file_name, base_id) or { return none }
+	for candidate_id in candidates {
 		if candidate_id in decls {
 			return candidate_id
 		}
@@ -6078,26 +6078,21 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ_id u32, decl Gen
 		return clean_id
 	}
 	if selective := t.selective_signature_type_symbol_id(decl.file, clean_id) {
-		return flat.source_type_id(selective)
+		return selective
 	}
 	return clean_id
 }
 
-fn (t &Transformer) selective_signature_type_symbol(file string, name string) ?string {
-	return t.selective_signature_type_symbol_id(file, flat.source_type_id(name))
-}
-
-fn (t &Transformer) selective_signature_type_symbol_id(file string, name_id u32) ?string {
+fn (t &Transformer) selective_signature_type_symbol_id(file string, name_id u32) ?u32 {
 	if isnil(t.tc) || file == '' || flat.source_type_shape(name_id).has(.dotted) {
 		return none
 	}
-	candidates := t.tc.file_selective_imports[file_import_key(file, flat.source_type_name(name_id))] or { return none }
-	for candidate in candidates {
-		candidate_id := flat.source_type_existing_id(candidate) or { continue }
+	candidates := t.tc.file_selective_import_ids(file, name_id) or { return none }
+	for candidate_id in candidates {
 		if t.tc.type_aliases.contains(candidate_id) || candidate_id in t.tc.structs
 			|| candidate_id in t.tc.interface_names || candidate_id in t.tc.flag_enums
 			|| candidate_id in t.tc.enum_names || t.tc.sum_types.contains(candidate_id) {
-			return candidate
+			return candidate_id
 		}
 	}
 	return none
@@ -15262,7 +15257,7 @@ fn (t &Transformer) qualify_generic_alias_cast_type_text(typ_id u32) u32 {
 	}
 	if imported := t.resolve_imported_type_name(clean) { return imported }
 	if selective := t.selective_signature_type_symbol_id(t.cur_file, clean) {
-		return flat.source_type_id(selective)
+		return selective
 	}
 	if !shape.has(.dotted) && t.generic_arg_module_owns_type(flat.source_type_name(clean), t.cur_module) {
 		return flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean)

@@ -211,7 +211,7 @@ fn test_infix_primitive_keeps_generic_owner_metadata_candidates() {
 			tc.structs[flat.source_type_id('other.Number')] = []StructField{}
 			tc.file_imports_by_file[tc.cur_file] = &FileImportInfo{
 				selective_imports: {
-					'u64': ['other.Number']
+					flat.source_type_u64: [flat.source_type_id('other.Number')]
 				}
 			}
 		}

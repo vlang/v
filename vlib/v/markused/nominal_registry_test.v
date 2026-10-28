@@ -126,29 +126,35 @@ fn test_selective_type_alias_registry_keeps_target_order_and_ignores_other_symbo
 	tc.type_aliases.set(flat.source_type_id('dep.Same'), 'string')
 	tc.type_aliases.set(flat.source_type_id('dep.Third'), 'int')
 	tc.type_aliases.set_id(flat.source_type_id('dep.Empty'), 0)
-	tc.file_selective_imports['caller.v\nSelected'] = ['dep.First', 'dep.function', 'dep.Second',
-		'dep.First', 'dep.Same']
-	tc.file_selective_imports['other.v\nSelected'] = ['dep.Second', 'dep.Third']
-	tc.file_selective_imports['caller.v\nOnlyFunction'] = ['dep.function']
-	tc.file_selective_imports['caller.v\n'] = ['dep.Second', 'dep.First']
-	tc.file_selective_imports['caller.v\nEmptyTarget'] = ['dep.Empty', 'dep.Empty']
-	tc.file_selective_imports['caller.v\nUnregisteredFunction'] = [
-		'dep.nominal_registry_unregistered_function',
-	]
-	if _ := flat.source_type_existing_id('dep.nominal_registry_unregistered_function') {
-		assert false
+	first := flat.source_type_id('dep.First')
+	second := flat.source_type_id('dep.Second')
+	empty := flat.source_type_id('dep.Empty')
+	function := flat.source_type_id('dep.function')
+	selected := flat.source_type_id('Selected')
+	tc.selective_import_files['caller.v'] = &types.FileImportInfo{
+		selective_imports: {
+			selected:                                    [first, function, second, first,
+				flat.source_type_id('dep.Same')]
+			flat.source_type_id('OnlyFunction'):         [function]
+			u32(0):                                      [second, first]
+			flat.source_type_id('EmptyTarget'):          [empty, empty]
+			flat.source_type_id('UnregisteredFunction'): [
+				flat.source_type_id('dep.nominal_registry_unregistered_function'),
+			]
+		}
+	}
+	tc.selective_import_files['other.v'] = &types.FileImportInfo{
+		selective_imports: {
+			selected: [second, flat.source_type_id('dep.Third')]
+		}
 	}
 	targets := markused_selective_alias_targets(&tc)
-	selected := flat.source_type_id('Selected')
 	assert targets[selected] == [flat.source_type_id('owner.Box[int]'), flat.source_type_string,
 		flat.source_type_int]
 	assert targets[u32(0)] == [flat.source_type_string, flat.source_type_id('owner.Box[int]')]
 	assert targets[flat.source_type_id('EmptyTarget')] == [u32(0)]
 	assert flat.source_type_id('OnlyFunction') !in targets
-	if _ := flat.source_type_existing_id('dep.nominal_registry_unregistered_function') {
-		assert false
-	}
-	assert flat.source_type_existing_id('UnregisteredFunction') == none
+	assert flat.source_type_id('UnregisteredFunction') !in targets
 	tc.struct_generic_params[flat.source_type_id('owner.Box')] = ['T']
 	collector := CallCollector{ a: &a, tc: &tc, selective_alias_targets: targets }
 	assert collector.selective_alias_uses_generics(selected, '', map[string]string{}, 0)

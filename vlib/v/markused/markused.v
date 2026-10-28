@@ -2662,18 +2662,15 @@ fn markused_interface_param_gate(tc &types.TypeChecker) map[string]bool {
 
 fn markused_selective_alias_targets(tc &types.TypeChecker) map[u32][]u32 {
 	mut result := map[u32][]u32{}
-	for key, candidates in tc.file_selective_imports {
-		mut name_id := u32(0)
-		for candidate in candidates {
-			candidate_id := flat.source_type_existing_id(candidate) or { continue }
-			target := tc.type_aliases.type_id(candidate_id) or { continue }
-			if name_id == 0 {
-				name_id = flat.source_type_id(key.all_after_last('\n'))
-			}
-			mut targets := result[name_id]
-			if target !in targets {
-				targets << target
-				result[name_id] = targets
+	for _, info in tc.selective_import_files {
+		for name_id, candidates in info.selective_imports {
+			for candidate_id in candidates {
+				target := tc.type_aliases.type_id(candidate_id) or { continue }
+				mut targets := result[name_id]
+				if target !in targets {
+					targets << target
+					result[name_id] = targets
+				}
 			}
 		}
 	}
@@ -4983,9 +4980,11 @@ fn (c &CallCollector) generic_fn_value_name(node &flat.Node, base &flat.Node, cu
 			return if c.is_known_fn_name(qname) { qname } else { base.value }
 		}
 		source := c.a.source_files[node.pos.id] or { return none }
-		for candidate in c.tc.file_selective_imports['${source.name}\n${base.value}'] or {
+		for candidate_id in c.tc.file_selective_import_ids_by_name(source.name, base.value) or {
 			return none
 		} {
+			// Generic functions are keyed by declaration names.
+			candidate := flat.source_type_name(candidate_id)
 			if candidate in c.tc.fn_generic_params {
 				return candidate
 			}

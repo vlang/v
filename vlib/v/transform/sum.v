@@ -529,13 +529,11 @@ fn (t &Transformer) sum_subject_type_arg_base_in_scope(name_id u32) u32 {
 	if flat.source_type_shape(name_id).has(.dotted) || isnil(t.tc) {
 		return t.normalize_sum_variant_type(name_id, t.cur_module, [])
 	}
-	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, flat.source_type_name(name_id))] or {
-		[]string{}
-	} {
-		if t.tc.type_aliases.contains(flat.source_type_id(candidate)) || flat.source_type_id(candidate) in t.tc.structs
-			|| flat.source_type_id(candidate) in t.tc.interface_names || flat.source_type_id(candidate) in t.tc.flag_enums
-			|| flat.source_type_id(candidate) in t.tc.enum_names || t.tc.sum_types.contains(flat.source_type_id(candidate)) {
-			return flat.source_type_id(candidate)
+	for candidate in t.tc.file_selective_import_ids(t.cur_file, name_id) or { []u32{} } {
+		if t.tc.type_aliases.contains(candidate) || candidate in t.tc.structs
+			|| candidate in t.tc.interface_names || candidate in t.tc.flag_enums
+			|| candidate in t.tc.enum_names || t.tc.sum_types.contains(candidate) {
+			return candidate
 		}
 	}
 	return t.normalize_sum_variant_type(name_id, t.cur_module, [])
@@ -1283,12 +1281,11 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 			}
 		}
 	}
-	name := flat.source_type_name(name_id)
 	if !shape.has(.dotted) {
 		if t.cur_file.len > 0 {
-			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or { []string{} } {
-				if flat.source_type_id(candidate) in t.tc.structs || t.tc.type_aliases.contains(flat.source_type_id(candidate)) || flat.source_type_id(candidate) in t.tc.enum_names {
-					return flat.source_type_id(candidate)
+			for candidate in t.tc.file_selective_import_ids(t.cur_file, name_id) or { []u32{} } {
+				if candidate in t.tc.structs || t.tc.type_aliases.contains(candidate) || candidate in t.tc.enum_names {
+					return candidate
 				}
 			}
 		}

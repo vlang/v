@@ -228,7 +228,11 @@ fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	file_name := '/tmp/main.v'
-	tc.file_selective_imports[file_import_key(file_name, 'id')] = ['lib.id']
+	tc.selective_import_files[file_name] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('id'): [flat.source_type_id('lib.id')]
+		}
+	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	// The node context caches are sized together; a node without a file id
 	// takes its context from its module entry.
@@ -246,7 +250,11 @@ fn test_specialized_signature_qualifies_selective_import_in_wrappers() {
 	mut tc := types.TypeChecker.new(&a)
 	file_name := '/tmp/main.v'
 	tc.structs[flat.source_type_id('payloads.Payload')] = []types.StructField{}
-	tc.file_selective_imports[file_import_key(file_name, 'Payload')] = ['payloads.Payload']
+	tc.selective_import_files[file_name] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Payload'): [flat.source_type_id('payloads.Payload')]
+		}
+	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	decl := GenericFnDecl{ file: file_name }
 	for prefix in ['atomic ', 'chan ', 'thread ', '?[]'] {

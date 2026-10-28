@@ -150,7 +150,11 @@ fn test_comptime_method_selector_preserves_type_namespace_function_values() {
 		tc.structs[flat.source_type_id('dep.receiver')] = []types.StructField{}
 		tc.type_aliases.set_id(flat.source_type_id('Alias'), flat.source_type_id('Dummy'))
 		tc.generated_files['generated.v'] = true
-		tc.file_selective_imports[file_import_key('generated.v', 'receiver')] = ['dep.receiver']
+		tc.selective_import_files['generated.v'] = &types.FileImportInfo{
+			selective_imports: {
+				flat.source_type_id('receiver'): [flat.source_type_id('dep.receiver')]
+			}
+		}
 		receiver_type := match name {
 			'Alias' { 'Dummy' }
 			'receiver' { 'dep.receiver' }

@@ -96,9 +96,11 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 						}
 					}
 				}
-				for imported in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
-					[]string{}
+				for imported_id in t.tc.file_selective_import_ids_by_name(t.cur_file, name) or {
+					[]u32{}
 				} {
+					// Function tables are keyed by declaration names.
+					imported := flat.source_type_name(imported_id)
 					if t.is_known_fn_name(imported) {
 						return imported
 					}
@@ -4056,7 +4058,7 @@ fn (t &Transformer) decl_param_type_in_scope(typ_id u32, module_name string, fil
 	}
 	if file_name != '' && !isnil(t.tc) {
 		if selected := t.selective_signature_type_symbol_id(file_name, clean_id) {
-			return flat.source_type_id(selected)
+			return selected
 		}
 		if shape.has(.dotted) {
 			return t.tc.resolve_imported_type_text_in_file(clean_id, file_name)
@@ -5021,9 +5023,9 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 	if name == '' || name.contains('.') || isnil(t.tc) || t.cur_file.len == 0 {
 		return none
 	}
-	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
-		[]string{}
-	} {
+	for candidate_id in t.tc.file_selective_import_ids_by_name(t.cur_file, name) or { []u32{} } {
+		// Globals are keyed by declaration names.
+		candidate := flat.source_type_name(candidate_id)
 		if candidate in t.globals.ids {
 			return candidate
 		}
@@ -15737,7 +15739,7 @@ fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?f
 	}
 	if fn_node.kind == .ident && !fn_node.value.ends_with(']')
 		&& !flat.source_type_shape(fn_node.typ).has(.map_type)
-		&& (isnil(t.tc) || t.tc.file_selective_imports.len == 0) {
+		&& (isnil(t.tc) || t.tc.selective_import_files.len == 0) {
 		return none
 	}
 	// A monomorphized method callee such as `Tree[int].size` contains a generic

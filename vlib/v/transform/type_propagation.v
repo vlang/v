@@ -1795,22 +1795,19 @@ fn (t &Transformer) normalize_type_in_module_uncached(type_id u32, mod string) u
 		return t.normalize_type_alias(clean_id)
 	}
 	if !isnil(t.tc) && mod == t.cur_module && t.cur_file.len > 0 {
-		clean := flat.source_type_name(clean_id)
-		mut imported := ''
-		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
-			[]string{}
-		} {
-			if !t.type_authority_has(flat.source_type_id(candidate)) {
+		mut imported := u32(0)
+		for candidate in t.tc.file_selective_import_ids(t.cur_file, clean_id) or { []u32{} } {
+			if !t.type_authority_has(candidate) {
 				continue
 			}
-			if imported != '' && imported != candidate {
-				imported = ''
+			if imported != 0 && imported != candidate {
+				imported = 0
 				break
 			}
 			imported = candidate
 		}
-		if imported.len > 0 {
-			return t.normalize_type_alias(flat.source_type_id(imported))
+		if imported != 0 {
+			return t.normalize_type_alias(imported)
 		}
 	}
 	qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(mod), clean_id)

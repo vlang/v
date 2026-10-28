@@ -360,7 +360,6 @@ fn (mut c ContextSourceTypeLookupCache) select_context(file string, module_name 
 fn (mut g FlatGen) reset_context_lookup_caches() {
 	g.normalize_call_cache = &ContextStringLookupCache{}
 	g.import_key_cache = &util.KeyRecentCache{}
-	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
 	g.enum_selector_cache = &ContextSourceTypeLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}

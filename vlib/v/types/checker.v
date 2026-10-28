@@ -1296,7 +1296,6 @@ pub mut:
 	checked_const_names      map[string]bool
 	imports                  map[string]string // alias -> short module name
 	file_imports             map[string]string
-	file_selective_imports   map[string][]string
 	file_imports_by_file     map[string]&FileImportInfo
 	selective_import_files   map[string]&FileImportInfo // files with `import mod { name }`; shared entries of file_imports_by_file
 	const_import_modules     map[string][]string
@@ -1764,7 +1763,6 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		declaration_visibility:                  map[string]DeclarationVisibility{}
 		imports:                                 map[string]string{}
 		file_imports:                            map[string]string{}
-		file_selective_imports:                  map[string][]string{}
 		file_imports_by_file:                    map[string]&FileImportInfo{}
 		selective_import_files:                  map[string]&FileImportInfo{}
 		file_modules:                            map[string]string{}
@@ -1949,7 +1947,6 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		declaration_visibility:                tc.declaration_visibility
 		imports:                               tc.imports
 		file_imports:                          tc.file_imports
-		file_selective_imports:                tc.file_selective_imports
 		file_imports_by_file:                  tc.file_imports_by_file
 		selective_import_files:                tc.selective_import_files
 		required_fields_ast_nodes:             tc.required_fields_ast_nodes
@@ -8418,12 +8415,10 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 		if child.kind != .ident {
 			continue
 		}
-		key := file_import_key(tc.cur_file, child.value)
 		// The selected name and its candidates enter the import tables as spelling IDs.
 		name_id := flat.source_type_id(child.value)
 		tc.selective_import_files[tc.cur_file] = info
 		if name_id in info.selective_imports {
-			tc.file_selective_imports[key] = []string{}
 			info.selective_imports[name_id] = []u32{}
 			message := if tc.cur_module.len == 0 {
 				'cannot register symbol `${child.value}`, it was already imported'
@@ -8433,18 +8428,8 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 			tc.record_error_unfiltered(.unknown_fn, message, child_id)
 			continue
 		}
-		mut candidates := []string{}
-		path_name := '${tc.import_module_path_text(node)}.${child.value}'
-		if path_name !in candidates {
-			candidates << path_name
-		}
-		alias_name := '${node.typ_text()}.${child.value}'
-		if alias_name != path_name && alias_name !in candidates {
-			candidates << alias_name
-		}
-		tc.file_selective_imports[key] = candidates
-		path_id := flat.source_type_id(path_name)
-		alias_id := flat.source_type_id(alias_name)
+		path_id := flat.source_type_id('${tc.import_module_path_text(node)}.${child.value}')
+		alias_id := flat.source_type_id('${node.typ_text()}.${child.value}')
 		info.selective_imports[name_id] = if alias_id != path_id {
 			[path_id, alias_id]
 		} else {
