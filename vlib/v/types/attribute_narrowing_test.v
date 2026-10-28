@@ -14,6 +14,9 @@ struct MethodField { str string }
 @[Get('/g')]
 @[Limit(7)]
 fn target() {}
+@[Route('/r')]
+@[Get('/g')]
+fn uniform_target() {}
 fn takes_string(value string) {}
 fn takes_int(value int) {}
 "
@@ -62,6 +65,21 @@ fn test_attribute_narrowing_tracks_boolean_branches_and_field_types() {
 		}
 	}')
 	assert result.exit_code == 0, result.output
+}
+
+fn test_attribute_narrowing_requires_a_schema_guard_for_uniform_fields() {
+	for body in [
+		'println(attr.path)',
+		'$if attr.has_arg { println(attr.path) }',
+		'$if attr.name == "Route" { println(attr.path) }',
+		'$if true { println(attr.path) }',
+		'$if attr !is Limit { println(attr.path) }',
+		'$if attr is Route || attr.has_arg { println(attr.path) }',
+	] {
+		result := check_attribute_narrowing_source('$for attr in uniform_target.attributes {\n' + body + '\n}')
+		assert result.exit_code != 0, body
+		assert result.output.contains('attribute field `path` requires narrowing'), result.output
+	}
 }
 
 fn test_attribute_narrowing_requires_every_possible_schema_to_agree() {

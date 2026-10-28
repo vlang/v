@@ -22471,8 +22471,11 @@ fn (tc &TypeChecker) comptime_condition_type_pos(node flat.Node, typ string) tok
 // Attribute member validation walks every expression, including initializers and
 // interpolation parts that the deferred semantic checker does not visit.
 fn (mut tc TypeChecker) check_comptime_attribute_members(id flat.NodeId, var_name string, value_cases ComptimeStaticValueCases) {
+	// Known declaration attributes do not narrow the loop variable. Track the
+	// schema guard separately from the concrete cases used for reachability.
+	narrow_schemas := tc.comptime_attribute_schema_universe()
 	if !value_cases.known {
-		tc.check_comptime_attribute_body(id, var_name, tc.comptime_attribute_schema_universe())
+		tc.check_comptime_attribute_body(id, var_name, narrow_schemas, narrow_schemas)
 		return
 	}
 	mut schemas := []string{}
@@ -22481,10 +22484,10 @@ fn (mut tc TypeChecker) check_comptime_attribute_members(id flat.NodeId, var_nam
 			schemas << item.attr_schema
 		}
 	}
-	tc.check_comptime_attribute_body(id, var_name, schemas)
+	tc.check_comptime_attribute_body(id, var_name, schemas, narrow_schemas)
 }
 
-fn (mut tc TypeChecker) check_comptime_attribute_body(id flat.NodeId, var_name string, schemas []string) {
+fn (mut tc TypeChecker) check_comptime_attribute_body(id flat.NodeId, var_name string, schemas []string, narrow_schemas []string) {
 	if !tc.valid_node_id(id) || schemas.len == 0 {
 		return
 	}
@@ -22514,7 +22517,8 @@ fn (mut tc TypeChecker) check_comptime_attribute_body(id flat.NodeId, var_name s
 		}
 		for i in 0 .. int_min(2, node.children_count) {
 			branch_schemas := tc.comptime_attribute_branch_schemas(node.value, var_name, schemas, i == 0)
-			tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, branch_schemas)
+			branch_narrow_schemas := tc.comptime_attribute_branch_schemas(node.value, var_name, narrow_schemas, i == 0)
+			tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, branch_schemas, branch_narrow_schemas)
 		}
 		return
 	}
@@ -22525,7 +22529,7 @@ fn (mut tc TypeChecker) check_comptime_attribute_body(id flat.NodeId, var_name s
 			if receiver.kind == .ident && receiver.value == var_name {
 				// Method names are resolved by the semantic checker, not as fields.
 				for i in 1 .. node.children_count {
-					tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, schemas)
+					tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, schemas, narrow_schemas)
 				}
 				return
 			}
@@ -22538,7 +22542,7 @@ fn (mut tc TypeChecker) check_comptime_attribute_body(id flat.NodeId, var_name s
 			member := node.value
 			if !tc.comptime_attribute_has_member(member) {
 				tc.record_error_at(.unknown_field, 'unknown field `${member}` from ${var_name}', id, node.pos)
-			} else if '' in schemas {
+			} else if '' in narrow_schemas {
 				tc.record_error_at(.unknown_field, 'attribute field `${member}` requires narrowing with `$if ${var_name} is Schema`', id, node.pos)
 			} else if _ := tc.comptime_attribute_member_type_for_schemas(member, schemas) {
 				// Every possible schema exposes this field with the same type.
@@ -22548,7 +22552,7 @@ fn (mut tc TypeChecker) check_comptime_attribute_body(id flat.NodeId, var_name s
 		}
 	}
 	for i in 0 .. node.children_count {
-		tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, schemas)
+		tc.check_comptime_attribute_body(tc.a.child(node, i), var_name, schemas, narrow_schemas)
 	}
 }
 
