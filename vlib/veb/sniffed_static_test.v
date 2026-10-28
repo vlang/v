@@ -70,3 +70,12 @@ fn test_known_extension_still_wins_over_sniffing() {
 	assert ctx.res.status_code == 200
 	assert (ctx.res.header.get(.content_type) or { '' }) == 'text/css'
 }
+
+fn test_unknown_extension_utf8_crossing_sniff_boundary() {
+	path := sniffed_static_fixture('veb_sniff_test_utf8.blob', ('a'.repeat(511) + 'é').bytes())
+	defer {
+		os.rm(path) or {}
+	}
+	ctx := sniffed_static_serve(path)
+	assert (ctx.res.header.get(.content_type) or { '' }) == 'text/plain; charset=utf-8'
+}

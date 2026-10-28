@@ -15,6 +15,22 @@ fn test_detect_html() {
 	assert http.detect_content_type('<!-- comment -->'.bytes()) == 'text/html; charset=utf-8'
 }
 
+fn test_detect_html_requires_a_tag_boundary() {
+	for body in ['<apple>example</apple>', '<plaintext>text', '<bodyguard>', '<htmlish>', '<p',
+		'<html'] {
+		assert http.detect_content_type(body.bytes()) == 'text/plain; charset=utf-8'
+	}
+	assert http.detect_content_type('\x0c<HTML lang="en">'.bytes()) == 'text/html; charset=utf-8'
+}
+
+fn test_detect_utf8_across_sniffing_boundary() {
+	for text in ['a'.repeat(511) + 'é', 'a'.repeat(510) + '€', 'a'.repeat(511) + '😀'] {
+		assert http.detect_content_type(text.bytes()) == 'text/plain; charset=utf-8'
+	}
+	assert http.detect_content_type(('a'.repeat(511) + '\xc3').bytes()) == 'application/octet-stream'
+	assert http.detect_content_type(('a'.repeat(511) + '\xc3x').bytes()) == 'application/octet-stream'
+}
+
 fn test_detect_xml() {
 	assert http.detect_content_type('<?xml version="1.0"?><a/>'.bytes()) == 'text/xml; charset=utf-8'
 }

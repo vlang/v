@@ -665,6 +665,13 @@ app.serve_static('/path/main.css',  'static/css/main.css')!
 
 ### Dealing with MIME types
 
+`ctx.file(path)` uses an explicit `ctx.content_type`, a custom MIME mapping, or the known
+file extension first. When none provides a type, it uses `http.detect_content_type` to
+inspect the beginning of the file. Unknown binary content is served as
+`application/octet-stream`. Sniffed HTML can run scripts from your origin; set an explicit
+safe content type when serving untrusted uploads. Static folder registration still requires
+extension mappings as described below.
+
 By default, veb will map the extension of a file to a MIME type. If any of your static file's
 extensions do not have a default MIME type in veb, veb will throw an error and you
 have to add your MIME type to `.static_mime_types` yourself.

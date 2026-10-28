@@ -6,6 +6,8 @@ module http
 // then text signatures for text-looking input, `text/plain; charset=utf-8`
 // for other text, and `application/octet-stream` as the last resort. (The
 // motivation comes from v-mime style content detection.)
+// Detection examines at most 512 bytes, plus up to three available continuation
+// bytes when a UTF-8 sequence crosses that boundary.
 //
 // Only use the result when no better type is known: a sniffed `text/html`
 // served from your own origin executes scripts, so never relabel an
@@ -19,7 +21,7 @@ pub fn detect_content_type(data []u8) string {
 	if ct != '' {
 		return ct
 	}
-	if is_text_content(first) {
+	if is_text_content(data, first.len) {
 		text_ct := text_signature_content_type(first)
 		if text_ct != '' {
 			return text_ct + '; charset=utf-8'
@@ -103,7 +105,7 @@ fn binary_signature_content_type(data []u8) string {
 fn text_signature_content_type(data []u8) string {
 	mut start := 0
 	for start < data.len && (data[start] == ` ` || data[start] == `\t` || data[start] == `\n`
-		|| data[start] == `\r`) {
+		|| data[start] == `\r` || data[start] == `\x0c`) {
 		start++
 	}
 	head := data[start..].bytestr().to_lower()
@@ -112,7 +114,8 @@ fn text_signature_content_type(data []u8) string {
 	}
 	for tag in ['<!doctype html', '<html', '<head', '<script', '<iframe', '<h1', '<div', '<font',
 		'<table', '<a', '<style', '<title', '<b', '<body', '<br', '<p', '<!--'] {
-		if head.starts_with(tag) {
+		if head.starts_with(tag) && (tag == '<!--' || (head.len > tag.len
+			&& (head[tag.len] == ` ` || head[tag.len] == `>`))) {
 			return 'text/html'
 		}
 	}
@@ -121,10 +124,11 @@ fn text_signature_content_type(data []u8) string {
 
 // is_text_content reports whether every byte is printable ASCII, accepted
 // whitespace, or part of a strictly valid UTF-8 sequence. NUL bytes,
-// controls, DEL, and broken sequences mean binary.
-fn is_text_content(data []u8) bool {
+// controls, DEL, and broken sequences mean binary. A sequence starting before
+// limit is checked in full, even when the sniffing limit splits the sequence.
+fn is_text_content(data []u8, limit int) bool {
 	mut i := 0
-	for i < data.len {
+	for i < limit {
 		b := data[i]
 		if b == 9 || b == 10 || b == 11 || b == 12 || b == 13 || (b >= 32 && b < 127) {
 			i++

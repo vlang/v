@@ -270,7 +270,8 @@ pub fn (mut ctx Context) file(file_path string) Result {
 		defer {
 			f.close()
 		}
-		mut head := []u8{len: 512}
+		// Include up to three continuation bytes for a UTF-8 sequence crossing byte 512.
+		mut head := []u8{len: 515}
 		n := f.read(mut head) or { 0 }
 		content_type = if n > 0 {
 			http.detect_content_type(head[..n])
