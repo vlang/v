@@ -179,7 +179,7 @@ jobs:
             # Termux has no /bin/sh, so run configure and make with $PREFIX/bin/sh.
             sh ./configure --cc=clang --prefix="$HOME/tcc-install" \
               --crtprefix="$PREFIX/lib" \
-              --libpaths="$PREFIX/lib:/system/lib64" \
+              --libpaths="{B}:$PREFIX/lib:/system/lib64" \
               --sysincludepaths="{B}/include:$PREFIX/include:$PREFIX/include/aarch64-linux-android" \
               --elfinterp=/system/bin/linker64
             # bionic sys/cdefs.h rejects an unversioned target triple unless
