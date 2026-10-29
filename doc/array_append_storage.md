@@ -1,21 +1,41 @@
-# Nested storage when appending a local value
+# Nested storage when appending a value
 
-The default compiler can avoid recursively cloning nested storage when an array append
-consumes an immutable local initialized by a proven tree factory or fresh literal in the same block.
-The append must be the local's only use after initialization. A field path of that local
-can qualify too, provided it does not traverse a pointer.
+In the default compiler, appending a value copies the element in the same way as ordinary
+assignment or an array literal. It does not implicitly call `clone()` or recursively copy
+nested arrays. Single-element append and bulk append therefore preserve the same sharing:
 
-The optimization excludes mutable or static locals, aliases initialized from another variable, and
-locals read before or after the append. It also excludes appends separated from the
-initializer by loops, closures, deferred work, spawned work, or jumps.
+```v
+struct Node {
+mut:
+	kids []int
+}
 
-The compiler proves factories before parallel transformation. They must take scalar inputs,
-read only their parameters and locals, and consume each storage-bearing local at most once.
-Loops, indirect or foreign calls, and borrowed storage exclude a factory. Recursive factories
-can qualify, allowing bottom-up tree construction to reuse a finished child's storage.
+fn main() {
+	mut node := Node{kids: [1]}
+	copied := node
+	literal := [node]
+	mut single := []Node{}
+	single << node
+	mut bulk := []Node{}
+	bulk << [node]
 
-Calls that can return an argument's storage, literals containing borrowed fields, factories
-with shared fields, and types with explicit clone methods keep their existing clones.
-It also preserves the existing cloning of mutable or reused values. Array literals and bulk
-appends retain their existing storage behavior; this optimization does not make those forms
-and single-element appends share one copying rule.
+	node.kids[0] = 2
+	assert copied.kids[0] == 2
+	assert literal[0].kids[0] == 2
+	assert single[0].kids[0] == 2
+	assert bulk[0].kids[0] == 2
+}
+```
+
+The struct and its array headers are copied, while the nested backing storage stays shared.
+Changing an existing nested element is visible through the other copies. Replacing an array
+field or changing its length does not update the other copies' headers. Growing an array can
+allocate new backing storage. Fixed arrays store their elements inline and copy those elements
+by value; nested dynamic arrays inside them still share backing storage.
+
+Request independent storage explicitly, for example `rows << row.clone()` for an array element.
+A user-defined struct `clone()` must copy the nested fields that need independent storage.
+Appending the struct alone does not invoke that method.
+
+This rule applies to the default memory management mode. Ownership builds and compatibility
+`-autofree` retain their existing move, clone, and cleanup rules.

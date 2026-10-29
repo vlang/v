@@ -219,7 +219,6 @@ mut:
 	const_selector_filter         &ConstSelectorNameFilter = unsafe { nil }
 	const_suffixes                map[string]string
 	source_parent_ids             []i32
-	array_append_tree_factories   map[string]bool // immutable freshness proof, shared by workers
 	shared_local_decl_names       map[string]bool
 	has_shared_decls              bool            // any `shared` variable, parameter, global or field, see shared_map_autolock_possible
 	shared_field_names            map[string]bool // names of `shared` fields and globals
@@ -3021,10 +3020,6 @@ fn (mut t Transformer) prepare() {
 	t.ierror_none_type_id = t.interface_impl_type_id(flat.source_type_id('IError'), flat.source_type_id('None__')) or { 0 }
 	if !t.defer_fixed_array_borrow_prep {
 		t.prepare_fixed_array_borrow_params()
-		// Deferred preparation runs this once the parameter worker has published
-		// its declaration index; building that index here as well only to drop it
-		// left a second copy in the preparation arena.
-		t.prepare_array_append_tree_factories()
 	}
 }
 
@@ -5886,7 +5881,6 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		const_selector_filter:                  t.const_selector_filter
 		const_suffixes:                         t.const_suffixes
 		source_parent_ids:                      t.source_parent_ids
-		array_append_tree_factories:            t.array_append_tree_factories
 		shared_local_decl_names:                t.shared_local_decl_names
 		has_shared_decls:                       t.has_shared_decls
 		shared_field_names:                     t.shared_field_names
