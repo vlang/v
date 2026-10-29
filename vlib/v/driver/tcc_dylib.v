@@ -564,10 +564,13 @@ fn v3_tcc_dylib_without_cpp_linkage(source string) string {
 			i = after
 			continue
 		}
-		if source[i..].starts_with('extern') && (i == 0 || !(source[i - 1].is_alnum() || source[i - 1] == `_`)) {
+		// String slices copy their bytes. Bound lookahead so scanning a large
+		// native implementation does not allocate every remaining suffix.
+		if source[i] == `e` && i + 6 <= source.len && source[i..i + 6] == 'extern'
+			&& (i == 0 || !(source[i - 1].is_alnum() || source[i - 1] == `_`)) {
 			mut after := i + 'extern'.len
 			for after < source.len && source[after].is_space() { after++ }
-			if source[after..].starts_with('"C"') {
+			if after + 3 <= source.len && source[after..after + 3] == '"C"' {
 				after += 3
 				for after < source.len && source[after].is_space() { after++ }
 				if after < source.len && source[after] == `{` {

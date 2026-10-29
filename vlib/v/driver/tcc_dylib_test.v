@@ -39,6 +39,12 @@ fn test_native_bridge_removes_active_cpp_linkage_without_changing_literals_or_bo
 	assert !result.contains('extern "C"')
 }
 
+fn test_native_bridge_linkage_scanner_handles_large_native_headers() {
+	header := 'extern int native_value(int value);\n'.repeat(4096)
+	source := header + 'extern "C" {\nint answer(void);\n}\n'
+	assert v3_tcc_dylib_without_cpp_linkage(source) == header + '\nint answer(void);\n\n'
+}
+
 fn test_native_bridge_preprocessed_files_keep_active_declarations_and_include_edges() ! {
 	root := os.join_path(os.vtmp_dir(), 'native preprocessed files ${os.getpid()}')
 	os.mkdir_all(root)!
