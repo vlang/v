@@ -4810,8 +4810,7 @@ fn (g &Gen) enum_field_alignments(fields []flat.NodeId) map[int]int {
 			previous = flat.empty_node
 			continue
 		}
-		if int(previous) >= 0
-			&& g.source_has_blank_line_between(g.a.node(previous).pos.end, f.pos.offset) {
+		if g.field_alignment_break(previous, fid) {
 			g.store_enum_field_alignments(mut alignments, group)
 			group.clear()
 		}
