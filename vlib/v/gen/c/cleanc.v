@@ -17261,17 +17261,6 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.expected_enum = old_expected_enum
 				return
 			}
-			// `100000 * 100000` is 64-bit arithmetic when `int` is 64 bits, but C
-			// would perform it at its own 32-bit `int` width and wrap.
-			if g.int_literal_arith_needs_64bit_widening(node) {
-				g.write('((i64)(')
-				g.gen_expr(lhs_id)
-				g.write(') ${g.op_str(node.op)} (')
-				g.gen_expr(rhs_id)
-				g.write('))')
-				g.expected_enum = old_expected_enum
-				return
-			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
 				mut shift_type := if node.op == .right_shift_unsigned || g.expr_is_in_translated_file(id) {
 					*g.usable_expr_type(id)
@@ -17333,6 +17322,17 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				return
 			}
 			if g.gen_checked_integer_infix(id, node, lhs_id, rhs_id, lhs_type, rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
+			// `100000 * 100000` is 64-bit arithmetic when `int` is 64 bits, but C
+			// would perform it at its own 32-bit `int` width and wrap.
+			if g.int_literal_arith_needs_64bit_widening(node) {
+				g.write('((i64)(')
+				g.gen_expr(lhs_id)
+				g.write(') ${g.op_str(node.op)} (')
+				g.gen_expr(rhs_id)
+				g.write('))')
 				g.expected_enum = old_expected_enum
 				return
 			}
