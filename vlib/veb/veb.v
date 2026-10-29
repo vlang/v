@@ -25,6 +25,10 @@ pub fn no_result() Result {
 	return Result{}
 }
 
+// RouteHandler erases only the receiver and context pointers. The callback generated
+// beside each route restores their types before invoking its reflected method.
+type RouteHandler = fn (voidptr, voidptr, []string)
+
 struct Route {
 	methods         []http.Method
 	path            string
@@ -32,6 +36,8 @@ struct Route {
 	host            string
 	parameter_names []string
 	parameter_kinds []ParamKind
+	attrs           []string
+	handler         RouteHandler = unsafe { nil }
 mut:
 	middlewares       []RouteMiddleware
 	after_middlewares []RouteMiddleware
@@ -56,7 +62,7 @@ fn route_path_words(path string) []string {
 }
 
 // Parse and assemble route metadata once, outside controller specializations.
-fn insert_route_metadata(mut routes map[string]Route, name string, attrs []string, parameter_names []string, parameter_kinds []ParamKind) ! {
+fn insert_route_metadata(mut routes map[string]Route, name string, attrs []string, parameter_names []string, parameter_kinds []ParamKind, handler RouteHandler) ! {
 	http_methods, route_path, host := parse_attrs(name, attrs) or {
 		return error('error parsing method attributes: ${err}')
 	}
@@ -67,6 +73,8 @@ fn insert_route_metadata(mut routes map[string]Route, name string, attrs []strin
 		host:            host
 		parameter_names: parameter_names
 		parameter_kinds: parameter_kinds
+		attrs:           attrs
+		handler:         handler
 	}
 }
 
@@ -100,7 +108,28 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 			if parameter_kinds.len > 0 {
 				parameter_kinds = parameter_kinds[1..]
 			}
-			insert_route_metadata(mut routes, method.name, method.attrs, parameter_names, parameter_kinds)!
+			handler := fn [method] [A, X](app_ptr voidptr, context_ptr voidptr, args []string) {
+				// Dispatch passes the same A and X used to generate this route table.
+				mut app := unsafe { &A(app_ptr) }
+				mut user_context := unsafe { &X(context_ptr) }
+				$if method.return_type is Result {
+					$if method.args.len > 1 {
+						app.$method(mut user_context, ...args)
+					} $else {
+						app.$method(mut user_context)
+					}
+				} $else $if method.return_type is !Result {
+					// A returned error becomes a JSON envelope through error_with.
+					$if method.args.len > 1 {
+						app.$method(mut user_context, ...args) or {
+							user_context.error_with(err)
+						}
+					} $else {
+						app.$method(mut user_context) or { user_context.error_with(err) }
+					}
+				}
+			}
+			insert_route_metadata(mut routes, method.name, method.attrs, parameter_names, parameter_kinds, handler)!
 		} $else {
 			// If we have route attributes, but the wrong return type, return an error
 			if has_route_attributes(method.attrs) {
@@ -462,10 +491,40 @@ mut:
 	before_request()
 }
 
+// Providers read live app configuration, including middleware added by a handler.
+// Only these small adapters depend on the controller type.
+struct RouteDispatch {
+	app voidptr
+mut:
+	global_handlers       fn (voidptr) []voidptr                         = unsafe { nil }
+	global_handlers_after fn (voidptr) []voidptr                         = unsafe { nil }
+	serve_static          fn (voidptr, voidptr, urllib.URL, string) bool = unsafe { nil }
+}
+
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
-	mut route := Route{}
-	mut middleware_has_sent_response := false
-	mut not_found := false
+	mut dispatch := RouteDispatch{ app: voidptr(&app) }
+	$if A is MiddlewareApp {
+		dispatch.global_handlers = fn [A](app_ptr voidptr) []voidptr {
+			// The provider is installed only for the concrete app passed to dispatch.
+			return app_global_handlers(unsafe { &A(app_ptr) })
+		}
+		dispatch.global_handlers_after = fn [A](app_ptr voidptr) []voidptr {
+			return app_global_handlers_after(unsafe { &A(app_ptr) })
+		}
+	}
+	$if A is StaticApp {
+		dispatch.serve_static = fn [A, X](app_ptr voidptr, context_ptr voidptr, url urllib.URL, host string) bool {
+			// Both pointers retain the types used by this controller's route table.
+			app := unsafe { &A(app_ptr) }
+			mut user_context := unsafe { &X(context_ptr) }
+			sh := static_handler_config(app.static_files, app.static_mime_types,
+				app.static_hosts, app.static_prefixes, app.enable_static_gzip,
+				app.enable_static_zstd, app.enable_static_compression,
+				app.static_compression_max_size, app.static_compression_mime_types,
+				app.enable_markdown_negotiation)
+			return serve_static_route[X](sh, mut user_context, url, host)
+		}
+	}
 
 	// An app declares the peers veb may believe forwarding headers from with a
 	// `trusted_proxies` field; copy it into the request context where `ip()`
@@ -479,6 +538,27 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		}
 	}
 
+	dispatch_route[X](mut user_context, url, host, routes, dispatch)
+}
+
+// Keep static serving reachable only when an app actually implements StaticApp.
+fn serve_static_route[X](sh StaticHandler, mut user_context X, url urllib.URL, host string) bool {
+	is_root_path := url.path.len == 0 || url.path == '/'
+	if is_root_path && !sh.enable_markdown_negotiation && sh.static_files['/'] == ''
+		&& sh.static_files['/index.html'] == '' && sh.static_files['/index.htm'] == '' {
+		return false
+	}
+	return serve_if_static[X](sh, mut user_context, url, host)
+}
+
+// dispatch_route shares request processing across controllers with the same context.
+// Route selection and argument preparation use metadata; only the selected
+// route's callback invokes a concrete controller method.
+fn dispatch_route[X](mut user_context X, url urllib.URL, host string, routes &map[string]Route, dispatch RouteDispatch) {
+	mut route := Route{}
+	mut middleware_has_sent_response := false
+	mut not_found := false
+
 	defer {
 		// A panicking handler must not take the server down with it. Nothing between
 		// here and the accept loop recovers, so without this the process exits.
@@ -488,7 +568,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		if msg := recover() {
 			handle_route_panic[X](mut user_context, url.path, msg)
 		} else {
-			finish_route[A, X](app, mut user_context, route, url.path, not_found,
+			finish_route[X](dispatch, mut user_context, route, url.path, not_found,
 				middleware_has_sent_response)
 		}
 		// Free the handler slots a throttle took for this request on every way
@@ -498,8 +578,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			user_context.Context.release_throttle_leases()
 		}
 	}
-
-	is_root_path := url.path.len == 0 || url.path == '/'
 
 	$if veb_livereload ? {
 		if url.path.starts_with('/veb_livereload/') {
@@ -533,28 +611,16 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 
 	// then execute global middleware functions
-	$if A is MiddlewareApp {
-		if validate_middleware[X](mut user_context, app_global_handlers(app)) == false {
+	if dispatch.global_handlers != unsafe { nil } {
+		if validate_middleware[X](mut user_context, dispatch.global_handlers(dispatch.app)) == false {
 			middleware_has_sent_response = true
 			return
 		}
 	}
 
-	$if A is StaticApp {
-		should_check_static := !is_root_path || app.enable_markdown_negotiation
-			|| app.static_files['/'] != '' || app.static_files['/index.html'] != ''
-			|| app.static_files['/index.htm'] != ''
-		if should_check_static {
-			if serve_if_static[X](static_handler_config(app.static_files, app.static_mime_types,
-				app.static_hosts, app.static_prefixes, app.enable_static_gzip,
-				app.enable_static_zstd, app.enable_static_compression,
-				app.static_compression_max_size, app.static_compression_mime_types,
-				app.enable_markdown_negotiation), mut user_context, url, host)
-			{
-				// successfully served a static file
-				return
-			}
-		}
+	if dispatch.serve_static != unsafe { nil }
+		&& dispatch.serve_static(dispatch.app, voidptr(&user_context), url, host) {
+		return
 	}
 	$if trace_prealloc ? {
 		unsafe { prealloc_scope_checkpoint(c'veb route static checked') }
@@ -565,7 +631,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 	if matched := select_route(routes, url.path, host, user_context.Context.req.method) {
 		route = matched.route
-		$if A is MiddlewareApp {
+		if dispatch.global_handlers != unsafe { nil } {
 			if !validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
 				user_context.Context.req.method)) {
 				middleware_has_sent_response = true
@@ -604,74 +670,22 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 				}
 			}
 		}
-		$for method in A.methods {
-			$if method.return_type is Result {
-				if method.name == matched.name {
-					$if method.args.len > 1 {
-						if !matched.from_data || user_context.Context.req.method in [
-							.get,
-							.post,
-						] {
-							if !matched.from_data && args.len + 1 != method.args.len {
-								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${args.len})')
-							}
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context, ...args)
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-						}
-					} $else {
-						$if trace_prealloc ? {
-							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-						}
-						app.$method(mut user_context)
-						$if trace_prealloc ? {
-							unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-						}
-					}
-					return
-				}
-			} $else $if method.return_type is !Result {
-				// A handler that returns `!veb.Result` answers by returning the
-				// value, and declines by returning an error, which becomes a
-				// JSON envelope through `error_with`.
-				if method.name == matched.name {
-					$if method.args.len > 1 {
-						if !matched.from_data || user_context.Context.req.method in [
-							.get,
-							.post,
-						] {
-							if !matched.from_data && args.len + 1 != method.args.len {
-								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${args.len})')
-							}
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context, ...args) or {
-								user_context.error_with(err)
-							}
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-						}
-					} $else {
-						$if trace_prealloc ? {
-							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-						}
-						app.$method(mut user_context) or {
-							user_context.error_with(err)
-						}
-						$if trace_prealloc ? {
-							unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-						}
-					}
-					return
-				}
+		if route.parameter_names.len > 0 {
+			if matched.from_data && user_context.Context.req.method !in [.get, .post] {
+				return
+			}
+			if !matched.from_data && args.len != route.parameter_names.len {
+				eprintln('[veb] warning: uneven parameters count (${route.parameter_names.len + 1}) in `${matched.name}`, compared to the veb route `${route.attrs}` (${args.len})')
 			}
 		}
+		$if trace_prealloc ? {
+			unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+		}
+		route.handler(dispatch.app, voidptr(&user_context), args)
+		$if trace_prealloc ? {
+			unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+		}
+		return
 	}
 	// no route matched this method. A route that matches the path but not the
 	// verb is a 405 with an `Allow` header, which is what a client needs to
@@ -711,13 +725,11 @@ fn handle_route_panic[X](mut user_context X, path string, msg string) {
 	}
 }
 
-// finish_route runs after-handlers. It is shared
-// by every return in the comptime-unrolled dispatcher, preventing the defer body
-// from being copied into each generated route branch.
-fn finish_route[A, X](app &A, mut user_context X, route Route, path string, not_found bool, middleware_has_sent_response bool) {
+// finish_route runs after-handlers once per request, shared by context type.
+fn finish_route[X](dispatch RouteDispatch, mut user_context X, route Route, path string, not_found bool, middleware_has_sent_response bool) {
 	// execute middleware functions after veb is done and before the response is send
 	mut was_done := true
-	$if A is MiddlewareApp {
+	if dispatch.global_handlers_after != unsafe { nil } {
 		// A deferred (`after`) response does not exist yet: the timer
 		// thread writes it later, so framing middleware (compression,
 		// ...) must not touch this context now. Throttle leases in the
@@ -733,7 +745,7 @@ fn finish_route[A, X](app &A, mut user_context X, route Route, path string, not_
 
 			// no need to check the result of `validate_middleware`, since a response has to be sent
 			// anyhow. This function makes sure no further middleware is executed.
-			validate_middleware[X](mut user_context, app_global_handlers_after(app))
+			validate_middleware[X](mut user_context, dispatch.global_handlers_after(dispatch.app))
 			// skip route-specific after-middleware if global already sent a response
 			if !user_context.Context.done {
 				validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
@@ -756,8 +768,7 @@ fn finish_route[A, X](app &A, mut user_context X, route Route, path string, not_
 	// Context.takeover_mode is set, so the user must send a response.
 }
 
-// RouteMatch holds runtime routing work shared by all controller types. Only the
-// selected handler's typed invocation remains in handle_route's method loop.
+// RouteMatch holds runtime routing work shared by all controller types.
 struct RouteMatch {
 	name      string
 	route     Route
