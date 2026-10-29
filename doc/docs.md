@@ -4273,6 +4273,8 @@ C-style loops, and recursive calls to other `@[comptime]` functions are supporte
 and embedded fields, unions, dynamic arrays, maps, floating-point values, pointers, and
 result/option values are currently unsupported. Generic functions and methods are not supported by
 this evaluator.
+In `-ownership` and `-autofree` builds, values with implicit `drop` or `free` cleanup are
+unsupported, including local values and fields nested inside other values.
 Ordinary calls to the same function outside constant expressions remain
 runtime calls. Evaluation also applies when dependencies are loaded from the module cache.
 

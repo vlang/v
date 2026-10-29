@@ -124,6 +124,37 @@ fn const_literal_compare(a u32) bool { return a < 0xffffffffffffffff }
 @[comptime]
 fn const_complement_literal(a int) bool { return a < ~0xffffffff }
 
+struct ConstArithmeticState {
+mut:
+	value u64
+}
+
+@[comptime]
+fn const_aggregate_compound() u64 {
+	mut values := [u64(0xffffffffffffffff)]!
+	mut state := ConstArithmeticState{ value: u64(0xffffffffffffffff) }
+	values[0] /= 3
+	state.value /= 3
+	return values[0] + state.value
+}
+
+@[comptime]
+fn const_aggregate_division() u64 {
+	values := [u64(0xffffffffffffffff)]!
+	return values[0] / 3
+}
+
+@[comptime]
+fn const_aggregate_comparison() bool {
+	values := [u64(0xffffffffffffffff)]!
+	return (values[0] + 0) > 0
+}
+
+@[comptime]
+fn const_conditional_division(flag bool) u64 {
+	return (if flag { u64(0) } else { 0xffffffffffffffff }) / 3
+}
+
 type ConstInteger = int
 
 @[comptime]
@@ -140,6 +171,10 @@ const computed_size_compare = const_size_compare(-1, 1)
 const computed_rune_half = const_rune_half(rune(0xffffffff), rune(1))
 const computed_literal_compare = const_literal_compare(0xffffffff)
 const computed_complement_literal = const_complement_literal(-1)
+const computed_aggregate_compound = const_aggregate_compound()
+const computed_aggregate_division = const_aggregate_division()
+const computed_aggregate_comparison = const_aggregate_comparison()
+const computed_conditional_division = const_conditional_division(false)
 const computed_alias = const_alias(ConstInteger(3))
 
 @[comptime]
@@ -188,6 +223,14 @@ fn test_comptime_constants_match_runtime() {
 	assert computed_literal_compare == const_literal_compare(0xffffffff)
 	assert computed_complement_literal
 	assert computed_complement_literal == const_complement_literal(-1)
+	assert computed_aggregate_compound == u64(12297829382473034410)
+	assert computed_aggregate_compound == const_aggregate_compound()
+	assert computed_aggregate_division == u64(6148914691236517205)
+	assert computed_aggregate_division == const_aggregate_division()
+	assert computed_aggregate_comparison
+	assert computed_aggregate_comparison == const_aggregate_comparison()
+	assert computed_conditional_division == u64(6148914691236517205)
+	assert computed_conditional_division == const_conditional_division(false)
 	assert computed_alias == const_alias(ConstInteger(3))
 	assert computed_alias == ConstInteger(-5)
 }

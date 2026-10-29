@@ -1648,8 +1648,8 @@ fn test_comptime_headers_keep_source_files_for_conflicting_import_bindings() {
 		['import seed as source', 'import words as source'],
 		['import first.words', 'import second.words'],
 		['import seed { item }', 'import words { item }'],
-		['$if windows { import seed as source } $else { import seed as source }',
-			'$if windows { import words as source } $else { import words as source }'],
+		['$if windows {\nimport seed as source\n} $else {\nimport seed as source\n}',
+			'$if windows {\nimport words as source\n} $else {\nimport words as source\n}'],
 	] {
 		header := comptime_header_with_two_imports(root, imports)
 		assert header.contains(source_body_marker), header
@@ -1668,8 +1668,8 @@ fn test_comptime_headers_embed_compatible_import_bindings() {
 		['import seed as _', 'import words as _'],
 		['import seed { item }', 'import seed as other { item }'],
 		['import seed { size }', 'import words { label }'],
-		['$if windows { import seed as source } $else { import seed as source }',
-			'$if windows { import seed as source } $else { import seed as source }'],
+		['$if windows {\nimport seed as source\n} $else {\nimport seed as source\n}',
+			'$if windows {\nimport seed as source\n} $else {\nimport seed as source\n}'],
 	] {
 		header := comptime_header_with_two_imports(root, imports)
 		assert !header.contains(source_body_marker), header

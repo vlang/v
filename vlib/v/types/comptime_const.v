@@ -15,12 +15,13 @@ pub mut:
 
 struct ConstEval {
 mut:
-	tc      &TypeChecker
-	scopes  []map[string]ComptimeConstValue
-	active  map[string]bool
-	steps   int
-	storage int
-	depth   int
+	tc         &TypeChecker
+	scopes     []map[string]ComptimeConstValue
+	active     map[string]bool
+	expr_types map[int]Type
+	steps      int
+	storage    int
+	depth      int
 }
 
 struct ConstEvalFlow {
@@ -160,6 +161,11 @@ fn (mut e ConstEval) zero(typ Type) !ComptimeConstValue {
 	}
 	if base is Struct {
 		if e.tc.unions[base.name_id] { return error('unions are not supported') }
+		$if ownership ? {
+			if e.tc.ownership_type_has_explicit_drop(base.name_id) {
+				return error('types with implicit cleanup are not supported (`${base.name()}`)')
+			}
+		}
 		mut fields := map[string]ComptimeConstValue{}
 		for field in e.tc.structs[base.name_id] {
 			if field.has_default || field.is_embed {
@@ -196,6 +202,12 @@ fn (mut e ConstEval) expr(id flat.NodeId) !ComptimeConstValue {
 	defer { e.depth-- }
 	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
 	if !e.tc.valid_node_id(id) { return error('missing constant expression') }
+	value := e.expr_value(id)!
+	e.expr_types[int(id)] = value.typ
+	return value
+}
+
+fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 	node := e.tc.a.node(id)
 	match node.kind {
 		.int_literal {
@@ -254,6 +266,10 @@ fn (mut e ConstEval) expr(id flat.NodeId) !ComptimeConstValue {
 			flow := e.scope(e.tc.a.node(branch), 0)!
 			if flow.kind != .empty {
 				return error('control flow in a value expression is not supported')
+			}
+			if node.kind == .if_expr {
+				typ := e.expr_types[int(id)] or { e.if_result_type(id)! }
+				return const_eval_convert(flow.value, typ)
 			}
 			return flow.value
 		}
@@ -367,7 +383,7 @@ fn (mut e ConstEval) array_value(node flat.Node, typ Type) !ComptimeConstValue {
 	return value
 }
 
-fn (e &ConstEval) comparison_operand(id flat.NodeId, value ComptimeConstValue, local_types map[string]Type) i64 {
+fn (e &ConstEval) comparison_operand(id flat.NodeId, value ComptimeConstValue) i64 {
 	mut node := e.tc.a.node(id)
 	for node.kind == .paren && node.children_count > 0 {
 		node = e.tc.a.child_node(node, 0)
@@ -380,8 +396,8 @@ fn (e &ConstEval) comparison_operand(id flat.NodeId, value ComptimeConstValue, l
 	if base is Primitive && base.size in [u8(8), 16] {
 		return const_eval_integer_cast(value.integer, value.typ)
 	}
-	left := unalias_type(e.tc.comptime_enum_local_expr_type(e.tc.a.child(node, 0), local_types))
-	right := unalias_type(e.tc.comptime_enum_local_expr_type(e.tc.a.child(node, 1), local_types))
+	left := unalias_type(e.expr_types[int(e.tc.a.child(node, 0))] or { builtin_int_type })
+	right := unalias_type(e.expr_types[int(e.tc.a.child(node, 1))] or { builtin_int_type })
 	if left is Primitive && left.size in [u8(8), 16] && left.source_type_id() == right.source_type_id() {
 		return const_eval_integer_cast(value.integer, left)
 	}
@@ -407,21 +423,17 @@ fn (e &ConstEval) integer_c_expression_type(id flat.NodeId, typ Type) Type {
 		return if const_eval_integer_width(operand) < 32 { Type(i32_) } else { operand }
 	}
 	if node.kind == .infix && node.op in [.plus, .minus, .mul, .amp, .pipe, .xor] {
-		mut locals := map[string]Type{}
-		for scope in e.scopes {
-			for name, value in scope { locals[name] = value.typ }
-		}
 		left_id := e.tc.a.child(node, 0)
 		right_id := e.tc.a.child(node, 1)
-		mut left := e.integer_c_expression_type(left_id, e.tc.comptime_enum_local_expr_type(left_id, locals))
-		right := e.integer_c_expression_type(right_id, e.tc.comptime_enum_local_expr_type(right_id, locals))
+		mut left := e.integer_c_expression_type(left_id, e.expr_types[int(left_id)] or { typ })
+		right := e.integer_c_expression_type(right_id, e.expr_types[int(right_id)] or { typ })
 		if node.op in [.plus, .minus, .mul] && e.integer_literal_arithmetic(left_id)
 			&& e.integer_literal_arithmetic(right_id) {
 			left = i64_
 		}
 		return const_eval_c_integer_promotion(left, right)
 	}
-	if node.kind != .int_literal { return typ }
+	if node.kind != .int_literal { return e.expr_types[int(id)] or { typ } }
 	// Literal comparisons bypass the C backend's mixed-sign helper.
 	literal := comptime_enum_integer_literal(node.value) or { return typ }
 	if literal < 0 { return u64_ }
@@ -446,6 +458,24 @@ fn (e &ConstEval) integer_literal_arithmetic(id flat.NodeId) bool {
 		}
 		else { false }
 	}
+}
+
+fn (e &ConstEval) binary_result_type(id flat.NodeId, op flat.Op, left Type, right Type) Type {
+	node := e.tc.a.node(id)
+	// A compound assignment uses the stored lvalue type, not a pre-check query
+	// of its index/selector. Ordinary expressions use their evaluated operands.
+	if node.kind != .infix { return left }
+	if op == .right_shift_unsigned { return unsigned_shift_result_type(left) }
+	if op in [.left_shift, .right_shift] { return left }
+	left_id := e.tc.a.child(node, 0)
+	right_id := e.tc.a.child(node, 1)
+	if promoted := e.tc.int_literal_promoted_infix_type(left_id, right_id, left, right) {
+		return promoted
+	}
+	if promoted := e.tc.int_literal_promoted_infix_type(right_id, left_id, right, left) {
+		return promoted
+	}
+	return infix_integer_promotion_type(left, right) or { left }
 }
 
 fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue, right ComptimeConstValue) !ComptimeConstValue {
@@ -482,15 +512,12 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 	if !unalias_type(left.typ).is_integer() || !unalias_type(right.typ).is_integer() {
 		return error('unsupported binary operands')
 	}
-	mut local_types := map[string]Type{}
-	for scope in e.scopes {
-		for name, value in scope { local_types[name] = value.typ }
-	}
-	// Reuse the enum evaluator's pre-check type inference, including literal promotions.
+	// Reuse integer/literal promotions with the evaluated operand types; helper
+	// bodies need not have been checked or annotated yet.
 	typ := if op in [.eq, .ne, .lt, .gt, .le, .ge] {
 		infix_integer_promotion_type(left.typ, right.typ) or { left.typ }
 	} else {
-		e.tc.comptime_enum_local_expr_type(id, local_types)
+		e.binary_result_type(id, op, left.typ, right.typ)
 	}
 	type_id := unalias_type(typ).source_type_id()
 	mut l := left.integer
@@ -512,8 +539,8 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 	if op in [.eq, .ne, .lt, .gt, .le, .ge] {
 		left_id := e.tc.a.child(e.tc.a.node(id), 0)
 		right_id := e.tc.a.child(e.tc.a.node(id), 1)
-		l = e.comparison_operand(left_id, left, local_types)
-		r = e.comparison_operand(right_id, right, local_types)
+		l = e.comparison_operand(left_id, left)
+		r = e.comparison_operand(right_id, right)
 		mut unsigned := type_id in [flat.source_type_u64, flat.source_type_uint]
 		left_base := unalias_type(left.typ)
 		right_base := unalias_type(right.typ)
@@ -655,6 +682,38 @@ fn (mut e ConstEval) call(id flat.NodeId) !ComptimeConstValue {
 	flow := e.sequence(f, 0) or { return error('in `${f.value}`: ${err}') }
 	if flow.kind != .return_stmt { return error('`${f.value}` did not return a value') }
 	return const_eval_convert(flow.value, e.tc.parse_type(f.typ))
+}
+
+fn (e &ConstEval) if_result_type(id flat.NodeId) !Type {
+	mut locals := map[string]Type{}
+	for scope in e.scopes {
+		for name, value in scope { locals[name] = value.typ }
+	}
+	mut bindings := []LocalBinding{cap: locals.len}
+	for name, typ in locals { bindings << LocalBinding{ name: name, typ: typ } }
+	mut typing := e.tc.fork_type_parse_view(e.tc.cur_file, e.tc.cur_module)
+	return e.if_result_type_in_context(mut typing, id, bindings)
+}
+
+fn (e &ConstEval) if_result_type_in_context(mut typing TypeChecker, id flat.NodeId, bindings []LocalBinding) !Type {
+	node := e.tc.a.node(id)
+	mut result := builtin_void_type
+	for i in 1 .. node.children_count {
+		branch_id := e.tc.a.child(node, i)
+		mut typ := builtin_void_type
+		if e.tc.a.node(branch_id).kind == .if_expr {
+			typ = e.if_result_type_in_context(mut typing, branch_id, bindings)!
+		} else if !typing.branch_tail_never_returns(branch_id) {
+			tail := typing.branch_tail_expr_id(branch_id)
+			actual, untyped := typing.resolve_branch_tail_expr(branch_id, tail, builtin_void_type, bindings)
+			if untyped || actual is Unknown {
+				return error('unsupported conditional result type')
+			}
+			typ = actual
+		}
+		result = typing.choose_translated_if_tail_type(id, result, typ)
+	}
+	return result
 }
 
 fn (mut e ConstEval) branch(node flat.Node) !flat.NodeId {

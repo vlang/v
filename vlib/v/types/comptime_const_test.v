@@ -173,6 +173,56 @@ fn test_comptime_const_narrow_multiplication_keeps_c_promotion_width() {
 	assert tc.comptime_const_values['n']!.integer == -131071
 }
 
+fn test_comptime_const_aggregate_operands_are_typed_before_body_checks() {
+	defer { set_platform_int_bits(64) }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		for body, expected in {
+			'mut a := [u64(0xffffffffffffffff)]! a[0] /= 3 return a[0]':                  u64(6148914691236517205)
+			'mut a := State{value: u64(0xffffffffffffffff)} a.value /= 3 return a.value': u64(6148914691236517205)
+			'a := [u64(0xffffffffffffffff)]! return a[0] / 3':                            u64(6148914691236517205)
+			'a := State{value: u64(0xffffffffffffffff)} return a.value / 3':              u64(6148914691236517205)
+			'return high_word() / 3':                                                     u64(6148914691236517205)
+			'return high_value / 3':                                                      u64(6148914691236517205)
+			'a := [u64(0xffffffffffffffff)]! return a[0] % 7':                            u64(1)
+			'mut a := [u64(0xffffffffffffffff)]! a[0] %= 3 return a[0]':                  u64(0)
+			'a := [u64(1)]! return a[0] << 40':                                           u64(1099511627776)
+			'a := State{small: u32(0xffffffff)} return u64(a.small + 1)':                 u64(0)
+			'return (high_word() * 2) / 3':                                               u64(6148914691236517204)
+			'a := [u64(0xffffffffffffffff)]! if (a[0] + 0) > 0 { return 1 } return 0':    u64(1)
+		} {
+			tc := comptime_const_checker('const n = compute()\nconst high_value = u64(0xffffffffffffffff)\nstruct State {\nmut:\nvalue u64\nsmall u32\n}\n@[comptime]\nfn high_word() u64 { return u64(0xffffffffffffffff) }\n@[comptime]\nfn compute() u64 { ${body} }\nfn main() { _ = n }')
+			assert tc.errors.len == 0, tc.errors.str()
+			assert u64(tc.comptime_const_values['n']!.integer) == expected, body
+		}
+	}
+}
+
+fn test_comptime_const_if_values_keep_their_branch_result_type() {
+	for body in [
+		'return (if flag { u64(0) } else { 0xffffffffffffffff }) / 3',
+		'return (if flag { high_word() } else { 0xffffffffffffffff }) / 3',
+		'return (if flag { value := high_word() value } else { 0xffffffffffffffff }) / 3',
+	] {
+		tc := comptime_const_checker('const n = compute(false)\n@[comptime]\nfn high_word() u64 { return u64(0) }\n@[comptime]\nfn compute(flag bool) u64 { ${body} }\nfn main() { _ = n }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert u64(tc.comptime_const_values['n']!.integer) == u64(6148914691236517205), body
+	}
+}
+
+fn test_comptime_const_rejects_implicit_cleanup_values() {
+	$if ownership ? {
+		for body in [
+			'resource := Resource{value: 7} return resource.value',
+			'resources := [Resource{value: 7}]! return resources[0].value',
+			'wrapper := Wrapper{resource: Resource{value: 7}} return wrapper.resource.value',
+		] {
+			tc := comptime_const_checker('const n = compute()\nstruct Resource implements Drop { value int }\nstruct Wrapper { resource Resource }\nfn (mut resource Resource) drop() { panic("cleanup") }\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = n }')
+			assert tc.errors.any(it.msg.contains('cannot evaluate const `n`') && it.msg.contains('implicit cleanup')), tc.errors.str()
+		}
+	}
+}
+
 fn test_comptime_const_narrow_alias_comparison() {
 	tc := comptime_const_checker('type Byte = u8\n@[comptime]\nfn compute(a Byte, b Byte) bool { return a + b == Byte(4) }\nconst n = compute(Byte(250), Byte(10))\nfn main() { _ = n }')
 	assert tc.errors.len == 0, tc.errors.str()
