@@ -13,7 +13,7 @@ import v.util.cache_refresh
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-57'
+const cache_format = 'v3-module-cache-59'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -5417,9 +5417,10 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 	out.writeln('module ${module_name.all_after_last('.')}')
 	file_ids := index.files[module_name]
 	generic_specialization_callees := index.generic_callees
-	needs_source_bodies := module_needs_source_bodies(a, tc, file_ids, generic_specialization_callees)
+	needs_source_bodies := module_needs_source_bodies(a, tc, file_ids, generic_specialization_callees, declaration_attrs)
 	embed_source_bodies := needs_source_bodies
-		&& module_source_bodies_are_embeddable(a, tc, file_ids, generic_specialization_callees, mut source_cache)
+		&& !module_has_conflicting_import_bindings(a, file_ids)
+		&& module_source_bodies_are_embeddable(a, tc, file_ids, generic_specialization_callees, declaration_attrs, mut source_cache)
 	if needs_source_bodies && !embed_source_bodies {
 		out.writeln(source_body_marker)
 	}
@@ -5474,7 +5475,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 					continue
 				}
 				attrs := declaration_attrs[int(effective_id)] or { CachedDeclarationAttrs{} }
-				needs_declaration_source := declaration_node_needs_source(a, effective_id)
+				needs_declaration_source := declaration_node_needs_source(a, tc, effective_id, declaration_attrs)
 					|| node_creates_generic_specialization(a, tc, effective_id, generic_specialization_callees)
 				source_embedded := embed_source_bodies && needs_declaration_source
 					&& declaration_node_source_is_embeddable(a, effective_id)
@@ -5695,12 +5696,12 @@ fn append_declaration_nodes(a &flat.FlatAst, id flat.NodeId, mut declarations []
 	declarations << id
 }
 
-fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool) bool {
+fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool, declaration_attrs map[int]CachedDeclarationAttrs) bool {
 	for file_id in file_ids {
 		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			id := a.child(file_node, i)
-			if declaration_node_needs_source(a, id)
+			if declaration_node_needs_source(a, tc, id, declaration_attrs)
 				|| node_creates_generic_specialization(a, tc, id, generic_callees) {
 				return true
 			}
@@ -5709,7 +5710,7 @@ fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, file_ids [
 	return false
 }
 
-fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool, mut source_cache map[string]string) bool {
+fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool, declaration_attrs map[int]CachedDeclarationAttrs, mut source_cache map[string]string) bool {
 	for file_id in file_ids {
 		file_node := a.node(file_id)
 		// An embedded declaration is parsed again without the `#line` directives of its
@@ -5723,7 +5724,7 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, f
 			mut decl_ids := []flat.NodeId{}
 			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
-				needs_source := declaration_node_needs_source(a, id)
+				needs_source := declaration_node_needs_source(a, tc, id, declaration_attrs)
 					|| node_creates_generic_specialization(a, tc, id, generic_callees)
 				if !needs_source {
 					continue
@@ -5743,6 +5744,57 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, f
 		}
 	}
 	return true
+}
+
+fn module_has_conflicting_import_bindings(a &flat.FlatAst, file_ids []flat.NodeId) bool {
+	// A header combines all source files into one scope. Keep the original files
+	// when their embedded helper bodies need different bindings of the same name.
+	mut imports := []flat.NodeId{}
+	for file_id in file_ids {
+		file_node := a.node(file_id)
+		for i in 0 .. file_node.children_count {
+			id := a.child(file_node, i)
+			node := a.node(id)
+			if node.kind in [.import_decl, .block, .comptime_if] {
+				append_module_import_nodes(a, id, mut imports)
+			}
+		}
+	}
+	mut bindings := map[string]string{}
+	for id in imports {
+		node := a.node(id)
+		if node.kind != .import_decl {
+			continue
+		}
+		alias := if node.typ != 0 { node.typ_text() } else { node.value.all_after_last('.') }
+		mut names := []string{cap: int(node.children_count) + 1}
+		if alias != '_' {
+			names << 'module:${alias}'
+		}
+		for i in 0 .. node.children_count {
+			names << 'symbol:${a.child_node(node, i).value}'
+		}
+		for name in names {
+			if previous := bindings[name] {
+				if previous != node.value {
+					return true
+				}
+			}
+			bindings[name] = node.value
+		}
+	}
+	return false
+}
+
+fn append_module_import_nodes(a &flat.FlatAst, id flat.NodeId, mut imports []flat.NodeId) {
+	node := a.node(id)
+	if node.kind == .import_decl {
+		imports << id
+	} else if node.kind in [.block, .comptime_if] {
+		for i in 0 .. node.children_count {
+			append_module_import_nodes(a, a.child(node, i), mut imports)
+		}
+	}
 }
 
 fn declaration_node_source_is_embeddable(a &flat.FlatAst, id flat.NodeId) bool {
@@ -6699,7 +6751,7 @@ fn generic_receiver_name_without_type_args(name string) string {
 	return out.str()
 }
 
-fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
+fn declaration_node_needs_source(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, declaration_attrs map[int]CachedDeclarationAttrs) bool {
 	if int(id) < 0 || int(id) >= a.nodes.len {
 		return false
 	}
@@ -6708,6 +6760,26 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 		// The payload of an import is the path it was spelled with, not a list of
 		// generic parameters, and a header repeats the import itself.
 		return false
+	}
+	// Required evaluation needs the body even when the runtime object is cached.
+	if node.kind == .fn_decl {
+		attrs := declaration_attrs[int(id)] or { CachedDeclarationAttrs{} }
+		if 'comptime' in attrs.attrs { return true }
+	}
+	if node.kind == .const_decl {
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.children_count == 0 {
+				continue
+			}
+			expr := a.child(field, 0)
+			typ := types.unalias_type(tc.resolve_type(expr))
+			// A later consumer may evaluate these constants even when this module
+			// declares no annotated helpers. A typed declaration loses their data.
+			if typ is types.ArrayFixed || typ is types.Struct || a.node(expr).kind == .call {
+				return true
+			}
+		}
 	}
 	if node.generic_params().len > 0 || fn_decl_has_generic_receiver(a, node)
 		|| declaration_contains_fn_literal(a, node)
@@ -6719,7 +6791,7 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 	}
 	if node.kind == .block {
 		for i in 0 .. node.children_count {
-			if declaration_node_needs_source(a, a.child(&node, i)) {
+			if declaration_node_needs_source(a, tc, a.child(&node, i), declaration_attrs) {
 				return true
 			}
 		}

@@ -2086,6 +2086,7 @@ fn markused_decl_type_snapshot(src flat.TypeTextBindings, lhs_count int) flat.Ty
 // enqueue_initializer_calls supports enqueue initializer calls handling for markused.
 fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
 	mut cur_module := ''
+	mut cur_file := ''
 	mut imports := map[string]string{}
 	mut calls := []string{cap: 32}
 	mut uses_generics := initial_uses_generics
@@ -2094,6 +2095,7 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls 
 		match node.kind {
 			.file {
 				cur_module = ''
+				cur_file = node.value
 				imports = markused_top_level_file_imports(a, node)
 			}
 			.module_decl {
@@ -2103,6 +2105,11 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls 
 				imports[node.typ_text()] = node.value
 			}
 			.const_decl, .global_decl {
+				// Cached module objects already own their constant initialization.
+				// Retained header values are data for later compile-time evaluation.
+				if node.kind == .const_decl && cur_file.ends_with('.vh') {
+					continue
+				}
 				for i in 0 .. node.children_count {
 					field := a.child_node(&node, i)
 					if field.children_count == 0 {
@@ -2132,6 +2139,10 @@ fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, fn_de
 	}
 	info := collector.const_decls[initializer_ref] or { return }
 	processed[initializer_ref] = true
+	if source := a.source_files[a.node(info.expr_id).pos.id] {
+		// Referencing cached storage does not execute its initializer again.
+		if source.name.ends_with('.vh') { return }
+	}
 	calls.clear()
 	collector.collect_calls(a.node(info.expr_id), info.module, collector.imports(info.import_context), '', u32(0), mut calls)
 	for callee in calls {

@@ -4186,7 +4186,8 @@ To dereference a reference, use the `*` operator, just like in C.
 
 A constant can be qualified with its module name inside that module, including in module tests.
 
-A fixed array constant can be initialized by a function call; the call runs during initialization.
+A fixed array constant can be initialized by a function call. Unmarked calls run at startup;
+`@[comptime]` calls in constant initializers require compile-time evaluation.
 Sum type constants with aggregate variants are initialized at startup, including when compiling
 with GCC.
 Their resolved sum type remains the same when an import alias shares its module prefix.
@@ -4240,7 +4241,7 @@ const red = Color{
 	g: 0
 	b: 0
 }
-// evaluate function call at compile time*
+// Unmarked function calls run at startup.
 const blue = rgb(0, 0, 255)
 
 println(numbers)
@@ -4248,7 +4249,46 @@ println(red)
 println(blue)
 ```
 
-\* WIP - for now function calls are evaluated at program start-up
+Unmarked function calls are evaluated at program startup. To require evaluation during compilation,
+mark the called function with `@[comptime]`:
+
+```v
+@[comptime]
+fn table_size(bits int) int {
+	return 1 << bits
+}
+
+const size = table_size(3)
+
+fn main() {
+	values := [size]u8{}
+	assert values.len == 8
+}
+```
+
+Required evaluation supports integers up to 64 bits, booleans, strings, fixed arrays, and value
+structs containing those types, including aliases of supported scalar types.
+Local variables, assignments, conditionals, integer range loops,
+C-style loops, and recursive calls to other `@[comptime]` functions are supported. Struct defaults
+and embedded fields, unions, dynamic arrays, maps, floating-point values, pointers, and
+result/option values are currently unsupported. Generic functions and methods are not supported by
+this evaluator.
+In `-ownership` and `-autofree` builds, values with implicit `drop` or `free` cleanup are
+unsupported, including local values and fields nested inside other values.
+Ordinary calls to the same function outside constant expressions remain
+runtime calls. Evaluation also applies when dependencies are loaded from the module cache.
+
+The checker can use a computed integer constant as a fixed-array bound. The C backend emits the
+computed value as static data, with no initializer call, allocation, or copy at startup. Integer
+conversions use the target's widths, including platform-width `int`. Unsupported target-dependent
+operations produce an error; required evaluation needs a concrete target and rejects portable C
+(`-os cross`). Required evaluation with `-check-overflow` or `-check-casts` is not yet supported.
+
+Evaluation cannot read mutable globals or perform runtime I/O. Every executed helper call must be
+marked `@[comptime]`. Unsupported operations, reached panics, dependency cycles, and exhausted
+limits are compilation errors at the constant declaration, with the evaluated helper names.
+Evaluation is limited to 1,000,000 steps, 128 expression/call nesting levels, 100,000 elements or
+bytes in one allocation, and 1,000,000 cumulative elements or bytes of temporary storage.
 
 Global variables are not normally allowed, so this can be really useful.
 
@@ -8519,7 +8559,8 @@ fn function() {
 // Calls to this function in enum expressions can be evaluated at compile time,
 // when all call arguments are compile-time constants. Integer parameters, casts, and
 // return values use their declared integer widths. Unsigned u64 shifts and division retain
-// their high bits. Const initializers remain runtime calls.
+// their high bits. Calls in const initializers require evaluation for supported value types;
+// unsupported executed operations produce a compilation error.
 @[comptime]
 fn make_mask(value u32, shift u32) u32 {
 	return value << shift

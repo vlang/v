@@ -12358,6 +12358,14 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 				return v
 			}
 		}
+		.call {
+			if !tc.has_comptime_functions { return none }
+			view := tc.fork_type_parse_view(tc.cur_file, module_name)
+			if !view.requires_comptime_const(id) { return none }
+			value := view.eval_comptime_const(id) or { return none }
+			if !unalias_type(value.typ).is_integer() { return none }
+			return int(value.integer)
+		}
 		.char_literal {
 			return match_char_literal_value(node.value)
 		}

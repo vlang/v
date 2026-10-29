@@ -26798,6 +26798,30 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		g.tc.cur_module = old_module
 		return
 	}
+	if value := g.tc.comptime_const_values[g.const_primary_name(name)] {
+		if g.check_overflow || g.check_casts {
+			g.output_error = 'const `${name}`: required evaluation with -check-overflow or -check-casts is not supported yet'
+			g.tc.cur_module = old_module
+			return
+		}
+		initializer := g.comptime_const_initializer(value)
+		if fixed := array_fixed_type(unalias_type(value.typ)) {
+			elem, dims := g.fixed_array_decl_parts(fixed)
+			g.writeln('const ${elem} ${qname}${dims} = ${initializer};')
+		} else {
+			if unalias_type(value.typ).is_integer() || unalias_type(value.typ).source_type_id() == flat.source_type_bool {
+				if ct == 'u8' || g.fixed_storage_consts[g.const_primary_name(name)] || g.name_collides_with_struct_field(qname) {
+					g.writeln('static const ${ct} ${qname} = ${initializer};')
+				} else {
+					g.writeln('#define ${qname} ((${ct})(${initializer}))')
+				}
+			} else {
+				g.writeln('const ${ct} ${qname} = ${initializer};')
+			}
+		}
+		g.tc.cur_module = old_module
+		return
+	}
 	if qname == 'builtin__error_sentinel' {
 		type_id := g.ierror_type_id_for_pattern(flat.source_type_id('MessageError'))
 		object_name := '${qname}__object'

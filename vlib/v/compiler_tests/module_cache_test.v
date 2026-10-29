@@ -4971,14 +4971,19 @@ fn main() {
 	assert run_module_cache_binary(first_output) == '41\n42'
 	header_path := module_cache_artifact(cache_dir, 'records_', '.vh')
 	assert header_path.len > 0
+	assert !modulecache.header_needs_source(modulecache.Entry{
+		header: header_path
+	})
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains('pairs [1]records.Pair'), header
-	assert !header.contains('pairs ='), header
+	// Fixed aggregate constants retain their data for required evaluation by consumers.
+	assert header.contains('const pairs = [Pair{41, 42}]!'), header
 	assert !header.contains('Pair{:'), header
+	first_hashes := module_cache_object_hashes(cache_dir)
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == '41\n42'
+	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
 fn test_cached_const_preserves_escaped_char_literals() {
