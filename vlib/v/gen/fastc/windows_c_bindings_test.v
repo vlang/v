@@ -79,7 +79,7 @@ fn test_vlib_facade_declared_by_its_own_header_gets_no_prototype() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.write_file(os.join_path(vlib_dir, 'core_demo.h'), '#ifndef CORE_DEMO_H\n#define CORE_DEMO_H\nstruct Pointers;\nvoid *v_set_demo_filter(int (*handler)(struct Pointers *));\nvoid *v_builtin_demo_stream (unsigned int index);\n#endif\n') or {
+	os.write_file(os.join_path(vlib_dir, 'core_demo.h'), '#ifndef CORE_DEMO_H\n#define CORE_DEMO_H\nstruct Pointers;\nvoid *v_set_demo_filter(int (*handler)(struct Pointers *));\nvoid *v_builtin_demo_stream (unsigned int index);\n// v_set_demo_other(void *);\n/* void *v_set_demo_other(void *); */\nstatic const char *hint = \"v_set_demo_other(\";\n#endif\n') or {
 		panic(err)
 	}
 	declaring := os.join_path(vlib_dir, 'demo_windows.c.v')
@@ -159,4 +159,26 @@ fn test_native_quoted_include_path_resolution() {
 	relative := fastc_native_quoted_include_path('include "local.h"', os.join_path(@VEXEROOT,
 		'vlib', 'a.c.v'), prefs) or { '' }
 	assert relative == os.join_path(@VEXEROOT, 'vlib', 'local.h')
+}
+
+fn test_c_header_function_match_ignores_comments_and_quoted_literals() {
+	for header in [
+		'// void *v_set_demo_filter(int);\n',
+		'/* void *v_set_demo_filter(int); */\n',
+		'const char *hint = "v_set_demo_filter(";\n',
+		'const char *hint = "escaped \\" v_set_demo_filter(";\n',
+		r"int marker = 'v_set_demo_filter(';",
+		'/* unclosed v_set_demo_filter(',
+	] {
+		assert !fastc_c_header_declares_function(header, 'v_set_demo_filter'), header
+	}
+	for header in [
+		'void v_set_demo_filter\n(int);\n',
+		'void v_set_demo_filter\r\n\t(int);\n',
+		'void v_set_demo_filter /* argument list */ (int);\n',
+		'void v_set_demo_filter // argument list\n(int);\n',
+		'/* v_set_demo_filter( */ void v_set_demo_filter(int);\n',
+	] {
+		assert fastc_c_header_declares_function(header, 'v_set_demo_filter'), header
+	}
 }

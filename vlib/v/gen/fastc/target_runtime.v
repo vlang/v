@@ -38,7 +38,7 @@ static inline v_fastc_native_pair_u64 v_fastc_native_pair_from_multi(MultiReturn
 
 // fastc_target_collect_native_context tracks qualified C references and header
 // ownership in V source, following only selected compile-time branches. C headers
-// belong to the C compiler and are never opened or parsed by FastC.
+// keep their C signatures; quoted local headers are checked for native facade ownership.
 fn fastc_target_collect_native_context(source string, path string, prefs &pref.Preferences, mut references map[string]bool, mut declarations map[string]bool) bool {
 	return fastc_target_collect_native_facts(source, path, prefs, mut references, mut declarations).has_header
 }
@@ -209,28 +209,70 @@ fn fastc_native_quoted_include_path(directive string, source_path string, prefs 
 	return header
 }
 
-// fastc_c_header_declares_function reports whether the C header `text` names
-// `name` as a function, i.e. `name` as a whole identifier followed by `(`.
+// fastc_c_header_skip_trivia skips C whitespace and comments without interpreting declarations.
+fn fastc_c_header_skip_trivia(text string, start int) int {
+	mut i := start
+	for i < text.len {
+		if text[i].is_space() {
+			i++
+		} else if i + 1 < text.len && text[i] == `/` && text[i + 1] == `/` {
+			i += 2
+			for i < text.len && text[i] != `\n` {
+				i++
+			}
+		} else if i + 1 < text.len && text[i] == `/` && text[i + 1] == `*` {
+			i += 2
+			for i + 1 < text.len && !(text[i] == `*` && text[i + 1] == `/`) {
+				i++
+			}
+			i = if i + 1 < text.len { i + 2 } else { text.len }
+		} else {
+			break
+		}
+	}
+	return i
+}
+
+// fastc_c_header_declares_function reports whether a header names a function outside
+// comments and quoted literals, allowing whitespace and comments before the argument list.
 fn fastc_c_header_declares_function(text string, name string) bool {
 	if name.len == 0 {
 		return false
 	}
-	mut start := 0
-	for start < text.len {
-		at := text.index_after_(name, start)
-		if at < 0 {
-			return false
+	mut i := 0
+	for i < text.len {
+		i = fastc_c_header_skip_trivia(text, i)
+		if i >= text.len {
+			break
 		}
-		start = at + name.len
-		if at > 0 && (text[at - 1].is_alnum() || text[at - 1] == `_`) {
+		if text[i] in [`'`, `"`] {
+			quote := text[i]
+			i++
+			for i < text.len {
+				if text[i] == `\\` {
+					i += 2
+				} else if text[i] == quote {
+					i++
+					break
+				} else {
+					i++
+				}
+			}
 			continue
 		}
-		mut i := start
-		for i < text.len && text[i] in [` `, `\t`] {
+		if text[i].is_alnum() || text[i] == `_` {
+			start := i
+			for i < text.len && (text[i].is_alnum() || text[i] == `_`) {
+				i++
+			}
+			if text[start..i] == name {
+				next := fastc_c_header_skip_trivia(text, i)
+				if next < text.len && text[next] == `(` {
+					return true
+				}
+			}
+		} else {
 			i++
-		}
-		if i < text.len && text[i] == `(` {
-			return true
 		}
 	}
 	return false
