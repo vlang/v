@@ -11229,11 +11229,12 @@ pub fn run(args []string) {
 		// module cache, including the native-code bridge used by macOS TCC.
 		no_cache = true
 	}
-	if backend == 'amd64' && (target.os != 'linux' || target.arch != 'amd64') {
-		eprintln('the amd64 backend currently supports only linux/amd64')
+	if backend in ['amd64', 'x64']
+		&& (target.arch != 'amd64' || (target.os != 'linux' && target.os != 'macos' && target.os != 'windows')) {
+		eprintln('the amd64/x64 backend currently supports linux/amd64, macos/amd64 and windows/amd64')
 		exit(1)
 	}
-	if backend == 'amd64' {
+	if backend in ['amd64', 'x64'] {
 		$if !linux || !amd64 {
 			eprintln('the amd64 backend currently requires a linux/amd64 host')
 			exit(1)
@@ -15063,14 +15064,20 @@ pub fn run(args []string) {
 			b.step('amd64 gen')
 
 			obj_file := os.join_path(os.vtmp_dir(), 'v3_amd64_${os.getpid()}_${tempname.unique_token()}.o')
-			g.write_file(obj_file)
+			if target.os == 'macos' {
+				amd64.write_macho_from_elf(g.elf, obj_file)
+			} else if target.os == 'windows' {
+				amd64.write_pe_from_elf(g.elf, obj_file)
+			} else {
+				g.write_file(obj_file)
+			}
 			b.step('amd64 object')
-			// The .o output selects a standalone ELF relocatable, like ARM64
+			// The .o output selects a standalone relocatable object, like ARM64
 			// Linux. Do not try to link an object as an executable.
 			if is_o {
 				os.mv(obj_file, bin_file) or {
 					os.rm(obj_file) or {}
-					eprintln('amd64 ELF object output failed: ${err}')
+					eprintln('amd64 object output failed: ${err}')
 					exit(1)
 				}
 				b.print_report()
