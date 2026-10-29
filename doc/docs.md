@@ -4267,7 +4267,8 @@ fn main() {
 ```
 
 Required evaluation supports integers up to 64 bits, booleans, strings, fixed arrays, and value
-structs containing those types. Local variables, assignments, conditionals, integer range loops,
+structs containing those types, including aliases of supported scalar types.
+Local variables, assignments, conditionals, integer range loops,
 C-style loops, and recursive calls to other `@[comptime]` functions are supported. Struct defaults
 and embedded fields, unions, dynamic arrays, maps, floating-point values, pointers, and
 result/option values are currently unsupported. Generic functions and methods are not supported by

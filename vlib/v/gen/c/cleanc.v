@@ -26802,7 +26802,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 			elem, dims := g.fixed_array_decl_parts(fixed)
 			g.writeln('const ${elem} ${qname}${dims} = ${initializer};')
 		} else {
-			if value.typ.is_integer() || value.typ.source_type_id() == flat.source_type_bool {
+			if unalias_type(value.typ).is_integer() || unalias_type(value.typ).source_type_id() == flat.source_type_bool {
 				if ct == 'u8' || g.fixed_storage_consts[g.const_primary_name(name)] || g.name_collides_with_struct_field(qname) {
 					g.writeln('static const ${ct} ${qname} = ${initializer};')
 				} else {

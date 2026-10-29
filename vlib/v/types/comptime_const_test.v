@@ -87,3 +87,88 @@ fn test_comptime_const_inferred_fixed_array_type_survives_return() {
 	assert bits.elements[0].integer == 1
 	assert bits.elements[1].integer == 0
 }
+
+fn test_comptime_const_values_survive_parent_index_refresh() {
+	mut tc := comptime_const_checker('@[comptime]\nfn compute() int { return 17 }\nconst n = compute()\nfn main() { _ = n }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['n']!.integer == 17
+	tc.refresh_direct_parent_index(tc.a)
+	assert tc.comptime_const_values['n']!.integer == 17
+	tc.collect(tc.a)
+	assert tc.comptime_const_values.len == 0
+}
+
+fn test_comptime_const_platform_sized_arithmetic_wraps_at_target_width() {
+	defer { set_platform_int_bits(64) }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		tc := comptime_const_checker('@[comptime]\nfn compute(a uint, b uint) uint { return (a + b) / 2 }\nconst n = compute(4294967295, 1)\nfn main() { _ = n }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values['n']!.integer == if bits == 32 {
+			i64(0)
+		} else {
+			i64(2147483648)
+		}
+	}
+}
+
+fn test_comptime_const_rune_arithmetic_uses_32_bits() {
+	tc := comptime_const_checker('@[comptime]\nfn compute(a rune, b rune) rune { return (a + b) / 2 }\nconst n = compute(rune(4294967295), rune(1))\nfn main() { _ = n }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['n']!.integer == 0
+}
+
+fn test_comptime_const_narrow_arithmetic_comparison() {
+	tc := comptime_const_checker('@[comptime]\nfn compute(a u8, b u8) bool { return a + b == u8(4) }\nconst n = compute(250, 10)\nfn main() { _ = n }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['n']!.integer == 1
+}
+
+fn test_comptime_const_mixed_signed_unsigned_comparison() {
+	for comparison, expected in {
+		'a < b':  i64(0)
+		'a > b':  i64(1)
+		'a <= b': i64(0)
+		'a >= b': i64(1)
+	} {
+		tc := comptime_const_checker('@[comptime]\nfn compute(a u64, b int) bool { return ${comparison} }\nconst n = compute(18446744073709551615, -1)\nfn main() { _ = n }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values['n']!.integer == expected
+	}
+}
+
+fn test_comptime_const_platform_sized_comparisons() {
+	defer { set_platform_int_bits(64) }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		tc := comptime_const_checker('@[comptime]\nfn compute(a int, b uint) bool { return a < b }\nconst n = compute(-1, 1)\nfn main() { _ = n }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values['n']!.integer == 0
+	}
+}
+
+fn test_comptime_const_legacy_signed_size_logical_shift() {
+	defer { set_platform_int_bits(64) }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		tc := comptime_const_checker('module builtin\n@[comptime]\nfn compute(a isize) uint { return a >>> 1 }\nconst n = compute(isize(-1))')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values['n']!.integer == if bits == 32 {
+			i64(2147483647)
+		} else {
+			i64(9223372036854775807)
+		}
+	}
+}
+
+fn test_comptime_const_integer_alias_operations() {
+	tc := comptime_const_checker('type Number = int\n@[comptime]\nfn compute(a Number) Number { mut n := a for i in Number(0) .. Number(2) { n += i } n++ return -n }\nconst n = compute(Number(3))\nfn main() { _ = n }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['n']!.integer == -5
+}
+
+fn test_comptime_const_narrow_alias_comparison() {
+	tc := comptime_const_checker('type Byte = u8\n@[comptime]\nfn compute(a Byte, b Byte) bool { return a + b == Byte(4) }\nconst n = compute(Byte(250), Byte(10))\nfn main() { _ = n }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['n']!.integer == 1
+}

@@ -36,3 +36,21 @@ fn test_comptime_values_are_static_without_initialization_code() {
 		assert checked.output_error.contains('required evaluation with -check-overflow or -check-casts'), checked.output_error
 	}
 }
+
+fn test_cli_comptime_values_remain_static_after_parent_index_refresh() {
+	root := os.join_path(os.vtmp_dir(), 'cli_static_comptime_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, '@[comptime]\nfn table() [3]u32 { return [u32(0), 1, 4]! }\nconst squares = table()\n@[comptime]\nfn label() string { return "hello" + " world" }\nconst name = label()\nfn main() {\nassert squares[2] == 4\nassert name.len == 11\n}')!
+	for flags in [[]string{}, ['-no-parallel']] {
+		output := os.join_path(root, 'main.c')
+		result := os.exec([@VEXE, '-nocache', '-gc', 'none', ...flags, '-o', output, source])
+		assert result.exit_code == 0, result.output
+		generated := os.read_file(output)!
+		assert generated.contains('const u32 main__squares[3] = {0LL, 1LL, 4LL};')
+		assert generated.contains('const string main__name = {(u8*)"hello world", 11, 1};')
+		assert !generated.contains('memmove(main__squares,')
+		assert !generated.contains('main__name = label(')
+	}
+}

@@ -2625,7 +2625,6 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.fn_check_costs = if tc.building_v_fast { []i32{len: a.nodes.len} } else { []i32{} }
 	tc.declaration_attributes = map[int][]string{}
 	tc.has_comptime_functions = false
-	tc.comptime_const_values = map[string]ComptimeConstValue{}
 	tc.declaration_attribute_kinds = map[int]u32{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
 	tc.translated_files = map[string]bool{}
@@ -4267,6 +4266,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
 	mut ck_part_sw := time.new_stopwatch()
 	tc.a = a
+	tc.comptime_const_values = map[string]ComptimeConstValue{}
 	tc.static_associated_signature_count = -1
 	tc.visible_mutation_cache = new_visible_mutation_cache()
 	tc.unsafe_c_fns.clear()

@@ -107,6 +107,34 @@ const computed_shift_width = const_shift(0x80000001, 32)
 const computed_guard = const_guard(true)
 
 @[comptime]
+fn const_compare8(a u8, b u8) bool { return a + b == u8(4) }
+
+@[comptime]
+fn const_mixed_compare(a u64, b int) bool { return a > b }
+
+@[comptime]
+fn const_size_compare(a int, b uint) bool { return a < b }
+
+@[comptime]
+fn const_rune_half(a rune, b rune) rune { return (a + b) / 2 }
+
+type ConstInteger = int
+
+@[comptime]
+fn const_alias(value ConstInteger) ConstInteger {
+	mut n := value
+	for i in ConstInteger(0) .. ConstInteger(2) { n += i }
+	n++
+	return -n
+}
+
+const computed_compare = const_compare8(250, 10)
+const computed_mixed_compare = const_mixed_compare(0xffffffffffffffff, -1)
+const computed_size_compare = const_size_compare(-1, 1)
+const computed_rune_half = const_rune_half(rune(0xffffffff), rune(1))
+const computed_alias = const_alias(ConstInteger(3))
+
+@[comptime]
 fn const_unsigned_range(low u64, high u64) u64 {
 	mut count := u64(0)
 	for i in low .. high { count += i >> 63 }
@@ -140,4 +168,14 @@ fn test_comptime_constants_match_runtime() {
 	assert computed_unsigned_range == 2
 	assert computed_unsigned_range == const_unsigned_range(0xfffffffffffffffd, 0xffffffffffffffff)
 	assert computed_guard
+	assert computed_compare
+	assert computed_compare == const_compare8(250, 10)
+	assert computed_mixed_compare
+	assert computed_mixed_compare == const_mixed_compare(0xffffffffffffffff, -1)
+	assert !computed_size_compare
+	assert computed_size_compare == const_size_compare(-1, 1)
+	assert computed_rune_half == 0
+	assert computed_rune_half == const_rune_half(rune(0xffffffff), rune(1))
+	assert computed_alias == const_alias(ConstInteger(3))
+	assert computed_alias == ConstInteger(-5)
 }
