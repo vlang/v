@@ -813,6 +813,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
 	mut uses_pthread_tls := false
+	mut option_types := flat.TypeTextBindings{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := flat.TypeTextBindings{}
 	helper_has_c_functions := fastc_functions_declare_c(functions)
@@ -865,6 +866,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			functions:                    functions
 			function_c_names:             function_c_names
 			constant_types:               constant_types
+			global_option_types:          option_types
 			global_types:                 global_types
 			composite_types:              map[string]bool{}
 			fixed_array_types:            flat.TypeTextBindings{}
@@ -874,6 +876,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		gen.parse_selected_global_declarations(mut out, mut initializers, false)!
 		uses_pthread_tls = uses_pthread_tls || gen.uses_pthread_tls
 		global_types = gen.global_types.move()
+		option_types = gen.global_option_types.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
 		}
@@ -889,6 +892,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		out.writeln('')
 	}
 	return FastcGlobalDeclarations{
+		option_types:        option_types
 		declarations:        out.str()
 		uses_pthread_tls:    uses_pthread_tls
 		module_initializers: module_initializers
@@ -1113,6 +1117,9 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 		out.writeln('${storage}${qualifier}${fastc_output_c_type(flat.source_type_name(typ))} ${c_name}${decoration};')
 	}
 	g.global_types.set_id(key, typ)
+	if g.pending_option_value_type != 0 {
+		g.global_option_types.set_id(key, g.pending_option_value_type)
+	}
 	if g.tok != .assign && g.selfhost && !attributes.is_cinit {
 		// An array or map global starts empty, not as zeroed memory.
 		container := g.underlying_alias_type(typ)
@@ -1370,6 +1377,18 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 					}
 					field.default_value = '((${field_layout})builtin____new_array(0, 0, sizeof(${fastc_output_c_type(element_sizeof)})))'
 				}
+			} else if prefs.building_v && !fastc_is_pointer_type(container_type) && fastc_fixed_array_element_type(container_type) != none {
+				if element := fastc_fixed_array_element_type(container_type) {
+					if !flat.source_type_query(fastc_trim_pointer_type(element)).has(.c_array_prefix) {
+						continue
+					}
+					if item := fastc_array_element_type(element) {
+						length := fastc_fixed_array_length_id(container_type) or { continue }
+						array_type := fastc_output_c_type(flat.source_type_name(element))
+						item_type := fastc_output_c_type(flat.source_type_name(item))
+						field.default_value = '({ ${field_layout} __vf_fixed_default = {0}; for (int __vf_fixed_i = 0; __vf_fixed_i < ${length}; __vf_fixed_i++) { __vf_fixed_default.data[__vf_fixed_i] = ((${array_type})builtin____new_array(0, 0, sizeof(${item_type}))); } __vf_fixed_default; })'
+					}
+				}
 			} else if prefs.building_v && flat.source_type_query(container_layout).has(.c_map_prefix) {
 				map_default := fastc_map_field_default(container_type, prefs.target.pointer_bits, declared_kinds)
 				if map_default != '' {
@@ -1464,6 +1483,11 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				// `none` in an error interface is the None__ implementation, not an option.
 				field.default_value = gen.interface_value_expression(field.typ, flat.source_type_id('None__'),
 					gen.render_empty_struct_initializer(flat.source_type_id('None__')))
+			} else if field.typ in [fastc_type_option, fastc_type_result] && default_actual_type !in [
+				fastc_type_option,
+				fastc_type_result,
+			] {
+				field.default_value = gen.option_success_expression(field.typ, field.option_value_type, field.default_value)
 			} else if gen.should_box_variant(field.typ, default_actual_type) {
 				field.default_value = gen.interface_value_expression(field.typ, default_actual_type, field.default_value)
 			}
@@ -1531,6 +1555,44 @@ struct FastcIndexedConstantFileResult {
 // (`source_file.source`), starting from `constant_types`, the constant types
 // known before it.
 fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSourceFile, constant_types flat.TypeTextBindings) FastcConstantFileResult {
+	$if prealloc {
+		if !ctx.prefs.selfhost {
+			// Initializer rendering creates short-lived token and inference tables.
+			// Interned type IDs already outlive this disposable allocation scope.
+			scope := unsafe { prealloc_scope_begin() }
+			result := fastc_parse_constant_file_unscoped(ctx, source_file, constant_types.fork())
+			unsafe { prealloc_scope_leave(scope) }
+			owned := fastc_clone_constant_file_result(result)
+			unsafe { prealloc_scope_free_after(scope) }
+			return owned
+		}
+	}
+	return fastc_parse_constant_file_unscoped(ctx, source_file, constant_types)
+}
+
+fn fastc_clone_constant_file_result(result FastcConstantFileResult) FastcConstantFileResult {
+	mut values := []FastcConstantValue{cap: result.values.len}
+	for value in result.values {
+		values << FastcConstantValue{
+			...value
+			key:          value.key.clone()
+			c_name:       value.c_name.clone()
+			module_name:  value.module_name.clone()
+			value:        value.value.clone()
+			dependencies: fastc_clone_output_strings(value.dependencies)
+		}
+	}
+	return FastcConstantFileResult{
+		...result
+		values:            values
+		constant_types:    result.constant_types.clone_owned()
+		composite_types:   fastc_clone_output_bool_map(result.composite_types)
+		fixed_array_types: result.fixed_array_types.clone_owned()
+		error_message:     result.error_message.clone()
+	}
+}
+
+fn fastc_parse_constant_file_unscoped(ctx &FastcConstantGenContext, source_file FastcSourceFile, constant_types flat.TypeTextBindings) FastcConstantFileResult {
 	constant_source := source_file.source
 	file := token.File.unindexed(source_file.path, constant_source.len)
 	prefs := ctx.prefs
@@ -2198,7 +2260,14 @@ fn fastc_composite_typedefs(composite_types map[string]bool) string {
 	mut composite_names := composite_types.keys()
 	composite_names.sort()
 	for composite_name in composite_names {
-		base := if composite_name.starts_with('Array_') { 'array' } else { 'map' }
+		if composite_name.starts_with('__vf_callable_') { continue }
+		base := if composite_name.starts_with('Array_') {
+			'array'
+		} else if composite_name.starts_with('__vf_option_') {
+			'Option'
+		} else {
+			'map'
+		}
 		out.writeln('typedef ${base} ${composite_name};')
 	}
 	out.writeln('')
@@ -2290,8 +2359,16 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 	}
 	// The composite typedefs go here in the output; they are rendered by the
 	// caller once the signature phase has contributed its names too.
-	declarations_head := out.str()
+	base_declarations_head := out.str()
 	mut type_bodies := fastc_hoist_c_type_aliases(bodies.str())
+	mut defines_end := 0
+	for defines_end + 8 <= type_bodies.len && type_bodies[defines_end..defines_end + 8] == '#define ' {
+		line_end := type_bodies.index_after_('\n', defines_end)
+		if line_end < 0 { break }
+		defines_end = line_end + 1
+	}
+	declarations_head := base_declarations_head + type_bodies[..defines_end]
+	type_bodies = type_bodies[defines_end..]
 	timer.mark('type_declarations.hoist')
 	if prefs.building_v {
 		// Index the by-value composite C spellings once. The ordering pass below
@@ -2361,8 +2438,7 @@ fn fastc_hoist_c_type_aliases(source string) string {
 	if defines.len == 0 && aliases.len == 0 && function_aliases.len == 0 {
 		return source
 	}
-	defines.write_string(aliases.str())
-	defines.write_string(function_aliases.str())
+	defines.write_string(fastc_order_function_typedefs(aliases.str() + function_aliases.str()))
 	defines.writeln('')
 	defines.write_string(bodies.str())
 	return defines.str()
@@ -3064,6 +3140,9 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 
 		tok = next_token
 		fastc_register_composite_type(field_type, mut composite_types)
+		if field_option_value != 0 {
+			fastc_register_composite_type(field_option_value, mut composite_types)
+		}
 		mut is_required := false
 		mut is_skip := false
 		for tok == .attribute {
@@ -3114,6 +3193,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 				typ:                    emitted_field_type
 				is_public:              fields_are_public
 				is_mutable:             fields_are_mutable
+				is_shared:              is_shared_field
 				is_required:            is_required
 				is_skip:                is_skip
 				is_function:            is_function_field
@@ -3758,7 +3838,7 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 			alias_field_info = struct_field_info[layout_type].clone()
 		}
 		if flat.source_type_query(base).has(.c_array_prefix) {
-			alias_fields.set_id('__fastc_element_type', flat.source_type_syntax(base).c_array_payload())
+			alias_fields.set_id('__fastc_element_type', fastc_array_element_type(base) or { flat.source_type_syntax(base).c_array_payload() })
 		}
 		if alias_fields.ids.len > 0 {
 			struct_fields[c_name] = alias_fields.clone()
@@ -3787,13 +3867,9 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 			parameter_is_mut = true
 			tok = scan.scan()
 		}
-		mut has_parameter_name := false
-		if tok == .name {
-			mut lookahead := scan
-			next_token := lookahead.scan()
-			has_parameter_name = next_token in [.name, .amp, .and, .mul, .question, .not, .key_fn,
-				.lsbr]
-		}
+		has_parameter_name := tok == .name && !fastc_parameter_is_type_only(scan, tok,
+			source_file.path, source_file.header.module_name, source_file.header.imports,
+			declared_types, allow_short_placeholders)
 		if has_parameter_name {
 			tok = scan.scan()
 			parameter_type_source_id, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
@@ -3840,4 +3916,66 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 		tok = scan.scan()
 	}
 	return tok
+}
+
+fn fastc_callable_typedefs(composite_types map[string]bool) string {
+	mut definitions := strings.new_builder(256)
+	mut names := composite_types.keys().filter(it.starts_with('__vf_callable_'))
+	names.sort()
+	for name in names {
+		signature := fastc_callable_signature(flat.source_type_id(name)) or { continue }
+		definitions.writeln('typedef ${fastc_output_c_type(signature.return_type_text())} (*${name})(${fastc_c_prototype_parameters(signature.parameter_types.ids)});')
+	}
+	return definitions.str()
+}
+
+fn fastc_order_function_typedefs(source string) string {
+	lines := source.split_into_lines().filter(it != '')
+	if lines.len < 2 { return source }
+	mut ids := map[string]int{}
+	for index, line in lines {
+		name := if line.contains('(*') {
+			line.all_after('(*').all_before(')')
+		} else {
+			line.trim_right(';').all_after_last(' ').trim_left('*')
+		}
+		ids[name] = index
+	}
+	mut dependencies := [][]int{len: lines.len}
+	for index, line in lines {
+		mut refs := []int{}
+		mut position := 0
+		for position < line.len {
+			if !fastc_identifier_byte(line[position]) {
+				position++
+				continue
+			}
+			start := position
+			for position < line.len && fastc_identifier_byte(line[position]) { position++ }
+			if dependency := ids[line[start..position]] { refs << dependency }
+		}
+		dependencies[index] = refs.filter(it != index)
+	}
+	mut written := []bool{len: lines.len}
+	mut output := strings.new_builder(source.len)
+	for _ in 0 .. lines.len {
+		mut changed := false
+		for index, line in lines {
+			if written[index] { continue }
+			mut ready := true
+			for dependency in dependencies[index] {
+				if !written[dependency] {
+					ready = false
+					break
+				}
+			}
+			if !ready { continue }
+			output.writeln(line)
+			written[index] = true
+			changed = true
+		}
+		if !changed { break }
+	}
+	for index, line in lines { if !written[index] { output.writeln(line) } }
+	return output.str()
 }

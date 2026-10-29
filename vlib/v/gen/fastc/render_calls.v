@@ -22,7 +22,12 @@ fn fastc_member_root_call_close(tokens []FastcExpressionToken, start int, end in
 	if open < 0 {
 		return none
 	}
-	close := fastc_matching_rpar_before(tokens, open, end) or { return none }
+	mut close := fastc_matching_rpar_before(tokens, open, end) or { return none }
+	for close + 3 < end && tokens[close + 1].tok == .dot && tokens[close + 2].tok == .name && tokens[close + 3].tok == .lpar {
+		next_close := fastc_matching_rpar_before(tokens, close + 3, end) or { break }
+		if next_close + 1 >= end || tokens[next_close + 1].tok !in [.dot, .lsbr] { break }
+		close = next_close
+	}
 	if close + 1 >= end || tokens[close + 1].tok !in [.dot, .lsbr] {
 		return none
 	}
@@ -30,6 +35,15 @@ fn fastc_member_root_call_close(tokens []FastcExpressionToken, start int, end in
 }
 
 fn (g &Parser) render_member_root_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if g.member_smartcasts.len > 0 {
+		if path := fastc_indexed_member_chain_path(tokens) {
+			if cast := g.member_smartcasts[path] {
+				if cast.variants.ids.len <= 1 {
+					return FastcRenderedExpression{ source: cast.source, typ: cast.typ }
+				}
+			}
+		}
+	}
 	if cast := g.render_cast_expression(tokens) {
 		return cast
 	}
@@ -41,8 +55,8 @@ fn (g &Parser) render_member_root_expression(tokens []FastcExpressionToken) ?Fas
 		}
 	}
 	raw := g.render_raw_expression_tokens(tokens) or { return none }
-	return g.render_static_call_expression(tokens, raw) or {
-		g.render_missing_call_arguments(tokens) or {
+	return g.render_missing_call_arguments(tokens) or {
+		g.render_static_call_expression(tokens, raw) or {
 			g.render_method_call_expression(tokens, raw) or { return none }
 		}
 	}
@@ -414,6 +428,14 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 	if g.selfhost && !fastc_is_pointer_type(c_type) && flat.source_type_name(fastc_trim_pointer_type(c_type)) in g.sum_types {
 		inner_type := (g.infer_expression_type(inner_tokens) or { u32(0) })
 		variant := fastc_trim_pointer_type(fastc_normalize_inferred_type(inner_type))
+		if flat.source_type_name(variant) in g.sum_types {
+			inner := g.render_call_argument_expression(inner_tokens, inner_type) or { return none }
+			value := if fastc_is_pointer_type(inner_type) { '*(${inner})' } else { inner }
+			return FastcRenderedExpression{
+				source: '({ ${flat.source_type_name(variant)} __vf_sum_cast = (${value}); (${flat.source_type_name(c_type)}){._object=__vf_sum_cast._object, ._typ=__vf_sum_cast._typ}; })'
+				typ:    c_type
+			}
+		}
 		if variant != 0 && variant != fastc_trim_pointer_type(c_type) && g.sumtype_has_variant(c_type, variant) {
 			// A member/local chain must render through render_member_receiver so a live member
 			// smart-cast (`if left is CS { Expr(left) }`) supplies the concrete variant pointer
@@ -458,6 +480,11 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		}
 	}
 	inner_type := g.infer_expression_type(inner_tokens) or { u32(0) }
+	if fastc_is_pointer_type(aliased) && !fastc_is_pointer_type(inner_type)
+		&& g.underlying_alias_type(inner_type) == fastc_trim_pointer_type(aliased) {
+		inner := g.render_call_argument_expression(inner_tokens, inner_type) or { return none }
+		return FastcRenderedExpression{ source: g.value_address_expression(inner_type, inner, inner_tokens), typ: c_type }
+	}
 	if g.declared_kinds[g.semantic_type_key(c_type)] == .interface_ {
 		inner := g.render_call_argument_expression(inner_tokens, inner_type) or { return none }
 		return FastcRenderedExpression{
@@ -864,6 +891,12 @@ fn (g &Parser) resolve_method(receiver_type u32, name string) (string, []string)
 	if direct in g.functions {
 		return direct, []string{}
 	}
+	if base := g.alias_base_types.type_id(flat.source_type_name(fastc_trim_pointer_type(receiver_type))) {
+		if base != receiver_type {
+			key, path := g.resolve_method(base, name)
+			if key in g.functions { return key, path }
+		}
+	}
 	layout_type := flat.source_type_name(fastc_trim_pointer_type(receiver_type))
 	for field in g.struct_field_info[layout_type] {
 		if !field.name.starts_with('__embedded_') {
@@ -899,7 +932,7 @@ fn (g &Parser) specialized_method_return_type(receiver_type u32, method_key stri
 		}
 	}
 	if method_key.starts_with('map.') && signature.return_type == fastc_type_map {
-		base := fastc_trim_pointer_type(receiver_type)
+		base := fastc_trim_pointer_type(g.underlying_alias_type(receiver_type))
 		if flat.source_type_query(base).has(.c_map_prefix) {
 			return base
 		}
@@ -960,7 +993,7 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 		// A narrowed subject (`Expr(left)` where `left is CS`) must box the concrete-variant
 		// pointer the smart-cast supplies, not the boxed subject's raw streamed text.
 		g.render_member_receiver(inner_tokens) or {
-			rendered_expression[prefix.len..rendered_expression.len - 2]
+			g.render_call_argument_expression(inner_tokens, actual_type) or { return none }
 		}
 	} else if g.selfhost && fastc_bare_as_cast_index(inner_tokens, 0, inner_tokens.len) != none {
 		// An `as`-cast operand (`AsmArg(x as AsmRegister)`): the raw streamed text keeps the V

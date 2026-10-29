@@ -4,6 +4,58 @@ import os
 import v.cmdexec
 import v.pref
 
+fn test_fastc_embed_file_descriptors_preserve_binary_payloads() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_embed_descriptor_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	mut payload := []u8{}
+	for i in 0 .. 256 {
+		payload << u8(i)
+	}
+	os.write_file_array(os.join_path(root, 'payload.bin'), payload) or { panic(err) }
+	os.write_file(os.join_path(root, 'empty.bin'), '') or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+
+const resource = $embed_file("payload.bin")
+const empty = $embed_file("empty.bin")
+
+fn main() {
+	assert resource.len == 256
+	assert resource.path == "payload.bin"
+	mut bytes := resource.to_bytes()
+	assert bytes.len == 256
+	for i, value in bytes {
+		assert value == u8(i)
+	}
+	text := resource.to_string()
+	assert text.len == 256
+	assert text.bytes() == bytes
+	assert $embed_file("payload.bin").to_string() == text
+	assert $embed_file("payload.bin").to_bytes() == bytes
+	local := $embed_file("payload.bin")
+	assert local.to_bytes() == bytes
+	unsafe { assert local.data()[0] == 0 }
+	bytes[0] = 99
+	assert resource.to_bytes()[0] == 0
+	assert empty.len == 0
+	assert empty.to_string() == ""
+	assert empty.to_bytes().len == 0
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	os.rm(os.join_path(root, 'payload.bin')) or { panic(err) }
+	os.rm(os.join_path(root, 'empty.bin')) or { panic(err) }
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}
+
 fn test_fastc_embed_file_resolves_compiler_and_module_roots() {
 	mut prefs := pref.new_preferences()
 	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')

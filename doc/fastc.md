@@ -2,6 +2,9 @@
 
 Select FastC with `v -b fastc run program.v`. It reads scanner tokens and emits C directly,
 without the regular parser, checker, or AST pipeline, then compiles with bundled TinyCC.
+Select `-cc clang` to compile the emitted C with Clang, including Objective-C interop on macOS.
+Clang builds also accept `-prod` and apply C optimization. Missing native objects named by
+`#flag` are built from adjacent C, C++, or Objective-C sources, as with the C backend.
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
@@ -82,11 +85,22 @@ Empty map initializers use their expected key and value storage, including map a
 On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
 parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
+Function aliases support nested callback parameter types, including callbacks taking callbacks.
+Field iteration supports `field.is_shared` and passing `field.attrs` to helper functions.
+`$zero(Type)` supports scalars, pointers, enums, structs, dynamic arrays, and maps.
+Optional collection elements preserve their payload types. Struct equality compares optional,
+map, array, sum-type, and interface fields by value. Function values retain their signatures
+through options, collections, captures, and returned callbacks; `spawn` accepts callback fields.
+Project imports honor explicit `-path` search roots, including replacements for vlib modules.
+Embedded files can be stored or passed as `embed_file.EmbedFileData` values and read with
+`.data()`, `.to_string()`, or `.to_bytes()`. Their payloads are emitted once per file and remain
+available after the original files are removed; binary bytes and empty files are preserved.
 If a call reaches a generic placeholder without a concrete instance, it reports the function
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
-and immutable closure captures. Float formats support precision, width, left alignment, and the
+and closure captures. Mutable value captures retain their state across calls. Float formats support
+precision, width, left alignment, and the
 `f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
 `-d fastc_real_builtin`. As with the C backend, a program file named on its own is compiled
 alone, while a test file also brings in the other files of its module.
@@ -177,8 +191,9 @@ Spawned threads and arrays of threads support waiting for void and typed results
 `nil` can reset `voidptr` fields and locals. Typed pointer `nil` literals still
 require an `unsafe` block.
 
-The full-runtime path remains experimental. Mutable and expression closure captures and
-128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.
+The full-runtime path remains experimental. Mutable pointer captures retain their pointee's
+identity. Rebinding those pointers, expression captures, and 128-bit integers are unsupported.
+Disabled standalone `@[if flag ?]` calls omit their arguments.
 
 Cross-target builds can emit C for an external compiler with `-o program.c`. This mode accepts
 `-prod`; the external compiler chooses the C optimization level. For freestanding targets,

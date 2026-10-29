@@ -240,7 +240,7 @@ fn (mut g Parser) parse_c_directive() ! {
 	}
 	if c_directive.starts_with('include ')
 		&& c_directive.contains('/thirdparty/stdatomic/nix/atomic.h')
-		&& g.prefs.target.arch == 'arm64' {
+		&& g.prefs.target.arch == 'arm64' && g.prefs.ccompiler in ['tinyc', 'tcc'] {
 		// TinyCC emits C99 extern-inline ARM64 support functions in each split
 		// unit. Weak definitions let the linker share those identical helpers.
 		// glibc can define __attribute__ as an empty macro for TinyCC.
@@ -395,7 +395,7 @@ fn fastc_pkgconfig_flags(raw string) ![]string {
 
 // fastc_flag_is_native_input reports whether a flag is a native source or link input.
 pub fn fastc_flag_is_native_input(flag string) bool {
-	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.o')
+	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.m') || flag.ends_with('.mm') || flag.ends_with('.o')
 		|| flag.ends_with('.a') || flag.ends_with('.obj') || flag.ends_with('.lib')
 		|| flag.ends_with('.dylib') || flag.ends_with('.so') || flag.contains('.so.'))
 }
@@ -416,7 +416,12 @@ fn fastc_flag_is_skippable(flag string) bool {
 			i += 2
 			continue
 		}
-		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part == '-pthread' {
+		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part in [
+			'-pthread',
+			'-fobjc-arc',
+			'-fno-objc-arc',
+			'-fblocks',
+		] {
 			i++
 			continue
 		}
@@ -569,7 +574,16 @@ fn (mut g Parser) skip_top_level_declaration() ! {
 	mut brace_depth := 0
 	mut paren_depth := 0
 	mut bracket_depth := 0
+	mut previous := token.Token.unknown
 	for g.tok != .eof {
+		if !body_declaration && !type_declaration && brace_depth == 0 && paren_depth == 0
+			&& bracket_depth == 0 && previous in [.name, .number, .string, .char, .rpar, .rsbr,
+			.rcbr, .not, .question, .key_true, .key_false, .key_none]
+			&& g.tok in [.key_fn, .key_pub, .key_const, .key_global, .key_struct, .key_union,
+				.key_enum, .key_interface, .key_type] {
+			return
+		}
+		previous = g.tok
 		if g.tok == .lcbr {
 			brace_depth++
 		} else if g.tok == .rcbr {
@@ -946,7 +960,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return
 		}
 	}
-	if g.selfhost && !is_fastc_source && receiver_type != u32(0) && g.method_uses_undefined_receiver() {
+	if g.prefs.selfhost && !is_fastc_source && receiver_type != u32(0) && g.method_uses_undefined_receiver() {
 		// A method reaching an undefined identifier as a method-call receiver is broken
 		// dead code, kept only because its name collides with a genuinely-used method on
 		// another type (name-grouped reachability). The mainline compiler drops it via
@@ -1508,6 +1522,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 		fn_return_type := g.pending_fn_return_type
 		fn_option_value_type := g.pending_fn_option_value_type
 		fn_parameters := g.pending_fn_parameters
+		fn_type := g.pending_fn_type
 		parameter_index := parameter_offset + params.len
 		is_generic_value := g.in_mono_drain && parameter_index < mono_signature.parameter_generic_values.len && mono_signature.parameter_generic_values[parameter_index]
 		is_reference := is_mut && (!flat.source_type_query(type_name).has(.c_pointer_suffix) || is_generic_value)
@@ -1531,7 +1546,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut:               is_mut
-					typ:                  type_name
+					typ:                  if fn_type != 0 { fn_type } else { type_name }
 					fn_return_type:       fn_return_type
 					fn_option_value_type: fn_option_value_type
 				}
@@ -1568,6 +1583,7 @@ fn (mut g Parser) parse_type() !u32 {
 	g.pending_fn_return_type = u32(0)
 	g.pending_fn_option_value_type = u32(0)
 	g.pending_fn_parameters = ''
+	g.pending_fn_type = 0
 	if g.tok == .question {
 		// Peek the wrapped value type of an option type `?T` before the main scan
 		// erases it to `Option`, so a caller can record it on the declared local.
@@ -1591,6 +1607,8 @@ fn (mut g Parser) parse_type() !u32 {
 	if !g.selfhost && (first_lit in ['charptr', 'rune'] || type_name == fastc_type_char_pointer) {
 		return g.unsupported('type `${first_lit}`')
 	}
+	fastc_register_composite_type(type_name, mut g.composite_types)
+	fastc_register_composite_type(g.pending_option_value_type, mut g.composite_types)
 	return type_name
 }
 
@@ -1645,6 +1663,8 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 		g.selfhost)
 	{
 		g.pending_fn_parameters = fastc_c_prototype_parameters(signature.parameter_types.ids.clone())
+		g.pending_fn_type = flat.source_type_id(fastc_callable_type_name(signature))
+		fastc_register_composite_type(g.pending_fn_type, mut g.composite_types)
 	}
 }
 
