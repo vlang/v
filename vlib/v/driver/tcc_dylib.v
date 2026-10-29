@@ -146,7 +146,13 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	}
 	mut class_names := classes.keys()
 	class_names.sort()
-	headers['__v3_objc_types__'] = '#include <objc/objc.h>\n' + class_names.map('typedef struct ${it} ${it};').join('\n') + '\n'
+	needs_objc_types := class_names.len > 0 || ['id', 'Class', 'SEL', 'BOOL', 'IMP', 'Protocol',
+		'objc_object', 'objc_class', 'objc_selector'].any(wanted_types[it])
+	headers['__v3_objc_types__'] = if needs_objc_types {
+		'#include <objc/objc.h>\n' + class_names.map('typedef struct ${it} ${it};').join('\n') + '\n'
+	} else {
+		''
+	}
 	return V3NativeInputClosure{
 		inputs:       {
 			'__v3_c_flags__': deps.files.filter(it != path)

@@ -72,4 +72,44 @@ fn test_macos_tcc_links_cached_objc_dependencies_and_invalidates_nested_headers(
 			43
 		}}\n-7\ntrue', run.output
 	}
+	uncached := cmdexec.run('env', ['V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-cc', 'tcc', '-nocache',
+		'-no-retry-compilation', '-o', os.join_path(root, 'uncached'), source])
+	assert uncached.exit_code != 0, uncached.output
+}
+
+fn test_macos_tcc_cached_c_objects_do_not_require_objc_headers() ! {
+	$if !macos {
+		return
+	}
+	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	root := os.join_path(os.vtmp_dir(), 'tcc c object cache ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_object_cache' }\n")!
+	os.write_file(os.join_path(root, 'native.c'), 'int bridge_value(void) { return 42; }\n')!
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, '#flag @DIR/native.o\nfn C.bridge_value() int\nfn main() { println(C.bridge_value()) }\n')!
+	c_output := os.join_path(root, 'program.c')
+	c_only := cmdexec.run('env', ['-u', 'VFLAGS', '-u', 'VEXE',
+		'V3CACHE=' + os.join_path(root, 'cache'), @VEXE, '-cc', 'tcc', '-nocache', '-o', c_output,
+		source])
+	assert c_only.exit_code == 0, c_only.output
+	// C-only output retains the compiler-selected ABI and needs no cache owner.
+	assert os.read_file(c_output)!.contains('#if defined(__TINYC__) || defined(_MSC_VER)\n#define E_STRUCT_DECL')
+	assert !os.is_dir(os.join_path(root, 'cache'))
+	for attempt in 0 .. 2 {
+		exe := os.join_path(root, 'program')
+		build := cmdexec.run('env', ['-u', 'VFLAGS', '-u', 'VEXE',
+			'V3CACHE=' + os.join_path(root, 'cache'), @VEXE, '-cc', 'tcc', '-no-retry-compilation',
+			'-showcc', '-show-c-output', '-o', exe, source])
+		assert build.exit_code == 0, build.output
+		commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> '))
+		assert commands.len > 0 && commands.last().contains('tcc.exe'), build.output
+		if attempt == 1 {
+			assert !build.output.contains('Caching module '), build.output
+		}
+		run := cmdexec.run(exe, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '42', run.output
+	}
 }

@@ -14036,7 +14036,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
-	if cache_with_tcc && target.os == 'macos' && !is_prod && !check_only && !only_check_syntax {
+	if cache_state.manager.enabled && cache_with_tcc && target.os == 'macos' && !is_prod && !check_only && !only_check_syntax {
 		mut bridge_flags := user_c_flags.clone()
 		bridge_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 		if v3_implicit_tcc_flags_incompatibility(bridge_flags, target.os, prefs.vroot) != none
