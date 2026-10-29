@@ -22,7 +22,7 @@ fn test_fastc_objective_c_include_can_use_v_types() {
 		'int64_t native_length(string value) {\n' +
 		'    @autoreleasepool {\n' +
 		'        NSString *text = [[NSString alloc] initWithBytes:value.str length:value.len encoding:NSUTF8StringEncoding];\n' +
-		'        return [text length];\n' +
+		'        return [text length] + NATIVE_LENGTH_OFFSET;\n' +
 		'    }\n}\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'native.h'), 'int native_answer(void);\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'native.cpp'), 'extern "C" int native_answer() { return 42; }\n') or { panic(err) }
@@ -31,14 +31,16 @@ fn test_fastc_objective_c_include_can_use_v_types() {
 #flag darwin -framework Foundation
 #flag darwin -fobjc-arc
 #flag @VMODROOT/native.o
+#define NATIVE_LENGTH_OFFSET 3
 #include "@VMODROOT/helper.m"
+#undef NATIVE_LENGTH_OFFSET
 #include "@VMODROOT/native.h"
 
 fn C.native_length(value string) int
 fn C.native_answer() int
 
 fn main() {
-	assert C.native_length("hello") == 5
+	assert C.native_length("hello") == 8
 	assert C.native_answer() == 42
 }
 ') or { panic(err) }

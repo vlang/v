@@ -481,7 +481,9 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 	}
 	inner_type := g.infer_expression_type(inner_tokens) or { u32(0) }
 	if fastc_is_pointer_type(aliased) && !fastc_is_pointer_type(inner_type)
-		&& g.underlying_alias_type(inner_type) == fastc_trim_pointer_type(aliased) {
+		&& g.underlying_alias_type(inner_type) == fastc_trim_pointer_type(aliased)
+		&& g.semantic_type_key(inner_type) in g.declared_kinds
+		&& g.declared_kinds[g.semantic_type_key(inner_type)] == .struct_ {
 		inner := g.render_call_argument_expression(inner_tokens, inner_type) or { return none }
 		return FastcRenderedExpression{ source: g.value_address_expression(inner_type, inner, inner_tokens), typ: c_type }
 	}

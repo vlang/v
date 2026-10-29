@@ -120,7 +120,9 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 		g.next()
 	}
 	origin_offset := fastc_original_source_offset(g.source_origins, g.source_offset + anon_start)
-	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${fastc_name_key(g.current_function)}_${origin_offset}'
+	// Compile-time iterations share source positions, but each literal has its own body.
+	literal_id := g.temporary_name('anon')
+	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${origin_offset}_${fastc_name_key(g.current_function)}_${literal_id}'
 	// Rewrite `fn (...) ...` as `fn <name> (...) ...` so `parse_function` reads it as
 	// an ordinary declaration.
 	function_source := g.s.src[params_start..body_end]

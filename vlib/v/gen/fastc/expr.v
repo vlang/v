@@ -4624,7 +4624,7 @@ fn (g &Parser) type_test_narrowing(tokens []FastcExpressionToken, test token.Tok
 		}
 	}
 	// The narrowed subject may be an indexed member chain (`node.args[0].expr is CallExpr`);
-	// key it with the same `[]` markers render_member_receiver uses so the smart-cast is found
+	// retain its index identity as render_member_receiver does so the smart-cast is found
 	// when `.is_method`/`.name` on that chain are rendered later.
 	path := if has_index {
 		fastc_indexed_member_chain_path(subject_tokens) or { return none }
@@ -5084,8 +5084,10 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 
 				if flat.source_type_query(right_layout_query_type_id).has(.c_array_prefix) || flat.source_type_query(right_layout_query_type_id).has(.c_fixed_array_prefix) {
 					element_type := g.array_element_type(right_type) or { return none }
-					candidate := g.render_call_argument_expression(tokens[..i], element_type) or {
-						return none
+					candidate := if element_type == flat.source_type_voidptr {
+						g.render_membership_candidate(tokens[..i], element_type) or { return none }
+					} else {
+						g.render_call_argument_expression(tokens[..i], element_type) or { return none }
 					}
 					collection := g.render_call_argument_expression(right_tokens, right_type) or {
 						return none
@@ -6300,10 +6302,9 @@ fn (g &Parser) expression_uses_member_smartcast(tokens []FastcExpressionToken) b
 		mut index := i + 1
 		for index < tokens.len {
 			if tokens[index].tok == .lsbr {
-				// An array index segment keys as the `[]` marker, matching render_member_receiver
-				// (`right.args[0].expr` → `right.args[].expr`).
+				// Match the same indexed expression in inference and rendering.
 				close := fastc_matching_delimiter(tokens, index, .lsbr, .rsbr) or { break }
-				path += '[]'
+				path += fastc_indexed_member_segment(tokens[index + 1..close])
 				if path in g.member_smartcasts {
 					return true
 				}

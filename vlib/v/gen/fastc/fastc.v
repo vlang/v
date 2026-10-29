@@ -2095,8 +2095,10 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut embed_embedders := []u32{}
 	mut embed_embeddeds := []u32{}
 	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
-	if prefs.target_libc_headers || (prefs.building_v && !prefs.selfhost) {
+	if prefs.target_libc_headers {
 		fastc_bind_legacy_native_aliases(mut functions)
+	} else if prefs.building_v && !prefs.selfhost {
+		fastc_bind_native_aliases(false, mut functions)
 	}
 
 	timer.mark('signatures')
@@ -2299,6 +2301,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut output_body_offsets := []int{cap: sources.len + 16}
 	mut output_proto_offsets := []int{cap: sources.len + 16}
 	mut body_directive_lines := []FastcCDirectiveLine{}
+	mut directive_groups := []string{}
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
 	for name, array_type_id in global_output.fixed_array_types.ids {
 		fixed_array_types.set_id(name, array_type_id)
@@ -2379,6 +2382,12 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		output_body_offsets << body_offset
 		body_pieces << fastc_piece(output.body)
 		body_len += output.body.len
+		if output.directive_lines.len > 0 {
+			partition := fastc_partition_c_directive_ranges(output.body.len, output.directive_lines)
+			mut directives := strings.new_builder(256)
+			fastc_write_c_source_ranges(mut directives, output.body, partition.directive_ranges)
+			directive_groups << directives.str()
+		}
 		for line in output.directive_lines {
 			kind := line.kind
 			body_directive_lines << FastcCDirectiveLine{
@@ -2703,10 +2712,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, c_integer_comparison_helpers)
 	mut native_source_includes := []string{}
-	mut native_source_paths := []string{}
-	mut directive_pieces := []string{}
-	fastc_collect_c_piece_ranges(mut directive_pieces, body_pieces, hoisted_body.directive_ranges)
-	for piece in directive_pieces {
+	for piece in directive_groups {
+		mut defer_native_directives := false
 		for line in piece.split_into_lines() {
 			path := if line.trim_space().starts_with('#include "') {
 				line.all_after('"').all_before('"')
@@ -2714,10 +2721,12 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 				''
 			}
 			if path.ends_with('.m') || path.ends_with('.mm') {
-				if path !in native_source_paths {
-					native_source_paths << path
-					native_source_includes << line + '\n'
-				}
+				defer_native_directives = true
+			}
+			// Keep the rest of this file's directives after its native include so
+			// macro mutations retain their order. Other files' headers supply C types.
+			if defer_native_directives {
+				native_source_includes << line + '\n'
 			} else {
 				pieces << line + '\n'
 			}

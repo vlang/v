@@ -309,7 +309,7 @@ fn (g &Parser) nil_argument_is_voidptr(tokens []FastcExpressionToken) bool {
 		index = signature.parameter_types.ids.len - 1
 		return g.nil_type_is_allowed(g.array_element_type(signature.parameter_types.ids[index]) or { return false })
 	}
-	return index < signature.parameter_types.ids.len && g.nil_type_is_allowed(signature.parameter_types.ids[index])
+	return index < signature.parameter_types.ids.len && (g.nil_type_is_allowed(signature.parameter_types.ids[index]) || g.is_function_value_type(signature.parameter_types.ids[index]))
 }
 
 // nil_ends_value reports whether the current `nil` is a whole value: the next token closes it or

@@ -41,7 +41,7 @@ fn test_fastc_atomic_values_match_streaming_render_and_parser_state() {
 	stops := [token.Token.semicolon, .comma, .rpar, .rsbr, .rcbr, .colon, .lcbr]
 	for source in ['value\n', 'value;', 'value)', 'renamed,', 'flag {', '0xffff,', '0012;', '1_024]',
 		'1.25}', 'true {', 'false:', '"text"}', '`λ`;', "c'abc';", 'value /* comment */;',
-		'value\n*ptr = 2;', 'value\n/* comment */ .field;'] {
+		'value\n*ptr = 2;'] {
 		mut fast := fastc_atomic_test_parser(source)
 		mut slow := fastc_atomic_test_parser(source)
 		atom := fast.try_read_atomic_expression(stops, false, true)
@@ -62,8 +62,9 @@ fn test_fastc_atomic_values_match_streaming_render_and_parser_state() {
 
 fn test_fastc_atomic_rejections_preserve_current_expression_and_scanner() {
 	stops := [token.Token.semicolon, .comma, .rpar, .rsbr, .rcbr, .colon, .lcbr]
-	for source in ['value + 1;', 'value\n + 1;', 'value\n .field;', 'value\n// comment\n + 1;',
-		'reference;', 'optional;', 'narrowed;', 'object;', 'generic;', 'value();', r'"${value}";'] {
+	for source in ['value + 1;', 'value\n + 1;', 'value\n .field;', 'value\n/* comment */ .field;',
+		'value\n// comment\n + 1;', 'reference;', 'optional;', 'narrowed;', 'object;', 'generic;',
+		'value();', r'"${value}";'] {
 		mut g := fastc_atomic_test_parser(source)
 		before := g.s
 		before_tok := g.tok

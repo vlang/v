@@ -3,8 +3,9 @@
 Select FastC with `v -b fastc run program.v`. It reads scanner tokens and emits C directly,
 without the regular parser, checker, or AST pipeline, then compiles with bundled TinyCC.
 Select `-cc clang` to compile the emitted C with Clang, including Objective-C interop on macOS.
-Clang builds also accept `-prod` and apply C optimization. Missing native objects named by
-`#flag` are built from adjacent C, C++, or Objective-C sources, as with the C backend.
+Clang builds also accept `-prod`, apply C optimization, and retain wrapping signed arithmetic.
+Missing native objects named by `#flag` are built from adjacent C, C++, or Objective-C sources,
+as with the C backend.
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
@@ -87,8 +88,10 @@ parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
 Function aliases support nested callback parameter types, including callbacks taking callbacks.
 Field iteration supports `field.is_shared` and passing `field.attrs` to helper functions.
+Member and operator continuations can follow comments on a new line.
 `$zero(Type)` supports scalars, pointers, enums, structs, dynamic arrays, and maps.
-Optional collection elements preserve their payload types. Struct equality compares optional,
+Optional collection elements preserve their payload types. Array guards and `or` fallbacks
+handle both missing indices and stored `none` elements. Struct equality compares optional,
 map, array, sum-type, and interface fields by value. Function values retain their signatures
 through options, collections, captures, and returned callbacks; `spawn` accepts callback fields.
 Project imports honor explicit `-path` search roots, including replacements for vlib modules.

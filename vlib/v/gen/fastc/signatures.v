@@ -813,11 +813,15 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 // fastc_bind_legacy_native_aliases retains V functions named by explicit C bindings.
 // Marked native hooks also accept the regular C backend's module basename.
 fn fastc_bind_legacy_native_aliases(mut functions map[string]FastcFunctionSignature) {
+	fastc_bind_native_aliases(true, mut functions)
+}
+
+fn fastc_bind_native_aliases(require_markused bool, mut functions map[string]FastcFunctionSignature) {
 	mut candidates := map[string]string{}
 	mut ambiguous := map[string]bool{}
 	for key, signature in functions {
 		name := key.all_after_last('.')
-		if key.starts_with('C.') || signature.is_disabled
+		if key.starts_with('C.') || signature.is_disabled || (require_markused && !signature.is_markused)
 			|| signature.is_global || key != fastc_function_key(signature.module_name, name) {
 			continue
 		}

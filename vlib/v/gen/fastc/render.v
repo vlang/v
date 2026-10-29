@@ -1346,7 +1346,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 	if left == '' {
 		if array_access := g.render_array_access_expression(left_tokens) {
 			left = array_access.source
-		} else if member := g.render_member_receiver(left_tokens) {
+		} else if member := g.render_member_receiver_mode(left_tokens, true) {
 			left = member
 		} else {
 			raw := g.render_raw_expression_tokens(left_tokens) or { return none }
@@ -2427,6 +2427,7 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 			return member
 		}
 		if fastc_expression_tokens_contain(tokens, .lsbr) {
+			if access := g.render_array_access_expression(tokens) { return access }
 			if source := g.render_member_receiver(tokens) {
 				return FastcRenderedExpression{ source: source, typ: g.infer_expression_type(tokens) or { return none } }
 			}
@@ -2656,8 +2657,9 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 		root_is_pointer := fastc_is_pointer_type(g.underlying_alias_type(root_type))
 			|| root_is_reference
 		chain_tokens := tokens[start..end]
+		if !fastc_expression_tokens_contain(chain_tokens, .dot) { continue }
 		raw_chain := g.render_raw_expression_tokens(chain_tokens) or { continue }
-		promoted_chain := g.render_member_receiver(chain_tokens) or { continue }
+		promoted_chain := g.render_member_receiver_mode(chain_tokens, end < tokens.len && tokens[end].tok.is_assignment()) or { continue }
 		// A value-rooted chain needs no `.`→`->` deref rewrite (the second loop below handles
 		// pointer fields), but it still needs embedded-field promotion (`err.pos` →
 		// `err.__embedded_0.pos`) when a field is reached through an embed, OR a correction when
@@ -3713,18 +3715,24 @@ fn (g &Parser) rewrite_embedded_as_casts(tokens []FastcExpressionToken) ?[]Fastc
 				i = end
 				continue
 			}
+			takes_reference := end == close + 1 && i > 0 && result[i - 1].tok == .amp && fastc_token_is_prefix_operator(result, i - 1)
 			rendered := if end > close + 1 {
 				g.render_as_cast_member_access(result[i..end]) or {
 					i = end
 					continue
 				}
 			} else {
-				g.render_as_cast_expression(inner) or {
+				g.render_as_cast_expression_with_reference(inner, takes_reference) or {
 					i = end
 					continue
 				}
 			}
-			mut next := result[..i].clone()
+			start := if takes_reference {
+				i - 1
+			} else {
+				i
+			}
+			mut next := result[..start].clone()
 			next << FastcExpressionToken{
 				tok:    .name
 				source: fastc_token_source(rendered.source)
@@ -4928,6 +4936,9 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			&& expected_type_source_id == flat.source_type_composition_two(.concat, actual, flat.source_type_id('*')) {
 			return g.value_address_expression(actual, tokens[0].source_text(), tokens)
 		}
+		if fastc_is_pointer_type(expected_type_source_id) && g.should_box_variant(fastc_trim_pointer_type(expected_type_source_id), atom_type) {
+			return g.interface_value_expression(expected_type_source_id, atom_type, tokens[0].source_text())
+		}
 		if g.should_box_variant(expected_type_source_id, atom_type) {
 			return g.interface_value_expression(expected_type_source_id, atom_type, tokens[0].source_text())
 		}
@@ -5876,18 +5887,20 @@ fn (g &Parser) render_array_lookup_option_expression(tokens []FastcExpressionTok
 		return none
 	}
 	element_type := g.array_element_type(base_type) or { return none }
-	if payload := fastc_typed_option_payload(element_type) {
-		value := g.render_array_access_expression(lookup_tokens) or { return none }
-		return FastcRenderedExpression{ source: value.source, typ: payload }
-	}
+	stored_payload := fastc_typed_option_payload(element_type) or { u32(0) }
 	array_source := if flat.source_type_query(base_type).has(.c_pointer_suffix) {
 		'*(${base_source})'
 	} else {
 		base_source
 	}
+	option_result := if stored_payload != 0 {
+		'__vf_array_missing ? (Option){.state=2} : *__vf_array_value'
+	} else {
+		'(Option){.data=__vf_array_value, .state=__vf_array_missing ? 2 : 0}'
+	}
 	return FastcRenderedExpression{
-		source: '({ ${fastc_output_c_type('int')} __vf_array_index = (${index_source}); ${flat.source_type_name(fastc_trim_pointer_type(base_type))} __vf_array = (${array_source}); bool __vf_array_missing = __vf_array_index < 0 || __vf_array_index >= __vf_array.len; ${g.collection_storage_type(element_type)} *__vf_array_value = __vf_array_missing ? NULL : (${g.collection_storage_type(element_type)} *)((byteptr)__vf_array.data + (usize)__vf_array_index * (usize)__vf_array.element_size); (Option){.data=__vf_array_value, .state=__vf_array_missing ? 2 : 0}; })'
-		typ:    element_type
+		source: '({ ${flat.source_type_name(fastc_trim_pointer_type(base_type))} __vf_array = (${array_source}); ${fastc_output_c_type('int')} __vf_array_index = (${index_source}); bool __vf_array_missing = __vf_array_index < 0 || __vf_array_index >= __vf_array.len; ${g.collection_storage_type(element_type)} *__vf_array_value = __vf_array_missing ? NULL : (${g.collection_storage_type(element_type)} *)((byteptr)__vf_array.data + (usize)__vf_array_index * (usize)__vf_array.element_size); ${option_result}; })'
+		typ:    if stored_payload != 0 { stored_payload } else { element_type }
 	}
 }
 
@@ -7073,7 +7086,7 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 					'({ map __vf_member_map = (${map_value}); ${g.collection_storage_type(key_type)} __vf_member_key = (${key}); ${storage} *__vf_member_value = (${storage} *)builtin__map_get_check(&__vf_member_map, &__vf_member_key); __vf_member_value ? *__vf_member_value : (${missing}); })'
 				}
 				current_type = value_type
-				member_path += '[]'
+				member_path += fastc_indexed_member_segment(tokens[i + 1..close])
 				i = close + 1
 				continue
 			}
@@ -7099,7 +7112,7 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 					'${storage}[${index_source}]'
 				}
 				current_type = fixed_element
-				member_path += '[]'
+				member_path += fastc_indexed_member_segment(tokens[i + 1..close])
 				i = close + 1
 				continue
 			}
@@ -7111,7 +7124,7 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 					}
 					source = '(${source})[${index_source}]'
 					current_type = flat.source_type_syntax(pointer_type).c_pointer_base()
-					member_path += '[]'
+					member_path += fastc_indexed_member_segment(tokens[i + 1..close])
 					i = close + 1
 					continue
 				}
@@ -7128,9 +7141,9 @@ fn (g &Parser) render_member_receiver_mode(tokens []FastcExpressionToken, mutabl
 			}
 			source = '((${g.collection_storage_type(element_type)} *)(${source})${data_separator}data)[${index_source}]'
 			current_type = element_type
-			member_path += '[]'
-			// A smart-cast on the indexed element itself (`node.left[0] is Ident`, keyed
-			// `node.left[]`) applies before a FOLLOWING field access (`node.left[0].name`), just
+			member_path += fastc_indexed_member_segment(tokens[i + 1..close])
+			// A smart-cast on the indexed element itself (`node.left[0] is Ident`)
+			// applies before a FOLLOWING field access (`node.left[0].name`), just
 			// as one on a `.field` subject does below. When the index is the last segment (the
 			// chain IS the smart-cast subject, e.g. a `node.left[i].method()` receiver), leave the
 			// boxed value in place so the caller's own variant unwrap is not applied twice.

@@ -11068,7 +11068,7 @@ $if !skip_fastc ? {
 	}
 
 	// compile_v3_fastc_clang_source keeps FastC generation and uses Clang for native interop.
-	fn compile_v3_fastc_clang_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_flags []string, source_flags []string, user_flags []string, link_flags []string, sdk_root string, compiler string, is_debug bool) V3FastCCompileResult {
+	fn compile_v3_fastc_clang_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_flags []string, source_flags []string, user_flags []string, link_flags []string, sdk_root string, compiler string, is_debug bool, uses_threads bool) V3FastCCompileResult {
 		build_dir := os.join_path_single(os.dir(os.abs_path(bin_file)), '.fastc-clang-${tempname.unique_token()}')
 		os.mkdir_all(build_dir) or { return V3FastCCompileResult{ command: compiler, output: err.msg() } }
 		defer { cleanup_c_build_dir(build_dir) }
@@ -11077,14 +11077,18 @@ $if !skip_fastc ? {
 		flags << user_flags
 		mut object_stats := CObjectCacheStats{}
 		native_target_args := if sdk_root != '' { ['-isysroot', sdk_root] } else { []string{} }
+		wrapv_flag := c_wrapv_flag(prefs.normalized_target_os())
+		mut optimization_flags := [if prefs.is_prod { '-O2' } else { '-O0' }]
+		if wrapv_flag != '' { optimization_flags << wrapv_flag }
 		flags = prepare_c_flags_for_link(flags, environment_flags, []string{},
-			[if prefs.is_prod { '-O2' } else { '-O0' }], true, false, '', native_target_args,
+			optimization_flags, true, false, '', native_target_args,
 			prefs.target, compiler, true, build_dir, mut object_stats) or {
 			return V3FastCCompileResult{ command: compiler, output: err.msg() }
 		}
 		mut compile_flags := ['-std=gnu11', if prefs.is_prod { '-O2' } else { '-O0' },
 			'-Werror=implicit-function-declaration', '-Wno-incompatible-function-pointer-types',
 			'-Wno-typedef-redefinition']
+		if wrapv_flag != '' { compile_flags << wrapv_flag }
 		if sdk_root != '' { compile_flags << ['-isysroot', sdk_root] }
 		if is_debug { compile_flags << '-g' }
 		compile_flags << c_object_compile_flags(flags)
@@ -11120,6 +11124,7 @@ $if !skip_fastc ? {
 		args << flags.filter(c_flag_is_c_source_file(it))
 		args << c_object_compile_flags(flags)
 		args << c_dylib_link_flags(flags)
+		args << v3_fastc_default_linker_flags(prefs.normalized_target_os(), uses_threads)
 		args << link_flags
 		if prefs.normalized_target_os() != 'windows' { args << '-pthread' }
 		if sdk_root != '' { args << ['-isysroot', sdk_root] }
@@ -13247,7 +13252,7 @@ pub fn run(args []string) {
 				}
 			}
 			fastc_result := if c_compiler_explicit {
-				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug)
+				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug, fastc_generation.uses_threads)
 			} else {
 				compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
 			}

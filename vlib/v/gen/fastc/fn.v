@@ -960,7 +960,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return
 		}
 	}
-	if g.prefs.selfhost && !is_fastc_source && receiver_type != u32(0) && g.method_uses_undefined_receiver() {
+	if (g.prefs.selfhost || g.prefs.target_libc_headers || 'nofloat' in g.prefs.user_defines) && !is_fastc_source && receiver_type != u32(0) && g.method_uses_undefined_receiver() {
 		// A method reaching an undefined identifier as a method-call receiver is broken
 		// dead code, kept only because its name collides with a genuinely-used method on
 		// another type (name-grouped reachability). The mainline compiler drops it via

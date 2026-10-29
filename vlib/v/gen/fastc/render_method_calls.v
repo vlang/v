@@ -34,7 +34,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	} else {
 		g.mono_functions[function_key] or { return none }
 	}
-	call_name := if signature.is_global {
+	call_name := if signature.is_global && !(name_index == 0 && tokens[0].lit in g.locals) {
 		g.globals[function_key]
 	} else if function_key.starts_with('C.') {
 		function_key.all_after_last('.')

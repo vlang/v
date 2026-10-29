@@ -1690,8 +1690,10 @@ fn (mut g Parser) parse_simple_statement() ! {
 			// `[]T` as a variant (a recursive sum type such as `type Value = []Value | int`),
 			// in which case the array is boxed as one element. Mirrors the main C backend's
 			// `sumtype_has_variant` guard (see vlib/v/gen/c/infix.v).
-			propagated_array := g.last_expression.len > 1 && g.last_expression.last().tok == .not
-				&& !fastc_trailing_not_marks_fixed_array_literal(g.last_expression)
+			propagated_array := (g.last_expression.len > 1 && g.last_expression.last().tok == .not
+				&& !fastc_trailing_not_marks_fixed_array_literal(g.last_expression))
+				|| (g.last_expression.len == 1 && g.last_expression[0].has_source()
+					&& g.last_expression[0].lit == '__vf_propagated')
 			boxes_array_variant := value_array_type == target_array_type
 				&& g.sumtype_has_variant(element_type, value_array_type) && !propagated_array
 			is_array_append := value_array_type == target_array_type && !boxes_array_variant

@@ -695,13 +695,7 @@ fn (mut g Parser) parse_if() !bool {
 			guard_type = array_lookup.typ
 			guard_is_mut = guard_name_index == 1
 			guard_option = g.temporary_name('if_guard')
-			if payload := fastc_typed_option_payload(array_lookup.typ) {
-				guard_type = payload
-				value := g.render_array_access_expression(right_tokens) or { return g.unsupported('optional array element guard') }
-				g.write_line('Option ${guard_option} = (${value.source});')
-			} else {
-				g.write_line('Option ${guard_option} = (${array_lookup.source});')
-			}
+			g.write_line('Option ${guard_option} = (${array_lookup.source});')
 			condition = '${guard_option}.state == 0'
 			g.last_expression_type = flat.source_type_bool
 		} else {

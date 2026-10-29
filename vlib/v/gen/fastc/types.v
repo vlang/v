@@ -1041,8 +1041,8 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		receiver_start := fastc_method_receiver_start_after(tokens, end - 2, start)
 		if receiver_start == start {
 			// A member smartcast on the full path overrides the declared field type
-			// (`if x.f is T { … x.f.g … }`, incl. an indexed chain `x.args[0].expr` keyed
-			// as `x.args[].expr`, reads the member as the concrete variant).
+			// (`if x.f is T { … x.f.g … }`, including an indexed chain `x.args[0].expr`,
+			// reads that member as the concrete variant).
 			if member_path := fastc_indexed_member_chain_path(tokens[start..end]) {
 				if smartcast := g.member_smartcasts[member_path] {
 					return smartcast.typ
@@ -1415,10 +1415,8 @@ fn fastc_member_chain_path(tokens []FastcExpressionToken, start int, end int) ?s
 	return path
 }
 
-// fastc_indexed_member_chain_path is like fastc_member_chain_path but also accepts array
-// index segments (`right.args[0].expr`), keying each `[…]` as the `[]` marker that
-// render_member_receiver uses so a member smart-cast registered here is found when the
-// chain is rendered.
+// fastc_indexed_member_chain_path retains index expressions so distinct elements cannot
+// share a member smartcast. The renderer and inference use the same segment encoding.
 fn fastc_indexed_member_chain_path(tokens []FastcExpressionToken) ?string {
 	if tokens.len == 0 || tokens[0].tok != .name {
 		return none
@@ -1433,7 +1431,7 @@ fn fastc_indexed_member_chain_path(tokens []FastcExpressionToken) ?string {
 		}
 		if tokens[i].tok == .lsbr {
 			close := fastc_matching_delimiter(tokens, i, .lsbr, .rsbr) or { return none }
-			path += '[]'
+			path += fastc_indexed_member_segment(tokens[i + 1..close])
 			i = close + 1
 			continue
 		}
@@ -1445,6 +1443,16 @@ fn fastc_indexed_member_chain_path(tokens []FastcExpressionToken) ?string {
 		return none
 	}
 	return path
+}
+
+fn fastc_indexed_member_segment(tokens []FastcExpressionToken) string {
+	mut segment := '['
+	for item in tokens {
+		// Hex literals keep dots and brackets in keys out of the member-path syntax.
+		segment += '${int(item.tok)}:${item.lit.bytes().hex()};'
+		if item.has_source() { segment += item.source_text().bytes().hex() + ';' }
+	}
+	return segment + ']'
 }
 
 // sum_type_variant_list returns the C variant type names of a sum type (`base` is a
@@ -1645,9 +1653,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 			} else {
 				return none
 			}
-			// Key the index segment as the `[]` marker so a member smart-cast registered on an
-			// indexed chain (`right.args[0].expr is T` → `right.args[].expr`) is found below.
-			member_path += '[]'
+			member_path += fastc_indexed_member_segment(tokens[index + 1..close])
 			if smartcast := g.member_smartcasts[member_path] {
 				current_type = smartcast.typ
 			}
