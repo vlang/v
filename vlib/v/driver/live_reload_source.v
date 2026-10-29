@@ -104,6 +104,8 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	out += 'fn C.fflush(f voidptr) int\n'
 	out += 'fn C.getpid() int\n'
 	out += '\n__global live_code_pages []voidptr\n'
+	out += '__global live_disabled bool\n'
+	out += '__global live_failures int\n'
 	mut unchanged_checks := []string{}
 	for idx, path in source_files {
 		stamp := if idx == 0 { 'live_mtime' } else { 'live_mtime_${idx}' }
@@ -126,7 +128,7 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	for idx, path in source_files {
 		out += '\tlive_nm_${idx} := os.file_last_mod_unix(${v3_v_string_literal(path)})\n'
 	}
-	out += '\tif ${unchanged_checks.join(' && ')} { return }\n\tmut live_ok := true\n'
+	out += '\tif ${unchanged_checks.join(' && ')} { return }\n\tif live_disabled { return }\n\tmut live_ok := true\n\tmut live_consecutive_failures := 0\n'
 	for m in live_mangled {
 		storage := m.bytes().hex()
 		out += '\tmut live_next_${storage} := voidptr(unsafe { nil })\n'
@@ -134,7 +136,7 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 	for m in live_mangled {
 		storage := m.bytes().hex()
 		out += '\t{\n'
-		out += '\t\tbin := "/tmp/_hot_' + '$' + '{C.getpid()}_${m}.bin"\n'
+		out += '\t\tbin := os.join_path(os.vtmp_dir(), "_hot_' + '$' + '{C.getpid()}_${m}.bin")\n'
 		out += '\t\tcmd := "' + '$' + '{live_command_prefix} -hot-fn ${m} -o ' + '$' + '{bin} ' + '$' + '{live_quoted_source}"\n'
 		out += '\t\tC.remove(bin.str)\n'
 		out += '\t\tbuild_rc := C.system(cmd.str)\n'
@@ -162,7 +164,7 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 		out += '\t\t\t\t\t\tlive_page_free(page)\n'
 		out += '\t\t\t\t\t\tlive_ok = false\n'
 		out += '\t\t\t\t\t} else {\n'
-		out += '\t\t\t\t\t\tlive_page_flush(page)\n'
+		out += '\t\t\t\t\t\tlive_page_flush(page, uint(sz))\n'
 		out += '\t\t\t\t\t\tlive_next_${storage} = page\n'
 		out += '\t\t\t\t\t}\n'
 		out += '\t\t\t\t}\n'
@@ -173,6 +175,7 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 		out += '\t}\n'
 	}
 	out += '\tif live_ok {\n'
+	out += '\t\tlive_failures = 0\n'
 	for m in live_mangled {
 		storage := m.bytes().hex()
 		// Publish only after every extraction succeeds; retained pages protect captured pointers.
@@ -188,7 +191,14 @@ fn v3_live_reload_source(a &flat.FlatAst, input_file string, vexe string, rebuil
 		storage := m.bytes().hex()
 		out += '\t\tif live_next_${storage} != unsafe { nil } { live_page_free(live_next_${storage}) }\n'
 	}
-	out += '\t\tC.puts(c"[live] reload incomplete; will retry")\n\t}\n\tC.fflush(unsafe { nil })\n}\n'
+	out += '\t\tlive_failures++\n'
+	out += '\t\tif live_failures >= 5 {\n'
+	out += '\t\t\tlive_disabled = true\n'
+	out += '\t\t\tC.puts(c"[live] too many consecutive failures; disabling hot reload")\n'
+	out += '\t\t} else {\n'
+	out += '\t\t\tC.puts(c"[live] reload incomplete; will retry")\n'
+	out += '\t\t}\n'
+	out += '\t}\n\tC.fflush(unsafe { nil })\n}\n'
 
 	return out
 }
