@@ -9,17 +9,24 @@ import v.ssa
 // module's complete value namespace.
 struct Mem2RegCtx {
 mut:
-	alloc_ids      []int       // compact slot -> alloca value id
-	alloc_slots    map[int]int // alloca value id -> compact slot
-	defs           [][]int     // compact slot -> blocks storing to it
-	phi_placements [][]int     // block_id -> compact slots needing a phi here
-	phi_vals       [][]int     // block_id -> parallel phi value ids
-	stacks         [][]int     // compact slot -> reaching-definition stack
+	alloc_ids      []int         // compact slot -> alloca value id
+	alloc_slots    map[int]int   // alloca value id -> compact slot
+	defs           [][]int       // compact slot -> blocks storing to it
+	phi_placements map[int][]int // block_id -> compact slots needing a phi here
+	phi_vals       map[int][]int // block_id -> parallel phi value ids
+	stacks         [][]int       // compact slot -> reaching-definition stack
 	phi_blocks     []int
 }
 
 // array2d_append supports array2d append handling for optimize.
 fn array2d_append(mut arr [][]int, idx int, val int) {
+	mut inner := arr[idx]
+	inner << val
+	arr[idx] = inner
+}
+
+// map2d_append appends a value to the slice stored under a sparse integer key.
+fn map2d_append(mut arr map[int][]int, idx int, val int) {
 	mut inner := arr[idx]
 	inner << val
 	arr[idx] = inner
@@ -61,8 +68,8 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 			alloc_ids:      promotable
 			alloc_slots:    map[int]int{}
 			defs:           [][]int{len: promotable.len}
-			phi_placements: [][]int{len: n_blocks}
-			phi_vals:       [][]int{len: n_blocks}
+			phi_placements: map[int][]int{}
+			phi_vals:       map[int][]int{}
 			stacks:         [][]int{len: promotable.len}
 			phi_blocks:     []int{}
 		}
@@ -105,7 +112,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 				for d in df[b] {
 					if has_phi_stamp[d] != stamp {
 						first_phi_in_block := ctx.phi_placements[d].len == 0
-						array2d_append(mut ctx.phi_placements, d, slot)
+						map2d_append(mut ctx.phi_placements, d, slot)
 						if first_phi_in_block {
 							ctx.phi_blocks << d
 						}
@@ -130,7 +137,7 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 				mut pv := m.values[phi_val]
 				pv.name = '${alloc_val.name}.phi_${blk_id}'
 				m.values[phi_val] = pv
-				array2d_append(mut ctx.phi_vals, blk_id, phi_val)
+				map2d_append(mut ctx.phi_vals, blk_id, phi_val)
 			}
 		}
 
@@ -143,6 +150,10 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 		}
 		df_blocks = []
 	}
+	// Rename batches thousands of operand rewrites and instruction removals.
+	// Updating unique use lists after every step is quadratic for common values;
+	// rebuild the complete use-def chains once after all functions are promoted.
+	rebuild_use_lists(mut m)
 }
 
 // is_promotable returns true if every use of the alloca is a direct load/store,
@@ -231,6 +242,36 @@ fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cf
 	}
 }
 
+// replace_uses_without_use_update rewrites operands while deferring use-list
+// maintenance to the single rebuild at the end of mem2reg.
+fn replace_uses_without_use_update(mut m ssa.Module, old_id ssa.ValueID, new_id ssa.ValueID) {
+	if old_id == new_id || old_id <= 0 || old_id >= m.values.len || new_id <= 0
+		|| new_id >= m.values.len {
+		return
+	}
+	users := m.values[old_id].uses.clone()
+	for user_id in users {
+		if user_id <= 0 || user_id >= m.values.len {
+			continue
+		}
+		val := m.values[user_id]
+		if val.kind != .instruction {
+			continue
+		}
+		mut instr := m.instrs[val.index]
+		mut changed := false
+		for i in 0 .. instr.operands.len {
+			if instr.is_value_operand(i) && instr.operands[i] == old_id {
+				instr.operands[i] = new_id
+				changed = true
+			}
+		}
+		if changed {
+			m.instrs[val.index] = instr
+		}
+	}
+}
+
 // RenameFrame represents rename frame data used by optimize.
 struct RenameFrame {
 mut:
@@ -265,12 +306,14 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 			work[fi] = frame2
 
 			// 1. Push phis defined in this block.
-			if blk_id < ctx.phi_placements.len && ctx.phi_placements[blk_id].len > 0 {
-				n_phi := ctx.phi_placements[blk_id].len
+			placements := ctx.phi_placements[blk_id] or { []int{} }
+			phi_vals := ctx.phi_vals[blk_id] or { []int{} }
+			if placements.len > 0 {
+				n_phi := placements.len
 				for pai in 0 .. n_phi {
-					slot := ctx.phi_placements[blk_id][pai]
-					if pai < ctx.phi_vals[blk_id].len {
-						phi_val_id := ctx.phi_vals[blk_id][pai]
+					slot := placements[pai]
+					if pai < phi_vals.len {
+						phi_val_id := phi_vals[pai]
 						array2d_append(mut ctx.stacks, slot, phi_val_id)
 						mut wf := work[fi]
 						wf.pushed_allocs << slot
@@ -312,7 +355,7 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 							} else {
 								repl = m.get_or_add_const(val.typ, 'undef')
 							}
-							m.replace_uses(val_id, repl)
+							replace_uses_without_use_update(mut m, val_id, repl)
 							remove = true
 						}
 					}
@@ -322,7 +365,6 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 					}
 				}
 				if remove {
-					m.detach_instruction_uses(val_id)
 					mut dead := m.values[val_id]
 					dead.kind = .unknown
 					dead.uses = []ssa.ValueID{}
@@ -339,12 +381,14 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 
 			// 3. Fill phi operands in CFG successors (raw block id as predecessor).
 			for succ_id in cfg.succs[blk_id] {
-				if succ_id < ctx.phi_placements.len && ctx.phi_placements[succ_id].len > 0 {
-					n_succ_phi := ctx.phi_placements[succ_id].len
+				succ_placements := ctx.phi_placements[succ_id] or { []int{} }
+				succ_phi_vals := ctx.phi_vals[succ_id] or { []int{} }
+				if succ_placements.len > 0 {
+					n_succ_phi := succ_placements.len
 					for spai in 0 .. n_succ_phi {
-						slot := ctx.phi_placements[succ_id][spai]
-						if spai < ctx.phi_vals[succ_id].len {
-							vid := ctx.phi_vals[succ_id][spai]
+						slot := succ_placements[spai]
+						if spai < succ_phi_vals.len {
+							vid := succ_phi_vals[spai]
 							phi_val := if ctx.stacks[slot].len > 0 {
 								ctx.stacks[slot].last()
 							} else {

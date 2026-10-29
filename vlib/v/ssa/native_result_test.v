@@ -59,3 +59,14 @@ fn main() {}
 	}
 	assert returns == 2
 }
+
+fn test_native_result_identity_does_not_match_an_ordinary_err_field() {
+	mut b := Builder{ m: Module.new() }
+	integer := b.m.type_store.get_int(64)
+	plain := b.m.type_store.register(Type{
+		kind:        .struct_t
+		fields:      [integer]
+		field_names: ['err']
+	})
+	assert !b.is_result_type_id(plain)
+}

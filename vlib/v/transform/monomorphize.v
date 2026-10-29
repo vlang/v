@@ -421,6 +421,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					if skip {
 						continue
 					}
+					if !isnil(t.generic_call_spec_settled) && t.generic_call_spec_settled.entries[i] {
+						continue
+					}
 					if t.call_is_recorded_struct_operator(node)
 						|| t.record_lowered_generic_struct_operator_call(node, lowered_operator_uses) {
 						continue
@@ -543,7 +546,8 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	t.monomorph_profile('mono driver rewrite: ${time.ticks() - debug_started} ms')
 	refresh_nodes := generic_refresh_nodes_for_calls(rewritten_call_sites,
 		generic_refresh_call_parents)
-	if t.refresh_decl_assign_types_after_generic_rewrite(refresh_nodes) {
+	refresh_changed, refresh_changed_decls := t.refresh_decl_assign_types_after_generic_rewrite(refresh_nodes)
+	if refresh_changed && refresh_changed_decls {
 		t.monomorph_profile('mono driver refresh: ${time.ticks() - debug_started} ms')
 		mut missed_call_sites := []int{cap: t.generic_call_spec_misses.len}
 		for id, missed in t.generic_call_spec_misses {
@@ -564,7 +568,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			extra_rewrites << generic_refresh_alias_calls
 			extra_refresh_nodes := generic_refresh_nodes_for_calls(extra_rewrites,
 				generic_refresh_call_parents)
-			t.refresh_decl_assign_types_after_generic_rewrite(extra_refresh_nodes)
+			_, _ = t.refresh_decl_assign_types_after_generic_rewrite(extra_refresh_nodes)
 		}
 	}
 	t.monomorph_profile('mono driver extra: ${time.ticks() - debug_started} ms')
@@ -1121,6 +1125,9 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 			continue
 		}
 		if t.node_file_or(i, '').len == 0 && i !in t.generic_call_spec_cache && !t.synthetic_generic_call_has_exact_callee(node) {
+			continue
+		}
+		if !isnil(t.generic_call_spec_settled) && t.generic_call_spec_settled.entries[i] {
 			continue
 		}
 		if t.call_is_recorded_struct_operator(node)
@@ -6211,8 +6218,9 @@ fn generic_refresh_nodes_for_calls(call_ids []int, parents map[int][]int) []int 
 	return nodes
 }
 
-fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []int) bool {
+fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []int) (bool, bool) {
 	mut changed := false
+	mut changed_decl_assigns := false
 	// Whether a callee returns a generic application depends on its name alone,
 	// and the same names are called over and over: remember, by the address of
 	// the name, those that do not.
@@ -6319,13 +6327,14 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []i
 
 		t.set_node_typ(i, decl_type_source_id_2)
 		changed = true
+		changed_decl_assigns = true
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident {
 			t.set_node_typ(int(lhs_id), decl_type_source_id_2)
 			t.set_var_type_with_raw(lhs.value_text(), concrete_rhs_type, decl_type_source_id_2)
 		}
 	}
-	return changed
+	return changed, changed_decl_assigns
 }
 
 // fn_ret_type_is_generic_app tells whether the checker's return type of the
@@ -8017,15 +8026,15 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 		}
 		return spec.decl_key, spec.args.ids.clone()
 	}
-	if t.generic_call_spec_misses[idx] && !t.in_monomorphize_scan {
-		return none
-	}
+	// Failed inference can become valid after expected types, nested arguments,
+	// or live specialization bindings change. Retry instead of memoizing misses.
 	decl_key, args_source_ids := t.generic_call_specialization(id, node, module_name, decls) or { return none }
 
 	t.generic_call_spec_cache[idx] = GenericCallSpec{
 		decl_key: decl_key
 		args:     flat.TypeTextList{ ids: args_source_ids.clone() }
 	}
+	t.generic_call_spec_misses.delete(idx)
 	return decl_key, args_source_ids.clone()
 }
 
@@ -12669,6 +12678,11 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		cloned_node.set_call_type_args(cloned_call_args)
 	}
 	clone_id := t.a.add_node(cloned_node)
+	if node.kind == .call && (retargeted_typ_source_id != 0 || static_assoc_typ_source_id != 0) {
+		// The clone-time retarget resolved this nested call with the live concrete
+		// scope. It no longer needs a later whole-program inference pass.
+		t.mark_generic_call_settled(int(clone_id))
+	}
 	if node.kind == .map_init && !isnil(t.tc) {
 		map_type := (if flat.source_type_shape(cloned_source_value).has(.map_type) {
 			cloned_source_value
@@ -14014,6 +14028,7 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl, concrete_call_args_source_ids), concrete_call_args_source_ids)
 		}
 	}
+	t.mark_generic_call_settled(int(clone_id))
 	if is_receiver {
 		t.rewrite_generic_method_call(clone_id, clone, decl, concrete_call_args_source_ids)
 	} else {

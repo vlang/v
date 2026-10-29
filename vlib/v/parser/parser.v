@@ -2735,6 +2735,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	mut sect_is_global := false
 	mut sect_is_module := false
 	mut pending_attrs := []string{}
+	mut pending_attr_kinds := []int{}
 	mut pending_attrs_start := -1
 	mut has_c_embed := false
 	mut embedding_allowed := true
@@ -2786,13 +2787,16 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		}
 		if inline_access {
 			pending_attrs << '__v3_inline_field_access'
+			pending_attr_kinds << 0
 			embedding_allowed = false
 			// Keep this declaration's access flags while consuming attributes after its modifier.
 			for p.tok == .attribute {
 				if pending_attrs_start < 0 {
 					pending_attrs_start = p.tok_pos
 				}
-				pending_attrs << p.parse_field_attrs()
+				parsed := p.parse_field_attrs_with_kinds()
+				pending_attrs << parsed.attrs
+				pending_attr_kinds << parsed.kinds
 			}
 		}
 		if p.tok == .key_global {
@@ -2834,7 +2838,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			if pending_attrs_start < 0 {
 				pending_attrs_start = p.tok_pos
 			}
-			pending_attrs << p.parse_field_attrs()
+			parsed := p.parse_field_attrs_with_kinds()
+			pending_attrs << parsed.attrs
+			pending_attr_kinds << parsed.kinds
 			continue
 		}
 		if p.tok == .key_volatile {
@@ -2860,6 +2866,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			p.has_peek = saved_has_peek
 			if !volatile_is_field_name {
 				pending_attrs << '__v3_volatile_field'
+				pending_attr_kinds << 0
 				p.next()
 			}
 		}
@@ -2888,6 +2895,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					pending_attrs_start, mut embedded_types, mut embedded_names)
 				p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, pending_attrs, true)
 				pending_attrs = []string{}
+				pending_attr_kinds = []int{}
 				pending_attrs_start = -1
 				ids << fid
 				if p.tok == .semicolon {
@@ -2921,6 +2929,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access,
 					embed_attrs, true)
 				pending_attrs = []string{}
+				pending_attr_kinds = []int{}
 				pending_attrs_start = -1
 				ids << fid
 				if p.tok == .semicolon {
@@ -2954,6 +2963,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						embedding_allowed, pending_attrs_start, mut embedded_types, mut embedded_names)
 					p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, pending_attrs, true)
 					pending_attrs = []string{}
+					pending_attr_kinds = []int{}
 					pending_attrs_start = -1
 					ids << fid
 					if p.tok == .semicolon {
@@ -2986,6 +2996,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					pending_attrs_start, mut embedded_types, mut embedded_names)
 				p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, pending_attrs, true)
 				pending_attrs = []string{}
+				pending_attr_kinds = []int{}
 				pending_attrs_start = -1
 				ids << fid
 				if p.tok == .semicolon {
@@ -3007,10 +3018,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				field_type_id := p.parse_struct_field_type()
 				mut group_attrs := pending_attrs.clone()
+				mut group_attr_kinds := pending_attr_kinds.clone()
 				pending_attrs = []string{}
+				pending_attr_kinds = []int{}
 				pending_attrs_start = -1
 				if p.tok == .attribute || p.tok == .lsbr {
-					group_attrs << p.parse_field_attrs()
+					parsed := p.parse_field_attrs_with_kinds()
+					group_attrs << parsed.attrs
+					group_attr_kinds << parsed.kinds
 				}
 				for index, n in names {
 					fid := p.add_node(flat.Node{
@@ -3019,7 +3034,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   field_type_id
 						pos:   p.span_to(name_starts[index])
 					})
-					p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, group_attrs, false)
+					p.apply_field_meta_with_kinds(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access,
+						sect_is_module && !inline_access, group_attrs, group_attr_kinds, false)
 					ids << fid
 				}
 				if p.tok == .semicolon {
@@ -3032,11 +3048,15 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			// check if the next token could be a type
 			field_type_id := p.parse_struct_field_type()
 			mut fattrs := pending_attrs.clone()
+			mut fattr_kinds := pending_attr_kinds.clone()
 			pending_attrs = []string{}
+			pending_attr_kinds = []int{}
 			pending_attrs_start = -1
 			mut has_attrs_before_default := false
 			if p.tok == .attribute || p.tok == .lsbr {
-				fattrs << p.parse_field_attrs()
+				parsed := p.parse_field_attrs_with_kinds()
+				fattrs << parsed.attrs
+				fattr_kinds << parsed.kinds
 				has_attrs_before_default = true
 			}
 			mut default_id := flat.empty_node
@@ -3056,7 +3076,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			}
 			// trailing field attributes
 			if p.tok == .attribute || p.tok == .lsbr {
-				fattrs << p.parse_field_attrs()
+				parsed := p.parse_field_attrs_with_kinds()
+				fattrs << parsed.attrs
+				fattr_kinds << parsed.kinds
 			}
 			fid := p.add_node(flat.Node{
 				kind:           .field_decl
@@ -3066,7 +3088,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				children_count: flat.child_count(children_count)
 				pos:            p.span_to(field_start)
 			})
-			p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, fattrs, false)
+			p.apply_field_meta_with_kinds(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access,
+				sect_is_module && !inline_access, fattrs, fattr_kinds, false)
 			ids << fid
 			if p.tok == .semicolon {
 				p.next()
@@ -3496,6 +3519,7 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 fn (mut p Parser) enum_decl_fields() []flat.NodeId {
 	mut ids := []flat.NodeId{}
 	mut pending_attrs := []string{}
+	mut pending_attr_kinds := []int{}
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -3511,13 +3535,17 @@ fn (mut p Parser) enum_decl_fields() []flat.NodeId {
 		}
 		// Leading attributes apply to the next enum field.
 		if p.tok == .attribute || p.tok == .lsbr {
-			pending_attrs << p.parse_field_attrs()
+			parsed := p.parse_field_attrs_with_kinds()
+			pending_attrs << parsed.attrs
+			pending_attr_kinds << parsed.kinds
 			continue
 		}
 		field_pos := p.current_pos()
 		field_name := p.expect_name_or_keyword()
 		mut attrs := pending_attrs.clone()
+		mut attr_kinds := pending_attr_kinds.clone()
 		pending_attrs = []string{}
+		pending_attr_kinds = []int{}
 		mut children_start := 0
 		mut children_count := flat.child_count(0)
 		if p.tok == .assign {
@@ -3529,7 +3557,9 @@ fn (mut p Parser) enum_decl_fields() []flat.NodeId {
 			children_count = 1
 		}
 		if p.tok == .attribute || p.tok == .lsbr {
-			attrs << p.parse_field_attrs()
+			parsed := p.parse_field_attrs_with_kinds()
+			attrs << parsed.attrs
+			attr_kinds << parsed.kinds
 		}
 		mut field := flat.Node{
 			kind:           .enum_field
@@ -3539,7 +3569,8 @@ fn (mut p Parser) enum_decl_fields() []flat.NodeId {
 			children_count: children_count
 		}
 		if attrs.len > 0 {
-			field.set_generic_params(attrs)
+			field.payload = flat.node_payload_with_attribute_kinds(attrs, p.field_attribute_kinds_id(attrs,
+				attr_kinds))
 		}
 		ids << p.add_node(field)
 		if p.tok == .semicolon {
@@ -4357,6 +4388,12 @@ fn (mut p Parser) parse_attribute_comptime_cond() string {
 // allocation and reads back as the default.
 // Embed state is passed separately because attribute names are an unrestricted user namespace.
 fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_global bool, is_module bool, attrs []string, is_embedded bool) {
+	p.apply_field_meta_with_kinds(id, is_mut, is_pub, is_global, is_module, attrs, []int{}, is_embedded)
+}
+
+// apply_field_meta_with_kinds also records the VAttribute kind of each attribute (`attr_kinds`
+// is aligned with `attrs`), so the typed `field.attributes` view can tell `@['x']` from `@[x]`.
+fn (mut p Parser) apply_field_meta_with_kinds(id flat.NodeId, is_mut bool, is_pub bool, is_global bool, is_module bool, attrs []string, attr_kinds []int, is_embedded bool) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
 	}
@@ -4392,7 +4429,26 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_
 	mut gp := []string{cap: stored_attrs.len + 1}
 	gp << flags
 	gp << stored_attrs
-	p.a.nodes[int(id)].payload = flat.node_payload(gp)
+	p.a.nodes[int(id)].payload = flat.node_payload_with_attribute_kinds(gp, p.field_attribute_kinds_id(attrs,
+		attr_kinds))
+}
+
+// field_attribute_kinds_id interns the kinds of the stored field attributes (internal field
+// markers dropped) as a comma-separated spelling, or returns 0 when they are not known.
+fn (p &Parser) field_attribute_kinds_id(attrs []string, attr_kinds []int) u32 {
+	if p.prefs.is_fmt || attrs.len == 0 || attr_kinds.len != attrs.len {
+		return 0
+	}
+	mut kinds := []string{cap: attrs.len}
+	for i, attr in attrs {
+		if attr !in ['__v3_volatile_field', '__v3_inline_field_access'] {
+			kinds << attr_kinds[i].str()
+		}
+	}
+	if kinds.len == 0 {
+		return 0
+	}
+	return flat.source_type_id(kinds.join(','))
 }
 
 fn (mut p Parser) validate_struct_embed(field_type_id u32, start int, end int, placement_ok bool, attr_start int, mut embedded_types map[u32]bool, mut embedded_names map[string]u32) {
@@ -4516,6 +4572,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 				continue
 			}
 			piece_kind := parsed_attribute_kind(p.tok)
+			is_raw_string_piece := piece_kind == 1 && (p.lit.starts_with("r'") || p.lit.starts_with('r"'))
 			// The formatter re-emits field attributes from these strings, so it must keep
 			// the quotes of a whole-string attribute (`@['C\x5cnD']`) - unquoted, the
 			// escape is no longer valid syntax. Reflection keeps the legacy unquoted form.
@@ -4603,6 +4660,12 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 				continue
 			}
 			mut kind := piece_kind
+			if piece_kind == 1 && p.tok != .colon {
+				kind |= flat.attribute_kind_no_arg
+				if is_raw_string_piece {
+					kind |= flat.attribute_kind_raw_string
+				}
+			}
 			if p.tok == .colon {
 				p.next()
 				if p.tok in [.rsbr, .colon, .lsbr, .rcbr] {
@@ -18431,11 +18494,15 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) u32 {
 			}
 			field_type := p.parse_type_name()
 			mut attrs := []string{}
+			mut attr_kinds := []int{}
 			if p.tok == .attribute || p.tok == .lsbr {
-				attrs << p.parse_field_attrs()
+				parsed := p.parse_field_attrs_with_kinds()
+				attrs << parsed.attrs
+				attr_kinds << parsed.kinds
 			}
 			if field_is_volatile {
 				attrs << '__v3_volatile_field'
+				attr_kinds << 0
 			}
 			for index, name in names {
 				fid := p.add_node(flat.Node{
@@ -18444,7 +18511,8 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) u32 {
 					typ:   field_type
 					pos:   p.span_to(name_starts[index])
 				})
-				p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global, false, attrs, false)
+				p.apply_field_meta_with_kinds(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global,
+					false, attrs, attr_kinds, false)
 				ids << fid
 				field_names << name
 				field_types << field_type
@@ -18475,11 +18543,15 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) u32 {
 			children_count: flat.child_count(children_count)
 		})
 		if p.tok == .attribute || p.tok == .lsbr {
-			mut attrs := p.parse_field_attrs()
+			parsed := p.parse_field_attrs_with_kinds()
+			mut attrs := parsed.attrs.clone()
+			mut attr_kinds := parsed.kinds.clone()
 			if field_is_volatile {
 				attrs << '__v3_volatile_field'
+				attr_kinds << 0
 			}
-			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global, false, attrs, false)
+			p.apply_field_meta_with_kinds(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global,
+				false, attrs, attr_kinds, false)
 		} else {
 			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global, false, if field_is_volatile {
 				[

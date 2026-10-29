@@ -77,6 +77,7 @@ fn test_v3_gc_is_disabled_for_cross_compilation() {
 		assert v3_gc_is_disabled(false, false, 'cross', host.arch, 'c', mode)
 		// The native backend never has a collector, on any host and target.
 		assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64', mode)
+		assert v3_gc_is_disabled(false, false, host.os, host.arch, 'x64', mode)
 	}
 }
 
@@ -91,6 +92,7 @@ fn test_vgc_is_kept_for_cross_compilation() {
 	assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c', 'vgc')
 	assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c', 'vgc')
 	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64', 'vgc')
+	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'x64', 'vgc')
 }
 
 fn test_v3_gc_mode_keeps_dynamic_boehm_define() {

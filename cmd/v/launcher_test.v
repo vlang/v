@@ -30,6 +30,7 @@ fn test_native_backend_is_refused_except_for_vfmt() {
 	// Unrelated backends are untouched.
 	assert !native_backend_rejected('run', ['-b', 'c', 'main.v'])
 	assert !native_backend_rejected('run', ['-b', 'fastc', 'main.v'])
+	assert !native_backend_rejected('run', ['-b', 'x64', 'main.v'])
 }
 
 fn test_v1_fallback_drops_private_restart_options() {

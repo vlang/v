@@ -113,3 +113,35 @@ fn test_sum_declaration_variants_use_source_only_identifier_operands() {
 		qualified_id,
 	]
 }
+
+fn test_native_type_layout_uses_interned_source_operands() {
+	mut a := flat.FlatAst.new()
+	mut m := Module.new()
+	i8_type := m.type_store.get_int(8)
+	i64_type := m.type_store.get_int(64)
+	record_type := m.type_store.register(Type{
+		kind:        .struct_t
+		fields:      [i8_type, i64_type]
+		field_names: ['tag', 'payload']
+	})
+	mut b := Builder{
+		a:            &a
+		m:            m
+		i8_type:      i8_type
+		i64_type:     i64_type
+		struct_types: {
+			'Record': record_type
+		}
+	}
+	size := a.add_node(flat.Node{ kind: .sizeof_expr, source_value: flat.source_type_id('Record') })
+	assert a.node(size).value == ''
+	assert b.global_constant_int(size, 0) == 16
+	offset := a.add_node(flat.Node{
+		kind:         .offsetof_expr
+		source_value: flat.source_type_id('Record')
+		typ:          flat.source_type_id('payload')
+	})
+	assert a.node(offset).value == ''
+	result := b.build_expr(offset)
+	assert m.values[result].name == '8'
+}

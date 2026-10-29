@@ -2172,6 +2172,44 @@ fn test_separate_library_operand_flag_is_skipped() {
 	}
 	assert mixed.contains('#define FEATURE 1'), mixed
 	assert !mixed.contains('dbghelp'), mixed
+
+	// `generate` returns only the C text, so the above cannot see whether the
+	// operand actually reaches the TinyCC link line. Generate from a file and
+	// inspect the reported c_flags; vlib may contribute its own flags on some
+	// targets, so look for the flag/operand pair rather than an exact list. The
+	// define-mixing path skips `-I`/`-L` separate operands the same way, and
+	// those operands are resolved against the source directory.
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_separate_lib_operand_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	mut file_prefs := pref.new_preferences()
+	file_prefs.vroot = @VEXEROOT
+	source_file := os.join_path(root, 'main.v')
+	os.write_file(source_file, '#flag -l dbghelp\nfn main() {}\n') or { panic(err) }
+	forwarded := generate_files_with_source_paths([source_file], file_prefs) or { panic(err) }
+	assert flags_have_operand_pair(forwarded.c_flags, '-l', 'dbghelp'), forwarded.c_flags.str()
+	os.write_file(source_file, '#flag -DFEATURE=1 -I include -L lib -l dbghelp\nfn main() {}\n') or {
+		panic(err)
+	}
+	mixed_files := generate_files_with_source_paths([source_file], file_prefs) or { panic(err) }
+	source_dir := os.dir(os.real_path(source_file))
+	assert '-DFEATURE=1' in mixed_files.c_flags, mixed_files.c_flags.str()
+	assert flags_have_operand_pair(mixed_files.c_flags, '-I', os.join_path(source_dir, 'include')), mixed_files.c_flags.str()
+	assert flags_have_operand_pair(mixed_files.c_flags, '-L', os.join_path(source_dir, 'lib')), mixed_files.c_flags.str()
+	assert flags_have_operand_pair(mixed_files.c_flags, '-l', 'dbghelp'), mixed_files.c_flags.str()
+}
+
+// flags_have_operand_pair reports whether `flag` appears immediately followed by `operand`.
+fn flags_have_operand_pair(flags []string, flag string, operand string) bool {
+	for i := 0; i + 1 < flags.len; i++ {
+		if flags[i] == flag && flags[i + 1] == operand {
+			return true
+		}
+	}
+	return false
 }
 
 fn test_colliding_import_aliases_are_rejected() {

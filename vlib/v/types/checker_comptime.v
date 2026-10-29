@@ -675,6 +675,11 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 		}
 	}
 	if loop_kind == 'attributes' {
+		// A schema can use the metadata member names too. After narrowing its
+		// declared field type takes precedence over the VAttribute view.
+		if typ := tc.comptime_attribute_union_member_type(member) {
+			return typ
+		}
 		return match member {
 			'name', 'arg' {
 				*tc.parse_type(flat.source_type_string)
@@ -686,7 +691,11 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 				*tc.parse_type(comptime_source_type_attribute_kind)
 			}
 			else {
-				none
+				if typ := tc.comptime_attribute_union_member_type(member) {
+					typ
+				} else {
+					none
+				}
 			}
 		}
 	}
@@ -711,6 +720,9 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 			'attrs' {
 				*tc.parse_type(comptime_source_type_strings)
 			}
+			'attributes' {
+				*tc.parse_type(comptime_source_type_attributes)
+			}
 			else {
 				none
 			}
@@ -725,6 +737,9 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 		}
 		'attrs' {
 			*tc.parse_type(comptime_source_type_strings)
+		}
+		'attributes' {
+			*tc.parse_type(comptime_source_type_attributes)
 		}
 		'indirections' {
 			*tc.parse_type(flat.source_type_u8)
