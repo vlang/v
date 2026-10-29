@@ -114,6 +114,9 @@ fn retry_state(value &RetryState) &RetryState {
 }
 
 fn main() {
+	$if windows {
+		disable_windows_loader_dialogs()
+	}
 	$if prealloc {
 		// The compiler's arenas live until the process ends; the OS reclaims them
 		// with less work than unmapping each block in the exit handler.
