@@ -37,6 +37,7 @@ Project headers included through `-I`, with either quotes or angle brackets, use
 interface. Plain C inputs keep their C language context. Named enum constants and explicitly
 aligned V locals are supported in the TCC program unit. Embedded resources remain dependencies
 of their owning V modules, so payload edits refresh cached metadata such as `$embed_file(...).len`.
+Enum members omit diagnostic annotations such as deprecation attributes in the TCC interface.
 Mixed Objective-C and Objective-C++ bridge contexts retain the uncached fallback;
 `-no-retry-compilation` reports an unsupported bridge instead of changing C compilers.
 The V program keeps TCC's compile-time conditions. Native calls, including functions from static

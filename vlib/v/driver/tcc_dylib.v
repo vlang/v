@@ -695,6 +695,74 @@ fn v3_tcc_dylib_enum_names(body string) []string {
 	return names
 }
 
+// TCC rejects attributes on enumerators, including libcurl's expanded
+// deprecation annotations. Drop only diagnostic metadata; layout attributes
+// on the enum itself and any unrecognized attributes remain intact.
+fn v3_tcc_dylib_enum_body(body string) string {
+	mut out := strings.new_builder(body.len)
+	mut i := 0
+	for i < body.len {
+		if body[i] == `/` {
+			after := v3_c_skip_comment(body, i)
+			if after > i {
+				out.write_string(body[i..after])
+				i = after
+				continue
+			}
+		}
+		if body[i] in [`"`, `'`] {
+			after := v3_c_skip_literal(body, i)
+			out.write_string(body[i..after])
+			i = after
+			continue
+		}
+		end := v3_c_identifier_end(body, i)
+		if end == i {
+			out.write_u8(body[i])
+			i++
+			continue
+		}
+		if body[i..end] in ['__attribute__', '__attribute'] {
+			mut open := end
+			for open < body.len && body[open].is_space() { open++ }
+			if open < body.len && body[open] == `(` {
+				mut close := open + 1
+				mut depth := 1
+				for close < body.len && depth > 0 {
+					if body[close] in [`"`, `'`] {
+						close = v3_c_skip_literal(body, close)
+						continue
+					}
+					if body[close] == `/` {
+						after := v3_c_skip_comment(body, close)
+						if after > close {
+							close = after
+							continue
+						}
+					}
+					if body[close] == `(` { depth++ }
+					if body[close] == `)` { depth-- }
+					close++
+				}
+				if depth == 0 {
+					content := body[open + 1..close - 1].trim_space()
+					if content.starts_with('(') && content.ends_with(')') {
+						names := v3_tcc_dylib_enum_names(content[1..content.len - 1])
+						if names.len > 0 && names.all(it in ['deprecated', '__deprecated__',
+							'unavailable', '__unavailable__', 'availability', '__availability__']) {
+							i = close
+							continue
+						}
+					}
+				}
+			}
+		}
+		out.write_string(body[i..end])
+		i = end
+	}
+	return out.str()
+}
+
 fn v3_tcc_dylib_exposed_types(source string, mut wanted map[string]bool) string {
 	mut out := strings.new_builder(source.len)
 	mut start := 0
@@ -769,7 +837,13 @@ fn v3_tcc_dylib_exposed_types(source string, mut wanted map[string]bool) string 
 				}
 			}
 			if names.len == 0 || names.keys().any(wanted[it]) {
-				out.write_string(declaration)
+				if 'enum' in tokens && first_brace >= start && last_brace > first_brace {
+					out.write_string(source[start..first_brace + 1])
+					out.write_string(v3_tcc_dylib_enum_body(source[first_brace + 1..last_brace]))
+					out.write_string(source[last_brace..i + 1])
+				} else {
+					out.write_string(declaration)
+				}
 				for name in v3_c_identifiers(declaration) { wanted[name] = true }
 			}
 			start = i + 1

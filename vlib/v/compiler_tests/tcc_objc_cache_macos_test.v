@@ -76,7 +76,7 @@ fn test_macos_tcc_cached_native_interfaces_preserve_native_compiler_abi() ! {
 		},
 		NativeInterfaceCase{
 			name:         'named_enum'
-			native:       'enum NativeAnswer { NATIVE_ANSWER = 41 + NATIVE_INCREMENT };\nstatic int bridge_value(void) { return NATIVE_ANSWER; }\n'
+			native:       'enum NativeAnswer { NATIVE_OLD __attribute__((deprecated("use NATIVE_ANSWER"))) = 1, NATIVE_ANSWER = 41 + NATIVE_INCREMENT };\nstatic int bridge_value(void) { return NATIVE_ANSWER; }\n'
 			declarations: 'fn C.bridge_value() int\n'
 			expression:   'int(C.NATIVE_ANSWER) + C.bridge_value() - EXPECTED_ANSWER'
 		},

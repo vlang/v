@@ -214,6 +214,19 @@ fn test_native_bridge_keeps_named_enums_referenced_by_enumerators() {
 	]
 }
 
+fn test_native_bridge_enum_projection_removes_diagnostic_attributes_and_keeps_layout() {
+	source := 'enum __attribute__((packed)) Native { OLD __attribute__((deprecated("use (ANSWER)"))) = 1, ANSWER __attribute__((availability(macos,introduced=11.0))) = 42 };\n'
+	mut wanted := {
+		'ANSWER': true
+	}
+	text := v3_tcc_dylib_exposed_types(source, mut wanted)
+	assert text.contains('enum __attribute__((packed)) Native')
+	assert text.contains('OLD  = 1, ANSWER  = 42')
+	assert !text.contains('deprecated')
+	assert !text.contains('availability')
+	assert v3_tcc_dylib_enum_body('X __attribute__((aligned(8))) = 1') == 'X __attribute__((aligned(8))) = 1'
+}
+
 fn test_native_bridge_framework_headers_use_ordinary_include_paths() ! {
 	root := os.join_path(os.vtmp_dir(), 'native framework headers ${os.getpid()}')
 	os.mkdir_all(root)!
