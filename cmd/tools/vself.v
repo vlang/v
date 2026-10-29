@@ -882,15 +882,24 @@ fn backup_old_version_and_rename_newer(short_v_name string) !bool {
 	if os.exists(bak_file) {
 		os.rm(bak_file) or { errors << 'failed removing ${bak_file}: ${err.msg()}' }
 	}
+	if os.is_file('${bak_file}.manifest') {
+		os.rm('${bak_file}.manifest')!
+	}
 
 	list_folder(short_v_name, '', 'moving ${v_file} to ${bak_file} ...')
 	os.mv(v_file, bak_file) or { errors << err.msg() }
+	if os.is_file('${v_file}.manifest') {
+		os.mv('${v_file}.manifest', '${bak_file}.manifest')!
+	}
 
 	list_folder(short_v_name, '', 'removing ${v_file} ...')
 	os.rm(v_file) or {}
 
 	list_folder(short_v_name, '', 'moving ${v2_file} to ${v_file} ...')
 	os.mv_by_cp(v2_file, v_file) or { panic(err.msg()) }
+	if os.is_file('${v2_file}.manifest') {
+		os.mv('${v2_file}.manifest', '${v_file}.manifest')!
+	}
 
 	list_folder(short_v_name, 'after:', '')
 

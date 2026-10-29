@@ -43,8 +43,9 @@ fn test_child_launches_survive_a_tmp_past_max_path() ! {
 	// `-w`: the helper calls the deprecated os.execute and os.system on purpose.
 	build := os.exec([@VEXE, '-w', '-o', exe, src])
 	assert build.exit_code == 0, build.output
-	if !os.read_file(exe)!.contains('longPathAware') {
-		eprintln('skipped: the helper is not longPathAware (no windres?), so it cannot loop')
+	manifest := os.read_file('${exe}.manifest') or { '' }
+	if !os.read_file(exe)!.contains('longPathAware') && !manifest.contains('longPathAware') {
+		eprintln('skipped: the helper is not longPathAware, so it cannot loop')
 		return
 	}
 	mut p := os.new_process(exe)
