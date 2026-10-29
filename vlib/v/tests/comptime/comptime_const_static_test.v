@@ -118,6 +118,12 @@ fn const_size_compare(a int, b uint) bool { return a < b }
 @[comptime]
 fn const_rune_half(a rune, b rune) rune { return (a + b) / 2 }
 
+@[comptime]
+fn const_literal_compare(a u32) bool { return a < 0xffffffffffffffff }
+
+@[comptime]
+fn const_complement_literal(a int) bool { return a < ~0xffffffff }
+
 type ConstInteger = int
 
 @[comptime]
@@ -132,6 +138,8 @@ const computed_compare = const_compare8(250, 10)
 const computed_mixed_compare = const_mixed_compare(0xffffffffffffffff, -1)
 const computed_size_compare = const_size_compare(-1, 1)
 const computed_rune_half = const_rune_half(rune(0xffffffff), rune(1))
+const computed_literal_compare = const_literal_compare(0xffffffff)
+const computed_complement_literal = const_complement_literal(-1)
 const computed_alias = const_alias(ConstInteger(3))
 
 @[comptime]
@@ -176,6 +184,10 @@ fn test_comptime_constants_match_runtime() {
 	assert computed_size_compare == const_size_compare(-1, 1)
 	assert computed_rune_half == 0
 	assert computed_rune_half == const_rune_half(rune(0xffffffff), rune(1))
+	assert computed_literal_compare
+	assert computed_literal_compare == const_literal_compare(0xffffffff)
+	assert computed_complement_literal
+	assert computed_complement_literal == const_complement_literal(-1)
 	assert computed_alias == const_alias(ConstInteger(3))
 	assert computed_alias == ConstInteger(-5)
 }

@@ -167,8 +167,46 @@ fn test_comptime_const_integer_alias_operations() {
 	assert tc.comptime_const_values['n']!.integer == -5
 }
 
+fn test_comptime_const_narrow_multiplication_keeps_c_promotion_width() {
+	tc := comptime_const_checker('@[comptime]\nfn compute(a u16, b u16) int { return int(a * b) }\nconst n = compute(65535, 65535)\nfn main() { _ = n }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['n']!.integer == -131071
+}
+
 fn test_comptime_const_narrow_alias_comparison() {
 	tc := comptime_const_checker('type Byte = u8\n@[comptime]\nfn compute(a Byte, b Byte) bool { return a + b == Byte(4) }\nconst n = compute(Byte(250), Byte(10))\nfn main() { _ = n }')
 	assert tc.errors.len == 0, tc.errors.str()
 	assert tc.comptime_const_values['n']!.integer == 1
+}
+
+fn test_comptime_const_comparison_keeps_literal_width() {
+	for literal in ['0x7fffffffffffffff', '0xffffffffffffffff', '18446744073709551615'] {
+		tc := comptime_const_checker('@[comptime]\nfn compute(a u32) bool { return a < ${literal} }\nconst n = compute(4294967295)\nfn main() { _ = n }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values['n']!.integer == 1
+	}
+}
+
+fn test_comptime_const_unary_literal_operations_use_c_integer_widths() {
+	for expression, expected in {
+		'~0xffffffff':                i64(0)
+		'-~0xfffffffe':               i64(4294967295)
+		'~(0xffffffff & 0xffffffff)': i64(0)
+		'~(0xffffffff | 0)':          i64(0)
+		'~(0xffffffff ^ 0)':          i64(0)
+		'0xffffffff ^ -1':            i64(0)
+		'0xffffffff | -1':            i64(4294967295)
+	} {
+		tc := comptime_const_checker('@[comptime]\nfn compute() int { return ${expression} }\nconst n = compute()\nfn main() { _ = n }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values['n']!.integer == expected
+	}
+	for expression, input in {
+		'a < -0x8000000000000000': 0
+		'a < ~0xffffffff':         -1
+	} {
+		tc := comptime_const_checker('@[comptime]\nfn compute(a int) bool { return ${expression} }\nconst n = compute(${input})\nfn main() { _ = n }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values['n']!.integer == 1
+	}
 }
