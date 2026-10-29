@@ -61,9 +61,12 @@ fn test_append_struct_pointer_keeps_reference_semantics() {
 }
 
 fn test_append_struct_with_explicit_map_clone_keeps_snapshot() {
-	mut value := AppendMapValue{ n: 1, m: {
-		'original': i16(1)
-	} }
+	mut value := AppendMapValue{
+		n: 1
+		m: {
+			'original': i16(1)
+		}
+	}
 	mut before := []AppendMapValue{}
 	before << AppendMapValue{ n: value.n, m: value.m.clone() }
 	value.n++
