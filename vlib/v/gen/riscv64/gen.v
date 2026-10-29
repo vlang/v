@@ -1056,7 +1056,17 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.store_val(rv_reg_t0, val_id)
 					}
 					.frem {
-						g.emit_ebreak_todo('riscv64: frem is deferred (use libm)')
+						g.load_val(instr.operands[0], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(10, rv_reg_t0))
+						g.load_val(instr.operands[1], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(11, rv_reg_t0))
+						if is_f32 {
+							g.call_extern('fmodf')
+						} else {
+							g.call_extern('fmod')
+						}
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 10))
+						g.store_val(rv_reg_t0, val_id)
 					}
 					else {
 						g.emit_ebreak_todo('riscv64: float op ${instr.op} is not implemented yet')
@@ -1158,7 +1168,17 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.store_val(rv_reg_t0, val_id)
 					}
 					.frem {
-						g.emit_ebreak_todo('riscv64: frem is deferred (use libm)')
+						g.load_val(instr.operands[0], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(10, rv_reg_t0))
+						g.load_val(instr.operands[1], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(11, rv_reg_t0))
+						if is_f32 {
+							g.call_extern('fmodf')
+						} else {
+							g.call_extern('fmod')
+						}
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 10))
+						g.store_val(rv_reg_t0, val_id)
 					}
 					else {
 						g.emit_ebreak_todo('riscv64: float op ${instr.op} is not implemented yet')
