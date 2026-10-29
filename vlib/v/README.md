@@ -55,6 +55,7 @@ Native `run` forwards program arguments and exit status. Native test builds crea
 entry point for selected tests and run suite hooks. SSA callers can select these with
 `ssa.BuildOptions.test_files` and `test_run_only`.
 Native tests retain runtime formatting helpers only when reachable tests or hooks need them.
+Generated enum stringification resolves directly to the enum's formatter.
 
 V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
 all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,

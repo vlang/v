@@ -1453,6 +1453,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 							eprintln('main: resolved hit: "${callee}"')
 						}
 					}
+				} else if reachable_runtime_helpers
+					&& enqueue_generated_enum_str_call(callee, fn_info.module, tc, mut used, mut queue) {
+					found_direct = true
 				} else if markused_is_interface_dispatch_call(callee, fn_info.module, tc) {
 					found_direct = true
 					enqueue(callee, mut used, mut queue)
@@ -4728,6 +4731,22 @@ fn enqueue_stringified_primitive_helpers(type_name_id u32, mut used map[string]b
 		enqueue('strconv__f64_to_str_l', mut used, mut queue)
 	} else {
 	}
+}
+
+// Generated enum str calls have no source declaration. Resolve them before the
+// same-name fallback can retain every unrelated str method.
+fn enqueue_generated_enum_str_call(callee string, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) bool {
+	if !callee.ends_with('.str') {
+		return false
+	}
+	receiver := flat.source_type_id(callee[..callee.len - 4])
+	for candidate in stringification_type_candidates(receiver, cur_module) {
+		if candidate in tc.enum_names {
+			enqueue_enum_str_method(candidate, cur_module, tc, mut used, mut queue)
+			return true
+		}
+	}
+	return false
 }
 
 // enqueue_enum_str_method supports enqueue enum str method handling for markused.
