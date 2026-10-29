@@ -2,7 +2,7 @@
 
 In the default compiler, appending a value copies the element in the same way as ordinary
 assignment or an array literal. It does not implicitly call `clone()` or recursively copy
-nested arrays. Single-element append and bulk append therefore preserve the same sharing:
+nested arrays or maps. Single-element append and bulk append therefore preserve the same sharing:
 
 ```v
 struct Node {
@@ -33,7 +33,10 @@ field or changing its length does not update the other copies' headers. Growing 
 allocate new backing storage. Fixed arrays store their elements inline and copy those elements
 by value; nested dynamic arrays inside them still share backing storage.
 
+Map fields also retain their ordinary shared storage when the containing struct is appended.
+
 Request independent storage explicitly, for example `rows << row.clone()` for an array element.
+For a map field, pass `value.m.clone()` in the appended struct initializer.
 A user-defined struct `clone()` must copy the nested fields that need independent storage.
 Appending the struct alone does not invoke that method.
 
