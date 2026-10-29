@@ -11,7 +11,7 @@ mut:
 }
 
 fn main() {
-	mut node := Node{kids: [1]}
+	mut node := Node{ kids: [1] }
 	copied := node
 	literal := [node]
 	mut single := []Node{}
