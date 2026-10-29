@@ -133,7 +133,7 @@ fn main() {
 	}, true)
 	os.setenv('VEXE', vexe, true)
 	os.setenv('VCHILD', 'true', true)
-	mut args := merged_v_args()
+	mut args := remove_obsolete_skip_unused_flag(merged_v_args())
 	if args.len == 0 {
 		run_external_tool(args, -1, 'repl')
 		return
@@ -250,6 +250,10 @@ fn race_build_requested(args []string) bool {
 // driver runs the input of `run` and `crun`, a `.vsh` script, and the input that follows
 // `-raw-vsh-tmp-prefix`; `-` is the input that reads the program from stdin.
 fn compiler_option_requested(args []string, option string) bool {
+	return compiler_option_index(args, option) >= 0
+}
+
+fn compiler_option_index(args []string, option string) int {
 	mut option_value_follows := false
 	mut runs_input := false
 	mut input_seen := false
@@ -259,10 +263,10 @@ fn compiler_option_requested(args []string, option string) bool {
 			continue
 		}
 		if is_inline_source_option(arg) {
-			return false
+			return -1
 		}
 		if arg == option {
-			return true
+			return i
 		}
 		if arg in ['-prof', '-profile'] {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
@@ -278,19 +282,43 @@ fn compiler_option_requested(args []string, option string) bool {
 		if arg.starts_with('-') && arg != '-' {
 			continue
 		}
-		if !input_seen && arg in ['run', 'crun'] {
+		if !input_seen && !runs_input && arg in ['run', 'crun'] {
 			runs_input = true
 			continue
 		}
-		if !input_seen && arg in ['build', 'test'] {
+		if !input_seen && !runs_input && arg in ['build', 'test'] {
 			continue
 		}
 		if runs_input || arg.ends_with('.vsh') {
-			return false
+			return -1
 		}
 		input_seen = true
 	}
-	return false
+	return -1
+}
+
+// remove_obsolete_skip_unused_flag keeps the old spelling as a notice-only no-op.
+// Option values, tool arguments and arguments of the executed program are preserved.
+fn remove_obsolete_skip_unused_flag(args []string) []string {
+	mut result := args.clone()
+	mut noticed := false
+	for {
+		command_index, command := find_command(result)
+		options := if command in external_commands || command == 'help' {
+			result[..command_index]
+		} else {
+			result
+		}
+		index := compiler_option_index(options, '-skip-unused')
+		if index < 0 {
+			return result
+		}
+		if !noticed {
+			eprintln('notice: `-skip-unused` is no longer needed; unused code is skipped by default. Use `-no-skip-unused` to retain it.')
+			noticed = true
+		}
+		result.delete(index)
+	}
 }
 
 fn ownership_checker_is_compiled() bool {

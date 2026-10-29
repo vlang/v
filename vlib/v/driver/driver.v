@@ -12116,6 +12116,9 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-preludes' {
 			no_preludes = true
 			i++
+		} else if args[i] == '-skip-unused' {
+			eprintln('notice: `-skip-unused` is no longer needed; unused code is skipped by default. Use `-no-skip-unused` to retain it.')
+			i++
 		} else if args[i] == '-no-skip-unused' {
 			no_skip_unused = true
 			no_cache = true

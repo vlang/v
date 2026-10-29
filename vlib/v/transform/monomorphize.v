@@ -256,10 +256,12 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		t.ensure_node_module_map()
 		t.monomorph_profile('mono round ${debug_round} modules: ${time.ticks() - debug_round_started} ms')
 		node_count := t.a.nodes.len
-		// Unlike the reachability scan below, this covers unused source bodies and
-		// field defaults too: Cgen still emits those nodes, so each concrete generic
-		// function value must name a valid specialization.
+		// Field defaults and retained source bodies can contain concrete generic
+		// function values. Pruned bodies must not request their specializations.
 		for i in generic_fn_value_scan_start .. node_count {
+			if i < ignored_nodes.len && ignored_nodes[i] {
+				continue
+			}
 			if i < t.ignored_comptime_for_nodes.len && t.ignored_comptime_for_nodes[i] {
 				continue
 			}
@@ -363,11 +365,11 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			if t.a.nodes[i].kind !in [.index, .call, .index_assign, .selector_assign] {
 				continue
 			}
+			if i < ignored_nodes.len && ignored_nodes[i] {
+				continue
+			}
 			// Helpers can rewrite or append nodes, so candidate headers stay owned.
 			node := t.a.nodes[i]
-			// Cgen still emits source bodies and field defaults that markused can prove
-			// unreachable. Their concrete generic function values must nevertheless name
-			// valid specializations so the generated translation unit compiles.
 			if node.kind == .index {
 				if t.node_file_or(i, '').len == 0 {
 					continue
@@ -401,9 +403,6 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					changed = changed || asked
 					continue
 				}
-			}
-			if i < ignored_nodes.len && ignored_nodes[i] {
-				continue
 			}
 			match node.kind {
 				.call {

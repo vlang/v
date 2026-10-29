@@ -1128,6 +1128,15 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 		'c', '-o', no_skip_c_path, source], environment)
 	assert no_skip_c.exit_code == 0, no_skip_c.output
 	assert os.read_file(no_skip_c_path)!.contains('unused_value(')
+	for flags in [['-skip-unused'], ['-skip-unused', '-no-skip-unused'],
+		['-no-skip-unused', '-skip-unused']] {
+		mut args := flags.clone()
+		args << ['-w', '-o', no_skip_c_path, source]
+		obsolete := run_driver_with_environment(v3_bin, args, environment)
+		assert obsolete.exit_code == 0, obsolete.output
+		assert obsolete.output.contains('notice: `-skip-unused` is no longer needed'), obsolete.output
+		assert os.read_file(no_skip_c_path)!.contains('unused_value(') == ('-no-skip-unused' in flags)
+	}
 }
 
 fn test_driver_user_native_header_bypasses_cgen_cache() {
