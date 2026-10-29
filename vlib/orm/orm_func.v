@@ -398,7 +398,11 @@ fn (qb_ &QueryBuilder[T]) v_sql_update_many_and_zero(values []T, key_field strin
 }
 
 fn (qb &QueryBuilder[T]) v_sql_field_name(field string) string {
-	for meta_field in qb.meta {
+	return meta_sql_field_name(qb.meta, field)
+}
+
+fn meta_sql_field_name(meta []TableField, field string) string {
+	for meta_field in meta {
 		if meta_field.name == field || sql_field_name(meta_field) == field {
 			return sql_field_name(meta_field)
 		}
@@ -591,14 +595,21 @@ fn (mut ss MyTextScanner) next_tok() string {
 
 // parse_conditions update `qb` by parsing the `conds` string
 fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
-	// conditions: '(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))'
 	mut qb := unsafe { qb_ }
+	parse_query_conditions(conds, params, qb.meta, qb.valid_sql_field_names, qb.config.table,
+		@FN, mut qb.where)!
+}
+
+// The condition grammar depends on runtime metadata, not the model type. Keep one
+// parser body shared by all QueryBuilder specializations (issue #31282).
+fn parse_query_conditions(conds string, params []Primitive, meta []TableField, valid_sql_field_names []string, table Table, caller string, mut where QueryData) ! {
+	// conditions: '(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))'
 	if conds.len == 0 {
-		return error('${@FN}(): empty condition')
+		return error('${caller}(): empty condition')
 	}
 	required_params := conds.count('?')
 	if required_params != params.len {
-		parse_error('${@FN}(): condition requires `${required_params}` params but got `${params.len}`',
+		parse_error('${caller}(): condition requires `${required_params}` params but got `${params.len}`',
 			0, conds)!
 	}
 
@@ -620,20 +631,20 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 		match state {
 			.field {
 				// only support valid field names
-				mapped_field := qb.v_sql_field_name(tok)
-				if mapped_field in qb.valid_sql_field_names {
+				mapped_field := meta_sql_field_name(meta, tok)
+				if mapped_field in valid_sql_field_names {
 					current_field = mapped_field
 					state = .op
 				} else if tok == '(' {
-					paren_stack << qb.where.fields.len
+					paren_stack << where.fields.len
 				} else if tok == ')' {
 					if paren_stack.len == 0 {
-						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)!
+						parse_error('${caller}: unexpected `)`', s.last_tok_start, conds)!
 					}
 					start_pos := paren_stack.pop()
-					qb.where.parentheses << [start_pos, qb.where.fields.len - 1]
+					where.parentheses << [start_pos, where.fields.len - 1]
 				} else {
-					parse_error("${@FN}: table `${qb.config.table}` has no field's name: `${tok}`",
+					parse_error("${caller}: table `${table}` has no field's name: `${tok}`",
 						s.last_tok_start, conds)!
 				}
 			}
@@ -679,20 +690,20 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 						OperationKind.not_in
 					}
 					else {
-						parse_error('${@FN}(): unsupported operator: `${tok}`', s.last_tok_start,
+						parse_error('${caller}(): unsupported operator: `${tok}`', s.last_tok_start,
 							conds)!
 						OperationKind.eq
 					}
 				}
 
 				if current_op in [.is_null, .is_not_null]! {
-					qb.where.fields << current_field
-					qb.where.kinds << current_op
+					where.fields << current_field
+					where.kinds << current_op
 					if is_first_field {
 						is_first_field = false
 					} else {
 						// skip first field
-						qb.where.is_and << current_is_and
+						where.is_and << current_is_and
 					}
 				}
 				state = .qm
@@ -700,22 +711,22 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 			.qm {
 				if tok == '?' {
 					// finish an expr, update `qb`
-					qb.where.fields << current_field
-					qb.where.data << params[i]
-					qb.where.kinds << current_op
+					where.fields << current_field
+					where.data << params[i]
+					where.kinds << current_op
 					if is_first_field {
 						is_first_field = false
 					} else {
 						// skip first field
-						qb.where.is_and << current_is_and
+						where.is_and << current_is_and
 					}
 					i++
 				} else if tok == ')' {
 					if paren_stack.len == 0 {
-						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)!
+						parse_error('${caller}: unexpected `)`', s.last_tok_start, conds)!
 					}
 					start_pos := paren_stack.pop()
-					qb.where.parentheses << [start_pos, qb.where.fields.len - 1]
+					where.parentheses << [start_pos, where.fields.len - 1]
 				} else if tok == 'AND' {
 					current_is_and = true
 					state = .field
@@ -729,7 +740,7 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 					current_is_and = false
 					state = .field
 				} else {
-					parse_error('${@FN}(): unexpected `${tok}`, maybe `AND`,`OR`',
+					parse_error('${caller}(): unexpected `${tok}`, maybe `AND`,`OR`',
 						s.last_tok_start, conds)!
 				}
 			}
@@ -1360,31 +1371,37 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 // prepare QueryBuilder, ready for gen SQL
 fn (qb_ &QueryBuilder[T]) prepare() ! {
 	mut qb := unsafe { qb_ }
-	if qb.builder_error.len > 0 {
-		return error(qb.builder_error)
+	prepare_query(qb.meta, qb.where, qb.builder_error, @FN, mut qb.config)!
+}
+
+// Query preparation uses the resolved field metadata, so it can be shared by all
+// model types just like condition parsing.
+fn prepare_query(meta []TableField, where QueryData, builder_error string, caller string, mut config SelectConfig) ! {
+	if builder_error.len > 0 {
+		return error(builder_error)
 	}
 
 	// check for mismatch `(` and `)`
-	for p in qb.where.parentheses {
+	for p in where.parentheses {
 		if p[1] == -1 {
-			return error('${@FN}(): missing `)`')
+			return error('${caller}(): missing `)`')
 		}
 	}
 
 	// auto fill field's names if not set by `select`
-	if qb.config.fields.len == 0 {
-		for field in qb.meta {
+	if config.fields.len == 0 {
+		for field in meta {
 			if !field.is_arr {
-				qb.config.fields << sql_field_name(field)
+				config.fields << sql_field_name(field)
 			}
 		}
 	}
 
-	if qb.config.select_exprs.len != qb.config.fields.len {
-		mut select_exprs := []string{cap: qb.config.fields.len}
-		for f in qb.config.fields {
+	if config.select_exprs.len != config.fields.len {
+		mut select_exprs := []string{cap: config.fields.len}
+		for f in config.fields {
 			mut select_expr := f
-			for ff in qb.meta {
+			for ff in meta {
 				if sql_field_name(ff) == f {
 					select_expr = sql_field_select_expr(ff)
 					break
@@ -1392,20 +1409,20 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 			}
 			select_exprs << select_expr
 		}
-		qb.config.select_exprs = select_exprs
+		config.select_exprs = select_exprs
 	}
 
-	if qb.config.types.len == 0 {
+	if config.types.len == 0 {
 		// set field's types
-		mut types := []int{cap: qb.config.fields.len}
-		for f in qb.config.fields {
-			for ff in qb.meta {
+		mut types := []int{cap: config.fields.len}
+		for f in config.fields {
+			for ff in meta {
 				if sql_field_name(ff) == f {
 					types << ff.typ
 				}
 			}
 		}
-		qb.config.types = types
+		config.types = types
 	}
 }
 
