@@ -328,7 +328,7 @@ fn test_self_build_defaults_to_c_backend() {
 			'/tmp/vself_fastc_default_test'])
 	assert default_result.exit_code == 0, default_result.output
 	assert !default_result.output.contains('-compile-backend'), default_result.output
-	for backend in ['fastc', 'arm64', 'x64', 'wasm', 'eval'] {
+	for backend in ['fastc', 'arm64', 'x64', 'wasm', 'eval', 'ssa'] {
 		assert default_result.output.contains('-d skip_${backend}'), default_result.output
 	}
 	assert_vself_preserves_full_cli(default_result.output)
@@ -348,6 +348,7 @@ fn test_self_build_defaults_to_c_backend() {
 		'-o', '/tmp/vself_wasm_opt_in_test'])
 	assert wasm_result.exit_code == 0, wasm_result.output
 	assert !wasm_result.output.contains('-d skip_wasm'), wasm_result.output
+	assert !wasm_result.output.contains('-d skip_ssa'), wasm_result.output
 	assert wasm_result.output.contains('-d skip_fastc'), wasm_result.output
 	for opt_out in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-old-compiler']] {
 		mut args := ['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self']
