@@ -234,6 +234,9 @@ physical footprint immediately after RSS.
 
 ## Parallel jobs
 
+Parallel C builds preserve local bindings whose names match C functions called in the same
+V function. The calls continue to refer to the declared C functions.
+
 `VJOBS` selects V3's desired parallel job count. On Linux, an executable of the V3 compiler that
 was itself built with `-prealloc` caps ordinary user builds at four total compiler jobs whenever
 the effective job count is greater than four. The caller thread counts as one job, so V3 creates
