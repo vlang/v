@@ -8842,7 +8842,6 @@ struct V3BundledTccProbeOptions {
 	host_target         pref.Target
 	target              pref.Target
 	bundled_tcc         string
-	host_rejects_tcc    bool // see pref.host_rejects_tcc_executables; only an explicit `-cc tcc` selects TCC
 	prefer_platform_cc  bool // Source-built precise Boehm needs the platform compiler by default.
 }
 
@@ -8860,7 +8859,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 		}
 		return os.real_path(compiler_path) == os.real_path(options.bundled_tcc)
 	}
-	if options.host_rejects_tcc || options.prefer_platform_cc {
+	if options.prefer_platform_cc {
 		return false
 	}
 	if options.is_shared && !options.is_liveshared && options.target.os == 'linux' {
@@ -9026,7 +9025,7 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	bundled_tcc_available := v3_bundled_tcc_available(options)
 	allow_system_tcc := options.backend == 'c' && !options.c_only && !options.is_prod
 		&& !options.is_c_debug && !options.race && !options.c_compiler_explicit
-		&& !options.host_rejects_tcc && !options.prefer_platform_cc
+		&& !options.prefer_platform_cc
 		&& !(options.is_shared && !options.is_liveshared && options.target.os == 'linux')
 		&& (!options.parallel_cc || options.target.os == 'windows')
 		&& options.target.os == options.host_target.os
@@ -12832,7 +12831,6 @@ pub fn run(args []string) {
 		host_target:         host_target
 		target:              target
 		bundled_tcc:         bundled_tcc
-		host_rejects_tcc:    pref.host_rejects_tcc_executables()
 		prefer_platform_cc:  v3_gc_prefers_platform_cc(user_defines) || bare_needs_platform_cc
 	})
 	bundled_tcc_available := selection.bundled_tcc_available

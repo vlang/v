@@ -38,9 +38,10 @@ pub fn host_os_name() string {
 // https://github.com/vlang/v/issues/29744 .
 const first_tcc_unloadable_darwin_release = 27
 
-// host_rejects_tcc_executables reports whether executables that TCC links for this
-// machine can start with corrupted global variables, so V must not pick TCC by
-// itself. An explicit `-cc tcc` is still honored.
+// host_rejects_tcc_executables reports whether this Darwin release was affected
+// by the historical TinyCC Mach-O zero-fill bug. Retained for compatibility;
+// compiler selection no longer consults this version check. Fixed TCC bundles
+// can run on these releases.
 pub fn host_rejects_tcc_executables() bool {
 	$if macos {
 		return darwin_release_rejects_tcc_executables(os.uname().release)
