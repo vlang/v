@@ -10813,8 +10813,8 @@ pub fn run(args []string) {
 		// module cache, including the native-code bridge used by macOS TCC.
 		no_cache = true
 	}
-	if backend == 'x64' && (target.os != 'linux' || target.arch != 'amd64') {
-		eprintln('the x64 backend currently supports only linux/amd64')
+	if backend == 'x64' && (target.arch != 'amd64' || (target.os != 'linux' && target.os != 'macos' && target.os != 'windows')) {
+		eprintln('the x64 backend currently supports only linux/amd64, macos/amd64 and windows/amd64')
 		exit(1)
 	}
 	if backend == 'riscv64' && (target.os != 'linux' || target.arch != 'riscv64') {
@@ -14491,7 +14491,13 @@ pub fn run(args []string) {
 			b.step('x64 gen')
 
 			obj_file := os.join_path(os.vtmp_dir(), 'v3_x64_${os.getpid()}_${tempname.unique_token()}.o')
-			g.write_file(obj_file)
+			if target.os == 'macos' {
+				x64.write_macho_from_elf(g.elf, obj_file)
+			} else if target.os == 'windows' {
+				x64.write_pe_from_elf(g.elf, obj_file)
+			} else {
+				g.write_file(obj_file)
+			}
 			b.step('x64 object')
 			x64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
 				no_prod_options, false, parallel_cc, false)
