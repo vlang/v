@@ -1,0 +1,21 @@
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:5:13: error: `movq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+    3 |     mut y := x
+    4 |     asm amd64 raw {
+    5 |         "movq $1, %%rax\n\t"
+      |                   ~~~~~
+    6 |         "addq %%rax, %[y]"
+    7 |         ; [y] "+r" (y)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:17:4: error: `addq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+   15 |     mut y := x
+   16 |     asm amd64 raw {
+   17 |         "addq $1, %[y]"
+      |          ~~~~
+   18 |         ; [y] "+r" (y)
+   19 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:29:4: error: `mulq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   27 |     mut w := z
+   28 |     asm amd64 raw {
+   29 |         "mulq %[w]"
+      |          ~~~~
+   30 |         ; [y] "+a" (y)
+   31 |           [w] "r" (w)

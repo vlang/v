@@ -1,0 +1,42 @@
+// Raw x86 templates that write a register or set the flags without declaring them.
+fn raw_writes_rax_undeclared(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movq $1, %%rax\n\t"
+		"addq %%rax, %[y]"
+		; [y] "+r" (y)
+		;
+		; cc
+	}
+	return y
+}
+
+fn raw_sets_flags_without_cc(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"addq $1, %[y]"
+		; [y] "+r" (y)
+		;
+		;
+	}
+	return y
+}
+
+fn raw_mul_writes_rdx_undeclared(x u64, z u64) u64 {
+	mut y := x
+	mut w := z
+	asm amd64 raw {
+		"mulq %[w]"
+		; [y] "+a" (y)
+		  [w] "r" (w)
+		;
+		; cc
+	}
+	return y
+}
+
+fn main() {
+	println(raw_writes_rax_undeclared(1))
+	println(raw_sets_flags_without_cc(1))
+	println(raw_mul_writes_rdx_undeclared(2, 3))
+}

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/asm_raw_clobber_declared.vv:47:10: error: undefined ident: `undefined_total`
+   45 |     println(raw_output_binds_rax(2))
+   46 |     println(raw_reads_only(3))
+   47 |     println(undefined_total)
+      |             ~~~~~~~~~~~~~~~
+   48 | }

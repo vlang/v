@@ -1,0 +1,48 @@
+// Raw x86 templates that write registers and set flags with every write declared, bound
+// through an output constraint, or only read.
+fn raw_writes_declared(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movq $1, %%rax\n\t"
+		"addq %%rax, %[y]"
+		; [y] "+r" (y)
+		;
+		; rax
+		  cc
+	}
+	return y
+}
+
+fn raw_output_binds_rax(x u64) u64 {
+	mut y := u64(0)
+	mut v := x
+	asm amd64 raw {
+		"movq %[v], %%rax\n\t"
+		"addq $1, %%rax"
+		; [y] "=a" (y)
+		  [v] "r" (v)
+		;
+		;
+		  cc
+	}
+	return y
+}
+
+fn raw_reads_only(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"cmpq %[y], %[y]"
+		; [y] "+r" (y)
+		;
+		;
+		  cc
+	}
+	return y
+}
+
+fn main() {
+	println(raw_writes_declared(1))
+	println(raw_output_binds_rax(2))
+	println(raw_reads_only(3))
+	println(undefined_total)
+}

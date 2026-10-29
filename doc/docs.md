@@ -11570,6 +11570,10 @@ width of the register or named operand it acts on, and reports an error for a mi
 GNU assembler does. Use an operand modifier such as `%k[name]` to select a narrower view of a
 named operand, or change the suffix.
 
+In x86 raw blocks, the compiler also reports a general-purpose register that the template writes,
+such as `%%rax` or the `rdx` written by `mul`, unless an output operand binds it or the clobbers
+list it. It reports a flag-setting instruction such as `addq` when the clobbers omit `cc`.
+
 For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
 the pointer inside the template, and decrement the count until it reaches zero:
 
