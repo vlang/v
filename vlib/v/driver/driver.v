@@ -19090,22 +19090,25 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	mut main_declarations := ''
 	mut tcc_declarations := ''
 	mut tcc_main := ''
+	mut native_bindings := V3TccDylibBindings{}
+	if state.native_bridge {
+		mut functions := map[string]string{}
+		for name, prototype in state.bridge_functions {
+			if cache_used_fns['C.' + name] || cache_used_fns[name]
+				|| program_used_fns['C.' + name] || program_used_fns[name] {
+				functions[name] = prototype
+			}
+		}
+		native_bindings = v3_tcc_dylib_function_bindings(functions)
+	}
 	if !state.objects_only {
 		dylib_prefix = modulecache.prune_unreferenced_static_string_definitions(main_prefix + program_specializations + program_support)
 	}
 	if !state.objects_only && !state.no_program_declarations {
 		main_declarations = v3_cached_c_unit_source(prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(split.prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state), false)
 		if state.native_bridge {
-			mut functions := map[string]string{}
-			for name, prototype in state.bridge_functions {
-				if cache_used_fns['C.' + name] || cache_used_fns[name]
-					|| program_used_fns['C.' + name] || program_used_fns[name] {
-					functions[name] = prototype
-				}
-			}
-			bindings := v3_tcc_dylib_function_bindings(functions)
-			main_declarations += state.bridge_tcc_headers['__v3_native_sources__'] + bindings.declarations
-			dylib_prefix += bindings.owner
+			main_declarations += state.bridge_tcc_headers['__v3_native_sources__'] + native_bindings.declarations
+			dylib_prefix += native_bindings.owner
 		}
 		tcc_declarations = tcc_cached_main_source(if state.native_bridge {
 			v3_tcc_dylib_declarations_with_dirs(main_declarations, true, state.bridge_include_dirs, state.bridge_tcc_headers)
@@ -19151,7 +19154,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				if state.native_bridge {
-					raw_declarations = v3_tcc_dylib_declarations_with_dirs(raw_declarations, false, state.bridge_include_dirs, state.bridge_tcc_headers)
+					raw_declarations = v3_tcc_dylib_module_declarations(raw_declarations, state, &native_bindings)
 				}
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
 				has_declarations = true
@@ -19236,7 +19239,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				if state.native_bridge {
-					raw_declarations = v3_tcc_dylib_declarations_with_dirs(raw_declarations, false, state.bridge_include_dirs, state.bridge_tcc_headers)
+					raw_declarations = v3_tcc_dylib_module_declarations(raw_declarations, state, &native_bindings)
 				}
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
 				has_declarations = true

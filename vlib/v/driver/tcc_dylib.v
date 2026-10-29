@@ -84,7 +84,15 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	}
 	mut directories := []string{}
 	for input in cgen.native_include_input_files(a, prefs.vroot, prefs.target, flags, prefs.compile_values) {
-		if !cgen.native_path_is_shipped(input, prefs.vroot) { directories << os.dir(input) }
+		if !cgen.native_path_is_shipped(input, prefs.vroot) {
+			directories << os.dir(input)
+		} else if input.starts_with(os.join_path(prefs.vroot, 'vlib') + os.path_separator) {
+			text := os.read_file(input) or { continue }
+			if text.contains('<Cocoa/') || text.contains('<AppKit/') || text.contains('__bridge')
+				|| text.contains('@interface') || text.contains('@implementation') {
+				directories << os.dir(input)
+			}
+		}
 	}
 	mut functions := map[string]string{}
 	mut headers := map[string]string{}
@@ -149,7 +157,7 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	needs_objc_types := class_names.len > 0 || ['id', 'Class', 'SEL', 'BOOL', 'IMP', 'Protocol',
 		'objc_object', 'objc_class', 'objc_selector'].any(wanted_types[it])
 	headers['__v3_objc_types__'] = if needs_objc_types {
-		'#include <objc/objc.h>\n' + class_names.map('typedef struct ${it} ${it};').join('\n') + '\n'
+		'#include <objc/objc.h>\n' + class_names.map('#ifdef __OBJC__\n@class ${it};\n#else\ntypedef struct ${it} ${it};\n#endif').join('\n') + '\n'
 	} else {
 		''
 	}
@@ -282,6 +290,7 @@ fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, inc
 			os.read_file(path) or { '' }
 		}
 		if cgen.native_path_is_shipped(path, @VMODROOT)
+			&& !(tinyc && os.real_path(path) in headers)
 			&& (text.contains('SOKOL_IMPL') || text.contains('_IMPLEMENTATION') || modulecache.c_source_is_replicable(text)) {
 			out.writeln('#include "' + c_include_path(path) + '"')
 			continue
@@ -297,7 +306,8 @@ fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, inc
 		}
 		active[path] = true
 		declarations := v3_tcc_dylib_header_declarations(text)
-		if text.split_into_lines().any(it.trim_space() == '#pragma once') {
+		if text.split_into_lines().any(it.trim_space() == '#pragma once')
+			|| (tinyc && os.real_path(path) in headers && path.ends_with('.m')) {
 			guard := 'V3CACHE_NATIVE_HEADER_' + c_hash_bytes(u64(1469598103934665603), os.real_path(path).bytes()).hex()
 			out.writeln('#ifndef ' + guard + '\n#define ' + guard)
 			out.writeln(v3_tcc_dylib_declarations_in(declarations, tinyc, os.dir(path), include_dirs, headers, mut active))
@@ -417,6 +427,14 @@ fn v3_tcc_dylib_needs_native_sources(state &V3ModuleCacheState, header string) b
 fn v3_tcc_dylib_declarations_with_dirs(source string, tinyc bool, dirs []string, headers map[string]string) string {
 	mut active := map[string]bool{}
 	return (if tinyc { headers['__v3_objc_types__'] } else { '' }) + v3_tcc_dylib_declarations_in(source, tinyc, '', dirs, headers, mut active)
+}
+
+// Cached V bodies call the owner's native functions too. Projected .m types
+// supply their signatures, while the original SDK declarations remain available.
+fn v3_tcc_dylib_module_declarations(source string, state &V3ModuleCacheState, bindings &V3TccDylibBindings) string {
+	return v3_tcc_dylib_declarations_with_dirs(source, false, state.bridge_include_dirs, state.bridge_tcc_headers) +
+		v3_tcc_dylib_declarations_with_dirs(state.bridge_tcc_headers['__v3_native_sources__'], true, state.bridge_include_dirs, state.bridge_tcc_headers) +
+		bindings.declarations
 }
 
 fn v3_tcc_dylib_objc_classes(source string) []string {
