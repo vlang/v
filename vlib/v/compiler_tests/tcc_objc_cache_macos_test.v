@@ -12,6 +12,36 @@ struct NativeInterfaceCase {
 	expression   string
 }
 
+fn test_macos_tcc_stats_keeps_native_bridge_on_cold_and_warm_builds() ! {
+	$if !macos {
+		return
+	}
+	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	root := os.join_path(os.vtmp_dir(), 'tcc stats native bridge ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'stats_native_bridge' }\n")!
+	os.write_file(os.join_path(root, 'native.m'), '#import <Foundation/Foundation.h>\nstatic int stats_native_answer(void) { @autoreleasepool { return (int)[@"stats" length] + 37; } }\n')!
+	source := os.join_path(root, 'main.c.v')
+	exe := os.join_path(root, 'program')
+	for attempt in 0 .. 3 {
+		os.write_file(source, '#flag darwin -framework Foundation\n#flag darwin -Wl,-dead_strip\n#include "@DIR/native.m"\nfn C.stats_native_answer() int\nfn main() { assert C.stats_native_answer() == 42; println(@CCOMPILER); println(${attempt}) }\n')!
+		args := ['-u', 'VFLAGS', '-u', 'VEXE', '-u', 'CFLAGS', '-u', 'LDFLAGS',
+			'V3CACHE=' + os.join_path(root, 'cache'), 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1',
+			'V3_DISABLE_UNCHANGED_BUILD_CACHE=1', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-cc', 'tcc',
+			'-stats', '-show-timings', '-showcc', '-no-retry-compilation', '-o', exe, source]
+		build := cmdexec.run('env', args)
+		assert build.exit_code == 0, '${attempt}: ${build.output}'
+		assert build.output.contains('checker summary: 0 V errors'), build.output
+		assert !build.output.contains('falling back'), build.output
+		commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> '))
+		assert commands.len > 0 && commands.last().contains('tcc.exe'), build.output
+		run := cmdexec.run(exe, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'tinyc\n${attempt}', run.output
+	}
+}
+
 fn test_macos_tcc_unsupported_bridge_respects_no_retry() ! {
 	$if !macos {
 		return
