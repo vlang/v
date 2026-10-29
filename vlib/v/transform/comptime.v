@@ -291,6 +291,8 @@ fn (t &Transformer) comptime_for_var_source_type(name string) ?u32 {
 fn (t &Transformer) comptime_for_field_source_type(owner_type_id u32, field_name string) ?u32 {
 	base_source_id := t.comptime_normalize_type_alias_chain(t.comptime_for_value_type_base(owner_type_id))
 	base_source_id_2 := base_source_id
+	eprintln('DEBUG field_source: owner=${owner_type_id} field=${field_name} base_source_id=${base_source_id}')
+
 
 	info := t.lookup_struct_info(base_source_id_2) or {
 		t.generic_struct_info_for_stringify(base_source_id) or { return none }
@@ -1885,7 +1887,7 @@ fn comptime_attribute_schema_field_cond_value(field AttributeSchemaFieldInfo, ra
 // was taken for it.
 fn (attr AttributeMeta) narrowed() AttributeMeta {
 	return AttributeMeta{
-		...attr
+	...attr
 		schema_narrowed: !isnil(attr.schema)
 	}
 }
@@ -4212,7 +4214,7 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 			|| flat.source_type_query(arg_type).has(.generic_fn_name) {
 			arg_type = fm.comptime_typ
 		}
-		mut inference_type := t.comptime_normalize_type_alias_chain(arg_type)
+		mut inference_type := arg_type
 		if inference_type == 0 {
 			inference_type = fm.comptime_unaliased
 		}
@@ -5815,7 +5817,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 			receiver := t.clone_field_subst_scoped(t.a.child(&node, 0), var_name, fm, inner_vars) or {
 				return none
 			}
-			return t.make_selector(receiver, fm.name, fm.comptime_typ)
+								return t.make_selector(receiver, fm.name, fm.comptime_typ)
 		}
 	}
 	// A normal `if !field.attrs.contains('skip')` inside a reflected field loop is
