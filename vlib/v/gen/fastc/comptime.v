@@ -1189,6 +1189,21 @@ fn fastc_embed_symbol(path string) string {
 
 // fastc_collect_embedded_payloads emits each resource once, outside expressions.
 // Keeping large payloads out of expression tokens bounds initializer scratch memory.
+struct FastcEmbeddedPayloadResult {
+	payloads      map[string]string
+	error_message string
+}
+
+fn fastc_collect_source_embedded_payloads(sources []FastcSourceFile, prefs &pref.Preferences) FastcEmbeddedPayloadResult {
+	mut payloads := map[string]string{}
+	for source in sources {
+		fastc_collect_embedded_payloads(source.source, source.path, prefs, mut payloads) or {
+			return FastcEmbeddedPayloadResult{ error_message: err.msg() }
+		}
+	}
+	return FastcEmbeddedPayloadResult{ payloads: payloads }
+}
+
 fn fastc_collect_embedded_payloads(source string, path string, prefs &pref.Preferences, mut payloads map[string]string) ! {
 	if !source.contains('$embed_file') {
 		return

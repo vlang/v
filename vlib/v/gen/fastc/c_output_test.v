@@ -3,6 +3,16 @@ module fastc
 import os
 import v.cmdexec
 
+fn test_fastc_c_piece_output_flushes_partial_buffers_and_preserves_binary_bytes() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_c_pieces_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	output := os.join_path(root, 'pieces.c')
+	pieces := ['', 'x'.repeat(1024 * 1024 + 3), '\x00\xff', 'tail']
+	write_c_pieces(output, pieces) or { panic(err) }
+	assert os.read_file(output) or { panic(err) } == pieces.join('')
+}
+
 fn test_fastc_c_output_does_not_compile_or_link_native_inputs() {
 	root := os.join_path(os.vtmp_dir(), 'fastc_c_output_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }

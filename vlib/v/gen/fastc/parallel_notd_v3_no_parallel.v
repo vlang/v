@@ -7,6 +7,33 @@ import v.pref
 import v.scanner
 import v.token
 
+struct FastcPendingEmbeddedPayloads {
+mut:
+	workers []thread FastcEmbeddedPayloadResult
+	result  FastcEmbeddedPayloadResult
+}
+
+fn fastc_start_embedded_payloads(sources []FastcSourceFile, prefs &pref.Preferences) FastcPendingEmbeddedPayloads {
+	if !prefs.building_v || prefs.selfhost {
+		return FastcPendingEmbeddedPayloads{}
+	}
+	if fastc_parallel_job_count(sources.len, prefs) <= 1 {
+		return FastcPendingEmbeddedPayloads{ result: fastc_collect_source_embedded_payloads(sources, prefs) }
+	}
+	return FastcPendingEmbeddedPayloads{ workers: [spawn fastc_collect_source_embedded_payloads(sources, prefs)] }
+}
+
+fn fastc_wait_embedded_payloads(mut pending FastcPendingEmbeddedPayloads) !map[string]string {
+	if pending.workers.len > 0 {
+		pending.result = pending.workers[0].wait()
+		pending.workers.clear()
+	}
+	if pending.result.error_message != '' {
+		return error(pending.result.error_message)
+	}
+	return pending.result.payloads
+}
+
 struct FastcPendingReferences {
 mut:
 	workers    []thread map[string]bool

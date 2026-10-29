@@ -1236,12 +1236,25 @@ pub fn (g &GenerationResult) c_size() int {
 }
 
 // write_c_pieces writes generated C pieces to `path` without joining them.
+// Large outputs use a bounded buffer to batch small pieces into fewer writes.
 pub fn write_c_pieces(path string, pieces []string) ! {
+	mut size := 0
+	for piece in pieces {
+		size += piece.len
+		if size >= 1024 * 1024 {
+			size = 1024 * 1024
+			break
+		}
+	}
+	mut buffer := []u8{len: if size >= 64 * 1024 { size } else { 0 }}
 	mut file := os.create(path)!
+	defer { file.close() }
+	if buffer.len > 0 {
+		file.set_buffer(mut buffer, .fully_buffered)
+	}
 	for piece in pieces {
 		file.write_string(piece)!
 	}
-	file.close()
 }
 
 // fastc_take_string turns a builder's contents into a string without copying
@@ -2364,6 +2377,10 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut c_flags := []string{}
 	generation_sources := fastc_wait_generation_fragments(mut pending_fragments)
 	timer.mark('wait_fragments')
+	// Asset encoding is independent of per-file rendering. Finish it before
+	// assembling the head, retaining the same deterministic definition order.
+	mut pending_payloads := fastc_start_embedded_payloads(sources, prefs)
+	defer { fastc_wait_embedded_payloads(mut pending_payloads) or {} }
 	generation := fastc_generate_file_outputs(&ctx, generation_sources)
 	mut outputs := generation.outputs.clone()
 	fastc_deduplicate_fragment_prototypes(mut outputs, generation_sources)
@@ -2696,10 +2713,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut define_texts := []string{}
 	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, preamble)
 	if prefs.building_v && !prefs.selfhost {
-		mut payloads := map[string]string{}
-		for source in sources {
-			fastc_collect_embedded_payloads(source.source, source.path, prefs, mut payloads)!
-		}
+		payloads := fastc_wait_embedded_payloads(mut pending_payloads)!
 		mut names := payloads.keys()
 		names.sort()
 		for name in names {
