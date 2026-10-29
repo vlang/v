@@ -9,6 +9,7 @@ const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 // build as a project folder
 const efolders = [
 	'examples/viewer',
+	'examples/mini_software_emulator',
 	'examples/fasthttp',
 	'examples/veb_orm_jwt',
 	'examples/veb_fullstack',
