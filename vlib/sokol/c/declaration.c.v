@@ -165,6 +165,4 @@ $if windows && sharedlive ? {
 	#define SOKOL_IMPL
 }
 
-#include "util/sokol_gl.h"
-
 #include "sokol_v.post.h"
