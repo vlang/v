@@ -2470,22 +2470,29 @@ fn resolve_v3_version_executable(version_name string) !string {
 	}
 	for name in names {
 		if found_path := os.find_abs_path_of_executable(name) {
-			return found_path
+			return os.real_path(found_path)
 		}
 	}
 	normalized := normalize_v3_vvmrc_version(raw_version)
-	mut paths := [os.join_path('/usr/lib/v', normalized, 'bin', 'v'),
-		os.join_path('/usr/local/bin', 'v${normalized}')]
+	mut exe_suffix := ''
+	$if windows {
+		exe_suffix = '.exe'
+	}
+	mut paths := []string{}
+	$if !windows {
+		paths << os.join_path('/usr/lib/v', normalized, 'bin', 'v')
+		paths << os.join_path('/usr/local/bin', 'v${normalized}')
+	}
 	for env_name in ['VVM_HOME', 'VVM_DIR'] {
 		vvm_root := os.getenv(env_name).trim_space()
 		if vvm_root.len > 0 {
-			paths << os.join_path(vvm_root, normalized, 'bin', 'v')
-			paths << os.join_path(vvm_root, 'versions', normalized, 'bin', 'v')
+			paths << os.join_path(vvm_root, normalized, 'bin', 'v' + exe_suffix)
+			paths << os.join_path(vvm_root, 'versions', normalized, 'bin', 'v' + exe_suffix)
 		}
 	}
 	for path in paths {
 		if os.is_file(path) {
-			return path
+			return os.real_path(path)
 		}
 	}
 	return error('V executable for `${raw_version}` was not found')
