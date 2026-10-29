@@ -3,6 +3,9 @@
 
 #if defined(_WIN32)
 #include <windows.h>
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
