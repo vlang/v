@@ -11,6 +11,23 @@ import v.tempname
 
 const v3_native_bindings_marker = '#define V3CACHE_NATIVE_BINDINGS 1'
 
+fn v3_tcc_dylib_add_embedded_inputs(mut closure V3NativeInputClosure, state &V3ModuleCacheState, program_files []string, vroot string) {
+	// Cached declaration headers omit ordinary bodies. Also, the native-input
+	// classifier can stop at an opaque C input before reaching any resources.
+	// Recover their ownership from the original sources in both cases.
+	mut sources := clone_string_list_map(state.module_sources)
+	sources['main'] << program_files
+	for module_name, files in sources {
+		for file in files {
+			for path in modulecache.embedded_source_paths(file, vroot) {
+				if path !in closure.inputs[module_name] {
+					closure.inputs[module_name] << path
+				}
+			}
+		}
+	}
+}
+
 fn v3_tcc_dylib_prototypes(source string) map[string]string {
 	mut prototypes := map[string]string{}
 	mut item := strings.new_builder(256)
@@ -57,7 +74,7 @@ fn v3_tcc_dylib_prototypes(source string) map[string]string {
 	return prototypes
 }
 
-fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_flags []string, compiler string) V3NativeInputClosure {
+fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_flags []string, compiler string, native_inputs &cgen.CacheNativeInputs) V3NativeInputClosure {
 	mut flags := user_flags.clone()
 	flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 	flags = v3_tcc_dylib_native_flags(flags)
@@ -75,11 +92,7 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	mut args := c_object_compile_flags(flags)
 	language := cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot, flags,
 		prefs.c99, prefs.ccompiler, prefs.target), flags)
-	args << ['-x', if language in ['c++', 'objective-c++'] {
-		'objective-c++'
-	} else {
-		'objective-c'
-	}]
+	args << ['-x', language]
 	deps := c_object_dependencies(compiler, args, path)
 	if deps.used_fallback {
 		if os.getenv('V3_CACHE_TRACE') != '' {
@@ -124,6 +137,12 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		if node.kind == .c_fn_decl { wanted[node.value.all_after_last('.')] = true }
 		if node.kind == .struct_decl && node.value.starts_with('C.') {
 			wanted_types[node.value[2..]] = true
+		}
+		if node.kind == .selector && node.children_count == 1 {
+			receiver := a.child_node(node, 0)
+			if receiver.kind == .ident && receiver.value == 'C' {
+				wanted_types[node.value] = true
+			}
 		}
 		for text in [node.typ_text(), if node.source_value != 0 { node.value_text() } else { '' }] {
 			for part in text.split('C.')[1..] {
@@ -195,10 +214,20 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	} else {
 		''
 	}
-	return V3NativeInputClosure{
-		inputs:       {
-			'__v3_c_flags__': deps.files.filter(it != path)
+	mut inputs := {
+		'__v3_c_flags__': deps.files.filter(it != path)
+	}
+	// The C manifest cannot see V resources. Keep their owning module so a
+	// payload edit restores its source body before regenerating the object.
+	for module_name, paths in native_inputs.module_inputs {
+		for input in paths {
+			if !native_inputs.native_paths[input] && !native_inputs.macro_paths[input] {
+				inputs[module_name] << input
+			}
 		}
+	}
+	return V3NativeInputClosure{
+		inputs:       inputs
 		functions:    functions
 		include_dirs: v3_parallel_c_include_dirs(flags)
 		tcc_headers:  headers
@@ -333,17 +362,19 @@ fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, inc
 			out.writeln(line)
 			continue
 		}
-		if !arg.starts_with('"') {
+		quoted := arg.starts_with('"')
+		if !quoted && !arg.starts_with('<') {
 			out.writeln(line)
 			continue
 		}
-		name := arg.trim('"')
-		mut path := if os.is_abs_path(name) || directory.len == 0 {
+		name := arg.trim('<>"')
+		mut path := if !quoted || os.is_abs_path(name) || directory.len == 0 {
 			name
 		} else {
 			os.join_path(directory, name)
 		}
-		if !os.is_file(path) && !os.is_abs_path(name) {
+		if (!quoted || !os.is_file(path)) && !os.is_abs_path(name) {
+			path = ''
 			for dir in include_dirs {
 				candidate := os.join_path(dir, name)
 				if os.is_file(candidate) {
@@ -352,7 +383,7 @@ fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, inc
 				}
 			}
 		}
-		if !os.is_file(path) {
+		if !os.is_file(path) || (!quoted && os.real_path(path) !in headers) {
 			out.writeln(line)
 			continue
 		}
@@ -430,7 +461,7 @@ struct V3TccDylibBindings {
 	declarations string
 }
 
-fn v3_tcc_dylib_function_bindings(functions map[string]string) V3TccDylibBindings {
+fn v3_tcc_dylib_function_bindings(functions map[string]string) !V3TccDylibBindings {
 	mut owner := strings.new_builder(256)
 	mut out := strings.new_builder(256)
 	mut names := functions.keys()
@@ -439,16 +470,33 @@ fn v3_tcc_dylib_function_bindings(functions map[string]string) V3TccDylibBinding
 		line := functions[name]
 		alias := 'v3_native_bridge_' + name
 		mut start := 0
+		mut declarator_start := 0
+		mut declarator_end := 0
 		for start < line.len {
 			end := v3_c_identifier_end(line, start)
 			mut after := end
 			for after < line.len && line[after].is_space() { after++ }
+			// C permits parentheses around a function's name. Only consume
+			// closing parentheses paired with those immediately before it.
+			mut before := start
+			for after < line.len && line[after] == `)` {
+				for before > 0 && line[before - 1].is_space() { before-- }
+				if before == 0 || line[before - 1] != `(` { break }
+				before--
+				after++
+				for after < line.len && line[after].is_space() { after++ }
+			}
 			if end > start && line[start..end] == name && after < line.len && line[after] == `(` {
+				declarator_start = before
+				declarator_end = after
 				break
 			}
 			start = if end > start { end } else { start + 1 }
 		}
-		prototype := line[..start] + '(*' + alias + ')' + line[start + name.len..]
+		if start >= line.len {
+			return error('unsupported native function declarator for ${name}')
+		}
+		prototype := line[..declarator_start] + '(*' + alias + ')' + line[declarator_end..]
 		out.writeln('extern ' + prototype.trim_string_left('extern ').trim_string_left('static '))
 		owner.writeln('__typeof__(&' + name + ') ' + alias + ' = &' + name + ';')
 	}
@@ -606,6 +654,44 @@ fn v3_tcc_dylib_objc_classes(source string) []string {
 	return names
 }
 
+// Only enumerator names introduce constants. Identifiers in their initializers
+// must not make an otherwise private enum reachable.
+fn v3_tcc_dylib_enum_names(body string) []string {
+	mut names := []string{}
+	mut i := 0
+	mut depth := 0
+	mut expect_name := true
+	for i < body.len {
+		ch := body[i]
+		if ch == `/` {
+			after := v3_c_skip_comment(body, i)
+			if after > i {
+				i = after
+				continue
+			}
+		}
+		if ch in [`"`, `'`] {
+			i = v3_c_skip_literal(body, i)
+			continue
+		}
+		if expect_name && depth == 0 && !ch.is_space() {
+			end := v3_c_identifier_end(body, i)
+			if end > i {
+				names << body[i..end]
+				i = end
+				expect_name = false
+				continue
+			}
+			expect_name = false
+		}
+		if ch in [`(`, `[`, `{`] { depth++ }
+		if ch in [`)`, `]`, `}`] { depth-- }
+		if ch == `,` && depth == 0 { expect_name = true }
+		i++
+	}
+	return names
+}
+
 fn v3_tcc_dylib_exposed_types(source string, mut wanted map[string]bool) string {
 	mut out := strings.new_builder(source.len)
 	mut start := 0
@@ -672,6 +758,11 @@ fn v3_tcc_dylib_exposed_types(source string, mut wanted map[string]bool) string 
 			for n, token in tokens {
 				if token in ['struct', 'union', 'enum'] && n + 1 < tokens.len {
 					names[tokens[n + 1]] = true
+				}
+			}
+			if 'enum' in tokens && first_brace >= start && last_brace > first_brace {
+				for name in v3_tcc_dylib_enum_names(source[first_brace + 1..last_brace]) {
+					names[name] = true
 				}
 			}
 			if names.len == 0 || names.keys().any(wanted[it]) {

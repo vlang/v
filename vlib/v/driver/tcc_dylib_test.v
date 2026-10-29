@@ -2,16 +2,31 @@ module driver
 
 import os
 import v.cmdexec
+import v.gen.c as cgen
 import v.modulecache
 import v.parser
 import v.pref
 
-fn test_native_bridge_binding_uses_function_declarator_after_matching_struct_tag() {
+fn test_native_bridge_binding_uses_function_declarator_after_matching_struct_tag() ! {
 	bindings := v3_tcc_dylib_function_bindings({
 		'record': 'struct record* record(void);'
-	})
+	})!
 	assert bindings.declarations.contains('extern struct record* (*v3_native_bridge_record)(void);')
 	assert !bindings.declarations.contains('#define record')
+}
+
+fn test_native_bridge_bindings_support_parenthesized_names_and_reject_missing_declarators() ! {
+	bindings := v3_tcc_dylib_function_bindings({
+		'bridge_value': 'static int ((bridge_value))(void);'
+	})!
+	assert bindings.declarations == 'extern int (*v3_native_bridge_bridge_value)(void);\n'
+	if _ := v3_tcc_dylib_function_bindings({
+		'record': 'struct record;'
+	}) {
+		assert false, 'a missing function declarator must return an error'
+	} else {
+		assert err.msg() == 'unsupported native function declarator for record'
+	}
 }
 
 fn test_native_bridge_removes_active_cpp_linkage_without_changing_literals_or_bodies() {
@@ -57,8 +72,48 @@ fn test_native_bridge_keeps_fallback_for_mixed_native_language_contexts() ! {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc)
+	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &cgen.CacheNativeInputs{})
 	assert closure.unassignable == 'mixed Objective-C and Objective-C++ bridge contexts'
+}
+
+fn test_native_bridge_declarations_project_angle_headers_from_include_directories() ! {
+	root := os.join_path(os.vtmp_dir(), 'native angle headers ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'types.h')
+	os.write_file(header, 'typedef int NativeNumber;\n')!
+	os.write_file(os.join_path(root, 'system.h'), 'int unprojected;\n')!
+	declarations := v3_tcc_dylib_declarations_with_dirs('#include <types.h>\n#include <system.h>\n#include <stdio.h>\n', true, [root], {
+		os.real_path(header): 'typedef double NativeNumber;\n'
+	})
+	assert declarations.contains('typedef double NativeNumber;')
+	assert !declarations.contains('typedef int NativeNumber;')
+	assert !declarations.contains('#include <types.h>')
+	assert declarations.contains('#include <system.h>')
+	assert declarations.contains('#include <stdio.h>')
+}
+
+fn test_native_bridge_preprocesses_plain_c_with_the_owner_language() ! {
+	$if !macos {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'native c language ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'native.h')
+	os.write_file(header, '#ifdef __OBJC__\ntypedef double NativeNumber;\n#else\ntypedef int NativeNumber;\n#endif\nint bridge_value(NativeNumber value);\n')!
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(source, '#include "@DIR/native.h"\nfn C.bridge_value(n int) int\nfn main() {}\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	prefs.ccompiler = 'tinyc'
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &cgen.CacheNativeInputs{})
+	assert closure.unassignable == ''
+	assert closure.tcc_headers[os.real_path(header)].contains('typedef int NativeNumber;')
+	assert !closure.tcc_headers[os.real_path(header)].contains('typedef double NativeNumber;')
 }
 
 fn test_native_bridge_declarations_resolve_nested_quoted_headers() ! {
@@ -95,16 +150,28 @@ fn test_native_bridge_dependency_manifest_tracks_project_headers() ! {
 	binding := os.join_path(root, 'binding.h')
 	os.write_file(binding, '#pragma once\n#import <CoreText/CoreText.h>\n#import "callback.h"\ntypedef struct { int value; } BridgeValue;\nstatic int bridge_header(BridgeValue value, BridgeCallback callback) { return value.value; }\nstatic CFIndex private_count(CFArrayRef value) { return CFArrayGetCount(value); }\n')!
 	native := os.join_path(root, 'native.m')
-	os.write_file(native, '#include "inner.h"\n#include "inner.h"\n#include "binding.h"\nstatic int bridge_value(void) { return BRIDGE_VALUE; }\n')!
+	os.write_file(native, '#include "inner.h"\n#include "inner.h"\n#include "binding.h"\nenum NativeAnswer { NATIVE_ANSWER = 42 };\nstatic int bridge_value(void) { return BRIDGE_VALUE; }\n')!
 	source := os.join_path(root, 'main.c.v')
-	os.write_file(source, '#include "@DIR/native.m"\nfn C.bridge_value() int\nfn C.bridge_header(value voidptr) int\nfn main() {}\n')!
+	os.write_file(source, '#include "@DIR/native.m"\nfn C.bridge_value() int\nfn C.bridge_header(value voidptr) int\nfn main() { assert C.NATIVE_ANSWER == 42 }\n')!
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc)
+	resource := os.join_path(root, 'data.txt')
+	os.write_file(resource, 'abcdef')!
+	native_inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'assets': [header, resource]
+		}
+		native_paths:  {
+			header: true
+		}
+	}
+	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &native_inputs)
 	assert closure.unassignable == ''
 	assert closure.functions['bridge_value'].len > 0
+	assert closure.inputs['assets'] == [resource]
+	assert closure.tcc_headers[os.real_path(native)].contains('enum NativeAnswer { NATIVE_ANSWER = 42 };')
 	public_interface := closure.tcc_headers[os.real_path(binding)]
 	assert public_interface.contains('BridgeValue')
 	assert public_interface.contains('bridge_header(BridgeValue value, BridgeCallback callback);')
@@ -113,14 +180,32 @@ fn test_native_bridge_dependency_manifest_tracks_project_headers() ! {
 	declarations := v3_tcc_dylib_declarations_with_dirs('#include \"${c_include_path(native)}\"\n', true, [root], closure.tcc_headers)
 	assert declarations.contains('typedef void (*BridgeCallback)(void *, int);')
 	assert declarations.contains('bridge_header(BridgeValue value, BridgeCallback callback);')
-	bindings := v3_tcc_dylib_function_bindings(closure.functions)
+	bindings := v3_tcc_dylib_function_bindings(closure.functions)!
 	assert bindings.owner.contains('v3_native_bridge_bridge_value')
 	assert bindings.declarations.contains('extern int (*v3_native_bridge_bridge_value)(void);')
 	assert os.real_path(native) in closure.inputs['__v3_c_flags__']
 	assert os.real_path(header) in closure.inputs['__v3_c_flags__']
 	os.rm(header)!
-	missing := v3_tcc_dylib_native_closure(a, prefs, [], cc)
+	missing := v3_tcc_dylib_native_closure(a, prefs, [], cc, &native_inputs)
 	assert missing.unassignable != ''
+}
+
+fn test_native_bridge_keeps_named_enums_referenced_by_enumerators() {
+	source := 'enum Private { INTERNAL = sizeof(int[2]) };\nenum Public { FIRST = (1 + sizeof(int[2])), /* comment */ ANSWER = 42 };\n'
+	mut wanted := {
+		'ANSWER': true
+		'int':    true
+	}
+	result := v3_tcc_dylib_exposed_types(source, mut wanted)
+	assert result.contains('enum Public')
+	assert !result.contains('enum Private')
+	assert wanted['FIRST']
+	assert wanted['Public']
+	assert v3_tcc_dylib_enum_names("A = call(1, 2), B = sizeof((int[]){1, 2}), C = ','") == [
+		'A',
+		'B',
+		'C',
+	]
 }
 
 fn test_native_bridge_framework_headers_use_ordinary_include_paths() ! {

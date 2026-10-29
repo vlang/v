@@ -33,6 +33,10 @@ Changing those inputs invalidates the affected cached artifacts.
 The TCC interface uses the native compiler's active declarations and expanded type macros,
 including Objective-C++ inputs and native types referenced by V fields. Conditional native
 prototypes and type layouts therefore keep the native owner's ABI.
+Project headers included through `-I`, with either quotes or angle brackets, use that same
+interface. Plain C inputs keep their C language context. Named enum constants and explicitly
+aligned V locals are supported in the TCC program unit. Embedded resources remain dependencies
+of their owning V modules, so payload edits refresh cached metadata such as `$embed_file(...).len`.
 Mixed Objective-C and Objective-C++ bridge contexts retain the uncached fallback;
 `-no-retry-compilation` reports an unsupported bridge instead of changing C compilers.
 The V program keeps TCC's compile-time conditions. Native calls, including functions from static

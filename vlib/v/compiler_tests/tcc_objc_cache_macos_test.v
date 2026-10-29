@@ -7,6 +7,7 @@ struct NativeInterfaceCase {
 	name         string
 	extension    string = 'm'
 	native       string
+	type_header  string
 	declarations string
 	expression   string
 }
@@ -61,6 +62,31 @@ fn test_macos_tcc_cached_native_interfaces_preserve_native_compiler_abi() ! {
 			expression:   'C.bridge_value(41)'
 		},
 		NativeInterfaceCase{
+			name:         'angle_header'
+			native:       '#include <native_types.h>\nstatic int bridge_value(NativeNumber n) { return (int)n + NATIVE_INCREMENT; }\n'
+			type_header:  '#ifdef __TINYC__\ntypedef int NativeNumber;\n#else\ntypedef double NativeNumber;\n#endif\n'
+			declarations: 'fn C.bridge_value(n f64) int\n'
+			expression:   'C.bridge_value(41.0)'
+		},
+		NativeInterfaceCase{
+			name:         'parenthesized_declarator'
+			native:       'static int (bridge_value)(void) { return 41 + NATIVE_INCREMENT; }\n'
+			declarations: 'fn C.bridge_value() int\n'
+			expression:   'C.bridge_value()'
+		},
+		NativeInterfaceCase{
+			name:         'named_enum'
+			native:       'enum NativeAnswer { NATIVE_ANSWER = 41 + NATIVE_INCREMENT };\nstatic int bridge_value(void) { return NATIVE_ANSWER; }\n'
+			declarations: 'fn C.bridge_value() int\n'
+			expression:   'int(C.NATIVE_ANSWER) + C.bridge_value() - EXPECTED_ANSWER'
+		},
+		NativeInterfaceCase{
+			name:         'aligned_local'
+			native:       'static int bridge_value(void) { return 41 + NATIVE_INCREMENT; }\nstatic int bridge_alignment(void* p) { return (unsigned long)p % 512; }\n'
+			declarations: '@[aligned: 512]\nstruct Cell { value int }\nfn C.bridge_value() int\nfn C.bridge_alignment(mut cell Cell) int\nfn aligned_value() int { mut cell := Cell{value: 41}; assert C.bridge_alignment(mut cell) == 0; mut staged := if cell.value == 41 { Cell{value: 41} } else { Cell{} }; assert C.bridge_alignment(mut staged) == 0; return C.bridge_value() }\n'
+			expression:   'aligned_value()'
+		},
+		NativeInterfaceCase{
 			name:         'objcxx_type'
 			extension:    'mm'
 			native:       '#ifdef __cplusplus\ntypedef double NativeNumber;\n#else\ntypedef int NativeNumber;\n#endif\nextern "C" int bridge_value(NativeNumber n) { return (int)n + NATIVE_INCREMENT; }\n'
@@ -94,19 +120,21 @@ fn test_macos_tcc_cached_native_interfaces_preserve_native_compiler_abi() ! {
 		NativeInterfaceCase{
 			name:         'sdk_namespace'
 			native:       '#include <unistd.h>\nint getpid(void);\nstatic int bridge_value(void) { return 41 + NATIVE_INCREMENT; }\n'
-			declarations: 'fn C.getpid() int\nfn C.bridge_value() int\nfn probe_sdk() int { getpid := C.getpid(); callback := C.getpid; assert getpid > 0; assert callback() > 0; return C.bridge_value() }\n'
+			declarations: 'fn C.getpid() int\nfn C.bridge_value() int\nfn probe_sdk() int { callback := C.getpid; getpid := callback(); assert getpid > 0; assert callback() > 0; return C.bridge_value() }\n'
 			expression:   'probe_sdk()'
 		},
 		NativeInterfaceCase{
 			name:         'sdk_override'
 			native:       '#include <unistd.h>\nint getpid(void) { return 4242; }\nstatic int bridge_value(void) { return 41 + NATIVE_INCREMENT; }\n'
-			declarations: 'fn C.getpid() int\nfn C.bridge_value() int\nfn probe_sdk() int { getpid := C.getpid(); callback := C.getpid; assert getpid == 4242; assert callback() == 4242; return C.bridge_value() }\n'
+			declarations: 'fn C.getpid() int\nfn C.bridge_value() int\nfn probe_sdk() int { callback := C.getpid; getpid := callback(); assert getpid == 4242; assert callback() == 4242; return C.bridge_value() }\n'
 			expression:   'probe_sdk()'
 		},
 	]
 	for case in cases {
 		project := os.join_path(root, case.name)
 		os.mkdir_all(project)!
+		os.mkdir_all(os.join_path(project, 'include'))!
+		os.write_file(os.join_path(project, 'include', 'native_types.h'), case.type_header)!
 		os.write_file(os.join_path(project, 'v.mod'), "Module { name: '${case.name}' }\n")!
 		header := os.join_path(project, 'value.h')
 		os.write_file(header, '#define NATIVE_INCREMENT 1\n')!
@@ -123,7 +151,7 @@ fn test_macos_tcc_cached_native_interfaces_preserve_native_compiler_abi() ! {
 				''
 			}
 			expression := case.expression.replace('EXPECTED_ANSWER', expected.str())
-			os.write_file(source, '#include "@DIR/native.${case.extension}"\n${case.declarations}${callback}fn value_${attempt}() int { return ${expression} }\nfn main() { value := value_${attempt}(); println(value); assert value == ${expected} }\n')!
+			os.write_file(source, '#flag -I @DIR/include\n#include "@DIR/native.${case.extension}"\n${case.declarations}${callback}fn value_${attempt}() int { return ${expression} }\nfn main() { value := value_${attempt}(); println(value); assert value == ${expected} }\n')!
 			exe := os.join_path(project, 'program')
 			mut args := ['-u', 'VFLAGS', '-u', 'VEXE', 'V3CACHE=' + os.join_path(project, 'cache'),
 				'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V3_DISABLE_UNCHANGED_BUILD_CACHE=1',
@@ -232,9 +260,10 @@ fn test_macos_tcc_cached_c_objects_do_not_require_objc_headers() ! {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_object_cache' }\n")!
-	os.write_file(os.join_path(root, 'native.c'), 'int bridge_value(void) { return 42; }\n')!
+	os.write_file(os.join_path(root, 'native.h'), '#ifdef __OBJC__\ntypedef double NativeNumber;\n#else\ntypedef int NativeNumber;\n#endif\nint bridge_value(NativeNumber value);\n')!
+	os.write_file(os.join_path(root, 'native.c'), '#include "native.h"\nint bridge_value(NativeNumber value) { return value + 1; }\n')!
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, '#flag @DIR/native.o\nfn C.bridge_value() int\nfn main() { println(C.bridge_value()) }\n')!
+	os.write_file(source, '#flag @DIR/native.o\n#include "@DIR/native.h"\nfn C.bridge_value(value int) int\nfn main() { println(C.bridge_value(41)) }\n')!
 	c_output := os.join_path(root, 'program.c')
 	c_only := cmdexec.run('env', ['-u', 'VFLAGS', '-u', 'VEXE',
 		'V3CACHE=' + os.join_path(root, 'cache'), @VEXE, '-cc', 'tcc', '-nocache', '-o', c_output,
@@ -257,5 +286,43 @@ fn test_macos_tcc_cached_c_objects_do_not_require_objc_headers() ! {
 		run := cmdexec.run(exe, [])
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == '42', run.output
+	}
+}
+
+fn test_macos_tcc_cached_external_module_invalidates_embedded_resource_metadata() ! {
+	$if !macos {
+		return
+	}
+	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	root := os.join_path(os.vtmp_dir(), 'tcc embedded metadata ${os.getpid()}')
+	project := os.join_path(root, 'app')
+	dependency_root := os.join_path(root, 'deps')
+	dependency := os.join_path(dependency_root, 'assets')
+	os.mkdir_all(project)!
+	os.mkdir_all(dependency)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'embedded_metadata' }\n")!
+	os.write_file(os.join_path(dependency, 'assets.v'), "module assets\npub fn length() int { return $embed_file('data.txt').len }\n")!
+	payload := os.join_path(dependency, 'data.txt')
+	os.write_file(payload, 'abcdef')!
+	os.write_file(os.join_path(project, 'native.m'), 'static int bridge_value(void) { return 0; }\n')!
+	source := os.join_path(project, 'main.c.v')
+	os.write_file(source, 'import assets\n#include "@DIR/native.m"\nfn C.bridge_value() int\nfn main() { println(assets.length() + C.bridge_value()) }\n')!
+	for attempt in 0 .. 4 {
+		if attempt == 2 { os.write_file(payload, 'abcdefghijkl')! }
+		exe := os.join_path(project, 'program')
+		build := cmdexec.run('env', ['-u', 'VFLAGS', '-u', 'VEXE',
+			'V3CACHE=' + os.join_path(root, 'cache'), 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc',
+			'none', '-cc', 'tcc', '-no-retry-compilation', '-showcc', '-show-c-output', '-path',
+			'@vlib|${dependency_root}', '-o', exe, source])
+		assert build.exit_code == 0, build.output
+		commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> '))
+		assert commands.len > 0 && commands.last().contains('tcc.exe'), build.output
+		if attempt in [1, 3] {
+			assert !build.output.contains('Caching module '), build.output
+		}
+		run := cmdexec.run(exe, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == if attempt < 2 { '6' } else { '12' }, run.output
 	}
 }

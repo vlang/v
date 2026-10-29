@@ -14180,8 +14180,8 @@ pub fn run(args []string) {
 		trace_v3_cache_fallback('native C inputs require compilation without header inspection: ${native_inputs.user_supplied}')
 		restart_v3_without_cache('')
 	}
-	native_closure := if tcc_dylib && cache_state.manager.enabled {
-		v3_tcc_dylib_native_closure(a, prefs, native_c_flags, c_compiler)
+	mut native_closure := if tcc_dylib && cache_state.manager.enabled {
+		v3_tcc_dylib_native_closure(a, prefs, native_c_flags, c_compiler, &native_inputs)
 	} else if has_external_c_inputs || native_inputs.module_inputs.len == 0 {
 		V3NativeInputClosure{}
 	} else {
@@ -14200,6 +14200,7 @@ pub fn run(args []string) {
 			if cache_state.manager.enabled { cache_state.manager.dir } else { '' }, mbedtls_expansion)
 	}
 	if tcc_dylib {
+		v3_tcc_dylib_add_embedded_inputs(mut native_closure, &cache_state, user_files, prefs.vroot)
 		cache_state.bridge_functions = native_closure.functions
 		cache_state.bridge_include_dirs = native_closure.include_dirs
 		cache_state.bridge_tcc_headers = native_closure.tcc_headers
@@ -19105,7 +19106,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 				functions[name] = prototype
 			}
 		}
-		native_bindings = v3_tcc_dylib_function_bindings(functions)
+		native_bindings = v3_tcc_dylib_function_bindings(functions)!
 	}
 	raw_main_prefix := v3_cached_c_unit_source(prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix, state, true), state, [
 		'main',
