@@ -5744,66 +5744,6 @@ fn (g &Parser) render_explicit_generic_call_expression(tokens []FastcExpressionT
 	}
 }
 
-// append_value_borrows_storage mirrors the C backend's addressable append operands.
-// Calls transfer their returned string, while local, field, and element reads need a copy.
-fn (g &Parser) append_value_borrows_storage(expression []FastcExpressionToken, indexed bool) bool {
-	tokens := fastc_mono_argument_value_tokens(expression)
-	if tokens.len == 0 {
-		return false
-	}
-	if tokens.len == 1 {
-		return tokens[0].tok == .name && (!tokens[0].has_source() || tokens[0].is_storage)
-	}
-	if tokens[0].tok == .mul {
-		return fastc_is_pointer_type(g.underlying_alias_type(g.infer_expression_type(tokens[1..]) or { u32(0) }))
-	}
-	if tokens.len >= 3 && tokens[tokens.len - 2].tok == .dot && tokens.last().tok == .name {
-		base := tokens[..tokens.len - 2]
-		base_type := g.underlying_alias_type(g.infer_expression_type(base) or { u32(0) })
-		return fastc_is_pointer_type(base_type) || g.append_value_borrows_storage(base, false)
-	}
-	if tokens.last().tok == .rsbr {
-		mut depth := 0
-		for i := tokens.len - 1; i >= 0; i-- {
-			if tokens[i].tok == .rsbr {
-				depth++
-			} else if tokens[i].tok == .lsbr {
-				depth--
-				if depth == 0 && i > 0 {
-					base := tokens[..i]
-					base_type := g.underlying_alias_type(g.infer_expression_type(base) or { u32(0) })
-					// A range is a new value, but indexing an array range still borrows
-					// an element from the original array's storage.
-					if tokens[i + 1..tokens.len - 1].any(it.tok == .dotdot) {
-						base_layout_query_type_id := fastc_trim_pointer_type(base_type)
-
-						return indexed && (flat.source_type_query(base_layout_query_type_id).has(.c_array_prefix) || fastc_fixed_array_length_id(base_layout_query_type_id) != none)
-							&& g.append_value_borrows_storage(base, false)
-					}
-					return (fastc_is_pointer_type(base_type) && !g.is_map_type(base_type) && base_type != flat.source_type_id('string*'))
-						|| g.append_value_borrows_storage(base, true)
-				}
-			}
-		}
-	}
-	if tokens.len >= 5 && tokens[tokens.len - 4].tok == .dot && tokens[tokens.len - 3].tok == .name
-		&& tokens[tokens.len - 3].lit in ['first', 'last'] && tokens[tokens.len - 2].tok == .lpar
-		&& tokens.last().tok == .rpar {
-		base := tokens[..tokens.len - 4]
-		base_type_query_type_id := fastc_trim_pointer_type(g.underlying_alias_type(g.infer_expression_type(base) or { u32(0) }))
-		return flat.source_type_query(base_type_query_type_id).has(.c_array_prefix) && g.append_value_borrows_storage(base, false)
-	}
-	return false
-}
-
-fn (g &Parser) render_array_append_value(tokens []FastcExpressionToken, element_type u32, source string) string {
-	if g.selfhost && g.underlying_alias_type(element_type) == flat.source_type_string
-		&& g.append_value_borrows_storage(tokens, false) {
-		return 'builtin__string_clone(${source})'
-	}
-	return source
-}
-
 fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
 	mut depth := 0
 	mut operator_index := -1
@@ -5859,9 +5799,6 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 	}
 	if rerendered := g.render_call_argument_expression(right_tokens, expected_right_type) {
 		right_source = rerendered
-	}
-	if !is_array_append {
-		right_source = g.render_array_append_value(right_tokens, element_type, right_source)
 	}
 	temporary := '__vf_append_value'
 	if left_tokens.len >= 4 && left_tokens.last().tok == .rsbr {

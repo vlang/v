@@ -14,6 +14,9 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+`parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
+or release their own buffers after parsing.
+
 Inside generic methods, callable parameters and local bindings take precedence over methods
 with the same name. Implicit receiver calls are resolved only when no local binding shadows
 the method name.
@@ -51,6 +54,7 @@ for explicit 64-bit values.
 Native `run` forwards program arguments and exit status. Native test builds create an
 entry point for selected tests and run suite hooks. SSA callers can select these with
 `ssa.BuildOptions.test_files` and `test_run_only`.
+Native tests retain runtime formatting helpers only when reachable tests or hooks need them.
 
 V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
 all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,

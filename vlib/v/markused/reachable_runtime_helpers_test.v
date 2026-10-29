@@ -150,6 +150,7 @@ type Number = f64
 struct Item {
 	value f64
 }
+
 fn main() {
 	${body}
 }
@@ -162,6 +163,34 @@ fn main() {
 		} else {
 			assert used['strconv__f64_to_str_l'], body
 		}
+	}
+}
+
+fn test_native_test_helpers_follow_tests_and_suite_hooks() {
+	for reached in [false, true] {
+		call := if reached { 'extra()' } else { '' }
+		a, tc := checked_runtime_helper_source('module main
+fn extra() {
+	println(u128(1))
+}
+fn testsuite_begin() {
+	println(f64(1.25))
+}
+fn test_native() {
+	${call}
+	assert 7 * 6 == 42
+}
+fn main() {}
+')
+		files := a.nodes.filter(it.kind == .file).map(it.value)
+		used, _ := mark_used_for_native_tests_with_generic_usage(a, tc, files)
+		assert used['test_native']
+		assert used['testsuite_begin']
+		assert used['f64.str']
+		assert used['u128.str'] == reached
+		assert used['extra'] == reached
+		conservative := mark_used_for_tests(a, tc, files)
+		assert conservative['u128.str']
 	}
 }
 
