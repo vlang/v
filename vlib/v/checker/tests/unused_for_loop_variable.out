@@ -1,0 +1,62 @@
+vlib/v/checker/tests/unused_for_loop_variable.vv:2:6: warning: unused variable: `j`
+    1 | fn main() {
+    2 |     for j in 0 .. 3 {
+      |         ^
+    3 |         println('x')
+    4 |     }
+vlib/v/checker/tests/unused_for_loop_variable.vv:5:2: warning: unused variable: `k`
+    3 |         println('x')
+    4 |     }
+    5 |     k := 5
+      |     ^
+    6 |     for array_value in [1, 2] {
+    7 |         println('array')
+vlib/v/checker/tests/unused_for_loop_variable.vv:6:6: warning: unused variable: `array_value`
+    4 |     }
+    5 |     k := 5
+    6 |     for array_value in [1, 2] {
+      |         ~~~~~~~~~~~
+    7 |         println('array')
+    8 |     }
+vlib/v/checker/tests/unused_for_loop_variable.vv:9:6: warning: unused variable: `array_index`
+    7 |         println('array')
+    8 |     }
+    9 |     for array_index, value in [1, 2] {
+      |         ~~~~~~~~~~~
+   10 |         println(value)
+   11 |     }
+vlib/v/checker/tests/unused_for_loop_variable.vv:12:13: warning: unused variable: `unused_value`
+   10 |         println(value)
+   11 |     }
+   12 |     for index, unused_value in [1, 2] {
+      |                ~~~~~~~~~~~~
+   13 |         println(index)
+   14 |     }
+vlib/v/checker/tests/unused_for_loop_variable.vv:15:6: warning: unused variable: `map_key`
+   13 |         println(index)
+   14 |     }
+   15 |     for map_key, map_value in {'a': 1} {
+      |         ~~~~~~~
+   16 |         println('map')
+   17 |     }
+vlib/v/checker/tests/unused_for_loop_variable.vv:15:15: warning: unused variable: `map_value`
+   13 |         println(index)
+   14 |     }
+   15 |     for map_key, map_value in {'a': 1} {
+      |                  ~~~~~~~~~
+   16 |         println('map')
+   17 |     }
+vlib/v/checker/tests/unused_for_loop_variable.vv:18:6: warning: unused variable: `iterator_value`
+   16 |         println('map')
+   17 |     }
+   18 |     for iterator_value in UnusedLoopIterator{remaining: 1} {
+      |         ~~~~~~~~~~~~~~
+   19 |         println('iterator')
+   20 |     }
+vlib/v/checker/tests/unused_for_loop_variable.vv:24:6: warning: unused variable: `reused`
+   22 |         println(reused)
+   23 |     }
+   24 |     for reused in 0 .. 2 {
+      |         ~~~~~~
+   25 |         println('unused')
+   26 |     }

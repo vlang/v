@@ -672,6 +672,8 @@ println('${a}, ${b}') // 1, 0
 
 In development mode the compiler will warn you that you haven't used the variable
 (you'll get an "unused variable" warning).
+This includes variables declared by `for` loops. Use `_` for an unneeded loop index,
+key, or value.
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
 it will not compile at all (like in Go).
 The compiler also emits an informational notice for private top-level functions

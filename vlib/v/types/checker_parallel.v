@@ -167,9 +167,10 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 }
 
 struct UnusedFnVarCandidate {
-	name   string
-	lhs_id flat.NodeId
-	rhs_id flat.NodeId
+	name    string
+	lhs_id  flat.NodeId
+	rhs_id  flat.NodeId
+	loop_id flat.NodeId = flat.empty_node
 }
 
 struct CollectIndexPrepArgs {
@@ -4398,6 +4399,21 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 				}
 				candidate_names[lhs.value] = true
 			}
+		} else if current.kind == .for_in_stmt && current.children_count >= 3 {
+			for i in 0 .. 2 {
+				lhs_id := tc.a.child(current, i)
+				lhs := tc.a.node(lhs_id)
+				if lhs.kind != .ident || lhs.value.len == 0 || lhs.value.starts_with('_') {
+					continue
+				}
+				candidates << UnusedFnVarCandidate{
+					name:    lhs.value
+					lhs_id:  lhs_id
+					rhs_id:  tc.a.child(current, 2)
+					loop_id: id
+				}
+				candidate_names[lhs.value] = true
+			}
 		}
 		for i in 0 .. current.children_count {
 			stack << tc.a.child(current, i)
@@ -4408,7 +4424,27 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	}
 	used_names := tc.fn_body_read_names(node, candidate_names)
 	for candidate in candidates {
-		if used_names[candidate.name] {
+		if candidate.loop_id != flat.empty_node {
+			loop := tc.a.node(candidate.loop_id)
+			header := loop.value.int()
+			body := flat.Node{
+				...*loop
+				children_start: loop.children_start + header
+				children_count: loop.children_count - header
+			}
+			// A use in a different loop with the same binding name does not count.
+			if tc.fn_body_read_names(body, {
+				candidate.name: true
+			})[candidate.name] {
+				continue
+			}
+			value_id := tc.a.child(loop, 1)
+			// Assigning through a mutable element changes the original collection.
+			if loop.op == .amp && (value_id == flat.empty_node || value_id == candidate.lhs_id)
+				&& tc.fn_body_uses_ident(body, candidate.name) {
+				continue
+			}
+		} else if used_names[candidate.name] {
 			continue
 		}
 		if tc.expr_calls_fn_with_duplicate_parameters(candidate.rhs_id) {
@@ -4908,6 +4944,9 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 			write_only_lhs_ids = tc.multi_assign_lhs_ids(current)
 		}
 		for i in 0 .. current.children_count {
+			if current.kind == .for_in_stmt && i < 2 {
+				continue
+			}
 			if i % 2 == 0 && current.kind == .decl_assign {
 				lhs := tc.a.child_node(current, i)
 				if lhs.kind == .ident {
