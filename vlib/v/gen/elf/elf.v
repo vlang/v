@@ -55,7 +55,7 @@ pub mut:
 	shstr_table []u8
 }
 
-struct ElfSymbol {
+pub struct ElfSymbol {
 pub mut:
 	name     string
 	name_idx int
@@ -65,7 +65,8 @@ pub mut:
 	size     u64
 }
 
-struct ElfRela {
+pub struct ElfRela {
+pub mut:
 	offset u64
 	info   u64
 	addend i64
