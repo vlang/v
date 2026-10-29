@@ -1603,17 +1603,17 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.is_test
 		}
 		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
-			return p.backend in ['arm64', 'x64']
+			return p.backend in ['arm64', 'x64', 'riscv64']
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend in ['arm64', 'x64']
+			return p.backend in ['arm64', 'x64', 'riscv64']
 				|| (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
-			return p.backend in ['arm64', 'x64'] || name in p.user_defines
+			return p.backend in ['arm64', 'x64', 'riscv64'] || name in p.user_defines
 		}
 		else {
 			return name in p.user_defines
@@ -1741,7 +1741,7 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'new_int' {
 		// SSA currently lowers `int` to i32, including array and string headers.
 		// Its builtin limits must use that width even on a 64-bit target.
-		if p.backend in ['arm64', 'x64'] {
+		if p.backend in ['arm64', 'x64', 'riscv64'] {
 			return false
 		}
 		// The C backend lowers `int` to the target pointer width.
