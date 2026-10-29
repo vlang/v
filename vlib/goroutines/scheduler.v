@@ -106,6 +106,9 @@ fn call_goroutine_fn(fn_ptr voidptr, arg voidptr) {
 // goexit0 handles goroutine cleanup after the user function returns.
 // Translated from Go's goexit0 in proc.go.
 fn goexit0(mut gp Goroutine) {
+	if gp.status == .dead {
+		panic('goroutines: double goexit')
+	}
 	mut mp := get_current_m()
 
 	gp.status = .dead
@@ -199,7 +202,13 @@ fn find_runnable(mut mp Machine, mut pp Processor) (&Goroutine, bool) {
 // execute runs a goroutine on the current M.
 // Translated from Go's execute() in proc.go.
 fn execute(mut mp Machine, mut pp Processor, gp &Goroutine) {
+	if gp == unsafe { nil } {
+		panic('goroutines: execute called with nil G')
+	}
 	mut g := unsafe { gp }
+	if g.status != .runnable {
+		panic('goroutines: execute called for G id=${g.id} status=${g.status} (want runnable)')
+	}
 	// Associate G with M
 	mp.curg = g
 	g.m = mp
@@ -289,8 +298,14 @@ fn park_m(mut mp Machine) {
 	// Sleep until woken
 	mp.park.wait()
 
-	// Woken up - acquire a P and return to schedule_loop
-	acquire_p(mut mp)
+	// Woken up. The waker usually already wired an idle P before posting, so
+	// only acquire one if this M still has none (e.g. a shutdown broadcast
+	// wakes without wiring). Acquiring unconditionally would strand the wired
+	// P: it never returns to the idle list, so npidle deflates until no new
+	// M can start and queued goroutines never run.
+	if mp.p == unsafe { nil } {
+		acquire_p(mut mp)
+	}
 }
 
 // acquire_p tries to get an idle P for the given M.
@@ -550,6 +565,13 @@ fn runq_put_slow(mut pp Processor, gp &Goroutine, _h u32, _t u32) {
 	for {
 		hh := C.goroutines_atomic_load_u32(&pp.runq_head)
 		tt := C.goroutines_atomic_load_u32(&pp.runq_tail)
+		// The local queue never holds more than local_queue_size entries, so a
+		// larger modular length means the head/tail pair is torn or corrupt.
+		// The counters wrap at u32.max, so head may legitimately exceed tail.
+		// Fail loudly instead of copying garbage slots into the batch below.
+		if tt - hh > local_queue_size {
+			panic('goroutines: runq desync in put_slow')
+		}
 		n := (tt - hh) / 2
 		if n == 0 {
 			break
