@@ -466,7 +466,7 @@ jobs:
             -Expectation Green `
             -ExpectedTestSha256 '6433293aebf40873ce1ff1932d9dfc128cc5ab387f8bd9b5b22dd0e9f1bc7ff2' `
             -ExpectedOracleSha256 '7362f17f06ea6b0ab5a64c74abf2407a0e284cbace2c10809a5235d406d16461' `
-            -ExpectedTupleSha256 'af89fd676dd05fa054fc64d3df1e09cb792f56f2a3ec27f26586d6f2bcfe9698' `
+            -ExpectedTupleSha256 'e8fdea88867150278d9097dcf9090c71a84411b1c6efb3a92aedee32c8a17444' `
             -ExpectedA0HeaderSha256 '9decdc2e825c91da2b9d2ce0c98cb8ccdad5c4800a690863d166135eb188e916' `
             -ExpectedA0MainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
             -ExpectedA0TupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
@@ -488,8 +488,8 @@ jobs:
             -ExpectedWin32BackendHelpersSha256 '2265a247f626621d69e823c09a79a5611dd187880120ba493636e73858c74a4d' `
             -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
-            -ExpectedGreenProductionSurfaceSha256 '376c2ed664bb7248dea90efd32c0989d648ea61b719d70d073e797073f98127c' `
-            -ExpectedRunnerSha256 '8782bc3444bdaaebfe4ac6ad988daa37a16ce4fafbb8457902372c82036a45ec'
+            -ExpectedGreenProductionSurfaceSha256 'f570ae10e0479b4628df305ea51ba44779f528a6767886e2b2fed4dbfa4e4f9e' `
+            -ExpectedRunnerSha256 '6febf7c663b18115e1327899edf7cbaccd3319461d6783400800ae6d92f1a868'
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
         if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}
