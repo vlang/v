@@ -958,9 +958,113 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.store_val(rv_reg_t0, val_id)
 		}
 		.fadd, .fsub, .fmul, .fdiv, .frem, .fptosi, .fptoui, .sitofp, .uitofp {
-			// TODO(riscv64): float arithmetic and conversions are deferred to a
-			// later milestone; trap so bad code cannot run silently.
-			g.emit_ebreak_todo('riscv64: float op ${instr.op} is not implemented yet')
+			// Float milestone (f64). f32 ops are still deferred.
+			if g.is_f32_type(val.typ) || (instr.operands.len > 0 && g.is_f32_type(g.m.values[instr.operands[0]].typ))
+				|| (instr.operands.len > 1 && g.is_f32_type(g.m.values[instr.operands[1]].typ)) {
+				g.emit_ebreak_todo('riscv64: f32 op ${instr.op} is not implemented yet')
+			} else {
+				match instr.op {
+					.fadd {
+						g.load_val(instr.operands[0], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
+						g.load_val(instr.operands[1], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(1, rv_reg_t0))
+						g.emit32(rv_fadd_d(0, 0, 1))
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
+						g.store_val(rv_reg_t0, val_id)
+					}
+					.fsub {
+						g.load_val(instr.operands[0], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
+						g.load_val(instr.operands[1], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(1, rv_reg_t0))
+						g.emit32(rv_fsub_d(0, 0, 1))
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
+						g.store_val(rv_reg_t0, val_id)
+					}
+					.fmul {
+						g.load_val(instr.operands[0], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
+						g.load_val(instr.operands[1], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(1, rv_reg_t0))
+						g.emit32(rv_fmul_d(0, 0, 1))
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
+						g.store_val(rv_reg_t0, val_id)
+					}
+					.fdiv {
+						g.load_val(instr.operands[0], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
+						g.load_val(instr.operands[1], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(1, rv_reg_t0))
+						g.emit32(rv_fdiv_d(0, 0, 1))
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
+						g.store_val(rv_reg_t0, val_id)
+					}
+					.fptosi {
+						g.load_val(instr.operands[0], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 64 }
+						if dst_width <= 32 {
+							g.emit32(rv_fcvt_w_d(rv_reg_t0, 0))
+						} else {
+							g.emit32(rv_fcvt_l_d(rv_reg_t0, 0))
+						}
+						g.store_val(rv_reg_t0, val_id)
+					}
+					.fptoui {
+						g.load_val(instr.operands[0], rv_reg_t0)
+						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 64 }
+						if dst_width <= 32 {
+							g.emit32(rv_fcvt_wu_d(rv_reg_t0, 0))
+						} else {
+							g.emit32(rv_fcvt_lu_d(rv_reg_t0, 0))
+						}
+						g.store_val(rv_reg_t0, val_id)
+					}
+					.sitofp {
+						g.load_val(instr.operands[0], rv_reg_t0)
+						src_id := instr.operands[0]
+						src_typ := g.m.values[src_id].typ
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 64 }
+						signed := g.is_signed_int_type(src_typ)
+						if src_width <= 32 {
+							if signed {
+								g.emit32(rv_fcvt_d_w(0, rv_reg_t0))
+							} else {
+								g.emit32(rv_fcvt_d_wu(0, rv_reg_t0))
+							}
+						} else {
+							if signed {
+								g.emit32(rv_fcvt_d_l(0, rv_reg_t0))
+							} else {
+								g.emit32(rv_fcvt_d_lu(0, rv_reg_t0))
+							}
+						}
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
+						g.store_val(rv_reg_t0, val_id)
+					}
+					.uitofp {
+						g.load_val(instr.operands[0], rv_reg_t0)
+						src_id := instr.operands[0]
+						src_typ := g.m.values[src_id].typ
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 64 }
+						if src_width <= 32 {
+							g.emit32(rv_fcvt_d_wu(0, rv_reg_t0))
+						} else {
+							g.emit32(rv_fcvt_d_lu(0, rv_reg_t0))
+						}
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
+						g.store_val(rv_reg_t0, val_id)
+					}
+					.frem {
+						g.emit_ebreak_todo('riscv64: frem is deferred (use libm)')
+					}
+					else {
+						g.emit_ebreak_todo('riscv64: float op ${instr.op} is not implemented yet')
+					}
+				}
+			}
 		}
 		.neg {
 			src_reg := g.load_val(instr.operands[0], rv_reg_t0)
@@ -1067,8 +1171,44 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge {
-			lhs_reg := g.load_val(instr.operands[0], rv_reg_t0)
-			rhs_reg := g.load_val(instr.operands[1], rv_reg_t1)
+			lhs_id := instr.operands[0]
+			rhs_id := instr.operands[1]
+			lhs_typ := g.m.values[lhs_id].typ
+			if g.is_float_type(lhs_typ) {
+				// Float comparison via FP compare instructions.
+				g.load_val(lhs_id, rv_reg_t0)
+				g.emit32(rv_fmv_d_x(0, rv_reg_t0))
+				g.load_val(rhs_id, rv_reg_t0)
+				g.emit32(rv_fmv_d_x(1, rv_reg_t0))
+				match instr.op {
+					.eq {
+						g.emit32(rv_feq_d(rv_reg_t0, 0, 1))
+					}
+					.ne {
+						g.emit32(rv_feq_d(rv_reg_t0, 0, 1))
+						g.emit32(rv_xori(rv_reg_t0, rv_reg_t0, 1))
+					}
+					.lt {
+						g.emit32(rv_flt_d(rv_reg_t0, 0, 1))
+					}
+					.gt {
+						g.emit32(rv_flt_d(rv_reg_t0, 1, 0))
+					}
+					.le {
+						g.emit32(rv_fle_d(rv_reg_t0, 0, 1))
+					}
+					.ge {
+						g.emit32(rv_fle_d(rv_reg_t0, 1, 0))
+					}
+					else {
+						g.emit32(rv_addi(rv_reg_t0, rv_reg_zero, 0))
+					}
+				}
+				g.store_val(rv_reg_t0, val_id)
+				return
+			}
+			lhs_reg := g.load_val(lhs_id, rv_reg_t0)
+			rhs_reg := g.load_val(rhs_id, rv_reg_t1)
 			match instr.op {
 				.eq {
 					g.emit32(rv_xor(rv_reg_t0, lhs_reg, rhs_reg))
@@ -1288,9 +1428,11 @@ fn (mut g Gen) gen_ret(val_id int, instr ssa.Instruction) {
 					}
 				}
 			} else if g.is_float_type(ret_val.typ) {
-				g.emit32(rv_addi(rv_reg_a0, rv_reg_zero, 0))
-				g.emit_ebreak_todo('riscv64: f32 return is deferred (float milestone)')
-				return
+				src_reg := g.load_val(ret_id, rv_reg_t0)
+				if src_reg != rv_reg_t0 {
+					g.emit32(rv_addi(rv_reg_t0, src_reg, 0))
+				}
+				g.emit32(rv_fmv_d_x(10, rv_reg_t0))
 			} else {
 				src_reg := g.load_val(ret_id, rv_reg_a0)
 				if src_reg != rv_reg_a0 {
@@ -1300,10 +1442,6 @@ fn (mut g Gen) gen_ret(val_id int, instr ssa.Instruction) {
 		}
 	} else {
 		g.emit32(rv_addi(rv_reg_a0, rv_reg_zero, 0))
-	}
-	if g.is_float_type(g.cur_func_ret_type) {
-		g.emit_ebreak_todo('riscv64: float return is deferred (float milestone)')
-		return
 	}
 	g.emit_ret()
 }
@@ -1329,6 +1467,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	}
 
 	mut arg_reg := 0
+	mut float_arg_reg := 0
 	if ret_indirect {
 		arg_reg = 1 // a0 reserved for the aggregate destination pointer
 	}
@@ -1422,6 +1561,21 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 					continue
 				}
 			}
+		}
+		if g.is_float_type(arg_val.typ) && is_c_extern {
+			if float_arg_reg < 8 {
+				src_reg := g.load_val(arg_id, rv_reg_t0)
+				if src_reg != rv_reg_t0 {
+					g.emit32(rv_addi(rv_reg_t0, src_reg, 0))
+				}
+				g.emit32(rv_fmv_d_x(10 + float_arg_reg, rv_reg_t0))
+				float_arg_reg++
+			} else {
+				src_reg := g.load_val(arg_id, rv_reg_t0)
+				g.emit_store_sp_offset(src_reg, stack_off)
+				stack_off += 8
+			}
+			continue
 		}
 		if arg_reg < 8 {
 			src_reg := g.load_val(arg_id, rv_reg_a0 + arg_reg)
@@ -2459,6 +2613,111 @@ fn rv_fmv_x_d(rd int, fs int) u32 {
 
 fn rv_fmv_d_x(fd int, rs int) u32 {
 	return (0x79 << 25) | (u32(rs) << 15) | (u32(fd) << 7) | 0x53
+}
+
+// RV64 double-precision FP helpers (R-type, rm=0 RNE unless noted).
+fn rv_fadd_d(rd int, rs1 int, rs2 int) u32 {
+	return (0x01 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fsub_d(rd int, rs1 int, rs2 int) u32 {
+	return (0x05 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fmul_d(rd int, rs1 int, rs2 int) u32 {
+	return (0x09 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fdiv_d(rd int, rs1 int, rs2 int) u32 {
+	return (0x0d << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fsqrt_d(rd int, rs1 int) u32 {
+	return (0x2d << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fmin_d(rd int, rs1 int, rs2 int) u32 {
+	return (0x14 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fmax_d(rd int, rs1 int, rs2 int) u32 {
+	return (0x15 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+// Single-precision.
+fn rv_fadd_s(rd int, rs1 int, rs2 int) u32 {
+	return (0x00 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fsub_s(rd int, rs1 int, rs2 int) u32 {
+	return (0x04 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fmul_s(rd int, rs1 int, rs2 int) u32 {
+	return (0x08 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fdiv_s(rd int, rs1 int, rs2 int) u32 {
+	return (0x0c << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+// Conversions.
+fn rv_fcvt_w_d(rd int, rs1 int) u32 {
+	return (0x61 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_wu_d(rd int, rs1 int) u32 {
+	return (0x61 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_l_d(rd int, rs1 int) u32 {
+	return (0x61 << 25) | (2 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_lu_d(rd int, rs1 int) u32 {
+	return (0x61 << 25) | (3 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_d_w(rd int, rs1 int) u32 {
+	return (0x69 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_d_wu(rd int, rs1 int) u32 {
+	return (0x69 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_d_l(rd int, rs1 int) u32 {
+	return (0x69 << 25) | (2 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_d_lu(rd int, rs1 int) u32 {
+	return (0x69 << 25) | (3 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_d_s(rd int, rs1 int) u32 {
+	return (0x21 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_s_d(rd int, rs1 int) u32 {
+	return (0x20 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_w_s(rd int, rs1 int) u32 {
+	return (0x60 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_wu_s(rd int, rs1 int) u32 {
+	return (0x60 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_s_w(rd int, rs1 int) u32 {
+	return (0x68 << 25) | (0 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fcvt_s_wu(rd int, rs1 int) u32 {
+	return (0x68 << 25) | (1 << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+// Comparisons (result in integer rd).
+fn rv_feq_d(rd int, rs1 int, rs2 int) u32 {
+	return (0x51 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (2 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_flt_d(rd int, rs1 int, rs2 int) u32 {
+	return (0x51 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (1 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fle_d(rd int, rs1 int, rs2 int) u32 {
+	return (0x51 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_feq_s(rd int, rs1 int, rs2 int) u32 {
+	return (0x50 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (2 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_flt_s(rd int, rs1 int, rs2 int) u32 {
+	return (0x50 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (1 << 12) | (u32(rd) << 7) | 0x53
+}
+fn rv_fle_s(rd int, rs1 int, rs2 int) u32 {
+	return (0x50 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (0 << 12) | (u32(rd) << 7) | 0x53
+}
+// fmv between int and fp regs (32-bit).
+fn rv_fmv_x_w(rd int, fs int) u32 {
+	return (0x70 << 25) | (u32(fs) << 15) | (u32(rd) << 7) | 0x53
+}
+fn rv_fmv_w_x(fd int, rs int) u32 {
+	return (0x78 << 25) | (u32(rs) << 15) | (u32(fd) << 7) | 0x53
 }
 
 // rv_imm12_max is the largest unsigned 12-bit immediate.
