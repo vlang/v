@@ -85,6 +85,23 @@ fn test_v_builds_get_the_manifest() ! {
 	}
 }
 
+fn test_current_drive_rooted_output_gets_the_manifest() ! {
+	root := manifest_test_root('v3_drive_rooted_manifest')!
+	defer { os.rmdir_all(root) or {} }
+	previous := os.getwd()
+	os.chdir(root)!
+	defer { os.chdir(previous) or {} }
+	exe := os.join_path(root, 'rooted.exe').replace('/', '\\')
+	assert exe.len > 2 && exe[1] == `:`
+	rooted := exe[2..]
+	src := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
+	res := cmdexec.run(@VEXE, ['-cc', 'tcc', '-o', rooted, src])
+	assert res.exit_code == 0, res.output
+	assert !windows_executable_has_manifest(rooted)!
+	assert os.read_file('${exe}.manifest')! == windows_long_path_manifest
+	assert cmdexec.run(exe, []).output.contains('Hello, World!')
+}
+
 fn test_side_by_side_manifest_at_final_output_is_kept() ! {
 	root := manifest_test_root('v3_external_manifest_build')!
 	defer { os.rmdir_all(root) or {} }

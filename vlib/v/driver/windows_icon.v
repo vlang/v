@@ -66,12 +66,49 @@ fn prepare_cross_windows_icon_resource(icon_path string, build_dir string, c_com
 	return obj_path
 }
 
-fn prepare_windows_icon_resource(icon_path string, build_dir string, arch string) !string {
+fn prepare_windows_icon_resource(icon_path string, build_dir string, arch string, is_msvc bool) !string {
 	ico_path := prepare_windows_icon_ico_path(icon_path, build_dir)!
-	obj_path := os.join_path_single(build_dir, 'icon.o')
 	images := parse_ico_file(ico_path)!
+	if is_msvc {
+		// MSVC-style linkers merge .res inputs with other resources, including their
+		// generated manifest. A precompiled resource object prevents that merge.
+		res_path := os.join_path_single(build_dir, 'icon.res')
+		os.write_file_array(res_path, windows_icon_resource_file(images))!
+		return res_path
+	}
+	obj_path := os.join_path_single(build_dir, 'icon.o')
 	os.write_file_array(obj_path, windows_icon_resource_object(images, arch)!)!
 	return obj_path
+}
+
+fn windows_icon_resource_file(images []WindowsIconImage) []u8 {
+	mut data := []u8{}
+	// A .res file starts with an empty resource header.
+	append_windows_resource_record(mut data, 0, 0, []u8{})
+	for i, image in images {
+		append_windows_resource_record(mut data, 3, u16(i + 1), image.image_data)
+	}
+	append_windows_resource_record(mut data, 14, windows_icon_group_resource_id,
+		build_group_icon_resource(images))
+	return data
+}
+
+fn append_windows_resource_record(mut data []u8, typ u16, id u16, payload []u8) {
+	append_le_u32(mut data, u32(payload.len))
+	append_le_u32(mut data, 32) // Header size, including ordinal type and name.
+	append_le_u16(mut data, 0xffff)
+	append_le_u16(mut data, typ)
+	append_le_u16(mut data, 0xffff)
+	append_le_u16(mut data, id)
+	append_le_u32(mut data, 0) // Data version.
+	append_le_u16(mut data, if typ == 0 { u16(0) } else { u16(0x1010) })
+	append_le_u16(mut data, 0) // Neutral language.
+	append_le_u32(mut data, 0) // Version.
+	append_le_u32(mut data, 0) // Characteristics.
+	data << payload
+	for data.len % 4 != 0 {
+		data << u8(0)
+	}
 }
 
 fn windows_icon_resource_arch(target_arch string, c_compiler string, flags []string) string {
@@ -104,7 +141,7 @@ fn windows_icon_resource_arch(target_arch string, c_compiler string, flags []str
 }
 
 // windows_icon_resource_object emits a single-section COFF object, accepted by TinyCC,
-// MinGW and MSVC. Let the linker add the resources: UpdateResourceW drops COFF symbols
+// MinGW and LLD. Let the linker add the resources: UpdateResourceW drops COFF symbols
 // and sections whose long names refer to the COFF string table, including DWARF.
 fn windows_icon_resource_object(images []WindowsIconImage, arch string) ![]u8 {
 	machine, relocation_type := match arch {
@@ -153,14 +190,15 @@ fn windows_icon_resource_object(images []WindowsIconImage, arch string) ![]u8 {
 		section << u8(0)
 	}
 	// COFF header (20 bytes), section header (40), data, relocations, one section
-	// symbol (18), and the empty string table (4). Each data RVA refers to symbol 0.
+	// symbol (18), an x86 feature symbol, and the empty string table (4).
+	// Each data RVA refers to symbol 0.
 	relocations := 60 + section.len
 	symbols := relocations + 10 * (n + 1)
 	mut obj := []u8{len: 60}
 	binary.little_endian_put_u16(mut obj[0..2], machine)
 	binary.little_endian_put_u16(mut obj[2..4], 1)
 	binary.little_endian_put_u32(mut obj[8..12], u32(symbols))
-	binary.little_endian_put_u32(mut obj[12..16], 1)
+	binary.little_endian_put_u32(mut obj[12..16], if arch == 'x86' { u32(2) } else { u32(1) })
 	for i, b in '.rsrc'.bytes() {
 		obj[20 + i] = b
 	}
@@ -181,6 +219,15 @@ fn windows_icon_resource_object(images []WindowsIconImage, arch string) ![]u8 {
 	append_le_u16(mut obj, 1)
 	append_le_u16(mut obj, 0)
 	obj << [u8(3), 0] // IMAGE_SYM_CLASS_STATIC, no auxiliary symbols.
+	if arch == 'x86' {
+		// Resource data has no exception handlers. Mark it SafeSEH compatible,
+		// as LLVM's resource writer does, so default x86 LLD links accept it.
+		obj << '@feat.00'.bytes()
+		append_le_u32(mut obj, 0x11)
+		append_le_u16(mut obj, 0xffff) // IMAGE_SYM_ABSOLUTE.
+		append_le_u16(mut obj, 0)
+		obj << [u8(3), 0]
+	}
 	append_le_u32(mut obj, 4)
 	return obj
 }

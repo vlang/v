@@ -10,7 +10,8 @@ On a Windows host, V gives a Windows executable an external manifest named
 `<output>.manifest` that declares `longPathAware` when the linker supplies no embedded manifest.
 Keep this file beside the executable when distributing it. With `LongPathsEnabled` turned on,
 such an executable can create, check and open files past `MAX_PATH`.
-`v self` moves this manifest alongside the replacement compiler and its backup.
+`v self` moves this manifest alongside the replacement compiler and its backup. Cached tools,
+`v watch run`, and `v build-tools` also keep it beside the executable when publishing a build.
 
 * An executable that its linker already gave a manifest keeps that manifest unchanged.
   MinGW GCC links one that declares `longPathAware` already.
@@ -25,7 +26,9 @@ such an executable can create, check and open files past `MAX_PATH`.
 
 V leaves the linked executable intact, preserving its COFF symbols and DWARF debug sections
 for `-g` and `-cg` builds. On Windows hosts, icons selected with `-icon` are linked as resource
-objects without rewriting the executable or requiring an external resource compiler.
+inputs without rewriting the executable or requiring an external resource compiler. MSVC-style
+linkers receive `.res` files so they can merge icons with other resources and embedded manifests;
+TinyCC and MinGW receive COFF resource objects.
 Cross-compilation keeps using `windres` to link icons as before.
 
 `os.exists` uses `GetFileAttributesW`, so it follows the manifest. The compiler starts a tool

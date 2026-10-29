@@ -12,10 +12,28 @@ import v.util
 // `v timeout <seconds> <command>` both succeeds and terminates on its own.
 const probe_tool = 'vtimeout'
 const toolcache_prune_probe_env = 'VTEST_TOOLCACHE_PRUNE_PROBE'
+const toolcache_sidecar_probe_env = 'VTEST_TOOLCACHE_SIDECAR_PROBE'
 
 // Reuse the test executable for a bounded pruning probe. Reading a planted FIFO used to
 // block indefinitely while holding the tool's lock, so run that work in a child process.
 fn testsuite_begin() {
+	if mode := os.getenv_opt(toolcache_sidecar_probe_env) {
+		// Act as a compiler that produces an executable and optionally a sidecar.
+		mut output := ''
+		mut dumped := ''
+		for i, arg in os.args {
+			if arg == '-o' { output = os.args[i + 1] }
+			if arg == '-dump-files' { dumped = os.args[i + 1] }
+		}
+		os.cp(os.executable(), output)!
+		os.chmod(output, 0o755)!
+		if mode == 'sidecar' {
+			os.write_file('${output}.manifest', 'application manifest')!
+		}
+		os.write_file(dumped, os.args.last() + '\n')!
+		os.write_file(os.args.last() + '.stage', os.dir(output))!
+		exit(0)
+	}
 	if directory := os.getenv_opt(toolcache_prune_probe_env) {
 		prune_stale_tool_binaries(ToolCacheEntry{
 			name: 'vdemo'
@@ -23,6 +41,54 @@ fn testsuite_begin() {
 		})
 		exit(0)
 	}
+}
+
+fn test_cached_tool_publishes_and_tracks_its_application_manifest() ! {
+	directory := toolcache_test_dir('application_manifest')
+	defer { os.rmdir_all(directory) or {} }
+	previous := os.getenv_opt(toolcache_sidecar_probe_env)
+	defer {
+		if value := previous {
+			os.setenv(toolcache_sidecar_probe_env, value, true)
+		} else {
+			os.unsetenv(toolcache_sidecar_probe_env)
+		}
+	}
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, 'module main\n')!
+	// Source timestamps must be older than the recorded build start.
+	time.sleep(1100 * time.millisecond)
+	cache := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		source:               source
+		vroot:                directory
+		dir:                  cache
+		binary:               os.join_path(cache, 'vdemo' + tool_exe_suffix())
+		manifest:             os.join_path(cache, 'inputs')
+		unbuildable:          os.join_path(cache, 'unbuildable')
+		unbuildable_manifest: os.join_path(cache, 'unbuildable.inputs')
+	}
+	os.setenv(toolcache_sidecar_probe_env, 'sidecar', true)
+	build_tool_binary(os.executable(), entry)!
+	sidecar := '${entry.binary}.manifest'
+	assert os.read_file(sidecar)! == 'application manifest'
+	assert !os.exists(os.read_file(source + '.stage')!)
+	assert tool_cache_is_fresh(entry), tool_cache_stale_reason(entry)
+	os.write_file(sidecar, 'application manifesT')!
+	assert !tool_cache_is_fresh(entry)
+	build_tool_binary(os.executable(), entry)!
+	assert os.read_file(sidecar)! == 'application manifest'
+	os.rm(sidecar)!
+	assert !tool_cache_is_fresh(entry)
+	// Rebuilding without a sidecar removes the old one and records its absence.
+	os.write_file(sidecar, 'stale manifest')!
+	os.setenv(toolcache_sidecar_probe_env, 'none', true)
+	build_tool_binary(os.executable(), entry)!
+	assert !os.exists(sidecar)
+	assert tool_cache_is_fresh(entry), tool_cache_stale_reason(entry)
+	os.write_file(sidecar, 'unexpected manifest')!
+	assert !tool_cache_is_fresh(entry)
 }
 
 fn toolcache_prune_probe(directory string) os.Result {

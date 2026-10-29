@@ -16941,7 +16941,8 @@ pub fn run(args []string) {
 			if icon_path != '' {
 				icon_arch := windows_icon_resource_arch(prefs.normalized_target_arch(), c_compiler,
 					c_flag_plan.all_flags([]))
-				icon_object := prepare_windows_icon_resource(icon_path, cc_dir, icon_arch) or {
+				icon_object := prepare_windows_icon_resource(icon_path, cc_dir, icon_arch,
+					c_compiler_is_msvc(c_compiler)) or {
 					eprintln(err.msg())
 					cleanup_c_build_dir(cc_dir)
 					exit(1)

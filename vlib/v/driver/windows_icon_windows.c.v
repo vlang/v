@@ -8,6 +8,7 @@ fn C.LoadLibraryExW(file_name &u16, file voidptr, flags u32) voidptr
 fn C.FindResourceW(module_handle voidptr, name voidptr, type_ voidptr) voidptr
 fn C.FreeLibrary(module_handle voidptr) bool
 fn C.GetLastError() u32
+fn C.GetFullPathNameW(file_name &u16, buffer_length u32, buffer &u16, file_part &&u16) u32
 
 const windows_rt_manifest = 24
 // LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE: map the resources only.
@@ -30,7 +31,23 @@ const windows_long_path_manifest = '<?xml version="1.0" encoding="UTF-8" standal
 fn windows_executable_has_manifest(exe_path string) !bool {
 	// The finalized output may be past MAX_PATH even when its build directory
 	// was shortened. LoadLibraryExW needs a fully qualified extended path there.
-	absolute_path := os.abs_path(exe_path).replace('/', '\\')
+	// os.abs_path preserves current-drive-rooted paths such as `\out\app.exe`.
+	// Resolve the drive before adding the extended prefix.
+	path := exe_path.replace('/', '\\').to_wide()
+	mut buffer := []u16{len: 256}
+	mut absolute_path := ''
+	for {
+		length := C.GetFullPathNameW(path, u32(buffer.len), buffer.data, unsafe { nil })
+		if length == 0 {
+			return error('failed to resolve `${exe_path}` (Windows error ${C.GetLastError()})')
+		}
+		if length < u32(buffer.len) {
+			// Windows returned `length` UTF-16 code units, excluding the terminator.
+			absolute_path = unsafe { string_from_wide2(buffer.data, int(length)) }
+			break
+		}
+		buffer = []u16{len: int(length)}
+	}
 	windows_exe_path := if absolute_path.starts_with('\\\\?\\') || absolute_path.starts_with('\\\\.\\') {
 		absolute_path
 	} else if absolute_path.starts_with('\\\\') {
