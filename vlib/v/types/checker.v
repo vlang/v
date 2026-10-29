@@ -1292,6 +1292,8 @@ pub mut:
 	shared_global_names      map[string]bool
 	const_types              map[string]Type
 	const_exprs              map[string]flat.NodeId
+	comptime_const_values    map[string]ComptimeConstValue
+	has_comptime_functions   bool
 	const_modules            map[string]string
 	const_files              map[string]string
 	const_suffixes           map[string]string // dot-suffix -> full const key (O(1) lookup; '' if ambiguous)
@@ -1940,6 +1942,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		global_names:                          tc.global_names
 		shared_global_names:                   tc.shared_global_names
 		const_types:                           tc.const_types
+		comptime_const_values:                 tc.comptime_const_values
+		has_comptime_functions:                tc.has_comptime_functions
 		const_exprs:                           tc.const_exprs
 		const_modules:                         tc.const_modules
 		const_files:                           tc.const_files
@@ -2620,6 +2624,8 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.value_used_nodes = []bool{len: a.nodes.len}
 	tc.fn_check_costs = if tc.building_v_fast { []i32{len: a.nodes.len} } else { []i32{} }
 	tc.declaration_attributes = map[int][]string{}
+	tc.has_comptime_functions = false
+	tc.comptime_const_values = map[string]ComptimeConstValue{}
 	tc.declaration_attribute_kinds = map[int]u32{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
 	tc.translated_files = map[string]bool{}
@@ -2822,6 +2828,9 @@ fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, par
 					tc.declaration_attribute_kinds[decl_id] = node.typ
 				}
 				decl := a.nodes[decl_id]
+				if decl.kind == .fn_decl && tc.declaration_has_attribute(flat.NodeId(decl_id), 'comptime') {
+					tc.has_comptime_functions = true
+				}
 				if decl.kind == .module_decl {
 					if source_file := a.source_files[decl.pos.id] {
 						tc.collect_module_attributes(node, source_file.name)
@@ -20888,6 +20897,13 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 		const_type := tc.const_types[qname] or { builtin_void_type }
 		if field.typ != 0 || !tc.check_known_numeric_const_initializer(expr_id, const_type) {
 			tc.check_node(expr_id)
+		}
+		if tc.requires_comptime_const(expr_id) {
+			if value := tc.eval_comptime_const(expr_id) {
+				tc.comptime_const_values[qname] = value
+			} else {
+				tc.record_error_at(.compile_error, 'cannot evaluate const `${field.value}`: ${err}', field_id, field.pos)
+			}
 		}
 		if tc.resolve_type(expr_id) is MultiReturn {
 			tc.record_error_at(.assignment_mismatch, 'const declarations do not support multiple return values yet', expr_id, tc.a.nodes[int(expr_id)].pos)

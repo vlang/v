@@ -1612,3 +1612,15 @@ fn test_real_source_paths_are_resolved_once_until_they_are_frozen() {
 	manager.remember_source_path('late_given.v', '/resolved/late_given.v')
 	assert manager.real_source_path('late_given.v') == os.real_path('late_given.v')
 }
+
+fn test_module_header_retains_comptime_helper_bodies() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_comptime_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := header_of_source(root, 'helpers', 'module helpers\nconst seed = 7\n@[comptime]\npub fn size(n int) int { return n + seed }\n')
+	assert header.contains('@[comptime]'), header
+	assert header.contains('return n + seed'), header
+	// Other nongeneric runtime helpers retain declaration-only headers.
+	plain := header_of_source(root, 'plain', 'module plain\npub fn size(n int) int { return n + 7 }\n')
+	assert !plain.contains('return n + 7'), plain
+}
