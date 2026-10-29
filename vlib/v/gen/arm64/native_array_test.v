@@ -236,9 +236,14 @@ fn main() {
     mut builder := Builder([]u8{})
     C.memcpy(&builder, &header, sizeof(NativeArray))
     builder.write_string("cd")
-    if builder.str() != "abcd" { C.exit(1) }
+    first := builder.str()
+    if first != "abcd" || builder.len != 0 { C.exit(1) }
+    // str() empties the builder and returns an independent owned copy.
+    builder.write_string(first)
     builder.write_string("efghijklmnop")
-    if builder.str() != "abcdefghijklmnop" { C.exit(2) }
+    second := builder.str()
+    if second != "abcdefghijklmnop" || builder.len != 0 { C.exit(2) }
+    builder.write_string(second)
     builder.write_byte(u8(0))
     builder.write_byte(u8(255))
     builder.write_string("Q")
@@ -254,6 +259,7 @@ fn main() {
         if text[20 + index] != u8(index) { C.exit(8) }
     }
     if unsafe { text.str[text.len] } != u8(0) { C.exit(9) }
+    if first != "abcd" || second != "abcdefghijklmnop" || builder.len != 0 { C.exit(10) }
 }
 ')
 	}

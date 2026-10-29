@@ -20,9 +20,14 @@ fn test_cached_module_closure_dependencies_outlive_prepare_scope() {
 	scope := prealloc_scope_begin_for_v3()
 	mut bodies := map[string]string{}
 	for i in 0 .. 64 {
-		bodies['module_${i}'] = 'void value() { closure__closure_data(); }'
+		bodies['module_${i}'] = if i % 2 == 0 {
+			'void value() { closure__closure_data(); }'
+		} else {
+			'void value() { kept_wrapper(); }'
+		}
 	}
-	cache_record_closure_dependencies(bodies, '', scope, mut state)
+	prefix := '${v3_program_wrappers_begin}\nstatic void kept_wrapper(void) { closure__closure_data(); }\n${v3_program_wrappers_end}\n'
+	cache_record_closure_dependencies(bodies, prefix, scope, mut state)
 	$if prealloc {
 		for i in 0 .. 64 {
 			name := 'module_${i}'
@@ -74,6 +79,37 @@ fn test_cached_module_preserves_generated_closure_dependencies() {
 		'other': 'void other__use() { kept_wrapper(); }'
 	}, '${v3_program_wrappers_begin}\nstatic void kept_wrapper(void) { closure__closure_data(); }\nstatic void unused_wrapper(void) { missing(); }\n${v3_program_wrappers_end}\n', unsafe { nil }, mut state)
 	assert cache_dependency_modules(&state, ['other']) == ['closure']
+}
+
+fn test_cached_modules_keep_their_own_wrapper_closure_dependencies() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'closure': ['/vlib/builtin/closure/closure.v']
+		}
+		headers:        {
+			'closure': 'module closure\nfn closure_data()\n'
+		}
+	}
+	for name in ['first', 'second', 'unrelated'] {
+		state.module_sources[name] = ['/vlib/${name}/module.v']
+		state.headers[name] = 'module ${name}\nfn value()\n'
+	}
+	prefix := '${v3_program_wrappers_begin}
+static void closure_wrapper(void) { closure__closure_data(); }
+static void outer_wrapper(void) { closure_wrapper(); }
+static void plain_wrapper(void) { puts("closure__not_a_call"); }
+${v3_program_wrappers_end}\n'
+	cache_record_closure_dependencies({
+		'first':     'void first__value() { outer_wrapper(); }'
+		'second':    'void second__value() { closure_wrapper(); }'
+		'unrelated': 'void unrelated__value() { plain_wrapper(); }'
+	}, prefix, unsafe { nil }, mut state)
+	for name in ['first', 'second'] {
+		assert state.module_dependencies[name] == ['closure']
+		assert state.headers[name].contains('import builtin.closure as ${closure_runtime_import_alias}')
+	}
+	assert 'unrelated' !in state.module_dependencies
+	assert !state.headers['unrelated'].contains('import builtin.closure')
 }
 
 fn test_module_cache_compiler_identity_changes_when_executable_changes() {

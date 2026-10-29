@@ -66,7 +66,7 @@ pub fn (app &App) admin_auth_post(mut ctx Context) veb.Result {
 
 @['/gzip']
 pub fn (app &App) gzip_test(mut ctx Context) veb.Result {
-	return ctx.text('gzip response, ${ctx.counter}')
+	return ctx.text('gzip response, ${ctx.counter}, ' + 'x'.repeat(2000))
 }
 
 @['/decode_gzip'; post]
@@ -76,7 +76,7 @@ pub fn (app &App) decode_gzip_test(mut ctx Context) veb.Result {
 
 @['/zstd']
 pub fn (app &App) zstd_test(mut ctx Context) veb.Result {
-	return ctx.text('zstd response, ${ctx.counter}')
+	return ctx.text('zstd response, ${ctx.counter}, ' + 'y'.repeat(2000))
 }
 
 @['/decode_zstd'; post]
@@ -86,7 +86,13 @@ pub fn (app &App) decode_zstd_test(mut ctx Context) veb.Result {
 
 @['/content']
 pub fn (app &App) content_test(mut ctx Context) veb.Result {
-	return ctx.text('content response, ${ctx.counter}')
+	return ctx.text('content response, ${ctx.counter}, ' + 'z'.repeat(2000))
+}
+
+// Tiny responses stay uncompressed even with the middleware enabled.
+@['/tiny']
+pub fn (app &App) tiny_test(mut ctx Context) veb.Result {
+	return ctx.text('hi')
 }
 
 // Test route for double-send regression test
@@ -197,6 +203,9 @@ fn testsuite_begin() {
 	// Auto content encoding middleware (zstd/gzip based on Accept-Encoding)
 	app.Middleware.route_use('/content', veb.encode_auto[Context]())
 
+	// Tiny responses are never compressed, even with the middleware enabled
+	app.Middleware.route_use('/tiny', veb.encode_gzip[Context]())
+
 	// Regression test: global after-middleware sends response, route after-middleware should be skipped
 	app.Middleware.use(handler: global_after_sends_response, after: true)
 	app.Middleware.route_use('/double_after', handler: route_after_sends_response, after: true)
@@ -272,13 +281,15 @@ fn test_after_middleware() {
 
 // Verifies that encode_gzip compresses responses
 fn test_encode_gzip_middleware() {
-	x := http.get('${localserver}/gzip')!
+	mut req := http.new_request(.get, '${localserver}/gzip', '')
+	req.header.add(.accept_encoding, 'gzip')
+	x := req.do()!
 
 	encoding := x.header.get(.content_encoding) or { '' }
 	assert encoding == 'gzip', 'Expected gzip encoding, got: ${encoding}'
 
 	// HTTP client auto-decompresses gzip content
-	assert x.body == 'gzip response, 2'
+	assert x.body == 'gzip response, 2, ' + 'x'.repeat(2000)
 }
 
 // Verifies that decode_gzip middleware decompresses request bodies
@@ -295,13 +306,15 @@ fn test_decode_gzip_middleware() {
 
 // Verifies that encode_zstd compresses responses
 fn test_encode_zstd_middleware() {
-	x := http.get('${localserver}/zstd')!
+	mut req := http.new_request(.get, '${localserver}/zstd', '')
+	req.header.add(.accept_encoding, 'zstd')
+	x := req.do()!
 
 	encoding := x.header.get(.content_encoding) or { '' }
 	assert encoding == 'zstd', 'Expected zstd encoding, got: ${encoding}'
 
 	decompressed := zstd.decompress(x.body.bytes())!
-	assert decompressed.bytestr() == 'zstd response, 2'
+	assert decompressed.bytestr() == 'zstd response, 2, ' + 'y'.repeat(2000)
 }
 
 // Verifies that decode_zstd middleware decompresses request bodies
@@ -326,7 +339,7 @@ fn test_encode_auto_zstd() {
 	assert encoding == 'zstd', 'Expected zstd encoding when zstd is in Accept-Encoding, got: ${encoding}'
 
 	decompressed := zstd.decompress(x.body.bytes())!
-	assert decompressed.bytestr() == 'content response, 2'
+	assert decompressed.bytestr() == 'content response, 2, ' + 'z'.repeat(2000)
 }
 
 // Verifies that encode_auto falls back to gzip when client doesn't support zstd
@@ -339,7 +352,7 @@ fn test_encode_auto_gzip_fallback() {
 	assert encoding == 'gzip', 'Expected gzip encoding when zstd is not in Accept-Encoding, got: ${encoding}'
 
 	// HTTP client auto-decompresses gzip content
-	assert x.body == 'content response, 2'
+	assert x.body == 'content response, 2, ' + 'z'.repeat(2000)
 }
 
 // Verifies that encode_auto sends uncompressed when no encoding is supported
@@ -350,7 +363,29 @@ fn test_encode_auto_no_compression() {
 
 	encoding := x.header.get(.content_encoding) or { '' }
 	assert encoding == '', 'Expected no encoding when neither gzip nor zstd is in Accept-Encoding, got: ${encoding}'
-	assert x.body == 'content response, 2'
+	assert x.body == 'content response, 2, ' + 'z'.repeat(2000)
+}
+
+// Verifies that an explicit q=0 refuses compression even when the coding is listed
+fn test_encode_auto_q_zero_refuses() {
+	mut req := http.new_request(.get, '${localserver}/content', '')
+	req.header.add(.accept_encoding, 'gzip;q=0, zstd;q=0')
+	x := req.do()!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == '', 'Expected no encoding when all q-values are 0, got: ${encoding}'
+	assert x.body == 'content response, 2, ' + 'z'.repeat(2000)
+}
+
+// Verifies that tiny responses are never compressed, even with the middleware enabled
+fn test_encode_gzip_skips_tiny_body() {
+	mut req := http.new_request(.get, '${localserver}/tiny', '')
+	req.header.add(.accept_encoding, 'gzip, zstd')
+	x := req.do()!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == '', 'Expected no encoding for tiny bodies, got: ${encoding}'
+	assert x.body == 'hi'
 }
 
 // Regression test: when global after-middleware sends response, route after-middleware should be skipped

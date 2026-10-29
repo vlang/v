@@ -26,6 +26,13 @@ $if sokol_wayland ? {
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
 #flag openbsd -DSOKOL_GLCORE
 #flag openbsd -I/usr/X11R6/include -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
+#flag netbsd -DSOKOL_GLCORE
+#flag netbsd -I/usr/X11R7/include -L/usr/X11R7/lib -lX11 -lGL -lXcursor -lXi
+#flag dragonfly -DSOKOL_GLCORE
+#flag dragonfly -I/usr/local/include -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
+// Solaris puts X11 and GL into /usr, which the compiler and the linker
+// search by default, so no paths are needed.
+#flag solaris -DSOKOL_GLCORE -lX11 -lGL -lXcursor -lXi
 #flag windows -lgdi32
 
 $if windows {
@@ -100,6 +107,8 @@ $if emscripten ? {
 #flag windows -DSOKOL_WIN32_FORCE_MAIN
 #flag freebsd -DSOKOL_NO_ENTRY
 #flag openbsd -DSOKOL_NO_ENTRY
+#flag netbsd -DSOKOL_NO_ENTRY
+#flag dragonfly -DSOKOL_NO_ENTRY
 #flag solaris -DSOKOL_NO_ENTRY
 // TODO: end
 

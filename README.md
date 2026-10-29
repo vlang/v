@@ -382,7 +382,10 @@ hello world
 >>>
 ```
 
-`v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
+`v self` defaults to `-gc none` and includes only the C backend. Selecting an omitted backend
+automatically builds and runs a cached full compiler. Later requests reuse it while its sources
+are current. Use `v -all-backends self` or `v -compile-backend fastc self` to include optional
+backends in the main executable. Pass `-gc <mode>` if you need a different GC mode.
 On non-Windows hosts, `v -prod self` uses profile-guided optimization (PGO) when the selected C
 compiler is Clang and `llvm-profdata` is available. Clang's reported installation directory and
 resolved executable directory are searched before `PATH` and macOS `xcrun` for the profile tool,
@@ -394,13 +397,16 @@ production compiler. Other C toolchains and failed PGO attempts use a regular pr
 Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in parallel.
 Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
 
-On macOS ARM64, first run `v -compile-backend arm64 self` to include the native backend in
-the current compiler. Then use `v -b arm64 self` to rebuild the full compiler with the native
-ARM64 backend. `v -b arm64 self x2` replaces the compiler twice, so the second build runs the
-compiler produced by the first native build. Use `-o v_arm64` to keep the current compiler
-and write a separate executable. Native self-builds use `-gc none` and retain commands
-such as `self`, `fmt`, and `version`. The native compiler includes the C backend and leaves
-out FastC by default.
+Use `v -b arm64 file.v` on macOS ARM64 or `v -b x64 file.v` on Linux AMD64 to compile
+with a native backend. Use `v -b arm64 self` or `v -b x64 self` to rebuild
+the full compiler with the selected native backend. A backend-specific `self x2` replaces
+the compiler twice, so the second build runs the compiler produced by the first native
+build. Use `-o v_arm64` or `-o v_x64` to keep the current compiler and write a separate
+executable. Native self-builds use `-gc none` and retain commands such as `self`, `fmt`,
+and `version`. The native compiler includes the C backend and leaves out FastC by default.
+For x64, add `-prod` to enable SSA optimization, register allocation and optimized C helpers.
+Very large x64 modules may skip the global SSA pass to bound compiler memory. The ARM64
+backend retains its existing optimization behavior.
 
 ```bash
 cd examples

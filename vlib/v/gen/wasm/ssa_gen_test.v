@@ -910,6 +910,14 @@ pub fn result_ok() int {
 	return parse("abcd") or { -1 }
 }
 
+fn parse_i64(n i64) !i64 {
+ return n
+}
+
+pub fn result_i64_ok() i64 {
+ return parse_i64(9) or { i64(-1) }
+}
+
 pub fn result_err() int {
 	return parse("") or { -9 }
 }
@@ -943,6 +951,7 @@ pub fn option_in_and_guard() int {
 		'option_or':                'option_or'
 		'option_struct':            'option_struct'
 		'result_ok':                'result_ok'
+		'result_i64_ok':            'result_i64_ok'
 		'result_err':               'result_err'
 		'option_in_and_guard':      'option_in_and_guard'
 	}
@@ -955,6 +964,7 @@ assert.equal(e.nested_struct_and_string(), 71);
 assert.equal(e.option_or(), 418);
 assert.equal(e.option_struct(), 42);
 assert.equal(e.result_ok(), 4);
+assert.equal(e.result_i64_ok(), 9n);
 assert.equal(e.result_err(), -9);
 assert.equal(e.option_in_and_guard(), 84);
 '

@@ -398,25 +398,28 @@ mut:
 	comptime_method_index_nodes            int
 	comptime_method_index_module           string
 	comptime_method_index_file             string
-	comptime_method_line_offsets           map[string][]int
-	comptime_reflected_for_roles           map[string]u8
-	comptime_reflected_for_ready           bool
-	call_param_types_recent                &CallParamTypesRecentCache = unsafe { nil }
-	call_param_types_decl_cache            map[int][]types.Type
-	packed_variadic_tail_types             map[int]u32
-	call_param_types_decl_misses           map[string]bool
-	call_param_types_decl_shared           bool
-	call_param_types_decl_index            map[string]FnParamDeclRef
-	call_param_types_index_ready           bool
-	call_param_types_prepared              bool
-	fixed_array_borrow_params              map[int][]bool
-	call_provenance_borrow_params          map[int][]bool
-	preserve_call_provenance               bool
-	borrow_param_mentions                  &BorrowParamMentions = unsafe { nil }
-	used_fns                               map[string]bool
-	used_fns_parent                        &map[string]bool = unsafe { nil }
-	used_fns_root                          &map[string]bool = unsafe { nil }
-	comptime_reflected_params              map[string][]ParamMeta
+	// Mutable schema metadata belongs to this worker and is absent until a
+	// declaration actually uses `@[attribute]`. Forks start with a nil registry.
+	comptime_attribute_schema_state &ComptimeAttributeSchemaState = unsafe { nil }
+	comptime_method_line_offsets    map[string][]int
+	comptime_reflected_for_roles    map[string]u8
+	comptime_reflected_for_ready    bool
+	call_param_types_recent         &CallParamTypesRecentCache = unsafe { nil }
+	call_param_types_decl_cache     map[int][]types.Type
+	packed_variadic_tail_types      map[int]u32
+	call_param_types_decl_misses    map[string]bool
+	call_param_types_decl_shared    bool
+	call_param_types_decl_index     map[string]FnParamDeclRef
+	call_param_types_index_ready    bool
+	call_param_types_prepared       bool
+	fixed_array_borrow_params       map[int][]bool
+	call_provenance_borrow_params   map[int][]bool
+	preserve_call_provenance        bool
+	borrow_param_mentions           &BorrowParamMentions = unsafe { nil }
+	used_fns                        map[string]bool
+	used_fns_parent                 &map[string]bool = unsafe { nil }
+	used_fns_root                   &map[string]bool = unsafe { nil }
+	comptime_reflected_params       map[string][]ParamMeta
 	// sum_eq_types records sum and recursive struct deep-equality helpers,
 	// keyed by the concrete helper name with the
 	// module/file context of the requesting call site (type resolution inside
@@ -608,6 +611,7 @@ mut:
 	parallel_monomorph_struct_specs    map[u32]u32
 	parallel_monomorph_sum_specs       map[u32]GenericSpecContext
 	generic_call_spec_cache            map[int]GenericCallSpec
+	generic_call_spec_settled          &SettledGenericCalls = unsafe { nil }
 	generic_call_spec_misses           map[int]bool
 	stringify_stack                    []u32
 	stringify_depth_cap                int = max_stringify_nesting_depth
@@ -774,6 +778,18 @@ mut:
 	// The statements that write the options passed to a method's `mut a ?T` parameters
 	// back after the call (transform_call_expr).
 	mut_optional_call_writebacks []flat.NodeId
+	// Keep native live metadata last so ordinary transform fields retain their offsets.
+	live_metadata       &LiveMetadata = unsafe { nil }
+	live_reload_runtime bool
+}
+
+// LiveMetadata holds native live-reload tables outside ordinary Transformer defaults.
+// The collector fills it before workers are forked; they share it read-only.
+struct LiveMetadata {
+mut:
+	fns         map[string]string
+	methods     map[string]string
+	source_file string
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -1530,6 +1546,20 @@ struct GenericFnDecl {
 struct GenericCallSpec {
 	decl_key string
 	args     flat.TypeTextList
+}
+
+// SettledGenericCalls is allocated only when cloning resolves a concrete call.
+// Each transformer owns its entries; worker merges copy relocated node IDs.
+struct SettledGenericCalls {
+mut:
+	entries map[int]bool
+}
+
+fn (mut t Transformer) mark_generic_call_settled(id int) {
+	if isnil(t.generic_call_spec_settled) {
+		t.generic_call_spec_settled = &SettledGenericCalls{}
+	}
+	t.generic_call_spec_settled.entries[id] = true
 }
 
 // Each transformer keeps its own recent signature answers. String records
@@ -5012,6 +5042,9 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	dpsw.restart()
 	t.precompute_const_array_fixed_storage()
 	t.timing_profile('  [ttime]   dsp const fixed  ${f64(dpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	$if !skip_arm64 ? {
+		t.collect_live_functions()
+	}
 	dpsw.restart()
 	// Every forked worker checker otherwise lazily rebuilds the source-error
 	// embedding index by rescanning all struct declarations; build it once in
@@ -5588,6 +5621,7 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
+	w.generic_call_spec_settled = unsafe { nil }
 	w.generic_call_spec_misses = map[int]bool{}
 	// run_parallel_transform snapshots declaration signatures before workers
 	// start. Keep the shared read-only index and signature cache; rebuilding
@@ -5733,6 +5767,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
+	w.generic_call_spec_settled = unsafe { nil }
 	w.generic_call_spec_misses = map[int]bool{}
 	w.node_module_map_cache = []u16{}
 	w.node_module_map_nodes = -1
@@ -5835,6 +5870,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		alias_receiver_fns_aliases:             t.alias_receiver_fns_aliases
 		globals:                                fork_prepared_type_bindings(t.globals)
 		global_qualified_names:                 t.global_qualified_names
+		live_metadata:                          t.live_metadata
+		live_reload_runtime:                    t.live_reload_runtime
 		sum_types:                              t.sum_types
 		sum_variant_parents:                    t.sum_variant_parents
 		sum_variant_names:                      t.sum_variant_names
@@ -5986,6 +6023,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		pending_generic_fn_spec_keys:           GenericFnSpecBoolMap{}
 		generic_receiver_methods_by_name:       map[string][]string{}
 		generic_call_spec_cache:                map[int]GenericCallSpec{}
+		generic_call_spec_settled:              unsafe { nil }
 		generic_call_spec_misses:               map[int]bool{}
 		monomorph_error_seen:                   map[string]bool{}
 		skip_generics:                          t.skip_generics
@@ -6675,8 +6713,19 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			continue
 		}
 		shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-		if shifted !in t.generic_call_spec_cache {
+		if shifted !in t.generic_call_spec_cache && (isnil(t.generic_call_spec_settled)
+			|| !t.generic_call_spec_settled.entries[shifted]) {
 			t.generic_call_spec_misses[shifted] = true
+		}
+	}
+	if !isnil(w.generic_call_spec_settled) {
+		for idx, settled in w.generic_call_spec_settled.entries {
+			if !settled {
+				continue
+			}
+			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
+			t.mark_generic_call_settled(shifted)
+			t.generic_call_spec_misses.delete(shifted)
 		}
 	}
 	for idx, typ in w.refined_node_types {
@@ -7516,6 +7565,10 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 				const_typ_source_id := t.const_field_type_name(cf)
 
 				new_val := t.transform_const_or_expr(val_id, val, const_typ_source_id)
+				t.a.children[cf.children_start] = new_val
+			} else if val.kind == .postfix && val.op == .not && val.children_count == 1
+				&& t.a.child_node(&val, 0).kind == .array_literal {
+				new_val := t.transform_const_expr_no_pending(val_id)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .array_init,
 				.map_init, .fn_literal, .lambda_expr, .sizeof_expr, .selector, .index, .prefix,
@@ -8776,8 +8829,11 @@ fn (mut t Transformer) set_fresh_runtime_closure_expr_type(id flat.NodeId, typ_i
 	if typ_comparison_type_id_10 == u32(0) || int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
-	t.set_node_typ(int(id), typ_source_id_7)
 	node := t.a.nodes[int(id)]
+	// A literal's `typ` is its declared return type, which lift_fn_literal reads back.
+	if node.kind != .fn_literal {
+		t.set_node_typ(int(id), typ_source_id_7)
+	}
 	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
 		t.set_fresh_runtime_closure_expr_type(t.a.child(&node, 0), typ_source_id_7)
 	}
@@ -11244,6 +11300,9 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 				t.refined_node_types.delete(idx)
 				t.mut_value_ident_nodes.delete(idx)
 				t.generic_call_spec_cache.delete(idx)
+				if !isnil(t.generic_call_spec_settled) {
+					t.generic_call_spec_settled.entries.delete(idx)
+				}
 				t.generic_call_spec_misses.delete(idx)
 				if !isnil(t.tc) && !isnil(t.tc.fork_overlay) {
 					t.tc.fork_overlay.resolved_call_names.delete(idx)
@@ -14274,6 +14333,86 @@ fn (mut t Transformer) selected_sizeof_value_type(name string) ?u32 {
 	return t.tc.type_name(typ)
 }
 
+// transform_live_expr rewrites native live calls and references in the cold reload path.
+@[direct_array_access]
+fn (mut t Transformer) transform_live_expr(id flat.NodeId) ?flat.NodeId {
+	if !t.should_rewrite_live_calls() {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	// Live reload: rewrite calls/references to @[live] functions into calls
+	// through their __live_<mangled> function pointers.
+	if node.kind == .call && node.children_count >= 1 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .ident {
+			if mangled := t.live_metadata.fns[callee.value_text()] {
+				mut args := []flat.NodeId{}
+				for i in 1 .. node.children_count {
+					arg := t.a.child(&node, i)
+					mut arg_node := t.a.nodes[int(arg)]
+					arg_node.is_mut = false
+					args << t.transform_expr(t.a.add_node(arg_node))
+				}
+				lhs := t.make_ident('live_${mangled}')
+				t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
+				start := t.a.children.len
+				t.a.children << lhs
+				for arg_id in args {
+					t.a.children << arg_id
+				}
+				return t.a.add_node(flat.Node{
+					kind:           .call
+					children_start: start
+					children_count: flat.child_count(1 + args.len)
+				})
+			}
+		} else if callee.kind == .selector {
+			receiver_id := t.a.child(callee, 0)
+			method_name := t.tc.resolved_call_name(id) or {
+				t.resolve_receiver_method_name(receiver_id, callee.value_text())
+			}
+			if mangled := t.live_metadata.methods[method_name] {
+				mut args := []flat.NodeId{}
+				mut receiver := t.transform_expr(receiver_id)
+				actual_pointer := flat.source_type_shape(t.node_type(receiver_id)).has(.pointer)
+				reference := t.method_receiver_is_reference(id, receiver_id, callee.value_text())
+				if reference && !actual_pointer {
+					receiver = t.make_prefix(.amp, receiver)
+				} else if !reference && actual_pointer {
+					receiver = t.make_prefix(.mul, receiver)
+				}
+				args << receiver
+				for i in 1 .. node.children_count {
+					arg := t.a.child(&node, i)
+					mut arg_node := t.a.nodes[int(arg)]
+					arg_node.is_mut = false
+					args << t.transform_expr(t.a.add_node(arg_node))
+				}
+				lhs := t.make_ident('live_${mangled}')
+				t.set_node_typ(int(lhs), flat.source_type_id('voidptr'))
+				start := t.a.children.len
+				t.a.children << lhs
+				for arg_id in args {
+					t.a.children << arg_id
+				}
+				return t.a.add_node(flat.Node{
+					kind:           .call
+					children_start: start
+					children_count: flat.child_count(1 + args.len)
+				})
+			}
+		}
+	}
+	if node.kind == .ident {
+		if mangled := t.live_metadata.fns[node.value_text()] {
+			id2 := t.make_ident('live_${mangled}')
+			t.set_node_typ(int(id2), flat.source_type_id('voidptr'))
+			return id2
+		}
+	}
+	return none
+}
+
 // transform_expr transforms transform expr data for transform.
 @[direct_array_access]
 pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
@@ -14283,6 +14422,14 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	if t.assert_watch.active {
 		if result := t.transform_watched_assert_operand(id, u32(0)) {
 			return result
+		}
+	}
+	// Live rewrites require the optional native ARM64 backend.
+	$if !skip_arm64 ? {
+		if t.live_reload_runtime {
+			if rewritten := t.transform_live_expr(id) {
+				return rewritten
+			}
 		}
 	}
 	node := t.a.nodes[int(id)]
@@ -26262,6 +26409,18 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if static_fn := t.static_fn_value_name(id, node) {
 		return t.lower_static_fn_value(id, node, static_fn)
 	}
+	$if !skip_arm64 ? {
+		// The generated loader initializes an unbound method pointer with Type.method.
+		// Native SSA needs the resolved function ident rather than a field selector.
+		if t.live_reload_runtime && !t.in_call_callee
+			&& os.base(t.cur_file).starts_with('v3_live_reload_') {
+			if method := t.tc.resolved_fn_value_name(id) {
+				if method in t.live_metadata.methods {
+					return t.lower_static_fn_value(id, node, method)
+				}
+			}
+		}
+	}
 	base_id0 := t.a.child(&node, 0)
 	if node.value_text() == 'typ' && t.selector_base_is_comptime_type_value(base_id0) {
 		if base_type_source_id := t.comptime_type_expr_type(base_id0) {
@@ -33202,4 +33361,58 @@ fn (mut cache EnumExpectedCache) key(typ u32, owner_module string, current_modul
 		id
 	}
 	return u64(typ) << 32 | u64(context)
+}
+
+// collect_live_functions records @[live] function metadata and whether the
+// generated native live-reload runtime is present in this AST.
+fn (mut t Transformer) collect_live_functions() {
+	t.live_metadata = unsafe { nil }
+	t.live_reload_runtime = false
+	// The driver injects this global only for a native live-reload program.
+	// Ordinary compilations do not need another full-arena metadata scan.
+	if !isnil(t.tc) && 'live_mtime' !in t.tc.global_names {
+		return
+	}
+	t.live_metadata = &LiveMetadata{}
+	node_count := t.a.nodes.len
+	mut mutable_cur_file := ''
+	for i in 0 .. node_count {
+		node := t.a.nodes[i]
+		if node.kind == .file {
+			mutable_cur_file = node.value_text()
+		}
+		if node.kind == .global_decl {
+			for ci in 0 .. node.children_count {
+				child := t.a.child_node(&node, ci)
+				if child.kind == .field_decl && child.value_text() == 'live_mtime' {
+					t.live_reload_runtime = true
+				}
+			}
+		}
+		if node.kind == .directive && node.value.starts_with('@attributes:') {
+			target_idx := node.value['@attributes:'.len..].int()
+			if target_idx >= 0 && target_idx < node_count && t.a.nodes[target_idx].kind == .fn_decl {
+				attrs := node.generic_params()
+				if 'live' in attrs {
+					decl_name := t.a.nodes[target_idx].value_text()
+					mangled := decl_name.replace('.', '__')
+					if decl_name.contains('.') {
+						t.live_metadata.methods[decl_name] = mangled.bytes().hex()
+					} else {
+						t.live_metadata.fns[decl_name] = mangled.bytes().hex()
+					}
+					if t.live_metadata.source_file == '' {
+						t.live_metadata.source_file = mutable_cur_file
+					}
+				}
+			}
+		}
+	}
+}
+
+// should_rewrite_live_calls excludes generated runtime and the extracted bodies themselves.
+fn (t &Transformer) should_rewrite_live_calls() bool {
+	return t.live_reload_runtime && t.cur_module == 'main'
+		&& !os.base(t.cur_file).starts_with('v3_live_reload_')
+		&& t.cur_fn_name !in t.live_metadata.fns && t.cur_fn_name !in t.live_metadata.methods
 }

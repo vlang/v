@@ -10664,14 +10664,44 @@ use `v help`, `v help build` and `v help build-c`.
 
 ### Native Backend binaries
 
-`-b native` has been replaced by `-b arm64` for native ARM64 compilation on macOS.
-Enable the backend with `v -compile-backend arm64 self`, then compile with
-`v -b arm64 file.v`. The native ARM64 backend does not link a garbage collector yet, so it
-always builds as if `-gc none` was passed.
-A native AMD64 backend is not available yet; use `v -b c -arch amd64 file.v` for AMD64
-compilation through the C backend.
+`v self` builds the compiler with only the C backend by default. Selecting another backend,
+such as `v -b arm64 file.v`, automatically builds and runs a full compiler in the tool cache.
+Later requests reuse it until its compiler or source dependencies change. `VTOOLS_NO_CACHE=1`
+builds a temporary full compiler for each request instead. To include optional backends in `v`
+itself, use `v -compile-backend arm64 self` or `v -all-backends self`.
 
-Currently there is no debugging support for binaries created by the native ARM64 backend.
+`-b native` has been replaced by `-b arm64` and `-b x64`. Use `v -b arm64 file.v` on macOS
+ARM64 or `v -b x64 file.v` on Linux AMD64. The native backends do not link a garbage collector yet,
+so they always
+build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
+allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
+bound compiler memory. The ARM64 backend retains its existing optimization behavior.
+The x64 backend is experimental. Calls without a native implementation fail compilation
+or linking rather than producing placeholder implementations.
+It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
+currently unsupported and produces a diagnostic; pass pointers to C aggregates instead.
+Stored C function values support integer and pointer arguments with 64-bit integer, pointer,
+or void returns. Taking the address of a variadic C function, one with floating-point arguments
+or returns, or one returning a narrower integer produces a diagnostic. Direct C calls retain
+their scalar calling convention.
+C callbacks passed to or returned from C functions support 64-bit integer and pointer
+arguments, and 64-bit integer, pointer, or void returns. Unsupported callback conventions,
+including floating-point, narrow integer, aggregate, and variadic signatures, produce a diagnostic.
+
+Native 128-bit integers currently support integer widening, copying, bitwise `&`, `|`, `^`,
+addition, subtraction, and shifts with constant counts from 0 through 127. Signed scalar
+widening sign-extends for both `i128` and `u128`; unsigned scalar widening zero-extends.
+Signed `i128 >>` preserves the sign; `u128 >>` and `>>>` fill with zeroes.
+Comparisons, multiplication, division, remainder, unary negation and complement, variable shifts,
+compound assignments, increment/decrement, narrowing casts, and conversions to or from
+floating-point values are unsupported and produce a diagnostic. Matching, range iteration,
+and range membership with 128-bit values are also unsupported. Array and string indices and
+slice bounds must use scalar integers. Integer literals must fit in a single 64-bit limb;
+construct larger values with shifts and bitwise operations. Array `.index()` searches on
+128-bit elements are unsupported.
+Use the C backend for the full set of 128-bit operations.
+
+Currently there is no debugging support for binaries created by the native backends.
 
 ### Javascript Backend
 
@@ -11529,6 +11559,11 @@ function unless it is an unquoted numeric label, uses `%=`, or is exported with 
 `.global`, or `.weak`. Quoted symbol definitions are checked too: `"1":` is an ordinary symbol,
 not a numeric local label.
 
+In x86 raw blocks, the compiler also checks that a size suffix such as `movl` or `incq` matches the
+width of the register or named operand it acts on, and reports an error for a mismatch, as the
+GNU assembler does. Use an operand modifier such as `%k[name]` to select a narrower view of a
+named operand, or change the suffix.
+
 For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
 the pointer inside the template, and decrement the count until it reaches zero:
 
@@ -11715,6 +11750,39 @@ Functions that you want to be reloaded must have `@[live]` attribute
 before their definition.
 
 Right now it's not possible to modify types while the program is running.
+
+#### Native backend reloading (experimental, macOS ARM64)
+
+On macOS ARM64, `@[live]` functions can also be reloaded by patching
+the running binary instead of loading a shared library. Build with
+`-b arm64`; calls to `@[live]` functions go through a pointer that
+the reloader updates with freshly compiled machine code. Reload checks run in
+loops in `main`; changes are installed before the next iteration. Published code
+pages remain executable so saved function pointers continue to work. Failed
+rebuilds keep the old function and are retried on the next check.
+Each file containing `@[live]` functions is watched with its own modification time,
+so editing another live source file also triggers a reload.
+
+```bash
+v -b arm64 run native_counter.v
+```
+
+Single functions can be extracted as raw machine code with `-hot-fn`:
+
+```bash
+v -b arm64 -hot-fn next_value -o next_value.bin native_counter.v
+```
+
+Only self-contained `@[live]` functions are supported for now: functions
+needing address fixups (calls, string literals, globals) are rejected at
+extract time instead of emitting silently broken machine code.
+`examples/hot_reload/message.v` is therefore not supported by the native
+path (its live function calls other functions and prints strings); it
+remains an example for the C shared-library workflow.
+
+Linux ARM64 output is experimental and currently supports relocatable objects
+only (`v -b arm64 -os linux -o program.o program.v`). Executable linking and
+native live reloading on Linux are not yet supported.
 
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).

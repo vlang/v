@@ -37,6 +37,9 @@ const cgen_veb_result_source_type = flat.source_type_id('veb.Result')
 const cgen_void_pointer_prefix_source_type = flat.source_type_id('&void')
 // portable_uint_c_type is the unsigned counterpart of `types.portable_int_c_type`.
 const portable_uint_c_type = '__v_uint'
+// string_literal_macro_define defines `_S`, the C macro for V string literals. It is
+// emitted in the preamble and again on Solaris after the system headers.
+const string_literal_macro_define = '#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})'
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
@@ -16231,6 +16234,8 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				g.power_expr_string(lhs, rhs, g.usable_expr_type(id))
 			} else if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
 				'((u64)(${lhs})) << (${rhs})'
+			} else if g.int_literal_arith_needs_64bit_widening(&node) {
+				'((i64)(${lhs})) ${g.op_str(node.op)} (${rhs})'
 			} else if node.op in [.left_shift, .right_shift, .right_shift_unsigned]
 				&& g.expr_is_in_translated_file(id) {
 				lhs_id := g.a.child(&node, 0)
@@ -17501,6 +17506,17 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				return
 			}
 			if g.gen_checked_integer_infix(id, node, lhs_id, rhs_id, lhs_type, rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
+			// `100000 * 100000` is 64-bit arithmetic when `int` is 64 bits, but C
+			// would perform it at its own 32-bit `int` width and wrap.
+			if g.int_literal_arith_needs_64bit_widening(node) {
+				g.write('((i64)(')
+				g.gen_expr(lhs_id)
+				g.write(') ${g.op_str(node.op)} (')
+				g.gen_expr(rhs_id)
+				g.write('))')
 				g.expected_enum = old_expected_enum
 				return
 			}
@@ -18870,10 +18886,16 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			} else if node.children_count > 0 {
 				last_id := g.a.child(node, 0)
 				last := g.a.nodes[int(last_id)]
-				if last.kind == .expr_stmt {
-					g.gen_expr(g.a.child(&last, 0))
-				} else {
-					g.gen_expr(last_id)
+				expr_id := if last.kind == .expr_stmt { g.a.child(&last, 0) } else { last_id }
+				// `unsafe { a | b } ^ c`: the block can be an operand, so an infix inside
+				// it keeps its own grouping.
+				wrap := int(expr_id) >= 0 && g.a.nodes[int(expr_id)].kind == .infix
+				if wrap {
+					g.write('(')
+				}
+				g.gen_expr(expr_id)
+				if wrap {
+					g.write(')')
 				}
 			}
 		}
@@ -20199,7 +20221,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define E_STRUCT_DECL')
 	g.writeln('#define E_STRUCT')
 	g.writeln('#endif')
-	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
+	g.writeln(string_literal_macro_define)
 	g.writeln('#if !defined(VNORETURN)')
 	g.writeln('#if defined(__TINYC__)')
 	g.writeln('#define VNORETURN __attribute__((noreturn))')
@@ -20509,10 +20531,14 @@ fn (mut g FlatGen) system_libc_headers() {
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
 		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h', 'sys/mman.h',
 		'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h',
-		'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/ptrace.h', 'sys/wait.h', 'termios.h', 'unistd.h',
-		'utime.h'] {
+		'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
 		g.writeln('#include <${header}>')
 	}
+	// Solaris ships no sys/ptrace.h. Only user code declaring fn C.ptrace needs
+	// it, so the include is skipped there rather than failing the build.
+	g.writeln('#if !defined(__sun)')
+	g.writeln('#include <sys/ptrace.h>')
+	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) && defined(__GLIBC__)')
 	g.writeln('#include <sys/poll.h>')
 	g.writeln('#else')
@@ -20534,6 +20560,18 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.writeln('#if defined(__FreeBSD__) || defined(__OpenBSD__)')
 	g.writeln('#include <sys/sysctl.h>')
+	g.writeln('#endif')
+	// Solaris's <iso/ctype_iso.h> claims the single-letter-underscore names
+	// (_U, _L, _N, _S, ...) as the character-class bits its ctype macros are
+	// written over, and V's string-literal macro is spelled _S — the header's
+	// object macro wins over V's earlier definition. Nothing in the generated
+	// C calls the ctype macros, whose bodies are the only readers of the
+	// flags, so take the name back once every system header is in. Known
+	// limit: V code calling `C.isspace` on Solaris then fails to compile,
+	// because that ctype macro reads the restored `_S`.
+	g.writeln('#if defined(__sun)')
+	g.writeln('#undef _S')
+	g.writeln(string_literal_macro_define)
 	g.writeln('#endif')
 	g.system_execinfo_declarations()
 	g.writeln('')
@@ -27788,6 +27826,34 @@ fn (g &FlatGen) shift_needs_64bit_widening(node &flat.Node) bool {
 	}
 	rhs_value := g.shift_count_const_value(g.a.child(node, 1), []string{}) or { return false }
 	return rhs_value >= 31 && rhs_value < 64
+}
+
+// int_literal_arith_needs_64bit_widening reports whether `lhs op rhs` with op
+// `+`, `-` or `*` is built only from untyped integer literals. Such an expression
+// has the 64-bit `int` literal type, but C evaluates unsuffixed literals at its
+// own 32-bit `int` width, so the product of two literals below INT_MAX can wrap.
+fn (g &FlatGen) int_literal_arith_needs_64bit_widening(node &flat.Node) bool {
+	if node.kind != .infix || node.op !in [.plus, .minus, .mul] || node.children_count < 2 {
+		return false
+	}
+	return g.int_literal_arith_operand(g.a.child(node, 0)) && g.int_literal_arith_operand(g.a.child(node, 1))
+}
+
+fn (g &FlatGen) int_literal_arith_operand(id flat.NodeId) bool {
+	if !g.valid_node_id(id) {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	return match node.kind {
+		// A translated file keeps C's literal types and 32-bit wrapping.
+		.int_literal { !g.expr_is_in_translated_file(id) }
+		.paren { node.children_count == 1 && g.int_literal_arith_operand(g.a.child(&node, 0)) }
+		.prefix {
+			node.op == .minus && node.children_count == 1 && g.int_literal_arith_operand(g.a.child(&node, 0))
+		}
+		.infix { g.int_literal_arith_needs_64bit_widening(&node) }
+		else { false }
+	}
 }
 
 fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {

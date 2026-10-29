@@ -29,13 +29,29 @@ fn (mut b Builder) generate_native_map_hash_body(func_id int) {
 	entry := b.m.add_block(func_id, 'map_hash_entry')
 	state := b.func_add_argument(func_id, b.m.type_store.get_ptr(b.map_state_type), 'state')
 	key := b.func_add_argument(func_id, ptr_i8, 'key')
-	size_ptr := b.map_state_field_ptr(entry, state, 4)
-	size := b.block_instr1(.load, entry, b.i64_type, size_ptr)
+	hash_fn_ptr := b.map_state_field_ptr(entry, state, 9)
+	hash_fn := b.block_instr1(.load, entry, b.i64_type, hash_fn_ptr)
+	has_hash_fn := b.block_instr2(.ne, entry, b.i1_type, hash_fn,
+		b.m.get_or_add_const(b.i64_type, '0'))
+	custom := b.m.add_block(func_id, 'map_hash_custom')
+	default := b.m.add_block(func_id, 'map_hash_default')
+	b.block_instr3(.br, entry, b.void_type, has_hash_fn, ValueID(custom), ValueID(default))
+	hash_fn_type := b.m.type_store.register(Type{
+		kind:     .func_t
+		params:   [ptr_i8]
+		ret_type: b.i64_type
+	})
+	hash_callable := b.block_instr1(.bitcast, custom, hash_fn_type, hash_fn)
+	custom_hash := b.block_instr2(.call_indirect, custom, b.i64_type, hash_callable, key)
+	b.block_instr1(.ret, custom, b.void_type, custom_hash)
+
+	size := b.map_state_load_i64(default, state, 4)
 	string_size := b.m.get_or_add_const(b.i64_type, '16')
-	is_string := b.block_instr2(.eq, entry, b.i1_type, size, string_size)
+	is_string := b.block_instr2(.eq, default, b.i1_type, size, string_size)
 	string_block := b.m.add_block(func_id, 'map_hash_string')
 	bytes_block := b.m.add_block(func_id, 'map_hash_bytes')
-	b.block_instr3(.br, entry, b.void_type, is_string, ValueID(string_block), ValueID(bytes_block))
+	b.block_instr3(.br, default, b.void_type, is_string, ValueID(string_block),
+		ValueID(bytes_block))
 	ref := b.m.add_value(.func_ref, b.i64_type, 'wyhash', b.fn_ids['wyhash'])
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	secret := b.m.get_or_add_const(b.m.type_store.get_ptr(b.u64_type), '0')
@@ -58,12 +74,10 @@ fn (mut b Builder) generate_native_map_index_body(func_id int) {
 	entry := b.m.add_block(func_id, 'map_index_entry')
 	state := b.func_add_argument(func_id, b.m.type_store.get_ptr(b.map_state_type), 'state')
 	keys_ptr := b.map_state_field_ptr(entry, state, 0)
-	len_ptr := b.map_state_field_ptr(entry, state, 3)
-	key_size_ptr := b.map_state_field_ptr(entry, state, 4)
 	slots_ptr := b.map_state_field_ptr(entry, state, 6)
 	cap_ptr := b.map_state_field_ptr(entry, state, 7)
 	indexed_len_ptr := b.map_state_field_ptr(entry, state, 8)
-	len := b.block_instr1(.load, entry, b.i64_type, len_ptr)
+	len := b.map_state_load_i64(entry, state, 3)
 	cap := b.block_instr1(.load, entry, b.i64_type, cap_ptr)
 	indexed_len := b.block_instr1(.load, entry, b.i64_type, indexed_len_ptr)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
@@ -116,7 +130,7 @@ fn (mut b Builder) generate_native_map_index_body(func_id int) {
 	slots_raw := b.block_instr1(.load, prepare, ptr_i8, slots_ptr)
 	slots := b.block_instr1(.bitcast, prepare, ptr_i64, slots_raw)
 	keys := b.block_instr1(.load, prepare, ptr_i8, keys_ptr)
-	key_size := b.block_instr1(.load, prepare, b.i64_type, key_size_ptr)
+	key_size := b.map_state_load_i64(prepare, state, 4)
 	b.block_instr2(.store, prepare, b.void_type, first, i_slot)
 	b.block_instr1(.jmp, prepare, b.void_type, ValueID(loop))
 	i := b.block_instr1(.load, loop, b.i64_type, i_slot)
@@ -164,6 +178,10 @@ fn (mut b Builder) generate_native_map_find_body(func_id int) {
 	prepare := b.m.add_block(func_id, 'map_find_prepare')
 	probe := b.m.add_block(func_id, 'map_find_probe')
 	compare := b.m.add_block(func_id, 'map_find_compare')
+	tombstone_check := b.m.add_block(func_id, 'map_find_tombstone')
+	compare_live := b.m.add_block(func_id, 'map_find_compare_live')
+	custom_compare := b.m.add_block(func_id, 'map_find_custom_compare')
+	typed_compare := b.m.add_block(func_id, 'map_find_typed_compare')
 	string_compare := b.m.add_block(func_id, 'map_find_string')
 	bytes_compare := b.m.add_block(func_id, 'map_find_bytes')
 	next := b.m.add_block(func_id, 'map_find_next')
@@ -175,19 +193,17 @@ fn (mut b Builder) generate_native_map_find_body(func_id int) {
 	has_state := b.block_instr2(.ne, check_state, b.i1_type, state, nil_state)
 	b.block_instr3(.br, check_state, b.void_type, has_state, ValueID(check_len),
 		ValueID(missing))
-	len_ptr := b.map_state_field_ptr(check_len, state, 3)
-	len := b.block_instr1(.load, check_len, b.i64_type, len_ptr)
+	len := b.map_state_load_i64(check_len, state, 3)
 	has_entries := b.block_instr2(.gt, check_len, b.i1_type, len, zero)
 	b.block_instr3(.br, check_len, b.void_type, has_entries, ValueID(prepare), ValueID(missing))
 	index_ref := b.m.add_value(.func_ref, b.void_type, 'v3_native_map_index',
 		b.fn_ids['v3_native_map_index'])
 	b.block_instr2(.call, prepare, b.void_type, index_ref, state)
 	keys_ptr := b.map_state_field_ptr(prepare, state, 0)
-	key_size_ptr := b.map_state_field_ptr(prepare, state, 4)
 	slots_ptr := b.map_state_field_ptr(prepare, state, 6)
 	cap_ptr := b.map_state_field_ptr(prepare, state, 7)
 	keys := b.block_instr1(.load, prepare, ptr_i8, keys_ptr)
-	key_size := b.block_instr1(.load, prepare, b.i64_type, key_size_ptr)
+	key_size := b.map_state_load_i64(prepare, state, 4)
 	slots_raw := b.block_instr1(.load, prepare, ptr_i8, slots_ptr)
 	slots := b.block_instr1(.bitcast, prepare, ptr_i64, slots_raw)
 	cap := b.block_instr1(.load, prepare, b.i64_type, cap_ptr)
@@ -203,11 +219,41 @@ fn (mut b Builder) generate_native_map_find_body(func_id int) {
 	occupied := b.block_instr2(.ne, probe, b.i1_type, encoded_position, zero)
 	b.block_instr3(.br, probe, b.void_type, occupied, ValueID(compare), ValueID(missing))
 	position := b.block_instr2(.sub, compare, b.i64_type, encoded_position, one)
-	key_offset := b.block_instr2(.mul, compare, b.i64_type, position, key_size)
-	stored_key := b.block_instr2(.add, compare, ptr_i8, keys, key_offset)
+	deletes_ptr := b.map_dense_field_ptr(compare, state, 4)
+	deletes := b.block_instr1(.load, compare, b.u32_type, deletes_ptr)
+	has_deletes := b.block_instr2(.ne, compare, b.i1_type, deletes,
+		b.m.get_or_add_const(b.u32_type, '0'))
+	b.block_instr3(.br, compare, b.void_type, has_deletes, ValueID(tombstone_check),
+		ValueID(compare_live))
+	bitmap_ptr := b.map_dense_field_ptr(tombstone_check, state, 7)
+	bitmap := b.block_instr1(.load, tombstone_check, ptr_i8, bitmap_ptr)
+	flag_ptr := b.block_instr2(.add, tombstone_check, ptr_i8, bitmap, position)
+	flag := b.block_instr1(.load, tombstone_check, b.i8_type, flag_ptr)
+	live := b.block_instr2(.eq, tombstone_check, b.i1_type, flag,
+		b.m.get_or_add_const(b.i8_type, '0'))
+	b.block_instr3(.br, tombstone_check, b.void_type, live, ValueID(compare_live),
+		ValueID(next))
+	key_offset := b.block_instr2(.mul, compare_live, b.i64_type, position, key_size)
+	stored_key := b.block_instr2(.add, compare_live, ptr_i8, keys, key_offset)
+	eq_fn_ptr := b.map_state_field_ptr(compare_live, state, 10)
+	eq_fn := b.block_instr1(.load, compare_live, b.i64_type, eq_fn_ptr)
+	has_eq_fn := b.block_instr2(.ne, compare_live, b.i1_type, eq_fn,
+		b.m.get_or_add_const(b.i64_type, '0'))
+	b.block_instr3(.br, compare_live, b.void_type, has_eq_fn, ValueID(custom_compare),
+		ValueID(typed_compare))
+	eq_fn_type := b.m.type_store.register(Type{
+		kind:     .func_t
+		params:   [ptr_i8, ptr_i8]
+		ret_type: b.i1_type
+	})
+	eq_callable := b.block_instr1(.bitcast, custom_compare, eq_fn_type, eq_fn)
+	equal_custom := b.block_instr3(.call_indirect, custom_compare, b.i1_type, eq_callable,
+		stored_key, key)
+	b.block_instr3(.br, custom_compare, b.void_type, equal_custom, ValueID(found),
+		ValueID(next))
 	string_size := b.m.get_or_add_const(b.i64_type, '16')
-	is_string := b.block_instr2(.eq, compare, b.i1_type, key_size, string_size)
-	b.block_instr3(.br, compare, b.void_type, is_string, ValueID(string_compare),
+	is_string := b.block_instr2(.eq, typed_compare, b.i1_type, key_size, string_size)
+	b.block_instr3(.br, typed_compare, b.void_type, is_string, ValueID(string_compare),
 		ValueID(bytes_compare))
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	stored_string_ptr := b.block_instr1(.bitcast, string_compare, ptr_string, stored_key)

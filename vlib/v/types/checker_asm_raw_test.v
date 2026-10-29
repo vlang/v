@@ -499,3 +499,195 @@ fn test_raw_template_masks_assembler_comments_per_arch() {
 	assert arm_instructions[0].operands.map(it.kind) == [.register, .register, .immediate]
 	assert arm_instructions[1].labels.map(it.name) == ['1']
 }
+
+fn test_att_mnemonic_widths_read_the_size_suffix() {
+	src, dst, is_shift := inline_asm_att_mnemonic_widths('movl')
+	assert src == 32 && dst == 32 && !is_shift
+	src2, dst2, shift2 := inline_asm_att_mnemonic_widths('shlq')
+	assert src2 == 64 && dst2 == 64 && shift2
+	zbl_src, zbl_dst, _ := inline_asm_att_mnemonic_widths('movzbl')
+	assert zbl_src == 8 && zbl_dst == 32
+	slq_src, slq_dst, _ := inline_asm_att_mnemonic_widths('movslq')
+	assert slq_src == 32 && slq_dst == 64
+	sbw_src, sbw_dst, _ := inline_asm_att_mnemonic_widths('movsbw')
+	assert sbw_src == 8 && sbw_dst == 16
+}
+
+fn test_att_mnemonic_widths_ignore_unsuffixed_and_unrelated_names() {
+	for name in ['mov', 'movq_extra', 'movsb', 'movsl', 'movsd', 'movzx', 'movbe', 'sarx', 'shrd',
+		'andn', 'movzlq', 'movswb', 'lea_x'] {
+		src, dst, _ := inline_asm_att_mnemonic_widths(name)
+		assert src == 0 && dst == 0, 'expected no suffix width for `${name}`'
+	}
+}
+
+fn test_att_gpr_constraints_exclude_memory_and_immediate() {
+	assert inline_asm_raw_gpr_constraint('+r')
+	assert inline_asm_raw_gpr_constraint('=&q')
+	assert inline_asm_raw_gpr_constraint('a')
+	assert !inline_asm_raw_gpr_constraint('rm')
+	assert !inline_asm_raw_gpr_constraint('i')
+	assert !inline_asm_raw_gpr_constraint('g')
+	assert !inline_asm_raw_gpr_constraint('x')
+	assert !inline_asm_raw_gpr_constraint('+')
+}
+
+fn att_width_errors(name string, source string) []string {
+	tc := raw_label_checker('att_width_${name}', source)
+	return tc.errors.map(it.msg)
+}
+
+fn test_att_or_family_is_checked() {
+	src, dst, is_shift := inline_asm_att_mnemonic_widths('orq')
+	assert src == 64 && dst == 64 && !is_shift
+	b_src, _, _ := inline_asm_att_mnemonic_widths('orb')
+	assert b_src == 8
+}
+
+fn test_att_register_widths_follow_the_instruction_set() {
+	for segment in ['cs', 'ss', 'ds', 'es', 'fs', 'gs'] {
+		assert inline_asm_att_register_width(segment, 64) == 0
+		assert inline_asm_att_register_width(segment, 32) == 0
+	}
+	assert inline_asm_att_register_width('cr0', 64) == 64
+	assert inline_asm_att_register_width('cr0', 32) == 32
+	assert inline_asm_att_register_width('dr7', 32) == 32
+	assert inline_asm_att_register_width('rax', 64) == 64
+	assert inline_asm_att_register_width('ecx', 64) == 32
+	assert inline_asm_att_arch_bits('x86_64') == 64
+	assert inline_asm_att_arch_bits('i686') == 32
+	assert inline_asm_att_arch_bits('x86') == 32
+}
+
+fn test_att_int_operands_have_the_native_width() {
+	ok := att_width_errors('int_ok', 'module main
+enum Wide as int {
+ a
+}
+fn main() {
+ mut value := 40
+ mut tag := Wide.a
+ asm amd64 raw {
+  "addq %[value], %[value]\\n\\t"
+  "incq %[tag]"
+  ; [value] "+r" (value)
+    [tag] "+r" (tag)
+  ; ; cc
+ }
+ mut narrow := 40
+ asm i386 raw {
+  "incl %[narrow]"
+  ; [narrow] "+r" (narrow)
+  ; ; cc
+ }
+}
+')
+	assert ok.len == 0, ok.str()
+	bad := att_width_errors('int_bad', 'module main
+fn main() {
+ mut value := 40
+ asm amd64 raw {
+  "addl $1, %[value]"
+  ; [value] "+r" (value)
+  ; ; cc
+ }
+}
+')
+	assert bad.len == 1, bad.str()
+	assert bad[0].starts_with('`addl` operates on 32-bit operands here, but `%[value]` is 64-bit; use a size suffix that matches the operand, or an operand modifier'), bad[0]
+}
+
+fn test_att_segment_control_and_debug_registers_are_accepted() {
+	errors := att_width_errors('special_registers', 'module main
+fn main() {
+ asm amd64 raw {
+  "pushq %%fs\\n\\t"
+  "popq %%fs\\n\\t"
+  "movl %%ds, %%eax\\n\\t"
+  "movq %%fs, %%rax\\n\\t"
+  "movl %%eax, %%ds\\n\\t"
+  "movq %%rax, %%fs\\n\\t"
+  "movq %%cr0, %%rax"
+  ; ; ; rax memory
+ }
+ asm i386 raw {
+  "pushl %%ds\\n\\t"
+  "popl %%fs\\n\\t"
+  "movl %%cr0, %%eax\\n\\t"
+  "movl %%eax, %%cr0\\n\\t"
+  "movl %%dr7, %%eax\\n\\t"
+  "movl %%ds, %%eax"
+  ; ; ; eax memory
+ }
+}
+')
+	assert errors.len == 0, errors.str()
+	bad := att_width_errors('amd64_control_register', 'module main
+fn main() {
+ asm amd64 raw {
+  "movl %%cr0, %%eax"
+  ; ; ; rax
+ }
+}
+')
+	assert bad.len == 1, bad.str()
+	// A literal register is renamed rather than given an operand modifier.
+	assert bad[0] == '`movl` operates on 32-bit operands here, but `%%cr0` is 64-bit; use a size suffix that matches the operand, or a 32-bit register'
+}
+
+fn test_att_i386_named_operands_print_at_most_32_bits() {
+	errors := att_width_errors('i386_pair', 'module main
+fn main() {
+ x := u64(5)
+ mut out := u32(0)
+ asm i386 raw {
+  "movl %[x], %[out]"
+  ; [out] "=r" (out)
+  ; [x] "r" (x)
+ }
+}
+')
+	assert errors.len == 0, errors.str()
+	bad := att_width_errors('i386_pair_bad', 'module main
+fn main() {
+ x := u64(5)
+ asm i386 raw {
+  "movw %[x], %%ax"
+  ; ; [x] "r" (x)
+  ; eax
+ }
+}
+')
+	assert bad.len == 1, bad.str()
+	assert bad[0].starts_with('`movw` operates on 16-bit operands here, but `%[x]` is 32-bit'), bad[0]
+}
+
+fn test_att_modifiers_require_a_register_only_constraint() {
+	for constraint in ['m', 'rm', 'g'] {
+		errors := att_width_errors('modified_memory_${constraint}', 'module main
+fn main() {
+ x := u64(42)
+ mut out := u64(0)
+ asm amd64 raw {
+  "movq %k[x], %[out]"
+  ; [out] "=r" (out)
+  ; [x] "${constraint}" (x)
+ }
+}
+')
+		assert errors.len == 0, errors.str()
+	}
+	errors := att_width_errors('modified_register', 'module main
+fn main() {
+ x := u64(42)
+ mut out := u64(0)
+ asm amd64 raw {
+  "movq %k[x], %[out]"
+  ; [out] "=r" (out)
+  ; [x] "r" (x)
+ }
+}
+')
+	assert errors.len == 1, errors.str()
+	assert errors[0].starts_with('`movq` operates on 64-bit operands here, but `%k[x]` is 32-bit'), errors[0]
+}

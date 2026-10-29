@@ -5,6 +5,10 @@ without the regular parser, checker, or AST pipeline, then compiles with bundled
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
+Ordinary `v self` builds include only the C backend. The first `-b fastc` request automatically
+builds a full compiler in the tool cache and runs it; subsequent requests reuse that compiler.
+Use `v -compile-backend fastc self` to include FastC in the main executable instead.
+
 On Windows, ordinary FastC programs set stdout and stderr to binary mode, preserving `\n`
 without CRT conversion to `\r\n`, as the default C backend does.
 

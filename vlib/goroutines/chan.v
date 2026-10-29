@@ -99,6 +99,9 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 
 	// Block: enqueue ourselves on the send wait queue
 	gp := get_current_g()
+	if gp == unsafe { nil } {
+		panic('goroutines: chan_send with no current goroutine')
+	}
 	mut mysg := &Sudog{
 		g:    unsafe { gp }
 		elem: ep
@@ -168,6 +171,9 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 
 	// Block: enqueue ourselves on the recv wait queue
 	gp := get_current_g()
+	if gp == unsafe { nil } {
+		panic('goroutines: chan_recv with no current goroutine')
+	}
 	mut mysg := &Sudog{
 		g:    unsafe { gp }
 		elem: ep

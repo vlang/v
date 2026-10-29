@@ -272,7 +272,7 @@ fn fastc_probe_unaccelerated_declared_types(source string, path string, module_n
 				if name == 'C' && tok == .dot {
 					tok = scan.scan()
 					if tok == .name {
-						key := if next_c_struct_is_typedef {
+						key := if next_c_struct_is_typedef || kind == .alias_ {
 							'#Ctypedef#${scan.lit}'
 						} else {
 							'#Cstruct#${scan.lit}'
