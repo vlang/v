@@ -264,10 +264,10 @@ working `tcc` from `PATH`, before using the platform compiler. The system fallba
 when required V runtime artifacts are available, including the bundled `libgc.a` used by default
 glibc and Windows Boehm builds.
 
-On macOS 27 (Darwin 27) and later, V never selects TCC by itself, and `make` and `v self` build
-V with the system compiler: depending on their layout, TCC-linked executables can start there
-with corrupted global variables ([#29744](https://github.com/vlang/v/issues/29744)). An explicit
-`-cc tcc` is still honored.
+On macOS, regular builds and `v self` use TCC by default, including on Darwin 27 and later.
+Use a current TCC bundle built with the Mach-O zero-fill fix for
+[#29744](https://github.com/vlang/v/issues/29744); older bundles can corrupt global variables.
+An explicit `-cc` overrides the default, and `CC` also overrides the compiler used by `v self`.
 
 `-prod` builds never default to TCC, which cannot do their optimizations. On x64 Windows,
 without `-cc`, a `-prod` build uses MSVC when an x64 Visual Studio Developer environment is
