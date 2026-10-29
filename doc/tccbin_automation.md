@@ -411,8 +411,8 @@ repository to the SHA from reviewed commit evidence, or to the runtime SHA for `
 sources absent from the target's closed source matrix, and SHAs borrowed from a different source
 are rejected.
 
-This foundation introduces no production profile, onboarding or baseline-activation policy,
-producer observation, source SHA/tree resolution, complete payload provenance, state writer,
+This foundation introduces no onboarding or baseline-activation policy, embedded producer
+observation, source SHA/tree resolution, complete payload provenance, state writer,
 candidate ref, check producer, or publication path. It therefore cannot make a target eligible
 and cannot publish even when a caller requests publication. In particular, the current Phase A
 manifests keep every source SHA/tree and toolchain member null and classify every payload entry as
@@ -422,9 +422,9 @@ The updater is not yet a producer for this transition. Its Unix jobs still invok
 in-place recipes instead of setting `TCCBIN_DEFER_COMMIT=1`, producing a private RAW root, and
 calling `candidate-compose`; Windows is not present in its selectable target matrices. The current
 Linux and BSD jobs also request moving `ubuntu-latest` hosts while the reviewed profile model
-requires `ubuntu-24.04`, the macOS ARM64 updater job requests `macos-latest` while the model
-requires `macos-15`, the Windows branch requests `windows-latest` while the model requires
-`windows-2022`, and BSD cross-platform-actions runtime assets remain unauthenticated. These gaps,
+requires `ubuntu-24.04`, the Windows branch requests `windows-latest` while the model requires
+`windows-2022`, and BSD cross-platform-actions runtime assets remain unauthenticated. The macOS
+ARM64 updater job already requests `macos-15`, as its reviewed profile requires. These gaps,
 plus native producer/validator observations and external evidence transport, must be closed before
 any policy pair is populated.
 
@@ -439,10 +439,11 @@ patch or transform can be silently dropped.
 ### Dormant toolchain identity profiles
 
 Each managed target also carries an all-null or all-resolved `toolchain_profile` triple in
-`targets.json`. The six production triples are intentionally null. A resolved profile must be
-canonical JSON at `toolchain-profiles/<target>.profile.json`; its target, profile ID, and SHA-256
-are bound by the registry. No production profile file or toolchain observation is introduced by
-this dormant contract. Profiles and observations are read only from non-symlink regular files,
+`targets.json`. Only `macos-arm64` has a reviewed profile
+(`macos-arm64-github-hosted-clang-v1`); the other five production triples are intentionally null.
+A resolved profile must be canonical JSON at `toolchain-profiles/<target>.profile.json`; its
+target, profile ID, and SHA-256 are bound by the registry. No production manifest embeds a
+toolchain observation yet. Profiles and observations are read only from non-symlink regular files,
 under a 512 KiB bound. Before reading, the no-follow path snapshot must identify the opened native
 handle. POSIX opens with read-only, nonblocking, no-follow, close-on-exec, and
 no-controlling-terminal flags where available, then immediately applies `fstat`; Windows opens the
@@ -491,6 +492,16 @@ dynamic input and changes the input fingerprint, but monthly composition cannot 
 observation or migrate the reviewed profile. Legacy onboarding policy likewise freezes only the
 profile ID/hash. The two production manifest fixtures intentionally keep the all-null form until
 the six real profiles and producer observations are reviewed.
+
+`tccbin-automation toolchain-observe <target-id> <producer|validator> <runner-label>
+<evidence-dir> <observation-path>` produces an observation on a GitHub-hosted runner. It reads
+every compiler fact from the one binary that `PATH` resolves for the profile's compiler command
+(following the macOS `/usr/bin` xcrun shim), takes the image facts from `ImageOS` and
+`ImageVersion`, and takes the runner label from its caller, because no runner variable exposes it.
+It writes each role's raw evidence under that evidence's SHA-256 in an existing evidence
+directory, then writes the canonical observation to a path that must not exist. Nothing is written
+unless the observation authenticates against the reviewed profile, so a runner whose facts do not
+match fails closed. No workflow invokes it yet.
 
 At this T2a boundary, `evidence_sha256` is producer-declared and digest-bound but is not yet
 authenticated against a workflow artifact. Independent evidence production and validator

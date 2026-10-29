@@ -149,3 +149,53 @@ fn test_observation_collection_refuses_unsafe_destinations_before_probing() {
 	assert message == 'toolchain observation destination must not already exist'
 	assert os.read_file(existing) or { panic(err) } == '{}'
 }
+
+// The collector needs a host that satisfies the reviewed profile's exact facts, so its success path
+// can run only on macOS arm64. `ImageOS`/`ImageVersion` are runner-only variables and are supplied
+// here; everything else is observed from the host.
+fn test_observation_collection_writes_authenticated_evidence_on_macos_arm64() {
+	$if macos && arm64 {
+		base := os.join_path(os.temp_dir(), 'tccbin-toolchain-collect-ok-${os.getpid()}')
+		os.rmdir_all(base) or {}
+		evidence_dir := os.join_path(base, 'evidence')
+		os.mkdir_all(evidence_dir) or { panic(err) }
+		old_image_os := os.getenv_opt('ImageOS')
+		old_image_version := os.getenv_opt('ImageVersion')
+		os.setenv('ImageOS', 'macos15', true)
+		os.setenv('ImageVersion', '20261020.0123', true)
+		defer {
+			if value := old_image_os {
+				os.setenv('ImageOS', value, true)
+			} else {
+				os.unsetenv('ImageOS')
+			}
+			if value := old_image_version {
+				os.setenv('ImageVersion', value, true)
+			} else {
+				os.unsetenv('ImageVersion')
+			}
+			os.rmdir_all(base) or {}
+		}
+		observation_path := os.join_path(base, 'observation.json')
+		collected := bin.collect_toolchain_observation(automation_root(), 'macos-arm64', 'producer',
+			'macos-15', evidence_dir, observation_path) or { panic(err) }
+		assert collected.phase == 'producer'
+		from_file := bin.authenticate_toolchain_observation_file(automation_root(), 'macos-arm64',
+			observation_path) or { panic(err) }
+		assert from_file.observation_sha256 == collected.observation_sha256
+		role := (collected.observation.object_value('roles') or { panic('roles missing') }).array_value[0]
+		evidence_sha256 := (role.object_value('evidence_sha256') or { panic('evidence missing') }).string_value
+		assert os.ls(evidence_dir) or { panic(err) } == [evidence_sha256]
+		evidence := os.read_file(os.join_path(evidence_dir, evidence_sha256)) or { panic(err) }
+		assert sha256.sum256(evidence.bytes()).hex() == evidence_sha256
+		assert evidence.starts_with('tccbin-toolchain-evidence-v1\nphase=producer\nrole=bundle-builder\n')
+		// Collecting again into the same evidence directory must refuse before writing anything.
+		second_path := os.join_path(base, 'second.json')
+		mut message := ''
+		bin.collect_toolchain_observation(automation_root(), 'macos-arm64', 'producer', 'macos-15',
+			evidence_dir, second_path) or { message = err.msg() }
+		assert message == 'toolchain evidence destination must not already exist'
+		assert !os.exists(second_path)
+		assert os.read_file(os.join_path(evidence_dir, evidence_sha256)) or { panic(err) } == evidence
+	}
+}
