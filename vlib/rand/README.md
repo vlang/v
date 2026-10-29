@@ -45,6 +45,16 @@ rng.u32n(100)!
 rng.int() // among others ...
 ```
 
+## Seed Ownership For The Default Generator
+
+`rand.new_default()` uses a fresh time-based seed when `seed_` is omitted or empty.
+The empty default configuration does not retain an allocated seed array.
+A nonempty explicit seed must contain two `u32` values. The function copies those values
+into the generator and leaves the seed array owned by the caller on every backend.
+The caller may reuse, modify or free that array after `new_default` returns. With `-gc none`,
+release explicitly allocated seed arrays when they are no longer needed. Temporary seeds
+created inside `new_default` for clock seeding are released by the function itself.
+
 ## More Information
 
 You can change the default generator to a different one. The only requirement is that

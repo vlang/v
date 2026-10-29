@@ -170,8 +170,13 @@ fn test_rune_literals_use_rune_width() {
 			instruction := m.instrs[m.values[last].index]
 			assert instruction.op == .ret
 			value := m.values[instruction.operands[0]]
-			assert value.name == want
 			assert m.type_store.types[value.typ].width == 32
+			assert value.kind == .instruction
+			conversion := m.instrs[value.index]
+			assert conversion.op == .bitcast && conversion.operands.len == 1
+			literal := m.values[conversion.operands[0]]
+			assert literal.kind == .constant && literal.name == want
+			assert m.type_store.types[literal.typ].width == 32
 			found++
 		}
 	}

@@ -10664,14 +10664,39 @@ use `v help`, `v help build` and `v help build-c`.
 
 ### Native Backend binaries
 
-`-b native` has been replaced by `-b arm64` for native ARM64 compilation on macOS.
-Enable the backend with `v -compile-backend arm64 self`, then compile with
-`v -b arm64 file.v`. The native ARM64 backend does not link a garbage collector yet, so it
-always builds as if `-gc none` was passed.
-A native AMD64 backend is not available yet; use `v -b c -arch amd64 file.v` for AMD64
-compilation through the C backend.
+`-b native` has been replaced by `-b arm64` and `-b x64`. Enable the ARM64 backend with
+`v -compile-backend arm64 self`, then compile with `v -b arm64 file.v`. On Linux AMD64,
+first enable the x64 backend with `v -compile-backend x64 self`, then compile with
+`v -b x64 file.v`. The native backends do not link a garbage collector yet, so they always
+build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
+allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
+bound compiler memory. The ARM64 backend retains its existing optimization behavior.
+The x64 backend is experimental. Calls without a native implementation fail compilation
+or linking rather than producing placeholder implementations.
+It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
+currently unsupported and produces a diagnostic; pass pointers to C aggregates instead.
+Stored C function values support integer and pointer arguments with 64-bit integer, pointer,
+or void returns. Taking the address of a variadic C function, one with floating-point arguments
+or returns, or one returning a narrower integer produces a diagnostic. Direct C calls retain
+their scalar calling convention.
+C callbacks passed to or returned from C functions support 64-bit integer and pointer
+arguments, and 64-bit integer, pointer, or void returns. Unsupported callback conventions,
+including floating-point, narrow integer, aggregate, and variadic signatures, produce a diagnostic.
 
-Currently there is no debugging support for binaries created by the native ARM64 backend.
+Native 128-bit integers currently support integer widening, copying, bitwise `&`, `|`, `^`,
+addition, subtraction, and shifts with constant counts from 0 through 127. Signed scalar
+widening sign-extends for both `i128` and `u128`; unsigned scalar widening zero-extends.
+Signed `i128 >>` preserves the sign; `u128 >>` and `>>>` fill with zeroes.
+Comparisons, multiplication, division, remainder, unary negation and complement, variable shifts,
+compound assignments, increment/decrement, narrowing casts, and conversions to or from
+floating-point values are unsupported and produce a diagnostic. Matching, range iteration,
+and range membership with 128-bit values are also unsupported. Array and string indices and
+slice bounds must use scalar integers. Integer literals must fit in a single 64-bit limb;
+construct larger values with shifts and bitwise operations. Array `.index()` searches on
+128-bit elements are unsupported.
+Use the C backend for the full set of 128-bit operations.
+
+Currently there is no debugging support for binaries created by the native backends.
 
 ### Javascript Backend
 

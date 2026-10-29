@@ -267,11 +267,11 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 						if ch2 == `h` {
 							sx := i8(x)
 							positive = if sx >= 0 { true } else { false }
-							d1 = if positive { u64(sx) } else { u64(-sx) }
+							d1 = if positive { u64(sx) } else { u64(0) - u64(sx) }
 						} else {
 							sx := i16(x)
 							positive = if sx >= 0 { true } else { false }
-							d1 = if positive { u64(sx) } else { u64(-sx) }
+							d1 = if positive { u64(sx) } else { u64(0) - u64(sx) }
 						}
 					}
 					// l  i64
@@ -294,14 +294,14 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 						v_sprintf_panic(p_index, pt.len)
 						x := unsafe { *(&i64(pt[p_index])) }
 						positive = if x >= 0 { true } else { false }
-						d1 = if positive { u64(x) } else { u64(-x) }
+						d1 = if positive { u64(x) } else { u64(0) - u64(x) }
 					}
 					// default int
 					else {
 						v_sprintf_panic(p_index, pt.len)
 						x := unsafe { *(&int(pt[p_index])) }
 						positive = if x >= 0 { true } else { false }
-						d1 = if positive { u64(x) } else { u64(-x) }
+						d1 = if positive { u64(x) } else { u64(0) - u64(x) }
 					}
 				}
 
