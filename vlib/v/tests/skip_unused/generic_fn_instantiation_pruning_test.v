@@ -37,6 +37,68 @@ fn test_skip_unused_prunes_unused_generic_fn_instantiations() {
 	assert !res.output.contains('new_T_int('), res.output
 }
 
+fn test_skip_unused_prunes_json_decode_in_unused_imported_function() {
+	root := os.join_path(os.vtmp_dir(), 'v_issue_31285_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'route'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main\nimport route\nfn main() { route.used() }\n')!
+	os.write_file(os.join_path(root, 'route', 'route.v'), 'module route
+import json2
+struct Unused { value int }
+pub fn used() {}
+pub fn decode_unused(raw string) {
+	_ := json2.decode[Unused](raw) or { return }
+}
+')!
+	for flags in [[]string{}, ['-no-parallel']] {
+		mut args := ['-new-compiler', '-w']
+		args << flags
+		args << ['-o', '-', source]
+		result := os.exec([vexe, ...args])
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('route__used('), result.output
+		assert !result.output.contains('route__decode_unused('), result.output
+		assert !result.output.contains('json2__decode_T_route__Unused('), result.output
+	}
+}
+
+fn test_skip_unused_prunes_imported_generic_function_values() {
+	root := os.join_path(os.vtmp_dir(), 'v_unused_imported_generic_values_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'route'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main\nimport route\nfn main() { println(route.used()) }\n')!
+	os.write_file(os.join_path(root, 'route', 'route.v'), 'module route
+fn identity[T](value T) T { return value }
+pub fn used() u32 {
+	callback := identity[u32]
+	return callback(42)
+}
+pub fn unused() string {
+	callback := identity[string]
+	return callback("unused")
+}
+')!
+	for flags in [[]string{}, ['-no-skip-unused']] {
+		mut args := ['-new-compiler', '-w']
+		args << flags
+		args << ['-o', '-', source]
+		result := os.exec([vexe, ...args])
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('route__identity_T_u32('), result.output
+		assert result.output.contains('route__unused(') == (flags.len > 0), result.output
+		assert result.output.contains('route__identity_T_string(') == (flags.len > 0), result.output
+	}
+	run := os.exec([vexe, '-new-compiler', '-w', 'run', source])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42', run.output
+}
+
 fn test_skip_unused_keeps_generic_offsetof_struct_instantiations() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27283_generic_offsetof')
 	os.mkdir_all(tmp_dir) or { panic(err) }

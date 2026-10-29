@@ -1096,3 +1096,19 @@ fn test_cold_formatter_cache_accepts_tinycc_production_environment() {
 	assert result.exit_code == 0, result.output
 	assert !result.output.contains('tcc is not allowed with -prod'), result.output
 }
+
+fn test_obsolete_skip_unused_cleanup_preserves_option_values_and_execution_boundaries() {
+	for args in [['-o', '-skip-unused', 'main.v'], ['-cflags', '-skip-unused', 'main.v'],
+		['run', 'main.v', '-skip-unused'], ['crun', 'main.v', '-skip-unused'],
+		['main.vsh', '-skip-unused'], ['-e', 'println("-skip-unused")', '-skip-unused'],
+		['complete', 'bash', 'v', '-skip-unused']] {
+		assert remove_obsolete_skip_unused_flag(args) == args
+	}
+	assert remove_obsolete_skip_unused_flag(['-skip-unused', '-o', '-skip-unused', 'main.v']) == [
+		'-o',
+		'-skip-unused',
+		'main.v',
+	]
+	assert remove_obsolete_skip_unused_flag(['-skip-unused', '-skip-unused', 'run', 'main.v',
+		'-skip-unused']) == ['run', 'main.v', '-skip-unused']
+}

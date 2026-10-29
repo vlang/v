@@ -508,6 +508,10 @@ Cached standard-library headers retain their source classification so headerless
 their complete layouts, including the Boehm GC stack type used by interface stringification.
 Generated fixed-array map-key helpers declare their cached builtin callees before their definitions.
 Inferred anonymous fixed arrays use their materialized element types, including nested arrays.
+Unused functions and the generic calls or function values inside them are pruned by default,
+including those in imported modules. Use `-no-skip-unused` to retain unused functions.
+The obsolete `-skip-unused` spelling prints a notice and has no effect, including when combined
+with `-no-skip-unused`.
 Literal-output programs still instantiate retained generic helpers with `-no-skip-unused`.
 Merged imports in cached headers do not create parameter-name conflicts across source files.
 Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,
