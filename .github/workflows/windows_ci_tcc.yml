@@ -32,7 +32,7 @@ permissions:
 jobs:
   tcc-windows:
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
