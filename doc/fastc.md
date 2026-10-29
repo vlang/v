@@ -3,6 +3,7 @@
 Select FastC with `v -b fastc run program.v`. It reads scanner tokens and emits C directly,
 without the regular parser, checker, or AST pipeline, then compiles with bundled TinyCC.
 Select `-cc clang` to compile the emitted C with Clang, including Objective-C interop on macOS.
+With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 Clang builds also accept `-prod`, apply C optimization, and retain wrapping signed arithmetic.
 Missing native objects named by `#flag` are built from adjacent C, C++, or Objective-C sources,
 as with the C backend.

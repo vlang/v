@@ -2143,10 +2143,20 @@ fn fastc_map_key_value_types(typ_id u32) ?(u32, u32) {
 	return none
 }
 
-fn fastc_declared_map_key_value_types(typ_id u32, declared_kinds map[u32]FastcDeclaredTypeKind) ?(u32, u32) {
+fn fastc_declared_map_key_value_types(typ_id u32, declared_kinds map[u32]FastcDeclaredTypeKind, declared_type_c_names flat.TypeTextBindings) ?(u32, u32) {
 	base := fastc_trim_pointer_type(typ_id)
 	if !flat.source_type_query(base).has(.c_map_prefix) { return none }
 	syntax := flat.source_type_syntax(flat.source_type_syntax(base).c_map_payload())
+	// Probe the longest encoded key first instead of spelling every declared type.
+	prefixes := syntax.underscore_prefixes()
+	for index := prefixes.len - 1; index >= 0; index-- {
+		c_type := flat.source_type_name(prefixes[index])
+		type_key := declared_type_c_names.ids[c_type] or { continue }
+		kind := declared_kinds[type_key] or { continue }
+		if kind in [.enum_, .alias_] {
+			return prefixes[index], fastc_decode_map_value_type_id(syntax.underscore_suffixes()[index])
+		}
+	}
 	mut matched_key := u32(0)
 	mut matched_index := -1
 	for type_key, kind in declared_kinds {
@@ -2186,7 +2196,7 @@ fn (g &Parser) map_key_value_types(typ u32) ?(u32, u32) {
 	if key_type, value_type := fastc_map_key_value_types(typ) {
 		return key_type, value_type
 	}
-	if key_type, value_type := fastc_declared_map_key_value_types(typ, g.declared_kinds) {
+	if key_type, value_type := fastc_declared_map_key_value_types(typ, g.declared_kinds, g.declared_type_c_names) {
 		return key_type, value_type
 	}
 	// An alias of a map type (`type Counts = map[string]int`) has the aliased map's key and value.

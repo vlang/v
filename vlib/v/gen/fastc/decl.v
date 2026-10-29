@@ -1128,7 +1128,7 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 				initializers.writeln('\t${c_name} = ((${flat.source_type_name(typ)})builtin____new_array(0, 0, sizeof(${g.collection_storage_type(element_type)})));')
 			}
 		} else if flat.source_type_query(container).has(.c_map_prefix) {
-			map_default := fastc_map_field_default(container, g.prefs.target.pointer_bits, g.declared_kinds)
+			map_default := fastc_map_field_default(container, g.prefs.target.pointer_bits, g.declared_kinds, g.declared_type_c_names)
 			if map_default != '' {
 				initializers.writeln('\t${c_name} = ${map_default};')
 			}
@@ -1313,9 +1313,9 @@ fn fastc_static_fixed_array_initializer(initializer string) string {
 // struct field's default (matching `map[K]V{}`), or '' when the type is not a
 // resolvable map. Kept as a helper so the caller avoids a multi-return option in
 // an `if` guard, which the FastC self-host does not accept.
-fn fastc_map_field_default(typ u32, pointer_bits int, declared_kinds map[u32]FastcDeclaredTypeKind) string {
+fn fastc_map_field_default(typ u32, pointer_bits int, declared_kinds map[u32]FastcDeclaredTypeKind, declared_type_c_names flat.TypeTextBindings) string {
 	key_type_source_id, value_type_source_id := fastc_map_key_value_types(typ) or {
-		fastc_declared_map_key_value_types(typ, declared_kinds) or { return '' }
+		fastc_declared_map_key_value_types(typ, declared_kinds, declared_type_c_names) or { return '' }
 	}
 	key_type := key_type_source_id
 	value_type := value_type_source_id
@@ -1390,7 +1390,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 					}
 				}
 			} else if prefs.building_v && flat.source_type_query(container_layout).has(.c_map_prefix) {
-				map_default := fastc_map_field_default(container_type, prefs.target.pointer_bits, declared_kinds)
+				map_default := fastc_map_field_default(container_type, prefs.target.pointer_bits, declared_kinds, declared_type_c_names)
 				if map_default != '' {
 					field.default_value = map_default
 				}
@@ -2445,6 +2445,9 @@ fn fastc_hoist_c_type_aliases(source string) string {
 }
 
 fn fastc_order_c_composite_definitions(source string, struct_fields map[string]flat.TypeTextBindings, by_value_composite_names map[string]bool, alias_base_types flat.TypeTextBindings) string {
+	if ordered := fastc_order_c_composite_pieces(source, struct_fields, by_value_composite_names, alias_base_types) {
+		return ordered
+	}
 	mut ordered := source
 	mut changed := true
 	mut passes := 0
@@ -2480,6 +2483,82 @@ fn fastc_order_c_composite_definitions(source string, struct_fields map[string]f
 	return ordered
 }
 
+// fastc_order_c_composite_pieces performs the same stable block moves using indexes,
+// then copies the C text once. Nested definition ranges retain the original splice path.
+fn fastc_order_c_composite_pieces(source string, struct_fields map[string]flat.TypeTextBindings, by_value_composite_names map[string]bool, alias_base_types flat.TypeTextBindings) ?string {
+	original_positions := fastc_composite_definition_positions(source)
+	mut names_by_start := map[int]string{}
+	mut starts := []int{cap: original_positions.len}
+	for name, start in original_positions {
+		names_by_start[start] = name
+		starts << start
+	}
+	starts.sort()
+	mut ranges := []int{}
+	mut names := []string{}
+	mut positions := map[string]int{}
+	mut cursor := 0
+	for start in starts {
+		if start < cursor { return none }
+		if cursor < start {
+			ranges << cursor
+			ranges << start
+			names << ''
+		}
+		end := fastc_c_composite_block_end(source, start) or { return none }
+		name := names_by_start[start]
+		positions[name] = names.len
+		names << name
+		ranges << start
+		ranges << end
+		cursor = end
+	}
+	if cursor < source.len {
+		ranges << cursor
+		ranges << source.len
+		names << ''
+	}
+	mut dependencies := []string{}
+	for dependent, fields in struct_fields {
+		if dependent !in positions { continue }
+		for _, field_type in fields.ids {
+			dependency := fastc_by_value_composite_type(field_type, by_value_composite_names, alias_base_types)
+			if dependency != dependent && dependency in positions {
+				dependencies << dependent
+				dependencies << dependency
+			}
+		}
+	}
+	mut order := []int{len: names.len, init: index}
+	mut changed := true
+	mut moved := false
+	mut passes := 0
+	for changed && passes < struct_fields.len {
+		changed = false
+		passes++
+		for i := 0; i + 1 < dependencies.len; i += 2 {
+			insert_at := positions[dependencies[i]]
+			block_at := positions[dependencies[i + 1]]
+			if block_at < insert_at { continue }
+			block := order[block_at]
+			order.delete(block_at)
+			order.insert(insert_at, block)
+			for j in insert_at .. block_at + 1 {
+				name := names[order[j]]
+				if name != '' { positions[name] = j }
+			}
+			changed = true
+			moved = true
+		}
+	}
+	if !moved { return source }
+	mut out := strings.new_builder(source.len)
+	for block in order {
+		out.write_string(source[ranges[2 * block]..ranges[2 * block + 1]])
+	}
+	return out.str()
+}
+
 // fastc_shift_composite_positions updates definition starts after the block
 // [block_start, block_end) was spliced in front of the definition at
 // insert_at: the moved block now starts there, and every definition that was
@@ -2503,7 +2582,9 @@ fn fastc_c_composite_block_end(source string, start int) ?int {
 		end++
 	}
 	// A packed definition's `#pragma pack(pop)` belongs to its block.
-	if source[end..].starts_with(fastc_pack_pop_line) {
+	// Inspect only the prefix: slicing the entire tail copies it for each definition.
+	pack_end := end + fastc_pack_pop_line.len
+	if pack_end <= source.len && (unsafe { source[end..pack_end] }) == fastc_pack_pop_line {
 		end += fastc_pack_pop_line.len
 		for end < source.len && source[end] == `\n` {
 			end++

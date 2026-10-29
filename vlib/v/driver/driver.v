@@ -13222,7 +13222,7 @@ pub fn run(args []string) {
 			fastc_pieces := fastc_generation.c_pieces
 			fastc_source_size := fastc_generation.c_size()
 			b.step('fastc parse+gen')
-			if c_only && fastc_cross_target {
+			if c_only {
 				b.metric('generated C size', fastc_source_size, 'bytes')
 				publish_v3_fastc_c_source(fastc_pieces, output_file, c_to_stdout) or {
 					eprintln(err.msg())
@@ -13232,13 +13232,7 @@ pub fn run(args []string) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 				return
 			}
-			// Validate same-target generated C before publishing it. C-only builds use a
-			// throwaway executable; normal builds keep the binary produced by bundled TinyCC.
-			fastc_bin_file := if c_only {
-				os.join_path_single(os.vtmp_dir(), 'v3_fastc_validate_${os.getpid()}_${tempname.unique_token()}')
-			} else {
-				bin_file
-			}
+			fastc_bin_file := bin_file
 			fastc_sdk_root := if prefs.normalized_target_os() == 'macos' {
 				macos_sdk_root_cache.get()
 			} else {
@@ -13276,9 +13270,6 @@ pub fn run(args []string) {
 					println('='.repeat(header.len))
 				}
 			}
-			if c_only {
-				os.rm(fastc_bin_file) or {}
-			}
 			if !fastc_result.success {
 				cache_failure_output := v3_fastc_cache_failure_output(fastc_result.output, fastc_result.cached_objects)
 				if v3_recover_from_cache_failure(cache_failure_output, '') {
@@ -13302,15 +13293,6 @@ pub fn run(args []string) {
 			}
 			b.step('tcc')
 			b.metric('generated C size', fastc_source_size, 'bytes')
-			if c_only {
-				publish_v3_fastc_c_source(fastc_pieces, output_file, c_to_stdout) or {
-					eprintln(err.msg())
-					exit(1)
-				}
-				b.print_report()
-				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-				return
-			}
 			if backend_explicit {
 				fastc.write_c_pieces(output_file, fastc_pieces) or {
 					eprintln('failed to retain generated fastc output ${output_file}: ${err.msg()}')

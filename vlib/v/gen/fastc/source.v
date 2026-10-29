@@ -915,7 +915,7 @@ fn fastc_memo_blob_tasks(memo_path string, memo FastcResolveMemo) ([]FastcMemoTa
 			kind:    5
 			dir:     blob_path
 			offsets: [start, end - start]
-			blob:    blob
+			blob:    fastc_piece(blob)
 		}
 		start = end
 	}
@@ -957,22 +957,24 @@ fn fastc_memo_read_tasks(memo FastcResolveMemo, current_stamps []FastcFileStamp,
 		if end > memo.files.len {
 			end = memo.files.len
 		}
-		mut task := FastcMemoTask{
-			kind:  2
-			files: memo.files[start..end]
-		}
 		if with_blob {
-			task = FastcMemoTask{
+			tasks << FastcMemoTask{
 				kind:           2
 				files:          memo.files[start..end]
 				stamps:         memo.stamps[start..end]
 				current_stamps: current_stamps[start..end]
 				offsets:        memo.offsets[start..end]
-				blob:           blob
+				// Every chunk reads the same immutable blob. A direct string field
+				// assignment clones it, multiplying source size by the chunk count.
+				blob:           fastc_piece(blob)
 				trusted_before: memo.written - 1
 			}
+		} else {
+			tasks << FastcMemoTask{
+				kind:  2
+				files: memo.files[start..end]
+			}
 		}
-		tasks << task
 		start = end
 	}
 	return tasks

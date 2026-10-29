@@ -2,7 +2,6 @@ module fastc
 
 import v.flat
 import os
-import strings
 import v.pref
 import v.scanner
 import v.token
@@ -1232,24 +1231,37 @@ fn fastc_collect_embedded_payloads(source string, path string, prefs &pref.Prefe
 
 // fastc_embed_c_string_value preserves every byte, including NUL and non-UTF-8
 // data. Three-digit octal escapes cannot absorb a following hexadecimal digit.
+@[direct_array_access]
 fn fastc_embed_c_string_value(content string) string {
-	mut result := strings.new_builder(content.len + 2)
-	result.write_u8(`"`)
+	mut length := content.len + 2
 	for c in content {
 		if c == `"` || c == `\\` {
-			result.write_u8(`\\`)
-			result.write_u8(c)
+			length++
 		} else if c < 32 || c >= 127 {
-			result.write_u8(`\\`)
-			result.write_u8(`0` + (c >> 6))
-			result.write_u8(`0` + ((c >> 3) & 7))
-			result.write_u8(`0` + (c & 7))
-		} else {
-			result.write_u8(c)
+			length += 3
 		}
 	}
-	result.write_u8(`"`)
-	return result.str()
+	mut result := []u8{len: length}
+	result[0] = `"`
+	mut offset := 1
+	for c in content {
+		if c == `"` || c == `\\` {
+			result[offset] = `\\`
+			result[offset + 1] = c
+			offset += 2
+		} else if c < 32 || c >= 127 {
+			result[offset] = `\\`
+			result[offset + 1] = `0` + (c >> 6)
+			result[offset + 2] = `0` + ((c >> 3) & 7)
+			result[offset + 3] = `0` + (c & 7)
+			offset += 4
+		} else {
+			result[offset] = c
+			offset++
+		}
+	}
+	result[offset] = `"`
+	return result.bytestr()
 }
 
 // fastc_string_literal_content returns the raw text inside a scanned string

@@ -1658,7 +1658,22 @@ struct FastcInitializerRewrite {
 fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, expression_tokens []FastcExpressionToken, previous_token token.Token, previous_lit string, paren_depth int, input_brace_depth int, mut struct_types []u32, mut struct_depths []int, mut struct_paren_depths []int, input_piece string) !FastcInitializerRewrite {
 	mut brace_depth := input_brace_depth
 	mut piece := input_piece
-	initializer_tokens := expression_tokens[..expression_tokens.len - 1].clone()
+	// A nested named literal cannot make the preceding container/field text a type.
+	// Avoid rescanning (and copying) a growing table initializer for every entry.
+	end := expression_tokens.len - 1
+	mut type_start := end - 1
+	for type_start >= 2 && expression_tokens[type_start].tok == .name
+		&& expression_tokens[type_start - 1].tok == .dot
+		&& expression_tokens[type_start - 2].tok == .name {
+		type_start -= 2
+	}
+	nested_name := previous_token == .name && type_start > 0
+		&& expression_tokens[type_start - 1].tok in [.comma, .colon, .lcbr, .lsbr]
+	initializer_tokens := if nested_name {
+		[]FastcExpressionToken{}
+	} else {
+		expression_tokens[..end]
+	}
 	initializer_start := fastc_initializer_type_start(initializer_tokens)
 	initializer_type_tokens := initializer_tokens[initializer_start..]
 	mut is_struct_literal := false
