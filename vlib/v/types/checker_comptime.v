@@ -13049,8 +13049,21 @@ fn sql_update_assignment_fields(tokens []string) []string {
 	if tokens.len == 0 {
 		return []string{}
 	}
-	if tokens[0] == '{' && tokens.last() == '}' {
-		return sql_update_assignment_fields(tokens[1..tokens.len - 1])
+	if tokens[0] in ['{', '('] {
+		mut depth := 0
+		for i, tok in tokens {
+			if tok in ['{', '(', '['] {
+				depth++
+			} else if tok in ['}', ')', ']'] {
+				depth--
+				if depth == 0 {
+					if i == tokens.len - 1 {
+						return sql_update_assignment_fields(tokens[1..i])
+					}
+					break
+				}
+			}
+		}
 	}
 	mut fields := []string{}
 	mut start := 0
@@ -13060,7 +13073,8 @@ fn sql_update_assignment_fields(tokens []string) []string {
 			depth++
 		} else if tok in ['}', ')', ']'] {
 			depth--
-		} else if tok == ',' && depth == 0 {
+		} else if depth == 0 && (tok == ',' || (tokens[0] != 'if'
+			&& tok in ['&&', '||', 'and', 'or'])) {
 			fields << sql_update_assignment_fields(tokens[start..i])
 			start = i + 1
 		}

@@ -259,3 +259,34 @@ fn test_insert_only_serial_primary_keys_are_generated() {
 	assert rows[0].id == id
 	assert rows[0].name == 'changed'
 }
+
+struct InsertOnlyRenamedRecord {
+mut:
+	id      int    @[primary]
+	creator string @[sql_insert_only; sql: 'created_by']
+	name    string @[sql: 'creator']
+}
+
+fn test_automatic_updates_match_insert_only_physical_columns() {
+	mut db := sqlite.connect(':memory:')!
+	defer { db.close() or {} }
+	sql db { create table InsertOnlyRenamedRecord }!
+	mut record := InsertOnlyRenamedRecord{ id: 1, creator: 'protected', name: 'before' }
+	sql db { insert record into InsertOnlyRenamedRecord }!
+	record.creator = 'must not change'
+	record.name = 'saved'
+	orm.save(db, record)!
+	saved := sql db { select from InsertOnlyRenamedRecord where id == 1 }!
+	assert saved[0].creator == 'protected'
+	assert saved[0].name == 'saved'
+	record.name = 'bulk'
+	orm.update_many(mut db, [record], 'id')!
+	bulk := sql db { select from InsertOnlyRenamedRecord where id == 1 }!
+	assert bulk[0].creator == 'protected'
+	assert bulk[0].name == 'bulk'
+	record.name = 'upsert'
+	sql db { upsert record into InsertOnlyRenamedRecord }!
+	upserted := sql db { select from InsertOnlyRenamedRecord where id == 1 }!
+	assert upserted[0].creator == 'protected'
+	assert upserted[0].name == 'upsert'
+}

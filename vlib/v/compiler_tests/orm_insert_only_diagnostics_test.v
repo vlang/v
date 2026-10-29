@@ -35,6 +35,7 @@ struct InsertOnlyUser {
  creator string @[sql_insert_only]
  name string
 }
+
 fn runtime_assignments() orm.QueryData {
  return orm.QueryData{fields: ['name'], data: [orm.Primitive('safe')]}
 }
@@ -49,6 +50,59 @@ fn main() {
  mut replacement := { creator == 'protected' }
  replacement = runtime_assignments()
  sql db { dynamic update InsertOnlyUser set replacement where id == 1 }!
+}
+")!
+	for flags in [[]string{}, ['-check']] {
+		result := os.exec([@VEXE, '-new-compiler', '-nocolor', ...flags, path])
+		assert result.exit_code == 0, result.output
+	}
+}
+
+fn test_sql_insert_only_dynamic_grouped_assignments_are_checked() {
+	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_grouped_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	for assignment in [
+		"name == 'safe' && creator == 'protected'",
+		"(name == 'safe' || creator == 'protected')",
+		"if creator == 'read' { if enabled { name == 'safe' && creator == 'protected' } }",
+	] {
+		os.write_file(path, "import db.sqlite
+struct InsertOnlyUser {
+ id int @[primary]
+ creator string @[sql_insert_only]
+ name string
+}
+fn main() {
+ db := sqlite.connect(':memory:')!
+ enabled := true
+ creator := 'read'
+ assignments := { ${assignment} }
+ sql db { dynamic update InsertOnlyUser set assignments where id == 1 }!
+}
+")!
+		for flags in [[]string{}, ['-check']] {
+			result := os.exec([@VEXE, '-new-compiler', '-nocolor', ...flags, path])
+			assert result.exit_code == 1, result.output
+			assert result.output.contains('cannot update insert-only field `InsertOnlyUser.creator`'), result.output
+		}
+	}
+	os.write_file(path, "import db.sqlite
+struct InsertOnlyUser {
+ id int @[primary]
+ creator string @[sql_insert_only]
+ name string
+ active bool
+}
+fn main() {
+ db := sqlite.connect(':memory:')!
+ enabled := true
+ creator := 'read'
+ assignments := {
+  if creator == 'read' { active == (enabled) }
+ }
+ sql db { dynamic update InsertOnlyUser set assignments where id == 1 }!
 }
 ")!
 	for flags in [[]string{}, ['-check']] {

@@ -1850,11 +1850,11 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 }
 
 fn orm_insert_only_field(meta []TableField, name string) ?TableField {
+	// Callers have already mapped V field names to their SQL column names.
 	for field in meta {
 		for attr in field.attrs {
 			if attr.name == 'sql_insert_only'
-				&& (field.name == name || field.name.ends_with('.${name}')
-					|| sql_field_name(field).to_lower() == name.to_lower()) {
+				&& sql_field_name(field).to_lower() == name.to_lower() {
 				return field
 			}
 		}
