@@ -8829,8 +8829,11 @@ fn (mut t Transformer) set_fresh_runtime_closure_expr_type(id flat.NodeId, typ_i
 	if typ_comparison_type_id_10 == u32(0) || int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
-	t.set_node_typ(int(id), typ_source_id_7)
 	node := t.a.nodes[int(id)]
+	// A literal's `typ` is its declared return type, which lift_fn_literal reads back.
+	if node.kind != .fn_literal {
+		t.set_node_typ(int(id), typ_source_id_7)
+	}
 	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
 		t.set_fresh_runtime_closure_expr_type(t.a.child(&node, 0), typ_source_id_7)
 	}
