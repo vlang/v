@@ -1098,6 +1098,19 @@ fn test_cold_formatter_cache_accepts_tinycc_production_environment() {
 }
 
 fn test_obsolete_skip_unused_cleanup_preserves_option_values_and_execution_boundaries() {
+	for command in ['run', 'crun'] {
+		for input in ['run', 'crun', 'build', 'test'] {
+			args := [command, input, '-skip-unused']
+			assert remove_obsolete_skip_unused_flag(args) == args
+			assert remove_obsolete_skip_unused_flag(['-skip-unused', ...args]) == args
+		}
+	}
+	assert remove_obsolete_skip_unused_flag(['-raw-vsh-tmp-prefix', 'prefix', 'run', '-skip-unused']) == [
+		'-raw-vsh-tmp-prefix',
+		'prefix',
+		'run',
+		'-skip-unused',
+	]
 	for args in [['-o', '-skip-unused', 'main.v'], ['-cflags', '-skip-unused', 'main.v'],
 		['run', 'main.v', '-skip-unused'], ['crun', 'main.v', '-skip-unused'],
 		['main.vsh', '-skip-unused'], ['-e', 'println("-skip-unused")', '-skip-unused'],

@@ -279,11 +279,11 @@ fn compiler_option_index(args []string, option string) int {
 		if arg.starts_with('-') && arg != '-' {
 			continue
 		}
-		if !input_seen && arg in ['run', 'crun'] {
+		if !input_seen && !runs_input && arg in ['run', 'crun'] {
 			runs_input = true
 			continue
 		}
-		if !input_seen && arg in ['build', 'test'] {
+		if !input_seen && !runs_input && arg in ['build', 'test'] {
 			continue
 		}
 		if runs_input || arg.ends_with('.vsh') {

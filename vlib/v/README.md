@@ -512,6 +512,8 @@ Unused functions and the generic calls or function values inside them are pruned
 including those in imported modules. Use `-no-skip-unused` to retain unused functions.
 The obsolete `-skip-unused` spelling prints a notice and has no effect, including when combined
 with `-no-skip-unused`.
+After a `run` or `crun` input, it remains a program argument, including for directories named
+`run`, `crun`, `build`, or `test`.
 Literal-output programs still instantiate retained generic helpers with `-no-skip-unused`.
 Merged imports in cached headers do not create parameter-name conflicts across source files.
 Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,
