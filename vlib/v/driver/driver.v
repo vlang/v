@@ -2255,6 +2255,9 @@ fn run_binary(bin_file string, args []string, remove_after_run bool) int {
 	defer {
 		if remove_after_run {
 			os.rm(bin_file) or {}
+			$if windows {
+				remove_generated_windows_long_path_manifest(bin_file)
+			}
 			v3_remove_macos_debug_symbols(bin_file)
 		}
 	}
@@ -13393,6 +13396,11 @@ pub fn run(args []string) {
 		unchanged_build_cache_key = v3_unchanged_build_key(prefs, c_compiler, bin_file)
 		if v3_restore_unchanged_build(unchanged_build_cache_dir, unchanged_build_cache_key,
 			bin_file) {
+			$if windows {
+				if target.os == 'windows' {
+					ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc)
+				}
+			}
 			if os.getenv('V3_CACHE_TRACE') != '' {
 				eprintln('  V3 unchanged build cache hit')
 			}
@@ -16920,9 +16928,10 @@ pub fn run(args []string) {
 		}
 		large_c_flag_plan := v3_c_compiler_flag_plan(large_c_flag_options)
 		mut native_support_inputs := []string{}
-		if icon_path != '' && os.user_os() != 'windows' {
-			icon_object := prepare_cross_windows_icon_resource(icon_path, cc_dir, c_compiler,
-				verbose || show_cc) or {
+		if icon_path != '' {
+			icon_arch := windows_icon_resource_arch(prefs.normalized_target_arch(), c_compiler,
+				c_flag_plan.all_flags([]))
+			icon_object := prepare_windows_icon_resource(icon_path, cc_dir, icon_arch) or {
 				eprintln(err.msg())
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
@@ -18002,35 +18011,6 @@ Please install the corresponding development package/libraries and make sure the
 			}
 		}
 		staged_binary := v3_produced_binary(cc_out)
-		$if windows {
-			if icon_path != '' {
-				ico_path := prepare_windows_icon_ico_path(icon_path, cc_dir) or {
-					eprintln(err.msg())
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
-				apply_windows_icon_to_executable(staged_binary, ico_path) or {
-					eprintln(err.msg())
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
-			}
-			// Mark the executable longPathAware so that it can use paths past MAX_PATH,
-			// unless its linker already gave it a manifest. A failure is not fatal.
-			// MSVC builds load dbghelp.dll at startup, whose DllMain calls GetTempPath2W:
-			// in a longPathAware process that loops forever on a TMP past MAX_PATH,
-			// before any V code can shorten it, so they stay as the linker made them.
-			if prefs.normalized_target_os() == 'windows' && !is_o && !is_shared
-				&& !c_compiler_is_msvc(c_compiler) && !os.is_file('${bin_file}.manifest') {
-				add_windows_long_path_manifest(staged_binary) or {
-					// Long build paths need the manifest, so say so when it is missing for them.
-					if verbose || show_cc || cc_dir_moved {
-						eprintln('warning: ${bin_file} is not longPathAware: ${err.msg()}')
-					}
-					false
-				}
-			}
-		}
 		// The executable is kept from the directory of this build, before it gets the
 		// name of the output: another build may write that name at the same moment.
 		if program_executable_enabled && program_link_inputs.taken
@@ -18060,6 +18040,14 @@ Please install the corresponding development package/libraries and make sure the
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
+		$if windows {
+			// MSVC's startup dbghelp.dll hangs with a long TMP in a longPathAware
+			// process, before V can shorten it, so leave its manifest unchanged.
+			if target.os == 'windows' && !is_o && !is_shared {
+				ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc || cc_dir_moved)
+			}
+		}
+
 		if (is_debug || race) && target.os == 'macos' {
 			v3_keep_macos_debug_symbols(staged_binary, bin_file)
 		}

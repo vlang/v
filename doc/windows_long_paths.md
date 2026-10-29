@@ -6,9 +6,11 @@ Windows limits most paths to 260 characters (`MAX_PATH`). The system setting
 
 ## Executables built by V
 
-On a Windows host, V gives a Windows executable a manifest that declares `longPathAware`
-right after linking it, the way `-icon` adds an icon. With `LongPathsEnabled` turned on,
+On a Windows host, V gives a Windows executable an external manifest named
+`<output>.manifest` that declares `longPathAware` when the linker supplies no embedded manifest.
+Keep this file beside the executable when distributing it. With `LongPathsEnabled` turned on,
 such an executable can create, check and open files past `MAX_PATH`.
+`v self` moves this manifest alongside the replacement compiler and its backup.
 
 * An executable that its linker already gave a manifest keeps that manifest unchanged.
   MinGW GCC links one that declares `longPathAware` already.
@@ -20,6 +22,10 @@ such an executable can create, check and open files past `MAX_PATH`.
   executables cross-compiled on another system get no manifest either.
 * If the manifest cannot be added, the build still succeeds. V then prints a warning with
   `-v` or `-showcc`, or when the build directory had to move (see below).
+
+V leaves the linked executable intact, preserving its COFF symbols and DWARF debug sections
+for `-g` and `-cg` builds. Icons selected with `-icon` are linked as resource objects, without
+rewriting the executable after linking or requiring an external resource compiler.
 
 `os.exists` uses `GetFileAttributesW`, so it follows the manifest. The compiler starts a tool
 whose path is 260 characters or longer through its `\\?\` form, which `CreateProcessW`
