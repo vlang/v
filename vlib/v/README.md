@@ -14,6 +14,9 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+`parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
+or release their own buffers after parsing.
+
 Inside generic methods, callable parameters and local bindings take precedence over methods
 with the same name. Implicit receiver calls are resolved only when no local binding shadows
 the method name.
