@@ -210,19 +210,6 @@ fn test_comptime_const_if_values_keep_their_branch_result_type() {
 	}
 }
 
-fn test_comptime_const_rejects_implicit_cleanup_values() {
-	$if ownership ? {
-		for body in [
-			'resource := Resource{value: 7} return resource.value',
-			'resources := [Resource{value: 7}]! return resources[0].value',
-			'wrapper := Wrapper{resource: Resource{value: 7}} return wrapper.resource.value',
-		] {
-			tc := comptime_const_checker('const n = compute()\nstruct Resource implements Drop { value int }\nstruct Wrapper { resource Resource }\nfn (mut resource Resource) drop() { panic("cleanup") }\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = n }')
-			assert tc.errors.any(it.msg.contains('cannot evaluate const `n`') && it.msg.contains('implicit cleanup')), tc.errors.str()
-		}
-	}
-}
-
 fn test_comptime_const_narrow_alias_comparison() {
 	tc := comptime_const_checker('type Byte = u8\n@[comptime]\nfn compute(a Byte, b Byte) bool { return a + b == Byte(4) }\nconst n = compute(Byte(250), Byte(10))\nfn main() { _ = n }')
 	assert tc.errors.len == 0, tc.errors.str()

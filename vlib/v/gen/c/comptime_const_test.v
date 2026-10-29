@@ -37,6 +37,55 @@ fn test_comptime_values_are_static_without_initialization_code() {
 	}
 }
 
+fn comptime_cleanup_program(declarations string, body string) string {
+	return '${declarations}\n@[comptime]\nfn compute() int {\n${body}\n}\nconst answer = compute()\nfn main() { println(answer) }\n'
+}
+
+fn test_cli_comptime_values_reject_implicit_cleanup() {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_cleanup_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	for mode in ['-ownership', '-autofree'] {
+		declarations := if mode == '-ownership' {
+			'struct Resource implements Drop { value int }\nfn (mut resource Resource) drop() { panic("cleanup reached") }'
+		} else {
+			'struct Resource { value int }\nfn (resource &Resource) free() { panic("cleanup reached") }'
+		}
+		args := [@VEXE, '-new-compiler', '-nocache', '-gc', 'none', mode]
+		for i, body in [
+			'resource := Resource{value: 7}\nreturn resource.value',
+			'resources := [Resource{value: 7}]!\nreturn resources[0].value',
+			'wrapper := Wrapper{resource: Resource{value: 7}}\nreturn wrapper.resource.value',
+			'resource := ResourceAlias{value: 7}\nreturn resource.value',
+		] {
+			program := comptime_cleanup_program('${declarations}\nstruct Wrapper { resource Resource }\ntype ResourceAlias = Resource', body)
+			os.write_file(source, program)!
+			output := os.join_path(root, '${mode[1..]}_${i}${suffix}')
+			result := os.exec([...args, '-o', output, source])
+			assert result.exit_code != 0, result.output
+			assert result.output.contains('cannot evaluate const `answer`'), result.output
+			assert result.output.contains('implicit cleanup'), result.output
+		}
+		body := 'resource := Resource{value: 7}\nreturn resource.value'
+		os.write_file(source, comptime_cleanup_program(declarations, body).replace('@[comptime]\n', ''))!
+		control := os.join_path(root, '${mode[1..]}_runtime${suffix}')
+		build_control := os.exec([...args, '-o', control, source])
+		assert build_control.exit_code == 0, build_control.output
+		runtime := os.exec([control])
+		assert runtime.exit_code != 0, runtime.output
+		assert runtime.output.contains('cleanup reached'), runtime.output
+		os.write_file(source, comptime_cleanup_program('struct Resource { value int }', body))!
+		plain := os.join_path(root, '${mode[1..]}_plain${suffix}')
+		build_plain := os.exec([...args, '-o', plain, source])
+		assert build_plain.exit_code == 0, build_plain.output
+		plain_result := os.exec([plain])
+		assert plain_result.exit_code == 0, plain_result.output
+		assert plain_result.output.trim_space() == '7', plain_result.output
+	}
+}
+
 fn test_cli_comptime_values_remain_static_after_parent_index_refresh() {
 	root := os.join_path(os.vtmp_dir(), 'cli_static_comptime_${os.getpid()}')
 	os.mkdir_all(root)!
