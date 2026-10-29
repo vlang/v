@@ -26,9 +26,9 @@ enum Item_type {
 	file = 0
 	folder
 	// containers
-	zip  = 16
+	zip = 16
 	// image formats (drawable)
-	bmp  = 32
+	bmp = 32
 	jpg
 	png
 	gif
