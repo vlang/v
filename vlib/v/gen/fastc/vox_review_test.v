@@ -191,6 +191,23 @@ fn main() {
 ', '')
 }
 
+fn test_fastc_vox_review_boolean_map_pointer_reads_keep_compound_keys() {
+	fastc_vox_review_run('boolean_map_keys', r'module main
+fn matches(cache &map[string]bool, programs &map[string]bool, name string) bool {
+	return cache["C." + name] || cache[name] || programs["C." + name] || programs[name]
+}
+fn main() {
+	cache := {"C.left": true, "plain": true}
+	programs := {"C.right": true, "ordinary": true}
+	assert matches(&cache, &programs, "left")
+	assert matches(&cache, &programs, "right")
+	assert matches(&cache, &programs, "plain")
+	assert matches(&cache, &programs, "ordinary")
+	assert !matches(&cache, &programs, "absent")
+}
+', '')
+}
+
 fn test_fastc_vox_review_native_includes_keep_cross_file_macro_context() {
 	fastc_vox_review_run_files('cross_file_macros', {
 		'a.c.v':  r'module main

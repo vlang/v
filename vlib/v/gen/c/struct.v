@@ -5476,7 +5476,7 @@ fn (g &FlatGen) struct_decl_alignment_c_type(type_name_id u32, fallback string) 
 }
 
 fn (g &FlatGen) tinyc_stack_value_alignment(typ &types.Type, c_type string) ?string {
-	if g.ccompiler != 'tinyc' && !g.ccompiler.to_lower().contains('tcc') {
+	if !g.tcc_program_unit && g.ccompiler != 'tinyc' && !g.ccompiler.to_lower().contains('tcc') {
 		return none
 	}
 	if typ is types.Pointer {

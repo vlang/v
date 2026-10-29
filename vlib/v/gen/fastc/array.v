@@ -432,6 +432,10 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 	}
 	base_layout_type := g.underlying_alias_type(base_type)
+	if flat.source_type_query(fastc_trim_pointer_type(base_layout_type)).has(.c_map_prefix) {
+		// Pointer-to-map reads use map lookup, including compound keys in boolean operands.
+		return none
+	}
 	base_source := if is_reference_base {
 		'(*(${g.resolved_root_expression_name(base_tokens[0].lit)}))'
 	} else if base_tokens.len == 1 && base_tokens[0].has_source() {

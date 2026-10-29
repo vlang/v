@@ -24,8 +24,32 @@ so warm builds can use the same temporary buffer path as uncached builds.
 
 Set `V3_CACHE_TRACE=1` to inspect cache decisions, and use `-show-timings` to see
 `monomorphize (cached)` on an unchanged build. External native inputs without a safe
-ownership or replication policy still fall back to an uncached build. TCC selection
-continues to follow the compiler's existing cache eligibility rules.
+ownership or replication policy still fall back to an uncached build.
+
+On macOS, development builds that need Objective-C or external native objects can use
+the bundled TCC for the program. The platform compiler builds the native owner and cached
+dependency modules into a development dylib, which TCC links with the application's C unit.
+Modules inside the application directory remain part of the application unit; modules outside
+it, including the standard library, retain their module objects and interfaces in the cache.
+The C compiler supplies the dependency manifest for project headers and their nested includes.
+Changing those inputs invalidates the affected cached artifacts.
+The TCC interface uses the native compiler's active declarations and expanded type macros,
+including Objective-C++ inputs and native types referenced by V fields. Conditional native
+prototypes and type layouts therefore keep the native owner's ABI.
+Project headers included through `-I`, with either quotes or angle brackets, use that same
+interface. Plain C inputs keep their C language context. Named enum constants and explicitly
+aligned V locals are supported in the TCC program unit. Embedded resources remain dependencies
+of their owning V modules, so payload edits refresh cached metadata such as `$embed_file(...).len`.
+Enum members omit diagnostic annotations such as deprecation attributes in the TCC interface.
+Mixed Objective-C and Objective-C++ bridge contexts retain the uncached fallback;
+`-no-retry-compilation` reports an unsupported bridge instead of changing C compilers.
+The V program keeps TCC's compile-time conditions. Native calls, including functions from static
+archives, resolve through the native owner. Loop conditions containing `or { break }` or
+`or { continue }` run inside the loop body so TCC preserves their control flow and short circuiting.
+
+Caching is enabled by default. Use `-showcc` to inspect the final TCC invocation and
+`V3_CACHE_TRACE=1` to inspect module reuse. `-nocache`, production builds, and builds requiring
+complete retained C output keep their existing compilation paths.
 
 `-print-watched-files` and `-dump-files` parse source bodies to include every embedded resource,
 including resources omitted from warm declaration headers.

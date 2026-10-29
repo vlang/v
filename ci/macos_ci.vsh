@@ -59,6 +59,24 @@ fn test_pure_v_math_module() {
 }
 
 fn self_tests() {
+	$if macos {
+		// Metal frame callbacks stop when the display sleeps. Keep the real GPU
+		// probes running, and release the assertion even if a failed command exits.
+		mut display_guard := os.new_process('/usr/bin/caffeinate')
+		display_guard.set_args(['-d', '-u', '-w', os.getpid().str()])
+		display_guard.run()
+		defer {
+			display_guard.signal_term()
+			display_guard.wait()
+			display_guard.close()
+		}
+		run_self_tests()
+	} $else {
+		run_self_tests()
+	}
+}
+
+fn run_self_tests() {
 	// Do not select the V1 compatibility compiler here. It is a separate V 0.5.2
 	// installation, so `test-self vlib` would resolve `vlib` under *its* VROOT and
 	// test the release's own standard library instead of this repository's.

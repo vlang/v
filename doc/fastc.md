@@ -252,10 +252,17 @@ divisors. The ordinary FastC subset retains its division and modulo restrictions
 AMD64 and ARM64 C output supports GNU inline assembly, including named operands, read/write
 constraints, clobbers, local labels, raw templates, and `asm goto`. Structured Intel assembly
 supports register, immediate, and memory operands, including memory read/write constraints.
-Compile and link that output with the target toolchain; FastC executable builds still use the host
-target and bundled TinyCC.
+Compile and link that output with the target toolchain. FastC executable builds use the host
+target with bundled TinyCC by default, or Clang when selected with `-cc clang`.
 
-Build the full V compiler, including its regular C backend, directly from `cmd/v`:
+Build the full V compiler, including its regular C backend, directly from `cmd/v`.
+The default GC and cache settings are supported; no extra flags are required:
+
+```sh
+v -b fastc cmd/v
+```
+
+To keep separate compiler generations and rebuild their generated C units:
 
 ```sh
 v -b fastc -nocache -o v_fastc1 cmd/v
