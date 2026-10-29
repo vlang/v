@@ -9926,6 +9926,14 @@ fn (mut t Transformer) infer_generic_sum_literal_args(param_type_id u32, arg_id 
 }
 
 fn (t &Transformer) generic_arg_for_call_and_decl_module(arg_id u32, call_module string, decl_module string) u32 {
+	if call_module in ['', 'main'] {
+		// Lock caller types inside composites before normalization in the callee
+		// module can bind their bare names to its own declarations.
+		locked := t.lock_colliding_main_generic_type_text(arg_id, decl_module)
+		if locked != arg_id {
+			return locked
+		}
+	}
 	arg_shape := flat.source_type_shape(arg_id)
 	if call_module in ['', 'main'] && !arg_shape.has(.dotted) {
 		if info := t.structs[t.trimmed_type_id(arg_id)] {
@@ -15483,8 +15491,9 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ_id u32, module_nam
 		mut changed := false
 		mut parts := []u32{cap: syntax.function_params().len + 1}
 		for param in syntax.function_params() {
-			locked := t.lock_colliding_main_generic_type_text(param, module_name)
-			if locked != transform_trimmed_type_id(param) { changed = true }
+			payload := flat.source_type_syntax(param).legacy_parameter_mut_type()
+			locked := t.lock_colliding_main_generic_type_text(payload, module_name)
+			if locked != payload { changed = true }
 			parts << locked
 		}
 		ret := t.lock_colliding_main_generic_type_text(syntax.function_result(), module_name)
@@ -16445,12 +16454,36 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 		wrapper = .variadic_parameter
 	} else if shape.has(.array_type) {
 		wrapper = .array
+	} else if shape.has(.channel_type) {
+		wrapper = .channel
+	} else if shape.has(.thread_type) {
+		wrapper = .thread
 	} else {
 		wrapped = false
 	}
 	if wrapped {
 		return flat.source_type_composition_one(wrapper,
 			t.canonical_generic_specialization_arg(syntax.raw_base()))
+	}
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
+		if !syntax.function_closed() { return clean_id }
+		mut parts := []u32{cap: syntax.function_params().len + 1}
+		for param in syntax.function_params() {
+			parts << t.canonical_generic_specialization_arg(flat.source_type_syntax(param).legacy_parameter_mut_type())
+		}
+		ret := t.canonical_generic_specialization_arg(syntax.function_result())
+		if ret != 0 {
+			parts << ret
+			return flat.source_type_composition(.function_type_spaced, parts)
+		}
+		return flat.source_type_composition(.void_function_type_spaced, parts)
+	}
+	if syntax.tuple_like() && syntax.contains_comma() {
+		mut parts := []u32{cap: syntax.tuple_components().len}
+		for part in syntax.tuple_components() {
+			parts << t.canonical_generic_specialization_arg(part)
+		}
+		return flat.source_type_composition(.multi_return, parts)
 	}
 	// A lowered fixed-array symbol such as _3int can reach another inference pass.
 	if syntax.encoded_fixed_base() != 0 && !t.type_name_is_declared_id(clean_id) {

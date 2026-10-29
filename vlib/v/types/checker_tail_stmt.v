@@ -22332,7 +22332,9 @@ fn (tc &TypeChecker) c_generic_struct_arg_name(arg_id u32) u32 {
 			return flat.source_type_id(fixed)
 		}
 	}
-	if flat.source_type_shape(clean_id).has(.dotted) {
+	// A module separator inside a composite belongs to one of its components.
+	// Shortening the whole argument would turn `fn (mod.Row) mod.Row` into `Row`.
+	if flat.source_type_syntax(clean_id).qualified_name_chars() {
 		short_id := flat.source_type_syntax(clean_id).unqualified()
 		if clean_id !in tc.structs && clean_id !in tc.struct_generic_params && clean_id !in tc.interface_names && !tc.sum_types.contains(clean_id) && clean_id !in tc.enum_names && clean_id !in tc.flag_enums && !tc.type_aliases.contains(clean_id) {
 			if short_id in tc.structs || short_id in tc.struct_generic_params

@@ -11501,7 +11501,9 @@ fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg_id u32) u32 {
 	shape := flat.source_type_shape(clean_id)
 	syntax := flat.source_type_syntax(clean_id)
 	if shape.has(.pointer) || shape.has(.option_type) || shape.has(.result_type)
-		|| shape.has(.variadic) || shape.has(.array_type) {
+		|| shape.has(.variadic) || shape.has(.array_type) || shape.has(.mutable_type)
+		|| shape.has(.shared_type) || shape.has(.atomic_type) || shape.has(.channel_type)
+		|| shape.has(.thread_type) {
 		kind := if shape.has(.pointer) {
 			flat.SourceTypeComposition.pointer
 		} else if shape.has(.option_type) {
@@ -11510,10 +11512,38 @@ fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg_id u32) u32 {
 			flat.SourceTypeComposition.result
 		} else if shape.has(.variadic) {
 			flat.SourceTypeComposition.variadic_parameter
+		} else if shape.has(.mutable_type) {
+			flat.SourceTypeComposition.mutable_parameter
+		} else if shape.has(.shared_type) {
+			flat.SourceTypeComposition.shared_type
+		} else if shape.has(.atomic_type) {
+			flat.SourceTypeComposition.atomic_type
+		} else if shape.has(.channel_type) {
+			flat.SourceTypeComposition.channel
+		} else if shape.has(.thread_type) {
+			flat.SourceTypeComposition.thread
 		} else {
 			flat.SourceTypeComposition.array
 		}
 		return flat.source_type_composition_one(kind, tc.explicit_generic_concrete_arg_text(syntax.raw_base()))
+	}
+	if (shape.has(.function_compact) || shape.has(.function_spaced)) && syntax.function_closed() {
+		mut qualified_params := []u32{}
+		for param in syntax.checker_function_params() {
+			qualified_params << tc.explicit_generic_concrete_arg_text(flat.source_type_syntax(param).parameter_mut_type())
+		}
+		if syntax.function_result() != 0 {
+			qualified_params << tc.explicit_generic_concrete_arg_text(syntax.function_result())
+			return flat.source_type_composition(.function_type_spaced, qualified_params)
+		}
+		return flat.source_type_composition(.void_function_type_spaced, qualified_params)
+	}
+	if syntax.tuple_like() {
+		mut qualified_parts := []u32{}
+		for part in syntax.checker_tuple_components() {
+			qualified_parts << tc.explicit_generic_concrete_arg_text(part)
+		}
+		return flat.source_type_composition(.multi_return, qualified_parts)
 	}
 	if shape.has(.map_type) && syntax.bracket_closed() && syntax.bracket_base() != 0 {
 		key := tc.explicit_generic_concrete_arg_text(syntax.bracket_inner())
@@ -11523,6 +11553,13 @@ fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg_id u32) u32 {
 	if shape.has(.leading_bracket) && syntax.bracket_closed() && syntax.bracket_base() != 0 {
 		return flat.source_type_composition_two(.concat, syntax.bracket_prefix(),
 			tc.explicit_generic_concrete_arg_text(syntax.bracket_base()))
+	}
+	if syntax.application_valid() {
+		mut qualified_parts := [tc.explicit_generic_concrete_arg_text(syntax.application_base())]
+		for arg in syntax.application_args() {
+			qualified_parts << tc.explicit_generic_concrete_arg_text(arg)
+		}
+		return flat.source_type_composition(.generic, qualified_parts)
 	}
 	if !shape.has(.dotted) {
 		if tc.source_declares_type_in_scope(clean_id, tc.cur_file, tc.cur_module) {
