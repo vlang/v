@@ -1235,28 +1235,6 @@ pub fn (g &GenerationResult) c_size() int {
 	return size
 }
 
-// write_c_pieces writes generated C pieces to `path` without joining them.
-// Large outputs use a bounded buffer to batch small pieces into fewer writes.
-pub fn write_c_pieces(path string, pieces []string) ! {
-	mut size := 0
-	for piece in pieces {
-		size += piece.len
-		if size >= 1024 * 1024 {
-			size = 1024 * 1024
-			break
-		}
-	}
-	mut buffer := []u8{len: if size >= 64 * 1024 { size } else { 0 }}
-	mut file := os.create(path)!
-	defer { file.close() }
-	if buffer.len > 0 {
-		file.set_buffer(mut buffer, .fully_buffered)
-	}
-	for piece in pieces {
-		file.write_string(piece)!
-	}
-}
-
 // fastc_take_string turns a builder's contents into a string without copying
 // them: the builder's buffer becomes the string and the builder is left
 // empty, exactly as `str()` leaves it.
@@ -2725,27 +2703,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 	}
 	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, c_integer_comparison_helpers)
-	mut native_source_includes := []string{}
-	for piece in directive_groups {
-		mut defer_native_directives := false
-		for line in piece.split_into_lines() {
-			path := if line.trim_space().starts_with('#include "') {
-				line.all_after('"').all_before('"')
-			} else {
-				''
-			}
-			if path.ends_with('.m') || path.ends_with('.mm') {
-				defer_native_directives = true
-			}
-			// Keep the rest of this file's directives after its native include so
-			// macro mutations retain their order. Other files' headers supply C types.
-			if defer_native_directives {
-				native_source_includes << line + '\n'
-			} else {
-				pieces << line + '\n'
-			}
-		}
-	}
+	header_directives, native_source_includes := fastc_split_native_directives(directive_groups)
+	pieces << header_directives
 	timer.mark('assemble.directives')
 	if hoisted_body.final_kind == 1 {
 		pieces << '\n'
@@ -3242,6 +3201,80 @@ fn fastc_range_is_kept(ranges []int, start int, end int) bool {
 		}
 	}
 	return false
+}
+
+fn fastc_native_implementation_include(line string) bool {
+	clean := line.trim_space()
+	if !clean.starts_with('#include "') {
+		return false
+	}
+	path := clean.all_after('"').all_before('"')
+	return path.ends_with('.m') || path.ends_with('.mm')
+}
+
+// fastc_split_native_directives keeps headers before V declarations and replays explicit
+// macro context in source order before compiling the deferred native implementations.
+fn fastc_split_native_directives(groups []string) ([]string, []string) {
+	mut lines := []string{}
+	mut has_native := false
+	for group in groups {
+		for line in group.split_into_lines() {
+			lines << line
+			has_native = has_native || fastc_native_implementation_include(line)
+		}
+	}
+	mut headers := []string{cap: lines.len}
+	mut native := []string{}
+	if !has_native {
+		for line in lines {
+			headers << line + '\n'
+		}
+		return headers, native
+	}
+	mut macros := map[string]int{}
+	for index, line in lines {
+		trimmed := line.trim_space()
+		if !trimmed.starts_with('#') {
+			continue
+		}
+		clean := trimmed[1..].trim_left(' \t')
+		if clean.starts_with('define ') || clean.starts_with('define\t')
+			|| clean.starts_with('undef ') || clean.starts_with('undef\t') {
+			keyword_len := if clean.starts_with('define') { 6 } else { 5 }
+			declaration := clean[keyword_len..].trim_left(' \t')
+			mut end := 0
+			for end < declaration.len && (declaration[end].is_alnum() || declaration[end] == `_`) {
+				end++
+			}
+			if end > 0 && declaration[..end] !in macros {
+				macros[declaration[..end]] = index
+			}
+		}
+	}
+	mut macro_names := macros.keys()
+	macro_names.sort()
+	for name in macro_names {
+		native << '#pragma pop_macro("${name}")\n'
+	}
+	mut macro_starts := map[int][]string{}
+	for name, index in macros {
+		macro_starts[index] << name
+	}
+	for index, line in lines {
+		for name in macro_starts[index] {
+			// Preserve header-provided defaults before their first explicit mutation.
+			headers << '#pragma push_macro("${name}")\n'
+		}
+		is_native := fastc_native_implementation_include(line)
+		if !is_native {
+			headers << line + '\n'
+		}
+		clean := line.trim_space()
+		if is_native || (!clean.starts_with('#include') && !clean.starts_with('#import')) {
+			native << line + '\n'
+		}
+	}
+	return headers, native
 }
 
 fn fastc_append_split_head_piece(mut pieces []string, mut extern_indexes []int, mut extern_texts []string, mut define_texts []string, text string) {

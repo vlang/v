@@ -915,7 +915,7 @@ fn (mut g Parser) parse_if() !bool {
 		}
 	}
 	for path, present in had_member_smartcasts {
-		if present {
+		if present && path in g.member_smartcasts {
 			g.member_smartcasts[path] = previous_member_smartcasts[path]
 		} else {
 			g.member_smartcasts.delete(path)
@@ -1423,10 +1423,19 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 						left_type = origin.typ
 					}
 				}
+				// A repeated test still inspects the boxed value, even when an outer
+				// match currently projects this indexed/member path to a concrete type.
+				previous_cast := g.member_smartcasts[path] or { FastcMemberSmartcast{} }
+				if previous_cast.subject_type != u32(0) {
+					left_type = previous_cast.subject_type
+				}
 				target_type := (g.type_from_expression_tokens(conjunct[is_idx + 1..]) or { u32(0) })
 				if left_type != u32(0) && target_type != u32(0) && g.is_boxed_type(left_type) {
 					if rendered_left := g.render_member_receiver(left_tokens) {
 						mut left_source := rendered_left
+						if previous_cast.subject_source != '' {
+							left_source = previous_cast.subject_source
+						}
 						if left_tokens.len == 1 {
 							if origin := g.narrowed_local_origin(left_tokens[0].lit) {
 								left_source = origin.source
@@ -1583,7 +1592,7 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 		break
 	}
 	for path, present in previously_present {
-		if present {
+		if present && path in g.member_smartcasts {
 			g.member_smartcasts[path] = previous[path]
 		} else {
 			g.member_smartcasts.delete(path)
@@ -1942,7 +1951,7 @@ fn (mut g Parser) read_if_expression() !string {
 			}
 		}
 		for path, present in had_member_smartcasts {
-			if present {
+			if present && path in g.member_smartcasts {
 				g.member_smartcasts[path] = previous_member_smartcasts[path]
 			} else {
 				g.member_smartcasts.delete(path)

@@ -10968,6 +10968,7 @@ $if !skip_fastc ? {
 		}
 		staged_output := '${output_file}.stage.${tempname.unique_token()}'
 		fastc.write_c_pieces(staged_output, pieces) or {
+			os.rm(staged_output) or {}
 			return error('error writing fastc output ${output_file}: ${err.msg()}')
 		}
 		os.mv(staged_output, output_file) or {

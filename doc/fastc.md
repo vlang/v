@@ -3,7 +3,10 @@
 Select FastC with `v -b fastc run program.v`. It reads scanner tokens and emits C directly,
 without the regular parser, checker, or AST pipeline, then compiles with bundled TinyCC.
 Select `-cc clang` to compile the emitted C with Clang, including Objective-C interop on macOS.
+Native implementation includes follow generated V types, while ordinary C headers precede them.
+Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
+C output is published only after the buffered writes, final flush, and close succeed.
 Clang builds also accept `-prod`, apply C optimization, and retain wrapping signed arithmetic.
 Missing native objects named by `#flag` are built from adjacent C, C++, or Objective-C sources,
 as with the C backend.
@@ -217,6 +220,8 @@ packed structs, aligned structs, and volatile fields retain their C layout and q
 Local volatile declarations retain their storage qualifiers. Interface fields refer to the
 concrete object's storage, including chained mutations and mutable arguments.
 Mutable interfaces dispatch to compatible value-receiver and pointer-receiver implementations.
+Writing an indexed smartcast's index or key ends its captured projection; later reads select
+the current element. Nested narrowing scopes do not restore projections invalidated by a write.
 Architecture-filtered source trees keep their selected siblings. An explicitly imported module
 missing from a staged tree can resolve beside the original source files.
 The target runtime emits native prototypes for referenced C declarations in V files without

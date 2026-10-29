@@ -1463,6 +1463,48 @@ fn (g &Parser) assigned_narrowed_member(tokens []FastcExpressionToken) ?FastcRen
 	}
 }
 
+// end_indexed_member_narrowing drops captured projections whose container or index depends
+// on a written name. Index tokens have the same unambiguous encoding as the lookup path.
+fn (mut g Parser) end_indexed_member_narrowing(name string) {
+	if name == '' || !g.has_indexed_member_narrowing() {
+		return
+	}
+	dependency := '${int(token.Token.name)}:${name.bytes().hex()};'
+	g.end_indexed_member_path_narrowing(name, dependency)
+}
+
+fn (g &Parser) has_indexed_member_narrowing() bool {
+	for path, _ in g.member_smartcasts {
+		if path.contains('[') {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Parser) end_parallel_target_narrowing(tokens []FastcExpressionToken) {
+	if g.member_smartcasts.len == 0 {
+		return
+	}
+	mut assignment := tokens.clone()
+	assignment << FastcExpressionToken{ tok: .assign, lit: '=' }
+	g.end_assigned_member_narrowing(assignment)
+}
+
+fn (mut g Parser) end_indexed_member_path_narrowing(target string, dependency string) {
+	mut changed := false
+	for path in g.member_smartcasts.keys() {
+		if path.contains('[') && (path == target || path.starts_with(target + '[')
+			|| path.starts_with(target + '.') || path.contains(dependency)) {
+			g.member_smartcasts.delete(path)
+			changed = true
+		}
+	}
+	if changed {
+		g.type_memo.clear()
+	}
+}
+
 // end_assigned_member_narrowing ends the narrowing of a member that the statement `tokens`
 // assigned to, and of every member reached through it: as in V, the member has its sum or
 // interface type again after the assignment.
@@ -1477,12 +1519,21 @@ fn (mut g Parser) end_assigned_member_narrowing(tokens []FastcExpressionToken) {
 			depth++
 		} else if item.tok in [.rpar, .rsbr, .rcbr] {
 			depth--
-		} else if depth == 0 && item.tok.is_assignment() {
+		} else if depth == 0 && (item.tok.is_assignment() || item.tok in [.inc, .dec]) {
 			assignment_index = i
 			break
 		}
 	}
-	if assignment_index <= 0 || tokens[assignment_index].tok != .assign {
+	if assignment_index <= 0 {
+		return
+	}
+	if g.has_indexed_member_narrowing() {
+		if target := fastc_indexed_member_chain_path(tokens[..assignment_index]) {
+			segment := fastc_indexed_member_segment(tokens[..assignment_index])
+			g.end_indexed_member_path_narrowing(target, segment[1..segment.len - 1])
+		}
+	}
+	if tokens[assignment_index].tok != .assign {
 		return
 	}
 	_ := g.assigned_narrowed_member(tokens[..assignment_index]) or { return }

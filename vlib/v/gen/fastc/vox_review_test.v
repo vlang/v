@@ -4,6 +4,25 @@ import os
 import v.cmdexec
 
 fn fastc_vox_review_run(name string, source string, native_source string) {
+	mut files := {
+		'main.c.v': source
+	}
+	if native_source != '' {
+		files['native.m'] = native_source
+		files['types.h'] = 'typedef int NativeNumber;\n'
+		files['types.c.v'] = r'module main
+#include "@VMODROOT/types.h"
+struct NativeBox { value C.NativeNumber }
+fn native_box_value() int {
+	box := NativeBox{value: 7}
+	return int(box.value)
+}
+'
+	}
+	fastc_vox_review_run_files(name, files)
+}
+
+fn fastc_vox_review_run_files(name string, files map[string]string) {
 	$if !macos && !linux {
 		return
 	}
@@ -11,18 +30,8 @@ fn fastc_vox_review_run(name string, source string, native_source string) {
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'vox_review' }") or { panic(err) }
-	os.write_file(os.join_path(root, 'main.c.v'), source) or { panic(err) }
-	if native_source != '' {
-		os.write_file(os.join_path(root, 'native.m'), native_source) or { panic(err) }
-		os.write_file(os.join_path(root, 'types.h'), 'typedef int NativeNumber;\n') or { panic(err) }
-		os.write_file(os.join_path(root, 'types.c.v'), r'module main
-#include "@VMODROOT/types.h"
-struct NativeBox { value C.NativeNumber }
-fn native_box_value() int {
-	box := NativeBox{value: 7}
-	return int(box.value)
-}
-') or { panic(err) }
+	for path, source in files {
+		os.write_file(os.join_path(root, path), source) or { panic(err) }
 	}
 	for mode in ['tinyc', 'clang', 'clang-prod'] {
 		if mode != 'tinyc' && os.find_abs_path_of_executable('clang') == none { continue }
@@ -77,6 +86,157 @@ fn main() {
 	if holder.value is Left { assert read(holder.value) == 11 }
 }
 ', '')
+}
+
+fn test_fastc_vox_review_indexed_matches_end_when_the_key_changes() {
+	fastc_vox_review_run('changed_indices', r'module main
+struct Left { value int only_left int }
+struct Right { value int }
+type Value = Left | Right
+struct Selector { mut: index int other int }
+struct Container { values []Value mut: other int }
+fn main() {
+	values := [Value(Left{11, 77}), Value(Right{22})]
+	mut container := Container{values: values}
+	match container.values[0] {
+		Left {
+			container.other = 9
+			assert container.values[0].only_left == 77
+		}
+		Right { assert false }
+	}
+	mut selector := Selector{}
+	match values[selector.index] {
+		Left {
+			selector.other = 9
+			assert values[selector.index].only_left == 77
+			selector.index = 1
+			assert values[selector.index].value == 22
+		}
+		Right { assert false }
+	}
+	mut index := 0
+	match values[index] {
+		Left {
+			assert values[index].only_left == 77
+			index = if values[index].only_left == 77 { 1 } else { 0 }
+			assert values[index].value == 22
+		}
+		Right { assert false }
+	}
+	index = 0
+	match values[index] {
+		Left { index++; assert values[index].value == 22 }
+		Right { assert false }
+	}
+	index = 0
+	selected := match values[index] {
+		Left { index += 1; values[index].value }
+		Right { 0 }
+	}
+	assert selected == 22
+	index = 0
+	match values[index] {
+		Left {
+			if values[index] is Left { index = 1 }
+			assert values[index].value == 22
+		}
+		Right { assert false }
+	}
+	index = 0
+	mut other := 0
+	match values[index] {
+		Left { index, other = 1, 9; assert values[index].value == 22 }
+		Right { assert false }
+	}
+	assert other == 9
+	index = 0
+	match values[index] {
+		Left { index, selector.other = 1, 3; assert values[index].value == 22 }
+		Right { assert false }
+	}
+	index = 0
+	match values[index] {
+		Left { selector.other, index = 4, 1; assert values[index].value == 22 }
+		Right { assert false }
+	}
+	selector.index = 0
+	match values[selector.index] {
+		Left {
+			other, selector.other = 4, 5
+			assert values[selector.index].only_left == 77
+			other, selector.index = 4, 1
+			assert values[selector.index].value == 22
+		}
+		Right { assert false }
+	}
+	selector.index = 0
+	match values[selector.index] {
+		Left { selector.index, other = 1, 5; assert values[selector.index].value == 22 }
+		Right { assert false }
+	}
+	mapping := {"left": Value(Left{11, 77}), "right": Value(Right{22})}
+	mut key := "left"
+	match mapping[key] {
+		Left { key = "right"; assert mapping[key].value == 22 }
+		Right { assert false }
+	}
+	key = "left"
+	selected_map := match mapping[key] {
+		Left { key = "right"; mapping[key].value }
+		Right { 0 }
+	}
+	assert selected_map == 22
+}
+', '')
+}
+
+fn test_fastc_vox_review_native_includes_keep_cross_file_macro_context() {
+	fastc_vox_review_run_files('cross_file_macros', {
+		'a.c.v':  r'module main
+#define NATIVE_ANSWER 7
+#include "@VMODROOT/a.m"
+#undef NATIVE_ANSWER
+fn C.answer_a() i32
+'
+		'b.c.v':  r'module main
+#define NATIVE_ANSWER 9
+#include "@VMODROOT/b.m"
+#undef NATIVE_ANSWER
+fn C.answer_b() i32
+'
+		'a.m':    'static int answer_a(void) { return NATIVE_ANSWER; }\n'
+		'b.m':    'static int answer_b(void) { return NATIVE_ANSWER; }\n'
+		'main.v': 'module main\nfn main() { assert C.answer_a() == 7; assert C.answer_b() == 9 }\n'
+	})
+}
+
+fn test_fastc_vox_review_headers_after_native_includes_define_field_types() {
+	fastc_vox_review_run_files('following_header', {
+		'main.c.v': r'module main
+#include "@VMODROOT/native.m"
+#include "@VMODROOT/types.h"
+struct NativeBox { value C.NativeNumber }
+fn C.native_answer() i32
+fn main() { assert sizeof(NativeBox) > 0; assert C.native_answer() == 7 }
+'
+		'native.m': 'static int native_answer(void) { return 7; }\n'
+		'types.h':  'typedef struct NativeNumber { int value; } NativeNumber;\n'
+	})
+}
+
+fn test_fastc_vox_review_header_macro_defaults_survive_relocation() {
+	fastc_vox_review_run_files('header_macro_default', {
+		'main.c.v': r'module main
+#include "@VMODROOT/types.h"
+#include "@VMODROOT/native.m"
+#undef NATIVE_ANSWER
+fn C.native_answer() i32
+fn main() { assert C.native_answer() == 7 }
+'
+		'types.h':  '#define NATIVE_ANSWER 7\n'
+		'native.m': 'static int native_answer(void) { return NATIVE_ANSWER; }\n'
+	})
 }
 
 fn test_fastc_vox_review_clang_preserves_wrapping_and_links_math() {

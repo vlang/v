@@ -279,7 +279,7 @@ fn (mut g Parser) read_match_expression() !string {
 			if payload != 0 { result_option_type = payload }
 		}
 		if member_smartcast_active {
-			if member_smartcast_present {
+			if member_smartcast_present && projection_path in g.member_smartcasts {
 				g.member_smartcasts[projection_path] = member_smartcast_saved
 			} else {
 				g.member_smartcasts.delete(projection_path)

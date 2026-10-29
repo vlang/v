@@ -1102,7 +1102,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 			g.locals[subject_local] = smartcast_saved
 		}
 		if member_smartcast_active {
-			if had_member_smartcast {
+			if had_member_smartcast && projection_path in g.member_smartcasts {
 				g.member_smartcasts[projection_path] = member_smartcast_saved
 			} else {
 				g.member_smartcasts.delete(projection_path)
@@ -1589,6 +1589,12 @@ fn (mut g Parser) parse_mutable_declaration() ! {
 }
 
 fn (mut g Parser) parse_simple_statement() ! {
+	mut written_name := ''
+	defer {
+		if written_name != '' {
+			g.end_indexed_member_narrowing(written_name)
+		}
+	}
 	if g.tok == .key_assert {
 		return g.parse_assert_statement()
 	}
@@ -1617,6 +1623,9 @@ fn (mut g Parser) parse_simple_statement() ! {
 			fastc_c_identifier(name)
 		}
 		g.next()
+		if g.tok.is_assignment() || g.tok in [.inc, .dec] {
+			written_name = name
+		}
 		if name == 'panic' && g.tok == .lpar {
 			g.next()
 			previous_expected_type_source_id := g.expected_expression_type
@@ -2150,6 +2159,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 	mut names := initial_names.clone()
 	mut mutability := []bool{len: initial_names.len, init: initial_mut}
 	mut member_targets := map[int]FastcRenderedExpression{}
+	mut written_member_targets := [][]FastcExpressionToken{}
 	for g.tok == .comma {
 		g.next()
 		mut is_mut := false
@@ -2170,6 +2180,9 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				token.Token.assign,
 			])!
 			member_targets[names.len] = g.validate_parallel_expression_assignment_target(source, g.last_expression.clone(), g.last_expression_type)!
+			if g.member_smartcasts.len > 0 {
+				written_member_targets << g.last_expression.clone()
+			}
 			names << ''
 			mutability << is_mut
 			continue
@@ -2177,10 +2190,20 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 		names << target_name
 		mutability << is_mut
 	}
+	is_declaration := force_declaration || g.tok == .decl_assign
+	defer {
+		if !is_declaration {
+			for name in names {
+				g.end_indexed_member_narrowing(name)
+			}
+			for target in written_member_targets {
+				g.end_parallel_target_narrowing(target)
+			}
+		}
+	}
 	if member_targets.len > 0 {
 		return g.finish_parallel_member_assignment(names, member_targets)
 	}
-	is_declaration := force_declaration || g.tok == .decl_assign
 	if g.tok !in [.decl_assign, .assign] {
 		return g.unsupported('parallel assignment operator `${g.token_source()}`')
 	}
@@ -2597,6 +2620,15 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 
 fn (mut g Parser) parse_parallel_expression_assignment(first_source string, first_tokens []FastcExpressionToken, first_type_source_id u32) ! {
 	mut targets := []FastcRenderedExpression{}
+	mut written_targets := [][]FastcExpressionToken{}
+	if g.member_smartcasts.len > 0 {
+		written_targets << first_tokens
+	}
+	defer {
+		for target in written_targets {
+			g.end_parallel_target_narrowing(target)
+		}
+	}
 	targets << g.validate_parallel_expression_assignment_target(first_source, first_tokens, first_type_source_id)!
 	for g.tok == .comma {
 		g.next()
@@ -2605,6 +2637,9 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 			return g.unsupported('empty parallel assignment target')
 		}
 		targets << g.validate_parallel_expression_assignment_target(target_source, g.last_expression.clone(), g.last_expression_type)!
+		if g.member_smartcasts.len > 0 {
+			written_targets << g.last_expression.clone()
+		}
 	}
 	if g.tok != .assign {
 		return g.unsupported('parallel assignment operator `${g.token_source()}`')
