@@ -407,4 +407,35 @@ rm "$sanitize_root/fail-sanitizer"
 run_sanitizers 0
 [ "$(grep -c '^build$' "$sanitize_root/commands.log")" -eq 3 ] || fail 'rebuilt sanitizer compiler on retry'
 
+# Keep GPU probes awake only while self_tests runs, including failed commands
+# that exit before the V defer can run. caffeinate -w owns that failure cleanup.
+if [ "$(uname -s)" = Darwin ]; then
+    display_root="$work/display"
+    mkdir "$display_root"
+    cat > "$display_root/compiler" <<'MOCK'
+#!/bin/sh
+set -eu
+guard=$(pgrep -P "$PPID" -x caffeinate)
+[ -n "$guard" ] || exit 80
+printf '%s\n' "$guard" > guard.pid
+[ ! -f fail-self ]
+MOCK
+    chmod +x "$display_root/compiler"
+    for expected in 0 1; do
+        [ "$expected" -eq 0 ] || touch "$display_root/fail-self"
+        status=0
+        (cd "$display_root" && GITHUB_JOB=clang-macos \
+            V_CI_VEXE="$display_root/compiler" "$runner" self_tests) \
+            > "$work/output" 2>&1 || status=$?
+        [ "$status" -eq "$expected" ] || fail 'self-tests display guard failed'
+        guard=$(cat "$display_root/guard.pid")
+        attempts=0
+        while kill -0 "$guard" 2>/dev/null && [ "$attempts" -lt 100 ]; do
+            sleep 0.02
+            attempts=$((attempts + 1))
+        done
+        ! kill -0 "$guard" 2>/dev/null || fail 'self-tests leaked the display guard'
+    done
+fi
+
 echo 'PASS: macOS CI task, test-file and sanitizer checkpoint/resume integration tests'

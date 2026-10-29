@@ -77,6 +77,10 @@ single worker. Without `VJOBS`, GitHub Actions self-tests use one worker when
 vetting session instead of starting formatting checks. The failed task's checkpoint
 is retained. Existing per-test retry and known-flaky-test policies are unchanged.
 
+The macOS `self_tests` task uses `/usr/bin/caffeinate` to wake the display and keep
+it awake while the tests run. Metal frame callbacks require an awake display.
+The display assertion is released when the task exits, including after a failure.
+
 Progress is stored in `/tmp/v-macos-ci-<uid>-<checkout-hash>.progress`; the command
 prints the exact path. The hash uses the canonical checkout directory, not a commit
 or source timestamp, so edits, commits and compiler rebuilds do not discard progress.
@@ -111,6 +115,8 @@ Other non-test commands retain their existing task-level retry behavior.
 
 On macOS, `build-examples` builds `examples/macos_tray` as a project folder so its
 platform-specific source is included alongside the main program.
+`examples/mini_software_emulator` is also built as a project folder on every platform,
+including its CPU, instruction handlers and machine state in one program.
 
 A resumed pass is not a fresh validation of earlier tasks or tests against shared
 source changes. Compiler and library edits deliberately preserve progress. Use
