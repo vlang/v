@@ -309,7 +309,7 @@ fn (g &Parser) nil_argument_is_voidptr(tokens []FastcExpressionToken) bool {
 		index = signature.parameter_types.ids.len - 1
 		return g.nil_type_is_allowed(g.array_element_type(signature.parameter_types.ids[index]) or { return false })
 	}
-	return index < signature.parameter_types.ids.len && g.nil_type_is_allowed(signature.parameter_types.ids[index])
+	return index < signature.parameter_types.ids.len && (g.nil_type_is_allowed(signature.parameter_types.ids[index]) || g.is_function_value_type(signature.parameter_types.ids[index]))
 }
 
 // nil_ends_value reports whether the current `nil` is a whole value: the next token closes it or
@@ -588,7 +588,16 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 		owner_key = flat.source_type_name(type_key)
 	}
 	function_key := '${owner_key}.${tokens[name_index].lit}'
-	return if function_key in g.functions { function_key } else { none }
+	if function_key in g.functions { return function_key }
+	mut owner_type := flat.source_type_id(fastc_c_declared_type_name(owner_key))
+	mut seen := map[u32]bool{}
+	for owner_type !in seen {
+		seen[owner_type] = true
+		owner_type = g.alias_base_types.type_id(flat.source_type_name(owner_type)) or { break }
+		inherited := '${flat.source_type_name(g.semantic_type_key(owner_type))}.${tokens[name_index].lit}'
+		if inherited in g.functions { return inherited }
+	}
+	return none
 }
 
 fn (g &Parser) local_is_pointer(name string) bool {

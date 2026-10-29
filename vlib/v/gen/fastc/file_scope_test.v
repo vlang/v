@@ -2,6 +2,54 @@ module fastc
 
 import v.flat
 
+fn test_fastc_constant_output_survives_initializer_scope_release() {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		mut types := flat.TypeTextBindings{}
+		types.set('answer'.clone(), 'int')
+		mut fixed := flat.TypeTextBindings{}
+		fixed.set('FixedArray_2_int'.clone(), 'FixedArray_2_int')
+		result := FastcConstantFileResult{
+			used_field_defaults: true
+			values:              [FastcConstantValue{
+				key:          'answer'.clone()
+				c_name:       'main__answer'.clone()
+				module_name:  'main'.clone()
+				value:        'base + 1'.clone()
+				typ:          flat.source_type_int
+				dependencies: ['base'.clone()]
+				is_runtime:   true
+			}]
+			constant_types:      types
+			fixed_array_types:   fixed
+			composite_types:     {
+				'Array_int'.clone(): true
+			}
+			error_message:       'initializer error'.clone()
+		}
+		unsafe { prealloc_scope_leave(scope) }
+		owned := fastc_clone_constant_file_result(result)
+		assert !unsafe { prealloc_scope_owns(scope, owned.values.data) }
+		assert !unsafe { prealloc_scope_owns(scope, owned.values[0].key.str) }
+		assert !unsafe { prealloc_scope_owns(scope, owned.values[0].value.str) }
+		assert !unsafe { prealloc_scope_owns(scope, owned.values[0].dependencies.data) }
+		assert !unsafe { prealloc_scope_owns(scope, owned.values[0].dependencies[0].str) }
+		assert !unsafe { prealloc_scope_owns(scope, owned.error_message.str) }
+		unsafe { prealloc_scope_free_after(scope) }
+		assert owned.used_field_defaults
+		assert owned.values[0].key == 'answer'
+		assert owned.values[0].c_name == 'main__answer'
+		assert owned.values[0].module_name == 'main'
+		assert owned.values[0].value == 'base + 1'
+		assert owned.values[0].dependencies == ['base']
+		assert owned.values[0].is_runtime
+		assert owned.constant_types.value('answer') == 'int'
+		assert owned.fixed_array_types.value('FixedArray_2_int') == 'FixedArray_2_int'
+		assert owned.composite_types['Array_int']
+		assert owned.error_message == 'initializer error'
+	}
+}
+
 fn test_fastc_file_output_survives_parser_scope_release() {
 	$if prealloc {
 		scope := unsafe { prealloc_scope_begin() }

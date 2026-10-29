@@ -10988,6 +10988,7 @@ $if !skip_fastc ? {
 		}
 		staged_output := '${output_file}.stage.${tempname.unique_token()}'
 		fastc.write_c_pieces(staged_output, pieces) or {
+			os.rm(staged_output) or {}
 			return error('error writing fastc output ${output_file}: ${err.msg()}')
 		}
 		os.mv(staged_output, output_file) or {
@@ -11093,6 +11094,77 @@ $if !skip_fastc ? {
 		mut aggregate_args := [wrapper]
 		aggregate_args << final_args[native_paths.len..]
 		return aggregate_args
+	}
+
+	// compile_v3_fastc_clang_source keeps FastC generation and uses Clang for native interop.
+	fn compile_v3_fastc_clang_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_flags []string, source_flags []string, user_flags []string, link_flags []string, sdk_root string, compiler string, is_debug bool, uses_threads bool) V3FastCCompileResult {
+		build_dir := os.join_path_single(os.dir(os.abs_path(bin_file)), '.fastc-clang-${tempname.unique_token()}')
+		os.mkdir_all(build_dir) or { return V3FastCCompileResult{ command: compiler, output: err.msg() } }
+		defer { cleanup_c_build_dir(build_dir) }
+		mut flags := environment_flags.clone()
+		flags << source_flags
+		flags << user_flags
+		mut object_stats := CObjectCacheStats{}
+		native_target_args := if sdk_root != '' { ['-isysroot', sdk_root] } else { []string{} }
+		wrapv_flag := c_wrapv_flag(prefs.normalized_target_os())
+		mut optimization_flags := [if prefs.is_prod { '-O2' } else { '-O0' }]
+		if wrapv_flag != '' { optimization_flags << wrapv_flag }
+		flags = prepare_c_flags_for_link(flags, environment_flags, []string{},
+			optimization_flags, true, false, '', native_target_args,
+			prefs.target, compiler, true, build_dir, mut object_stats) or {
+			return V3FastCCompileResult{ command: compiler, output: err.msg() }
+		}
+		mut compile_flags := ['-std=gnu11', if prefs.is_prod { '-O2' } else { '-O0' },
+			'-Werror=implicit-function-declaration', '-Wno-incompatible-function-pointer-types',
+			'-Wno-typedef-redefinition']
+		if wrapv_flag != '' { compile_flags << wrapv_flag }
+		if sdk_root != '' { compile_flags << ['-isysroot', sdk_root] }
+		if is_debug { compile_flags << '-g' }
+		compile_flags << c_object_compile_flags(flags)
+		if c_flags_need_objective_c(flags) { compile_flags << ['-x', 'objective-c'] }
+		// Objective-C includes can define private helpers used throughout the V program.
+		// Keep their declarations and definitions in the same translation unit.
+		mut paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units, if c_flags_need_objective_c(flags) {
+			1
+		} else {
+			fastc.fastc_tcc_job_count(prefs)
+		}) or {
+			return V3FastCCompileResult{ command: compiler, output: err.msg() }
+		}
+		if paths.len == 0 {
+			path := os.join_path_single(build_dir, 'src.c')
+			fastc.write_c_pieces(path, pieces) or { return V3FastCCompileResult{ command: compiler, output: err.msg() } }
+			paths << path
+		}
+		mut objects := []string{}
+		mut output := ''
+		for path in paths {
+			object := path + '.o'
+			mut args := compile_flags.clone()
+			args << ['-c', path, '-o', object]
+			result := cmdexec.run(compiler, args)
+			output += result.output
+			if result.exit_code != 0 {
+				return V3FastCCompileResult{ command: cmdexec.display(compiler, args), output: output }
+			}
+			objects << object
+		}
+		mut args := objects.clone()
+		args << flags.filter(c_flag_is_c_source_file(it))
+		args << c_object_compile_flags(flags)
+		args << c_dylib_link_flags(flags)
+		args << v3_fastc_default_linker_flags(prefs.normalized_target_os(), uses_threads)
+		args << link_flags
+		if prefs.normalized_target_os() != 'windows' { args << '-pthread' }
+		if sdk_root != '' { args << ['-isysroot', sdk_root] }
+		staged := os.join_path_single(build_dir, 'program')
+		args << ['-o', staged]
+		result := cmdexec.run(compiler, args)
+		output += result.output
+		command := cmdexec.display(compiler, args)
+		if result.exit_code != 0 { return V3FastCCompileResult{ command: command, output: output } }
+		os.mv(staged, bin_file) or { return V3FastCCompileResult{ command: command, output: err.msg() } }
+		return V3FastCCompileResult{ success: true, command: command, output: output }
 	}
 
 	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
@@ -13055,7 +13127,7 @@ pub fn run(args []string) {
 			if fastc_test_file {
 				prefs.is_test = true
 			}
-			if is_prod && !(c_only && fastc_cross_target) {
+			if is_prod && !c_compiler_explicit && !(c_only && fastc_cross_target) {
 				unsupported_modes << '`-prod`'
 			}
 			if is_shared || is_livemain || is_liveshared {
@@ -13086,9 +13158,8 @@ pub fn run(args []string) {
 			if c99_explicit || is_strict || check_overflow || check_casts {
 				unsupported_modes << 'strict/checked C modes'
 			}
-			if c_compiler_explicit {
-				eprintln('fastc can only be used with TCC')
-				exit(1)
+			if c_compiler_explicit && effective_c_compiler != 'clang' {
+				unsupported_modes << 'C compilers other than Clang'
 			}
 			if no_builtin || no_preludes {
 				unsupported_modes << 'custom builtin/prelude modes'
@@ -13106,7 +13177,7 @@ pub fn run(args []string) {
 			if 'v3_backend' !in prefs.user_defines {
 				prefs.user_defines << 'v3_backend'
 			}
-			if !fastc_cross_target {
+			if !fastc_cross_target && !c_compiler_explicit {
 				// Same-target FastC output is compiled by bundled TinyCC regardless of
 				// the host default, so compile-time compiler branches must see TinyCC.
 				prefs.ccompiler = 'tinyc'
@@ -13124,7 +13195,7 @@ pub fn run(args []string) {
 			mut prestarted_fastc_units := fastc.FastcPrestartedCUnits{}
 			mut prestart_workers := []thread fastc.FastcPrestartedCUnits{}
 			$if macos {
-				if !c_only && prefs.building_v && prefs.selfhost && !fastc_cross_target
+				if !c_only && !c_compiler_explicit && prefs.building_v && prefs.selfhost && !fastc_cross_target
 					&& (is_debug || no_cache || fastc_bench) {
 					tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 					tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -13188,7 +13259,7 @@ pub fn run(args []string) {
 			fastc_pieces := fastc_generation.c_pieces
 			fastc_source_size := fastc_generation.c_size()
 			b.step('fastc parse+gen')
-			if c_only && fastc_cross_target {
+			if c_only {
 				b.metric('generated C size', fastc_source_size, 'bytes')
 				publish_v3_fastc_c_source(fastc_pieces, output_file, c_to_stdout) or {
 					eprintln(err.msg())
@@ -13198,13 +13269,7 @@ pub fn run(args []string) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 				return
 			}
-			// Validate same-target generated C before publishing it. C-only builds use a
-			// throwaway executable; normal builds keep the binary produced by bundled TinyCC.
-			fastc_bin_file := if c_only {
-				os.join_path_single(os.vtmp_dir(), 'v3_fastc_validate_${os.getpid()}_${tempname.unique_token()}')
-			} else {
-				bin_file
-			}
+			fastc_bin_file := bin_file
 			fastc_sdk_root := if prefs.normalized_target_os() == 'macos' {
 				macos_sdk_root_cache.get()
 			} else {
@@ -13217,7 +13282,12 @@ pub fn run(args []string) {
 					exit(1)
 				}
 			}
-			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
+			fastc_result := if c_compiler_explicit {
+				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug, fastc_generation.uses_threads)
+			} else {
+				compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
+			}
+
 			if (verbose || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
 					eprintln('  > ${fastc_result.command}')
@@ -13226,7 +13296,7 @@ pub fn run(args []string) {
 				}
 			}
 			if show_c_output && fastc_result.output.len > 0 {
-				header := '======== Output of TinyCC fastc ========'
+				header := '======== Output of ${if c_compiler_explicit { 'Clang' } else { 'TinyCC' }} fastc ========'
 				if c_to_stdout {
 					eprintln(header)
 					eprintln(fastc_result.output.trim_space())
@@ -13236,9 +13306,6 @@ pub fn run(args []string) {
 					println(fastc_result.output.trim_space())
 					println('='.repeat(header.len))
 				}
-			}
-			if c_only {
-				os.rm(fastc_bin_file) or {}
 			}
 			if !fastc_result.success {
 				cache_failure_output := v3_fastc_cache_failure_output(fastc_result.output, fastc_result.cached_objects)
@@ -13263,15 +13330,6 @@ pub fn run(args []string) {
 			}
 			b.step('tcc')
 			b.metric('generated C size', fastc_source_size, 'bytes')
-			if c_only {
-				publish_v3_fastc_c_source(fastc_pieces, output_file, c_to_stdout) or {
-					eprintln(err.msg())
-					exit(1)
-				}
-				b.print_report()
-				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-				return
-			}
 			if backend_explicit {
 				fastc.write_c_pieces(output_file, fastc_pieces) or {
 					eprintln('failed to retain generated fastc output ${output_file}: ${err.msg()}')

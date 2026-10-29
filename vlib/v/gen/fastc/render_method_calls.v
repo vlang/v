@@ -23,15 +23,20 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		return none
 	}
 	function_key := g.function_key_for_call(tokens, name_index)
+
 	signature := if function_key in g.functions {
 		g.functions[function_key]
 	} else if name_index == 0 && tokens[0].lit in g.locals
 		&& g.locals[tokens[0].lit].fn_signature_key in g.mono_functions {
 		g.mono_functions[g.locals[tokens[0].lit].fn_signature_key]
+	} else if name_index == 0 && tokens[0].lit in g.locals {
+		g.callable_signature_for_expression(tokens[..1]) or { return none }
 	} else {
 		g.mono_functions[function_key] or { return none }
 	}
-	call_name := if function_key.starts_with('C.') {
+	call_name := if signature.is_global && !(name_index == 0 && tokens[0].lit in g.locals) {
+		g.globals[function_key]
+	} else if function_key.starts_with('C.') {
 		function_key.all_after_last('.')
 	} else if name_index == 0 && tokens[0].lit in g.locals {
 		local := g.locals[tokens[0].lit]
@@ -52,6 +57,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		}
 	}
 	call_args := fastc_call_arguments(tokens, open_index, close) or { return none }
+
 	mut named_start := -1
 	for i, argument in call_args {
 		if argument.len >= 3 && argument[0].tok == .name && argument[1].tok == .colon {
@@ -145,7 +151,11 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		}
 	}
 	if call_args.len < signature.parameter_types.ids.len && (!signature.last_parameter_is_params || call_args.len + 1 != signature.parameter_types.ids.len) {
-		return none
+		for parameter in signature.parameter_types.ids[call_args.len..] {
+			if parameter != fastc_type_option && fastc_typed_option_payload(parameter) == none {
+				return none
+			}
+		}
 	}
 	mut rendered_arguments := []string{cap: signature.parameter_types.ids.len}
 	for argument_index, argument in call_args {
@@ -165,7 +175,11 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	}
 	if call_args.len < signature.parameter_types.ids.len {
 		for parameter_type in signature.parameter_types.ids[call_args.len..] {
-			rendered_arguments << g.render_empty_struct_initializer(parameter_type)
+			rendered_arguments << if parameter_type == fastc_type_option || fastc_typed_option_payload(parameter_type) != none {
+				'(Option){.state=2}'
+			} else {
+				g.render_empty_struct_initializer(parameter_type)
+			}
 		}
 	}
 	return FastcRenderedExpression{
@@ -262,6 +276,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		if tokens[i - 2].tok == .name && (tokens[i - 2].lit in g.imports || tokens[i - 2].lit == 'C') && tokens[i - 2].lit !in g.locals && (i < 3 || tokens[i - 3].tok != .dot) {
 			continue
 		}
+		if g.static_function_key_for_call(tokens, i) != none {
+			continue
+		}
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
 		if !flags_processed && tokens[i].lit in ['has', 'set', 'clear'] {
 			flags_processed = true
@@ -324,6 +341,20 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		// its first variant defines the same method. Bare locals also retain whole-sum
 		// methods absent from a single narrowed variant.
 		mut unnarrowed_receiver := ''
+		if g.member_smartcasts.len > 0 {
+			if path := fastc_indexed_member_chain_path(receiver_tokens) {
+				if cast := g.member_smartcasts[path] {
+					key, _ := g.resolve_method(receiver_type, tokens[i].lit)
+					if key !in g.functions && key !in g.mono_functions && cast.subject_type != 0 && cast.subject_source != '' {
+						original_key, _ := g.resolve_method(cast.subject_type, tokens[i].lit)
+						if original_key in g.functions {
+							receiver_type = cast.subject_type
+							unnarrowed_receiver = cast.subject_source
+						}
+					}
+				}
+			}
+		}
 		if receiver_tokens.len == 1 && receiver_tokens[0].tok == .name && receiver_tokens[0].lit in g.member_smartcasts {
 			narrowed_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 			grouped := g.member_smartcasts[receiver_tokens[0].lit].variants.ids.len > 1
@@ -748,22 +779,27 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
-				if field.is_function {
+				field_signature := if field.is_function {
+					FastcFunctionSignature{ parameter_types: field.fn_parameter_types, return_type: field.fn_return_type, option_type: field.fn_option_value_type }
+				} else {
+					g.functions[flat.source_type_name(field.typ)] or { fastc_callable_signature(field.typ) or { FastcFunctionSignature{} } }
+				}
+				if field.is_function || field_signature.return_type != 0 {
 					field_tokens := tokens[receiver_start..i + 1]
 					field_source := g.render_member_receiver(field_tokens) or { continue }
 					call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
-					if call_args.len != field.fn_parameter_types.ids.len {
+					if call_args.len != field_signature.parameter_types.ids.len {
 						continue
 					}
 					mut arguments := []string{cap: call_args.len}
 					for argument_index, argument in call_args {
-						arguments << g.render_call_argument_expression(argument, field.fn_parameter_types.ids[argument_index]) or { continue }
+						arguments << g.render_call_argument_expression(argument, field_signature.parameter_types.ids[argument_index]) or { continue }
 					}
-					parameter_types := fastc_c_prototype_parameters(field.fn_parameter_types.ids.clone())
-					return_type := if field.fn_return_type == u32(0) {
+					parameter_types := fastc_c_prototype_parameters(field_signature.parameter_types.ids.clone())
+					return_type := if field_signature.return_type == u32(0) {
 						flat.source_type_void
 					} else {
-						field.fn_return_type
+						field_signature.return_type
 					}
 					call_source := '((${fastc_output_c_type(flat.source_type_name(return_type))} (*)(${parameter_types}))(${field_source}))(${arguments.join(', ')})'
 					if receiver_start == 0 && call_end == tokens.len - 1 {
@@ -841,24 +877,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			'.'
 		}
 		mut method_marker := '${separator}${tokens[i].lit}('
-		if receiver_start == 0 {
-			raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { receiver_source }
-			// Only align `receiver_source` to the text already in `rendered` when the receiver
-			// renders the same way there (no member smart-cast). A smart-cast receiver renders
-			// differently (a variant pointer) and must be kept for the call argument; the raw
-			// receiver text is matched separately by the raw-needle fallback below.
-			if receiver_source == raw_receiver && fastc_contains(rendered, method_marker) {
-				receiver_source = rendered.all_before_last(method_marker)
-			} else if receiver_source == raw_receiver {
-				alternate_separator := if separator == '.' { '->' } else { '.' }
-				alternate_marker := '${alternate_separator}${tokens[i].lit}('
-				if fastc_contains(rendered, alternate_marker) {
-					separator = alternate_separator
-					method_marker = alternate_marker
-					receiver_source = rendered.all_before_last(method_marker)
-				}
-			}
-		}
+
 		mut needle := '${receiver_source}${separator}${tokens[i].lit}('
 		if !fastc_contains(rendered, needle) {
 			raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
@@ -897,7 +916,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			effective_is_pointer = false
 		}
-		receiver_argument := if flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && !effective_is_pointer {
+		receiver_argument := if g.should_box_variant(signature.parameter_types.ids[0], receiver.typ) {
+			g.interface_value_expression(signature.parameter_types.ids[0], receiver.typ, receiver.source)
+		} else if flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && !effective_is_pointer {
 			g.value_address_expression(flat.source_type_syntax(signature.parameter_types.ids[0]).c_pointer_raw_base(), effective_receiver_source,
 				receiver_tokens)
 		} else if !flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && effective_is_pointer {
@@ -956,8 +977,10 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					} else {
 						u32(0)
 					}
-					argument_source := g.render_call_argument_expression(argument, expected_type) or {
-						continue
+					argument_source := if signature.is_variadic && argument.len > 1 && argument[0].tok == .ellipsis {
+						g.render_call_argument_expression(argument[1..], signature.parameter_types.ids.last()) or { continue }
+					} else {
+						g.render_call_argument_expression(argument, expected_type) or { continue }
 					}
 					direct_arguments << argument_source
 				}
@@ -972,7 +995,11 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			element_type := g.array_element_type(variadic_type) or { continue }
 			variadic_count := direct_arguments.len - fixed_arguments
 			variadic_values := direct_arguments[fixed_arguments..].clone()
-			packed := if variadic_count == 0 {
+			last_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
+			spreads_array := variadic_count == 1 && last_args.len > 0 && last_args.last().len > 1 && last_args.last()[0].tok == .ellipsis
+			packed := if spreads_array {
+				variadic_values[0]
+			} else if variadic_count == 0 {
 				'(${flat.source_type_name(variadic_type)}){0}'
 			} else {
 				g.dynamic_array_literal_source(variadic_type, element_type, variadic_values)
@@ -983,6 +1010,16 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		if signature.last_parameter_is_params && direct_arguments.len + 1 == signature.parameter_types.ids.len - 1 {
 			direct_arguments << g.render_empty_struct_initializer(signature.parameter_types.ids.last())
 		}
+		if !signature.is_variadic && direct_arguments.len + 1 < signature.parameter_types.ids.len {
+			for parameter in signature.parameter_types.ids[direct_arguments.len + 1..] {
+				if parameter == fastc_type_option || fastc_typed_option_payload(parameter) != none {
+					direct_arguments << '(Option){.state=2}'
+				} else {
+					break
+				}
+			}
+		}
+
 		replacement := '${method_c_name}(${receiver_argument}${if has_arguments {
 			','
 		} else {
@@ -1022,6 +1059,14 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		if direct_arguments.len > 0 {
 			argument_suffix := ',' + direct_arguments.join(',')
 			direct_call := '${method_c_name}(${receiver_argument}${argument_suffix})'
+			if !has_arguments {
+				filled := fastc_replace(rendered, '${method_c_name}(${receiver_argument})', direct_call)
+				if filled != rendered {
+					rendered = filled
+					changed = true
+					continue
+				}
+			}
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}

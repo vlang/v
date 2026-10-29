@@ -97,6 +97,9 @@ fn (g &Parser) block_has_statements_from(first_tok token.Token, first_lit string
 	if first_tok == .string && fastc_string_literal_is_incomplete(first_lit) {
 		return false
 	}
+	if first_tok == .dollar && !(g.dollar_keyword_is('if') || g.dollar_keyword_is('for') || g.dollar_keyword_is('match')) {
+		return false
+	}
 	if first_tok == .name && first_lit == 'panic' {
 		return true
 	}
@@ -131,7 +134,7 @@ fn (g &Parser) block_scan_has_statements(first_tok token.Token, offset int) bool
 			return true
 		} else if depth == 0 && tok == .semicolon {
 			next_token := lookahead.scan()
-			if fastc_token_continues_expression(next_token) {
+			if fastc_token_continues_expression(next_token) || next_token in [.plus, .minus] {
 				// A `;` auto-inserted mid multi-line expression (`a\n || b`) is a
 				// continuation, not a statement boundary; keep scanning past it.
 				tok = lookahead.scan()
@@ -654,7 +657,7 @@ fn (mut g Parser) parse_if() !bool {
 	// `if mut x := opt {` / `if mut x := map[k] {`: the leading `mut` (which renders to
 	// a `&` token here) shifts the name one token to the right. `& <name> :=` at the
 	// start of an if condition can only come from such a `mut` guard.
-	guard_name_index := if g.selfhost && g.last_expression.len >= 1 && g.last_expression[0].tok in [
+	guard_name_index := if g.selfhost && cond_tokens.len >= 1 && cond_tokens[0].tok in [
 		token.Token.key_mut,
 		token.Token.amp,
 	] {
@@ -662,20 +665,23 @@ fn (mut g Parser) parse_if() !bool {
 	} else {
 		0
 	}
-	if g.selfhost && g.last_expression.len >= guard_name_index + 3 && g.last_expression[guard_name_index].tok == .name && g.last_expression[guard_name_index + 1].tok == .decl_assign {
-		right_tokens := g.last_expression[guard_name_index + 2..]
+	if g.selfhost && cond_tokens.len >= guard_name_index + 3 && cond_tokens[guard_name_index].tok == .name && cond_tokens[guard_name_index + 1].tok == .decl_assign {
+		right_tokens := cond_tokens[guard_name_index + 2..]
 		if function_field := g.optional_function_field_for_expression(right_tokens) {
-			guard_name = g.last_expression[guard_name_index].lit
+			guard_name = cond_tokens[guard_name_index].lit
 			guard_type = flat.source_type_voidptr
 			guard_is_mut = guard_name_index == 1
 			guard_function = function_field
-			guard_function_source = g.render_member_receiver(right_tokens) or { '' }
-			if guard_function_source != '' {
-				condition = '${guard_function_source} != NULL'
+			field_source := g.render_member_receiver(right_tokens) or { '' }
+			if field_source != '' {
+				guard_option = g.temporary_name('if_function_guard')
+				g.write_line('Option ${guard_option} = (${field_source});')
+				guard_function_source = '(*(voidptr *)${guard_option}.data)'
+				condition = '${guard_option}.state == 0'
 				g.last_expression_type = flat.source_type_bool
 			}
 		} else if map_lookup := g.render_map_lookup_option_expression(right_tokens) {
-			guard_name = g.last_expression[guard_name_index].lit
+			guard_name = cond_tokens[guard_name_index].lit
 			guard_type = map_lookup.typ
 			guard_is_mut = guard_name_index == 1
 			guard_option = g.temporary_name('if_guard')
@@ -685,7 +691,7 @@ fn (mut g Parser) parse_if() !bool {
 		} else if array_lookup := g.render_array_lookup_option_expression(right_tokens) {
 			// `if x := arr[i] {` succeeds only when the index is in bounds, so the array
 			// access must lower to the bounds-checked Option form, not a raw element read.
-			guard_name = g.last_expression[guard_name_index].lit
+			guard_name = cond_tokens[guard_name_index].lit
 			guard_type = array_lookup.typ
 			guard_is_mut = guard_name_index == 1
 			guard_option = g.temporary_name('if_guard')
@@ -695,12 +701,12 @@ fn (mut g Parser) parse_if() !bool {
 		} else {
 			option_type := g.option_value_type_for_expression(right_tokens)
 			if option_type != u32(0) {
-				guard_name = g.last_expression[guard_name_index].lit
+				guard_name = cond_tokens[guard_name_index].lit
 				guard_type = option_type
 				guard_is_mut = guard_name_index == 1
 				guard_option = g.temporary_name('if_guard')
 				guard_erased_generic = g.erased_generic_option_value_type_for_expression(right_tokens) != none
-				right_source := condition.all_after(':=').trim_space()
+				right_source := g.render_call_argument_expression(right_tokens, fastc_type_option) or { condition.all_after(':=').trim_space() }
 				guard_result = (g.infer_expression_type(right_tokens) or { u32(0) }) == fastc_type_result
 				g.write_line('${if guard_result { '__v_result' } else { 'Option' }} ${guard_option} = (${right_source});')
 				condition = '${guard_option}.state == 0'
@@ -764,7 +770,7 @@ fn (mut g Parser) parse_if() !bool {
 				typ:    guard_type
 			}
 		} else {
-			function_alias := g.functions[flat.source_type_name(guard_type)] or { FastcFunctionSignature{} }
+			function_alias := g.functions[flat.source_type_name(guard_type)] or { fastc_callable_signature(guard_type) or { FastcFunctionSignature{} } }
 			g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${fastc_c_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)};')
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
@@ -909,7 +915,7 @@ fn (mut g Parser) parse_if() !bool {
 		}
 	}
 	for path, present in had_member_smartcasts {
-		if present {
+		if present && path in g.member_smartcasts {
 			g.member_smartcasts[path] = previous_member_smartcasts[path]
 		} else {
 			g.member_smartcasts.delete(path)
@@ -925,6 +931,18 @@ fn (mut g Parser) parse_if() !bool {
 	g.indent--
 	if g.tok != .key_else {
 		g.write_line('}')
+		if then_terminates && cond_tokens.len == 3 && cond_tokens[0].tok == .name
+			&& cond_tokens[1].tok == .eq && cond_tokens[2].tok == .key_none {
+			name := cond_tokens[0].lit
+			if local := g.locals[name] {
+				if !local.is_mut && !local.is_reference && local.option_value_type != 0 {
+					shadow := g.temporary_name('nonnull_option')
+					payload := local.option_value_type
+					g.write_line('${fastc_output_c_type(flat.source_type_name(payload))} ${shadow} = ${g.option_value_expression(payload, g.local_c_name(name))};')
+					g.set_scoped_local(name, FastcLocal{ ...local, typ: payload, option_value_type: 0, c_name: shadow })
+				}
+			}
+		}
 		if smartcast_negated && smartcast_name != '' && then_terminates && !condition_has_top_level_and {
 			// `if x !is Variant { return }`: reaching past the block proves `x` IS the
 			// variant, so narrow it to a value shadow scoped to the rest of the block,
@@ -966,7 +984,10 @@ fn (mut g Parser) parse_if() !bool {
 		if smartcast_negated && smartcast_name != '' && !condition_has_top_level_and {
 			g.bind_else_type_test(smartcast_name, smartcast_type, smartcast_boxed_type)
 		}
+		else_scope_start := g.local_scope_changes.len
+		g.bind_else_non_none_option(cond_tokens)
 		else_terminates := g.parse_if()!
+		g.restore_local_scope(else_scope_start)
 		if smartcast_negated && smartcast_name != '' && !condition_has_top_level_and {
 			g.locals[smartcast_name] = previous_smartcast
 		}
@@ -995,7 +1016,10 @@ fn (mut g Parser) parse_if() !bool {
 	if smartcast_negated && smartcast_name != '' && !condition_has_top_level_and {
 		g.bind_else_type_test(smartcast_name, smartcast_type, smartcast_boxed_type)
 	}
+	else_scope_start := g.local_scope_changes.len
+	g.bind_else_non_none_option(cond_tokens)
 	else_terminates := g.parse_block_body()!
+	g.restore_local_scope(else_scope_start)
 	if smartcast_negated && smartcast_name != '' && !condition_has_top_level_and {
 		g.locals[smartcast_name] = previous_smartcast
 	}
@@ -1093,7 +1117,9 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 	if g.tok == .key_if {
 		g.write_line('} else {')
 		g.indent++
+		else_scope_start := g.local_scope_changes.len
 		else_terminates := g.parse_if()!
+		g.restore_local_scope(else_scope_start)
 		g.indent--
 		g.write_line('}')
 		return then_terminates && else_terminates
@@ -1116,11 +1142,21 @@ fn (g &Parser) if_starts_final_block_expression() bool {
 	mut tok := lookahead.scan()
 	for {
 		// Scan to the block-opening `{`, skipping any `unsafe { … }` that appears in the
-		// condition itself (`if x != unsafe { nil } { … }`), whose brace would otherwise
+		// condition itself (`if x != unsafe { nil } { … }`), and option fallback blocks,
+		// whose braces would otherwise
 		// be mistaken for the block.
 		for tok != .eof {
+			if tok in [.lpar, .lsbr] {
+				tok = fastc_skip_balanced_tokens(mut lookahead, tok, tok, if tok == .lpar {
+					.rpar
+				} else {
+					.rsbr
+				}) or { return false }
+				prev = .rpar
+				continue
+			}
 			if tok == .lcbr {
-				if prev == .key_unsafe {
+				if prev in [.key_unsafe, .key_or] {
 					tok = fastc_skip_balanced_tokens(mut lookahead, tok, .lcbr, .rcbr) or {
 						return false
 					}
@@ -1387,10 +1423,19 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 						left_type = origin.typ
 					}
 				}
+				// A repeated test still inspects the boxed value, even when an outer
+				// match currently projects this indexed/member path to a concrete type.
+				previous_cast := g.member_smartcasts[path] or { FastcMemberSmartcast{} }
+				if previous_cast.subject_type != u32(0) {
+					left_type = previous_cast.subject_type
+				}
 				target_type := (g.type_from_expression_tokens(conjunct[is_idx + 1..]) or { u32(0) })
 				if left_type != u32(0) && target_type != u32(0) && g.is_boxed_type(left_type) {
 					if rendered_left := g.render_member_receiver(left_tokens) {
 						mut left_source := rendered_left
+						if previous_cast.subject_source != '' {
+							left_source = previous_cast.subject_source
+						}
 						if left_tokens.len == 1 {
 							if origin := g.narrowed_local_origin(left_tokens[0].lit) {
 								left_source = origin.source
@@ -1547,7 +1592,7 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 		break
 	}
 	for path, present in previously_present {
-		if present {
+		if present && path in g.member_smartcasts {
 			g.member_smartcasts[path] = previous[path]
 		} else {
 			g.member_smartcasts.delete(path)
@@ -1774,19 +1819,20 @@ fn (mut g Parser) read_if_expression() !string {
 	mut guard_option := ''
 	mut guard_source := ''
 	mut guard_container_type := ''
-	if g.selfhost && g.last_expression.len >= 3 && g.last_expression[0].tok == .name && g.last_expression[1].tok == .decl_assign {
-		right_tokens := g.last_expression[2..]
+	guard_start := if g.last_expression.len > 0 && g.last_expression[0].tok == .amp { 1 } else { 0 }
+	if g.selfhost && g.last_expression.len >= guard_start + 3 && g.last_expression[guard_start].tok == .name && g.last_expression[guard_start + 1].tok == .decl_assign {
+		right_tokens := g.last_expression[guard_start + 2..]
 		if map_lookup := g.render_map_lookup_option_expression(right_tokens) {
-			guard_name = g.last_expression[0].lit
+			guard_name = g.last_expression[guard_start].lit
 			guard_type = map_lookup.typ
 			guard_source = map_lookup.source
 			guard_container_type = 'Option'
 		} else {
 			option_type := g.option_value_type_for_expression(right_tokens)
 			if option_type != u32(0) {
-				guard_name = g.last_expression[0].lit
+				guard_name = g.last_expression[guard_start].lit
 				guard_type = option_type
-				guard_source = condition.all_after(':=').trim_space()
+				guard_source = g.render_call_argument_expression(right_tokens, fastc_type_option) or { condition.all_after(':=').trim_space() }
 				guard_container_type = g.option_container_c_type(right_tokens, guard_source)
 			}
 		}
@@ -1844,7 +1890,8 @@ fn (mut g Parser) read_if_expression() !string {
 	had_guard := guard_name in g.locals
 	if guard_name != '' {
 		g.locals[guard_name] = FastcLocal{
-			typ: guard_type
+			is_mut: guard_start > 0
+			typ:    guard_type
 		}
 	}
 	g.expected_expression_type = branch_expected_type
@@ -1889,6 +1936,9 @@ fn (mut g Parser) read_if_expression() !string {
 	} else {
 		g.read_block_expression_value()!
 	}
+	if fastc_fixed_array_element_type(g.last_expression_type) != none && g.fixed_array_uses_raw_storage(g.last_expression) {
+		then_expression = g.render_call_argument_expression(g.last_expression, g.last_expression_type) or { then_expression }
+	}
 	if smartcast_bindings != '' {
 		then_expression = '({ ${smartcast_bindings}${then_expression}; })'
 	}
@@ -1901,7 +1951,7 @@ fn (mut g Parser) read_if_expression() !string {
 			}
 		}
 		for path, present in had_member_smartcasts {
-			if present {
+			if present && path in g.member_smartcasts {
 				g.member_smartcasts[path] = previous_member_smartcasts[path]
 			} else {
 				g.member_smartcasts.delete(path)
@@ -1939,6 +1989,11 @@ fn (mut g Parser) read_if_expression() !string {
 		return g.unsupported('if expression without `else`')
 	}
 	g.next()
+	previous_error := g.locals['err'] or { FastcLocal{} }
+	had_error := 'err' in g.locals
+	bind_error := guard_name != '' && guard_container_type == '__v_result'
+	if bind_error { g.locals['err'] = FastcLocal{ typ: fastc_type_ierror } }
+
 	mut else_expression := ''
 	mut else_type := u32(0)
 	mut else_option_value_type := u32(0)
@@ -1967,6 +2022,9 @@ fn (mut g Parser) read_if_expression() !string {
 			g.read_block_expression_value()!
 		}
 		else_type = g.last_expression_type
+		if fastc_fixed_array_element_type(else_type) != none && g.fixed_array_uses_raw_storage(g.last_expression) {
+			else_expression = g.render_call_argument_expression(g.last_expression, else_type) or { else_expression }
+		}
 		if else_type in [fastc_type_option, fastc_type_result] {
 			else_option_value_type = (if g.last_expression.len > 0 {
 				g.option_value_type_for_expression(g.last_expression)
@@ -1981,6 +2039,11 @@ fn (mut g Parser) read_if_expression() !string {
 		g.skip_semicolons()
 		g.expect(.rcbr)!
 	}
+	if bind_error {
+		else_expression = '({ IError err = ${guard_option}.err; ${else_expression}; })'
+		if had_error { g.locals['err'] = previous_error } else { g.locals.delete('err') }
+	}
+
 	if g.selfhost && g.return_type == fastc_type_result && outer_expected_type !in [
 		fastc_type_option,
 		fastc_type_result,
@@ -2162,6 +2225,14 @@ fn (mut g Parser) read_return_expression_branch() !string {
 		g.last_expression = []FastcExpressionToken{}
 		return '({ return ${fastc_multi_return_literal(values)}; 0; })'
 	}
+	previous_expected := g.expected_expression_type
+	g.expected_expression_type = if g.return_type in [fastc_type_option, fastc_type_result] {
+		g.option_return_type
+	} else {
+		g.return_type
+	}
+	defer { g.expected_expression_type = previous_expected }
+
 	value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 	value_type := g.last_expression_type
 	g.consume_statement_end()
@@ -2208,4 +2279,17 @@ fn (value &FastcMemberSmartcastPlan) type_c_text() string {
 @[inline]
 fn (value &FastcMemberSmartcastPlan) value_type_text() string {
 	return flat.source_type_name(value.value_type)
+}
+
+fn (mut g Parser) bind_else_non_none_option(tokens []FastcExpressionToken) {
+	if tokens.len != 3 || tokens[0].tok != .name || tokens[1].tok != .eq || tokens[2].tok != .key_none {
+		return
+	}
+	name := tokens[0].lit
+	local := g.locals[name] or { return }
+	if local.is_mut || local.is_reference || local.option_value_type == 0 { return }
+	payload := local.option_value_type
+	shadow := g.temporary_name('nonnull_option')
+	g.write_line('${fastc_output_c_type(flat.source_type_name(payload))} ${shadow} = ${g.option_value_expression(payload, g.local_c_name(name))};')
+	g.set_scoped_local(name, FastcLocal{ ...local, typ: payload, option_value_type: 0, c_name: shadow })
 }

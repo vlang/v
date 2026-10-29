@@ -128,22 +128,53 @@ fn (mut g Parser) read_spawn_expression() !string {
 			g.next()
 			method_key, _ := g.resolve_method(receiver_type, method_name)
 			method_signature := g.functions[method_key] or {
-				return g.unsupported('spawn of undeclared method `${callee}.${method_name}`')
+				field := g.struct_field_metadata(receiver_type, method_name) or { return g.unsupported('spawn of undeclared method `${callee}.${method_name}`') }
+				callback := if field.is_function {
+					FastcFunctionSignature{ parameter_types: field.fn_parameter_types, return_type: field.fn_return_type, option_type: field.fn_option_value_type }
+				} else {
+					g.functions[field.typ_text()] or { fastc_callable_signature(field.typ) or { return g.unsupported('spawn of non-callable field') } }
+				}
+				mut parameters := [flat.source_type_voidptr]
+				parameters << callback.parameter_types.ids
+				thunk := '__vf_spawn_field_' + fastc_name_key(flat.source_type_name(receiver_type)) + '_' + method_name
+				mut declarations := ['voidptr callback']
+				mut values := []string{}
+				for i, parameter in callback.parameter_types.ids {
+					declarations << '${fastc_output_c_type(flat.source_type_name(parameter))} arg${i}'
+					values << 'arg${i}'
+				}
+				return_type := fastc_output_c_type(callback.return_type_text())
+				g.spawn_helpers[thunk] = '${return_type} ${thunk}(${declarations.join(', ')}) { ${if callback.return_type == flat.source_type_void {
+					''
+				} else {
+					'return '
+				}}((${return_type} (*)(${fastc_c_prototype_parameters(callback.parameter_types.ids)}))callback)(${values.join(', ')}); }'
+				g.mono_functions[thunk] = FastcFunctionSignature{ ...callback, parameter_types: flat.TypeTextList{ ids: parameters } }
+				receiver_arg = '(voidptr)(${receiver.source}${if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
+					'->'
+				} else {
+					'.'
+				}}${fastc_c_identifier(method_name)})'
+				method_target = thunk
+				function_key = thunk
+				g.mono_functions[thunk]
 			}
 			if method_signature.parameter_types.ids.len == 0 {
 				return g.unsupported('spawn of method `${method_name}` without a receiver parameter')
 			}
-			expected_receiver := method_signature.parameter_types.ids[0]
-			receiver_is_pointer := flat.source_type_query(receiver_type).has(.c_pointer_suffix)
-			receiver_arg = if flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && !receiver_is_pointer {
-				'&(${receiver.source})'
-			} else if !flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && receiver_is_pointer {
-				'*(${receiver.source})'
-			} else {
-				receiver.source
+			if method_target == '' {
+				expected_receiver := method_signature.parameter_types.ids[0]
+				receiver_is_pointer := flat.source_type_query(receiver_type).has(.c_pointer_suffix)
+				receiver_arg = if flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && !receiver_is_pointer {
+					'&(${receiver.source})'
+				} else if !flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && receiver_is_pointer {
+					'*(${receiver.source})'
+				} else {
+					receiver.source
+				}
+				method_target = g.c_method_name(method_key, method_signature.module_name, flat.source_type_name(expected_receiver), method_name)
+				function_key = method_key
 			}
-			method_target = g.c_method_name(method_key, method_signature.module_name, flat.source_type_name(expected_receiver), method_name)
-			function_key = method_key
 			callee = method_name
 		} else {
 			return g.unsupported('spawn on unimported qualifier `${callee}`')
@@ -152,7 +183,9 @@ fn (mut g Parser) read_spawn_expression() !string {
 		function_key = g.unqualified_function_key(callee)
 	}
 	signature := g.functions[function_key] or {
-		return g.unsupported('spawn of undeclared function `${callee}`')
+		g.mono_functions[function_key] or {
+			return g.unsupported('spawn of undeclared function `${callee}`')
+		}
 	}
 	// Ordinary disabled calls elide the call and its arguments. A spawn cannot
 	// provide a valid thread handle for an elided call, so reject it before
