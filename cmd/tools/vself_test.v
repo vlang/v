@@ -311,7 +311,7 @@ fn test_windows_plain_self_transition_does_not_install_fallback() {
 	assert !os.exists(os.join_path(root, 'v1_fallback.exe'))
 }
 
-fn test_self_build_keeps_fastc_backend() {
+fn test_self_build_defaults_to_c_backend() {
 	$if windows {
 		return
 	}
@@ -322,19 +322,33 @@ fn test_self_build_keeps_fastc_backend() {
 	}
 	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
 	assert build.exit_code == 0, build.output
-	// Older drivers prune FastC from cmd/v unless asked, so `v self` and `v up`
-	// request it explicitly.
+	// Ordinary and production self-builds must not opt into optional backends.
 	default_result :=
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_fastc_default_test'])
 	assert default_result.exit_code == 0, default_result.output
-	assert default_result.output.contains('-compile-backend fastc'), default_result.output
+	assert !default_result.output.contains('-compile-backend'), default_result.output
+	for backend in ['fastc', 'arm64', 'x64', 'wasm', 'eval'] {
+		assert default_result.output.contains('-d skip_${backend}'), default_result.output
+	}
 	assert_vself_preserves_full_cli(default_result.output)
 	prod_result :=
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-prod', '-o',
 			'/tmp/vself_fastc_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
-	assert prod_result.output.contains('-compile-backend fastc'), prod_result.output
+	assert !prod_result.output.contains('-compile-backend'), prod_result.output
+	for opt_in in [['-compile-backend', 'fastc'], ['-all-backends']] {
+		result := os.exec(['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', ...opt_in, '-o',
+			'/tmp/vself_backend_opt_in_test'])
+		assert result.exit_code == 0, result.output
+		assert result.output.contains(opt_in.join(' ')), result.output
+		assert !result.output.contains('-d skip_fastc'), result.output
+	}
+	wasm_result := os.exec(['env', 'VFLAGS=-compile-backend wasm', 'VEXE=${noop}', tool, 'self',
+		'-o', '/tmp/vself_wasm_opt_in_test'])
+	assert wasm_result.exit_code == 0, wasm_result.output
+	assert !wasm_result.output.contains('-d skip_wasm'), wasm_result.output
+	assert wasm_result.output.contains('-d skip_fastc'), wasm_result.output
 	for opt_out in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-old-compiler']] {
 		mut args := ['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self']
 		args << opt_out
@@ -463,7 +477,7 @@ fn test_arm64_self_build_preserves_native_options_and_full_cli() {
 		'c', '-o', '/tmp/vself_arm64_c_override_test'])
 	assert c_override_result.exit_code == 0, c_override_result.output
 	assert c_override_result.output.contains('-prealloc'), c_override_result.output
-	assert c_override_result.output.contains('-compile-backend fastc'), c_override_result.output
+	assert !c_override_result.output.contains('-compile-backend'), c_override_result.output
 	assert_vself_preserves_full_cli(c_override_result.output)
 
 	failing_compiler := os.find_abs_path_of_executable('false') or { return }
