@@ -13287,6 +13287,9 @@ pub fn run(args []string) {
 					exit(1)
 				}
 			}
+			if deferred_implicit_tcc_warning.len > 0 && !silent {
+				eprintln(deferred_implicit_tcc_warning)
+			}
 			fastc_result := if c_compiler_explicit {
 				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug, fastc_generation.uses_threads)
 			} else {
@@ -13316,6 +13319,15 @@ pub fn run(args []string) {
 				cache_failure_output := v3_fastc_cache_failure_output(fastc_result.output, fastc_result.cached_objects)
 				if v3_recover_from_cache_failure(cache_failure_output, '') {
 					return
+				}
+				$if macos {
+					if retry_compilation && !c_compiler_explicit {
+						// Native SDK headers can require Clang. Regenerate so compiler
+						// conditions and compatibility defines describe the retry too.
+						v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent,
+							fastc_result.output)
+						return
+					}
 				}
 				if fastc_result.command.len == 0 {
 					eprintln('fastc requires the bundled TinyCC executable')

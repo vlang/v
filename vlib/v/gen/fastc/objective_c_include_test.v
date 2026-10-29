@@ -3,6 +3,50 @@ module fastc
 import os
 import v.cmdexec
 
+fn test_fastc_macos_default_compiler_retries_cocoa_with_clang() {
+	$if !macos {
+		return
+	}
+	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe'))
+		|| os.find_abs_path_of_executable('clang') == none {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_cocoa_default_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cocoa_default' }") or { panic(err) }
+	source := os.join_path(root, 'main.c.v')
+	body := r'fn main() {
+	println(@CCOMPILER)
+	$if tinyc { println("tinyc") } $else { println("clang") }
+}
+'
+	for cocoa in [false, true] {
+		prefix := if cocoa {
+			'#flag darwin -framework Cocoa\n#flag darwin -fobjc-arc\n#include <Cocoa/Cocoa.h>\n'
+		} else {
+			''
+		}
+		os.write_file(source, prefix + body) or { panic(err) }
+		program := os.join_path(root, 'program_${cocoa}')
+		build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root])
+		assert build.exit_code == 0, build.output
+		assert build.output.contains('regenerating it with') == cocoa, build.output
+		assert !build.output.contains('__TINYC__ redefined'), build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		compiler := if cocoa { 'clang' } else { 'tinyc' }
+		assert run.output.trim_space() == '${compiler}\n${compiler}', run.output
+	}
+	program := os.join_path(root, 'no_retry')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-no-retry-compilation', '-nocache', '-o', program,
+		root])
+	assert build.exit_code != 0, build.output
+	assert build.output.contains('Cocoa/Cocoa.h'), build.output
+	assert !build.output.contains('regenerating it with'), build.output
+	assert !os.exists(program)
+}
+
 fn test_fastc_objective_c_include_can_use_v_types() {
 	$if !macos {
 		return
@@ -40,14 +84,16 @@ fn C.native_length(value string) int
 fn C.native_answer() int
 
 fn main() {
+	assert @CCOMPILER == "clang"
 	assert C.native_length("hello") == 8
 	assert C.native_answer() == 42
 }
 ') or { panic(err) }
-	for production in [false, true] {
-		program := os.join_path(root, 'program_${production}')
-		mut args := ['-b', 'fastc', '-cc', 'clang', '-nocache', '-o', program]
-		if production { args << '-prod' }
+	for mode in ['default', 'clang', 'prod'] {
+		program := os.join_path(root, 'program_${mode}')
+		mut args := ['-b', 'fastc', '-nocache', '-o', program]
+		if mode != 'default' { args << ['-cc', 'clang'] }
+		if mode == 'prod' { args << '-prod' }
 		args << root
 		build := cmdexec.run(@VEXE, args)
 		assert build.exit_code == 0, build.output
