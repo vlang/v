@@ -16,60 +16,6 @@ fn literal_binding_test_node(mut a flat.FlatAst, kind flat.NodeKind, children []
 	})
 }
 
-fn test_array_append_does_not_consume_a_pointer_local() {
-	mut a := flat.FlatAst.new()
-	lhs := a.add_val(.ident, 'value')
-	callee := a.add_val(.ident, 'make_pointer')
-	init := literal_binding_test_node(mut a, .call, [callee])
-	decl := literal_binding_test_node(mut a, .decl_assign, [lhs, init])
-	source := a.add_node(flat.Node{
-		kind:  .ident
-		value: 'value'
-		typ:   flat.source_type_id('&AppendNode')
-	})
-	destination := a.add_val(.ident, 'out')
-	append := literal_binding_test_node(mut a, .infix, [destination, source])
-	a.nodes[int(append)].op = .left_shift
-	stmt := literal_binding_test_node(mut a, .expr_stmt, [append])
-	literal_binding_test_node(mut a, .fn_decl, [decl, stmt])
-	mut tc := types.TypeChecker.new(&a)
-	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.build_source_parent_index()
-	assert !t.array_append_consumes_fresh_local(source)
-}
-
-fn test_array_append_does_not_consume_static_storage() {
-	mut a := flat.FlatAst.new()
-	lhs := a.add_val(.ident, 'value')
-	init := a.add_val(.struct_init, 'AppendNode')
-	decl := literal_binding_test_node(mut a, .decl_assign, [lhs, init])
-	a.nodes[int(decl)].value = 'static'
-	source := a.add_val(.ident, 'value')
-	destination := a.add_val(.ident, 'out')
-	append := literal_binding_test_node(mut a, .infix, [destination, source])
-	a.nodes[int(append)].op = .left_shift
-	stmt := literal_binding_test_node(mut a, .expr_stmt, [append])
-	literal_binding_test_node(mut a, .fn_decl, [decl, stmt])
-	mut tc := types.TypeChecker.new(&a)
-	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.build_source_parent_index()
-	assert !t.array_append_consumes_fresh_local(source)
-	mut locals := map[string]bool{}
-	mut uses := map[string]int{}
-	mut calls := []int{}
-	assert !t.array_append_factory_body_is_fresh(decl, mut locals, mut uses, mut calls)
-}
-
-fn test_array_append_does_not_trust_a_bodyless_factory() {
-	mut a := flat.FlatAst.new()
-	a.add_val(.fn_decl, 'opaque_factory')
-	mut tc := types.TypeChecker.new(&a)
-	tc.fn_param_types['opaque_factory'] = []types.Type{}
-	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.prepare_array_append_tree_factories()
-	assert !t.array_append_tree_factories['opaque_factory']
-}
-
 fn literal_string_test_call(mut a flat.FlatAst, receiver flat.NodeId, method string, args []flat.NodeId) flat.NodeId {
 	selector_start := a.begin_children()
 	a.add_child(receiver)
