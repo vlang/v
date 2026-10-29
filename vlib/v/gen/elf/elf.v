@@ -41,6 +41,8 @@ pub mut:
 	data_data []u8
 	rodata    []u8
 
+	elf_flags u32
+
 	// Symbol Table
 	symbols        []ElfSymbol
 	symbol_by_name map[string]int
@@ -264,7 +266,7 @@ pub fn (mut e ElfObject) write(path string) {
 	write_u64_le(mut buf, 0) // Entry
 	write_u64_le(mut buf, 0) // Phdr off
 	write_u64_le(mut buf, u64(off_shdrs))
-	write_u32_le(mut buf, 0) // Flags
+	write_u32_le(mut buf, e.elf_flags)
 	write_u16_le(mut buf, u16(ehdr_size))
 	write_u16_le(mut buf, 0) // Phdr entry size
 	write_u16_le(mut buf, 0) // Phdr num
