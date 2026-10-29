@@ -2094,6 +2094,19 @@ fn test_tcc_atomic_object_key_separates_compilers_targets_and_args() {
 	})
 }
 
+fn test_tcc_atomic_s_arg_links_atomic_s_on_termux_arm64() {
+	// cleanc.v declares _V_atomic_thread_fence for every tcc aarch64 build, so
+	// the driver must link atomic.S there too, not only for the linux target.
+	prefs := &pref.Preferences{
+		vroot:  '/vroot'
+		target: pref.Target{
+			os:   'termux'
+			arch: 'arm64'
+		}
+	}
+	assert tcc_atomic_s_arg(prefs).ends_with(os.join_path('thirdparty', 'stdatomic', 'nix', 'atomic.S'))
+}
+
 fn test_tcc_compiler_identity_tracks_rebuilds() {
 	root := os.join_path(os.vtmp_dir(), 'v3_atomic_compiler_identity_${os.getpid()}')
 	os.mkdir_all(root)!
