@@ -36,6 +36,30 @@ struct Value {
 
 type Scalar = Value | int | string
 
+struct Computed {
+	bits [2]bool
+	rows [2][2]u64
+}
+
+@[comptime]
+fn compute() Computed {
+	return Computed{
+		bits: [true, false]!
+		rows: [[u64(41), 42]!, [u64(43), 44]!]!
+	}
+}
+
+const computed = compute()
+
+@[comptime]
+fn above_bound(value u64, bound i64) bool {
+	mut normalized := value
+	normalized /= 1
+	return normalized > bound
+}
+
+const above_negative = above_bound(0, -1)
+
 fn identity[T](value T) T {
 	return value
 }
@@ -52,6 +76,11 @@ fn read_value(ok bool) !Scalar {
 }
 
 fn main() {
+	assert computed.bits[0]
+	assert !computed.bits[1]
+	assert computed.rows[0][0] == 41
+	assert computed.rows[1][1] == 44
+	assert above_negative
 	values := {"answer": identity(42)}
 	present := lookup(values, "answer") or { 0 }
 	missing := lookup(values, "missing") or { -1 }

@@ -281,7 +281,8 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			if typ := e.tc.expr_type(id) { return e.array_value(child, typ) }
 			if child.children_count == 0 { return error('unknown fixed-array type') }
 			first := e.expr(e.tc.a.child(child, 0))!
-			typ := Type(ArrayFixed{ elem_type: &Type(first.typ), len: child.children_count })
+			elem_type := e.tc.intern_type_reference(first.typ)
+			typ := Type(ArrayFixed{ elem_type: elem_type, len: child.children_count })
 			return e.array_value(child, typ)
 		}
 		.array_init, .array_literal {
@@ -544,17 +545,19 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 		mut unsigned := type_id in [flat.source_type_u64, flat.source_type_uint]
 		left_base := unalias_type(left.typ)
 		right_base := unalias_type(right.typ)
+		left_unsigned := const_eval_integer_unsigned(left.typ)
+		right_unsigned := const_eval_integer_unsigned(right.typ)
 		left_c_type := e.integer_c_expression_type(left_id, left.typ)
 		right_c_type := e.integer_c_expression_type(right_id, right.typ)
 		mixed_sign := left_base is Primitive && right_base is Primitive
-			&& left_base.props.has(.unsigned) != right_base.props.has(.unsigned)
-			&& !(!left_base.props.has(.unsigned) && e.tc.a.node(left_id).kind == .int_literal)
-			&& !(!right_base.props.has(.unsigned) && e.tc.a.node(right_id).kind == .int_literal)
+			&& left_unsigned != right_unsigned
+			&& !(!left_unsigned && e.tc.a.node(left_id).kind == .int_literal)
+			&& !(!right_unsigned && e.tc.a.node(right_id).kind == .int_literal)
 		if mixed_sign {
 			// Match the C backend's mathematical signed/unsigned comparison.
 			l = const_eval_integer_cast(l, left.typ)
 			r = const_eval_integer_cast(r, right.typ)
-			if left_base is Primitive && !left_base.props.has(.unsigned) && l < 0 {
+			if left_base is Primitive && !left_unsigned && l < 0 {
 				return ComptimeConstValue{
 					typ:     bool_
 					integer: if op in [.ne, .lt, .le] {
@@ -564,7 +567,7 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 					}
 				}
 			}
-			if right_base is Primitive && !right_base.props.has(.unsigned) && r < 0 {
+			if right_base is Primitive && !right_unsigned && r < 0 {
 				return ComptimeConstValue{
 					typ:     bool_
 					integer: if op in [.ne, .gt, .ge] {
@@ -775,15 +778,15 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 				if node.op != .assign {
 					op := match node.op {
 						.plus_assign { flat.Op.plus }
-						.minus_assign { .minus }
-						.mul_assign { .mul }
-						.div_assign { .div }
-						.mod_assign { .mod }
-						.amp_assign { .amp }
-						.pipe_assign { .pipe }
-						.xor_assign { .xor }
-						.left_shift_assign { .left_shift }
-						.right_shift_assign { .right_shift }
+						.minus_assign { flat.Op.minus }
+						.mul_assign { flat.Op.mul }
+						.div_assign { flat.Op.div }
+						.mod_assign { flat.Op.mod }
+						.amp_assign { flat.Op.amp }
+						.pipe_assign { flat.Op.pipe }
+						.xor_assign { flat.Op.xor }
+						.left_shift_assign { flat.Op.left_shift }
+						.right_shift_assign { flat.Op.right_shift }
 						else { return error('unsupported compound assignment') }
 					}
 					value = e.binary(lhs, op, e.expr(lhs)!, value)!
