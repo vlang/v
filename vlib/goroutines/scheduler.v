@@ -566,9 +566,10 @@ fn runq_put_slow(mut pp Processor, gp &Goroutine, _h u32, _t u32) {
 		hh := C.goroutines_atomic_load_u32(&pp.runq_head)
 		tt := C.goroutines_atomic_load_u32(&pp.runq_tail)
 		// The local queue never holds more than local_queue_size entries, so a
-		// larger apparent length means the head/tail pair is torn or corrupt.
+		// larger modular length means the head/tail pair is torn or corrupt.
+		// The counters wrap at u32.max, so head may legitimately exceed tail.
 		// Fail loudly instead of copying garbage slots into the batch below.
-		if hh > tt || tt - hh > local_queue_size {
+		if tt - hh > local_queue_size {
 			panic('goroutines: runq desync in put_slow')
 		}
 		n := (tt - hh) / 2

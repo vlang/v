@@ -8,6 +8,16 @@
 module goroutines
 
 import time
+import sync.stdatomic
+
+// Fiber stacks are not scanned by Boehm yet; match the existing goroutines suite.
+fn testsuite_begin() {
+	gc_disable()
+}
+
+fn testsuite_end() {
+	gc_enable()
+}
 
 fn worker_set_flag(arg voidptr) {
 	if arg == unsafe { nil } {
@@ -118,18 +128,18 @@ fn test_windows_fiber_lifecycle() {
 	assert ctx.uctx == unsafe { nil }
 }
 
-// poll_bool waits up to tries * 10 milliseconds for *flag to become true.
+// poll_done waits up to tries * 10 milliseconds for a worker to publish completion.
 // Sleeps are coarse: Windows quantizes short sleeps to ~15ms, so 1ms polling
 // would stretch a 5s timeout past a minute. Bounded polling keeps a scheduler
 // regression a failing test instead of a CI hang.
-fn poll_bool(flag &bool, tries int) bool {
+fn poll_done(flag &u64, tries int) bool {
 	for _ in 0 .. tries {
-		if unsafe { *flag } {
+		if stdatomic.load_u64(flag) != 0 {
 			return true
 		}
 		time.sleep(10 * time.millisecond)
 	}
-	return unsafe { *flag }
+	return stdatomic.load_u64(flag) != 0
 }
 
 fn test_windows_gqueue() {
@@ -208,18 +218,30 @@ fn test_windows_waitq() {
 }
 
 fn test_windows_scheduler_init() {
+	gsched.mu.acquire()
+	defer {
+		gsched.mu.release()
+	}
 	assert gomaxprocs > 0
 	assert gsched.allp.len > 0
 	assert gsched.allp.len == int(gomaxprocs)
-	// The main thread never takes a P: every processor starts out idle.
-	assert gsched.npidle == gomaxprocs
+	// Earlier tests may leave workers running; verify the protected idle list instead.
+	mut idle_count := 0
+	mut pp := gsched.pidle
+	for pp != unsafe { nil } {
+		idle_count++
+		assert idle_count <= int(gomaxprocs)
+		pp = pp.link
+	}
+	assert idle_count == int(gsched.npidle)
 }
 
 fn test_windows_nonblocking_empty() {
 	c := chan_make(int(sizeof(int)), 0)
 	// Unbuffered with no peer: non-blocking ops must fail, not park.
 	mut val := 1
-	assert chan_send(c, voidptr(&val), false) == false
+	sent := chan_send(c, voidptr(&val), false)
+	assert !sent
 	mut recv_val := 0
 	received, _ := chan_recv(c, voidptr(&recv_val), false)
 	assert received == false
@@ -234,12 +256,14 @@ fn test_windows_buffered_fifo_wrap() {
 	c := chan_make(int(sizeof(int)), 3)
 	for i in 1 .. 4 {
 		mut val := i
-		assert chan_send(c, voidptr(&val), false) == true
+		sent := chan_send(c, voidptr(&val), false)
+		assert sent
 	}
 	assert chan_len(c) == 3
 	// Full: non-blocking send fails.
 	mut extra := 99
-	assert chan_send(c, voidptr(&extra), false) == false
+	sent := chan_send(c, voidptr(&extra), false)
+	assert !sent
 	// Drain two, wrapping the read index, then refill past the write index.
 	for want in [1, 2] {
 		mut recv_val := 0
@@ -248,7 +272,8 @@ fn test_windows_buffered_fifo_wrap() {
 	}
 	for i in [4, 5] {
 		mut val := i
-		assert chan_send(c, voidptr(&val), false) == true
+		sent := chan_send(c, voidptr(&val), false)
+		assert sent
 	}
 	for want in [3, 4, 5] {
 		mut recv_val := 0
@@ -262,7 +287,8 @@ fn test_windows_close_drain() {
 	c := chan_make(int(sizeof(int)), 2)
 	for i in [10, 20] {
 		mut val := i
-		assert chan_send(c, voidptr(&val), false) == true
+		sent := chan_send(c, voidptr(&val), false)
+		assert sent
 	}
 	chan_close(c)
 	// Buffered values survive close with ok.
@@ -283,7 +309,7 @@ struct CloseProbe {
 mut:
 	received bool
 	ok       bool
-	done     bool
+	done     u64
 }
 
 fn close_probe_worker(arg voidptr) {
@@ -292,7 +318,7 @@ fn close_probe_worker(arg voidptr) {
 	received, ok := chan_recv(p.c, voidptr(&v), true)
 	p.received = received
 	p.ok = ok
-	p.done = true
+	stdatomic.store_u64(&p.done, 1)
 }
 
 fn test_windows_close_wakes_receiver() {
@@ -304,7 +330,9 @@ fn test_windows_close_wakes_receiver() {
 	// Let the worker park in recv, then close: it must return with ok=false.
 	time.sleep(50 * time.millisecond)
 	chan_close(c)
-	assert poll_bool(&probe.done, 500)
+	if !poll_done(&probe.done, 500) {
+		panic('receiver did not finish after close')
+	}
 	assert probe.received
 	assert probe.ok == false
 }
@@ -424,7 +452,8 @@ fn test_windows_ping_pong() {
 	goroutine_create(voidptr(echo_worker), voidptr(a), 0)
 	for i in 0 .. 20 {
 		mut val := i
-		assert chan_send(req, voidptr(&val), true) == true
+		sent := chan_send(req, voidptr(&val), true)
+		assert sent
 		mut recv_val := -1
 		received, ok := chan_recv(rep, voidptr(&recv_val), true)
 		assert received && ok && recv_val == i + 1
@@ -453,15 +482,15 @@ fn sched_yielder(arg voidptr) {
 	for _ in 0 .. 200 {
 		gosched()
 	}
-	unsafe {
-		*(&bool(arg)) = true
-	}
+	stdatomic.store_u64(unsafe { &u64(arg) }, 1)
 }
 
 fn test_windows_gosched() {
-	mut done := false
+	mut done := u64(0)
 	goroutine_create(voidptr(sched_yielder), voidptr(&done), 0)
-	assert poll_bool(&done, 500)
+	if !poll_done(&done, 500) {
+		panic('yielding worker did not finish')
+	}
 }
 
 fn ww_receiver(arg voidptr) {
@@ -469,9 +498,7 @@ fn ww_receiver(arg voidptr) {
 	mut recv_val := 0
 	received, ok := chan_recv(p.c, voidptr(&recv_val), true)
 	assert received && ok && recv_val == 7
-	unsafe {
-		p.done = true
-	}
+	stdatomic.store_u64(&p.done, 1)
 }
 
 fn ww_sender(arg voidptr) {
@@ -493,6 +520,8 @@ fn test_windows_worker_to_worker() {
 	goroutine_create(voidptr(ww_receiver), voidptr(rprobe), 0)
 	time.sleep(20 * time.millisecond)
 	goroutine_create(voidptr(ww_sender), voidptr(sprobe), 0)
-	assert poll_bool(&rprobe.done, 500)
+	if !poll_done(&rprobe.done, 500) {
+		panic('worker-to-worker rendezvous did not finish')
+	}
 	time.sleep(200 * time.millisecond)
 }
