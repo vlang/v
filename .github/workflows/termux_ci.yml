@@ -220,9 +220,10 @@ jobs:
             tcc_cflags="-cflags -D__ANDROID_MIN_SDK_VERSION__=24"
             V_ANDROID_TCC=1 VFLAGS="-cc tcc $tcc_cflags" make 2>&1 | tee /logs/v-bootstrap.log
             ./v -cc "$tcc" $tcc_cflags run examples/hello_world.v 2>&1 | tee /logs/hello_world.log
-            # V falls back to cc with a warning when a tcc link test fails, so a
-            # green build alone does not show tcc was used. Fail on that warning.
-            if grep -q "falling back" /logs/v-bootstrap.log /logs/hello_world.log; then
+            # The step that builds v2 runs the vc snapshot compiler v1, which
+            # predates the driver fix, so its fallback warning is expected. Fail
+            # only on a fallback in the hello_world run, which uses the final ./v.
+            if grep -q "falling back" /logs/hello_world.log; then
               echo "tcc was not used: V fell back to cc"
               exit 1
             fi
