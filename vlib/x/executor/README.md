@@ -66,6 +66,10 @@ Jobs are ordinary V functions. They receive no hidden context. If a caller needs
 to stop waiting for admission, it should use `post_with_context()` or
 `post_with_timeout()`. Once accepted, a job is not preemptively killed.
 
+`x.executor` and `x.async` can be imported together. Their `JobFn` aliases are
+module-specific: executor jobs take no arguments, while async jobs receive a
+mutable `context.Context`.
+
 ### Construction
 
 ```v ignore

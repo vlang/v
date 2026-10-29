@@ -5444,8 +5444,16 @@ fn (tc &TypeChecker) struct_field_diagnostic_fn_type_uncached(struct_name_id u32
 			if shape.has(.function_compact) || shape.has(.function_spaced) {
 				return tc.diagnostic_fn_type_id(raw_id), u32(0)
 			}
-			if alias_raw_id := tc.source_fn_alias_type_text_id(raw_id) {
-				return tc.diagnostic_fn_type_id(alias_raw_id), raw_id
+			// A field's alias belongs to its declaring module, including when
+			// the initializer is checked from another module.
+			field_type := tc.struct_field_type(struct_name_id, field.value) or { void_ }
+			alias_id := if field_type is Alias {
+				field_type.source_type_id()
+			} else {
+				tc.qualify_type_name(raw_id)
+			}
+			if alias_raw_id := tc.canonical_fn_alias_type_text_id(alias_id) {
+				return tc.diagnostic_fn_type_id(alias_raw_id), alias_id
 			}
 			return none
 		}
@@ -5757,6 +5765,12 @@ fn (tc &TypeChecker) first_childless_type_decl(name string) flat.NodeId {
 // source_fn_alias_type_text_id returns the function type spelling that the
 // function alias spelled `name_id` stands for, following alias chains.
 fn (tc &TypeChecker) source_fn_alias_type_text_id(name_id u32) ?u32 {
+	return tc.canonical_fn_alias_type_text_id(tc.qualify_type_name(name_id))
+}
+
+// canonical_fn_alias_type_text_id follows an already-resolved alias without
+// rebinding a main-module alias's bare canonical name in the caller's module.
+fn (tc &TypeChecker) canonical_fn_alias_type_text_id(name_id u32) ?u32 {
 	mut target_id := trimmed_source_type_id(name_id)
 	for _ in 0 .. 8 {
 		syntax := flat.source_type_syntax(target_id)
@@ -5765,24 +5779,29 @@ fn (tc &TypeChecker) source_fn_alias_type_text_id(name_id u32) ?u32 {
 		} else {
 			target_id
 		}
-		// Declaration names are compared with the AST text of each type declaration.
-		lookup_target := flat.source_type_name(lookup_target_id)
+		qualified_id := lookup_target_id
 		mut found_id := u32(0)
-		decl_id := tc.first_childless_type_decl(lookup_target)
+		// The canonical declaration index distinguishes main-module aliases
+		// from imported aliases with the same short name.
+		decl_id := if index := tc.first_type_declaration_ids[qualified_id] {
+			flat.NodeId(index)
+		} else {
+			tc.first_childless_type_decl(flat.source_type_name(qualified_id))
+		}
 		if decl_id != flat.empty_node {
 			node := tc.a.node(decl_id)
-			mut source_type := tc.source_type_alias_rhs(tc.cur_file, node.value) or { '' }
-			if source_type.len == 0 {
-				if file := tc.a.source_files[node.pos.id] {
-					source_type = tc.source_type_alias_rhs(file.name, node.value) or { '' }
-				}
+			file_name := if file := tc.a.source_files[node.pos.id] {
+				file.name
+			} else {
+				tc.cur_file
 			}
+			source_type := tc.source_type_alias_rhs(file_name, node.value) or { '' }
 			source_id := flat.source_type_id(source_type)
 			source_shape := flat.source_type_shape(source_id)
 			found_id = if source_shape.has(.function_compact) || source_shape.has(.function_spaced) {
 				source_id
 			} else {
-				node.typ
+				tc.type_aliases.type_id(qualified_id) or { node.typ }
 			}
 		}
 		if found_id == 0 {
@@ -5793,7 +5812,7 @@ fn (tc &TypeChecker) source_fn_alias_type_text_id(name_id u32) ?u32 {
 		if shape.has(.function_compact) || shape.has(.function_spaced) {
 			if syntax.application_valid() {
 				// The matched declaration name is exactly the lookup target.
-				params := tc.type_alias_generic_params[lookup_target_id] or {
+				params := tc.type_alias_generic_params[qualified_id] or {
 					tc.type_alias_generic_params[flat.source_type_syntax(lookup_target_id).unqualified()] or {
 						[]u32{}
 					}
@@ -6078,7 +6097,7 @@ fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_id u32, expected_al
 	actual_params, _ := fn_diagnostic_type_parts_id(actual_fn_id)
 	mut expected_named := []FnDiagnosticParam{}
 	if expected_alias_id != 0 {
-		if raw_id := tc.source_fn_alias_type_text_id(expected_alias_id) {
+		if raw_id := tc.canonical_fn_alias_type_text_id(expected_alias_id) {
 			expected_named, _ = fn_diagnostic_type_parts_id(raw_id)
 		}
 	}
