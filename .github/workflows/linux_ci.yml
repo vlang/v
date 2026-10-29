@@ -423,11 +423,12 @@ jobs:
             vflags: '-cc clang'
           - compiler: tcc
             vflags: '-cc tcc -no-retry-compilation'
+    # Temporarily disabled: with the condition on the job, no runner is started.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
       VFLAGS: ${{ matrix.vflags }}
     steps:
       - name: Multiwindow package 2 regressions (temporarily disabled)
-        if: ${{ false }}
         run: echo 'multiwindow package 2 CI is temporarily disabled on Linux'
