@@ -20,15 +20,20 @@ import v.workers
 $if linux {
 	#include <sys/prctl.h>
 	#include <sys/syscall.h>
-	#flag @VEXEROOT/vlib/v/diagserver/syscalls_linux.o
+	// v.workers links the shared syscall helpers.
 }
 
 fn C.waitpid(pid int, status &int, options int) int
 fn C.dup2(oldfd int, newfd int) int
 fn C._exit(code int)
 fn C.kill(pid int, sig int) int
+
+@[c_extern]
 fn C.v3_linux_parent_death_signal(signal_number int) int
+
+@[c_extern]
 fn C.v3_linux_memory_file(name &char) int
+
 fn C.lseek(fd int, offset i64, whence int) i64
 fn C.flock(i32, i32) i32
 fn C.pread(fd int, buf voidptr, count uint, offset i64) C.ptrdiff_t
@@ -942,7 +947,8 @@ fn quick_sum(buffer []u8, size int) u64 {
 // read_whole reads the file `path` into `buffer`, which it makes larger than
 // the file when needed, and returns its size.
 fn read_whole(path string, mut buffer []u8) ?int {
-	want := int((os.stat(path) or { return none }).size)
+	info := os.stat(path) or { return none }
+	want := int(info.size)
 	if buffer.len <= want {
 		buffer = []u8{len: want * 2 + 4096}
 	}
