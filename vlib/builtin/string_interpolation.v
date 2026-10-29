@@ -151,6 +151,19 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 	return res
 }
 
+// format_float_sb writes fixed notation and uppercases special values in the builder.
+fn format_float_sb(f f64, p strconv.BF_param, upper_case bool, mut sb strings.Builder) {
+	start := sb.len
+	strconv.format_fl_sb(f, p, mut sb)
+	if upper_case {
+		for i in start .. sb.len {
+			if sb[i] >= `a` && sb[i] <= `z` {
+				sb[i] -= 32
+			}
+		}
+	}
+}
+
 // convert from struct to formatted string
 @[manualfree]
 fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
@@ -416,14 +429,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 						if data.d.d_f32 < 0 {
 							bf.positive = false
 						}
-						mut f := strconv.format_fl(data.d.d_f32, bf)
-						if upper_case {
-							tmp := f
-							f = f.to_upper()
-							tmp.free()
-						}
-						sb.write_string(f)
-						f.free()
+						format_float_sb(data.d.d_f32, bf, upper_case, mut sb)
 					}
 				}
 			}
@@ -449,14 +455,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 							bf.positive = false
 						}
 
-						mut f := strconv.format_fl(data.d.d_f64, bf)
-						if upper_case {
-							tmp := f
-							f = f.to_upper()
-							tmp.free()
-						}
-						sb.write_string(f)
-						f.free()
+						format_float_sb(data.d.d_f64, bf, upper_case, mut sb)
 					}
 				}
 			}
@@ -509,14 +508,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 					}
 					d := fabs32(data.d.d_f32)
 					if d < 999_999.0 && d >= 0.00001 {
-						mut f := strconv.format_fl(data.d.d_f32, bf)
-						if upper_case {
-							tmp := f
-							f = f.to_upper()
-							tmp.free()
-						}
-						sb.write_string(f)
-						f.free()
+						format_float_sb(data.d.d_f32, bf, upper_case, mut sb)
 						return
 					}
 					// NOTE: For 'g' and 'G' bf.len1 is the maximum number of significant digits.
@@ -581,14 +573,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 					}
 					d := fabs64(data.d.d_f64)
 					if d < 999_999.0 && d >= 0.00001 {
-						mut f := strconv.format_fl(data.d.d_f64, bf)
-						if upper_case {
-							tmp := f
-							f = f.to_upper()
-							tmp.free()
-						}
-						sb.write_string(f)
-						f.free()
+						format_float_sb(data.d.d_f64, bf, upper_case, mut sb)
 						return
 					}
 					// NOTE: For 'g' and 'G' bf.len1 is the maximum number of significant digits
