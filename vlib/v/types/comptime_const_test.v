@@ -1,6 +1,7 @@
 module types
 
 import os
+import v.flat
 import v.parser
 import v.pref
 
@@ -75,4 +76,14 @@ fn test_comptime_const_does_not_evaluate_unmarked_runtime_calls() {
 fn test_comptime_const_rejects_union_storage() {
 	tc := comptime_const_checker('union Storage { n int }\n@[comptime]\nfn compute() Storage { return Storage{n: 1} }\nconst bad = compute()\nfn main() { _ = bad }')
 	assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('unions are not supported')), tc.errors.str()
+}
+
+fn test_comptime_const_inferred_fixed_array_type_survives_return() {
+	tc := comptime_const_checker('struct Flags { bits [2]bool }\n@[comptime]\nfn make_flags() Flags { return Flags{bits: [true, false]!} }\nconst flags = make_flags()\nfn main() { _ = flags }')
+	assert tc.errors.len == 0, tc.errors.str()
+	value := tc.comptime_const_values['flags']!
+	bits := value.fields['bits']!
+	assert bits.typ.source_type_id() == flat.source_type_id('[2]bool')
+	assert bits.elements[0].integer == 1
+	assert bits.elements[1].integer == 0
 }

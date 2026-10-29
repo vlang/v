@@ -238,7 +238,7 @@ fn (mut e ConstEval) expr(id flat.NodeId) !ComptimeConstValue {
 			if typ := e.tc.expr_type(id) { return e.array_value(child, typ) }
 			if child.children_count == 0 { return error('unknown fixed-array type') }
 			first := e.expr(e.tc.a.child(child, 0))!
-			typ := Type(ArrayFixed{ elem_type: first.typ, len: child.children_count })
+			typ := Type(ArrayFixed{ elem_type: &Type(first.typ), len: child.children_count })
 			return e.array_value(child, typ)
 		}
 		.array_init, .array_literal {
