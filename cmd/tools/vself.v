@@ -230,6 +230,7 @@ fn self_build_backend_skips(args []string) []string {
 		}
 	}
 	mut skips := []string{}
+	mut needs_ssa := false
 	for backend, aliases in {
 		'fastc': ['fastc']
 		'arm64': ['arm64', 'aarch64']
@@ -237,9 +238,16 @@ fn self_build_backend_skips(args []string) []string {
 		'wasm':  ['wasm', 'wasm32']
 		'eval':  ['eval']
 	} {
-		if !aliases.any(it in included) {
-			skips << ['-d', 'skip_${backend}']
+		if aliases.any(it in included) {
+			if backend in ['arm64', 'x64', 'wasm'] {
+				needs_ssa = true
+			}
+			continue
 		}
+		skips << ['-d', 'skip_${backend}']
+	}
+	if !needs_ssa {
+		skips << ['-d', 'skip_ssa']
 	}
 	return skips
 }
