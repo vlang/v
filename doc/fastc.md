@@ -231,7 +231,14 @@ supports register, immediate, and memory operands, including memory read/write c
 Compile and link that output with the target toolchain; FastC executable builds still use the host
 target and bundled TinyCC.
 
-Build the full V compiler, including its regular C backend, directly from `cmd/v`:
+Build the full V compiler, including its regular C backend, directly from `cmd/v`.
+The default GC and cache settings are supported; no extra flags are required:
+
+```sh
+v -b fastc cmd/v
+```
+
+To keep separate compiler generations and rebuild their generated C units:
 
 ```sh
 v -b fastc -nocache -o v_fastc1 cmd/v
