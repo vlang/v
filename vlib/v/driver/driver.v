@@ -49,6 +49,9 @@ $if !skip_arm64 ? {
 $if !skip_amd64 ? && !skip_x64 ? {
 	import v.gen.amd64
 }
+$if !skip_riscv64 ? {
+	import v.gen.riscv64
+}
 
 $if !skip_ssa ? {
 	import v.ssa
@@ -7453,7 +7456,7 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 }
 
 fn v3_effective_c_compiler_for_codegen(backend string, c_compiler string, use_implicit_tcc_semantics bool, target pref.Target) string {
-	if backend in ['arm64', 'amd64'] || use_implicit_tcc_semantics {
+	if backend in ['arm64', 'amd64', 'x64', 'riscv64'] || use_implicit_tcc_semantics {
 		return 'tinyc'
 	}
 	return effective_c_compiler_name(c_compiler, target)
@@ -10959,9 +10962,10 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	// The native backends write `.o` files: arm64 for Linux and macOS, amd64 for Linux.
+	// Native backends write `.o` files: arm64 on Linux and macOS; amd64/x64 and
+	// riscv64 on Linux.
 	native_object := ((backend == 'arm64' && target_os in ['linux', 'macos'])
-		|| (backend == 'amd64' && target_os == 'linux')) && explicit_output
+		|| (backend in ['amd64', 'x64', 'riscv64'] && target_os == 'linux')) && explicit_output
 		&& output_file.ends_with('.o')
 	if is_o && !native_object && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
@@ -11141,9 +11145,9 @@ pub fn run(args []string) {
 	if ownership_mode {
 		record_user_define(mut user_defines, mut compile_values, 'ownership')
 	}
-	if backend !in ['c', 'fastc', 'arm64', 'amd64', 'wasm', 'eval']
+	if backend !in ['c', 'fastc', 'arm64', 'amd64', 'x64', 'riscv64', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
-		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, amd64, wasm, or eval')
+		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, amd64, x64, riscv64, wasm, or eval')
 		exit(1)
 	}
 	if hot_fn != '' && backend != 'arm64' {
@@ -11157,7 +11161,7 @@ pub fn run(args []string) {
 	for requested in compile_backends {
 		for name in requested.split(',') {
 			if name.trim_space() !in ['c', 'fastc', 'arm64', 'aarch64', 'amd64', 'x64', 'x86_64',
-				'x86-64', 'wasm', 'wasm32', 'eval'] {
+				'x86-64', 'riscv64', 'riscv', 'rv64', 'wasm', 'wasm32', 'eval'] {
 				eprintln('unknown compile backend `${name.trim_space()}`')
 				exit(1)
 			}
@@ -11234,6 +11238,10 @@ pub fn run(args []string) {
 			eprintln('the amd64 backend currently requires a linux/amd64 host')
 			exit(1)
 		}
+	}
+	if backend == 'riscv64' && (target.os != 'linux' || target.arch != 'riscv64') {
+		eprintln('the riscv64 backend currently supports only linux/riscv64')
+		exit(1)
 	}
 	if backend == 'amd64' && is_shared {
 		eprintln('the amd64 backend does not support `-shared` yet')
@@ -11406,6 +11414,7 @@ pub fn run(args []string) {
 	mut include_fastc := all_backends
 	mut include_arm64 := all_backends
 	mut include_amd64 := all_backends
+	mut include_riscv64 := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
 	for cb in compile_backends {
@@ -11419,6 +11428,9 @@ pub fn run(args []string) {
 				}
 				'amd64', 'x64', 'x86_64', 'x86-64' {
 					include_amd64 = true
+				}
+				'riscv64', 'riscv', 'rv64' {
+					include_riscv64 = true
 				}
 				'wasm', 'wasm32' {
 					include_wasm = true
@@ -11442,6 +11454,9 @@ pub fn run(args []string) {
 		'amd64' {
 			include_amd64 = true
 		}
+		'riscv64' {
+			include_riscv64 = true
+		}
 		'wasm' {
 			include_wasm = true
 		}
@@ -11462,6 +11477,9 @@ pub fn run(args []string) {
 		// Keep its dispatch and SSA imports in sync with the current backend skips.
 		user_defines << ['skip_amd64', 'skip_x64']
 	}
+	if !include_riscv64 {
+		user_defines << 'skip_riscv64'
+	}
 	if !include_wasm {
 		user_defines << 'skip_wasm'
 	}
@@ -11470,7 +11488,7 @@ pub fn run(args []string) {
 	// driver's gated `v.ssa` import.
 	if 'skip_arm64' in user_defines
 		&& ('skip_amd64' in user_defines || 'skip_x64' in user_defines)
-		&& 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
+		&& 'skip_riscv64' in user_defines && 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
 		user_defines << 'skip_ssa'
 	}
 	if !include_eval {
@@ -13442,7 +13460,7 @@ pub fn run(args []string) {
 		// serve every other program.
 		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused
 			&& !is_debug && coverage_dir.len == 0
-			&& backend !in ['arm64', 'amd64'] && test_files.len == 0 && !is_checker_fixture
+			&& backend !in ['arm64', 'amd64', 'x64', 'riscv64'] && test_files.len == 0 && !is_checker_fixture
 			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
 			&& !cache_state.manager.enabled
 			&& is_trivial_literal_output_program_for_target(a, pre_tc.diagnostic_files, target)
@@ -15126,6 +15144,43 @@ pub fn run(args []string) {
 		} $else {
 			eprintln('amd64 support is not compiled into this executable')
 			eprintln('Rebuild with `v -compile-backend amd64 self` on Linux AMD64.')
+			exit(1)
+		}
+	} else if backend == 'riscv64' {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_riscv64 ? {
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses:        false
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
+				exact_used_fns:    true
+			})
+			b.step('ssa build')
+
+			mut g := riscv64.Gen.new(m)
+			g.gen()
+			b.step('riscv64 gen')
+
+			// The experimental Linux RISC-V64 backend currently supports object
+			// output only, mirroring the ARM64 Linux path.
+			if !is_o {
+				eprintln('the experimental RISC-V64 backend supports object output only; use -o file.o.')
+				exit(1)
+			}
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_riscv64_${os.getpid()}_${tempname.unique_token()}.o')
+			g.write_file(obj_file)
+			b.step('riscv64 object')
+			os.mv(obj_file, bin_file) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.step('link')
+		} $else {
+			eprintln('riscv64 support is not compiled into this executable')
 			exit(1)
 		}
 	} else if backend == 'arm64' {
