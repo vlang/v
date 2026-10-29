@@ -16928,15 +16928,26 @@ pub fn run(args []string) {
 		}
 		large_c_flag_plan := v3_c_compiler_flag_plan(large_c_flag_options)
 		mut native_support_inputs := []string{}
-		if icon_path != '' {
-			icon_arch := windows_icon_resource_arch(prefs.normalized_target_arch(), c_compiler,
-				c_flag_plan.all_flags([]))
-			icon_object := prepare_windows_icon_resource(icon_path, cc_dir, icon_arch) or {
+		if icon_path != '' && os.user_os() != 'windows' {
+			icon_object := prepare_cross_windows_icon_resource(icon_path, cc_dir, c_compiler,
+				verbose || show_cc) or {
 				eprintln(err.msg())
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
 			native_support_inputs << icon_object
+		}
+		$if windows {
+			if icon_path != '' {
+				icon_arch := windows_icon_resource_arch(prefs.normalized_target_arch(), c_compiler,
+					c_flag_plan.all_flags([]))
+				icon_object := prepare_windows_icon_resource(icon_path, cc_dir, icon_arch) or {
+					eprintln(err.msg())
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+				native_support_inputs << icon_object
+			}
 		}
 		if effective_tcc && !is_o && !generated_literal_output_only {
 			atomic_input := if generate_c_project.len > 0 {

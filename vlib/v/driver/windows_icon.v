@@ -2,6 +2,7 @@ module driver
 
 import encoding.binary
 import os
+import v.cmdexec
 
 const windows_icon_group_resource_id = 1
 const max_windows_icon_dimension = 256
@@ -46,6 +47,23 @@ fn validate_windows_icon_option(icon_path string, target_os string, backend stri
 	if os.file_ext(icon_path).to_lower_ascii() !in ['.ico', '.png'] {
 		return error('`-icon` accepts only `.ico` or `.png` files')
 	}
+}
+
+fn prepare_cross_windows_icon_resource(icon_path string, build_dir string, c_compiler string, verbose bool) !string {
+	ico_path := prepare_windows_icon_ico_path(icon_path, build_dir)!
+	rc_path := os.join_path_single(build_dir, 'icon.rc')
+	obj_path := os.join_path_single(build_dir, 'icon.o')
+	os.write_file(rc_path, '1 ICON ${rc_quoted_string(ico_path)}\n')!
+	windres := find_windows_windres(c_compiler)!
+	args := ['-i', rc_path, '-o', obj_path, '-O', 'coff']
+	if verbose {
+		println('  > ${cmdexec.display(windres, args)}')
+	}
+	res := cmdexec.run(windres, args)
+	if res.exit_code != 0 {
+		return error('failed to compile Windows icon resource with `${windres}`: ${res.output.trim_space()}')
+	}
+	return obj_path
 }
 
 fn prepare_windows_icon_resource(icon_path string, build_dir string, arch string) !string {
@@ -188,6 +206,49 @@ fn prepare_windows_icon_ico_path(icon_path string, build_dir string) !string {
 			return error('`-icon` accepts only `.ico` or `.png` files')
 		}
 	}
+}
+
+fn find_windows_windres(c_compiler string) !string {
+	compiler_dir := if c_compiler.contains('/') || c_compiler.contains('\\') {
+		os.dir(c_compiler)
+	} else {
+		''
+	}
+	compiler_name := executable_stem(os.file_name(c_compiler))
+	mut candidates := []string{}
+	for suffix in ['-gcc', '-clang', '-cc', '-g++', '-clang++'] {
+		if compiler_name.ends_with(suffix) {
+			candidates << '${compiler_name[..compiler_name.len - suffix.len]}-windres'
+		}
+	}
+	candidates << 'windres'
+	candidates << 'llvm-windres'
+	for candidate in candidates {
+		for name in [candidate, '${candidate}.exe'] {
+			if compiler_dir != '' {
+				full_path := os.join_path(compiler_dir, name)
+				if os.is_file(full_path) {
+					return full_path
+				}
+			}
+			if resolved := os.find_abs_path_of_executable(name) {
+				return resolved
+			}
+		}
+	}
+	return error('could not find `windres`, which is needed for `-icon` while cross-compiling to Windows')
+}
+
+fn executable_stem(name string) string {
+	lower_name := name.to_lower_ascii()
+	if lower_name.ends_with('.exe') {
+		return name[..name.len - 4]
+	}
+	return name
+}
+
+fn rc_quoted_string(path string) string {
+	return '"' + path.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 
 fn parse_ico_file(path string) ![]WindowsIconImage {

@@ -24,8 +24,9 @@ such an executable can create, check and open files past `MAX_PATH`.
   `-v` or `-showcc`, or when the build directory had to move (see below).
 
 V leaves the linked executable intact, preserving its COFF symbols and DWARF debug sections
-for `-g` and `-cg` builds. Icons selected with `-icon` are linked as resource objects, without
-rewriting the executable after linking or requiring an external resource compiler.
+for `-g` and `-cg` builds. On Windows hosts, icons selected with `-icon` are linked as resource
+objects without rewriting the executable or requiring an external resource compiler.
+Cross-compilation keeps using `windres` to link icons as before.
 
 `os.exists` uses `GetFileAttributesW`, so it follows the manifest. The compiler starts a tool
 whose path is 260 characters or longer through its `\\?\` form, which `CreateProcessW`

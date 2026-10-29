@@ -55,6 +55,7 @@ fn test_windows_icon_cli_builds_with_all_aliases() {
 	mut compiler := ''
 	$if !windows {
 		compiler = os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc') or { return }
+		find_windows_windres(compiler) or { return }
 	}
 	root := os.join_path(os.vtmp_dir(), 'v3_windows_icon_${os.getpid()}')
 	os.rmdir_all(root) or {}
