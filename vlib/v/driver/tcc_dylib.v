@@ -9,6 +9,8 @@ import v.modulecache
 import v.pref
 import v.tempname
 
+const v3_native_bindings_marker = '#define V3CACHE_NATIVE_BINDINGS 1'
+
 fn v3_tcc_dylib_prototypes(source string) map[string]string {
 	mut prototypes := map[string]string{}
 	mut item := strings.new_builder(256)
@@ -71,7 +73,13 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		return V3NativeInputClosure{ unassignable: err.msg() }
 	}
 	mut args := c_object_compile_flags(flags)
-	args << ['-x', 'objective-c']
+	language := cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot, flags,
+		prefs.c99, prefs.ccompiler, prefs.target), flags)
+	args << ['-x', if language in ['c++', 'objective-c++'] {
+		'objective-c++'
+	} else {
+		'objective-c'
+	}]
 	deps := c_object_dependencies(compiler, args, path)
 	if deps.used_fallback {
 		if os.getenv('V3_CACHE_TRACE') != '' {
@@ -81,6 +89,9 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 			eprintln(result.output)
 		}
 		return V3NativeInputClosure{ unassignable: 'the native bridge dependency manifest is unavailable' }
+	}
+	if deps.files.any(it.ends_with('.mm')) && deps.files.any(it != path && it.ends_with('.m')) {
+		return V3NativeInputClosure{ unassignable: 'mixed Objective-C and Objective-C++ bridge contexts' }
 	}
 	mut directories := []string{}
 	for input in cgen.native_include_input_files(a, prefs.vroot, prefs.target, flags, prefs.compile_values) {
@@ -114,11 +125,31 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		if node.kind == .struct_decl && node.value.starts_with('C.') {
 			wanted_types[node.value[2..]] = true
 		}
+		for text in [node.typ_text(), if node.source_value != 0 { node.value_text() } else { '' }] {
+			for part in text.split('C.')[1..] {
+				end := v3_c_identifier_end(part, 0)
+				if end > 0 { wanted_types[part[..end]] = true }
+			}
+		}
 	}
+	mut projected_files := map[string]bool{}
+	for input in deps.files {
+		if input != path && directories.any(input.starts_with(it + os.path_separator)) {
+			projected_files[os.real_path(input)] = true
+		}
+	}
+	mut preprocess_args := args.clone()
+	preprocess_args << ['-E', '-dI', '-dD', path]
+	preprocessed := cmdexec.run(compiler, preprocess_args)
+	if preprocessed.exit_code != 0 {
+		return V3NativeInputClosure{ unassignable: 'the native bridge interface cannot be preprocessed' }
+	}
+	active_sources := v3_tcc_dylib_preprocessed_files(preprocessed.output, projected_files)
 	for input in deps.files {
 		if input == path || !directories.any(input.starts_with(it + os.path_separator)) { continue }
-		text := os.read_file(input) or { continue }
-		if v3_tcc_dylib_replicable_inline_header(text) { continue }
+		original := os.read_file(input) or { continue }
+		if v3_tcc_dylib_replicable_inline_header(original) { continue }
+		text := active_sources[os.real_path(input)] or { '' }
 		prototypes := modulecache.declaration_header(v3_tcc_dylib_c_text(text).replace('static ', '').replace('inline ', '').replace('__inline__ ', '').replace('__inline ', ''))
 		mut exposed := strings.new_builder(256)
 		for name, prototype in v3_tcc_dylib_prototypes(prototypes) {
@@ -128,6 +159,7 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 			}
 		}
 		native_path := os.real_path(input)
+		headers[native_path + ':frameworks'] = text.split_into_lines().filter(v3_tcc_dylib_is_framework_include(it)).join('\n') + '\n'
 		native_types[native_path] = v3_tcc_dylib_without_compiler_headers(modulecache.c_source_type_declarations(v3_tcc_dylib_c_text(text)), compiler_headers)
 		native_prototypes[native_path] = exposed.str()
 		for name in v3_c_identifiers(native_prototypes[native_path]) { wanted_types[name] = true }
@@ -142,9 +174,10 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	for native_path, text in native_types {
 		headers[native_path] = v3_tcc_dylib_exposed_types(text, mut wanted_types) + native_prototypes[native_path]
 	}
-	mut native_sources := native_types.keys().filter(it.ends_with('.m'))
+	mut native_sources := native_types.keys().filter(it.ends_with('.m') || it.ends_with('.mm'))
 	native_sources.sort()
 	headers['__v3_native_sources__'] = native_sources.map('#include "' + c_include_path(it) + '"').join('\n') + '\n'
+	headers['__v3_objcxx_sources__'] = native_sources.filter(it.ends_with('.mm')).map('#include "' + c_include_path(it) + '"').join('\n') + '\n'
 	mut classes := map[string]bool{}
 	for input in deps.files {
 		text := os.read_file(input) or { continue }
@@ -154,8 +187,9 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	}
 	mut class_names := classes.keys()
 	class_names.sort()
-	needs_objc_types := class_names.len > 0 || ['id', 'Class', 'SEL', 'BOOL', 'IMP', 'Protocol',
-		'objc_object', 'objc_class', 'objc_selector'].any(wanted_types[it])
+	needs_objc_types := class_names.len > 0 || (deps.files.any(it.ends_with('/objc/objc.h'))
+		&& ['id', 'Class', 'SEL', 'BOOL', 'IMP', 'Protocol', 'objc_object', 'objc_class',
+			'objc_selector'].any(wanted_types[it]))
 	headers['__v3_objc_types__'] = if needs_objc_types {
 		'#include <objc/objc.h>\n' + class_names.map('#ifdef __OBJC__\n@class ${it};\n#else\ntypedef struct ${it} ${it};\n#endif').join('\n') + '\n'
 	} else {
@@ -169,6 +203,42 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		include_dirs: v3_parallel_c_include_dirs(flags)
 		tcc_headers:  headers
 	}
+}
+
+// Project the native compiler's active branches and expanded macros, retaining
+// include edges so nested public typedefs keep their original header ownership.
+fn v3_tcc_dylib_preprocessed_files(source string, wanted map[string]bool) map[string]string {
+	mut current := ''
+	mut resolved := map[string]string{}
+	mut lines := map[string][]string{}
+	for line in source.split_into_lines() {
+		if marker := v3_preprocessor_marker_file(line) {
+			current = ''
+			if marker.len > 0 && !marker.starts_with('<') {
+				path := resolved[marker] or {
+					real := os.real_path(marker)
+					resolved[marker] = real
+					real
+				}
+				if wanted[path] { current = path }
+			}
+			continue
+		}
+		if current == '' { continue }
+		mut text := line
+		if arg := v3_tcc_dylib_include_argument(line) {
+			// Clang appends a comment to -dI include lines; it is not part of the path.
+			if arg.starts_with('"') {
+				text = '#include ' + arg[..v3_c_skip_literal(arg, 0)]
+			} else if arg.starts_with('<') {
+				if end := arg.index('>') { text = '#include ' + arg[..end + 1] }
+			}
+		}
+		lines[current] << text
+	}
+	mut result := map[string]string{}
+	for path, parts in lines { result[path] = parts.join('\n') + '\n' }
+	return result
 }
 
 // Objective-C imports have the same header dependencies as C includes.
@@ -192,6 +262,12 @@ fn v3_tcc_dylib_without_compiler_headers(source string, compiler_headers map[str
 		out.writeln(line)
 	}
 	return out.str()
+}
+
+fn v3_tcc_dylib_is_framework_include(line string) bool {
+	arg := v3_tcc_dylib_include_argument(line.trim_space()) or { return false }
+	name := arg.trim('<>')
+	return arg.starts_with('<') && name.contains('/') && name.len > 0 && name[0].is_capital()
 }
 
 fn v3_tcc_dylib_replicable_inline_header(text string) bool {
@@ -281,16 +357,16 @@ fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, inc
 			continue
 		}
 		if active[path] { continue }
-		if (path.ends_with('.m') || path.ends_with('.mm')) && (!tinyc || os.real_path(path) !in headers) {
+		if (path.ends_with('.m') || path.ends_with('.mm')) && os.real_path(path) !in headers {
 			continue
 		}
-		text := if tinyc && os.real_path(path) in headers {
-			headers[os.real_path(path)]
+		text := if os.real_path(path) in headers {
+			(if tinyc { '' } else { headers[os.real_path(path) + ':frameworks'] }) + headers[os.real_path(path)]
 		} else {
 			os.read_file(path) or { '' }
 		}
 		if cgen.native_path_is_shipped(path, @VMODROOT)
-			&& !(tinyc && os.real_path(path) in headers)
+			&& os.real_path(path) !in headers
 			&& (text.contains('SOKOL_IMPL') || text.contains('_IMPLEMENTATION') || modulecache.c_source_is_replicable(text)) {
 			out.writeln('#include "' + c_include_path(path) + '"')
 			continue
@@ -307,7 +383,7 @@ fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, inc
 		active[path] = true
 		declarations := v3_tcc_dylib_header_declarations(text)
 		if text.split_into_lines().any(it.trim_space() == '#pragma once')
-			|| (tinyc && os.real_path(path) in headers && path.ends_with('.m')) {
+			|| os.real_path(path) in headers {
 			guard := 'V3CACHE_NATIVE_HEADER_' + c_hash_bytes(u64(1469598103934665603), os.real_path(path).bytes()).hex()
 			out.writeln('#ifndef ' + guard + '\n#define ' + guard)
 			out.writeln(v3_tcc_dylib_declarations_in(declarations, tinyc, os.dir(path), include_dirs, headers, mut active))
@@ -347,7 +423,8 @@ fn v3_tcc_dylib_header_declarations(source string) string {
 }
 
 // Native implementations and their state stay together in the owner. Typed
-// exported pointers also retain archive functions used only by the program.
+// Unique pointer symbols are selected only for qualified V C-function references,
+// so native prototypes, aggregate tags and local variables retain their names.
 struct V3TccDylibBindings {
 	owner        string
 	declarations string
@@ -364,12 +441,15 @@ fn v3_tcc_dylib_function_bindings(functions map[string]string) V3TccDylibBinding
 		mut start := 0
 		for start < line.len {
 			end := v3_c_identifier_end(line, start)
-			if end > start && line[start..end] == name { break }
+			mut after := end
+			for after < line.len && line[after].is_space() { after++ }
+			if end > start && line[start..end] == name && after < line.len && line[after] == `(` {
+				break
+			}
 			start = if end > start { end } else { start + 1 }
 		}
 		prototype := line[..start] + '(*' + alias + ')' + line[start + name.len..]
 		out.writeln('extern ' + prototype.trim_string_left('extern ').trim_string_left('static '))
-		out.writeln('#define ' + name + ' (*' + alias + ')')
 		owner.writeln('__typeof__(&' + name + ') ' + alias + ' = &' + name + ';')
 	}
 	return V3TccDylibBindings{ owner: owner.str(), declarations: out.str() }
@@ -380,7 +460,7 @@ fn v3_tcc_dylib_c_text(source string) string {
 	mut objc := false
 	mut cpp_depth := 0
 	mut skip_cpp := false
-	for line in source.split_into_lines() {
+	for line in v3_tcc_dylib_without_cpp_linkage(source).split_into_lines() {
 		clean := line.trim_space()
 		if cpp_depth == 0 && clean in ['#ifdef __cplusplus', '#ifndef __cplusplus',
 			'#if defined(__cplusplus)', '#if !defined(__cplusplus)'] {
@@ -416,6 +496,57 @@ fn v3_tcc_dylib_c_text(source string) string {
 	return out.str()
 }
 
+fn v3_tcc_dylib_without_cpp_linkage(source string) string {
+	mut out := strings.new_builder(source.len)
+	mut wrappers := []int{}
+	mut depth := 0
+	mut i := 0
+	for i < source.len {
+		if source[i] == `/` {
+			after := v3_c_skip_comment(source, i)
+			if after > i {
+				out.write_string(source[i..after])
+				i = after
+				continue
+			}
+		}
+		if source[i] in [`"`, `'`] {
+			after := v3_c_skip_literal(source, i)
+			out.write_string(source[i..after])
+			i = after
+			continue
+		}
+		if source[i..].starts_with('extern') && (i == 0 || !(source[i - 1].is_alnum() || source[i - 1] == `_`)) {
+			mut after := i + 'extern'.len
+			for after < source.len && source[after].is_space() { after++ }
+			if source[after..].starts_with('"C"') {
+				after += 3
+				for after < source.len && source[after].is_space() { after++ }
+				if after < source.len && source[after] == `{` {
+					depth++
+					wrappers << depth
+					after++
+				}
+				i = after
+				continue
+			}
+		}
+		if source[i] == `{` { depth++ }
+		if source[i] == `}` {
+			if wrappers.len > 0 && depth == wrappers.last() {
+				wrappers.delete_last()
+				depth--
+				i++
+				continue
+			}
+			depth--
+		}
+		out.write_u8(source[i])
+		i++
+	}
+	return out.str()
+}
+
 // Preserve the original file ownership of SDK C structs. Their cached objects
 // are reusable, while a combined interface cannot identify each defining C file.
 fn v3_tcc_dylib_needs_native_sources(state &V3ModuleCacheState, header string) bool {
@@ -429,12 +560,11 @@ fn v3_tcc_dylib_declarations_with_dirs(source string, tinyc bool, dirs []string,
 	return (if tinyc { headers['__v3_objc_types__'] } else { '' }) + v3_tcc_dylib_declarations_in(source, tinyc, '', dirs, headers, mut active)
 }
 
-// Cached V bodies call the owner's native functions too. Projected .m types
-// supply their signatures, while the original SDK declarations remain available.
+// Cached V bodies call the owner's native functions too. Preserve projected
+// include positions so native typedefs precede V fields that use them.
 fn v3_tcc_dylib_module_declarations(source string, state &V3ModuleCacheState, bindings &V3TccDylibBindings) string {
-	return v3_tcc_dylib_declarations_with_dirs(source, false, state.bridge_include_dirs, state.bridge_tcc_headers) +
-		v3_tcc_dylib_declarations_with_dirs(state.bridge_tcc_headers['__v3_native_sources__'], true, state.bridge_include_dirs, state.bridge_tcc_headers) +
-		bindings.declarations
+	positioned := source.replace(v3_native_bindings_marker, state.bridge_tcc_headers['__v3_native_sources__'] + bindings.declarations)
+	return v3_tcc_dylib_declarations_with_dirs(positioned, false, state.bridge_include_dirs, state.bridge_tcc_headers)
 }
 
 fn v3_tcc_dylib_objc_classes(source string) []string {

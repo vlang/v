@@ -6,6 +6,61 @@ import v.modulecache
 import v.parser
 import v.pref
 
+fn test_native_bridge_binding_uses_function_declarator_after_matching_struct_tag() {
+	bindings := v3_tcc_dylib_function_bindings({
+		'record': 'struct record* record(void);'
+	})
+	assert bindings.declarations.contains('extern struct record* (*v3_native_bridge_record)(void);')
+	assert !bindings.declarations.contains('#define record')
+}
+
+fn test_native_bridge_removes_active_cpp_linkage_without_changing_literals_or_bodies() {
+	text := 'extern "C" {\ntypedef double Number;\nint value(Number n) { if (n) { return 42; } return 0; }\n}\nextern "C" int answer(void);\nconst char* text = "extern \\\"C\\\" {";\n'
+	result := v3_tcc_dylib_without_cpp_linkage(text)
+	assert result.contains('typedef double Number;')
+	assert result.contains('int value(Number n) { if (n) { return 42; } return 0; }')
+	assert result.contains('int answer(void);')
+	assert result.contains('"extern \\\"C\\\" {"')
+	assert !result.contains('extern "C"')
+}
+
+fn test_native_bridge_preprocessed_files_keep_active_declarations_and_include_edges() ! {
+	root := os.join_path(os.vtmp_dir(), 'native preprocessed files ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	outer := os.join_path(root, 'outer.m')
+	inner := os.join_path(root, 'inner.h')
+	os.write_file(outer, '')!
+	os.write_file(inner, '')!
+	text := '# 1 "${outer}"\n#include "inner.h" /* clang -E -dI */\n# 1 "${inner}" 1\ntypedef double Number;\n# 3 "${outer}" 2\nstatic int value(Number n) { return n; }\n# 1 "<built-in>" 3\nint private_builtin;\n'
+	files := v3_tcc_dylib_preprocessed_files(text, {
+		os.real_path(outer): true
+		os.real_path(inner): true
+	})
+	assert files[os.real_path(outer)] == '#include "inner.h"\nstatic int value(Number n) { return n; }\n'
+	assert files[os.real_path(inner)] == 'typedef double Number;\n'
+}
+
+fn test_native_bridge_keeps_fallback_for_mixed_native_language_contexts() ! {
+	$if !macos {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'native mixed contexts ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'first.m'), 'static int first(void) { return 1; }\n')!
+	os.write_file(os.join_path(root, 'second.mm'), 'extern "C" int second(void) { return 2; }\n')!
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(source, '#include "@DIR/first.m"\n#include "@DIR/second.mm"\nfn main() {}\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc)
+	assert closure.unassignable == 'mixed Objective-C and Objective-C++ bridge contexts'
+}
+
 fn test_native_bridge_declarations_resolve_nested_quoted_headers() ! {
 	root := os.join_path(os.vtmp_dir(), 'native bridge declarations ${os.getpid()}')
 	os.mkdir_all(root)!

@@ -766,6 +766,7 @@ mut:
 	interface_exports              []string
 	object_file_mode               bool
 	tcc_program_unit               bool
+	native_function_aliases        map[string]string
 	no_builtin                     bool
 	suppress_main                  bool
 	coverage_dir                   string
@@ -1317,6 +1318,11 @@ pub fn (mut g FlatGen) set_ccompiler(name string) {
 // set_tcc_program_unit applies TCC's C constraints when the native owner uses another compiler.
 pub fn (mut g FlatGen) set_tcc_program_unit(enabled bool) {
 	g.tcc_program_unit = enabled
+}
+
+// set_native_function_aliases redirects qualified C function references to owner pointers.
+pub fn (mut g FlatGen) set_native_function_aliases(names []string) {
+	for name in names { g.native_function_aliases[name] = 'v3_native_bridge_' + name }
 }
 
 // set_prod controls production-only code generation such as removing assertions.

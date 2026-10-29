@@ -162,6 +162,7 @@ const v3_internal_cache_force_source_env = 'V3_INTERNAL_CACHE_FORCE_SOURCE'
 const v3_internal_parser_diagnostics_printed_flag = '-v3-internal-parser-diagnostics-printed'
 const v3_internal_force_cache_source_flag = '-v3-internal-force-cache-source'
 const v3_internal_tcc_dylib_flag = '-v3-internal-tcc-dylib'
+const v3_internal_tcc_no_retry_flag = '-v3-internal-tcc-no-retry'
 const v3_internal_implicit_tcc_warning_prefix = '-v3-internal-implicit-tcc-warning='
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 
@@ -11483,6 +11484,7 @@ pub fn run(args []string) {
 	mut c_compiler_explicit := false
 	mut c_compiler_arg_index := -1
 	mut retry_compilation := true
+	mut tcc_dylib_no_retry := false
 	mut gc_mode := ''
 	mut no_std := false
 	mut enable_globals_compat := false
@@ -11959,6 +11961,9 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == v3_internal_tcc_dylib_flag {
 			tcc_dylib = true
+			i++
+		} else if args[i] == v3_internal_tcc_no_retry_flag {
+			tcc_dylib_no_retry = true
 			i++
 		} else if args[i] == '-silent' {
 			silent = true
@@ -12801,6 +12806,7 @@ pub fn run(args []string) {
 	}
 	mut c_object_cache_stats := CObjectCacheStats{}
 	// Parse directly to flat AST
+	if tcc_dylib { retry_compilation = !tcc_dylib_no_retry }
 	mut prefs := pref.new_preferences()
 	is_vsh_input := input_file.ends_with('.vsh') || raw_vsh_tmp_prefix != ''
 	if raw_vsh_tmp_prefix != '' {
@@ -14043,8 +14049,9 @@ pub fn run(args []string) {
 			|| cgen.cache_native_inputs_need_objective_c(a, prefs.vroot, bridge_flags, prefs.c99, prefs.ccompiler, prefs.target) {
 			mut bridge_args := args.clone()
 			bridge_args.insert(0, v3_internal_tcc_dylib_flag)
+			if !retry_compilation { bridge_args.insert(0, v3_internal_tcc_no_retry_flag) }
 			v3_regenerate_after_implicit_tcc(bridge_args, if c_compiler_arg_index >= 0 {
-				c_compiler_arg_index + 1
+				c_compiler_arg_index + if retry_compilation { 1 } else { 2 }
 			} else {
 				c_compiler_arg_index
 			}, '', true, '')
@@ -14198,6 +14205,10 @@ pub fn run(args []string) {
 		cache_state.bridge_tcc_headers = native_closure.tcc_headers
 	}
 	if cache_state.manager.enabled && native_closure.unassignable.len > 0 {
+		if tcc_dylib && tcc_dylib_no_retry {
+			eprintln('cannot build the TCC native bridge: ${native_closure.unassignable}')
+			exit(1)
+		}
 		trace_v3_cache_fallback('external C inputs cannot be assigned to cache units: ${native_closure.unassignable}')
 		restart_v3_without_cache('')
 	}
@@ -16486,7 +16497,10 @@ pub fn run(args []string) {
 			g.set_cache_refresh_project_flags(refresh_project_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(if tcc_dylib { effective_c_compiler } else { prefs.ccompiler })
-			if tcc_dylib { g.set_tcc_program_unit(true) }
+			if tcc_dylib {
+				g.set_tcc_program_unit(true)
+				g.set_native_function_aliases(native_closure.functions.keys())
+			}
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
@@ -16584,7 +16598,10 @@ pub fn run(args []string) {
 			g.set_cache_refresh_project_flags(refresh_project_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(if tcc_dylib { effective_c_compiler } else { prefs.ccompiler })
-			if tcc_dylib { g.set_tcc_program_unit(true) }
+			if tcc_dylib {
+				g.set_tcc_program_unit(true)
+				g.set_native_function_aliases(native_closure.functions.keys())
+			}
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
@@ -17558,7 +17575,7 @@ pub fn run(args []string) {
 		// a file that changes while the linker works is not what the record of the
 		// executable would say it is.
 		mut program_link_inputs := V3ProgramLinkInputs{}
-		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language
+		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && (!link_uses_non_c_language || tcc_dylib)
 			&& v3_tcc_builds_c_debug(is_c_debug, host_os, target.os) && (implicit_tcc != '' || tcc_dylib) {
 			tried_tcc = true
 			tcc_path := if tcc_dylib { bundled_tcc } else { implicit_tcc }
@@ -19079,17 +19096,6 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	program_specializations := split.modules['__v3_program_specializations'] or { '' }
 	program_support := split.modules['__v3_program_support'] or { '' }
 	program_generated_support := program_specializations + program_support + main_body
-	main_prefix := v3_cached_c_unit_source(prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix, state, true), state, [
-		'main',
-	]), cache_used_fns, program_generated_support, tc, state), true)
-	main_source := '#define V3CACHE_PROGRAM_UNIT 1\n' + main_prefix + program_specializations + program_support + main_body
-	// The declarations of the program unit on its own, the prefix of the dev dylib
-	// and the body for the incremental plan have no reader in a build that hands
-	// `main_source` and the objects to the C compiler.
-	mut dylib_prefix := ''
-	mut main_declarations := ''
-	mut tcc_declarations := ''
-	mut tcc_main := ''
 	mut native_bindings := V3TccDylibBindings{}
 	if state.native_bridge {
 		mut functions := map[string]string{}
@@ -19101,13 +19107,29 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		}
 		native_bindings = v3_tcc_dylib_function_bindings(functions)
 	}
+	raw_main_prefix := v3_cached_c_unit_source(prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix, state, true), state, [
+		'main',
+	]), cache_used_fns, program_generated_support, tc, state), true)
+	main_prefix := if state.native_bridge {
+		raw_main_prefix.replace(v3_native_bindings_marker, v3_tcc_dylib_declarations_with_dirs(state.bridge_tcc_headers['__v3_objcxx_sources__'], false, state.bridge_include_dirs, state.bridge_tcc_headers) + native_bindings.declarations)
+	} else {
+		raw_main_prefix
+	}
+	main_source := '#define V3CACHE_PROGRAM_UNIT 1\n' + main_prefix + program_specializations + program_support + main_body
+	// The declarations of the program unit on its own, the prefix of the dev dylib
+	// and the body for the incremental plan have no reader in a build that hands
+	// `main_source` and the objects to the C compiler.
+	mut dylib_prefix := ''
+	mut main_declarations := ''
+	mut tcc_declarations := ''
+	mut tcc_main := ''
 	if !state.objects_only {
 		dylib_prefix = modulecache.prune_unreferenced_static_string_definitions(main_prefix + program_specializations + program_support)
 	}
 	if !state.objects_only && !state.no_program_declarations {
 		main_declarations = v3_cached_c_unit_source(prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(split.prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state), false)
 		if state.native_bridge {
-			main_declarations += state.bridge_tcc_headers['__v3_native_sources__'] + native_bindings.declarations
+			main_declarations = main_declarations.replace(v3_native_bindings_marker, state.bridge_tcc_headers['__v3_native_sources__'] + native_bindings.declarations)
 			dylib_prefix += native_bindings.owner
 		}
 		tcc_declarations = tcc_cached_main_source(if state.native_bridge {
@@ -19604,6 +19626,9 @@ fn cache_source_without_cached_native_inputs(source string, state &V3ModuleCache
 		}
 		for path in paths {
 			clean := os.real_path(path).replace('\\', '/').replace('"', '\\"')
+			if state.native_bridge && !keep_main && os.real_path(path) in state.bridge_tcc_headers {
+				continue
+			}
 			excluded['#include "${clean}"'] = state.native_type_declarations[os.real_path(path)] or {
 				''
 			}

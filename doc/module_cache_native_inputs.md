@@ -30,6 +30,11 @@ Modules inside the application directory remain part of the application unit; mo
 it, including the standard library, retain their module objects and interfaces in the cache.
 The C compiler supplies the dependency manifest for project headers and their nested includes.
 Changing those inputs invalidates the affected cached artifacts.
+The TCC interface uses the native compiler's active declarations and expanded type macros,
+including Objective-C++ inputs and native types referenced by V fields. Conditional native
+prototypes and type layouts therefore keep the native owner's ABI.
+Mixed Objective-C and Objective-C++ bridge contexts retain the uncached fallback;
+`-no-retry-compilation` reports an unsupported bridge instead of changing C compilers.
 The V program keeps TCC's compile-time conditions. Native calls, including functions from static
 archives, resolve through the native owner. Loop conditions containing `or { break }` or
 `or { continue }` run inside the loop body so TCC preserves their control flow and short circuiting.

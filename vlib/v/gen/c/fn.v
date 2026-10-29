@@ -13290,7 +13290,7 @@ fn callback_is_nonvoid_pointer_type(typ &types.Type) bool {
 
 fn (mut g FlatGen) callback_c_fn_name(name string) string {
 	if name.starts_with('C.') {
-		return g.cname(name)
+		return g.c_extern_export_name(g.cname(name))
 	}
 	if g.test_files.len > 0 && (name == 'main' || name == 'main.main') {
 		return g.test_user_main_c_name()
@@ -17235,6 +17235,7 @@ fn (mut g FlatGen) emit_c_runtime_declarations(required []string) {
 }
 
 fn (mut g FlatGen) c_extern_forward_decls() {
+	if g.native_function_aliases.len > 0 { g.writeln('#define V3CACHE_NATIVE_BINDINGS 1') }
 	mut cur_module := 'main'
 	mut cur_file := ''
 	mut decls := map[string]CExternForwardDecl{}
@@ -17291,6 +17292,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			}
 		}
 		cfn := g.c_extern_export_name(mapped_cfn)
+		if g.is_native_function_alias(cfn) { continue }
 		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
 		if g.has_used_fn_filter() && !(g.needs_thread_runtime
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
@@ -17613,6 +17615,7 @@ fn c_macro_safe_extern_decl(cfn string, declaration string) string {
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
+	if g.is_native_function_alias(cfn) { return false }
 	if cfn.contains('.') {
 		return false
 	}
@@ -18615,14 +18618,22 @@ fn (g &FlatGen) c_extern_calling_convention(cfn string) string {
 	return ''
 }
 
-// c_extern_export_name returns the symbol that the C name `cfn` is linked as. On a
-// Windows target an unsuffixed Win32 API name stands for its wide export; on any
-// other target the same name belongs to the program and is kept.
+// c_extern_export_name selects native owner pointers for qualified C references
+// and wide Win32 API exports. Other C symbols keep their original names.
 fn (g &FlatGen) c_extern_export_name(cfn string) string {
+	if g.native_function_aliases.len > 0 {
+		if alias := g.native_function_aliases[cfn] { return alias }
+	}
 	if g.target.os == 'windows' {
 		return c_winapi_wide_export_name(cfn)
 	}
 	return cfn
+}
+
+fn (g &FlatGen) is_native_function_alias(cfn string) bool {
+	if g.native_function_aliases.len == 0 { return false }
+	prefix := 'v3_native_bridge_'
+	return cfn.starts_with(prefix) && g.native_function_aliases[cfn[prefix.len..]] == cfn
 }
 
 fn c_winapi_wide_export_name(cfn string) string {
