@@ -18873,10 +18873,16 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			} else if node.children_count > 0 {
 				last_id := g.a.child(node, 0)
 				last := g.a.nodes[int(last_id)]
-				if last.kind == .expr_stmt {
-					g.gen_expr(g.a.child(&last, 0))
-				} else {
-					g.gen_expr(last_id)
+				expr_id := if last.kind == .expr_stmt { g.a.child(&last, 0) } else { last_id }
+				// `unsafe { a | b } ^ c`: the block can be an operand, so an infix inside
+				// it keeps its own grouping.
+				wrap := int(expr_id) >= 0 && g.a.nodes[int(expr_id)].kind == .infix
+				if wrap {
+					g.write('(')
+				}
+				g.gen_expr(expr_id)
+				if wrap {
+					g.write(')')
 				}
 			}
 		}
