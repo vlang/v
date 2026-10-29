@@ -92,3 +92,16 @@ fn test_json5_parser_setup_is_shared_across_decoded_types() {
 	count := c.count('json2__new_json5_scanner(')
 	assert count > 0 && count <= 3, count.str()
 }
+
+fn test_standard_decoder_does_not_specialize_json5_decoding() {
+	source := plain_struct_program.replace('json2.decode[Plain]', 'json2.decode_standard[Plain]')
+	c := generated_c('standard', source)
+	assert c.contains('json2__decode_standard')
+	// Other json2 entry points can still specialize JSON5 decoding for Any.
+	// Standard decoding must not add a JSON5 decoder for the application type.
+	for line in c.split_into_lines() {
+		if line.contains('json2__decode_json5') {
+			assert !line.contains('Plain'), line
+		}
+	}
+}
