@@ -144,6 +144,93 @@ pub fn format_fl(f f64, p BF_param) string {
 	return format_float_magnitude(exact_float_fixed(fabs(f), p.len1), p)
 }
 
+// format_fl_sb appends the same fixed notation as format_fl to sb.
+// Finite values use stack storage for their exact digits, without temporary heap allocations.
+// BF_param.positive supplies the output sign.
+pub fn format_fl_sb(f f64, p BF_param, mut sb strings.Builder) {
+	mut bits := Uf64{}
+	bits.f = f
+	if unsafe { (bits.u >> 52) & 0x7ff == 0x7ff } {
+		special := format_fl(f, p)
+		sb.write_string(special)
+		unsafe { special.free() }
+		return
+	}
+	precision := if p.len1 > 0 { p.len1 } else { 0 }
+	mut decimal_buf := [768]u8{}
+	mut length, exponent := exact_float_decimal_digits(f, mut decimal_buf)
+	mut trailing := exponent + precision
+	if trailing < 0 {
+		keep := length + trailing
+		if keep <= 0 {
+			decimal_buf[0] = if keep == 0 && decimal_buf[0] >= `5` { `1` } else { `0` }
+			length = 1
+		} else {
+			round_up := decimal_buf[keep] >= `5`
+			length = keep
+			if round_up {
+				mut i := length - 1
+				for i >= 0 && decimal_buf[i] == `9` {
+					decimal_buf[i] = `0`
+					i--
+				}
+				if i >= 0 {
+					decimal_buf[i]++
+				} else {
+					decimal_buf[0] = `1`
+					decimal_buf[length] = `0`
+					length++
+				}
+			}
+		}
+		trailing = 0
+	}
+	mut fractional := precision
+	if p.rm_tail_zero {
+		if length == 1 && decimal_buf[0] == `0` {
+			fractional = 0
+		} else {
+			mut zeros := trailing
+			for i := length - 1; i >= 0 && decimal_buf[i] == `0`; i-- {
+				zeros++
+			}
+			fractional = if zeros < precision { precision - zeros } else { 0 }
+		}
+	}
+	integer_digits := if length + trailing > precision { length + trailing - precision } else { 1 }
+	leading := integer_digits + precision - length - trailing
+	sign_len := if !p.positive || p.sign_flag { 1 } else { 0 }
+	number_len := integer_digits + (if fractional > 0 { fractional + 1 } else { 0 })
+	padding := p.len0 - number_len - sign_len
+	if p.align != .left && p.pad_ch != `0` {
+		for _ in 0 .. padding {
+			sb.write_u8(p.pad_ch)
+		}
+	}
+	if !p.positive {
+		sb.write_u8(`-`)
+	} else if p.sign_flag {
+		sb.write_u8(`+`)
+	}
+	if p.align != .left && p.pad_ch == `0` {
+		for _ in 0 .. padding {
+			sb.write_u8(p.pad_ch)
+		}
+	}
+	for i in 0 .. integer_digits + fractional {
+		if i == integer_digits {
+			sb.write_u8(`.`)
+		}
+		index := i - leading
+		sb.write_u8(if index >= 0 && index < length { decimal_buf[index] } else { `0` })
+	}
+	if p.align == .left {
+		for _ in 0 .. padding {
+			sb.write_u8(p.pad_ch)
+		}
+	}
+}
+
 // format_es formats the exact f64 value in scientific notation according to p, rounding half up.
 pub fn format_es(f f64, p BF_param) string {
 	return format_float_magnitude(exact_float_scientific(fabs(f), p.len1), p)

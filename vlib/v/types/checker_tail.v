@@ -14664,7 +14664,7 @@ fn (tc &TypeChecker) selector_fn_value_param_is_mut(callee &flat.Node, param_idx
 		else { field_type }
 	}
 	raw_fn_type_id := if callable_type is Alias {
-		tc.source_fn_alias_type_text_id(callable_type.source_type_id()) or { u32(0) }
+		tc.canonical_fn_alias_type_text_id(callable_type.source_type_id()) or { u32(0) }
 	} else {
 		callable_type.source_type_id()
 	}
@@ -17667,7 +17667,7 @@ fn (tc &TypeChecker) diagnostic_fntype_alias_display(typ &Type) ?u32 {
 	} else {
 		alias.source_type_id()
 	}
-	raw_id := tc.source_fn_alias_type_text_id(lookup_id) or { return none }
+	raw_id := tc.canonical_fn_alias_type_text_id(lookup_id) or { return none }
 	if !syntax.application_valid() {
 		return tc.diagnostic_fn_type_id(raw_id)
 	}

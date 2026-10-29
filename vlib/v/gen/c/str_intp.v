@@ -102,7 +102,19 @@ fn (mut g FlatGen) gen_string_join_parts(parts []flat.NodeId, interpolation bool
 	name := '__v3_internal_symbol_join_${g.tmp_count}'
 	g.tmp_count++
 	g.write('({ string ${name}[${parts.len}]; ')
+	mut float_buffer_bytes := 0
 	for i, part in parts {
+		if precision := g.fixed_float_buffer_precision(part) {
+			// Bound total stack use even for interpolations with thousands of operands.
+			if float_buffer_bytes + precision + 312 <= 16384 {
+				float_buffer_bytes += precision + 312
+				// Keep each buffer alive until string_plus_many copies all operands.
+				g.write('u8 ${name}_float_${i}[${precision + 312}]; ${name}[${i}] = v3_f64_fixed_buf(')
+				g.gen_string_interp_child_expr(g.a.child(&g.a.nodes[int(part)], 1))
+				g.write(', ${precision}, ${name}_float_${i}); ')
+				continue
+			}
+		}
 		g.write('${name}[${i}] = ')
 		if interpolation {
 			g.gen_string_interp_child_expr(part)
@@ -112,6 +124,36 @@ fn (mut g FlatGen) gen_string_join_parts(parts []flat.NodeId, interpolation bool
 		g.write('; ')
 	}
 	g.write('string_plus_many(${parts.len}, ${name}); })')
+}
+
+fn (g &FlatGen) can_use_fixed_float_buffer() bool {
+	return g.target.os != 'vinix' && !isnil(g.tc)
+		&& 'strconv.f64_to_decimal_exact_int' in g.tc.fn_ret_types
+		&& 'strconv.f64_to_decimal' in g.tc.fn_ret_types
+		&& (!g.has_used_fn_filter()
+			|| (g.used_fn_contains('strconv.f64_to_decimal_exact_int')
+				&& g.used_fn_contains('strconv.f64_to_decimal')))
+}
+
+fn (g &FlatGen) fixed_float_buffer_precision(id flat.NodeId) ?int {
+	node := g.a.nodes[int(id)]
+	if node.kind != .call || node.children_count != 3 {
+		return none
+	}
+	callee := g.a.child_node(&node, 0)
+	if callee.kind != .ident || callee.value != 'v3_f64_fixed' {
+		return none
+	}
+	precision := g.a.child_node(&node, 2)
+	// Bound stack use; dynamic and unusually large precisions retain the existing path.
+	if precision.kind != .int_literal {
+		return none
+	}
+	value := precision.value.int()
+	if value < 0 || value > 126 || !g.can_use_fixed_float_buffer() {
+		return none
+	}
+	return value
 }
 
 fn (g &FlatGen) string_interp_child_type(child_id flat.NodeId, child flat.Node) types.Type {
@@ -514,4 +556,33 @@ fn (mut g FlatGen) intern_string(s string) int {
 	g.str_lits << s
 	g.str_lit_ids[s] = id
 	return id
+}
+
+// fixed_float_buffer_helper preserves v3_f64_fixed's shortest-decimal rounding without
+// materializing its intermediate decimal string. The caller reserves precision + 312 bytes.
+fn (mut g FlatGen) fixed_float_buffer_helper() {
+	if !g.can_use_fixed_float_buffer() {
+		return
+	}
+	g.writeln('multi_return_strconv__Dec64_bool strconv__f64_to_decimal_exact_int(u64 mant, u64 exp);')
+	g.writeln('strconv__Dec64 strconv__f64_to_decimal(u64 mant, u64 exp);')
+	g.writeln('static inline string v3_f64_fixed_buf(double x, int precision, u8* out) {')
+	g.writeln(' if (!isfinite(x)) return f64__str(x);')
+	g.writeln(' double y = fabs(x) + 0.5 * pow(10.0, -(precision > 35 ? 35 : precision));')
+	g.writeln(' union { double f; u64 u; } bits; bits.f = y;')
+	g.writeln(' u64 mant = bits.u & 0x000fffffffffffffull; u64 exp = (bits.u >> 52) & 0x7ff;')
+	g.writeln(' multi_return_strconv__Dec64_bool exact = strconv__f64_to_decimal_exact_int(mant, exp);')
+	g.writeln(' strconv__Dec64 d = exact.arg1 ? exact.arg0 : strconv__f64_to_decimal(mant, exp);')
+	g.writeln(' u8 digits[32]; int count = 0; u64 m = d.m;')
+	g.writeln(" do { digits[count++] = (u8)('0' + m % 10); m /= 10; } while (m != 0);")
+	g.writeln(' int decimal_pos = count + d.e; int whole = decimal_pos > 0 ? decimal_pos : 1;')
+	g.writeln(' int pos = 0;')
+	g.writeln(" if (signbit(x)) out[pos++] = '-';")
+	g.writeln(' for (int i = 0; i < whole + precision; ++i) {')
+	g.writeln("  if (i == whole) out[pos++] = '.';")
+	g.writeln('  int digit = decimal_pos <= 0 ? i + decimal_pos - 1 : i;')
+	g.writeln("  out[pos++] = digit >= 0 && digit < count ? digits[count - digit - 1] : '0';")
+	g.writeln(' }')
+	g.writeln(' out[pos] = 0; return (string){.str = out, .len = pos, .is_lit = 1};')
+	g.writeln('}')
 }

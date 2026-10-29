@@ -3987,7 +3987,6 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		t.call_param_types_index_ready = param_w.call_param_types_index_ready
 		t.call_param_types_prepared = param_w.call_param_types_prepared
 		t.defer_fixed_array_borrow_prep = false
-		t.prepare_array_append_tree_factories()
 		t.prepare_fixed_array_borrow_params()
 	} else {
 		t.defer_pre_scan_indexes = true

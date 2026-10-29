@@ -23779,9 +23779,15 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('static inline string v3_chan_str(chan ch, string elem) { if (ch == NULL) return string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("(nil)", 5)); string out = string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("{\\n    cap: ", 11)); out = string__plus(out, int__str(ch->cap)); out = string__plus(out, ch->closed != 0 ? v3_c_lit(", closed: true\\n}", 16) : v3_c_lit(", closed: false\\n}", 17)); return out; }')
 	}
 	if g.target.os != 'vinix' {
+		if g.can_use_fixed_float_buffer() {
+			g.writeln('static inline string v3_f64_fixed_buf(double x, int precision, u8* out);')
+		}
 		g.writeln('static inline string v3_f64_fixed(double x, int precision) {')
 		g.writeln('\tif (precision < 0) precision = 6;')
 		g.writeln('\tif (!isfinite(x)) return f64__str(x);')
+		if g.can_use_fixed_float_buffer() {
+			g.writeln('\tif (precision <= 126) { u8 buf[438]; string s = v3_f64_fixed_buf(x, precision, buf); u8* out = malloc_noscan(s.len + 1); memcpy(out, s.str, (size_t)s.len + 1); return (string){.str = out, .len = s.len, .is_lit = 0}; }')
+		}
 		g.writeln('\tint clamped_precision = precision > 35 ? 35 : precision;')
 		g.writeln('\tdouble rounder = 0.5 * pow(10.0, -clamped_precision);')
 		g.writeln('\tstring decimal = f64__str(fabs(x) + rounder);')
@@ -23835,6 +23841,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision > 0 && precision < 16) { double scale = 1.0; for (int i = 0; i < precision; ++i) scale *= 10.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
 		g.writeln('static inline string v3_f64_fixed(double x, int precision) { if (precision >= 16) { char base[128]; int b = snprintf(base, sizeof(base), "%.16g", x); if (b >= 0 && b < (int)sizeof(base)) { int dot = -1; int has_exp = 0; for (int i = 0; i < b; ++i) { if (base[i] == \'.\') dot = i; if (base[i] == \'e\' || base[i] == \'E\') has_exp = 1; } if (!has_exp) { int frac = dot >= 0 ? b - dot - 1 : 0; if (frac <= precision) { int n = b + (dot < 0 ? 1 : 0) + (precision - frac); u8* out = malloc_noscan(n + 1); memcpy(out, base, b); int pos = b; if (dot < 0) out[pos++] = \'.\'; while (frac++ < precision) out[pos++] = \'0\'; out[pos] = 0; return (string){.str = out, .len = n, .is_lit = 0}; } } } } double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
 	}
+	g.fixed_float_buffer_helper()
 	g.float_exponent_helpers()
 	// A float precision with no `f` verb: `precision` decimals with trailing zeros trimmed,
 	// or the exponent form with `precision - 1` decimals outside [1e-5, 999999).
@@ -27703,7 +27710,16 @@ fn (g &FlatGen) string_plus_call_is_nested(_id flat.NodeId, node flat.Node) bool
 	}
 	lhs := g.a.child_node(&node, 1)
 	rhs := g.a.child_node(&node, 2)
-	return g.is_string_plus_call(lhs) || g.is_string_plus_call(rhs)
+	if g.is_string_plus_call(lhs) || g.is_string_plus_call(rhs) {
+		return true
+	}
+	if _ := g.fixed_float_buffer_precision(g.a.child(&node, 1)) {
+		return true
+	}
+	if _ := g.fixed_float_buffer_precision(g.a.child(&node, 2)) {
+		return true
+	}
+	return false
 }
 
 fn (g &FlatGen) collect_string_plus_parts(id flat.NodeId, mut parts []flat.NodeId) {
@@ -27720,7 +27736,7 @@ fn (g &FlatGen) collect_string_plus_parts(id flat.NodeId, mut parts []flat.NodeI
 fn (mut g FlatGen) gen_owned_string_plus_chain(id flat.NodeId) {
 	mut parts := []flat.NodeId{}
 	g.collect_string_plus_parts(id, mut parts)
-	if parts.len < 3 {
+	if parts.len < 3 && !g.string_plus_call_is_nested(id, g.a.nodes[int(id)]) {
 		g.gen_call(id, g.a.nodes[int(id)])
 		return
 	}

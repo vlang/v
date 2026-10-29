@@ -66,6 +66,177 @@ fn prepare_cross_windows_icon_resource(icon_path string, build_dir string, c_com
 	return obj_path
 }
 
+fn prepare_windows_icon_resource(icon_path string, build_dir string, arch string, is_msvc bool) !string {
+	ico_path := prepare_windows_icon_ico_path(icon_path, build_dir)!
+	images := parse_ico_file(ico_path)!
+	if is_msvc {
+		// MSVC-style linkers merge .res inputs with other resources, including their
+		// generated manifest. A precompiled resource object prevents that merge.
+		res_path := os.join_path_single(build_dir, 'icon.res')
+		os.write_file_array(res_path, windows_icon_resource_file(images))!
+		return res_path
+	}
+	obj_path := os.join_path_single(build_dir, 'icon.o')
+	os.write_file_array(obj_path, windows_icon_resource_object(images, arch)!)!
+	return obj_path
+}
+
+fn windows_icon_resource_file(images []WindowsIconImage) []u8 {
+	mut data := []u8{}
+	// A .res file starts with an empty resource header.
+	append_windows_resource_record(mut data, 0, 0, []u8{})
+	for i, image in images {
+		append_windows_resource_record(mut data, 3, u16(i + 1), image.image_data)
+	}
+	append_windows_resource_record(mut data, 14, windows_icon_group_resource_id,
+		build_group_icon_resource(images))
+	return data
+}
+
+fn append_windows_resource_record(mut data []u8, typ u16, id u16, payload []u8) {
+	append_le_u32(mut data, u32(payload.len))
+	append_le_u32(mut data, 32) // Header size, including ordinal type and name.
+	append_le_u16(mut data, 0xffff)
+	append_le_u16(mut data, typ)
+	append_le_u16(mut data, 0xffff)
+	append_le_u16(mut data, id)
+	append_le_u32(mut data, 0) // Data version.
+	append_le_u16(mut data, if typ == 0 { u16(0) } else { u16(0x1010) })
+	append_le_u16(mut data, 0) // Neutral language.
+	append_le_u32(mut data, 0) // Version.
+	append_le_u32(mut data, 0) // Characteristics.
+	data << payload
+	for data.len % 4 != 0 {
+		data << u8(0)
+	}
+}
+
+fn windows_icon_resource_arch(target_arch string, c_compiler string, flags []string) string {
+	// An explicit cross compiler can select its own architecture without `-arch`.
+	// Match its object format, just as windres did for cross-compiled icons.
+	mut triple := os.file_name(c_compiler).to_lower_ascii()
+	mut machine_flag := ''
+	for i, flag in flags {
+		if flag.starts_with('--target=') {
+			triple = flag.all_after('=')
+		} else if flag in ['-target', '--target'] && i + 1 < flags.len {
+			triple = flags[i + 1]
+		} else if flag in ['-m32', '-m64'] {
+			machine_flag = flag
+		}
+	}
+	if machine_flag != '' {
+		return if machine_flag == '-m32' { 'x86' } else { 'amd64' }
+	}
+	for prefix in ['x86_64-', 'i686-', 'i386-', 'aarch64-'] {
+		if triple.starts_with(prefix) {
+			return match prefix {
+				'x86_64-' { 'amd64' }
+				'aarch64-' { 'arm64' }
+				else { 'x86' }
+			}
+		}
+	}
+	return target_arch
+}
+
+// windows_icon_resource_object emits a single-section COFF object, accepted by TinyCC,
+// MinGW and LLD. Let the linker add the resources: UpdateResourceW drops COFF symbols
+// and sections whose long names refer to the COFF string table, including DWARF.
+fn windows_icon_resource_object(images []WindowsIconImage, arch string) ![]u8 {
+	machine, relocation_type := match arch {
+		'amd64' { u16(0x8664), u16(3) }
+		'x86' { u16(0x14c), u16(7) }
+		'arm64' { u16(0xaa64), u16(2) }
+		else { return error('Windows icon resources are not supported for architecture `${arch}`') }
+	}
+	n := images.len
+	if n == 0 || n >= 0xffff {
+		return error('Windows icon resources require between 1 and 65534 images')
+	}
+	// Three directory levels: resource type, resource id, then neutral language.
+	icon_names := 32
+	icon_languages := icon_names + 16 + 8 * n
+	group_names := icon_languages + 24 * n
+	group_language := group_names + 24
+	data_entries := group_language + 24
+	mut section := []u8{len: data_entries + 16 * (n + 1)}
+	binary.little_endian_put_u16(mut section[14..16], 2)
+	put_windows_resource_entry(mut section, 16, 3, u32(icon_names) | 0x80000000)
+	put_windows_resource_entry(mut section, 24, 14, u32(group_names) | 0x80000000)
+	binary.little_endian_put_u16(mut section[icon_names + 14..icon_names + 16], u16(n))
+	for i, image in images {
+		language := icon_languages + 24 * i
+		entry := data_entries + 16 * i
+		put_windows_resource_entry(mut section, icon_names + 16 + 8 * i, u32(i + 1),
+			u32(language) | 0x80000000)
+		binary.little_endian_put_u16(mut section[language + 14..language + 16], 1)
+		put_windows_resource_entry(mut section, language + 16, 0, u32(entry))
+		put_windows_resource_entry(mut section, entry, u32(section.len), u32(image.image_data.len))
+		section << image.image_data
+		for section.len % 4 != 0 {
+			section << u8(0)
+		}
+	}
+	binary.little_endian_put_u16(mut section[group_names + 14..group_names + 16], 1)
+	put_windows_resource_entry(mut section, group_names + 16, windows_icon_group_resource_id,
+		u32(group_language) | 0x80000000)
+	binary.little_endian_put_u16(mut section[group_language + 14..group_language + 16], 1)
+	put_windows_resource_entry(mut section, group_language + 16, 0, u32(data_entries + 16 * n))
+	group := build_group_icon_resource(images)
+	put_windows_resource_entry(mut section, data_entries + 16 * n, u32(section.len), u32(group.len))
+	section << group
+	for section.len % 4 != 0 {
+		section << u8(0)
+	}
+	// COFF header (20 bytes), section header (40), data, relocations, one section
+	// symbol (18), an x86 feature symbol, and the empty string table (4).
+	// Each data RVA refers to symbol 0.
+	relocations := 60 + section.len
+	symbols := relocations + 10 * (n + 1)
+	mut obj := []u8{len: 60}
+	binary.little_endian_put_u16(mut obj[0..2], machine)
+	binary.little_endian_put_u16(mut obj[2..4], 1)
+	binary.little_endian_put_u32(mut obj[8..12], u32(symbols))
+	binary.little_endian_put_u32(mut obj[12..16], if arch == 'x86' { u32(2) } else { u32(1) })
+	for i, b in '.rsrc'.bytes() {
+		obj[20 + i] = b
+	}
+	binary.little_endian_put_u32(mut obj[36..40], u32(section.len))
+	binary.little_endian_put_u32(mut obj[40..44], 60)
+	binary.little_endian_put_u32(mut obj[44..48], u32(relocations))
+	binary.little_endian_put_u16(mut obj[52..54], u16(n + 1))
+	binary.little_endian_put_u32(mut obj[56..60], 0x40300040)
+	obj << section
+	for i in 0 .. n + 1 {
+		append_le_u32(mut obj, u32(data_entries + 16 * i))
+		append_le_u32(mut obj, 0)
+		append_le_u16(mut obj, relocation_type)
+	}
+	obj << '.rsrc'.bytes()
+	obj << [u8(0), 0, 0]
+	append_le_u32(mut obj, 0)
+	append_le_u16(mut obj, 1)
+	append_le_u16(mut obj, 0)
+	obj << [u8(3), 0] // IMAGE_SYM_CLASS_STATIC, no auxiliary symbols.
+	if arch == 'x86' {
+		// Resource data has no exception handlers. Mark it SafeSEH compatible,
+		// as LLVM's resource writer does, so default x86 LLD links accept it.
+		obj << '@feat.00'.bytes()
+		append_le_u32(mut obj, 0x11)
+		append_le_u16(mut obj, 0xffff) // IMAGE_SYM_ABSOLUTE.
+		append_le_u16(mut obj, 0)
+		obj << [u8(3), 0]
+	}
+	append_le_u32(mut obj, 4)
+	return obj
+}
+
+fn put_windows_resource_entry(mut data []u8, offset int, name u32, value u32) {
+	binary.little_endian_put_u32(mut data[offset..offset + 4], name)
+	binary.little_endian_put_u32(mut data[offset + 4..offset + 8], value)
+}
+
 fn prepare_windows_icon_ico_path(icon_path string, build_dir string) !string {
 	match os.file_ext(icon_path).to_lower_ascii() {
 		'.ico' {

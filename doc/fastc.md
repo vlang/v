@@ -149,8 +149,8 @@ Fixed and dynamic arrays of callbacks retain those signatures when indexed, incl
 Option/Result returns. Generic pointer arguments accept transparent `unsafe` expressions.
 Global arrays support appends, indexing, and mutable
 iteration across modules while retaining their original storage.
-Appending a borrowed string variable, field, or element copies its bytes so the array keeps
-its value after the source is freed. Call results and bulk appends retain their existing storage.
+Appending a string copies its descriptor and shares the byte storage, as with the C backend.
+Append `text.clone()` when independent byte storage is needed. Bulk appends also share storage.
 Module cycles retain every source and run each initialization and cleanup hook once in stable order.
 By-value parameters whose addresses escape to spawned workers retain shared storage after the
 function returns. Later writes and workers from the same invocation use that storage.

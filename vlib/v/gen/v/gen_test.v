@@ -588,6 +588,78 @@ fn test_formatter_preserves_loop_labels_debugger_and_enum_groups() {
 	assert vfmt('loop_label_debugger_enum_groups_twice', out) == out
 }
 
+fn test_formatter_splits_enum_value_alignment_at_standalone_comments() {
+	source := 'pub enum Grouped as u8 {
+	s = 0
+	// long is an enum field
+	long = 1
+	x = 2
+	// another group
+	// with two comments
+	a = 3
+	bb = 4
+	/* block comment
+	separates groups */
+	long_name = 5
+	c = 6
+
+	d = 7
+	ee = 8
+}
+'
+	expected := 'pub enum Grouped as u8 {
+	s = 0
+	// long is an enum field
+	long = 1
+	x    = 2
+	// another group
+	// with two comments
+	a  = 3
+	bb = 4
+	/* block comment
+	separates groups */
+	long_name = 5
+	c         = 6
+
+	d  = 7
+	ee = 8
+}
+'
+	for newline in ['\n', '\r\n'] {
+		out := vfmt('enum_comment_alignment_groups', source.replace('\n', newline))
+		assert out == expected, out
+		assert vfmt('enum_comment_alignment_groups_twice', out) == out
+	}
+}
+
+fn test_formatter_keeps_enum_alignment_across_trailing_comments() {
+	source := 'enum Trailing {
+	a = 1 // trailing comment
+	long_name = 2
+	bb = 3 /* trailing block comment
+	continued */
+	c = 4
+	implicit_member_with_a_long_name
+	d = 5 /* inline block comment */
+	ee = 6
+}
+'
+	expected := 'enum Trailing {
+	a         = 1 // trailing comment
+	long_name = 2
+	bb        = 3 /* trailing block comment
+	continued */
+	c         = 4
+	implicit_member_with_a_long_name
+	d         = 5 /* inline block comment */
+	ee        = 6
+}
+'
+	out := vfmt('enum_trailing_comment_alignment', source)
+	assert out == expected, out
+	assert vfmt('enum_trailing_comment_alignment_twice', out) == out
+}
+
 fn test_formatter_preserves_or_block_layout_and_lock_comments() {
 	source := "fn block_boundaries() {\n\tempty_or_block() or {}\n\tempty_or_block() or {\n\t}\n\tfn_with_option() or { return }\n\tfn_with_option() or {\n\t\treturn\n\t}\n\tlock value {\n\t\tprintln('inside')\n\t\t// trailing lock\n\t}\n\tlock value {\n\t\t// comment only\n\t}\n}\n"
 	out := vfmt('or_layout_lock_comments', source)

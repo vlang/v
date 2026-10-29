@@ -51,7 +51,7 @@ fn find_func(m &ssa.Module, name string) ssa.Function {
 			return f
 		}
 	}
-	assert false
+	assert false, 'missing SSA function ${name}'
 	return ssa.Function{}
 }
 
@@ -79,6 +79,23 @@ fn ret_operand(m &ssa.Module, name string) ssa.ValueID {
 	}
 	assert false
 	return ssa.ValueID(0)
+}
+
+// Native int returns are 32 bits; a constant can arrive through a 64-bit truncation.
+fn assert_native_int_constant_return(m &ssa.Module, name string, expected string) {
+	mut value := m.values[ret_operand(m, name)]
+	typ := m.type_store.types[value.typ]
+	assert typ.kind == .int_t
+	assert typ.width == 32
+	if value.kind == .instruction {
+		instruction := m.instrs[value.index]
+		assert instruction.op == .trunc
+		assert instruction.operands.len == 1
+		value = m.values[instruction.operands[0]]
+		assert m.type_store.types[value.typ].width == 64
+	}
+	assert value.kind == .constant
+	assert value.name == expected
 }
 
 // has_call_to reports whether has call to applies in v3 tests.
@@ -261,15 +278,14 @@ fn show(color Color) string {
 	assert f.blocks.len > 0
 }
 
-// test_rand_prng_interface_stubs_are_registered_for_ssa validates this v3 regression case.
-fn test_rand_prng_interface_stubs_are_registered_for_ssa() {
+// An empty program does not need the removed zero-returning PRNG interface stubs.
+fn test_unused_rand_prng_interface_stubs_are_not_registered_for_ssa() {
 	m := build_source('rand_prng_interface_stubs', '
 fn main() {}
 ')
 	for name in ['rand.new_default', 'rand.PRNG.seed', 'rand.PRNG.u8', 'rand.PRNG.u16', 'rand.PRNG.u32',
 		'rand.PRNG.u64', 'rand.PRNG.block_size', 'rand.PRNG.free'] {
-		f := find_func(m, name)
-		assert f.blocks.len > 0
+		assert !m.funcs.any(it.name == name), name
 	}
 }
 
@@ -462,9 +478,7 @@ fn get_answer() int {
 	return answer
 }
 ')
-	ret := m.values[ret_operand(m, 'get_answer')]
-	assert ret.kind == .constant
-	assert ret.name == '42'
+	assert_native_int_constant_return(m, 'get_answer', '42')
 }
 
 // test_enum_selector_lowers_to_const_value validates this v3 regression case.
@@ -738,10 +752,7 @@ fn pthread_mutex_size() int {
 	return sizeof(C.pthread_mutex_t)
 }
 ')
-	result := ret_operand(m, 'pthread_mutex_size')
-	value := m.values[result]
-	assert value.kind == .constant
-	assert value.name == '64'
+	assert_native_int_constant_return(m, 'pthread_mutex_size', '64')
 }
 
 fn test_native_struct_fixed_array_field_uses_inline_storage() {
@@ -757,10 +768,7 @@ fn cache_item(cache &Cache) string {
 	return cache.recent[2]
 }
 ')
-	result := ret_operand(m, 'cache_size')
-	value := m.values[result]
-	assert value.kind == .constant
-	assert value.name == '64'
+	assert_native_int_constant_return(m, 'cache_size', '64')
 	assert !has_call_to(m, 'cache_item', 'array_get')
 	assert has_instr_op(m, 'cache_item', .load)
 }

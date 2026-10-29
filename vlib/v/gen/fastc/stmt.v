@@ -1725,7 +1725,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 					&& element_type == fastc_trim_pointer_type(value_type)
 				converts_pointer_element := flat.source_type_query(element_type).has(.c_pointer_suffix)
 					&& value_type in [element_type, fastc_trim_pointer_type(element_type)]
-				mut push_value := if fastc_typed_option_payload(element_type) != none || boxes_variant || copies_pointed_value || converts_pointer_element || (g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name) || is_complex_or {
+				push_value := if fastc_typed_option_payload(element_type) != none || boxes_variant || copies_pointed_value || converts_pointer_element || (g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name) || is_complex_or {
 					// A `.member` enum-shorthand element, or a complex `or { return … }`-unwrap: the
 					// streamed form can carry a paren imbalance and/or unresolved shorthand. A
 					// smart-cast variant appended to a sum-type array also needs to be boxed back into
@@ -1734,7 +1734,6 @@ fn (mut g Parser) parse_simple_statement() ! {
 				} else {
 					value
 				}
-				push_value = g.render_array_append_value(g.last_expression, element_type, push_value)
 				// TinyCC cannot `__typeof__` a statement expression that runs a `return`/`for`/
 				// `switch` (an `or { return … }`-unwrap element); name the element type directly, as
 				// the declaration path does. Gated on `({` so a compound-literal value is unaffected.

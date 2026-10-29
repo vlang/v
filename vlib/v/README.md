@@ -14,6 +14,9 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+`parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
+or release their own buffers after parsing.
+
 Inside generic methods, callable parameters and local bindings take precedence over methods
 with the same name. Implicit receiver calls are resolved only when no local binding shadows
 the method name.
@@ -51,6 +54,8 @@ for explicit 64-bit values.
 Native `run` forwards program arguments and exit status. Native test builds create an
 entry point for selected tests and run suite hooks. SSA callers can select these with
 `ssa.BuildOptions.test_files` and `test_run_only`.
+Native tests retain runtime formatting helpers only when reachable tests or hooks need them.
+Generated enum stringification resolves directly to the enum's formatter.
 
 V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
 all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
@@ -508,6 +513,12 @@ Cached standard-library headers retain their source classification so headerless
 their complete layouts, including the Boehm GC stack type used by interface stringification.
 Generated fixed-array map-key helpers declare their cached builtin callees before their definitions.
 Inferred anonymous fixed arrays use their materialized element types, including nested arrays.
+Unused functions and the generic calls or function values inside them are pruned by default,
+including those in imported modules. Use `-no-skip-unused` to retain unused functions.
+The obsolete `-skip-unused` spelling prints a notice and has no effect, including when combined
+with `-no-skip-unused`.
+After a `run` or `crun` input, it remains a program argument, including for directories named
+`run`, `crun`, `build`, or `test`.
 Literal-output programs still instantiate retained generic helpers with `-no-skip-unused`.
 Merged imports in cached headers do not create parameter-name conflicts across source files.
 Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,

@@ -1,5 +1,4 @@
 import os
-import v.pref
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -41,6 +40,7 @@ fn main() {
 		exit(1)
 	}
 	os.chmod(output, 0o755) or { panic(err) }
+	os.write_file(output + '.manifest', 'replacement manifest') or { panic(err) }
 	println(os.args.last())
 }
 "
@@ -152,14 +152,8 @@ fn test_macos_default_self_build_compiler_selection() {
 		os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_macos_prealloc_test'])
 	assert default_result.exit_code == 0, default_result.output
-	default_cc := if os.uname().machine in ['arm64', 'aarch64']
-		&& !pref.host_rejects_tcc_executables() {
-		'tcc'
-	} else {
-		'cc'
-	}
 	assert !default_result.output.contains('-b fastc'), default_result.output
-	assert default_result.output.contains('-cc ${default_cc}'), default_result.output
+	assert default_result.output.contains('-cc tcc'), default_result.output
 	assert default_result.output.contains('-prealloc'), default_result.output
 	assert_vself_preserves_full_cli(default_result.output)
 	override_result :=
@@ -241,6 +235,7 @@ fn test_other_native_host_self_replacement_preserves_cli() {
 	mock_build :=
 		os.exec([vexe, '-o', isolated_vexe, mock_source])
 	assert mock_build.exit_code == 0, mock_build.output
+	os.write_file('${isolated_vexe}.manifest', 'previous manifest')!
 	vself_tool := os.join_path(root, 'vself')
 	vself_build := os.exec([vexe, '-nocache', '-d', 'vself_test_other_transition', '-o',
 		'${vself_tool}', os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
@@ -254,6 +249,9 @@ fn test_other_native_host_self_replacement_preserves_cli() {
 	assert !self_result.output.contains('vlib/v/v.v'), self_result.output
 	assert os.is_executable(isolated_vexe)
 	assert os.is_executable(os.join_path(root, 'v_old'))
+	assert os.read_file('${isolated_vexe}.manifest')! == 'replacement manifest'
+	assert os.read_file(os.join_path(root, 'v_old.manifest'))! == 'previous manifest'
+	assert !os.exists(os.join_path(root, 'v2.manifest'))
 	assert !os.exists(os.join_path(root, 'v1_fallback'))
 
 	version_result :=

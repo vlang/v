@@ -3,6 +3,17 @@ module driver
 import os
 import v.cmdexec
 
+fn test_windows_icon_resource_matches_the_selected_c_compiler() {
+	assert windows_icon_resource_arch('arm64', '/tools/x86_64-w64-mingw32-gcc', []) == 'amd64'
+	assert windows_icon_resource_arch('amd64', 'i686-w64-mingw32-gcc.exe', []) == 'x86'
+	assert windows_icon_resource_arch('amd64', 'aarch64-w64-mingw32-clang', []) == 'arm64'
+	assert windows_icon_resource_arch('arm64', 'clang', ['--target=x86_64-w64-mingw32']) == 'amd64'
+	assert windows_icon_resource_arch('amd64', 'clang', ['-target', 'aarch64-w64-mingw32']) == 'arm64'
+	assert windows_icon_resource_arch('amd64', 'gcc', ['-m32']) == 'x86'
+	assert windows_icon_resource_arch('x86', 'gcc', ['-m32', '-m64']) == 'amd64'
+	assert windows_icon_resource_arch('amd64', 'tcc', []) == 'amd64'
+}
+
 fn test_windows_icon_option_aliases() {
 	for prefix in ['-icon=', '--icon=', '-seticon=', '--seticon='] {
 		assert (windows_icon_inline_option_value(prefix + 'icon.png') or { '' }) == 'icon.png'
@@ -59,6 +70,7 @@ fn test_windows_icon_cli_builds_with_all_aliases() {
 		output := os.join_path(root, 'icon_${idx}.exe')
 		icon := if idx % 2 == 0 { ico } else { png }
 		mut args := ['-new-compiler', '-nocache', '-os', 'windows']
+		args << if idx % 2 == 0 { '-g' } else { '-cg' }
 		if compiler != '' {
 			args << ['-cc', compiler]
 		}

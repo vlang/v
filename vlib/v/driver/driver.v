@@ -138,18 +138,24 @@ const compiler_tree_large_cold_cache_source_limit = i64(10_000_000)
 const v3_cache_population_lock_name = 'large_cold_population.lock'
 const v3_large_cold_cache_reason = 'cold source graph is too large for scoped cache population'
 const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
-const scoped_linux_user_job_limit = 4
+const scoped_user_job_count = 4
 const diagnostics_server_job_limit = 8
 
-// scoped_linux_job_limit is how many jobs a compilation with scoped arenas
+// scoped_user_job_limit is how many jobs a compilation with scoped arenas
 // runs at once. A diagnostics server's check keeps no arena past its semantic
 // check, and the editor waits on it: it takes more of the pool.
-fn scoped_linux_job_limit(check_only bool, diagnostics_server bool) int {
+fn scoped_user_job_limit(check_only bool, diagnostics_server bool) int {
 	return if check_only && diagnostics_server {
 		diagnostics_server_job_limit
 	} else {
-		scoped_linux_user_job_limit
+		scoped_user_job_count
 	}
+}
+
+// Explicit macOS worker counts keep their requested parallelism. Automatic
+// user pools use the bounded arena configuration, as Linux pools already do.
+fn should_limit_scoped_user_jobs(building_v bool, scoped bool, host_os string, vjobs string) bool {
+	return !building_v && scoped && (host_os == 'linux' || (host_os == 'macos' && vjobs == ''))
 }
 
 const scoped_transform_signature_headroom = 2048
@@ -2255,6 +2261,9 @@ fn run_binary(bin_file string, args []string, remove_after_run bool) int {
 	defer {
 		if remove_after_run {
 			os.rm(bin_file) or {}
+			$if windows {
+				remove_generated_windows_long_path_manifest(bin_file)
+			}
 			v3_remove_macos_debug_symbols(bin_file)
 		}
 	}
@@ -8842,7 +8851,6 @@ struct V3BundledTccProbeOptions {
 	host_target         pref.Target
 	target              pref.Target
 	bundled_tcc         string
-	host_rejects_tcc    bool // see pref.host_rejects_tcc_executables; only an explicit `-cc tcc` selects TCC
 	prefer_platform_cc  bool // Source-built precise Boehm needs the platform compiler by default.
 }
 
@@ -8860,7 +8868,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 		}
 		return os.real_path(compiler_path) == os.real_path(options.bundled_tcc)
 	}
-	if options.host_rejects_tcc || options.prefer_platform_cc {
+	if options.prefer_platform_cc {
 		return false
 	}
 	if options.is_shared && !options.is_liveshared && options.target.os == 'linux' {
@@ -9026,7 +9034,7 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	bundled_tcc_available := v3_bundled_tcc_available(options)
 	allow_system_tcc := options.backend == 'c' && !options.c_only && !options.is_prod
 		&& !options.is_c_debug && !options.race && !options.c_compiler_explicit
-		&& !options.host_rejects_tcc && !options.prefer_platform_cc
+		&& !options.prefer_platform_cc
 		&& !(options.is_shared && !options.is_liveshared && options.target.os == 'linux')
 		&& (!options.parallel_cc || options.target.os == 'windows')
 		&& options.target.os == options.host_target.os
@@ -12185,6 +12193,9 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-preludes' {
 			no_preludes = true
 			i++
+		} else if args[i] == '-skip-unused' {
+			eprintln('notice: `-skip-unused` is no longer needed; unused code is skipped by default. Use `-no-skip-unused` to retain it.')
+			i++
 		} else if args[i] == '-no-skip-unused' {
 			no_skip_unused = true
 			no_cache = true
@@ -12647,17 +12658,14 @@ pub fn run(args []string) {
 	// serial, keep that pool in the compilation arena so close_workers never
 	// observes a pool allocated in a released markused scope.
 	scope_prealloc_markused := scope_prealloc_stages && !current_no_parallel
-	$if linux {
-		// Large preallocated user graphs retain worker-local arenas between phases.
-		// Bound Linux pools to the configuration used for the scoped-memory path;
-		// high VJOBS values otherwise multiply both RSS and shared-cache pressure.
-		if !building_v && scope_prealloc_stages && runtime.nr_jobs() > scoped_linux_user_job_limit {
-			job_limit := scoped_linux_job_limit(check_only, os.getenv('V_DIAGNOSTICS_SERVER') != '')
-			if runtime.nr_jobs() > job_limit {
-				workers.limit_pool_size(job_limit - 1)
-			}
+	if should_limit_scoped_user_jobs(building_v, scope_prealloc_stages, os.user_os(), os.getenv('VJOBS'))
+		&& runtime.nr_jobs() > scoped_user_job_count {
+		job_limit := scoped_user_job_limit(check_only, os.getenv('V_DIAGNOSTICS_SERVER') != '')
+		if runtime.nr_jobs() > job_limit {
+			workers.limit_pool_size(job_limit - 1)
 		}
 	}
+
 	if (building_v || cmd_v_build) && !target_libc_headers {
 		if no_parallel {
 			// This controls the current build only. Keep parallel support in the output
@@ -12903,7 +12911,6 @@ pub fn run(args []string) {
 		host_target:         host_target
 		target:              target
 		bundled_tcc:         bundled_tcc
-		host_rejects_tcc:    pref.host_rejects_tcc_executables()
 		prefer_platform_cc:  v3_gc_prefers_platform_cc(user_defines) || bare_needs_platform_cc
 	})
 	bundled_tcc_available := selection.bundled_tcc_available
@@ -13451,6 +13458,11 @@ pub fn run(args []string) {
 		unchanged_build_cache_key = v3_unchanged_build_key(prefs, c_compiler, bin_file)
 		if v3_restore_unchanged_build(unchanged_build_cache_dir, unchanged_build_cache_key,
 			bin_file) {
+			$if windows {
+				if target.os == 'windows' {
+					ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc)
+				}
+			}
 			if os.getenv('V3_CACHE_TRACE') != '' {
 				eprintln('  V3 unchanged build cache hit')
 			}
@@ -14727,7 +14739,6 @@ pub fn run(args []string) {
 		library_body_frontiers := skip_library_bodies && effective_c_compiler != 'msvc'
 			&& !ownership_mode && 'ownership' !in prefs.user_defines
 			&& 'autofree' !in prefs.user_defines
-			&& markused.can_check_library_body_frontiers(a, &pre_tc)
 		mut check_was_parallel := false
 		mut check_may_be_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {
@@ -15161,6 +15172,8 @@ pub fn run(args []string) {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
 				restart_v3_after_cache_invalidation('')
 			}
+		} else if test_files.len > 0 && backend in ['arm64', 'x64'] {
+			used_fns, uses_generics = markused.mark_used_for_native_tests_with_generic_usage(a, markused_tc, test_files)
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a, markused_tc, test_files)
 		} else if is_vsh_input {
@@ -16987,6 +17000,19 @@ pub fn run(args []string) {
 			}
 			native_support_inputs << icon_object
 		}
+		$if windows {
+			if icon_path != '' {
+				icon_arch := windows_icon_resource_arch(prefs.normalized_target_arch(), c_compiler,
+					c_flag_plan.all_flags([]))
+				icon_object := prepare_windows_icon_resource(icon_path, cc_dir, icon_arch,
+					c_compiler_is_msvc(c_compiler)) or {
+					eprintln(err.msg())
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+				native_support_inputs << icon_object
+			}
+		}
 		if effective_tcc && !is_o && !generated_literal_output_only {
 			atomic_input := if generate_c_project.len > 0 {
 				tcc_atomic_s_arg(prefs)
@@ -18060,35 +18086,6 @@ Please install the corresponding development package/libraries and make sure the
 			}
 		}
 		staged_binary := v3_produced_binary(cc_out)
-		$if windows {
-			if icon_path != '' {
-				ico_path := prepare_windows_icon_ico_path(icon_path, cc_dir) or {
-					eprintln(err.msg())
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
-				apply_windows_icon_to_executable(staged_binary, ico_path) or {
-					eprintln(err.msg())
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
-			}
-			// Mark the executable longPathAware so that it can use paths past MAX_PATH,
-			// unless its linker already gave it a manifest. A failure is not fatal.
-			// MSVC builds load dbghelp.dll at startup, whose DllMain calls GetTempPath2W:
-			// in a longPathAware process that loops forever on a TMP past MAX_PATH,
-			// before any V code can shorten it, so they stay as the linker made them.
-			if prefs.normalized_target_os() == 'windows' && !is_o && !is_shared
-				&& !c_compiler_is_msvc(c_compiler) && !os.is_file('${bin_file}.manifest') {
-				add_windows_long_path_manifest(staged_binary) or {
-					// Long build paths need the manifest, so say so when it is missing for them.
-					if verbose || show_cc || cc_dir_moved {
-						eprintln('warning: ${bin_file} is not longPathAware: ${err.msg()}')
-					}
-					false
-				}
-			}
-		}
 		// The executable is kept from the directory of this build, before it gets the
 		// name of the output: another build may write that name at the same moment.
 		if program_executable_enabled && program_link_inputs.taken
@@ -18118,6 +18115,14 @@ Please install the corresponding development package/libraries and make sure the
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
+		$if windows {
+			// MSVC's startup dbghelp.dll hangs with a long TMP in a longPathAware
+			// process, before V can shorten it, so leave its manifest unchanged.
+			if target.os == 'windows' && !is_o && !is_shared {
+				ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc || cc_dir_moved)
+			}
+		}
+
 		if (is_debug || race) && target.os == 'macos' {
 			v3_keep_macos_debug_symbols(staged_binary, bin_file)
 		}

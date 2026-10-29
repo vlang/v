@@ -28,13 +28,15 @@ fn test_manifest_is_added_once_to_an_executable_without_one() ! {
 	res := cmdexec.run(tcc, ['-o', exe, src])
 	assert res.exit_code == 0, res.output
 	assert !windows_executable_has_manifest(exe)!
-	assert add_windows_long_path_manifest(exe)!
-	assert windows_executable_has_manifest(exe)!
-	assert os.read_file(exe)!.contains('longPathAware')
-	// A second call finds the manifest and leaves the file alone.
 	before := os.read_bytes(exe)!
+	assert add_windows_long_path_manifest(exe)!
+	assert os.read_bytes(exe)! == before
+	assert !windows_executable_has_manifest(exe)!
+	assert os.read_file('${exe}.manifest')! == windows_long_path_manifest
+	// A second call finds the sidecar and leaves both files alone.
 	assert !add_windows_long_path_manifest(exe)!
 	assert os.read_bytes(exe)! == before
+	assert os.read_file('${exe}.manifest')! == windows_long_path_manifest
 	assert cmdexec.run(exe, []).exit_code == 0
 }
 
@@ -50,10 +52,23 @@ fn test_existing_manifest_is_kept() ! {
 	before := os.read_bytes(exe)!
 	assert !add_windows_long_path_manifest(exe)!
 	assert os.read_bytes(exe)! == before
+	assert !os.exists('${exe}.manifest')
+}
+
+fn test_msvc_removes_only_the_generated_sidecar() ! {
+	root := manifest_test_root('v3_msvc_manifest')!
+	defer { os.rmdir_all(root) or {} }
+	exe := os.join_path(root, 'main.exe')
+	os.write_file('${exe}.manifest', windows_long_path_manifest)!
+	ensure_windows_long_path_manifest(exe, true, true)
+	assert !os.exists('${exe}.manifest')
+	os.write_file('${exe}.manifest', 'user manifest')!
+	ensure_windows_long_path_manifest(exe, true, true)
+	assert os.read_file('${exe}.manifest')! == 'user manifest'
 }
 
 // test_v_builds_get_the_manifest builds a program through the driver with the bundled tcc,
-// whose linker adds no manifest, and checks that the driver added one.
+// whose linker adds no manifest, and checks the sidecar at the final output path.
 fn test_v_builds_get_the_manifest() ! {
 	root := manifest_test_root('v3_long_path_manifest_build')!
 	defer {
@@ -61,9 +76,29 @@ fn test_v_builds_get_the_manifest() ! {
 	}
 	src := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
 	exe := os.join_path(root, 'hello_tcc.exe')
-	res := cmdexec.run(@VEXE, ['-cc', 'tcc', '-o', exe, src])
+	for flags in [[]string{}, []string{}, ['-nocache']] {
+		os.rm('${exe}.manifest') or {}
+		res := cmdexec.run(@VEXE, ['-cc', 'tcc', ...flags, '-o', exe, src])
+		assert res.exit_code == 0, res.output
+		assert os.read_file('${exe}.manifest')! == windows_long_path_manifest
+		assert cmdexec.run(exe, []).output.contains('Hello, World!')
+	}
+}
+
+fn test_current_drive_rooted_output_gets_the_manifest() ! {
+	root := manifest_test_root('v3_drive_rooted_manifest')!
+	defer { os.rmdir_all(root) or {} }
+	previous := os.getwd()
+	os.chdir(root)!
+	defer { os.chdir(previous) or {} }
+	exe := os.join_path(root, 'rooted.exe').replace('/', '\\')
+	assert exe.len > 2 && exe[1] == `:`
+	rooted := exe[2..]
+	src := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
+	res := cmdexec.run(@VEXE, ['-cc', 'tcc', '-o', rooted, src])
 	assert res.exit_code == 0, res.output
-	assert os.read_file(exe)!.contains('longPathAware')
+	assert !windows_executable_has_manifest(rooted)!
+	assert os.read_file('${exe}.manifest')! == windows_long_path_manifest
 	assert cmdexec.run(exe, []).output.contains('Hello, World!')
 }
 

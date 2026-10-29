@@ -556,8 +556,7 @@ fn (mut p Parser) parse_into_source(path string, source string) {
 	p.a.file_node_ids << int(marker_id)
 	// Scanner token strings are zero-copy views into the source. The AST owns
 	// every source buffer so those views remain valid through later phases.
-	// The buffer is appended as it is read: appending a named string would copy
-	// the whole source first.
+	// Reuse a buffer owned by the parallel parse batch, or retain the file read here.
 	if source.len > 0 {
 		p.a.source_buffers << borrowed_source(source)
 	} else {
@@ -572,8 +571,7 @@ fn (mut p Parser) parse_into_source(path string, source string) {
 	p.parse_buffer(path, p.a.source_buffers.last())
 }
 
-// borrowed_source returns `source` itself. Appending a call result to an array
-// keeps the string, where appending a named string would copy all of it.
+// borrowed_source retains a source buffer already owned by a parallel parse batch.
 fn borrowed_source(source string) string {
 	return source
 }
@@ -765,7 +763,7 @@ pub fn (mut p Parser) parse_text(name string, src string) &flat.FlatAst {
 	p.a.file_node_ids << int(marker_id)
 	// Scanner token strings are zero-copy views into the source. The AST owns
 	// every source buffer so those views remain valid through later phases.
-	p.a.source_buffers << src
+	p.a.source_buffers << src.clone()
 	p.parse_buffer(name, p.a.source_buffers.last())
 	return p.a
 }

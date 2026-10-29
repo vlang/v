@@ -2128,31 +2128,48 @@ fn test_tcc_compiler_identity_tracks_same_size_rebuilds() {
 	assert first != tcc_compiler_identity(compiler)
 }
 
-// A host whose loader corrupts TCC-linked executables never selects TCC
-// implicitly, neither the bundled one nor a system one, but still honors an
-// explicit `-cc tcc`.
-fn test_v3_host_rejecting_tcc_executables_never_selects_tcc_implicitly() {
-	host := pref.host_target()
-	options := V3BundledTccProbeOptions{
-		backend:          'c'
-		c_compiler:       'cc'
-		host_os:          host.os
-		host_target:      host
-		target:           host
-		bundled_tcc:      os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
-		host_rejects_tcc: true
+// Native macOS builds use the bundled TCC by default on both supported architectures.
+fn test_v3_native_macos_selects_bundled_tcc_by_default() {
+	$if windows {
+		// The fake compiler is a shell script.
+		return
 	}
-	assert !v3_should_probe_bundled_tcc(options)
-	selection := v3_select_c_compiler(@VEXEROOT, options)
-	assert !selection.bundled_tcc_available
-	assert selection.implicit_tcc == ''
-	assert !selection.c_compiler.contains('tcc')
-	assert selection.effective_c_compiler != 'tinyc'
-	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
-		...options
-		c_compiler:          'tcc'
-		c_compiler_explicit: true
-	})
+	root := os.join_path(os.vtmp_dir(), 'v3_macos_default_tcc_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	bundled_tcc := write_v3_test_tcc(os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe'), 0)
+	for arch in ['arm64', 'amd64'] {
+		target := pref.Target{
+			os:   'macos'
+			arch: arch
+		}
+		options := V3BundledTccProbeOptions{
+			backend:     'c'
+			c_compiler:  'cc'
+			host_os:     'macos'
+			host_target: target
+			target:      target
+			bundled_tcc: bundled_tcc
+		}
+		assert v3_should_probe_bundled_tcc(options), arch
+		selection := v3_select_c_compiler(root, options)
+		assert selection.bundled_tcc_available, arch
+		assert selection.implicit_tcc == bundled_tcc, arch
+		assert selection.c_compiler == bundled_tcc, arch
+		assert selection.use_implicit_tcc_semantics, arch
+		assert selection.effective_c_compiler == 'tinyc', arch
+		// An explicit compiler still overrides the platform default.
+		explicit := v3_select_c_compiler(root, V3BundledTccProbeOptions{
+			...options
+			c_compiler:          'clang'
+			c_compiler_explicit: true
+		})
+		assert explicit.c_compiler == 'clang', arch
+		assert explicit.implicit_tcc == '', arch
+		assert !explicit.use_implicit_tcc_semantics, arch
+	}
 }
 
 fn test_v3_cstrict_flag_plan_has_one_conversion_warning_override() {

@@ -16,13 +16,34 @@ fn println(s string) {}
 fn int_str(n i64) string { return "" }
 fn map__clone(m &map[int]int) map[int]int { return map[int]int{} }
 fn map__clear(m &map[int]int) {}
-struct NativeMapState {
+// Match the 64-bit native map storage used by the SSA runtime.
+struct NativeDenseArray {
+    key_bytes i32
+    value_bytes i32
+    cap i32
+    len i32
+    deletes u32
+    key_alignment u8
+    value_alignment u8
+    all_deleted voidptr
     keys voidptr
     values voidptr
-    cap i64
-    len i64
-    key_size i64
-    value_size i64
+}
+struct NativeMapState {
+    key_bytes i32
+    value_bytes i32
+    even_index u32
+    cached_hashbits u8
+    shift u8
+    key_values NativeDenseArray
+    metas voidptr
+    extra_metas u32
+    has_string_keys i8
+    hash_fn voidptr
+    eq_fn voidptr
+    clone_fn voidptr
+    free_fn voidptr
+    count i32
     hash_slots voidptr
     hash_cap i64
     indexed_len i64
@@ -49,7 +70,7 @@ fn main() {
     mut state_pointer := voidptr(0)
     C.memcpy(&state_pointer, &numbers, uint(8))
     state := &NativeMapState(state_pointer)
-    if state.hash_cap < 40000 || state.indexed_len != 20000 { C.exit(5) }
+    if state.key_values.cap < 20000 || state.key_values.len != 20000 || state.hash_cap < 40000 || state.indexed_len != 20000 { C.exit(5) }
     slots := &i64(state.hash_slots)
     mut indexed := 0
     for i := i64(0); i < state.hash_cap; i++ {

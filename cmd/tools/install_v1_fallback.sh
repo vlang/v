@@ -394,10 +394,11 @@ download_release() {
 		return 1
 	fi
 	mkdir -p "$release_tree" || return 1
-	if command -v unzip >/dev/null 2>&1; then
-		unzip -q "$archive" -d "$release_tree" || return 1
-	elif command -v bsdtar >/dev/null 2>&1; then
+	# macOS unzip rejects the release archive's absolute libc.dylib symlink.
+	if command -v bsdtar >/dev/null 2>&1; then
 		bsdtar -xf "$archive" -C "$release_tree" || return 1
+	elif command -v unzip >/dev/null 2>&1; then
+		unzip -q "$archive" -d "$release_tree" || return 1
 	elif command -v tar >/dev/null 2>&1; then
 		tar -xf "$archive" -C "$release_tree" || return 1
 	else

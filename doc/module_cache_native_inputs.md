@@ -19,6 +19,9 @@ A program import or `#include` can select system headers for the whole program, 
 type layouts even in modules whose V source is unchanged. Objects from these two header modes
 are kept separate, including when reusing a cache populated by an older compiler.
 
+Cached interfaces retain the decimal conversion helpers used by fixed-precision float formatting,
+so warm builds can use the same temporary buffer path as uncached builds.
+
 Set `V3_CACHE_TRACE=1` to inspect cache decisions, and use `-show-timings` to see
 `monomorphize (cached)` on an unchanged build. External native inputs without a safe
 ownership or replication policy still fall back to an uncached build. TCC selection

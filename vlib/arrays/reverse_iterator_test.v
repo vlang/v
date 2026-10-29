@@ -79,11 +79,14 @@ fn test_reverse_iterator_with_mut_compound() {
 			'modified': i16(1)
 		}
 	}
+	// Appending copies scalar fields while retaining shared map storage.
 	assert before[0] == Compound{
 		s: 'xyz'
 		i: 987
 		u: 0
-		m: {}
+		m: {
+			'modified': i16(1)
+		}
 	}
 	assert after.reverse() == original
 }

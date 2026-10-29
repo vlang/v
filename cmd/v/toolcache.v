@@ -414,6 +414,12 @@ fn binary_identity(path string) string {
 	return 'sha256:${sha256.sum256(contents).hex()}'
 }
 
+// tool_application_manifest_identity detects sidecar edits even within one timestamp tick.
+fn tool_application_manifest_identity(path string) string {
+	contents := os.read_bytes(path) or { return file_stamp_missing }
+	return 'sha256:${sha256.sum256(contents).hex()}'
+}
+
 // last_modified returns the modification time of a path, or the largest possible time when
 // it cannot be determined, so that an unreadable input always counts as changed.
 fn last_modified(path string) i64 {
@@ -537,6 +543,7 @@ fn recorded_input_contents_changed(manifest string, manifest_path string) string
 			'm' { module_root_stamp(path) }
 			'p' { module_directory_stamp(path) }
 			'b' { binary_identity(path) }
+			'a' { tool_application_manifest_identity(path) }
 			else { file_stamp(path) }
 		}
 		if current != recorded {
@@ -1324,7 +1331,18 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	// and leave one build's executable paired with the other's manifest. Recording the pairing
 	// lets a reader see that and rebuild, instead of running stale code that a fresh manifest
 	// vouches for.
-	manifest := encode_tool_cache_manifest(source_files, started) + 'b${tool_cache_field_separator}${entry.binary}${tool_cache_field_separator}${binary_identity(staged)}\n'
+	staged_sidecar := '${staged}.manifest'
+	sidecar := '${entry.binary}.manifest'
+	manifest := encode_tool_cache_manifest(source_files, started) + 'b${tool_cache_field_separator}${entry.binary}${tool_cache_field_separator}${binary_identity(staged)}\n' + 'a${tool_cache_field_separator}${sidecar}${tool_cache_field_separator}${tool_application_manifest_identity(staged_sidecar)}\n'
+	// Publish the application manifest through the same pinned directory as the
+	// executable. Track absence too, so a removed or replaced sidecar is a cache miss.
+	if os.is_file(staged_sidecar) {
+		if !cache_entry.publish(staged_sidecar, os.file_name(sidecar)) {
+			return error('cannot install the application manifest of `${entry.name}`')
+		}
+	} else {
+		cache_entry.remove(os.file_name(sidecar))
+	}
 	// Publish the executable before its manifest. A lookup requires both, so the worst that
 	// a concurrent reader can observe is "binary present, manifest not updated yet", which
 	// is simply treated as a miss. The reverse order could hand out a stale binary.
