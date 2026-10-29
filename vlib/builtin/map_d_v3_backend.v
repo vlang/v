@@ -1394,6 +1394,88 @@ fn (m &VMapData) clone() &VMapData {
 	return res
 }
 
+// map_clone_sharing_keys stores at `dest` a copy of the map at `src` whose keys
+// share their heap bytes with `src` instead of being cloned. Both pointers must
+// address maps of the same type. The copy's entries, index and later insertions
+// are its own; deleting from or freeing it never frees a key, so the keys of
+// `src` must outlive the copy.
+@[unsafe]
+pub fn map_clone_sharing_keys(dest voidptr, src voidptr) {
+	source := unsafe { &map(src) }
+	unsafe {
+		*(&map(dest)) = source.clone_with_shared_keys()
+	}
+}
+
+@[unsafe]
+fn (m &map) clone_with_shared_keys() map {
+	if m.data != unsafe { nil } && m.data != &map_empty_data && m.data.count > 0
+		&& m.data.metas != unsafe { nil } && voidptr(m.data.clone_fn) == voidptr(map_clone_string)
+		&& m.data.even_index >= 128 && u64(m.data.count) * 8 < u64(m.data.even_index) {
+		// A sparse map is compacted as clone() does, but its string keys stay shared.
+		return unsafe { m.compact_clone_sharing_string_keys() }
+	}
+	if m.data == unsafe { nil } || m.data == &map_empty_data || m.data.count == 0
+		|| m.data.metas == unsafe { nil } || m.data.key_bytes <= int(sizeof(voidptr))
+		|| (m.data.even_index >= 128 && u64(m.data.count) * 8 < u64(m.data.even_index)) {
+		return unsafe { m.clone() }
+	}
+	src := m.data
+	metasize := int(sizeof(u32) * (src.even_index + 2 + src.extra_metas))
+	res := &VMapData{
+		key_bytes:          src.key_bytes
+		value_bytes:        src.value_bytes
+		even_index:         src.even_index
+		cached_hashbits:    src.cached_hashbits
+		shift:              src.shift
+		hash_kind:          src.hash_kind
+		eq_kind:            src.eq_kind
+		key_values:         unsafe { src.key_values.clone() }
+		metas:              unsafe { &u32(malloc_noscan(metasize)) }
+		extra_metas:        src.extra_metas
+		count:              src.count
+		string_length_bits: src.string_length_bits
+		string_first_bits:  src.string_first_bits
+		hash_fn:            src.hash_fn
+		key_eq_fn:          src.key_eq_fn
+		clone_fn:           src.clone_fn
+		free_fn:            map_free_nop
+	}
+	unsafe { vmemcpy(res.metas, src.metas, metasize) }
+	return map{
+		data: res
+	}
+}
+
+// map_clone_string_shared stores the source key itself, without cloning its bytes.
+fn map_clone_string_shared(dest voidptr, pkey voidptr) {
+	unsafe { vmemcpy(dest, pkey, sizeof(string)) }
+}
+
+// compact_clone_sharing_string_keys is the sparse-map compaction of
+// VMapData.clone: live entries in their insertion order, at the capacity they
+// need. The copy borrows the string keys, like clone_with_shared_keys, and
+// clones the keys it inserts later.
+@[unsafe]
+fn (m &map) compact_clone_sharing_string_keys() map {
+	src := m.data
+	mut compact := new_map_data(src.key_bytes, src.value_bytes, src.hash_fn, src.key_eq_fn,
+		src.clone_fn, map_free_nop)
+	compact.key_values.key_alignment = src.key_values.key_alignment
+	compact.key_values.value_alignment = src.key_values.value_alignment
+	compact.reserve(u32(src.count))
+	compact.clone_fn = map_clone_string_shared
+	for i in 0 .. src.key_values.len {
+		if src.key_values.has_index(i) {
+			compact.set(src.key_values.key(i), src.key_values.value(i))
+		}
+	}
+	compact.clone_fn = src.clone_fn
+	return map{
+		data: compact
+	}
+}
+
 // free releases all memory resources occupied by the `map`.
 @[unsafe]
 pub fn (m &map) free() {

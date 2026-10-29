@@ -51,11 +51,14 @@ fn newproc1(f voidptr, arg voidptr, arg_size int) &Goroutine {
 		gp = &Goroutine{}
 	}
 
-	// Allocate or reuse stack
-	if gp.stack == unsafe { nil } {
-		stack_size := default_stack_size
-		gp.stack = unsafe { malloc(stack_size) }
-		gp.stack_size = stack_size
+	// Allocate or reuse stack. Windows fibers allocate their own stacks.
+	gp.stack_size = default_stack_size
+	$if !windows {
+		if gp.stack == unsafe { nil } {
+			stack_size := default_stack_size
+			gp.stack = unsafe { malloc(stack_size) }
+			gp.stack_size = stack_size
+		}
 	}
 
 	gp.fn_ptr = f
@@ -103,6 +106,9 @@ fn call_goroutine_fn(fn_ptr voidptr, arg voidptr) {
 // goexit0 handles goroutine cleanup after the user function returns.
 // Translated from Go's goexit0 in proc.go.
 fn goexit0(mut gp Goroutine) {
+	if gp.status == .dead {
+		panic('goroutines: double goexit')
+	}
 	mut mp := get_current_m()
 
 	gp.status = .dead
@@ -115,14 +121,16 @@ fn goexit0(mut gp Goroutine) {
 	// Dissociate G from M
 	if mp != unsafe { nil } {
 		mp.curg = unsafe { nil }
+		// The native context (a fiber on Windows) is still running, so it cannot be
+		// released here. Hand it to this M before the G can be reused; execute()
+		// releases it after switching back to g0.
+		mp.dead_context = context_detach_dead(mut gp.context)
 	}
 
-	// Put the dead G on the free list for reuse
-	mut pp := get_current_p()
-	if pp != unsafe { nil } {
-		gfput(mut pp, gp)
-	} else {
-		gfput_global(gp)
+	// Reuse must wait until the scheduler is no longer running on this G's stack.
+	if mp != unsafe { nil } {
+		mp.handoff_g = &gp
+		mp.handoff = .exited
 	}
 
 	// Switch back to the scheduler (g0 context).
@@ -194,7 +202,13 @@ fn find_runnable(mut mp Machine, mut pp Processor) (&Goroutine, bool) {
 // execute runs a goroutine on the current M.
 // Translated from Go's execute() in proc.go.
 fn execute(mut mp Machine, mut pp Processor, gp &Goroutine) {
+	if gp == unsafe { nil } {
+		panic('goroutines: execute called with nil G')
+	}
 	mut g := unsafe { gp }
+	if g.status != .runnable {
+		panic('goroutines: execute called for G id=${g.id} status=${g.status} (want runnable)')
+	}
 	// Associate G with M
 	mp.curg = g
 	g.m = mp
@@ -204,6 +218,35 @@ fn execute(mut mp Machine, mut pp Processor, gp &Goroutine) {
 	context_switch(mut &mp.g0.context, &g.context)
 	// When we return here, the goroutine has yielded back to us
 	// The scheduler loop will be re-entered
+
+	// If the goroutine exited, release its context now that it no longer runs.
+	if mp.dead_context != unsafe { nil } {
+		context_release_dead(mp.dead_context)
+		mp.dead_context = unsafe { nil }
+	}
+	mut handed := mp.handoff_g
+	action := mp.handoff
+	mut unlock := mp.park_unlock
+	mp.handoff_g = unsafe { nil }
+	mp.handoff = .none
+	mp.park_unlock = unsafe { nil }
+	match action {
+		.parked {
+			handed.status = .waiting
+			// Do not touch handed after unlocking: a waker may immediately run it.
+			if unlock != unsafe { nil } {
+				unlock.release()
+			}
+		}
+		.yielded {
+			handed.status = .runnable
+			runq_put(mut pp, handed, false)
+		}
+		.exited {
+			gfput(mut pp, handed)
+		}
+		.none {}
+	}
 }
 
 // wake_p tries to wake an idle P to run goroutines.
@@ -236,6 +279,13 @@ fn wake_p() {
 fn park_m(mut mp Machine) {
 	// Release P and add M to idle list under lock
 	gsched.mu.acquire()
+	// wake_p does nothing while an M is spinning. A goroutine queued after this M's last
+	// look at the global queue, but before it stopped spinning, would then never run:
+	// check again under the lock that glob_runq_put takes.
+	if mp.p != unsafe { nil } && !gsched.runq.empty() {
+		gsched.mu.release()
+		return
+	}
 	if mp.p != unsafe { nil } {
 		pid_put(mp.p)
 		mp.p = unsafe { nil }
@@ -248,8 +298,14 @@ fn park_m(mut mp Machine) {
 	// Sleep until woken
 	mp.park.wait()
 
-	// Woken up - acquire a P and return to schedule_loop
-	acquire_p(mut mp)
+	// Woken up. The waker usually already wired an idle P before posting, so
+	// only acquire one if this M still has none (e.g. a shutdown broadcast
+	// wakes without wiring). Acquiring unconditionally would strand the wired
+	// P: it never returns to the idle list, so npidle deflates until no new
+	// M can start and queued goroutines never run.
+	if mp.p == unsafe { nil } {
+		acquire_p(mut mp)
+	}
 }
 
 // acquire_p tries to get an idle P for the given M.
@@ -305,16 +361,43 @@ fn new_m(id i64, pp &Processor) {
 	}
 	mut p := unsafe { pp }
 	wire_p(mut mp, mut p)
+	// Account for this M as spinning before spawning its thread, so that
+	// concurrent wakeups do not spawn additional Ms while this one is still
+	// starting up. The M skips its own increment (spinning is already set)
+	// and balances the count when it finds work or parks, like usual.
+	mp.spinning = true
+	C.goroutines_atomic_fetch_add_i32(&gsched.nmspinning, 1)
+	mp.park.init(0) // an uninitialized CONDITION_VARIABLE is undefined behavior on Windows
 	mp.thread = spawn m_thread_entry(mut mp)
+	// Wait until the new M thread is running before returning, so that a
+	// process exit cannot race with M thread startup. Bounded: if the
+	// thread never starts, proceed anyway rather than hanging here.
+	for _ in 0 .. 100000 {
+		if C.goroutines_atomic_load_u32(&mp.started) != 0 {
+			break
+		}
+		proc_yield(10)
+	}
 }
 
 // m_thread_entry is the entry point for new M (OS thread) goroutine scheduling loops.
 fn m_thread_entry(mut mp Machine) {
+	// Convert this OS thread to a fiber on Windows before scheduling, so that it
+	// can switch to goroutine fibers and back.
+	$if windows {
+		mp.g0.context = convert_thread_to_fiber()
+	}
 	// Register this M as the current thread's Machine so that
 	// get_current_m()/get_current_p() work on worker threads.
 	set_current_m(mp)
-	// Enter the scheduling loop - this never returns
+	// Signal that this M thread is running, so the spawner does not
+	// proceed (and potentially exit the process) while startup is in flight.
+	C.goroutines_atomic_store_u32(&mp.started, 1)
+	// Enter the scheduling loop - this returns only after shutdown()
 	schedule_loop(mut mp)
+	$if windows {
+		convert_fiber_to_thread(mp.g0.context)
+	}
 }
 
 // schedule_loop is the main loop for an M. It repeatedly finds and runs goroutines.
@@ -403,33 +486,35 @@ fn steal_work(mut thisp Processor) &Goroutine {
 // runq_steal steals half of pp's local run queue.
 // Translated from Go's runqgrab/runqsteal in proc.go.
 fn runq_steal(mut pp Processor, mut thisp Processor) &Goroutine {
-	t := C.goroutines_atomic_load_u32(&pp.runq_tail)
 	h := C.goroutines_atomic_load_u32(&pp.runq_head)
+	t := C.goroutines_atomic_load_u32(&pp.runq_tail)
 	n := t - h
 	if n == 0 {
-		// Try runnext
-		next := pp.runnext
-		if next != unsafe { nil } {
-			if C.goroutines_atomic_cas_ptr(voidptr(&pp.runnext), voidptr(&next), unsafe { nil }) {
-				return next
-			}
+		next := unsafe { &Goroutine(C.goroutines_atomic_load_ptr(voidptr(&pp.runnext))) }
+		if next != unsafe { nil }
+			&& C.goroutines_atomic_take_ptr(voidptr(&pp.runnext), voidptr(next)) {
+			return next
 		}
 		return unsafe { nil }
 	}
-	// Steal half
-	steal := n - n / 2
-	mut first := unsafe { &Goroutine(nil) }
-	for i := u32(0); i < steal; i++ {
-		mut gp := pp.runq[(h + i) % local_queue_size]
-		if i == 0 {
-			first = gp
-		} else {
-			// Enqueue remaining stolen goroutines into thief's local run queue
-			runq_put(mut thisp, gp, false)
-		}
+	if n > local_queue_size {
+		return unsafe { nil }
 	}
-	C.goroutines_atomic_fetch_add_u32(&pp.runq_head, steal)
-	return first
+	steal := n - n / 2
+	mut batch := [local_queue_size]&Goroutine{init: unsafe { nil }}
+	// Snapshot before claiming: advancing head permits the producer to reuse slots.
+	// Do not mutate the Gs' intrusive queue links until the claim succeeds.
+	for i := u32(0); i < steal; i++ {
+		batch[i] = unsafe { &Goroutine(C.goroutines_atomic_load_ptr(voidptr(&pp.runq[(h + i) % local_queue_size]))) }
+	}
+	mut expected := h
+	if !C.goroutines_atomic_cas_u32(&pp.runq_head, &expected, h + steal) {
+		return unsafe { nil }
+	}
+	for i := u32(1); i < steal; i++ {
+		runq_put(mut thisp, batch[i], false)
+	}
+	return batch[0]
 }
 
 // Global run queue operations (translated from Go's globrunqput/get)
@@ -453,14 +538,10 @@ fn glob_runq_get() &Goroutine {
 // Translated from Go's runqput() in proc.go.
 fn runq_put(mut pp Processor, gp &Goroutine, next bool) {
 	if next {
-		// Fast path: put as runnext
-		old := pp.runnext
-		pp.runnext = unsafe { gp }
-		if old == unsafe { nil } {
-			return
+		old := unsafe { &Goroutine(C.goroutines_atomic_exchange_ptr(voidptr(&pp.runnext), voidptr(gp))) }
+		if old != unsafe { nil } {
+			runq_put(mut pp, old, false)
 		}
-		// Kick old runnext to the regular queue
-		runq_put(mut pp, old, false)
 		return
 	}
 
@@ -468,7 +549,7 @@ fn runq_put(mut pp Processor, gp &Goroutine, next bool) {
 	h := C.goroutines_atomic_load_u32(&pp.runq_head)
 	t := pp.runq_tail
 	if t - h < local_queue_size {
-		pp.runq[t % local_queue_size] = unsafe { gp }
+		C.goroutines_atomic_store_ptr(voidptr(&pp.runq[t % local_queue_size]), voidptr(gp))
 		C.goroutines_atomic_store_u32(&pp.runq_tail, t + 1)
 		return
 	}
@@ -478,14 +559,35 @@ fn runq_put(mut pp Processor, gp &Goroutine, next bool) {
 
 // runq_put_slow moves half the local queue to the global queue.
 // Translated from Go's runqputslow() in proc.go.
-fn runq_put_slow(mut pp Processor, gp &Goroutine, h u32, t u32) {
-	n := (t - h) / 2
+// Copy handles before advancing head, and link them only after winning the claim.
+fn runq_put_slow(mut pp Processor, gp &Goroutine, _h u32, _t u32) {
 	mut batch := GoroutineQueue{}
-	for i := u32(0); i < n; i++ {
-		g := pp.runq[(h + i) % local_queue_size]
-		batch.push_back(g)
+	for {
+		hh := C.goroutines_atomic_load_u32(&pp.runq_head)
+		tt := C.goroutines_atomic_load_u32(&pp.runq_tail)
+		// The local queue never holds more than local_queue_size entries, so a
+		// larger modular length means the head/tail pair is torn or corrupt.
+		// The counters wrap at u32.max, so head may legitimately exceed tail.
+		// Fail loudly instead of copying garbage slots into the batch below.
+		if tt - hh > local_queue_size {
+			panic('goroutines: runq desync in put_slow')
+		}
+		n := (tt - hh) / 2
+		if n == 0 {
+			break
+		}
+		mut claimed := [local_queue_size]&Goroutine{init: unsafe { nil }}
+		for i := u32(0); i < n; i++ {
+			claimed[i] = unsafe { &Goroutine(C.goroutines_atomic_load_ptr(voidptr(&pp.runq[(hh + i) % local_queue_size]))) }
+		}
+		mut expect := hh
+		if C.goroutines_atomic_cas_u32(&pp.runq_head, &expect, hh + n) {
+			for i := u32(0); i < n; i++ {
+				batch.push_back(claimed[i])
+			}
+			break
+		}
 	}
-	C.goroutines_atomic_fetch_add_u32(&pp.runq_head, n)
 	batch.push_back(gp)
 
 	gsched.mu.acquire()
@@ -498,10 +600,12 @@ fn runq_put_slow(mut pp Processor, gp &Goroutine, h u32, t u32) {
 // runq_get gets a G from the local run queue.
 // Translated from Go's runqget() in proc.go.
 fn runq_get(mut pp Processor) (&Goroutine, bool) {
-	// Check runnext first (fast path)
-	next := pp.runnext
-	if next != unsafe { nil } {
-		pp.runnext = unsafe { nil }
+	// Check runnext first (fast path). Claim it with CAS, so a concurrent
+	// runq_put to this P cannot make us both take the same goroutine.
+	// On failure another thread won, fall through to the regular queue.
+	next := unsafe { &Goroutine(C.goroutines_atomic_load_ptr(voidptr(&pp.runnext))) }
+	if next != unsafe { nil }
+		&& C.goroutines_atomic_take_ptr(voidptr(&pp.runnext), voidptr(next)) {
 		return next, true
 	}
 
@@ -512,7 +616,8 @@ fn runq_get(mut pp Processor) (&Goroutine, bool) {
 		if t == h {
 			return unsafe { nil }, false
 		}
-		gp := pp.runq[h % local_queue_size]
+		// Copy before publishing free space: a producer may reuse this slot after CAS.
+		gp := unsafe { &Goroutine(C.goroutines_atomic_load_ptr(voidptr(&pp.runq[h % local_queue_size]))) }
 		if C.goroutines_atomic_cas_u32(&pp.runq_head, &h, h + 1) {
 			return gp, false
 		}

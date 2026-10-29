@@ -35,7 +35,7 @@ mut:
 fn (tc &TypeChecker) sum_escape_has_pointer_variant(typ Type) bool {
 	sum := unalias_type(typ)
 	if sum !is SumType { return false }
-	for variant in tc.sum_types.type_ids(sum.name()) or { []u32{} } {
+	for variant in tc.sum_types.type_ids(sum.source_type_id()) or { []u32{} } {
 		if unalias_type(tc.parse_canonical_type(variant)) is Pointer { return true }
 	}
 	return false

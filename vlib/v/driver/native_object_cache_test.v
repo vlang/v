@@ -1,6 +1,34 @@
 module driver
 
 import os
+import v.modulecache
+
+fn test_native_object_file_signature_preserves_content_and_refreshes() ! {
+	root := os.join_path(os.vtmp_dir(), 'native_cache_signature_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'dependency.h')
+	mut stats := CObjectCacheStats{}
+	assert c_object_file_signature(path, false, mut stats) == ''
+	assert stats.dependency_file_reads == 0
+	for size in [0, 1, 128 * 1024 + 1] {
+		os.write_file_array(path, []u8{len: size, init: u8(index % 251)})!
+		expected := modulecache.file_signature(path)
+		previous_reads := stats.dependency_file_reads
+		signature := c_object_file_signature(path, true, mut stats)
+		assert signature == expected
+		assert c_object_file_signature(path, false, mut stats) == signature
+		assert stats.dependency_file_reads == previous_reads + 1
+	}
+	previous := stats.file_signatures[os.real_path(path)]
+	// Same-sized edits must be detected by the post-compilation refresh.
+	os.write_file_array(path, []u8{len: 128 * 1024 + 1, init: u8((index + 1) % 251)})!
+	assert c_object_file_signature(path, false, mut stats) == previous
+	refreshed := c_object_file_signature(path, true, mut stats)
+	assert refreshed != previous
+	assert refreshed == modulecache.file_signature(path)
+	assert c_object_file_signature(path, false, mut stats) == refreshed
+}
 
 fn native_cache_directory_worker(path string, gate chan bool) bool {
 	_ := <-gate

@@ -4,11 +4,24 @@
 It stores values as an integer coefficient plus a decimal scale, so addition,
 subtraction, and multiplication stay exact.
 
+Like Go's [shopspring/decimal](https://pkg.go.dev/github.com/shopspring/decimal),
+constructors keep the supplied scale internally, while `str()` omits trailing
+fractional zeros: `from_string('5.00')` has coefficient 500, scale 2, and string
+`5`. Use `str_fixed(places)` for half-up rounding and exactly that many places,
+for example `amount.str_fixed(2)!` returns `5.00`. Negative places return an error.
+`+` and `-` keep the larger scale, `*` adds the scales, and `round` and `div`
+store exactly the requested scale. Comparisons use numeric value regardless
+of scale. `normalize()` removes trailing coefficient zeros and reduces the
+stored scale without changing the value or its normal string representation.
+V uses nonnegative scales and retains its existing exponent parsing limits.
+
 `round` and `div` round to a caller-chosen number of decimal places with a
 `RoundingMode`: `half_up` (ties away from zero), `half_even` (banker's
 rounding), `half_down`, `up`, `down`, `ceiling` or `floor`. `div_prec` is
 `div` with `half_up`. The `/` operator uses `decimal.default_division_precision`
-and panics on a zero divisor; use `div` where the divisor can be zero.
+(16 fractional places), independently of either operand's stored scale, and
+panics on a zero divisor; use `div` where the divisor can be zero. Use `div_prec`
+with more places when small values would otherwise round to zero.
 
 `rem` returns the remainder of a division truncated towards zero, so it has the
 sign of the dividend, like `%` on V integers. `floor_div` and `floor_mod` round
@@ -27,6 +40,23 @@ An exponent can have one leading `+` or `-` sign and any number of leading zeros
 Exponents must be between -100 and 100 inclusive. Larger magnitudes return an
 `exponent out of range` error rather than changing the value or allocating large powers of ten.
 
+`Decimal` implements the `json2` custom encoder and decoders, like `big.Integer`.
+`json2.encode` writes a value as a JSON number in plain notation with its stored scale,
+so `10.50` stays `10.50`. Consumers that read JSON numbers as binary floating point,
+such as JavaScript's `JSON.parse`, can round such values. `json2.decode` accepts a
+JSON number within the exponent range of `from_string`, or a JSON string with the
+syntax of a JSON number such as `"10.50"`, and keeps its scale; other strings,
+booleans and arrays return an error. With `json5: true`, a hexadecimal number such as
+`0x1F` decodes with scale 0, while `Infinity` and `NaN` return an error. Outside strict
+mode a nested `null` decodes to zero; use a `?decimal.Decimal` field to tell a missing
+value apart from zero. In a sum type that also has a `string` variant, json2 gives a
+JSON string to whichever of the two is declared first: with `decimal.Decimal | string`
+every string is parsed as a decimal and a non-numeric string is an error, so declare
+`string | decimal.Decimal` to keep strings as strings. As for `big.Integer`, json2
+writes a sum type variant as a tagged object of its fields, and decodes a JSON object
+into those fields without validation: an object with a negative `scale_value` decodes,
+and `str()` and `json2.encode` then panic, so check `scale() >= 0` on untrusted input.
+
 ## Example
 
 ```v
@@ -36,6 +66,13 @@ price := decimal.from_string('19.99')!
 fee := decimal.from_string('1.50')!
 total := price + fee
 assert total.str() == '21.49'
+
+amount := decimal.from_string('5.00')!
+assert amount.scale() == 2
+assert amount.str() == '5'
+assert amount.str_fixed(2)! == '5.00'
+assert amount.normalize().scale() == 0
+assert amount == decimal.from_int(5)
 
 share := total.div_prec(decimal.from_int(3), 2)!
 assert share.str() == '7.16'

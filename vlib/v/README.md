@@ -587,8 +587,10 @@ the V temporary directory by default; set `V3CACHE` to select another root, or p
 object cache. An explicit `-b c` binary build also retains the complete generated translation unit
 at `<output>.c` for codegen inspection. Use `-show-timings` to print elapsed time for each compiler
 stage and the total, including memory usage and cache metrics. It enables the same benchmark
-summary as `-v` without verbose compiler traces. For self-host builds, `-v` also reports
-time spent preparing markused, marking reachable symbols, and waiting for transform preparation.
+summary as `-v` without verbose compiler traces. `-show-instructions` also prints the retired
+CPU instructions of each stage and of the whole process (macOS only). For self-host builds, `-v`
+also reports time spent preparing markused, marking reachable symbols, and waiting for
+transform preparation.
 `-silent` and generated C output to stdout
 (`-o -`) suppress the summary. The benchmark output prints counts for parsed `.vh` and
 `.v` files and their total
@@ -1024,10 +1026,11 @@ comparing generated C through the full dispatch path; ordinary compilation keeps
 
 ### Monomorphization parallelism
 
-Generic specialization stays serial by default. Set `V3_PARALLEL_MONOMORPHIZE=1` to opt in
-when using a GCC- or Clang-built compiler. Parallel specialization remains experimental because
-nested generic-interface instantiations can lose specialization results. TinyCC-built compilers
-always specialize serially; `V3_PARALLEL_MONOMORPHIZE=0` also keeps specialization serial.
+Generic specialization stays serial by default. Set `V3_PARALLEL_MONOMORPHIZE=1` to opt in.
+Parallel specialization remains experimental because nested generic-interface instantiations can
+lose specialization results. It is available with GCC- and Clang-built compilers, and with
+TinyCC-built compilers on Linux/amd64; other TinyCC targets specialize serially.
+`V3_PARALLEL_MONOMORPHIZE=0` and `-no-parallel` keep specialization serial.
 
 ### Transform batch arenas
 

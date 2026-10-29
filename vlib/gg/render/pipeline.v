@@ -86,6 +86,11 @@ pub fn (ctx &Context) make_pipeline_with_shader(desc gfx.PipelineDesc, shader gf
 	return p
 }
 
+// current_pipeline returns the pipeline selected for subsequent drawing.
+pub fn (ctx &Context) current_pipeline() Pipeline {
+	return ctx.st.pip_stack[ctx.st.pip_tos]
+}
+
 pub fn (ctx &Context) load_pipeline(p Pipeline) {
 	mut st := ctx.st
 	st.pip_stack[st.pip_tos] = p

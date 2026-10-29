@@ -56,14 +56,14 @@ fn test_native_closure_context_uses_registered_runtime_getter() {
 	assert m.values[getter_addr.operands[1]].name == '8'
 }
 
-fn test_native_darwin_memory_mapping_constants() {
+fn test_native_memory_mapping_constants() {
 	mut a := flat.FlatAst.new()
 	mut m := Module.new()
 	i8_type := m.type_store.get_int(8)
 	i64_type := m.type_store.get_int(64)
 	mut b := Builder{ a: &a, m: m, i8_type: i8_type, i64_type: i64_type }
 	base := a.add_node(flat.Node{ kind: .ident, value: 'C' })
-	for name, expected in {
+	mut expected_values := {
 		'PROT_READ':     '1'
 		'PROT_WRITE':    '2'
 		'PROT_EXEC':     '4'
@@ -73,7 +73,14 @@ fn test_native_darwin_memory_mapping_constants() {
 		'MAP_FAILED':    '-1'
 		'_SC_PAGESIZE':  '29'
 		'_SC_PAGE_SIZE': '29'
-	} {
+	}
+	$if linux {
+		expected_values['MAP_ANON'] = '32'
+		expected_values['MAP_ANONYMOUS'] = '32'
+		expected_values['_SC_PAGESIZE'] = '30'
+		expected_values['_SC_PAGE_SIZE'] = '30'
+	}
+	for name, expected in expected_values {
 		start := a.children.len
 		a.children << base
 		selector := a.add_node(flat.Node{ kind: .selector, value: name, children_start: start, children_count: 1 })

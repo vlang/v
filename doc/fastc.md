@@ -5,6 +5,13 @@ without the regular parser, checker, or AST pipeline, then compiles with bundled
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
+Ordinary `v self` builds include only the C backend. The first `-b fastc` request automatically
+builds a full compiler in the tool cache and runs it; subsequent requests reuse that compiler.
+Use `v -compile-backend fastc self` to include FastC in the main executable instead.
+
+On Windows, ordinary FastC programs set stdout and stderr to binary mode, preserving `\n`
+without CRT conversion to `\r\n`, as the default C backend does.
+
 Sum types currently use boxed payloads in FastC. Copying a sum containing a value variant can
 therefore share that variant's storage, unlike the independent value copies in the default
 C backend. Programs relying on sum value snapshots should use the default C backend until
@@ -235,6 +242,11 @@ v -b fastc -nocache -o v_fastc1 cmd/v
 
 Each generation retains the full command-line entry and can compile programs with either
 the C or FastC backend. `-nocache` forces each generation to rebuild its generated C units.
+Clang production self-builds also exercise this full-compiler FastC path during PGO training
+when FastC is included. Compiler sources must stay within the FastC self-hosting subset for
+that training to complete.
+This path preserves enum shorthand types in parallel assignments and imported call arguments,
+and lowers flag enum `.has(flag)` calls on variables and imported function results.
 On macOS ARM64, standard full-compiler builds compile the owned native support files together
 so TinyCC processes shared SDK declarations once. Debug builds, custom preprocessing flags,
 and other native source sets retain separate compilation. FastC does not read their C headers.

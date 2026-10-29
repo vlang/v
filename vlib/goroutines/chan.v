@@ -99,17 +99,20 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 
 	// Block: enqueue ourselves on the send wait queue
 	gp := get_current_g()
+	if gp == unsafe { nil } {
+		panic('goroutines: chan_send with no current goroutine')
+	}
 	mut mysg := &Sudog{
 		g:    unsafe { gp }
 		elem: ep
 		c:    voidptr(ch)
 	}
 	ch.sendq.enqueue(mysg)
-	ch.mu.release()
-
-	// Park the goroutine until a receiver wakes us
-	gopark('chan send')
-
+	// The scheduler unlocks after saving our context, before a receiver can wake us.
+	gopark_unlock('chan send', &ch.mu)
+	if !mysg.success {
+		panic('send on closed channel')
+	}
 	return true
 }
 
@@ -132,8 +135,9 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 	// Fast path: try to find a waiting sender
 	sg := ch.sendq.dequeue()
 	if sg != unsafe { nil } {
-		ch.mu.release()
+		// Buffered rendezvous also updates the ring indices and must hold mu.
 		recv_direct(ch, sg, ep)
+		ch.mu.release()
 		return true, true
 	}
 
@@ -167,18 +171,18 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 
 	// Block: enqueue ourselves on the recv wait queue
 	gp := get_current_g()
+	if gp == unsafe { nil } {
+		panic('goroutines: chan_recv with no current goroutine')
+	}
 	mut mysg := &Sudog{
 		g:    unsafe { gp }
 		elem: ep
 		c:    voidptr(ch)
 	}
 	ch.recvq.enqueue(mysg)
-	ch.mu.release()
-
-	// Park until a sender wakes us
-	gopark('chan receive')
-
-	return true, true
+	// The scheduler unlocks after saving our context, before a sender can wake us.
+	gopark_unlock('chan receive', &ch.mu)
+	return true, mysg.success
 }
 
 // chan_close closes the channel.

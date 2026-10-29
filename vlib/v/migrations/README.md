@@ -66,7 +66,11 @@ fn create_users(mut ctx migrations.Context) ! {
 ```
 
 The schema helpers include table and column creation/removal/renaming, indexes, inline or altered
-foreign keys, and trusted raw SQL via `ctx.execute()`. SQLite cannot directly change a column or
+foreign keys, and trusted raw SQL via `ctx.execute()`. `Table.options` is also trusted raw SQL: it
+is appended verbatim after the column list of `CREATE TABLE` (for example SQLite `STRICT`,
+PostgreSQL `WITH (fillfactor = 80)`, or MySQL `ENGINE=InnoDB`) without dialect validation, and
+`Index.where` is inserted verbatim as the `WHERE` condition of a partial index.
+SQLite cannot directly change a column or
 add/remove a foreign key on an existing table; those helpers return an error so the migration can
 explicitly rebuild the table. SQLite `add_column` also rejects primary-key, unique, and
 auto-increment columns, non-nullable columns without a non-NULL default, and nonconstant defaults

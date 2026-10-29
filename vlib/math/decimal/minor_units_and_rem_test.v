@@ -16,6 +16,7 @@ fn test_from_minor_units() {
 	assert decimal.from_minor_units(1999, 2)!.str() == '19.99'
 	assert decimal.from_minor_units(-5, 3)!.str() == '-0.005'
 	assert decimal.from_minor_units(100, 2)!.str() == '1'
+	assert decimal.from_minor_units(100, 2)!.scale() == 2
 	assert decimal.from_minor_units(0, 2)!.is_zero()
 	assert decimal.from_minor_units(min_i64, 0)!.str() == '-9223372036854775808'
 	decimal.from_minor_units(1, -1) or {
@@ -33,6 +34,9 @@ fn test_to_minor_units() {
 	assert must_decimal('0').to_minor_units(30)! == 0
 	assert must_decimal('1').to_minor_units(18)! == 1_000_000_000_000_000_000
 	assert must_decimal('0.1').to_minor_units(19)! == 1_000_000_000_000_000_000
+	assert must_decimal('5.000').to_minor_units(2)! == 500
+	assert must_decimal('19.990').to_minor_units(2)! == 1999
+	assert must_decimal('0.000').to_minor_units(0)! == 0
 }
 
 fn test_to_minor_units_i64_bounds() {
@@ -138,4 +142,6 @@ fn test_min_and_max() {
 	assert decimal.min(b, a).str() == '-2'
 	assert decimal.max(b, a).str() == '1.5'
 	assert decimal.min(must_decimal('1.10'), must_decimal('1.1')).str() == '1.1'
+	assert decimal.min(must_decimal('1.10'), must_decimal('1.1')).scale() == 2
+	assert decimal.max(must_decimal('1.1'), must_decimal('1.10')).scale() == 1
 }

@@ -1,6 +1,7 @@
 module ssa
 
 import math
+import strconv
 import v.flat
 import v.gen.c.naming { sum_field_name }
 import v.token
@@ -56,6 +57,9 @@ const ssa_nominal_array_source_type = flat.source_type_id('Array')
 const ssa_nominal_map_source_type = flat.source_type_id('Map')
 const ssa_i128_source_type = flat.source_type_id('i128')
 const ssa_u128_source_type = flat.source_type_id('u128')
+const ssa_c_wchar_source_type = flat.source_type_id('C.wchar_t')
+const ssa_wchar_character_source_type = flat.source_type_id('wchar.Character')
+const ssa_wchar_c_wchar_source_type = flat.source_type_id('wchar.C.wchar_t')
 const ssa_option_source_type = flat.source_type_id('__v_option')
 const ssa_builtin_array_source_type = flat.source_type_id('builtin.array')
 const ssa_array_flags_source_type = flat.source_type_id('ArrayFlags')
@@ -101,24 +105,30 @@ mut:
 	array_type               TypeID
 	map_type                 TypeID
 	map_state_type           TypeID
+	wide_int_type            TypeID
 	fn_types                 map[string]TypeID
 	fn_ids                   map[string]int
 	const_exprs              map[string]flat.NodeId
 	native_initializers      map[string]NativeInitializer
 	native_initializer_order []string
-	// Declaration and emitted C names stay in their own symbol namespace.
-	struct_types             map[string]TypeID
+	// Exact declaration and tuple C spellings index SSA layouts; the values belong
+	// to this module's distinct semantic TypeID namespace.
+	struct_types             map[u32]TypeID
 	multi_return_types       map[u32]TypeID
 	multi_return_field_types map[u32]map[string]u32
+	ssa_type_names           map[TypeID]string
+	interface_types          map[string]TypeID
+	interface_type_names     map[TypeID]string
+	sum_types_registering    map[TypeID]bool
 	struct_field_types       flat.TypeTextBindings
 	struct_field_defaults    map[string]NativeFieldDefault
 	struct_embeds            map[TypeID][]int
 	default_struct_types     map[TypeID]bool
 	option_types             map[u32]TypeID
-	sum_type_variants        flat.TypeTextListBindings
-	sum_type_canonical       flat.TypeTextBindings
-	enum_types               map[string]bool
-	flag_enum_types          map[string]bool
+	sum_type_variants        flat.SourceTypeListBindings
+	sum_type_canonical       flat.SourceTypeBindings
+	enum_types               map[u32]bool
+	flag_enum_types          map[u32]bool
 	enum_values              map[string]int
 	enum_member_values       map[string]int
 	enum_member_dupes        map[string]bool
@@ -146,13 +156,15 @@ mut:
 	// When non-empty, all functions declared in these modules are skipped (dead
 	// code elimination for unused backends/modules).
 	skip_modules map[string]bool
-	// SSA-level type alias name -> resolved base TypeID. Supplements the checker's
+	// SSA-level source spelling ID -> resolved base TypeID. Supplements the checker's
 	// alias map (used when building without a checker).
-	type_aliases map[string]TypeID
+	type_aliases map[u32]TypeID
 	// File-scoped names preserve distinct nested modules that share a leaf name.
-	source_modules map[string]string
-	source_imports map[string]map[string]string
-	exact_used_fns bool
+	source_modules         map[string]string
+	source_imports         map[string]map[string]string
+	exact_used_fns         bool
+	allow_missing_fn_stubs bool
+	use_native_c_sources   bool
 }
 
 // VarBinding represents var binding data used by ssa.
@@ -183,17 +195,19 @@ struct IfGuardState {
 // reproduces the default whole-program build.
 pub struct BuildOptions {
 pub:
-	hot_fn            string   // build only this function's body (hot reload)
-	skip_fn_bodies    bool     // register signatures only, mark them prototypes
-	skip_modules      []string // skip all functions declared in these modules
-	track_uses        bool = true            // build optimizer/verifier use lists
-	thread_stack_size int  = 8 * 1024 * 1024 // zero uses the pthread default
-	test_files        []string                     // driver-selected test file paths; enables a test entrypoint
-	test_run_only     []string                     // bare or qualified function-name globs
-	target            TargetData                   // target memory layout, defaults to 64-bit pointers
-	source_modules    map[string]string            // source filename -> full module path
-	source_imports    map[string]map[string]string // source filename -> import alias -> full module path
-	exact_used_fns    bool                         // materialize only source functions listed in used_fns
+	hot_fn                 string   // build only this function's body (hot reload)
+	skip_fn_bodies         bool     // register signatures only, mark them prototypes
+	skip_modules           []string // skip all functions declared in these modules
+	track_uses             bool = true            // build optimizer/verifier use lists
+	thread_stack_size      int  = 8 * 1024 * 1024 // zero uses the pthread default
+	test_files             []string                     // driver-selected test file paths; enables a test entrypoint
+	test_run_only          []string                     // bare or qualified function-name globs
+	target                 TargetData                   // target memory layout, defaults to 64-bit pointers
+	source_modules         map[string]string            // source filename -> full module path
+	source_imports         map[string]map[string]string // source filename -> import alias -> full module path
+	exact_used_fns         bool                         // materialize only source functions listed in used_fns
+	allow_missing_fn_stubs bool                         // native compile-only fallback for checker-validated calls
+	use_native_c_sources   bool                         // link V-shipped C implementations instead of SSA replacements
 }
 
 // build supports build handling for ssa.
@@ -225,15 +239,19 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		fn_types:                 map[string]TypeID{}
 		fn_ids:                   map[string]int{}
 		const_exprs:              map[string]flat.NodeId{}
-		struct_types:             map[string]TypeID{}
+		struct_types:             map[u32]TypeID{}
 		multi_return_types:       map[u32]TypeID{}
 		multi_return_field_types: map[u32]map[string]u32{}
+		ssa_type_names:           map[TypeID]string{}
+		interface_types:          map[string]TypeID{}
+		interface_type_names:     map[TypeID]string{}
+		sum_types_registering:    map[TypeID]bool{}
 		struct_field_types:       flat.TypeTextBindings{}
 		option_types:             map[u32]TypeID{}
-		sum_type_variants:        flat.TypeTextListBindings{}
-		sum_type_canonical:       flat.TypeTextBindings{}
-		enum_types:               map[string]bool{}
-		flag_enum_types:          map[string]bool{}
+		sum_type_variants:        flat.SourceTypeListBindings{}
+		sum_type_canonical:       flat.SourceTypeBindings{}
+		enum_types:               map[u32]bool{}
+		flag_enum_types:          map[u32]bool{}
 		enum_values:              map[string]int{}
 		enum_member_values:       map[string]int{}
 		enum_member_dupes:        map[string]bool{}
@@ -243,10 +261,12 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		defer_body_ids:           []flat.NodeId{}
 		loop_targets:             []LoopTargets{}
 		skip_modules:             map[string]bool{}
-		type_aliases:             map[string]TypeID{}
+		type_aliases:             map[u32]TypeID{}
 		source_modules:           opts.source_modules
 		source_imports:           opts.source_imports
 		exact_used_fns:           opts.exact_used_fns
+		allow_missing_fn_stubs:   opts.allow_missing_fn_stubs
+		use_native_c_sources:     opts.use_native_c_sources
 	}
 	b.m.track_uses = opts.track_uses
 	b.m.target = opts.target
@@ -296,28 +316,26 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		field_names: array_field_names
 	})
 	mut map_state_fields := []TypeID{}
-	map_state_fields << ptr_i8
-	map_state_fields << ptr_i8
-	map_state_fields << b.i64_type
-	map_state_fields << b.i64_type
-	map_state_fields << b.i64_type
-	map_state_fields << b.i64_type
-	if b.m.target.ptr_size == 8 {
-		map_state_fields << ptr_i8
-		map_state_fields << b.i64_type
-		map_state_fields << b.i64_type
-	}
 	mut map_state_field_names := []string{}
-	map_state_field_names << 'keys'
-	map_state_field_names << 'vals'
-	map_state_field_names << 'cap'
-	map_state_field_names << 'len'
-	map_state_field_names << 'key_size'
-	map_state_field_names << 'val_size'
 	if b.m.target.ptr_size == 8 {
-		map_state_field_names << 'hash_slots'
-		map_state_field_names << 'hash_cap'
-		map_state_field_names << 'indexed_len'
+		dense_fields := [b.i32_type, b.i32_type, b.i32_type, b.i32_type, b.u32_type, b.u8_type,
+			b.u8_type, ptr_i8, ptr_i8, ptr_i8]
+		dense_names := ['key_bytes', 'value_bytes', 'cap', 'len', 'deletes', 'key_alignment',
+			'value_alignment', 'all_deleted', 'keys', 'values']
+		dense_type := b.m.type_store.register(Type{
+			kind:        .struct_t
+			fields:      dense_fields
+			field_names: dense_names
+		})
+		map_state_fields = [b.i32_type, b.i32_type, b.u32_type, b.u8_type, b.u8_type, dense_type,
+			b.m.type_store.get_ptr(b.u32_type), b.u32_type, b.i8_type, ptr_i8, ptr_i8, ptr_i8,
+			ptr_i8, b.i32_type, ptr_i8, b.i64_type, b.i64_type]
+		map_state_field_names = ['key_bytes', 'value_bytes', 'even_index', 'cached_hashbits', 'shift',
+			'key_values', 'metas', 'extra_metas', 'has_string_keys', 'hash_fn', 'eq_fn', 'clone_fn',
+			'free_fn', 'count', 'v3_hash_slots', 'v3_hash_cap', 'v3_indexed_len']
+	} else {
+		map_state_fields = [ptr_i8, ptr_i8, b.i64_type, b.i64_type, b.i64_type, b.i64_type]
+		map_state_field_names = ['keys', 'vals', 'cap', 'len', 'key_size', 'val_size']
 	}
 	b.map_state_type = b.m.type_store.register(Type{
 		kind:        .struct_t
@@ -392,12 +410,12 @@ fn (mut b Builder) register_types() {
 			typ_id := b.m.type_store.register(Type{
 				kind: .struct_t
 			})
-			b.register_struct_type_name(node.value_text(), cur_module, typ_id)
-		} else if node.kind == .type_decl && node.children_count > 0 {
+			b.register_struct_type_name(node.source_value_id(), cur_module, typ_id)
+		} else if is_sum_type_decl(node) {
 			typ_id := b.m.type_store.register(Type{
 				kind: .struct_t
 			})
-			b.register_sum_type_name(node.value_text(), cur_module, typ_id)
+			b.register_sum_type_name(node.source_value_id(), cur_module, typ_id)
 		} else if node.kind == .enum_decl {
 			b.register_enum_values(node, cur_module)
 		}
@@ -410,6 +428,27 @@ fn (mut b Builder) register_types() {
 			continue
 		}
 		if node.kind == .struct_decl {
+			if b.tc != unsafe { nil } && node.value.contains('[') {
+				checker_fields := b.tc.struct_fields_for_type(flat.source_type_id(node.value))
+				if checker_fields.len > 0 {
+					typ_id := b.struct_type_id_for_decl(node.source_value_id(), cur_module)
+					mut concrete_fields := []TypeID{cap: checker_fields.len}
+					mut concrete_names := []string{cap: checker_fields.len}
+					for field in checker_fields {
+						field_type := b.ssa_type_from_checker_type(field.typ)
+						concrete_fields << field_type
+						concrete_names << field.name
+						b.struct_field_types.set_id(node.value + '.' + field.name,
+							field.typ.source_type_id())
+					}
+					b.m.type_store.types[typ_id] = Type{
+						kind:        .struct_t
+						fields:      concrete_fields
+						field_names: concrete_names
+					}
+					continue
+				}
+			}
 			mut field_types := []TypeID{}
 			mut field_names := []string{}
 			mut embeds := []int{}
@@ -451,13 +490,15 @@ fn (mut b Builder) register_types() {
 				b.struct_field_types.set('C.tm.tm_zone', '&char')
 				b.struct_field_types.set('tm.tm_zone', '&char')
 			}
-			typ_id := b.struct_type_id_for_decl(node.value_text(), cur_module)
+			typ_id := b.struct_type_id_for_decl(node.source_value_id(), cur_module)
 			b.struct_embeds[typ_id] = embeds
 			b.m.type_store.types[typ_id] = Type{
 				kind:        .struct_t
 				fields:      field_types
 				field_names: field_names
 				is_union:    'union' in node.typ_text().split(',')
+				is_packed:   'packed' in node.typ_text().split(',')
+				alignment:   struct_decl_alignment(node)
 			}
 		}
 	}
@@ -468,17 +509,17 @@ fn (mut b Builder) register_types() {
 			cur_module = b.source_module_name(node)
 			continue
 		}
-		if node.kind != .type_decl || node.children_count == 0 {
+		if !is_sum_type_decl(node) {
 			continue
 		}
-		sum_typ_id := b.struct_type_id_for_decl(node.value_text(), cur_module)
+		sum_typ_id := b.struct_type_id_for_decl(node.source_value_id(), cur_module)
 		mut field_types := []TypeID{}
 		mut field_names := []string{}
 		mut has_pointer_variant := false
 
 		variants := b.sum_type_variants_for_decl(node, cur_module)
 		for variant in variants {
-			field_name := sum_field_name(flat.source_type_name(variant))
+			field_name := sum_variant_field_name(flat.source_type_name(variant), cur_module)
 			field_type := b.resolve_struct_storage_type(variant, cur_module)
 			has_pointer_variant = has_pointer_variant || b.is_pointer_type(field_type)
 			field_types << field_type
@@ -507,13 +548,36 @@ fn (mut b Builder) register_types() {
 		}
 		b.register_sum_field_type(node.value_text(), cur_module, 'typ', flat.source_type_i32)
 	}
+	mut generic_struct_names := []string{}
+	for name_id, _ in b.struct_types {
+		name := flat.source_type_name(name_id)
+		if name.contains('[') {
+			generic_struct_names << name
+		}
+	}
+	for name in generic_struct_names {
+		_ := b.register_checker_generic_struct(name)
+	}
 	b.register_multi_return_types()
+}
+
+fn struct_decl_alignment(node flat.Node) int {
+	for attribute in node.typ_text().split(',') {
+		clean := attribute.trim_space()
+		if clean == 'aligned' {
+			return 16
+		}
+		if clean.starts_with('aligned=') {
+			return clean.all_after('=').int()
+		}
+	}
+	return 0
 }
 
 fn (mut b Builder) resolve_struct_storage_type(name_id u32, module_name string) TypeID {
 	if b.is_fixed_array_type_name(name_id) {
 		elem_name := qualify_type_ref_name(b.fixed_array_elem_type_name(name_id), module_name)
-		elem_type := b.resolve_type_in_module(elem_name, module_name)
+		elem_type := b.resolve_struct_storage_type(elem_name, module_name)
 		previous_module := b.cur_module
 		b.cur_module = module_name
 		length := b.fixed_array_len_text(name_id).int()
@@ -530,6 +594,15 @@ struct NativeCStructAbi {
 
 fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
 	if struct_name == 'C.utsname' && pointer_size == 8 {
+		$if linux {
+			// Native ABI overrides follow the compiler host OS. Linux includes
+			// domainname even when the V declaration exposes only five fields.
+			return NativeCStructAbi{
+				field_names: ['sysname', 'nodename', 'release', 'version', 'machine', 'domainname']
+				field_types: flat.TypeTextList.from_names(['[65]char', '[65]char', '[65]char',
+					'[65]char', '[65]char', '[65]char'])
+			}
+		}
 		// Darwin stores five inline char[256] fields. The V declaration uses
 		// &char so selectors have C array-to-pointer semantics.
 		return NativeCStructAbi{
@@ -620,15 +693,16 @@ fn (mut b Builder) register_multi_return_types() {
 // register_multi_return_type updates register multi return type state for ssa.
 fn (mut b Builder) register_multi_return_type(ret types.MultiReturn) TypeID {
 	name := b.multi_return_c_type(ret)
+	name_id := flat.source_type_id(name)
 	source_id := types.Type(ret).source_type_id()
-	if typ := b.struct_types[name] {
+	if typ := b.struct_types[name_id] {
 		b.multi_return_types[source_id] = typ
 		return typ
 	}
 	typ_id := b.m.type_store.register(Type{
 		kind: .struct_t
 	})
-	b.struct_types[name] = typ_id
+	b.struct_types[name_id] = typ_id
 	b.multi_return_types[source_id] = typ_id
 	b.multi_return_field_types[source_id] = map[string]u32{}
 	mut field_types := []TypeID{}
@@ -702,7 +776,18 @@ fn (mut b Builder) ssa_type_from_checker_type(typ types.Type) TypeID {
 		return b.i8_type
 	}
 	if typ is types.Rune {
-		return b.i32_type
+		return b.u32_type
+	}
+	if typ is types.FnType {
+		mut params := []TypeID{cap: typ.params.len}
+		for param in typ.params {
+			params << b.ssa_type_from_checker_type(param.typ)
+		}
+		return b.m.type_store.register(Type{
+			kind:     .func_t
+			params:   params
+			ret_type: b.ssa_type_from_checker_type(typ.return_type)
+		})
 	}
 	if typ is types.ISize || typ is types.USize {
 		if b.m.target.ptr_size == 4 {
@@ -739,26 +824,136 @@ fn (mut b Builder) ssa_type_from_checker_type(typ types.Type) TypeID {
 	if typ is types.MultiReturn {
 		return b.register_multi_return_type(typ)
 	}
+	if typ is types.SumType {
+		return b.register_checker_sum_type(typ.source_type_id())
+	}
+	if typ is types.Interface {
+		if typ_id := b.register_checker_interface(typ.source_type_id()) {
+			return typ_id
+		}
+	}
+	if typ is types.Struct {
+		name_id := typ.source_type_id()
+		if b.source_is_sum_type(flat.source_type_name(name_id)) {
+			return b.register_checker_sum_type(name_id)
+		}
+	}
 	if typ is types.Alias {
 		return b.ssa_type_from_checker_type(typ.base_type)
 	}
 	return b.resolve_type(typ.source_type_id())
 }
 
+fn checker_type_is_function(typ types.Type) bool {
+	if typ is types.FnType {
+		return true
+	}
+	if typ is types.Alias {
+		return checker_type_is_function(typ.base_type)
+	}
+	return false
+}
+
+fn checker_type_contains_function(typ types.Type) bool {
+	if typ is types.FnType {
+		return true
+	}
+	if typ is types.Alias {
+		return checker_type_contains_function(typ.base_type)
+	}
+	if typ is types.Pointer {
+		return checker_type_contains_function(typ.base_type)
+	}
+	return false
+}
+
+fn (mut b Builder) register_checker_sum_type(name_id u32) TypeID {
+	name := flat.source_type_name(name_id)
+	existing_id := b.struct_types[name_id] or { TypeID(0) }
+	if existing_id > 0 && existing_id < b.m.type_store.types.len
+		&& b.m.type_store.types[existing_id].fields.len > 0 {
+		return existing_id
+	}
+	if existing_id > 0 && b.sum_types_registering[existing_id] {
+		return existing_id
+	}
+	typ_id := if existing_id > 0 {
+		existing_id
+	} else {
+		b.m.type_store.register(Type{
+			kind: .struct_t
+		})
+	}
+	b.struct_types[name_id] = typ_id
+	b.ssa_type_names[typ_id] = name
+	b.sum_types_registering[typ_id] = true
+	mut variants := b.sum_type_variants.type_ids(flat.source_type_id(name)) or { []u32{} }
+	if variants.len == 0 {
+		variants = b.sum_type_variants.type_ids(flat.source_type_id(name.all_after('.'))) or { []u32{} }
+	}
+	if variants.len == 0 {
+		b.sum_types_registering.delete(typ_id)
+		return typ_id
+	}
+	mut field_types := []TypeID{cap: variants.len}
+	mut field_names := []string{cap: variants.len}
+	for variant in variants {
+		field_types << b.resolve_type(variant)
+		field_names << sum_variant_field_name(flat.source_type_name(variant),
+			name.all_before_last('.'))
+	}
+	payload := b.m.type_store.register(Type{
+		kind:        .struct_t
+		fields:      field_types
+		field_names: field_names
+		is_union:    true
+	})
+	b.m.type_store.types[typ_id] = Type{
+		kind:        .struct_t
+		fields:      [b.i32_type, payload]
+		field_names: ['typ', '_payload']
+	}
+	b.sum_types_registering.delete(typ_id)
+	return typ_id
+}
+
+fn (b &Builder) source_is_sum_type(name string) bool {
+	if (b.sum_type_variants.type_ids(flat.source_type_id(name)) or { []u32{} }).len > 0 {
+		return true
+	}
+	short := name.all_after('.')
+	if short != name && (b.sum_type_variants.type_ids(flat.source_type_id(short)) or { []u32{} }).len > 0 {
+		return true
+	}
+	if b.tc != unsafe { nil } {
+		if (b.tc.sum_types.type_ids(flat.source_type_id(name)) or { []u32{} }).len > 0 {
+			return true
+		}
+		if short != name && (b.tc.sum_types.type_ids(flat.source_type_id(short)) or { []u32{} }).len > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // register_enum_values updates register enum values state for ssa.
 fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
-	short_name := node.value_text().all_after('.')
-	mut enum_names := []string{}
-	enum_names << node.value_text()
-	if short_name != node.value_text() {
-		enum_names << short_name
+	name_id := node.source_value_id()
+	short_id := if flat.source_type_shape(name_id).has(.dotted) {
+		flat.source_type_syntax(name_id).first_dot_suffix()
+	} else {
+		name_id
+	}
+	mut enum_names := [name_id]
+	if short_id != name_id {
+		enum_names << short_id
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		enum_names << module_name + '.' + short_name
+		enum_names << flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), short_id)
 	}
 	mut is_flag_enum := false
 	for enum_name in enum_names {
-		if b.checker_has_flag_enum(flat.source_type_id(enum_name)) {
+		if b.checker_has_flag_enum(enum_name) {
 			is_flag_enum = true
 			break
 		}
@@ -776,12 +971,12 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 			continue
 		}
 		if field.children_count > 0 {
-			if explicit := b.enum_field_expr_value(b.a.child(field, 0), flat.source_type_id(enum_names.last())) {
+			if explicit := b.enum_field_expr_value(b.a.child(field, 0), enum_names.last()) {
 				value = explicit
 			}
 		}
 		for enum_name in enum_names {
-			enum_key := enum_name + '.' + field.value
+			enum_key := flat.source_type_name(enum_name) + '.' + field.value
 			b.enum_values[enum_key] = value
 		}
 		if existing := b.enum_member_values[field.value] {
@@ -796,124 +991,338 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 }
 
 // register_struct_type_name updates register struct type name state for ssa.
-fn (mut b Builder) register_struct_type_name(name string, module_name string, typ_id TypeID) {
+fn (mut b Builder) register_struct_type_name(name u32, module_name string, typ_id TypeID) {
+	if typ_id > 0 {
+		b.ssa_type_names[typ_id] = flat.source_type_name(name)
+	}
+	if existing := b.struct_types[name] {
+		if existing > 0 && existing < b.m.type_store.types.len
+			&& b.m.type_store.types[existing].fields.len > 0 {
+			return
+		}
+	}
 	b.struct_types[name] = typ_id
-	short_name := name.all_after('.')
+	short_name := if flat.source_type_shape(name).has(.dotted) {
+		flat.source_type_syntax(name).first_dot_suffix()
+	} else {
+		name
+	}
 	if short_name !in b.struct_types {
 		b.struct_types[short_name] = typ_id
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		qualified_name := module_name + '.' + short_name
+		qualified_name := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), short_name)
 		b.struct_types[qualified_name] = typ_id
 	}
 }
 
+// register_checker_interface materializes the runtime interface box used by
+// native method dispatch: {object pointer, concrete type id, boxed ownership}.
+fn (mut b Builder) register_checker_interface(name_id u32) ?TypeID {
+	if b.tc == unsafe { nil } || name_id == 0 {
+		return none
+	}
+	raw_name := flat.source_type_name(name_id).trim_left('&').trim_space()
+	if raw_name.len == 0 {
+		return none
+	}
+	short_name := raw_name.all_after_last('.')
+	qualified_name := flat.source_type_name(qualify_type_name(flat.source_type_id(raw_name), b.cur_module))
+	mut interface_name := ''
+	for candidate in [raw_name, qualified_name, short_name] {
+		if flat.source_type_id(candidate) in b.tc.interface_names {
+			interface_name = candidate
+			break
+		}
+	}
+	if interface_name.len == 0 {
+		return none
+	}
+	if typ_id := b.interface_types[interface_name] {
+		b.interface_types[raw_name] = typ_id
+		b.interface_types[short_name] = typ_id
+		return typ_id
+	}
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	mut interface_fields := []TypeID{}
+	interface_fields << ptr_i8
+	interface_fields << b.i32_type
+	interface_fields << b.i1_type
+	mut interface_field_names := ['_object', '_typ', '_object_is_boxed']
+	for field in b.tc.interface_field_list(flat.source_type_id(interface_name)) {
+		interface_fields << b.ssa_type_from_checker_type(field.typ)
+		interface_field_names << field.name
+	}
+	typ_id := b.m.type_store.register(Type{
+		kind:        .struct_t
+		fields:      interface_fields
+		field_names: interface_field_names
+	})
+	b.interface_types[interface_name] = typ_id
+	b.interface_types[raw_name] = typ_id
+	b.interface_types[short_name] = typ_id
+	b.interface_type_names[typ_id] = interface_name
+	b.ssa_type_names[typ_id] = interface_name
+	return typ_id
+}
+
+fn (b &Builder) is_interface_type_id(typ_id TypeID) bool {
+	return typ_id in b.interface_type_names
+}
+
+fn (b &Builder) is_interface_related_type(typ_id TypeID) bool {
+	if b.is_interface_type_id(typ_id) {
+		return true
+	}
+	if typ_id > 0 && typ_id < b.m.type_store.types.len {
+		typ := b.m.type_store.types[typ_id]
+		return typ.kind == .ptr_t && b.is_interface_type_id(typ.elem_type)
+	}
+	return false
+}
+
+fn (mut b Builder) interface_name_for_type(typ_id TypeID) ?u32 {
+	name := b.interface_type_names[typ_id] or { return none }
+	return flat.source_type_id(name)
+}
+
+fn (b &Builder) interface_concrete_type_id(source_type_id u32) TypeID {
+	name := flat.source_type_name(source_type_id).trim_left('&')
+	short_name := name.all_after_last('.')
+	for candidate in [name, short_name] {
+		if typ_id := b.struct_types[flat.source_type_id(candidate)] {
+			return typ_id
+		}
+	}
+	if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin' {
+		if typ_id := b.struct_types[flat.source_type_id('${b.cur_module}.${short_name}')] {
+			return typ_id
+		}
+	}
+	return b.resolve_type(source_type_id)
+}
+
+fn (b &Builder) interface_dispatch_id(interface_type TypeID, source_type_id u32) int {
+	if b.tc != unsafe { nil } {
+		if interface_name := b.interface_type_names[interface_type] {
+			ids := b.tc.interface_type_ids(flat.source_type_id(interface_name))
+			name := flat.source_type_name(source_type_id).trim_left('&')
+			if id := ids[source_type_id] {
+				return id
+			}
+			name_id := flat.source_type_id(name)
+			if id := ids[name_id] {
+				return id
+			}
+			short_name := name.all_after_last('.')
+			for impl_id, id in ids {
+				if flat.source_type_name(impl_id).all_after_last('.') == short_name {
+					return id
+				}
+			}
+		}
+	}
+	return b.interface_concrete_type_id(source_type_id)
+}
+
+fn (mut b Builder) interface_init_concrete_type(node flat.Node, interface_type TypeID) ?int {
+	for index in 0 .. node.children_count {
+		field := b.a.child_node(&node, index)
+		if field.value != '_object' || field.children_count == 0 {
+			continue
+		}
+		object_expr_id := b.a.child(field, 0)
+		if name_id := b.interface_object_concrete_type_name(object_expr_id) {
+			return b.interface_dispatch_id(interface_type, name_id)
+		}
+	}
+	return none
+}
+
+fn (b &Builder) interface_object_concrete_type_name(id flat.NodeId) ?u32 {
+	if !b.valid_node_id(id) {
+		return none
+	}
+	mut name_id := b.checked_expr_type_name(id)
+	mut name := flat.source_type_name(name_id).trim_space()
+	for name.starts_with('&') || name.starts_with('?') || name.starts_with('!') {
+		name = name[1..].trim_space()
+	}
+	if name.len > 0 && name !in ['void', 'voidptr', 'IError', 'unknown'] {
+		candidate := flat.source_type_id(name)
+		typ_id := b.resolve_type(candidate)
+		if typ_id > 0 && typ_id < b.m.type_store.types.len
+			&& b.m.type_store.types[typ_id].kind == .struct_t {
+			return candidate
+		}
+	}
+	node := b.a.nodes[int(id)]
+	match node.kind {
+		.paren, .prefix {
+			if node.children_count > 0 {
+				return b.interface_object_concrete_type_name(b.a.child(&node, 0))
+			}
+		}
+		.cast_expr {
+			target_name := node.value_text().trim_left('&?')
+			if target_name.len > 0 && target_name !in ['void', 'voidptr', 'IError'] {
+				return flat.source_type_id(target_name)
+			}
+			if node.children_count > 0 {
+				return b.interface_object_concrete_type_name(b.a.child(&node, 0))
+			}
+		}
+		.struct_init {
+			if node.source_value_id() != 0 {
+				return flat.source_type_id(node.value_text().trim_left('&?'))
+			}
+		}
+		else {}
+	}
+	return none
+}
+
 // register_sum_type_name updates register sum type name state for ssa.
-fn (mut b Builder) register_sum_type_name(name string, module_name string, typ_id TypeID) {
-	qualified_name := qualify_type_name(name, module_name)
-	qualified_id := flat.source_type_id(qualified_name)
+fn (mut b Builder) register_sum_type_name(name u32, module_name string, typ_id TypeID) {
+	qualified_id := qualify_type_name(name, module_name)
+	b.ssa_type_names[typ_id] = flat.source_type_name(qualified_id)
 	b.register_struct_type_name(name, module_name, typ_id)
 	mut variants := []u32{}
 	if b.tc != unsafe { nil } {
-		if tc_variants := b.tc.sum_types.type_ids(qualified_name) {
+		if tc_variants := b.tc.sum_types.type_ids(qualified_id) {
 			variants = tc_variants.clone()
 		}
 	}
 	if variants.len == 0 {
 		for node in b.a.nodes {
-			if node.kind != .type_decl || node.value_text() != name || node.children_count == 0 {
+			if node.kind != .type_decl || node.source_value_id() != name || !is_sum_type_decl(node) {
 				continue
 			}
 			variants = b.sum_type_variants_for_decl(node, module_name)
 			break
 		}
 	}
-	b.sum_type_variants.set_ids(qualified_name, variants)
-	b.sum_type_canonical.set_id(qualified_name, qualified_id)
-	if name != qualified_name {
+	b.sum_type_variants.set_ids(qualified_id, variants)
+	b.sum_type_canonical.set_id(qualified_id, qualified_id)
+	if name != qualified_id {
 		b.sum_type_variants.set_ids(name, variants)
 		b.sum_type_canonical.set_id(name, qualified_id)
 	}
-	short_name := qualified_name.all_after('.')
+	short_name := if flat.source_type_shape(qualified_id).has(.dotted) {
+		flat.source_type_syntax(qualified_id).first_dot_suffix()
+	} else {
+		qualified_id
+	}
 	b.sum_type_variants.set_ids(short_name, variants)
 	b.sum_type_canonical.set_id(short_name, qualified_id)
 }
 
 // qualify_type_name supports qualify type name handling for ssa.
-fn qualify_type_name(name string, module_name string) string {
-	if name.contains('.') || module_name.len == 0 || module_name == 'main'
+fn qualify_type_name(name u32, module_name string) u32 {
+	if flat.source_type_shape(name).has(.dotted) || module_name.len == 0 || module_name == 'main'
 		|| module_name == 'builtin' {
 		return name
 	}
-	return '${module_name}.${name}'
+	return flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), name)
 }
 
 // qualify_type_ref_name supports qualify type ref name handling for ssa.
 fn qualify_type_ref_name(name_id u32, module_name string) u32 {
 	if name_id == 0 { return 0 }
-	name := flat.source_type_name(name_id)
-	qualified := qualify_type_ref_name_bytes(name, module_name)
-	return if qualified == name { name_id } else { flat.source_type_id(qualified) }
+	shape := flat.source_type_shape(name_id)
+	syntax := flat.source_type_syntax(name_id)
+	if shape.has(.function_compact) || shape.has(.function_spaced) { return name_id }
+	if shape.has(.pointer) {
+		return flat.source_type_composition_one(.pointer, qualify_type_ref_name(syntax.raw_base(), module_name))
+	}
+	if syntax.raw_base() != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
+		inner := qualify_type_ref_name(syntax.raw_base(), module_name)
+		return flat.source_type_composition_one(if shape.has(.result_type) {
+			.result
+		} else {
+			.option
+		}, inner)
+	}
+	if shape.has(.array_type) {
+		return flat.source_type_composition_one(.array, qualify_type_ref_name(syntax.raw_base(), module_name))
+	}
+	if shape.has(.leading_bracket) && syntax.first_bracket_base() != 0 {
+		return flat.source_type_composition_two(.concat, syntax.first_bracket_prefix(),
+			qualify_type_ref_name(syntax.first_bracket_base(), module_name))
+	}
+	if shape.has(.bracketed) && flat.source_type_query(name_id).has(.bracket_suffix)
+		&& syntax.generic_base() != 0 {
+		return flat.source_type_composition_two(.concat,
+			qualify_type_ref_name(syntax.generic_base(), module_name), syntax.bracket_from())
+	}
+	if shape.has(.map_type) {
+		key, value := map_type_parts(name_id)
+		if key != 0 && value != 0 {
+			return flat.source_type_composition_two(.map, qualify_type_ref_name(key, module_name),
+				qualify_type_ref_name(value, module_name))
+		}
+	}
+	if type_ref_is_builtin_id(name_id) || shape.has(.dotted) || module_name.len == 0
+		|| module_name in ['main', 'builtin'] {
+		return name_id
+	}
+	return flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), name_id)
 }
 
-fn qualify_type_ref_name_bytes(name string, module_name string) string {
-	if name.len == 0 {
-		return name
-	}
-	if name.starts_with('fn(') || name.starts_with('fn (') {
-		return name
-	}
-	if name.starts_with('&') {
-		return '&' + qualify_type_ref_name_bytes(name[1..], module_name)
-	}
-	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return name[..1] + qualify_type_ref_name_bytes(name[1..], module_name)
-	}
-	if name.starts_with('[]') {
-		return '[]' + qualify_type_ref_name_bytes(name[2..], module_name)
-	}
-	if name.starts_with('[') {
-		idx := name.index_u8(`]`)
-		if idx > 0 && idx + 1 < name.len {
-			return name[..idx + 1] + qualify_type_ref_name_bytes(name[idx + 1..], module_name)
-		}
-	}
-	if name.contains('[') && name.ends_with(']') {
-		idx := name.index_u8(`[`)
-		if idx > 0 && idx < name.len - 1 {
-			return qualify_type_ref_name_bytes(name[..idx], module_name) + name[idx..]
-		}
-	}
-	if name.starts_with('map[') {
-		key_type, val_type := map_type_parts_bytes(name)
-		if key_type.len > 0 && val_type.len > 0 {
-			return 'map[' + qualify_type_ref_name_bytes(key_type, module_name) + ']' +
-				qualify_type_ref_name_bytes(val_type, module_name)
-		}
-	}
-	if type_ref_is_builtin(name) || name.contains('.') || module_name.len == 0
-		|| module_name == 'main' || module_name == 'builtin' {
-		return name
-	}
-	return module_name + '.' + name
+fn type_ref_is_builtin_id(name u32) bool {
+	return name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
+		flat.source_type_i32, flat.source_type_i64, flat.source_type_u8, flat.source_type_u16,
+		flat.source_type_u32, flat.source_type_u64, flat.source_type_f32, flat.source_type_f64,
+		flat.source_type_bool, flat.source_type_string, flat.source_type_void,
+		flat.source_type_voidptr, flat.source_type_rune, flat.source_type_char, ssa_array_source_type,
+		ssa_map_source_type]
 }
 
 // type_ref_is_builtin returns type ref is builtin data for ssa.
 fn type_ref_is_builtin(name string) bool {
-	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'bool', 'string', 'void', 'voidptr', 'rune', 'char', 'array', 'map']
+	return type_ref_is_builtin_id(flat.source_type_id(name))
 }
 
 // sum_type_variants_for_decl supports sum type variants for decl handling for Builder.
 fn (b &Builder) sum_type_variants_for_decl(node flat.Node, module_name string) []u32 {
 	mut variants := []u32{cap: node.children_count}
-	for i in 0 .. node.children_count {
-		variant_id := b.a.child_node(&node, i).source_value_id()
-		variant := flat.source_type_name(variant_id)
-		qualified := qualify_type_name(variant, module_name)
-		variants << if qualified == variant { variant_id } else { flat.source_type_id(qualified) }
+	if node.children_count > 0 {
+		for i in 0 .. node.children_count {
+			variant_id := b.a.child_node(&node, i).source_value_id()
+			variants << qualify_type_name(variant_id, module_name)
+		}
+		return variants
+	}
+	for variant in node.typ_text().split('|') {
+		trimmed := variant.trim_space()
+		if trimmed.len > 0 {
+			variants << qualify_type_name(flat.source_type_id(trimmed), module_name)
+		}
 	}
 	return variants
+}
+
+// is_sum_type_decl reports whether a type declaration is a sum type. Older
+// flattened declarations retain variant children, while compact declarations
+// can retain only their `A | B` source spelling.
+fn is_sum_type_decl(node flat.Node) bool {
+	return node.kind == .type_decl
+		&& (node.children_count > 0 || node.typ_text().contains('|'))
+}
+
+// sum_variant_field_name builds the payload field spelling used by source
+// smartcasts. The checker qualifies variants with their declaring module, while
+// smartcasts use the short source spelling (for example `string` rather than
+// `strconv.string`).
+fn sum_variant_field_name(variant string, module_name string) string {
+	mut name := variant
+	if module_name.len > 0 && module_name !in ['main', 'builtin'] {
+		prefix := module_name + '.'
+		if name.starts_with(prefix) {
+			name = name[prefix.len..]
+		}
+	}
+	return sum_field_name(name)
 }
 
 // register_sum_field_type updates register sum field type state for ssa.
@@ -926,9 +1335,9 @@ fn (mut b Builder) register_sum_field_type(name string, module_name string, fiel
 	}
 }
 
-// registered_struct_type looks up an existing layout without resolving aliases or
-// changing module precedence. Source composites use spelling IDs; declaration and
-// emitted C names remain in the symbol index.
+// registered_struct_type looks up an existing layout by spelling identity without
+// resolving aliases or changing module precedence. Tuple C spellings are indexed
+// exactly at their naming boundary.
 fn (b &Builder) registered_struct_type(name_id u32) ?TypeID {
 	if typ := b.option_types[name_id] {
 		return typ
@@ -936,17 +1345,21 @@ fn (b &Builder) registered_struct_type(name_id u32) ?TypeID {
 	if typ := b.multi_return_types[name_id] {
 		return typ
 	}
-	if typ := b.struct_types[flat.source_type_name(name_id)] {
+	if typ := b.struct_types[name_id] {
 		return typ
 	}
 	return none
 }
 
 // struct_type_id_for_decl supports struct type id for decl handling for Builder.
-fn (b &Builder) struct_type_id_for_decl(name string, module_name string) TypeID {
-	short_name := name.all_after('.')
+fn (b &Builder) struct_type_id_for_decl(name u32, module_name string) TypeID {
+	short_name := if flat.source_type_shape(name).has(.dotted) {
+		flat.source_type_syntax(name).first_dot_suffix()
+	} else {
+		name
+	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		qualified_name := module_name + '.' + short_name
+		qualified_name := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), short_name)
 		if typ := b.struct_types[qualified_name] {
 			return typ
 		}
@@ -998,6 +1411,14 @@ fn (mut b Builder) register_consts() {
 }
 
 // register_globals updates register globals state for ssa.
+fn c_standard_stream_symbol(name string) string {
+	$if linux {
+		return name
+	} $else {
+		return '__${name}p'
+	}
+}
+
 fn (mut b Builder) register_globals() {
 	mut cur_module := 'main'
 	for node in b.a.nodes {
@@ -1074,9 +1495,9 @@ fn (mut b Builder) register_globals() {
 							continue
 						}
 						symbol := match f.value {
-							'C.stdin' { '__stdinp' }
-							'C.stdout' { '__stdoutp' }
-							'C.stderr' { '__stderrp' }
+							'C.stdin' { c_standard_stream_symbol('stdin') }
+							'C.stdout' { c_standard_stream_symbol('stdout') }
+							'C.stderr' { c_standard_stream_symbol('stderr') }
 							else { f.value.all_after('C.') }
 						}
 						b.vars[f.value] = b.m.add_external_global(symbol, typ)
@@ -1181,6 +1602,50 @@ fn (mut b Builder) global_constant_int(id flat.NodeId, depth int) i64 {
 		}
 		.paren {
 			return b.global_constant_int(b.a.child(&node, 0), depth + 1)
+		}
+		.block {
+			if node.children_count == 0 {
+				return 0
+			}
+			return b.global_constant_int(b.a.child(&node, node.children_count - 1), depth + 1)
+		}
+		.expr_stmt {
+			if node.children_count == 0 {
+				return 0
+			}
+			return b.global_constant_int(b.a.child(&node, 0), depth + 1)
+		}
+		.if_expr {
+			if node.children_count < 3 {
+				return 0
+			}
+			condition := b.global_constant_int(b.a.child(&node, 0), depth + 1)
+			branch := if condition != 0 { 1 } else { 2 }
+			return b.global_constant_int(b.a.child(&node, branch), depth + 1)
+		}
+		.sizeof_expr {
+			if node.children_count > 0 {
+				operand := b.a.child(&node, 0)
+				return b.sizeof_type_name(b.checked_expr_type_name(operand))
+			}
+			return b.sizeof_type_name(node.source_value_id())
+		}
+		.selector {
+			if node.value == 'len' && node.children_count > 0 {
+				base := b.a.child_node(&node, 0)
+				if base.kind == .array_literal {
+					return base.children_count
+				}
+				if base.kind == .ident {
+					if expr_id := b.lookup_const_expr(base.value) {
+						expr := b.a.nodes[int(expr_id)]
+						if expr.kind == .array_literal || expr.kind == .array_init {
+							return expr.children_count
+						}
+					}
+				}
+			}
+			return 0
 		}
 		.cast_expr {
 			target := b.resolve_type(node.source_value_id())
@@ -1304,6 +1769,20 @@ fn (mut b Builder) global_constant_float(id flat.NodeId, depth int) f64 {
 				}
 				else { f64(0) }
 			}
+		}
+		.call {
+			if node.children_count == 2 {
+				callee := b.a.child_node(&node, 0)
+				name := if callee.kind == .selector {
+					b.selector_qualified_name(callee)
+				} else {
+					callee.value
+				}
+				if name in ['sqrt', 'math.sqrt'] {
+					return math.sqrt(b.global_constant_float(b.a.child(&node, 1), depth + 1))
+				}
+			}
+			return f64(0)
 		}
 		else { return f64(b.global_constant_int(id, depth + 1)) }
 	}
@@ -1482,9 +1961,9 @@ fn (mut b Builder) register_functions() {
 	p2 = []TypeID{}
 	p2 << ptr_i8
 	p2 << b.i64_type
-	b.register_extern('access', b.i64_type, p2)
-	b.register_extern('mkdir', b.i64_type, p2)
-	b.register_extern('chmod', b.i64_type, p2)
+	b.register_extern('access', b.i32_type, p2)
+	b.register_extern('mkdir', b.i32_type, p2)
+	b.register_extern('chmod', b.i32_type, p2)
 	b.register_extern('getcwd', ptr_i8, p2)
 	p1 = []TypeID{}
 	p1 << ptr_i8
@@ -1602,12 +2081,21 @@ fn (mut b Builder) register_functions() {
 	p2 << ptr_i8
 	p2 << ptr_i8
 	b.register_extern('fprintf', b.i32_type, p2)
+	b.register_ssa_memdup_helper()
 
 	for node in b.a.nodes {
 		if node.kind != .c_fn_decl {
 			continue
 		}
-		ret_type := b.resolve_c_decl_type(node.typ)
+		checker_name := 'C.' + node.value_text().trim_string_left('C.')
+		mut ret_type := b.resolve_c_decl_type(node.typ)
+		if b.tc != unsafe { nil } {
+			if checked := b.tc.fn_ret_types[checker_name] {
+				if checker_type_contains_function(checked) {
+					ret_type = b.ssa_type_from_checker_type(checked)
+				}
+			}
+		}
 		mut param_types := []TypeID{}
 		mut variadic_start := -1
 		for i in 0 .. node.children_count {
@@ -1617,7 +2105,13 @@ fn (mut b Builder) register_functions() {
 					variadic_start = param_types.len
 					continue
 				}
-				param_types << b.resolve_c_decl_type(child.typ)
+				mut param_type := b.resolve_c_decl_type(child.typ)
+				if checked := b.checker_param_type(checker_name, '', param_types.len) {
+					if checker_type_contains_function(checked) {
+						param_type = b.ssa_type_from_checker_type(checked)
+					}
+				}
+				param_types << param_type
 			}
 		}
 		b.register_extern(node.value_text(), ret_type, param_types)
@@ -1632,6 +2126,7 @@ fn (mut b Builder) register_functions() {
 		}
 	}
 
+	c_variant_names := b.c_variant_function_names()
 	mut cur_module := ''
 	for node in b.a.nodes {
 		if node.kind == .file {
@@ -1643,10 +2138,19 @@ fn (mut b Builder) register_functions() {
 			continue
 		}
 		if node.kind == .fn_decl {
+			if file := b.a.source_files[node.pos.id] {
+				fn_name := ssa_fn_name_in_module(cur_module, node.value_text())
+				if c_variant_names[fn_name] && !file.name.ends_with('.c.v') {
+					continue
+				}
+			}
 			if b.skip_source_fn_in_module(node.value_text(), cur_module) {
 				continue
 			}
 			fn_name := ssa_fn_name_in_module(cur_module, node.value_text())
+			if node.value_text() in native_runtime_override_names && node.value_text() in b.fn_ids {
+				continue
+			}
 			if (b.exact_used_fns || b.used_fns.len > 0) && !b.source_fn_is_used(node.value_text(), cur_module) {
 				continue
 			}
@@ -1660,7 +2164,13 @@ fn (mut b Builder) register_functions() {
 				if child.kind == .param {
 					typ_name_source_id := b.source_param_type_name(child, node.value_text(), cur_module, param_idx)
 
-					param_types << b.resolve_type_in_module(typ_name_source_id, cur_module)
+					mut param_type := b.resolve_type_in_module(typ_name_source_id, cur_module)
+					if checked := b.checker_param_type(node.value, cur_module, param_idx) {
+						if checker_type_is_function(checked) {
+							param_type = b.ssa_type_from_checker_type(checked)
+						}
+					}
+					param_types << param_type
 					param_idx++
 				}
 			}
@@ -1703,7 +2213,6 @@ fn (mut b Builder) register_functions() {
 	b.register_u8_runtime_stubs()
 	b.register_heap_tracking_stubs()
 	if b.m.target.ptr_size == 4 { b.register_at_exit_stub() } else { b.register_at_exit_runtime() }
-	b.register_rand_prng_interface_stubs()
 	b.register_embed_file_interface_stubs()
 	b.register_pthread_compat_stubs()
 	b.register_prealloc_allocator_stubs()
@@ -2035,11 +2544,14 @@ fn (mut b Builder) register_extern(name string, ret TypeID, params []TypeID) {
 	b.fn_types[name] = fn_type
 	b.fn_ids[name] = func_id
 	b.fn_types[extern_name] = fn_type
+	b.fn_ids[extern_name] = func_id
 	b.c_fn_types[name] = fn_type
 	b.c_fn_ids[name] = func_id
 	b.runtime_fn_types[name] = fn_type
 	b.runtime_fn_ids[name] = func_id
 	mut f := b.m.funcs[func_id]
+	// Source declarations refine the signatures of predeclared runtime externs.
+	f.typ = ret
 	f.is_c_extern = true
 	f.is_prototype = true
 	f.linkage = .external
@@ -2091,19 +2603,27 @@ fn (b &Builder) has_fn_decl(name string) bool {
 	return false
 }
 
+// These checker-visible placeholders stand in for compiler-native helpers.
+// Calls must resolve to the synthetic implementation, not a fixture's stub body.
+const native_runtime_override_names = ['v3_string_zpad', 'v3_f64_zpad', 'v3_int_zpad', 'v3_i64_zpad',
+	'v3_u64_zpad', 'v3_string_upper_ascii', 'v3_string_plus_sign', 'v3_string_rpad_zero',
+	'v3_char_string', 'v3_f64_fixed', 'v3_f64_exp', 'v3_f64_general', 'v3_f64_trimmed',
+	'v3_aligned_memdup', 'v3_heap_array', 'v3_map_str', 'print', 'println', 'eprint', 'eprintln',
+	'error', 'error_with_code']
+
 // skip_source_fn supports skip source fn handling for Builder.
 fn (b &Builder) skip_source_fn(name string) bool {
 	if name in ['_wymix', 'wyhash', 'wyhash64', 'string__eq', 'string__lt', 'array_new', 'array_get',
 		'string__plus', 'string_plus_many', 'string.trim_right', 'array_push', 'array_push_many',
-		'array.push_many', 'array_clone', 'panic', 'panic_debug', 'fast_string_eq',
-		'strings.new_builder', 'strings.Builder.write_string', 'strings.Builder.writeln',
-		'strings.Builder.str', 'strings.Builder.write_ptr', 'strings.Builder.write_u8',
-		'strings.Builder.write_byte', 'strings.Builder.write_runes', 'strings.Builder.free',
-		'strings.Builder.last_n', 'Builder.write_string', 'Builder.writeln', 'Builder.str',
-		'Builder.write_ptr', 'Builder.write_u8', 'Builder.write_byte', 'Builder.write_runes',
-		'Builder.free', 'Builder.last_n', 'new_map', 'map__set', 'map__get', 'map__exists',
-		'map__get_check', 'map__get_key_check', 'map__get_or_set', 'map__delete', 'map__clear',
-		'map__clone', 'map__move', 'map__free', 'map__reserve', 'map__keys', 'map__values',
+		'array.push_many', 'array_clone', 'array.reverse', 'array__reverse', 'panic', 'panic_debug',
+		'fast_string_eq', 'strings.new_builder', 'strings.Builder.write_string',
+		'strings.Builder.writeln', 'strings.Builder.str', 'strings.Builder.write_ptr',
+		'strings.Builder.write_u8', 'strings.Builder.write_byte', 'strings.Builder.write_rune',
+		'strings.Builder.free', 'strings.Builder.last_n', 'Builder.write_string', 'Builder.writeln',
+		'Builder.str', 'Builder.write_ptr', 'Builder.write_u8', 'Builder.write_byte',
+		'Builder.write_rune', 'Builder.free', 'Builder.last_n', 'new_map', 'map__set', 'map__get',
+		'map__exists', 'map__get_check', 'map__get_key_check', 'map__get_or_set', 'map__delete',
+		'map__clear', 'map__clone', 'map__move', 'map__free', 'map__reserve', 'map__keys', 'map__values',
 		'v3_map_find', 'v3_map_set_sized', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital',
 		'bytestr', '[]u8.bytestr', '[]u8.hex', '[]rune.string', 'Array_u8__bytestr', 'Array_u8__hex',
 		'Array_rune__string', 'array.repeat_to_depth', 'string.all_before_last',
@@ -2114,12 +2634,11 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32', 'v_prealloc_atomic_cas_i32',
 		'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast', 'normalize_path_in_builder',
 		'check_fwrite', 'check_fread', 'os.check_fwrite', 'os.check_fread', '__v3_array_eq_raw',
-		'__v3_array_eq_string', '__v3_array_eq_array', 'fxx_to_str_l_parse',
-		'fxx_to_str_l_parse_with_dot', 'u8.vstring', 'u8.vstring_with_len', 'char.vstring',
-		'char.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len', 'charptr.vstring',
-		'charptr.vstring_with_len', 'u8.vstring_literal', 'u8.vstring_literal_with_len',
-		'char.vstring_literal', 'char.vstring_literal_with_len', 'byteptr.vstring_literal',
-		'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
+		'__v3_array_eq_string', '__v3_array_eq_array', 'u8.vstring', 'u8.vstring_with_len',
+		'char.vstring', 'char.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len',
+		'charptr.vstring', 'charptr.vstring_with_len', 'u8.vstring_literal',
+		'u8.vstring_literal_with_len', 'char.vstring_literal', 'char.vstring_literal_with_len',
+		'byteptr.vstring_literal', 'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
 		'charptr.vstring_literal_with_len', 'prealloc_malloc', 'prealloc_malloc_align',
 		'prealloc_calloc', 'prealloc_realloc', 'prealloc_scope_begin', 'v_realloc', 'map_map_eq',
 		'v3_string_zpad', 'v3_f64_zpad', 'v3_int_zpad', 'v3_i64_zpad', 'v3_u64_zpad', 'v3_heap_array',
@@ -2148,10 +2667,10 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 		return name in b.c_fn_ids || b.skip_source_fn(name)
 			|| name in ['int_str', 'bool_str', 'string.int', 'string__int', 'array_slice',
 				'array__clone', 'array_push_many_ptr', 'IError.msg', 'IError.code', 'Array_str',
-				'__v3_array_index_string', '__v3_array_index_int', '__v3_array_contains_string',
-				'__v3_array_contains_int', '__v3_fixed_array_contains_string',
-				'__v3_fixed_array_contains_int', 'v3_string_pad', 'v3_char_string', 'v3_f64_fixed',
-				'v3_int_zpad', 'v3_i64_zpad', 'v3_u64_zpad']
+				'error', 'error_with_code', '__v3_array_index_string', '__v3_array_index_int',
+				'__v3_array_contains_string', '__v3_array_contains_int',
+				'__v3_fixed_array_contains_string', '__v3_fixed_array_contains_int', 'v3_string_pad',
+				'v3_char_string', 'v3_f64_fixed', 'v3_int_zpad', 'v3_i64_zpad', 'v3_u64_zpad']
 			|| name.starts_with('v3_array_sort_')
 	}
 	if module_name in ['ast', 'v.ast']
@@ -2171,12 +2690,11 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 			'check_fread', 'join_path_single']
 	}
 	if module_name == 'strconv' {
-		return name in ['f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot',
-			'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot']
+		return name in ['f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot']
 	}
 	if module_name == 'rand' {
-		return name == 'new_default' || name in ['PRNG.seed', 'PRNG.free', 'PRNG.u8', 'PRNG.u16',
-			'PRNG.u32', 'PRNG.u64', 'PRNG.block_size']
+		return name in ['PRNG.seed', 'PRNG.free', 'PRNG.u8', 'PRNG.u16', 'PRNG.u32', 'PRNG.u64',
+			'PRNG.block_size']
 	}
 	if module_name == 'embed_file' {
 		return name == 'Decoder.decompress'
@@ -2327,7 +2845,7 @@ fn (b &Builder) runtime_fn_lookup(name string) ?int {
 }
 
 fn (b &Builder) runtime_fn_id(name string) int {
-	return b.runtime_fn_lookup(name) or { 0 }
+	return b.runtime_fn_lookup(name) or { panic('missing SSA runtime function: ${name}') }
 }
 
 // func_add_argument supports func add argument handling for Builder.
@@ -2414,7 +2932,11 @@ fn (mut b Builder) block_struct_field_ptr(block_id BlockID, base_addr ValueID, t
 		} else if typ_id == b.map_state_type {
 			has_builtin_layout = true
 			builtin_field_type = b.m.type_store.types[typ_id].fields[field_idx]
-			builtin_offset = field_idx * 8
+			builtin_offset = if b.m.target.ptr_size == 8 {
+				b.m.struct_field_offset(typ_id, field_idx)
+			} else {
+				field_idx * 8
+			}
 		} else if typ_id == b.map_type {
 			has_builtin_layout = true
 			builtin_field_type = b.m.type_store.get_ptr(b.map_state_type)
@@ -2660,8 +3182,9 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 
 	entry := b.m.add_block(func_id, 'entry')
 	value := b.func_add_argument(func_id, b.i64_type, 'value')
+	mut radix := b.m.get_or_add_const(b.i64_type, '10')
 	if has_radix {
-		_ := b.func_add_argument(func_id, b.i64_type, 'radix')
+		radix = b.func_add_argument(func_id, b.i64_type, 'radix')
 	}
 
 	alloca_n := b.block_instr0(.alloca, entry, ptr_i64)
@@ -2671,12 +3194,14 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	one := b.m.get_or_add_const(b.i64_type, '1')
-	ten := b.m.get_or_add_const(b.i64_type, '10')
-	buf_size := b.m.get_or_add_const(b.i64_type, '32')
-	last_off := b.m.get_or_add_const(b.i64_type, '31')
+	// 64 binary digits, an optional sign and the terminator.
+	buf_size := b.m.get_or_add_const(b.i64_type, '72')
+	last_off := b.m.get_or_add_const(b.i64_type, '71')
 	minus_one := b.m.get_or_add_const(b.i64_type, '-1')
 	ascii_zero := b.m.get_or_add_const(b.i64_type, '48')
+	ascii_alpha_lower := b.m.get_or_add_const(b.i64_type, '87')
 	ascii_minus := b.m.get_or_add_const(b.i64_type, '45')
+	ten := b.m.get_or_add_const(b.i64_type, '10')
 	false_val := b.m.get_or_add_const(b.i1_type, '0')
 	true_val := b.m.get_or_add_const(b.i1_type, '1')
 
@@ -2726,8 +3251,12 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 
 	n_cur := b.block_instr1(.load, loop_block, b.i64_type, alloca_n)
 	// The magnitude of the minimum signed integer occupies the unsigned half of i64.
-	rem := b.block_instr2(.urem, loop_block, b.i64_type, n_cur, ten)
-	digit := b.block_instr2(.add, loop_block, b.i64_type, rem, ascii_zero)
+	rem := b.block_instr2(.urem, loop_block, b.i64_type, n_cur, radix)
+	numeric_digit := b.block_instr2(.add, loop_block, b.i64_type, rem, ascii_zero)
+	alpha_digit := b.block_instr2(.add, loop_block, b.i64_type, rem, ascii_alpha_lower)
+	is_numeric_digit := b.block_instr2(.lt, loop_block, b.i1_type, rem, ten)
+	digit := b.block_instr3(.select, loop_block, b.i64_type, is_numeric_digit, numeric_digit,
+		alpha_digit)
 	pos := b.block_instr1(.load, loop_block, ptr_i8, alloca_pos)
 	pos_next := b.block_instr2(.add, loop_block, ptr_i8, pos, minus_one)
 	b.block_instr2(.store, loop_block, b.void_type, digit, pos_next)
@@ -2735,7 +3264,7 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 	old_len := b.block_instr1(.load, loop_block, b.i64_type, alloca_len)
 	new_len := b.block_instr2(.add, loop_block, b.i64_type, old_len, one)
 	b.block_instr2(.store, loop_block, b.void_type, new_len, alloca_len)
-	quot := b.block_instr2(.udiv, loop_block, b.i64_type, n_cur, ten)
+	quot := b.block_instr2(.udiv, loop_block, b.i64_type, n_cur, radix)
 	b.block_instr2(.store, loop_block, b.void_type, quot, alloca_n)
 	has_more := b.block_instr2(.ne, loop_block, b.i1_type, quot, zero)
 	b.block_instr3(.br, loop_block, b.void_type, has_more, ValueID(loop_block), ValueID(sign_block))
@@ -3464,6 +3993,12 @@ fn (mut b Builder) register_array_runtime_stubs() {
 		b.generate_array_eq_array_body(array_eq_array_id)
 	}
 
+	mut p1 := []TypeID{}
+	p1 << b.array_type
+	if array_clone_id := b.register_runtime_function('array_clone', b.array_type, p1) {
+		b.generate_array_clone_body(array_clone_id)
+	}
+
 	p2 = []TypeID{}
 	p2 << ptr_array
 	p2 << ptr_i8
@@ -3496,12 +4031,6 @@ fn (mut b Builder) register_array_runtime_stubs() {
 		b.generate_array_push_many_array_body(array_push_many_wrapper_id)
 	}
 
-	mut p1 := []TypeID{}
-	p1 << b.array_type
-	if array_clone_id := b.register_runtime_function('array_clone', b.array_type, p1) {
-		b.generate_array_clone_body(array_clone_id)
-	}
-
 	// The transformer lowers `arr.clone()` to `array__clone(&arr)`. Provide the
 	// pointer-taking ABI alongside the value-taking synthetic clone.
 	mut p1_ptr_arr := []TypeID{}
@@ -3509,6 +4038,15 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	if array_clone_ptr_id := b.register_runtime_function('array__clone', b.array_type, p1_ptr_arr) {
 		b.generate_array_clone_ptr_body(array_clone_ptr_id)
 	}
+	if reverse_id := b.register_runtime_function('array__reverse_in_place', b.void_type, p1_ptr_arr) {
+		b.generate_array_reverse_body(reverse_id)
+	}
+	mut p1_array := []TypeID{}
+	p1_array << b.array_type
+	reverse_copy_id := b.register_synthetic_function('array.reverse', b.array_type, p1_array)
+	b.generate_array_reverse_copy_body(reverse_copy_id)
+	reverse_alias_id := b.register_synthetic_function('array__reverse', b.array_type, p1_array)
+	b.generate_array_reverse_copy_body(reverse_alias_id)
 
 	mut p3_repeat := []TypeID{}
 	p3_repeat << b.array_type
@@ -3542,6 +4080,95 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	}
 }
 
+// generate_array_reverse_copy_body clones the source array and reverses the
+// clone, preserving value semantics for reverse().
+fn (mut b Builder) generate_array_reverse_copy_body(func_id int) {
+	ptr_array := b.m.type_store.get_ptr(b.array_type)
+	entry := b.m.add_block(func_id, 'entry')
+	source := b.func_add_argument(func_id, b.array_type, 'source')
+	clone_ref := b.m.add_value(.func_ref, b.array_type, 'array_clone',
+		b.runtime_fn_id('array_clone'))
+	cloned := b.block_instr2(.call, entry, b.array_type, clone_ref, source)
+	slot := b.block_instr0(.alloca, entry, ptr_array)
+	b.block_instr2(.store, entry, b.void_type, cloned, slot)
+	reverse_ref := b.m.add_value(.func_ref, b.void_type, 'array__reverse_in_place',
+		b.runtime_fn_id('array__reverse_in_place'))
+	b.block_instr2(.call, entry, b.void_type, reverse_ref, slot)
+	result := b.block_instr1(.load, entry, b.array_type, slot)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+// generate_array_reverse_body reverses an array in place using its runtime
+// element size, so the same helper covers scalars, strings and aggregates.
+fn (mut b Builder) generate_array_reverse_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	ptr_array := b.m.type_store.get_ptr(b.array_type)
+	entry := b.m.add_block(func_id, 'entry')
+	arr := b.func_add_argument(func_id, ptr_array, 'arr')
+	left_slot := b.block_instr0(.alloca, entry, ptr_i64)
+	right_slot := b.block_instr0(.alloca, entry, ptr_i64)
+	byte_slot := b.block_instr0(.alloca, entry, ptr_i64)
+	data_ptr := b.block_struct_field_ptr(entry, arr, b.array_type, 0)
+	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
+	len := b.block_load_array_int_field(entry, arr, 2)
+	elem_size := b.block_load_array_int_field(entry, arr, 5)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	has_multiple := b.block_instr2(.gt, entry, b.i1_type, len, one)
+	init := b.m.add_block(func_id, 'reverse_init')
+	check := b.m.add_block(func_id, 'reverse_check')
+	byte_init := b.m.add_block(func_id, 'reverse_byte_init')
+	byte_check := b.m.add_block(func_id, 'reverse_byte_check')
+	swap := b.m.add_block(func_id, 'reverse_swap')
+	byte_next := b.m.add_block(func_id, 'reverse_byte_next')
+	outer_next := b.m.add_block(func_id, 'reverse_outer_next')
+	done := b.m.add_block(func_id, 'reverse_done')
+	b.block_instr3(.br, entry, b.void_type, has_multiple, ValueID(init), ValueID(done))
+
+	b.block_instr2(.store, init, b.void_type, zero, left_slot)
+	right := b.block_instr2(.sub, init, b.i64_type, len, one)
+	b.block_instr2(.store, init, b.void_type, right, right_slot)
+	b.block_instr1(.jmp, init, b.void_type, ValueID(check))
+
+	left := b.block_instr1(.load, check, b.i64_type, left_slot)
+	right_value := b.block_instr1(.load, check, b.i64_type, right_slot)
+	active := b.block_instr2(.lt, check, b.i1_type, left, right_value)
+	b.block_instr3(.br, check, b.void_type, active, ValueID(byte_init), ValueID(done))
+
+	b.block_instr2(.store, byte_init, b.void_type, zero, byte_slot)
+	b.block_instr1(.jmp, byte_init, b.void_type, ValueID(byte_check))
+
+	byte_index := b.block_instr1(.load, byte_check, b.i64_type, byte_slot)
+	has_byte := b.block_instr2(.lt, byte_check, b.i1_type, byte_index, elem_size)
+	b.block_instr3(.br, byte_check, b.void_type, has_byte, ValueID(swap),
+		ValueID(outer_next))
+
+	mut left_offset := b.block_instr2(.mul, swap, b.i64_type, left, elem_size)
+	mut right_offset := b.block_instr2(.mul, swap, b.i64_type, right_value, elem_size)
+	left_offset = b.block_instr2(.add, swap, b.i64_type, left_offset, byte_index)
+	right_offset = b.block_instr2(.add, swap, b.i64_type, right_offset, byte_index)
+	left_ptr := b.block_instr2(.get_element_ptr, swap, ptr_i8, data, left_offset)
+	right_ptr := b.block_instr2(.get_element_ptr, swap, ptr_i8, data, right_offset)
+	left_byte := b.block_instr1(.load, swap, b.i8_type, left_ptr)
+	right_byte := b.block_instr1(.load, swap, b.i8_type, right_ptr)
+	b.block_instr2(.store, swap, b.void_type, right_byte, left_ptr)
+	b.block_instr2(.store, swap, b.void_type, left_byte, right_ptr)
+	b.block_instr1(.jmp, swap, b.void_type, ValueID(byte_next))
+
+	next_byte := b.block_instr2(.add, byte_next, b.i64_type, byte_index, one)
+	b.block_instr2(.store, byte_next, b.void_type, next_byte, byte_slot)
+	b.block_instr1(.jmp, byte_next, b.void_type, ValueID(byte_check))
+
+	next_left := b.block_instr2(.add, outer_next, b.i64_type, left, one)
+	next_right := b.block_instr2(.sub, outer_next, b.i64_type, right_value, one)
+	b.block_instr2(.store, outer_next, b.void_type, next_left, left_slot)
+	b.block_instr2(.store, outer_next, b.void_type, next_right, right_slot)
+	b.block_instr1(.jmp, outer_next, b.void_type, ValueID(check))
+
+	b.block_instr0(.ret, done, b.void_type)
+}
+
 // generate_scalar_array_sort_body emits the native equivalent of the scalar qsort helpers
 // generated by the C backend.
 fn (mut b Builder) generate_scalar_array_sort_body(func_id int, elem_type TypeID) {
@@ -3558,7 +4185,9 @@ fn (mut b Builder) generate_scalar_array_sort_body(func_id int, elem_type TypeID
 	len := b.block_load_array_int_field(entry, arr, 2)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	one := b.m.get_or_add_const(b.i64_type, '1')
-	elem_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(elem_type)}')
+	elem_size_ptr := b.block_struct_field_ptr(entry, arr, b.array_type, 5)
+	elem_size32 := b.block_instr1(.load, entry, b.i32_type, elem_size_ptr)
+	elem_size := b.block_instr1(.zext, entry, b.i64_type, elem_size32)
 	has_multiple := b.block_instr2(.gt, entry, b.i1_type, len, one)
 	outer_init := b.m.add_block(func_id, 'sort_outer_init')
 	outer_check := b.m.add_block(func_id, 'sort_outer_check')
@@ -3727,6 +4356,11 @@ fn (mut b Builder) register_string_builder_stubs() {
 		write_byte_id := b.register_synthetic_function('strings.Builder.write_byte', b.void_type, p2)
 		b.generate_builder_write_u8_body(write_byte_id)
 	}
+	p2 = []TypeID{}
+	p2 << ptr_builder
+	p2 << b.i32_type
+	write_rune_id := b.register_synthetic_function('strings.Builder.write_rune', b.void_type, p2)
+	b.generate_builder_write_rune_body(write_rune_id)
 
 	mut p3 := []TypeID{}
 	p3 << ptr_builder
@@ -3737,13 +4371,6 @@ fn (mut b Builder) register_string_builder_stubs() {
 	}
 	if push_many_id := b.register_runtime_function('strings.Builder.push_many', b.void_type, p3) {
 		b.generate_builder_write_ptr_body(push_many_id)
-	}
-
-	p2 = []TypeID{}
-	p2 << ptr_builder
-	p2 << b.array_type
-	if write_runes_id := b.register_runtime_function('strings.Builder.write_runes', b.void_type, p2) {
-		b.generate_builder_free_body(write_runes_id)
 	}
 
 	p2 = []TypeID{}
@@ -3864,6 +4491,106 @@ fn (mut b Builder) generate_builder_write_u8_body(func_id int) {
 	b.block_instr0(.ret, end_block, b.void_type)
 }
 
+// generate_builder_write_rune_body encodes one Unicode scalar into UTF-8 and
+// appends the exact byte range to the builder.
+fn (mut b Builder) generate_builder_write_rune_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_builder := b.m.type_store.get_ptr(b.array_type)
+	entry := b.m.add_block(func_id, 'entry')
+	builder_ptr := b.func_add_argument(func_id, ptr_builder, 'builder')
+	r := b.func_add_argument(func_id, b.i32_type, 'r')
+	code_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.i32_type))
+	b.block_instr2(.store, entry, b.void_type, r, code_slot)
+	four := b.m.get_or_add_const(b.i64_type, '4')
+	buffer := b.block_instr1(.alloca, entry, ptr_i8, four)
+
+	zero := b.m.get_or_add_const(b.i32_type, '0')
+	max_code := b.m.get_or_add_const(b.i32_type, '1114111')
+	surrogate_min := b.m.get_or_add_const(b.i32_type, '55296')
+	surrogate_max := b.m.get_or_add_const(b.i32_type, '57343')
+	replacement := b.m.get_or_add_const(b.i32_type, '65533')
+	nonnegative := b.block_instr2(.ge, entry, b.i1_type, r, zero)
+	below_max := b.block_instr2(.le, entry, b.i1_type, r, max_code)
+	in_range := b.block_instr2(.and_, entry, b.i1_type, nonnegative, below_max)
+	above_low := b.block_instr2(.ge, entry, b.i1_type, r, surrogate_min)
+	below_high := b.block_instr2(.le, entry, b.i1_type, r, surrogate_max)
+	surrogate := b.block_instr2(.and_, entry, b.i1_type, above_low, below_high)
+	not_surrogate := b.block_instr2(.xor, entry, b.i1_type, surrogate,
+		b.m.get_or_add_const(b.i1_type, '1'))
+	valid := b.block_instr2(.and_, entry, b.i1_type, in_range, not_surrogate)
+	invalid_block := b.m.add_block(func_id, 'write_rune_invalid')
+	select_block := b.m.add_block(func_id, 'write_rune_select')
+	b.block_instr3(.br, entry, b.void_type, valid, ValueID(select_block),
+		ValueID(invalid_block))
+	b.block_instr2(.store, invalid_block, b.void_type, replacement, code_slot)
+	b.block_instr1(.jmp, invalid_block, b.void_type, ValueID(select_block))
+
+	code := b.block_instr1(.load, select_block, b.i32_type, code_slot)
+	one_limit := b.m.get_or_add_const(b.i32_type, '127')
+	two_limit := b.m.get_or_add_const(b.i32_type, '2047')
+	three_limit := b.m.get_or_add_const(b.i32_type, '65535')
+	one_block := b.m.add_block(func_id, 'write_rune_one')
+	two_check := b.m.add_block(func_id, 'write_rune_two_check')
+	three_check := b.m.add_block(func_id, 'write_rune_three_check')
+	two_block := b.m.add_block(func_id, 'write_rune_two')
+	three_block := b.m.add_block(func_id, 'write_rune_three')
+	four_block := b.m.add_block(func_id, 'write_rune_four')
+	one_fits := b.block_instr2(.le, select_block, b.i1_type, code, one_limit)
+	b.block_instr3(.br, select_block, b.void_type, one_fits, ValueID(one_block),
+		ValueID(two_check))
+	two_fits := b.block_instr2(.le, two_check, b.i1_type, code, two_limit)
+	b.block_instr3(.br, two_check, b.void_type, two_fits, ValueID(two_block),
+		ValueID(three_check))
+	three_fits := b.block_instr2(.le, three_check, b.i1_type, code, three_limit)
+	b.block_instr3(.br, three_check, b.void_type, three_fits, ValueID(three_block),
+		ValueID(four_block))
+	b.emit_builder_write_utf8(func_id, one_block, builder_ptr, buffer, code, 1)
+	b.emit_builder_write_utf8(func_id, two_block, builder_ptr, buffer, code, 2)
+	b.emit_builder_write_utf8(func_id, three_block, builder_ptr, buffer, code, 3)
+	b.emit_builder_write_utf8(func_id, four_block, builder_ptr, buffer, code, 4)
+}
+
+fn (mut b Builder) emit_builder_write_utf8(func_id int, block_id BlockID, builder_ptr ValueID, buffer ValueID, code ValueID, nbytes int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	for i in 0 .. nbytes {
+		mut byte := code
+		if nbytes == 1 {
+			byte = b.block_instr2(.and_, block_id, b.i32_type, code,
+				b.m.get_or_add_const(b.i32_type, '127'))
+		} else {
+			shift := b.m.get_or_add_const(b.i32_type, '${(nbytes - i - 1) * 6}')
+			byte = b.block_instr2(.lshr, block_id, b.i32_type, code, shift)
+			mask := b.m.get_or_add_const(b.i32_type, if i == 0 {
+				match nbytes {
+					2 { '31' }
+					3 { '15' }
+					else { '7' }
+				}
+			} else {
+				'63'
+			})
+			byte = b.block_instr2(.and_, block_id, b.i32_type, byte, mask)
+			prefix := b.m.get_or_add_const(b.i32_type, if i == 0 {
+				match nbytes {
+					2 { '192' }
+					3 { '224' }
+					else { '240' }
+				}
+			} else {
+				'128'
+			})
+			byte = b.block_instr2(.or_, block_id, b.i32_type, byte, prefix)
+		}
+		byte8 := b.block_instr1(.trunc, block_id, b.i8_type, byte)
+		offset := b.m.get_or_add_const(b.i64_type, '${i}')
+		byte_ptr := b.block_instr2(.add, block_id, ptr_i8, buffer, offset)
+		b.block_instr2(.store, block_id, b.void_type, byte8, byte_ptr)
+	}
+	len := b.m.get_or_add_const(b.i64_type, '${nbytes}')
+	end_block := b.emit_builder_append(func_id, block_id, builder_ptr, buffer, len)
+	b.block_instr0(.ret, end_block, b.void_type)
+}
+
 // generate_builder_str_body supports generate builder str body handling for Builder.
 fn (mut b Builder) generate_builder_str_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -3878,6 +4605,8 @@ fn (mut b Builder) generate_builder_str_body(func_id int) {
 	// Return an owned copy, not the builder's live buffer (matches strings.Builder.str,
 	// which memdups): the result is marked non-literal and may be freed independently.
 	result := b.emit_make_owned_string(entry, data, len)
+	zero := b.m.get_or_add_const(b.i32_type, '0')
+	b.block_instr2(.store, entry, b.void_type, zero, len_ptr)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -3893,13 +4622,24 @@ fn (mut b Builder) generate_builder_last_n_body(func_id int) {
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
 	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
-	start := b.block_instr2(.sub, entry, b.i64_type, len, n)
-	src := b.block_instr2(.add, entry, ptr_i8, data, start)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	non_positive := b.block_instr2(.le, entry, b.i1_type, n, zero)
+	too_long := b.block_instr2(.gt, entry, b.i1_type, n, len)
+	invalid := b.block_instr2(.or_, entry, b.i1_type, non_positive, too_long)
+	empty_block := b.m.add_block(func_id, 'builder_last_n_empty')
+	copy_block := b.m.add_block(func_id, 'builder_last_n_copy')
+	b.block_instr3(.br, entry, b.void_type, invalid, ValueID(empty_block), ValueID(copy_block))
+
+	empty := b.m.add_value(.string_literal, b.str_type, '', 0)
+	b.block_instr1(.ret, empty_block, b.void_type, empty)
+
+	start := b.block_instr2(.sub, copy_block, b.i64_type, len, n)
+	src := b.block_instr2(.add, copy_block, ptr_i8, data, start)
 	// Copy out an owned substring (matches strings.Builder.last_n -> spart): the result
 	// must not alias the interior of the builder buffer, since string.free would later
 	// pass that non-allocation-start pointer to free().
-	result := b.emit_make_owned_string(entry, src, n)
-	b.block_instr1(.ret, entry, b.void_type, result)
+	result := b.emit_make_owned_string(copy_block, src, n)
+	b.block_instr1(.ret, copy_block, b.void_type, result)
 }
 
 // generate_builder_free_body supports generate builder free body handling for Builder.
@@ -3950,6 +4690,9 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	if b.m.target.ptr_size == 8 {
 		b.register_native_map_index_helpers()
 	}
+	alignment_exponent_id := b.register_synthetic_function('__ssa_data_alignment_exponent',
+		b.u8_type, [b.u64_type])
+	b.generate_data_alignment_exponent_body(alignment_exponent_id)
 
 	mut p2 := []TypeID{}
 	p2 << ptr_map
@@ -3964,6 +4707,21 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	}
 	if new_id := b.register_runtime_function('new_map', b.map_type, p6) {
 		b.generate_new_map_body(new_id)
+		b.runtime_fn_ids['new_map'] = new_id
+		if fn_type := b.fn_types['new_map'] {
+			b.runtime_fn_types['new_map'] = fn_type
+		}
+	}
+	mut p8 := []TypeID{}
+	for _ in 0 .. 8 {
+		p8 << b.i64_type
+	}
+	if aligned_id := b.register_runtime_function('__ssa_new_map_aligned', b.map_type, p8) {
+		b.generate_new_map_aligned_body(aligned_id)
+		if fn_type := b.fn_types['__ssa_new_map_aligned'] {
+			b.fn_ids['new_map_aligned'] = aligned_id
+			b.fn_types['new_map_aligned'] = fn_type
+		}
 	}
 
 	mut p3 := []TypeID{}
@@ -4067,13 +4825,83 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	}
 }
 
-// generate_map_reserve_body emits a capacity no-op for the simplified SSA map runtime.
 fn (mut b Builder) generate_map_reserve_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
+	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
 	entry := b.m.add_block(func_id, 'entry')
-	_ := b.func_add_argument(func_id, ptr_map, 'm')
-	_ := b.func_add_argument(func_id, b.u32_type, 'n')
-	b.block_instr0(.ret, entry, b.void_type)
+	m := b.func_add_argument(func_id, ptr_map, 'm')
+	n := b.func_add_argument(func_id, b.u32_type, 'n')
+	state := b.map_state_ptr(entry, m)
+	zero_state := b.m.get_or_add_const(ptr_state, '0')
+	has_state := b.block_instr2(.ne, entry, b.i1_type, state, zero_state)
+	check_cap := b.m.add_block(func_id, 'map_reserve_check')
+	done := b.m.add_block(func_id, 'map_reserve_done')
+	b.block_instr3(.br, entry, b.void_type, has_state, ValueID(check_cap), ValueID(done))
+	requested := b.block_instr1(.zext, check_cap, b.i64_type, n)
+	current_cap := b.map_state_load_i64(check_cap, state, 2)
+	needs_grow := b.block_instr2(.gt, check_cap, b.i1_type, requested, current_cap)
+	grow := b.m.add_block(func_id, 'map_reserve_grow')
+	b.block_instr3(.br, check_cap, b.void_type, needs_grow, ValueID(grow), ValueID(done))
+
+	keys_ptr := b.map_state_field_ptr(grow, state, 0)
+	vals_ptr := b.map_state_field_ptr(grow, state, 1)
+	old_keys := b.block_instr1(.load, grow, ptr_i8, keys_ptr)
+	old_vals := b.block_instr1(.load, grow, ptr_i8, vals_ptr)
+	len := b.map_state_load_i64(grow, state, 3)
+	key_size := b.map_state_load_i64(grow, state, 4)
+	val_size := b.map_state_load_i64(grow, state, 5)
+	key_alignment_ptr := b.map_state_field_ptr(grow, state, 13)
+	val_alignment_ptr := b.map_state_field_ptr(grow, state, 14)
+	key_exponent8 := b.block_instr1(.load, grow, b.u8_type, key_alignment_ptr)
+	val_exponent8 := b.block_instr1(.load, grow, b.u8_type, val_alignment_ptr)
+	key_exponent := b.block_instr1(.zext, grow, b.i64_type, key_exponent8)
+	val_exponent := b.block_instr1(.zext, grow, b.i64_type, val_exponent8)
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	key_alignment := b.block_instr2(.shl, grow, b.i64_type, one, key_exponent)
+	val_alignment := b.block_instr2(.shl, grow, b.i64_type, one, val_exponent)
+	new_keys := b.map_alloc_aligned_buffer(grow, requested, key_size, key_alignment)
+	new_vals := b.map_alloc_aligned_buffer(grow, requested, val_size, val_alignment)
+	key_bytes := b.block_instr2(.mul, grow, b.i64_type, len, key_size)
+	val_bytes := b.block_instr2(.mul, grow, b.i64_type, len, val_size)
+	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
+	b.block_instr4(.call, grow, ptr_i8, memcpy_ref, new_keys, old_keys, key_bytes)
+	b.block_instr4(.call, grow, ptr_i8, memcpy_ref, new_vals, old_vals, val_bytes)
+	free_ref := b.m.add_value(.func_ref, b.void_type, 'free', b.fn_ids['free'])
+	b.block_instr2(.call, grow, b.void_type, free_ref, old_keys)
+	b.block_instr2(.call, grow, b.void_type, free_ref, old_vals)
+	b.block_instr2(.store, grow, b.void_type, new_keys, keys_ptr)
+	b.block_instr2(.store, grow, b.void_type, new_vals, vals_ptr)
+	b.map_state_store_i64(grow, state, 2, requested)
+	if b.m.target.ptr_size == 8 {
+		even_index_ptr := b.block_struct_field_ptr(grow, state, b.map_state_type, 2)
+		two := b.m.get_or_add_const(b.u32_type, '2')
+		even_index := b.block_instr2(.mul, grow, b.u32_type, n, two)
+		b.block_instr2(.store, grow, b.void_type, even_index, even_index_ptr)
+		b.invalidate_native_map_index(grow, state)
+		deletes_ptr := b.map_dense_field_ptr(grow, state, 4)
+		deletes := b.block_instr1(.load, grow, b.u32_type, deletes_ptr)
+		has_deletes := b.block_instr2(.ne, grow, b.i1_type, deletes,
+			b.m.get_or_add_const(b.u32_type, '0'))
+		blk_bitmap := b.m.add_block(func_id, 'map_reserve_bitmap')
+		b.block_instr3(.br, grow, b.void_type, has_deletes, ValueID(blk_bitmap),
+			ValueID(done))
+		bitmap_one := b.m.get_or_add_const(b.i64_type, '1')
+		calloc_ref := b.m.add_value(.func_ref, ptr_i8, 'calloc', b.fn_ids['calloc'])
+		bitmap := b.block_instr3(.call, blk_bitmap, ptr_i8, calloc_ref, requested,
+			bitmap_one)
+		old_bitmap_ptr := b.map_dense_field_ptr(blk_bitmap, state, 7)
+		old_bitmap := b.block_instr1(.load, blk_bitmap, ptr_i8, old_bitmap_ptr)
+		b.block_instr4(.call, blk_bitmap, ptr_i8, memcpy_ref, bitmap, old_bitmap, len)
+		free_bitmap_ref := b.m.add_value(.func_ref, b.void_type, 'free',
+			b.fn_ids['free'])
+		b.block_instr2(.call, blk_bitmap, b.void_type, free_bitmap_ref, old_bitmap)
+		b.block_instr2(.store, blk_bitmap, b.void_type, bitmap, old_bitmap_ptr)
+		b.block_instr1(.jmp, blk_bitmap, b.void_type, ValueID(done))
+	} else {
+		b.block_instr1(.jmp, grow, b.void_type, ValueID(done))
+	}
+	b.block_instr0(.ret, done, b.void_type)
 }
 
 // generate_map_clear_body clears the simplified SSA map length.
@@ -4089,9 +4917,13 @@ fn (mut b Builder) generate_map_clear_body(func_id int) {
 	blk_done := b.m.add_block(func_id, 'map_clear_done')
 	b.block_instr3(.br, entry, b.void_type, has_state, ValueID(blk_clear), ValueID(blk_done))
 
-	len_ptr := b.map_state_field_ptr(blk_clear, state, 3)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
-	b.block_instr2(.store, blk_clear, b.void_type, zero, len_ptr)
+	b.map_state_store_i64(blk_clear, state, 3, zero)
+	if b.m.target.ptr_size == 8 {
+		count_ptr := b.block_struct_field_ptr(blk_clear, state, b.map_state_type, 13)
+		count_zero := b.m.get_or_add_const(b.i32_type, '0')
+		b.block_instr2(.store, blk_clear, b.void_type, count_zero, count_ptr)
+	}
 	if b.m.target.ptr_size == 8 { b.invalidate_native_map_index(blk_clear, state) }
 	b.block_instr1(.jmp, blk_clear, b.void_type, ValueID(blk_done))
 
@@ -4112,6 +4944,135 @@ fn (mut b Builder) generate_map_free_body(func_id int) {
 
 // generate_map_delete_body supports generate map delete body handling for Builder.
 fn (mut b Builder) generate_map_delete_body(func_id int) {
+	if b.m.target.ptr_size == 4 {
+		b.generate_compact_map_delete_body(func_id)
+		return
+	}
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_map := b.m.type_store.get_ptr(b.map_type)
+	entry := b.m.add_block(func_id, 'entry')
+	map_ptr := b.func_add_argument(func_id, ptr_map, 'm')
+	key_ptr := b.func_add_argument(func_id, ptr_i8, 'key')
+	blk_found := b.m.add_block(func_id, 'map_delete_found')
+	blk_done := b.m.add_block(func_id, 'map_delete_done')
+	find_ref := b.m.add_value(.func_ref, b.void_type, 'v3_map_find',
+		b.runtime_fn_id('v3_map_find'))
+	idx := b.block_instr3(.call, entry, b.i64_type, find_ref, map_ptr, key_ptr)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	found := b.block_instr2(.ge, entry, b.i1_type, idx, zero)
+	b.block_instr3(.br, entry, b.void_type, found, ValueID(blk_found), ValueID(blk_done))
+
+	state := b.map_state_ptr(blk_found, map_ptr)
+	len := b.map_state_load_i64(blk_found, state, 3)
+	keys_ptr := b.map_state_field_ptr(blk_found, state, 0)
+	vals_ptr := b.map_state_field_ptr(blk_found, state, 1)
+	keys := b.block_instr1(.load, blk_found, ptr_i8, keys_ptr)
+	vals := b.block_instr1(.load, blk_found, ptr_i8, vals_ptr)
+	key_size := b.map_state_load_i64(blk_found, state, 4)
+	val_size := b.map_state_load_i64(blk_found, state, 5)
+	key_offset := b.block_instr2(.mul, blk_found, b.i64_type, idx, key_size)
+	val_offset := b.block_instr2(.mul, blk_found, b.i64_type, idx, val_size)
+	key_target := b.block_instr2(.add, blk_found, ptr_i8, keys, key_offset)
+	val_target := b.block_instr2(.add, blk_found, ptr_i8, vals, val_offset)
+	memset_ref := b.m.add_value(.func_ref, b.void_type, 'memset', b.runtime_fn_id('memset'))
+	zero_byte := b.m.get_or_add_const(b.i32_type, '0')
+	b.block_instr4(.call, blk_found, ptr_i8, memset_ref, key_target, zero_byte, key_size)
+	b.block_instr4(.call, blk_found, ptr_i8, memset_ref, val_target, zero_byte, val_size)
+
+	deletes_ptr := b.map_dense_field_ptr(blk_found, state, 4)
+	deletes := b.block_instr1(.load, blk_found, b.u32_type, deletes_ptr)
+	first_tombstone := b.block_instr2(.eq, blk_found, b.i1_type, deletes,
+		b.m.get_or_add_const(b.u32_type, '0'))
+	blk_alloc_bitmap := b.m.add_block(func_id, 'map_delete_alloc_bitmap')
+	blk_mark := b.m.add_block(func_id, 'map_delete_mark')
+	b.block_instr3(.br, blk_found, b.void_type, first_tombstone, ValueID(blk_alloc_bitmap),
+		ValueID(blk_mark))
+	cap := b.map_state_load_i64(blk_alloc_bitmap, state, 2)
+	one_byte := b.m.get_or_add_const(b.i64_type, '1')
+	calloc_ref := b.m.add_value(.func_ref, ptr_i8, 'calloc', b.fn_ids['calloc'])
+	bitmap := b.block_instr3(.call, blk_alloc_bitmap, ptr_i8, calloc_ref, cap, one_byte)
+	bitmap_ptr := b.map_dense_field_ptr(blk_alloc_bitmap, state, 7)
+	b.block_instr2(.store, blk_alloc_bitmap, b.void_type, bitmap, bitmap_ptr)
+	b.block_instr1(.jmp, blk_alloc_bitmap, b.void_type, ValueID(blk_mark))
+
+	current_bitmap_ptr := b.map_dense_field_ptr(blk_mark, state, 7)
+	current_bitmap := b.block_instr1(.load, blk_mark, ptr_i8, current_bitmap_ptr)
+	index_flag_ptr := b.block_instr2(.add, blk_mark, ptr_i8, current_bitmap, idx)
+	one8 := b.m.get_or_add_const(b.i8_type, '1')
+	b.block_instr2(.store, blk_mark, b.void_type, one8, index_flag_ptr)
+	one32u := b.m.get_or_add_const(b.u32_type, '1')
+	new_deletes := b.block_instr2(.add, blk_mark, b.u32_type, deletes, one32u)
+	b.block_instr2(.store, blk_mark, b.void_type, new_deletes, deletes_ptr)
+
+	if b.m.target.ptr_size == 8 {
+		count_ptr := b.block_struct_field_ptr(blk_mark, state, b.map_state_type, 13)
+		count := b.block_instr1(.load, blk_mark, b.i32_type, count_ptr)
+		one32 := b.m.get_or_add_const(b.i32_type, '1')
+		new_count := b.block_instr2(.sub, blk_mark, b.i32_type, count, one32)
+		b.block_instr2(.store, blk_mark, b.void_type, new_count, count_ptr)
+	}
+
+	len_slot := b.block_instr0(.alloca, blk_mark, b.m.type_store.get_ptr(b.i64_type))
+	b.block_instr2(.store, blk_mark, b.void_type, len, len_slot)
+	blk_trim := b.m.add_block(func_id, 'map_delete_trim')
+	blk_trim_entry := b.m.add_block(func_id, 'map_delete_trim_entry')
+	blk_clear_tail := b.m.add_block(func_id, 'map_delete_clear_tail')
+	blk_cleanup := b.m.add_block(func_id, 'map_delete_cleanup')
+	blk_free_bitmap := b.m.add_block(func_id, 'map_delete_free_bitmap')
+	blk_store := b.m.add_block(func_id, 'map_delete_store')
+	b.block_instr1(.jmp, blk_mark, b.void_type, ValueID(blk_trim_entry))
+
+	trim_index := b.block_instr1(.load, blk_trim_entry, b.i64_type, len_slot)
+	has_entries := b.block_instr2(.gt, blk_trim_entry, b.i1_type, trim_index,
+		b.m.get_or_add_const(b.i64_type, '0'))
+	b.block_instr3(.br, blk_trim_entry, b.void_type, has_entries, ValueID(blk_trim),
+		ValueID(blk_cleanup))
+	one64 := b.m.get_or_add_const(b.i64_type, '1')
+	last_index := b.block_instr2(.sub, blk_trim, b.i64_type, trim_index, one64)
+	trim_bitmap_ptr := b.map_dense_field_ptr(blk_trim, state, 7)
+	trim_bitmap := b.block_instr1(.load, blk_trim, ptr_i8, trim_bitmap_ptr)
+	last_flag_ptr := b.block_instr2(.add, blk_trim, ptr_i8, trim_bitmap, last_index)
+	last_flag := b.block_instr1(.load, blk_trim, b.i8_type, last_flag_ptr)
+	last_deleted := b.block_instr2(.ne, blk_trim, b.i1_type, last_flag,
+		b.m.get_or_add_const(b.i8_type, '0'))
+	b.block_instr3(.br, blk_trim, b.void_type, last_deleted, ValueID(blk_clear_tail),
+		ValueID(blk_cleanup))
+	b.block_instr2(.store, blk_clear_tail, b.void_type,
+		b.m.get_or_add_const(b.i8_type, '0'), last_flag_ptr)
+	trimmed_len := last_index
+	b.block_instr2(.store, blk_clear_tail, b.void_type, trimmed_len, len_slot)
+	trimmed_deletes := b.block_instr2(.sub, blk_clear_tail, b.u32_type,
+		b.block_instr1(.load, blk_clear_tail, b.u32_type, deletes_ptr), one8)
+	b.block_instr2(.store, blk_clear_tail, b.void_type, trimmed_deletes, deletes_ptr)
+	b.block_instr1(.jmp, blk_clear_tail, b.void_type, ValueID(blk_trim_entry))
+
+	remaining_deletes := b.block_instr1(.load, blk_cleanup, b.u32_type, deletes_ptr)
+	no_deletes := b.block_instr2(.eq, blk_cleanup, b.i1_type, remaining_deletes,
+		b.m.get_or_add_const(b.u32_type, '0'))
+	b.block_instr3(.br, blk_cleanup, b.void_type, no_deletes, ValueID(blk_free_bitmap),
+		ValueID(blk_store))
+	final_bitmap_ptr := b.map_dense_field_ptr(blk_free_bitmap, state, 7)
+	final_bitmap := b.block_instr1(.load, blk_free_bitmap, ptr_i8, final_bitmap_ptr)
+	free_ref := b.m.add_value(.func_ref, b.void_type, 'free', b.fn_ids['free'])
+	b.block_instr2(.call, blk_free_bitmap, b.void_type, free_ref, final_bitmap)
+	b.block_instr2(.store, blk_free_bitmap, b.void_type,
+		b.m.get_or_add_const(ptr_i8, '0'), final_bitmap_ptr)
+	b.block_instr1(.jmp, blk_free_bitmap, b.void_type, ValueID(blk_store))
+
+	final_len := b.block_instr1(.load, blk_store, b.i64_type, len_slot)
+	b.map_state_store_i64(blk_store, state, 3, final_len)
+	trimmed_tail := b.block_instr2(.lt, blk_store, b.i1_type, final_len, len)
+	blk_invalidate := b.m.add_block(func_id, 'map_delete_invalidate')
+	b.block_instr3(.br, blk_store, b.void_type, trimmed_tail, ValueID(blk_invalidate),
+		ValueID(blk_done))
+	b.invalidate_native_map_index(blk_invalidate, state)
+	b.block_instr1(.jmp, blk_invalidate, b.void_type, ValueID(blk_done))
+
+	b.block_instr0(.ret, blk_done, b.void_type)
+}
+
+// generate_compact_map_delete_body preserves the compact 32-bit map ABI.
+fn (mut b Builder) generate_compact_map_delete_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -4128,40 +5089,58 @@ fn (mut b Builder) generate_map_delete_body(func_id int) {
 	state := b.map_state_ptr(blk_found, map_ptr)
 	keys_ptr := b.map_state_field_ptr(blk_found, state, 0)
 	vals_ptr := b.map_state_field_ptr(blk_found, state, 1)
-	len_ptr := b.map_state_field_ptr(blk_found, state, 3)
-	key_size_ptr := b.map_state_field_ptr(blk_found, state, 4)
-	val_size_ptr := b.map_state_field_ptr(blk_found, state, 5)
-	len := b.block_instr1(.load, blk_found, b.i64_type, len_ptr)
+	len := b.map_state_load_i64(blk_found, state, 3)
 	one := b.m.get_or_add_const(b.i64_type, '1')
 	new_len := b.block_instr2(.sub, blk_found, b.i64_type, len, one)
 	deleting_last := b.block_instr2(.eq, blk_found, b.i1_type, idx, new_len)
 	blk_compact := b.m.add_block(func_id, 'map_delete_compact')
+	blk_zero_tail := b.m.add_block(func_id, 'map_delete_zero_tail')
 	blk_store_len := b.m.add_block(func_id, 'map_delete_store_len')
-	b.block_instr3(.br, blk_found, b.void_type, deleting_last, ValueID(blk_store_len),
+	b.block_instr3(.br, blk_found, b.void_type, deleting_last, ValueID(blk_zero_tail),
 		ValueID(blk_compact))
 
 	keys := b.block_instr1(.load, blk_compact, ptr_i8, keys_ptr)
 	vals := b.block_instr1(.load, blk_compact, ptr_i8, vals_ptr)
-	key_size := b.block_instr1(.load, blk_compact, b.i64_type, key_size_ptr)
-	val_size := b.block_instr1(.load, blk_compact, b.i64_type, val_size_ptr)
+	key_size := b.map_state_load_i64(blk_compact, state, 4)
+	val_size := b.map_state_load_i64(blk_compact, state, 5)
 	key_dst_off := b.block_instr2(.mul, blk_compact, b.i64_type, idx, key_size)
 	val_dst_off := b.block_instr2(.mul, blk_compact, b.i64_type, idx, val_size)
-	key_src_off := b.block_instr2(.mul, blk_compact, b.i64_type, new_len, key_size)
-	val_src_off := b.block_instr2(.mul, blk_compact, b.i64_type, new_len, val_size)
+	remaining := b.block_instr2(.sub, blk_compact, b.i64_type, new_len, idx)
+	key_bytes := b.block_instr2(.mul, blk_compact, b.i64_type, remaining, key_size)
+	val_bytes := b.block_instr2(.mul, blk_compact, b.i64_type, remaining, val_size)
+	key_src_index := b.block_instr2(.add, blk_compact, b.i64_type, idx, one)
+	key_src_off := b.block_instr2(.mul, blk_compact, b.i64_type, key_src_index, key_size)
+	val_src_off := b.block_instr2(.mul, blk_compact, b.i64_type, key_src_index, val_size)
 	key_dst := b.block_instr2(.add, blk_compact, ptr_i8, keys, key_dst_off)
 	val_dst := b.block_instr2(.add, blk_compact, ptr_i8, vals, val_dst_off)
 	key_src := b.block_instr2(.add, blk_compact, ptr_i8, keys, key_src_off)
 	val_src := b.block_instr2(.add, blk_compact, ptr_i8, vals, val_src_off)
-	memcpy_ref_key := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
-	memcpy_ref_val := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
-	b.block_instr4(.call, blk_compact, ptr_i8, memcpy_ref_key, key_dst, key_src, key_size)
-	b.block_instr4(.call, blk_compact, ptr_i8, memcpy_ref_val, val_dst, val_src, val_size)
-	b.block_instr1(.jmp, blk_compact, b.void_type, ValueID(blk_store_len))
+	memmove_ref_key := b.m.add_value(.func_ref, b.void_type, 'memmove',
+		b.runtime_fn_id('memmove'))
+	memmove_ref_val := b.m.add_value(.func_ref, b.void_type, 'memmove',
+		b.runtime_fn_id('memmove'))
+	b.block_instr4(.call, blk_compact, ptr_i8, memmove_ref_key, key_dst, key_src, key_bytes)
+	b.block_instr4(.call, blk_compact, ptr_i8, memmove_ref_val, val_dst, val_src, val_bytes)
+	b.block_instr1(.jmp, blk_compact, b.void_type, ValueID(blk_zero_tail))
 
-	b.block_instr2(.store, blk_store_len, b.void_type, new_len, len_ptr)
-	if b.m.target.ptr_size == 8 { b.invalidate_native_map_index(blk_store_len, state) }
+	keys_tail := b.block_instr1(.load, blk_zero_tail, ptr_i8, keys_ptr)
+	vals_tail := b.block_instr1(.load, blk_zero_tail, ptr_i8, vals_ptr)
+	key_size_tail := b.map_state_load_i64(blk_zero_tail, state, 4)
+	val_size_tail := b.map_state_load_i64(blk_zero_tail, state, 5)
+	key_tail_off := b.block_instr2(.mul, blk_zero_tail, b.i64_type, new_len, key_size_tail)
+	val_tail_off := b.block_instr2(.mul, blk_zero_tail, b.i64_type, new_len, val_size_tail)
+	key_tail := b.block_instr2(.add, blk_zero_tail, ptr_i8, keys_tail, key_tail_off)
+	val_tail := b.block_instr2(.add, blk_zero_tail, ptr_i8, vals_tail, val_tail_off)
+	memset_ref := b.m.add_value(.func_ref, b.void_type, 'memset',
+		b.runtime_fn_id('memset'))
+	zero_byte := b.m.get_or_add_const(b.i32_type, '0')
+	b.block_instr4(.call, blk_zero_tail, ptr_i8, memset_ref, key_tail, zero_byte,
+		key_size_tail)
+	b.block_instr4(.call, blk_zero_tail, ptr_i8, memset_ref, val_tail, zero_byte,
+		val_size_tail)
+	b.block_instr1(.jmp, blk_zero_tail, b.void_type, ValueID(blk_store_len))
+	b.map_state_store_i64(blk_store_len, state, 3, new_len)
 	b.block_instr1(.jmp, blk_store_len, b.void_type, ValueID(blk_done))
-
 	b.block_instr0(.ret, blk_done, b.void_type)
 }
 
@@ -4187,18 +5166,23 @@ fn (mut b Builder) generate_map_clone_body(func_id int) {
 
 	old_keys_ptr := b.map_state_field_ptr(blk_clone, old_state, 0)
 	old_vals_ptr := b.map_state_field_ptr(blk_clone, old_state, 1)
-	old_cap_ptr := b.map_state_field_ptr(blk_clone, old_state, 2)
-	old_len_ptr := b.map_state_field_ptr(blk_clone, old_state, 3)
-	old_key_size_ptr := b.map_state_field_ptr(blk_clone, old_state, 4)
-	old_val_size_ptr := b.map_state_field_ptr(blk_clone, old_state, 5)
 	old_keys := b.block_instr1(.load, blk_clone, ptr_i8, old_keys_ptr)
 	old_vals := b.block_instr1(.load, blk_clone, ptr_i8, old_vals_ptr)
-	cap := b.block_instr1(.load, blk_clone, b.i64_type, old_cap_ptr)
-	len := b.block_instr1(.load, blk_clone, b.i64_type, old_len_ptr)
-	key_size := b.block_instr1(.load, blk_clone, b.i64_type, old_key_size_ptr)
-	val_size := b.block_instr1(.load, blk_clone, b.i64_type, old_val_size_ptr)
-	new_keys := b.block_instr3(.call, blk_clone, ptr_i8, calloc_ref, cap, key_size)
-	new_vals := b.block_instr3(.call, blk_clone, ptr_i8, calloc_ref, cap, val_size)
+	cap := b.map_state_load_i64(blk_clone, old_state, 2)
+	len := b.map_state_load_i64(blk_clone, old_state, 3)
+	key_size := b.map_state_load_i64(blk_clone, old_state, 4)
+	val_size := b.map_state_load_i64(blk_clone, old_state, 5)
+	key_alignment_ptr := b.map_state_field_ptr(blk_clone, old_state, 13)
+	val_alignment_ptr := b.map_state_field_ptr(blk_clone, old_state, 14)
+	key_exponent8 := b.block_instr1(.load, blk_clone, b.u8_type, key_alignment_ptr)
+	val_exponent8 := b.block_instr1(.load, blk_clone, b.u8_type, val_alignment_ptr)
+	key_exponent := b.block_instr1(.zext, blk_clone, b.i64_type, key_exponent8)
+	val_exponent := b.block_instr1(.zext, blk_clone, b.i64_type, val_exponent8)
+	one_alignment := b.m.get_or_add_const(b.i64_type, '1')
+	key_alignment := b.block_instr2(.shl, blk_clone, b.i64_type, one_alignment, key_exponent)
+	val_alignment := b.block_instr2(.shl, blk_clone, b.i64_type, one_alignment, val_exponent)
+	new_keys := b.map_alloc_aligned_buffer(blk_clone, cap, key_size, key_alignment)
+	new_vals := b.map_alloc_aligned_buffer(blk_clone, cap, val_size, val_alignment)
 	key_bytes := b.block_instr2(.mul, blk_clone, b.i64_type, len, key_size)
 	val_bytes := b.block_instr2(.mul, blk_clone, b.i64_type, len, val_size)
 	memcpy_ref_keys := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
@@ -4208,22 +5192,57 @@ fn (mut b Builder) generate_map_clone_body(func_id int) {
 
 	new_keys_ptr := b.map_state_field_ptr(blk_clone, new_state, 0)
 	new_vals_ptr := b.map_state_field_ptr(blk_clone, new_state, 1)
-	new_cap_ptr := b.map_state_field_ptr(blk_clone, new_state, 2)
-	new_len_ptr := b.map_state_field_ptr(blk_clone, new_state, 3)
-	new_key_size_ptr := b.map_state_field_ptr(blk_clone, new_state, 4)
-	new_val_size_ptr := b.map_state_field_ptr(blk_clone, new_state, 5)
 	b.block_instr2(.store, blk_clone, b.void_type, new_keys, new_keys_ptr)
 	b.block_instr2(.store, blk_clone, b.void_type, new_vals, new_vals_ptr)
-	b.block_instr2(.store, blk_clone, b.void_type, cap, new_cap_ptr)
-	b.block_instr2(.store, blk_clone, b.void_type, len, new_len_ptr)
-	b.block_instr2(.store, blk_clone, b.void_type, key_size, new_key_size_ptr)
-	b.block_instr2(.store, blk_clone, b.void_type, val_size, new_val_size_ptr)
+	b.map_state_store_i64(blk_clone, new_state, 2, cap)
+	b.map_state_store_i64(blk_clone, new_state, 3, len)
+	b.map_state_store_i64(blk_clone, new_state, 4, key_size)
+	b.map_state_store_i64(blk_clone, new_state, 5, val_size)
+	mut result_block := blk_clone
+	if b.m.target.ptr_size == 8 {
+		for field_idx in 9 .. 13 {
+			old_field_ptr := b.map_state_field_ptr(blk_clone, old_state, field_idx)
+			field_type := b.m.type_store.types[b.map_state_type].fields[field_idx]
+			field_value := b.block_instr1(.load, blk_clone, field_type, old_field_ptr)
+			new_field_ptr := b.map_state_field_ptr(blk_clone, new_state, field_idx)
+			b.block_instr2(.store, blk_clone, b.void_type, field_value, new_field_ptr)
+		}
+		for field_idx in [13, 14] {
+			old_field_ptr := b.map_state_field_ptr(blk_clone, old_state, field_idx)
+			field_value := b.block_instr1(.load, blk_clone, b.u8_type, old_field_ptr)
+			new_field_ptr := b.map_state_field_ptr(blk_clone, new_state, field_idx)
+			b.block_instr2(.store, blk_clone, b.void_type, field_value, new_field_ptr)
+		}
+		old_count_ptr := b.block_struct_field_ptr(blk_clone, old_state, b.map_state_type, 13)
+		old_count := b.block_instr1(.load, blk_clone, b.i32_type, old_count_ptr)
+		new_count_ptr := b.block_struct_field_ptr(blk_clone, new_state, b.map_state_type, 13)
+		b.block_instr2(.store, blk_clone, b.void_type, old_count, new_count_ptr)
+		old_deletes_ptr := b.map_dense_field_ptr(blk_clone, old_state, 4)
+		old_deletes := b.block_instr1(.load, blk_clone, b.u32_type, old_deletes_ptr)
+		new_deletes_ptr := b.map_dense_field_ptr(blk_clone, new_state, 4)
+		b.block_instr2(.store, blk_clone, b.void_type, old_deletes, new_deletes_ptr)
+		has_deletes := b.block_instr2(.ne, blk_clone, b.i1_type, old_deletes,
+			b.m.get_or_add_const(b.u32_type, '0'))
+		blk_bitmap := b.m.add_block(func_id, 'map_clone_bitmap')
+		blk_ready := b.m.add_block(func_id, 'map_clone_ready')
+		result_block = blk_ready
+		old_bitmap_ptr := b.map_dense_field_ptr(blk_clone, old_state, 7)
+		new_bitmap_ptr := b.map_dense_field_ptr(blk_clone, new_state, 7)
+		b.block_instr3(.br, blk_clone, b.void_type, has_deletes, ValueID(blk_bitmap),
+			ValueID(blk_ready))
+		one_byte := b.m.get_or_add_const(b.i64_type, '1')
+		bitmap := b.block_instr3(.call, blk_bitmap, ptr_i8, calloc_ref, cap, one_byte)
+		old_bitmap := b.block_instr1(.load, blk_bitmap, ptr_i8, old_bitmap_ptr)
+		b.block_instr4(.call, blk_bitmap, ptr_i8, memcpy_ref_keys, bitmap, old_bitmap, cap)
+		b.block_instr2(.store, blk_bitmap, b.void_type, bitmap, new_bitmap_ptr)
+		b.block_instr1(.jmp, blk_bitmap, b.void_type, ValueID(blk_ready))
+	}
 
-	result_slot := b.block_instr0(.alloca, blk_clone, ptr_map)
-	result_state_field := b.block_struct_field_ptr(blk_clone, result_slot, b.map_type, 0)
-	b.block_instr2(.store, blk_clone, b.void_type, new_state, result_state_field)
-	result := b.block_instr1(.load, blk_clone, b.map_type, result_slot)
-	b.block_instr1(.ret, blk_clone, b.void_type, result)
+	result_slot := b.block_instr0(.alloca, result_block, ptr_map)
+	result_state_field := b.block_struct_field_ptr(result_block, result_slot, b.map_type, 0)
+	b.block_instr2(.store, result_block, b.void_type, new_state, result_state_field)
+	result := b.block_instr1(.load, result_block, b.map_type, result_slot)
+	b.block_instr1(.ret, result_block, b.void_type, result)
 
 	empty_result := b.block_instr1(.load, blk_empty, b.map_type, m)
 	b.block_instr1(.ret, blk_empty, b.void_type, empty_result)
@@ -4231,6 +5250,7 @@ fn (mut b Builder) generate_map_clone_body(func_id int) {
 
 // generate_map_move_body moves the simplified SSA map header out of `m` and zeroes `m`.
 fn (mut b Builder) generate_map_move_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
 	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -4238,14 +5258,70 @@ fn (mut b Builder) generate_map_move_body(func_id int) {
 	state_field := b.block_struct_field_ptr(entry, m, b.map_type, 0)
 	state := b.block_instr1(.load, entry, ptr_state, state_field)
 
-	result_slot := b.block_instr0(.alloca, entry, ptr_map)
-	result_state_field := b.block_struct_field_ptr(entry, result_slot, b.map_type, 0)
-	b.block_instr2(.store, entry, b.void_type, state, result_state_field)
-
 	zero_state := b.m.get_or_add_const(ptr_state, '0')
-	b.block_instr2(.store, entry, b.void_type, zero_state, state_field)
-	result := b.block_instr1(.load, entry, b.map_type, result_slot)
-	b.block_instr1(.ret, entry, b.void_type, result)
+	has_state := b.block_instr2(.ne, entry, b.i1_type, state, zero_state)
+	blk_reset := b.m.add_block(func_id, 'map_move_reset_source')
+	blk_done := b.m.add_block(func_id, 'map_move_done')
+	b.block_instr3(.br, entry, b.void_type, has_state, ValueID(blk_reset), ValueID(blk_done))
+
+	key_size := b.map_state_load_i64(blk_reset, state, 4)
+	val_size := b.map_state_load_i64(blk_reset, state, 5)
+	fresh_state := b.emit_map_state_alloc(blk_reset, key_size, val_size)
+	if b.m.target.ptr_size == 8 {
+		// Keep the source map usable after the move with the same hashing,
+		// cloning, freeing and element alignment guarantees as a fresh map.
+		key_alignment_ptr := b.map_state_field_ptr(blk_reset, state, 13)
+		val_alignment_ptr := b.map_state_field_ptr(blk_reset, state, 14)
+		key_alignment8 := b.block_instr1(.load, blk_reset, b.u8_type, key_alignment_ptr)
+		val_alignment8 := b.block_instr1(.load, blk_reset, b.u8_type, val_alignment_ptr)
+		key_alignment_exponent := b.block_instr1(.zext, blk_reset, b.i64_type, key_alignment8)
+		val_alignment_exponent := b.block_instr1(.zext, blk_reset, b.i64_type, val_alignment8)
+		alignment_one := b.m.get_or_add_const(b.i64_type, '1')
+		key_alignment := b.block_instr2(.shl, blk_reset, b.i64_type, alignment_one,
+			key_alignment_exponent)
+		val_alignment := b.block_instr2(.shl, blk_reset, b.i64_type, alignment_one,
+			val_alignment_exponent)
+		fresh_keys_ptr := b.map_state_field_ptr(blk_reset, fresh_state, 0)
+		fresh_vals_ptr := b.map_state_field_ptr(blk_reset, fresh_state, 1)
+		default_keys := b.block_instr1(.load, blk_reset, ptr_i8, fresh_keys_ptr)
+		default_vals := b.block_instr1(.load, blk_reset, ptr_i8, fresh_vals_ptr)
+		free_ref := b.m.add_value(.func_ref, b.void_type, 'free', b.fn_ids['free'])
+		b.block_instr2(.call, blk_reset, b.void_type, free_ref, default_keys)
+		b.block_instr2(.call, blk_reset, b.void_type, free_ref, default_vals)
+		default_cap := b.m.get_or_add_const(b.i64_type, '8')
+		aligned_keys := b.map_alloc_aligned_buffer(blk_reset, default_cap, key_size,
+			key_alignment)
+		aligned_vals := b.map_alloc_aligned_buffer(blk_reset, default_cap, val_size,
+			val_alignment)
+		b.block_instr2(.store, blk_reset, b.void_type, aligned_keys, fresh_keys_ptr)
+		b.block_instr2(.store, blk_reset, b.void_type, aligned_vals, fresh_vals_ptr)
+		has_string_keys_ptr := b.map_state_field_ptr(blk_reset, state, 8)
+		has_string_keys := b.block_instr1(.load, blk_reset,
+			b.m.type_store.types[b.map_state_type].fields[16], has_string_keys_ptr)
+		new_has_string_keys_ptr := b.map_state_field_ptr(blk_reset, fresh_state, 8)
+		b.block_instr2(.store, blk_reset, b.void_type, has_string_keys, new_has_string_keys_ptr)
+		for field_idx in 9 .. 13 {
+			old_field_ptr := b.map_state_field_ptr(blk_reset, state, field_idx)
+			field_type := b.m.type_store.types[b.map_state_type].fields[field_idx]
+			field_value := b.block_instr1(.load, blk_reset, field_type, old_field_ptr)
+			new_field_ptr := b.map_state_field_ptr(blk_reset, fresh_state, field_idx)
+			b.block_instr2(.store, blk_reset, b.void_type, field_value, new_field_ptr)
+		}
+		for field_idx in [13, 14] {
+			old_field_ptr := b.map_state_field_ptr(blk_reset, state, field_idx)
+			field_value := b.block_instr1(.load, blk_reset, b.u8_type, old_field_ptr)
+			new_field_ptr := b.map_state_field_ptr(blk_reset, fresh_state, field_idx)
+			b.block_instr2(.store, blk_reset, b.void_type, field_value, new_field_ptr)
+		}
+	}
+	b.block_instr2(.store, blk_reset, b.void_type, fresh_state, state_field)
+	b.block_instr1(.jmp, blk_reset, b.void_type, ValueID(blk_done))
+
+	result_slot := b.block_instr0(.alloca, blk_done, ptr_map)
+	result_state_field := b.block_struct_field_ptr(blk_done, result_slot, b.map_type, 0)
+	b.block_instr2(.store, blk_done, b.void_type, state, result_state_field)
+	result := b.block_instr1(.load, blk_done, b.map_type, result_slot)
+	b.block_instr1(.ret, blk_done, b.void_type, result)
 }
 
 // generate_map_keys_values_body copies one map state storage vector into an array.
@@ -4265,22 +5341,90 @@ fn (mut b Builder) generate_map_keys_values_body(func_id int, data_field int, si
 	b.block_instr3(.br, entry, b.void_type, has_state, ValueID(blk_copy), ValueID(blk_empty))
 
 	src_ptr := b.map_state_field_ptr(blk_copy, state, data_field)
-	len_ptr := b.map_state_field_ptr(blk_copy, state, 3)
-	elem_size_ptr := b.map_state_field_ptr(blk_copy, state, size_field)
 	src := b.block_instr1(.load, blk_copy, ptr_i8, src_ptr)
-	len := b.block_instr1(.load, blk_copy, b.i64_type, len_ptr)
-	elem_size := b.block_instr1(.load, blk_copy, b.i64_type, elem_size_ptr)
-	array_new_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.runtime_fn_id('array_new'))
-	arr := b.block_instr4(.call, blk_copy, b.array_type, array_new_ref, elem_size, len, len)
+	len := b.map_state_load_i64(blk_copy, state, 3)
+	count := if b.m.target.ptr_size == 8 {
+		count_ptr := b.block_struct_field_ptr(blk_copy, state, b.map_state_type, 13)
+		count32 := b.block_instr1(.load, blk_copy, b.i32_type, count_ptr)
+		b.block_instr1(.zext, blk_copy, b.i64_type, count32)
+	} else {
+		len
+	}
+	elem_size := b.map_state_load_i64(blk_copy, state, size_field)
+	alignment_field := if data_field == 0 { 13 } else { 14 }
+	alignment_ptr := b.map_state_field_ptr(blk_copy, state, alignment_field)
+	alignment8 := b.block_instr1(.load, blk_copy, b.u8_type, alignment_ptr)
+	alignment_exponent := b.block_instr1(.zext, blk_copy, b.i64_type, alignment8)
+	alignment_one := b.m.get_or_add_const(b.i64_type, '1')
+	alignment := b.block_instr2(.shl, blk_copy, b.i64_type, alignment_one, alignment_exponent)
+	arr := if aligned_id := b.fn_ids['__new_array_aligned'] {
+		// Map exports retain the key/value alignment, including the aligned
+		// ArrayDataHeader ABI used by `array.free`.
+		aligned_ref := b.m.add_value(.func_ref, b.array_type, '__new_array_aligned', aligned_id)
+		b.m.add_instr(.call, blk_copy, b.array_type,
+			[aligned_ref, count, count, elem_size, alignment])
+	} else {
+		array_new_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.runtime_fn_id('array_new'))
+		b.block_instr4(.call, blk_copy, b.array_type, array_new_ref, elem_size, count, count)
+	}
 	arr_slot := b.block_instr0(.alloca, blk_copy, ptr_array)
 	b.block_instr2(.store, blk_copy, b.void_type, arr, arr_slot)
 	data_ptr := b.block_struct_field_ptr(blk_copy, arr_slot, b.array_type, 0)
 	data := b.block_instr1(.load, blk_copy, ptr_i8, data_ptr)
-	byte_len := b.block_instr2(.mul, blk_copy, b.i64_type, len, elem_size)
 	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
-	b.block_instr4(.call, blk_copy, ptr_i8, memcpy_ref, data, src, byte_len)
-	result := b.block_instr1(.load, blk_copy, b.array_type, arr_slot)
-	b.block_instr1(.ret, blk_copy, b.void_type, result)
+	if b.m.target.ptr_size == 8 {
+		i_slot := b.block_instr0(.alloca, blk_copy, b.m.type_store.get_ptr(b.i64_type))
+		out_slot := b.block_instr0(.alloca, blk_copy, b.m.type_store.get_ptr(b.i64_type))
+		zero64 := b.m.get_or_add_const(b.i64_type, '0')
+		b.block_instr2(.store, blk_copy, b.void_type, zero64, i_slot)
+		b.block_instr2(.store, blk_copy, b.void_type, zero64, out_slot)
+		loop := b.m.add_block(func_id, 'map_array_loop')
+		check_deletes := b.m.add_block(func_id, 'map_array_check_deletes')
+		check_live := b.m.add_block(func_id, 'map_array_check_live')
+		body := b.m.add_block(func_id, 'map_array_body')
+		next := b.m.add_block(func_id, 'map_array_next')
+		done := b.m.add_block(func_id, 'map_array_done')
+		b.block_instr1(.jmp, blk_copy, b.void_type, ValueID(loop))
+		i := b.block_instr1(.load, loop, b.i64_type, i_slot)
+		more := b.block_instr2(.lt, loop, b.i1_type, i, len)
+		b.block_instr3(.br, loop, b.void_type, more, ValueID(check_deletes),
+			ValueID(done))
+		deletes_ptr := b.map_dense_field_ptr(check_deletes, state, 4)
+		deletes := b.block_instr1(.load, check_deletes, b.u32_type, deletes_ptr)
+		has_deletes := b.block_instr2(.ne, check_deletes, b.i1_type, deletes,
+			b.m.get_or_add_const(b.u32_type, '0'))
+		b.block_instr3(.br, check_deletes, b.void_type, has_deletes,
+			ValueID(check_live), ValueID(body))
+		bitmap_ptr := b.map_dense_field_ptr(check_live, state, 7)
+		bitmap := b.block_instr1(.load, check_live, ptr_i8, bitmap_ptr)
+		flag_ptr := b.block_instr2(.add, check_live, ptr_i8, bitmap, i)
+		flag := b.block_instr1(.load, check_live, b.i8_type, flag_ptr)
+		live := b.block_instr2(.eq, check_live, b.i1_type, flag,
+			b.m.get_or_add_const(b.i8_type, '0'))
+		b.block_instr3(.br, check_live, b.void_type, live, ValueID(body),
+			ValueID(next))
+		out := b.block_instr1(.load, body, b.i64_type, out_slot)
+		src_offset := b.block_instr2(.mul, body, b.i64_type, i, elem_size)
+		dst_offset := b.block_instr2(.mul, body, b.i64_type, out, elem_size)
+		src_elem := b.block_instr2(.add, body, ptr_i8, src, src_offset)
+		dst_elem := b.block_instr2(.add, body, ptr_i8, data, dst_offset)
+		b.block_instr4(.call, body, ptr_i8, memcpy_ref, dst_elem, src_elem, elem_size)
+		next_out := b.block_instr2(.add, body, b.i64_type, out,
+			b.m.get_or_add_const(b.i64_type, '1'))
+		b.block_instr2(.store, body, b.void_type, next_out, out_slot)
+		b.block_instr1(.jmp, body, b.void_type, ValueID(next))
+		next_i := b.block_instr2(.add, next, b.i64_type, i,
+			b.m.get_or_add_const(b.i64_type, '1'))
+		b.block_instr2(.store, next, b.void_type, next_i, i_slot)
+		b.block_instr1(.jmp, next, b.void_type, ValueID(loop))
+		result := b.block_instr1(.load, done, b.array_type, arr_slot)
+		b.block_instr1(.ret, done, b.void_type, result)
+	} else {
+		byte_len := b.block_instr2(.mul, blk_copy, b.i64_type, len, elem_size)
+		b.block_instr4(.call, blk_copy, ptr_i8, memcpy_ref, data, src, byte_len)
+		result := b.block_instr1(.load, blk_copy, b.array_type, arr_slot)
+		b.block_instr1(.ret, blk_copy, b.void_type, result)
+	}
 
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	empty_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.runtime_fn_id('array_new'))
@@ -4369,7 +5513,7 @@ fn (mut b Builder) register_process_capture_helpers() {
 				b.generate_const_i64_body(func_id, '1')
 			}
 		}
-	} else {
+	} else if !b.use_native_c_sources {
 		ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 		ptr_argv := b.m.type_store.get_ptr(ptr_i8)
 		b.register_native_process_externs()
@@ -4379,6 +5523,11 @@ fn (mut b Builder) register_process_capture_helpers() {
 		exec_id := b.register_synthetic_c_function('v_os_exec_capture_start', b.i64_type,
 			[ptr_argv, ptr_i64, ptr_i64])
 		b.generate_native_process_capture_body(exec_id, false)
+	} else {
+		ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+		ptr_argv := b.m.type_store.get_ptr(ptr_i8)
+		b.register_extern('v_os_execute_capture_start', b.i32_type, [ptr_i8, ptr_i64, ptr_i64])
+		b.register_extern('v_os_exec_capture_start', b.i32_type, [ptr_argv, ptr_i64, ptr_i64])
 	}
 }
 
@@ -4524,7 +5673,12 @@ fn (mut b Builder) generate_os_stat_kind_body(func_id int, stat_fn string, expec
 	false_val := b.m.get_or_add_const(b.i1_type, '0')
 	b.block_instr1(.ret, fail_block, b.void_type, false_val)
 
-	mode_off := b.m.get_or_add_const(b.i64_type, '4')
+	mut mode_offset := '4'
+	$if linux {
+		// Linux x86_64 struct stat stores st_mode after dev, ino and nlink.
+		mode_offset = '24'
+	}
+	mode_off := b.m.get_or_add_const(b.i64_type, mode_offset)
 	mode_raw_ptr := b.block_instr2(.get_element_ptr, ok_block, ptr_i8, stat_buf, mode_off)
 	mode_ptr := b.block_instr1(.bitcast, ok_block, ptr_i32, mode_raw_ptr)
 	mode := b.block_instr1(.load, ok_block, b.i32_type, mode_ptr)
@@ -4571,7 +5725,12 @@ fn (mut b Builder) generate_os_ls_body(func_id int, result_type TypeID) {
 	blk_check := b.m.add_block(func_id, 'ls_check')
 	b.block_instr3(.br, blk_loop, b.void_type, ent_is_null, ValueID(blk_done), ValueID(blk_check))
 
-	name_off := b.m.get_or_add_const(b.i64_type, '21')
+	mut name_offset := '21'
+	$if linux {
+		// Linux x86_64 dirent: ino(8), off(8), reclen(2), type(1), d_name.
+		name_offset = '19'
+	}
+	name_off := b.m.get_or_add_const(b.i64_type, name_offset)
 	name_ptr := b.block_instr2(.get_element_ptr, blk_check, ptr_i8, ent, name_off)
 	first := b.block_instr1(.load, blk_check, b.i8_type, name_ptr)
 	zero8 := b.m.get_or_add_const(b.i8_type, '0')
@@ -5132,7 +6291,7 @@ fn (mut b Builder) register_array_string_stubs() {
 	}
 	for name in ['Array_rune__string', '[]rune.string'] {
 		if rune_string_id := b.register_runtime_function(name, b.str_type, p1) {
-			b.generate_const_string_body(rune_string_id, '')
+			b.generate_array_rune_string_body(rune_string_id)
 		}
 	}
 
@@ -5239,6 +6398,64 @@ fn (mut b Builder) generate_array_bytestr_body(func_id int) {
 
 	result := b.emit_make_string(entry, out_data, len, 0)
 	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+// generate_array_rune_string_body encodes rune elements into a builder and
+// returns their owned UTF-8 string.
+fn (mut b Builder) generate_array_rune_string_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	ptr_array := b.m.type_store.get_ptr(b.array_type)
+	entry := b.m.add_block(func_id, 'entry')
+	arr := b.func_add_argument(func_id, b.array_type, 'arr')
+
+	arr_alloca := b.block_instr0(.alloca, entry, ptr_array)
+	b.block_instr2(.store, entry, b.void_type, arr, arr_alloca)
+	data_ptr := b.block_struct_field_ptr(entry, arr_alloca, b.array_type, 0)
+	len_ptr := b.block_struct_field_ptr(entry, arr_alloca, b.array_type, 2)
+	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
+	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len := b.block_instr1(.zext, entry, b.i64_type, len32)
+
+	new_ref := b.m.add_value(.func_ref, b.array_type, 'strings.new_builder',
+		b.runtime_fn_id('strings.new_builder'))
+	builder := b.block_instr2(.call, entry, b.array_type, new_ref, len)
+	builder_alloca := b.block_instr0(.alloca, entry, ptr_array)
+	b.block_instr2(.store, entry, b.void_type, builder, builder_alloca)
+
+	i_alloca := b.block_instr0(.alloca, entry, ptr_i64)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	rune_size := b.m.get_or_add_const(b.i64_type, '4')
+	b.block_instr2(.store, entry, b.void_type, zero, i_alloca)
+	loop := b.m.add_block(func_id, 'array_rune_string_loop')
+	body := b.m.add_block(func_id, 'array_rune_string_body')
+	done := b.m.add_block(func_id, 'array_rune_string_done')
+	b.block_instr1(.jmp, entry, b.void_type, ValueID(loop))
+
+	i_val := b.block_instr1(.load, loop, b.i64_type, i_alloca)
+	more := b.block_instr2(.lt, loop, b.i1_type, i_val, len)
+	b.block_instr3(.br, loop, b.void_type, more, ValueID(body), ValueID(done))
+
+	offset := b.block_instr2(.mul, body, b.i64_type, i_val, rune_size)
+	rune_ptr_raw := b.block_instr2(.add, body, ptr_i8, data, offset)
+	rune_ptr := b.block_instr1(.bitcast, body, ptr_i32, rune_ptr_raw)
+	rune_val := b.block_instr1(.load, body, b.i32_type, rune_ptr)
+	write_ref := b.m.add_value(.func_ref, b.void_type, 'strings.Builder.write_rune',
+		b.runtime_fn_id('strings.Builder.write_rune'))
+	b.block_instr3(.call, body, b.void_type, write_ref, builder_alloca, rune_val)
+	next_i := b.block_instr2(.add, body, b.i64_type, i_val, one)
+	b.block_instr2(.store, body, b.void_type, next_i, i_alloca)
+	b.block_instr1(.jmp, body, b.void_type, ValueID(loop))
+
+	str_ref := b.m.add_value(.func_ref, b.str_type, 'strings.Builder.str',
+		b.runtime_fn_id('strings.Builder.str'))
+	result := b.block_instr2(.call, done, b.str_type, str_ref, builder_alloca)
+	free_ref := b.m.add_value(.func_ref, b.void_type, 'strings.Builder.free',
+		b.runtime_fn_id('strings.Builder.free'))
+	b.block_instr2(.call, done, b.void_type, free_ref, builder_alloca)
+	b.block_instr1(.ret, done, b.void_type, result)
 }
 
 fn (mut b Builder) register_at_exit_stub() {
@@ -5369,7 +6586,24 @@ fn (mut b Builder) generate_const_body_with_params(func_id int, ret TypeID, valu
 
 // register_ierror_stubs updates register ierror stubs state for ssa.
 fn (mut b Builder) register_ierror_stubs() {
-	ptr_ierror := b.m.type_store.get_ptr(b.i64_type)
+	interface_type := b.resolve_type(flat.source_type_id('IError'))
+	ptr_ierror := b.m.type_store.get_ptr(interface_type)
+	if !b.is_interface_type_id(interface_type) {
+		// Parser-only fixtures omit builtin interface declarations. Preserve their
+		// placeholder helpers instead of treating the fallback integer as a box.
+		params := [ptr_ierror]
+		if msg_id := b.register_runtime_function('IError.msg', b.str_type, params) {
+			entry := b.m.add_block(msg_id, 'entry')
+			_ := b.func_add_argument(msg_id, ptr_ierror, 'err')
+			message := b.m.add_value(.string_literal, b.str_type, '', 0)
+			b.block_instr1(.ret, entry, b.void_type, message)
+		}
+		if code_id := b.register_runtime_function('IError.code', b.i64_type, params) {
+			b.generate_const_body_with_params(code_id, b.i64_type, '0', params)
+		}
+		return
+	}
+	message_error_type := b.resolve_type(flat.source_type_id('MessageError'))
 	mut p1 := []TypeID{}
 	p1 << ptr_ierror
 	if msg_id := b.register_runtime_function('IError.msg', b.str_type, p1) {
@@ -5378,21 +6612,82 @@ fn (mut b Builder) register_ierror_stubs() {
 	if code_id := b.register_runtime_function('IError.code', b.i64_type, p1) {
 		b.generate_ierror_code_body(code_id, ptr_ierror)
 	}
+	mut p_error := []TypeID{}
+	p_error << b.str_type
+	if error_id := b.register_runtime_function('error', interface_type, p_error) {
+		b.generate_error_boxing_body(error_id, interface_type, message_error_type, false)
+	}
+	mut p_error_code := []TypeID{}
+	p_error_code << b.str_type
+	p_error_code << b.i32_type
+	if error_id := b.register_runtime_function('error_with_code', interface_type, p_error_code) {
+		b.generate_error_boxing_body(error_id, interface_type, message_error_type, true)
+	}
+}
+
+fn (mut b Builder) generate_error_boxing_body(func_id int, interface_type TypeID, message_error_type TypeID, has_code bool) {
+	entry := b.m.add_block(func_id, 'entry')
+	message := b.func_add_argument(func_id, b.str_type, 'message')
+	mut code := ValueID(0)
+	if has_code {
+		code = b.func_add_argument(func_id, b.i32_type, 'code')
+	}
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_message_error := b.m.type_store.get_ptr(message_error_type)
+	message_alloca := b.block_instr0(.alloca, entry, ptr_message_error)
+	message_ptr := b.block_struct_field_ptr(entry, message_alloca, message_error_type, 0)
+	b.block_instr2(.store, entry, b.void_type, message, message_ptr)
+	code_ptr := b.block_struct_field_ptr(entry, message_alloca, message_error_type, 1)
+	code_value := if has_code {
+		code
+	} else {
+		b.m.get_or_add_const(b.i32_type, '0')
+	}
+	b.block_instr2(.store, entry, b.void_type, code_value, code_ptr)
+	size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(message_error_type)}')
+	source := b.block_instr1(.bitcast, entry, ptr_i8, message_alloca)
+	memdup_ref := b.m.add_value(.func_ref, ptr_i8, '__ssa_memdup',
+		b.fn_ids['__ssa_memdup'])
+	object := b.block_instr3(.call, entry, ptr_i8, memdup_ref, source, size)
+	ptr_interface := b.m.type_store.get_ptr(interface_type)
+	interface_alloca := b.block_instr0(.alloca, entry, ptr_interface)
+	object_ptr := b.block_struct_field_ptr(entry, interface_alloca, interface_type, 0)
+	b.block_instr2(.store, entry, b.void_type, object, object_ptr)
+	type_ptr := b.block_struct_field_ptr(entry, interface_alloca, interface_type, 1)
+	dispatch_id := b.interface_dispatch_id(interface_type, flat.source_type_id('MessageError'))
+	type_id := b.m.get_or_add_const(b.i32_type, '${dispatch_id}')
+	b.block_instr2(.store, entry, b.void_type, type_id, type_ptr)
+	boxed_ptr := b.block_struct_field_ptr(entry, interface_alloca, interface_type, 2)
+	boxed := b.m.get_or_add_const(b.i1_type, '1')
+	b.block_instr2(.store, entry, b.void_type, boxed, boxed_ptr)
+	result := b.block_instr1(.load, entry, interface_type, interface_alloca)
+	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
 // generate_ierror_msg_body supports generate ierror msg body handling for Builder.
 fn (mut b Builder) generate_ierror_msg_body(func_id int, ptr_ierror TypeID) {
 	entry := b.m.add_block(func_id, 'entry')
-	_ := b.func_add_argument(func_id, ptr_ierror, 'err')
-	result := b.m.add_value(.string_literal, b.str_type, '', 0)
-	b.block_instr1(.ret, entry, b.void_type, result)
+	err := b.func_add_argument(func_id, ptr_ierror, 'err')
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	object := b.block_instr1(.bitcast, entry, ptr_i8, err)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	msg_ptr := b.block_instr2(.get_element_ptr, entry, b.m.type_store.get_ptr(b.str_type),
+		object, zero)
+	msg := b.block_instr1(.load, entry, b.str_type, msg_ptr)
+	b.block_instr1(.ret, entry, b.void_type, msg)
 }
 
 // generate_ierror_code_body supports generate ierror code body handling for Builder.
 fn (mut b Builder) generate_ierror_code_body(func_id int, ptr_ierror TypeID) {
 	entry := b.m.add_block(func_id, 'entry')
-	_ := b.func_add_argument(func_id, ptr_ierror, 'err')
-	result := b.m.get_or_add_const(b.i64_type, '0')
+	err := b.func_add_argument(func_id, ptr_ierror, 'err')
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	object := b.block_instr1(.bitcast, entry, ptr_i8, err)
+	offset := b.m.get_or_add_const(b.i64_type, '16')
+	code_ptr := b.block_instr2(.get_element_ptr, entry, b.m.type_store.get_ptr(b.i32_type),
+		object, offset)
+	code := b.block_instr1(.load, entry, b.i32_type, code_ptr)
+	result := b.block_instr1(.sext, entry, b.i64_type, code)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -5614,28 +6909,33 @@ fn (mut b Builder) generate_array_index_int_body(func_id int) {
 fn (mut b Builder) emit_map_state_alloc(block_id BlockID, key_size ValueID, val_size ValueID) ValueID {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
-	cap := b.m.get_or_add_const(b.i64_type, '8')
+	empty := b.m.get_or_add_const(b.i64_type, '0')
+	null_data := b.m.get_or_add_const(ptr_i8, '0')
 	one := b.m.get_or_add_const(b.i64_type, '1')
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	state_size := b.m.get_or_add_const(b.i64_type, b.m.type_size(b.map_state_type).str())
 	calloc_ref := b.m.add_value(.func_ref, b.void_type, 'calloc', b.runtime_fn_id('calloc'))
 	state_raw := b.block_instr3(.call, block_id, ptr_i8, calloc_ref, one, state_size)
 	state := b.block_instr1(.bitcast, block_id, ptr_state, state_raw)
-	keys := b.block_instr3(.call, block_id, ptr_i8, calloc_ref, cap, key_size)
-	vals := b.block_instr3(.call, block_id, ptr_i8, calloc_ref, cap, val_size)
 
 	keys_ptr := b.map_state_field_ptr(block_id, state, 0)
 	vals_ptr := b.map_state_field_ptr(block_id, state, 1)
-	cap_ptr := b.map_state_field_ptr(block_id, state, 2)
-	len_ptr := b.map_state_field_ptr(block_id, state, 3)
-	key_size_ptr := b.map_state_field_ptr(block_id, state, 4)
-	val_size_ptr := b.map_state_field_ptr(block_id, state, 5)
-	b.block_instr2(.store, block_id, b.void_type, keys, keys_ptr)
-	b.block_instr2(.store, block_id, b.void_type, vals, vals_ptr)
-	b.block_instr2(.store, block_id, b.void_type, cap, cap_ptr)
-	b.block_instr2(.store, block_id, b.void_type, zero, len_ptr)
-	b.block_instr2(.store, block_id, b.void_type, key_size, key_size_ptr)
-	b.block_instr2(.store, block_id, b.void_type, val_size, val_size_ptr)
+	b.block_instr2(.store, block_id, b.void_type, null_data, keys_ptr)
+	b.block_instr2(.store, block_id, b.void_type, null_data, vals_ptr)
+	b.map_state_store_i64(block_id, state, 2, empty)
+	b.map_state_store_i64(block_id, state, 3, zero)
+	b.map_state_store_i64(block_id, state, 4, key_size)
+	b.map_state_store_i64(block_id, state, 5, val_size)
+	if b.m.target.ptr_size == 8 {
+		dense_type := b.m.type_store.types[b.map_state_type].fields[5]
+		dense_ptr := b.block_struct_field_ptr(block_id, state, b.map_state_type, 5)
+		dense_key_size_ptr := b.block_struct_field_ptr(block_id, dense_ptr, dense_type, 0)
+		dense_val_size_ptr := b.block_struct_field_ptr(block_id, dense_ptr, dense_type, 1)
+		b.block_instr2(.store, block_id, b.void_type, b.block_instr1(.trunc, block_id,
+			b.i32_type, key_size), dense_key_size_ptr)
+		b.block_instr2(.store, block_id, b.void_type, b.block_instr1(.trunc, block_id,
+			b.i32_type, val_size), dense_val_size_ptr)
+	}
 	return state
 }
 
@@ -5648,7 +6948,108 @@ fn (mut b Builder) map_state_ptr(block_id BlockID, map_ptr ValueID) ValueID {
 
 // map_state_field_ptr supports map state field ptr handling for Builder.
 fn (mut b Builder) map_state_field_ptr(block_id BlockID, state_ptr ValueID, field_idx int) ValueID {
+	if b.m.target.ptr_size == 8 {
+		if field_idx in [0, 1, 2, 3, 13, 14] {
+			dense_type := b.m.type_store.types[b.map_state_type].fields[5]
+			dense_ptr := b.block_struct_field_ptr(block_id, state_ptr, b.map_state_type, 5)
+			dense_index := match field_idx {
+				0 { 8 }
+				1 { 9 }
+				2 { 2 }
+				3 { 3 }
+				13 { 5 }
+				else { 6 }
+			}
+			return b.block_struct_field_ptr(block_id, dense_ptr, dense_type, dense_index)
+		}
+		flat_index := match field_idx {
+			4 { 0 }
+			5 { 1 }
+			6 { 14 }
+			7 { 15 }
+			8 { 16 }
+			else { field_idx }
+		}
+		return b.block_struct_field_ptr(block_id, state_ptr, b.map_state_type, flat_index)
+	}
 	return b.block_struct_field_ptr(block_id, state_ptr, b.map_state_type, field_idx)
+}
+
+// map_dense_field_ptr returns a field pointer in the nested DenseArray layout
+// used by the x64 map runtime.
+fn (mut b Builder) map_dense_field_ptr(block_id BlockID, state_ptr ValueID, field_idx int) ValueID {
+	dense_type := b.m.type_store.types[b.map_state_type].fields[5]
+	dense_ptr := b.block_struct_field_ptr(block_id, state_ptr, b.map_state_type, 5)
+	return b.block_struct_field_ptr(block_id, dense_ptr, dense_type, field_idx)
+}
+
+// map_entry_is_live reports whether a dense key/value position has not been
+// tombstoned by delete.
+fn (mut b Builder) map_entry_is_live(block_id BlockID, state_ptr ValueID, index ValueID) ValueID {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	if b.m.target.ptr_size != 8 {
+		return b.m.get_or_add_const(b.i1_type, '1')
+	}
+	zero8 := b.m.get_or_add_const(b.i8_type, '0')
+	zero_slot := b.block_instr0(.alloca, block_id, b.m.type_store.get_ptr(b.i8_type))
+	b.block_instr2(.store, block_id, b.void_type, zero8, zero_slot)
+	deletes_ptr := b.map_dense_field_ptr(block_id, state_ptr, 4)
+	deletes32 := b.block_instr1(.load, block_id, b.u32_type, deletes_ptr)
+	has_tombstones := b.block_instr2(.ne, block_id, b.i1_type, deletes32,
+		b.m.get_or_add_const(b.u32_type, '0'))
+	bitmap_ptr := b.map_dense_field_ptr(block_id, state_ptr, 7)
+	bitmap := b.block_instr1(.load, block_id, ptr_i8, bitmap_ptr)
+	effective_bitmap := b.block_instr3(.select, block_id, ptr_i8, has_tombstones, bitmap,
+		zero_slot)
+	// The fallback contains one byte, independent of the dense entry index.
+	effective_index := b.block_instr3(.select, block_id, b.i64_type, has_tombstones, index,
+		b.m.get_or_add_const(b.i64_type, '0'))
+	flag_ptr := b.block_instr2(.add, block_id, ptr_i8, effective_bitmap, effective_index)
+	flag := b.block_instr1(.load, block_id, b.i8_type, flag_ptr)
+	return b.block_instr2(.eq, block_id, b.i1_type, flag, zero8)
+}
+
+fn (mut b Builder) map_state_load_i64(block_id BlockID, state_ptr ValueID, field_idx int) ValueID {
+	field_ptr := b.map_state_field_ptr(block_id, state_ptr, field_idx)
+	if b.m.target.ptr_size == 8 && field_idx in [2, 3, 4, 5] {
+		value32 := b.block_instr1(.load, block_id, b.i32_type, field_ptr)
+		return b.block_instr1(.zext, block_id, b.i64_type, value32)
+	}
+	return b.block_instr1(.load, block_id, b.i64_type, field_ptr)
+}
+
+fn (mut b Builder) map_state_store_i64(block_id BlockID, state_ptr ValueID, field_idx int, value ValueID) {
+	field_ptr := b.map_state_field_ptr(block_id, state_ptr, field_idx)
+	if b.m.target.ptr_size == 8 && field_idx in [2, 3, 4, 5] {
+		value32 := b.block_instr1(.trunc, block_id, b.i32_type, value)
+		b.block_instr2(.store, block_id, b.void_type, value32, field_ptr)
+		return
+	}
+	b.block_instr2(.store, block_id, b.void_type, value, field_ptr)
+}
+
+fn (mut b Builder) map_alloc_aligned_buffer(block_id BlockID, count ValueID, elem_size ValueID, alignment ValueID) ValueID {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	if 'aligned_alloc' !in b.fn_ids {
+		b.register_extern('aligned_alloc', ptr_i8, [b.i64_type, b.i64_type])
+	}
+	minimum_alignment := b.m.get_or_add_const(b.i64_type, '16')
+	below_minimum := b.block_instr2(.ult, block_id, b.i1_type, alignment, minimum_alignment)
+	safe_alignment := b.block_instr3(.select, block_id, b.i64_type, below_minimum,
+		minimum_alignment, alignment)
+	size := b.block_instr2(.mul, block_id, b.i64_type, count, elem_size)
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	align_minus_one := b.block_instr2(.sub, block_id, b.i64_type, safe_alignment, one)
+	padded := b.block_instr2(.add, block_id, b.i64_type, size, align_minus_one)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	neg_alignment := b.block_instr2(.sub, block_id, b.i64_type, zero, safe_alignment)
+	rounded := b.block_instr2(.and_, block_id, b.i64_type, padded, neg_alignment)
+	alloc := b.m.add_value(.func_ref, ptr_i8, 'aligned_alloc', b.fn_ids['aligned_alloc'])
+	raw := b.block_instr3(.call, block_id, ptr_i8, alloc, safe_alignment, rounded)
+	memset_ref := b.m.add_value(.func_ref, b.void_type, 'memset', b.runtime_fn_id('memset'))
+	zero_byte := b.m.get_or_add_const(b.i32_type, '0')
+	b.block_instr4(.call, block_id, ptr_i8, memset_ref, raw, zero_byte, size)
+	return raw
 }
 
 // generate_new_map_body supports generate new map body handling for Builder.
@@ -5661,17 +7062,101 @@ fn (mut b Builder) generate_new_map_body(func_id int) {
 	eq_fn := b.func_add_argument(func_id, b.i64_type, 'eq_fn')
 	clone_fn := b.func_add_argument(func_id, b.i64_type, 'clone_fn')
 	free_fn := b.func_add_argument(func_id, b.i64_type, 'free_fn')
-	_ = hash_fn
-	_ = eq_fn
-	_ = clone_fn
-	_ = free_fn
 
 	alloca_m := b.block_instr0(.alloca, entry, ptr_map)
 	state := b.emit_map_state_alloc(entry, key_size, val_size)
+	if b.m.target.ptr_size == 8 {
+		hash_ptr := b.map_state_field_ptr(entry, state, 9)
+		eq_ptr := b.map_state_field_ptr(entry, state, 10)
+		clone_ptr := b.map_state_field_ptr(entry, state, 11)
+		free_ptr := b.map_state_field_ptr(entry, state, 12)
+		b.block_instr2(.store, entry, b.void_type, hash_fn, hash_ptr)
+		b.block_instr2(.store, entry, b.void_type, eq_fn, eq_ptr)
+		b.block_instr2(.store, entry, b.void_type, clone_fn, clone_ptr)
+		b.block_instr2(.store, entry, b.void_type, free_fn, free_ptr)
+	}
 	state_ptr := b.block_struct_field_ptr(entry, alloca_m, b.map_type, 0)
 	b.block_instr2(.store, entry, b.void_type, state, state_ptr)
 	result := b.block_instr1(.load, entry, b.map_type, alloca_m)
 	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+fn (mut b Builder) generate_new_map_aligned_body(func_id int) {
+	entry := b.m.add_block(func_id, 'map_aligned_entry')
+	key_size := b.func_add_argument(func_id, b.i64_type, 'key_size')
+	val_size := b.func_add_argument(func_id, b.i64_type, 'val_size')
+	hash_fn := b.func_add_argument(func_id, b.i64_type, 'hash_fn')
+	eq_fn := b.func_add_argument(func_id, b.i64_type, 'eq_fn')
+	clone_fn := b.func_add_argument(func_id, b.i64_type, 'clone_fn')
+	free_fn := b.func_add_argument(func_id, b.i64_type, 'free_fn')
+	key_alignment := b.func_add_argument(func_id, b.i64_type, 'key_alignment')
+	value_alignment := b.func_add_argument(func_id, b.i64_type, 'value_alignment')
+	new_ref := b.m.add_value(.func_ref, b.map_type, 'new_map',
+		b.runtime_fn_id('new_map'))
+	mut call_args := []ValueID{}
+	call_args << new_ref
+	call_args << key_size
+	call_args << val_size
+	call_args << hash_fn
+	call_args << eq_fn
+	call_args << clone_fn
+	call_args << free_fn
+	result := b.m.add_instr(.call, entry, b.map_type, call_args)
+	result_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.map_type))
+	b.block_instr2(.store, entry, b.void_type, result, result_slot)
+	state := b.map_state_ptr(entry, result_slot)
+	key_alignment_ptr := b.map_state_field_ptr(entry, state, 13)
+	value_alignment_ptr := b.map_state_field_ptr(entry, state, 14)
+	exponent_ref := b.m.add_value(.func_ref, b.u8_type, '__ssa_data_alignment_exponent',
+		b.fn_ids['__ssa_data_alignment_exponent'])
+	key_exponent := b.block_instr2(.call, entry, b.u8_type, exponent_ref, key_alignment)
+	value_exponent := b.block_instr2(.call, entry, b.u8_type, exponent_ref, value_alignment)
+	b.block_instr2(.store, entry, b.void_type, key_exponent, key_alignment_ptr)
+	b.block_instr2(.store, entry, b.void_type, value_exponent, value_alignment_ptr)
+	keys_ptr := b.map_state_field_ptr(entry, state, 0)
+	vals_ptr := b.map_state_field_ptr(entry, state, 1)
+	old_keys := b.block_instr1(.load, entry, b.m.type_store.get_ptr(b.i8_type), keys_ptr)
+	old_vals := b.block_instr1(.load, entry, b.m.type_store.get_ptr(b.i8_type), vals_ptr)
+	cap_eight := b.m.get_or_add_const(b.i64_type, '8')
+	new_keys := b.map_alloc_aligned_buffer(entry, cap_eight, key_size, key_alignment)
+	new_vals := b.map_alloc_aligned_buffer(entry, cap_eight, val_size, value_alignment)
+	free_ref := b.m.add_value(.func_ref, b.void_type, 'free', b.fn_ids['free'])
+	b.block_instr2(.call, entry, b.void_type, free_ref, old_keys)
+	b.block_instr2(.call, entry, b.void_type, free_ref, old_vals)
+	b.block_instr2(.store, entry, b.void_type, new_keys, keys_ptr)
+	b.block_instr2(.store, entry, b.void_type, new_vals, vals_ptr)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+// generate_data_alignment_exponent_body provides the source builtin helper to
+// synthetic native runtime functions even when its source body is not selected.
+fn (mut b Builder) generate_data_alignment_exponent_body(func_id int) {
+	entry := b.m.add_block(func_id, 'alignment_exponent_entry')
+	alignment := b.func_add_argument(func_id, b.u64_type, 'alignment')
+	exponent := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.u8_type))
+	remaining := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.u64_type))
+	zero8 := b.m.get_or_add_const(b.u8_type, '0')
+	one64 := b.m.get_or_add_const(b.u64_type, '1')
+	sixteen64 := b.m.get_or_add_const(b.u64_type, '16')
+	b.block_instr2(.store, entry, b.void_type, zero8, exponent)
+	b.block_instr2(.store, entry, b.void_type, alignment, remaining)
+	check := b.m.add_block(func_id, 'alignment_exponent_check')
+	body := b.m.add_block(func_id, 'alignment_exponent_body')
+	done := b.m.add_block(func_id, 'alignment_exponent_done')
+	too_small := b.block_instr2(.ule, entry, b.i1_type, alignment, sixteen64)
+	b.block_instr3(.br, entry, b.void_type, too_small, ValueID(done), ValueID(check))
+	current_remaining := b.block_instr1(.load, check, b.u64_type, remaining)
+	more := b.block_instr2(.ugt, check, b.i1_type, current_remaining, one64)
+	b.block_instr3(.br, check, b.void_type, more, ValueID(body), ValueID(done))
+	current_exponent := b.block_instr1(.load, body, b.u8_type, exponent)
+	next_exponent := b.block_instr2(.add, body, b.u8_type, current_exponent, b.m.get_or_add_const(b.u8_type,
+		'1'))
+	next_remaining := b.block_instr2(.lshr, body, b.u64_type, current_remaining, one64)
+	b.block_instr2(.store, body, b.void_type, next_exponent, exponent)
+	b.block_instr2(.store, body, b.void_type, next_remaining, remaining)
+	b.block_instr1(.jmp, body, b.void_type, ValueID(check))
+	result := b.block_instr1(.load, done, b.u8_type, exponent)
+	b.block_instr1(.ret, done, b.void_type, result)
 }
 
 // generate_map_find_body supports generate map find body handling for Builder.
@@ -5706,18 +7191,16 @@ fn (mut b Builder) generate_map_find_body(func_id int) {
 		zero_state := b.m.get_or_add_const(ptr_state, '0')
 		has_state := b.block_instr2(.ne, blk_has_map, b.i1_type, state, zero_state)
 		keys_ptr := b.map_state_field_ptr(blk_has_map, state, 0)
-		len_ptr := b.map_state_field_ptr(blk_has_map, state, 3)
-		key_size_ptr := b.map_state_field_ptr(blk_has_map, state, 4)
 		b.block_instr3(.br, blk_has_map, b.void_type, has_state, ValueID(blk_loop),
 			ValueID(blk_not_found))
 
 		i := b.block_instr1(.load, blk_loop, b.i64_type, alloca_i)
-		len := b.block_instr1(.load, blk_loop, b.i64_type, len_ptr)
+		len := b.map_state_load_i64(blk_loop, state, 3)
 		in_range := b.block_instr2(.lt, blk_loop, b.i1_type, i, len)
 		b.block_instr3(.br, blk_loop, b.void_type, in_range, ValueID(blk_body), ValueID(blk_not_found))
 
 		keys := b.block_instr1(.load, blk_body, ptr_i8, keys_ptr)
-		key_size := b.block_instr1(.load, blk_body, b.i64_type, key_size_ptr)
+		key_size := b.map_state_load_i64(blk_body, state, 4)
 		offset := b.block_instr2(.mul, blk_body, b.i64_type, i, key_size)
 		slot_key := b.block_instr2(.add, blk_body, ptr_i8, keys, offset)
 		string_key_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
@@ -5786,9 +7269,8 @@ fn (mut b Builder) generate_map_get_body(func_id int) {
 
 	state := b.map_state_ptr(blk_found, map_ptr)
 	vals_ptr := b.map_state_field_ptr(blk_found, state, 1)
-	val_size_ptr := b.map_state_field_ptr(blk_found, state, 5)
 	vals := b.block_instr1(.load, blk_found, ptr_i8, vals_ptr)
-	val_size := b.block_instr1(.load, blk_found, b.i64_type, val_size_ptr)
+	val_size := b.map_state_load_i64(blk_found, state, 5)
 	offset := b.block_instr2(.mul, blk_found, b.i64_type, idx, val_size)
 	result := b.block_instr2(.add, blk_found, ptr_i8, vals, offset)
 	b.block_instr1(.ret, blk_found, b.void_type, result)
@@ -5814,9 +7296,8 @@ fn (mut b Builder) generate_map_get_check_body(func_id int) {
 
 	state := b.map_state_ptr(blk_found, map_ptr)
 	vals_ptr := b.map_state_field_ptr(blk_found, state, 1)
-	val_size_ptr := b.map_state_field_ptr(blk_found, state, 5)
 	vals := b.block_instr1(.load, blk_found, ptr_i8, vals_ptr)
-	val_size := b.block_instr1(.load, blk_found, b.i64_type, val_size_ptr)
+	val_size := b.map_state_load_i64(blk_found, state, 5)
 	offset := b.block_instr2(.mul, blk_found, b.i64_type, idx, val_size)
 	result := b.block_instr2(.add, blk_found, ptr_i8, vals, offset)
 	b.block_instr1(.ret, blk_found, b.void_type, result)
@@ -5842,9 +7323,8 @@ fn (mut b Builder) generate_map_get_key_check_body(func_id int) {
 
 	state := b.map_state_ptr(blk_found, map_ptr)
 	keys_ptr := b.map_state_field_ptr(blk_found, state, 0)
-	key_size_ptr := b.map_state_field_ptr(blk_found, state, 4)
 	keys := b.block_instr1(.load, blk_found, ptr_i8, keys_ptr)
-	key_size := b.block_instr1(.load, blk_found, b.i64_type, key_size_ptr)
+	key_size := b.map_state_load_i64(blk_found, state, 4)
 	offset := b.block_instr2(.mul, blk_found, b.i64_type, idx, key_size)
 	result := b.block_instr2(.add, blk_found, ptr_i8, keys, offset)
 	b.block_instr1(.ret, blk_found, b.void_type, result)
@@ -5910,10 +7390,6 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	state := b.block_instr1(.load, blk_ready, ptr_state, state_slot)
 	keys_ptr := b.map_state_field_ptr(blk_ready, state, 0)
 	vals_ptr := b.map_state_field_ptr(blk_ready, state, 1)
-	cap_ptr := b.map_state_field_ptr(blk_ready, state, 2)
-	len_ptr := b.map_state_field_ptr(blk_ready, state, 3)
-	key_size_ptr := b.map_state_field_ptr(blk_ready, state, 4)
-	val_size_ptr := b.map_state_field_ptr(blk_ready, state, 5)
 
 	find_ref := b.m.add_value(.func_ref, b.void_type, 'v3_map_find', b.runtime_fn_id('v3_map_find'))
 	idx := b.block_instr3(.call, blk_ready, b.i64_type, find_ref, map_ptr, key_ptr)
@@ -5921,7 +7397,7 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	b.block_instr3(.br, blk_ready, b.void_type, found, ValueID(blk_update), ValueID(blk_insert))
 
 	vals_update := b.block_instr1(.load, blk_update, ptr_i8, vals_ptr)
-	val_size_update := b.block_instr1(.load, blk_update, b.i64_type, val_size_ptr)
+	val_size_update := b.map_state_load_i64(blk_update, state, 5)
 	update_off := b.block_instr2(.mul, blk_update, b.i64_type, idx, val_size_update)
 	update_dest := b.block_instr2(.add, blk_update, ptr_i8, vals_update, update_off)
 	memcpy_ref_update := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
@@ -5929,8 +7405,8 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 		val_size_update)
 	b.block_instr0(.ret, blk_update, b.void_type)
 
-	len := b.block_instr1(.load, blk_insert, b.i64_type, len_ptr)
-	cap := b.block_instr1(.load, blk_insert, b.i64_type, cap_ptr)
+	len := b.map_state_load_i64(blk_insert, state, 3)
+	cap := b.map_state_load_i64(blk_insert, state, 2)
 	needs_grow := b.block_instr2(.ge, blk_insert, b.i1_type, len, cap)
 	blk_grow := b.m.add_block(func_id, 'map_set_grow')
 	blk_store := b.m.add_block(func_id, 'map_set_store')
@@ -5938,27 +7414,66 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 
 	two := b.m.get_or_add_const(b.i64_type, '2')
 	eight := b.m.get_or_add_const(b.i64_type, '8')
-	key_size_grow := b.block_instr1(.load, blk_grow, b.i64_type, key_size_ptr)
-	val_size_grow := b.block_instr1(.load, blk_grow, b.i64_type, val_size_ptr)
-	keys_old := b.block_instr1(.load, blk_grow, ptr_i8, keys_ptr)
-	vals_old := b.block_instr1(.load, blk_grow, ptr_i8, vals_ptr)
-	double_cap := b.block_instr2(.mul, blk_grow, b.i64_type, cap, two)
-	new_cap := b.block_instr2(.add, blk_grow, b.i64_type, double_cap, eight)
-	key_bytes := b.block_instr2(.mul, blk_grow, b.i64_type, new_cap, key_size_grow)
-	val_bytes := b.block_instr2(.mul, blk_grow, b.i64_type, new_cap, val_size_grow)
+	old_cap_empty := b.block_instr2(.eq, blk_grow, b.i1_type, cap, zero)
+	blk_alloc_metas := b.m.add_block(func_id, 'map_set_alloc_metas')
+	blk_grow_storage := b.m.add_block(func_id, 'map_set_grow_storage')
+	b.block_instr3(.br, blk_grow, b.void_type, old_cap_empty, ValueID(blk_alloc_metas),
+		ValueID(blk_grow_storage))
+	metas_count := b.m.get_or_add_const(b.i64_type, '16')
+	four := b.m.get_or_add_const(b.i64_type, '4')
+	calloc_ref := b.m.add_value(.func_ref, ptr_i8, 'calloc', b.runtime_fn_id('calloc'))
+	metas := b.block_instr3(.call, blk_alloc_metas, ptr_i8, calloc_ref, metas_count, four)
+	metas_ptr := b.block_struct_field_ptr(blk_alloc_metas, state, b.map_state_type, 6)
+	b.block_instr2(.store, blk_alloc_metas, b.void_type, metas, metas_ptr)
+	b.block_instr1(.jmp, blk_alloc_metas, b.void_type, ValueID(blk_grow_storage))
+
+	key_size_grow := b.map_state_load_i64(blk_grow_storage, state, 4)
+	val_size_grow := b.map_state_load_i64(blk_grow_storage, state, 5)
+	keys_old := b.block_instr1(.load, blk_grow_storage, ptr_i8, keys_ptr)
+	vals_old := b.block_instr1(.load, blk_grow_storage, ptr_i8, vals_ptr)
+	double_cap := b.block_instr2(.mul, blk_grow_storage, b.i64_type, cap, two)
+	new_cap := b.block_instr2(.add, blk_grow_storage, b.i64_type, double_cap, eight)
+	key_bytes := b.block_instr2(.mul, blk_grow_storage, b.i64_type, new_cap, key_size_grow)
+	val_bytes := b.block_instr2(.mul, blk_grow_storage, b.i64_type, new_cap, val_size_grow)
 	realloc_ref_keys := b.m.add_value(.func_ref, b.void_type, 'realloc', b.runtime_fn_id('realloc'))
 	realloc_ref_vals := b.m.add_value(.func_ref, b.void_type, 'realloc', b.runtime_fn_id('realloc'))
-	keys_new := b.block_instr3(.call, blk_grow, ptr_i8, realloc_ref_keys, keys_old, key_bytes)
-	vals_new := b.block_instr3(.call, blk_grow, ptr_i8, realloc_ref_vals, vals_old, val_bytes)
-	b.block_instr2(.store, blk_grow, b.void_type, keys_new, keys_ptr)
-	b.block_instr2(.store, blk_grow, b.void_type, vals_new, vals_ptr)
-	b.block_instr2(.store, blk_grow, b.void_type, new_cap, cap_ptr)
-	b.block_instr1(.jmp, blk_grow, b.void_type, ValueID(blk_store))
+	keys_new := b.block_instr3(.call, blk_grow_storage, ptr_i8, realloc_ref_keys, keys_old,
+		key_bytes)
+	vals_new := b.block_instr3(.call, blk_grow_storage, ptr_i8, realloc_ref_vals, vals_old,
+		val_bytes)
+	b.block_instr2(.store, blk_grow_storage, b.void_type, keys_new, keys_ptr)
+	b.block_instr2(.store, blk_grow_storage, b.void_type, vals_new, vals_ptr)
+	b.map_state_store_i64(blk_grow_storage, state, 2, new_cap)
+	if b.m.target.ptr_size == 8 {
+		deletes_ptr := b.map_dense_field_ptr(blk_grow_storage, state, 4)
+		deletes := b.block_instr1(.load, blk_grow_storage, b.u32_type, deletes_ptr)
+		has_deletes := b.block_instr2(.ne, blk_grow_storage, b.i1_type, deletes,
+			b.m.get_or_add_const(b.u32_type, '0'))
+		blk_bitmap := b.m.add_block(func_id, 'map_set_grow_bitmap')
+		b.block_instr3(.br, blk_grow_storage, b.void_type, has_deletes,
+			ValueID(blk_bitmap), ValueID(blk_store))
+		bitmap_one := b.m.get_or_add_const(b.i64_type, '1')
+		bitmap := b.block_instr3(.call, blk_bitmap, ptr_i8, calloc_ref, new_cap,
+			bitmap_one)
+		old_bitmap_ptr := b.map_dense_field_ptr(blk_bitmap, state, 7)
+		old_bitmap := b.block_instr1(.load, blk_bitmap, ptr_i8, old_bitmap_ptr)
+		bitmap_memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy',
+			b.runtime_fn_id('memcpy'))
+		b.block_instr4(.call, blk_bitmap, ptr_i8, bitmap_memcpy_ref, bitmap, old_bitmap,
+			len)
+		free_bitmap_ref := b.m.add_value(.func_ref, b.void_type, 'free',
+			b.fn_ids['free'])
+		b.block_instr2(.call, blk_bitmap, b.void_type, free_bitmap_ref, old_bitmap)
+		b.block_instr2(.store, blk_bitmap, b.void_type, bitmap, old_bitmap_ptr)
+		b.block_instr1(.jmp, blk_bitmap, b.void_type, ValueID(blk_store))
+	} else {
+		b.block_instr1(.jmp, blk_grow_storage, b.void_type, ValueID(blk_store))
+	}
 
 	keys := b.block_instr1(.load, blk_store, ptr_i8, keys_ptr)
 	vals := b.block_instr1(.load, blk_store, ptr_i8, vals_ptr)
-	key_size := b.block_instr1(.load, blk_store, b.i64_type, key_size_ptr)
-	val_size := b.block_instr1(.load, blk_store, b.i64_type, val_size_ptr)
+	key_size := b.map_state_load_i64(blk_store, state, 4)
+	val_size := b.map_state_load_i64(blk_store, state, 5)
 	key_off := b.block_instr2(.mul, blk_store, b.i64_type, len, key_size)
 	val_off := b.block_instr2(.mul, blk_store, b.i64_type, len, val_size)
 	key_dest := b.block_instr2(.add, blk_store, ptr_i8, keys, key_off)
@@ -5969,8 +7484,27 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	b.block_instr4(.call, blk_store, ptr_i8, memcpy_ref_val, val_dest, val_ptr, val_size)
 	one := b.m.get_or_add_const(b.i64_type, '1')
 	new_len := b.block_instr2(.add, blk_store, b.i64_type, len, one)
-	b.block_instr2(.store, blk_store, b.void_type, new_len, len_ptr)
-	b.block_instr0(.ret, blk_store, b.void_type)
+	b.map_state_store_i64(blk_store, state, 3, new_len)
+	if b.m.target.ptr_size == 8 {
+		count_ptr := b.block_struct_field_ptr(blk_store, state, b.map_state_type, 13)
+		count := b.block_instr1(.load, blk_store, b.i32_type, count_ptr)
+		new_count := b.block_instr2(.add, blk_store, b.i32_type, count,
+			b.m.get_or_add_const(b.i32_type, '1'))
+		b.block_instr2(.store, blk_store, b.void_type, new_count, count_ptr)
+		deletes_ptr := b.map_dense_field_ptr(blk_store, state, 4)
+		deletes := b.block_instr1(.load, blk_store, b.u32_type, deletes_ptr)
+		has_deletes := b.block_instr2(.ne, blk_store, b.i1_type, deletes,
+			b.m.get_or_add_const(b.u32_type, '0'))
+		blk_invalidate := b.m.add_block(func_id, 'map_set_invalidate')
+		blk_finish := b.m.add_block(func_id, 'map_set_finish')
+		b.block_instr3(.br, blk_store, b.void_type, has_deletes, ValueID(blk_invalidate),
+			ValueID(blk_finish))
+		b.invalidate_native_map_index(blk_invalidate, state)
+		b.block_instr1(.jmp, blk_invalidate, b.void_type, ValueID(blk_finish))
+		b.block_instr0(.ret, blk_finish, b.void_type)
+	} else {
+		b.block_instr0(.ret, blk_store, b.void_type)
+	}
 }
 
 // generate_array_new_body supports generate array new body handling for Builder.
@@ -6009,7 +7543,21 @@ fn (mut b Builder) generate_array_new_body(func_id int) {
 	b.block_instr3(.br, blk_init, b.void_type, has_cap, ValueID(blk_alloc), ValueID(blk_empty))
 
 	fn_ref := b.m.add_value(.func_ref, b.void_type, 'calloc', b.runtime_fn_id('calloc'))
-	allocated_data := b.block_instr3(.call, blk_alloc, ptr_i8, fn_ref, final_cap, elem_size)
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	payload_size := b.block_instr2(.mul, blk_alloc, b.i64_type, final_cap, elem_size)
+	allocation_size := b.block_instr2(.add, blk_alloc, b.i64_type, payload_size,
+		b.m.get_or_add_const(b.i64_type, '31'))
+	raw := b.block_instr3(.call, blk_alloc, ptr_i8, fn_ref, one, allocation_size)
+	raw_integer := b.block_instr1(.bitcast, blk_alloc, b.u64_type, raw)
+	biased := b.block_instr2(.add, blk_alloc, b.u64_type, raw_integer,
+		b.m.get_or_add_const(b.u64_type, '31'))
+	aligned := b.block_instr2(.and_, blk_alloc, b.u64_type, biased,
+		b.m.get_or_add_const(b.u64_type, '18446744073709551600'))
+	allocated_data := b.block_instr1(.bitcast, blk_alloc, ptr_i8, aligned)
+	header := b.block_instr2(.sub, blk_alloc, ptr_i8, allocated_data,
+		b.m.get_or_add_const(b.i64_type, '16'))
+	allocation_ptr := b.block_instr1(.bitcast, blk_alloc, ptr_ptr_i8, header)
+	b.block_instr2(.store, blk_alloc, b.void_type, raw, allocation_ptr)
 	b.block_instr2(.store, blk_alloc, b.void_type, allocated_data, alloca_data)
 	b.block_instr1(.jmp, blk_alloc, b.void_type, ValueID(blk_fields))
 
@@ -6028,7 +7576,8 @@ fn (mut b Builder) generate_array_new_body(func_id int) {
 	b.block_instr2(.store, blk_fields, b.void_type, zero, offset_ptr)
 	b.block_instr2(.store, blk_fields, b.void_type, len, len_ptr)
 	b.block_instr2(.store, blk_fields, b.void_type, final_cap, cap_ptr)
-	b.block_instr2(.store, blk_fields, b.void_type, zero, flags_ptr)
+	managed_flags := b.m.get_or_add_const(b.u32_type, '16')
+	b.block_instr2(.store, blk_fields, b.void_type, managed_flags, flags_ptr)
 	b.block_instr2(.store, blk_fields, b.void_type, elem_size, elem_size_ptr)
 
 	arr := b.block_instr1(.load, blk_fields, b.array_type, alloca_arr)
@@ -6089,6 +7638,10 @@ fn (mut b Builder) generate_array_slice_body(func_id int) {
 	offset := b.block_instr2(.mul, entry, b.i64_type, start, elem_size)
 	slice_data := b.block_instr2(.add, entry, ptr_i8, data, offset)
 	slice_len := b.block_instr2(.sub, entry, b.i64_type, end, start)
+	zero_i64 := b.m.get_or_add_const(b.i64_type, '0')
+	negative_len := b.block_instr2(.lt, entry, b.i1_type, slice_len, zero_i64)
+	safe_slice_len := b.block_instr3(.select, entry, b.i64_type, negative_len, zero_i64,
+		slice_len)
 	old_offset_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 1)
 	old_offset32 := b.block_instr1(.load, entry, b.i32_type, old_offset_ptr)
 	old_offset := b.block_instr1(.zext, entry, b.i64_type, old_offset32)
@@ -6123,8 +7676,8 @@ fn (mut b Builder) generate_array_slice_body(func_id int) {
 	out_elem_size_ptr := b.block_struct_field_ptr(finish, alloca_out, b.array_type, 5)
 	b.block_instr2(.store, finish, b.void_type, slice_data, out_data_ptr)
 	b.block_instr2(.store, finish, b.void_type, total_offset, out_offset_ptr)
-	b.block_instr2(.store, finish, b.void_type, slice_len, out_len_ptr)
-	b.block_instr2(.store, finish, b.void_type, slice_len, out_cap_ptr)
+	b.block_instr2(.store, finish, b.void_type, safe_slice_len, out_len_ptr)
+	b.block_instr2(.store, finish, b.void_type, safe_slice_len, out_cap_ptr)
 	b.block_instr2(.store, finish, b.void_type, slice_flags, out_flags_ptr)
 	b.block_instr2(.store, finish, b.void_type, elem_size, out_elem_size_ptr)
 
@@ -6473,6 +8026,7 @@ fn (mut b Builder) generate_array_push_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 2)
 	cap_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 3)
+	flags_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 4)
 	elem_size_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 5)
 	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
@@ -6481,12 +8035,20 @@ fn (mut b Builder) generate_array_push_body(func_id int) {
 	needs_grow := b.block_instr2(.ge, entry, b.i1_type, len, cap)
 
 	blk_grow := b.m.add_block(func_id, 'array_push_grow')
+	blk_check_unique := b.m.add_block(func_id, 'array_push_check_unique')
+	blk_unique := b.m.add_block(func_id, 'array_push_unique')
 	blk_store := b.m.add_block(func_id, 'array_push_store')
-	b.block_instr3(.br, entry, b.void_type, needs_grow, ValueID(blk_grow), ValueID(blk_store))
+	b.block_instr3(.br, entry, b.void_type, needs_grow, ValueID(blk_grow),
+		ValueID(blk_check_unique))
 
 	two := b.m.get_or_add_const(b.i64_type, '2')
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	zero := b.m.get_or_add_const(b.i64_type, '0')
 	double_cap := b.block_instr2(.mul, blk_grow, b.i64_type, cap, two)
-	new_cap := b.block_instr2(.add, blk_grow, b.i64_type, double_cap, two)
+	empty_cap := b.block_instr2(.eq, blk_grow, b.i1_type, cap, zero)
+	empty_addend := b.block_instr1(.zext, blk_grow, b.i64_type, empty_cap)
+	empty_addend_scaled := b.block_instr2(.mul, blk_grow, b.i64_type, empty_addend, two)
+	new_cap := b.block_instr2(.add, blk_grow, b.i64_type, double_cap, empty_addend_scaled)
 	if b.m.target.ptr_size == 4 {
 		old_data := b.block_instr1(.load, blk_grow, ptr_i8, data_ptr)
 		elem_size_grow32 := b.block_instr1(.load, blk_grow, b.i32_type, elem_size_ptr)
@@ -6502,6 +8064,21 @@ fn (mut b Builder) generate_array_push_body(func_id int) {
 	}
 	b.block_instr1(.jmp, blk_grow, b.void_type, ValueID(blk_store))
 
+	flags := b.block_instr1(.load, blk_check_unique, b.u32_type, flags_ptr)
+	is_slice_bits := b.block_instr2(.and_, blk_check_unique, b.u32_type, flags,
+		b.m.get_or_add_const(b.u32_type, '64'))
+	is_slice := b.block_instr2(.ne, blk_check_unique, b.i1_type, is_slice_bits,
+		b.m.get_or_add_const(b.u32_type, '0'))
+	b.block_instr3(.br, blk_check_unique, b.void_type, is_slice, ValueID(blk_unique),
+		ValueID(blk_store))
+
+	clone_input := b.block_instr1(.load, blk_unique, b.array_type, arr_ptr)
+	clone_ref := b.m.add_value(.func_ref, b.array_type, 'array_clone',
+		b.runtime_fn_id('array_clone'))
+	clone := b.block_instr2(.call, blk_unique, b.array_type, clone_ref, clone_input)
+	b.block_instr2(.store, blk_unique, b.void_type, clone, arr_ptr)
+	b.block_instr1(.jmp, blk_unique, b.void_type, ValueID(blk_store))
+
 	data := b.block_instr1(.load, blk_store, ptr_i8, data_ptr)
 	elem_size32 := b.block_instr1(.load, blk_store, b.i32_type, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, blk_store, b.i64_type, elem_size32)
@@ -6509,7 +8086,6 @@ fn (mut b Builder) generate_array_push_body(func_id int) {
 	dest := b.block_instr2(.add, blk_store, ptr_i8, data, offset)
 	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
 	b.block_instr4(.call, blk_store, ptr_i8, memcpy_ref, dest, elem_ptr, elem_size)
-	one := b.m.get_or_add_const(b.i64_type, '1')
 	new_len := b.block_instr2(.add, blk_store, b.i64_type, len, one)
 	b.block_instr2(.store, blk_store, b.void_type, new_len, len_ptr)
 	b.block_instr0(.ret, blk_store, b.void_type)
@@ -6951,10 +8527,14 @@ fn (mut b Builder) generate_wyhash64_body(func_id int) {
 
 	wyp0 := b.m.get_or_add_const(b.i64_type, '3257665815644502181')
 	wyp1 := b.m.get_or_add_const(b.i64_type, '10067880064238660809')
+	wymix0 := b.m.get_or_add_const(b.i64_type, '11562461410679940143')
+	wymix1 := b.m.get_or_add_const(b.i64_type, '16646288086500911323')
 
 	x := b.block_instr2(.xor, entry, b.i64_type, param_a, wyp0)
 	y := b.block_instr2(.xor, entry, b.i64_type, param_b, wyp1)
-	result := b.wymix_inline(entry, x, y)
+	mix_a := b.wymix_inline(entry, x, wymix0)
+	mix_b := b.wymix_inline(entry, y, wymix1)
+	result := b.block_instr2(.xor, entry, b.i64_type, mix_a, mix_b)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -7144,8 +8724,33 @@ fn (mut b Builder) generate_wyhash_body(func_id int) {
 	b.block_instr1(.ret, blk_final, b.void_type, final_result)
 }
 
+// c_variant_function_names lists functions with platform C implementations.
+fn (b &Builder) c_variant_function_names() map[string]bool {
+	mut names := map[string]bool{}
+	mut scan_module := ''
+	for node in b.a.nodes {
+		if node.kind == .file {
+			scan_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			scan_module = b.source_module_name(node)
+			continue
+		}
+		if node.kind == .fn_decl {
+			if file := b.a.source_files[node.pos.id] {
+				if file.name.ends_with('.c.v') {
+					names[ssa_fn_name_in_module(scan_module, node.value)] = true
+				}
+			}
+		}
+	}
+	return names
+}
+
 // build_functions builds functions data for ssa.
 fn (mut b Builder) build_functions() {
+	c_variant_names := b.c_variant_function_names()
 	mut cur_module := ''
 	for node in b.a.nodes {
 		if node.kind == .file {
@@ -7157,10 +8762,19 @@ fn (mut b Builder) build_functions() {
 			continue
 		}
 		if node.kind == .fn_decl {
+			if file := b.a.source_files[node.pos.id] {
+				fn_name := ssa_fn_name_in_module(cur_module, node.value_text())
+				if c_variant_names[fn_name] && !file.name.ends_with('.c.v') {
+					continue
+				}
+			}
 			if b.skip_source_fn_in_module(node.value_text(), cur_module) {
 				continue
 			}
 			fn_name := ssa_fn_name_in_module(cur_module, node.value_text())
+			if node.value_text() in native_runtime_override_names && node.value_text() in b.fn_ids {
+				continue
+			}
 			// Dead-module elimination: skip every function from a skipped module.
 			if b.skip_modules.len > 0 && cur_module in b.skip_modules {
 				b.mark_fn_prototype(fn_name)
@@ -7216,12 +8830,15 @@ fn (mut b Builder) register_type_aliases() {
 			continue
 		}
 		// A type_decl with no children and a non-empty `typ` is an alias
-		// (`type Foo = Bar`); a type_decl with children is a sum type.
-		if node.kind == .type_decl && node.children_count == 0 && node.typ != 0 {
+		// (`type Foo = Bar`). Compact sum declarations also have no children,
+		// but retain their `A | B` spelling in `typ`.
+		if node.kind == .type_decl && node.children_count == 0 && node.typ != 0
+			&& !node.typ_text().contains('|') {
 			base := b.resolve_type_in_module(node.typ, cur_module)
 			if base > 0 {
-				b.type_aliases[node.value_text()] = base
-				qualified := qualify_type_name(node.value_text(), cur_module)
+				name_id := node.source_value_id()
+				b.type_aliases[name_id] = base
+				qualified := qualify_type_name(name_id, cur_module)
 				b.type_aliases[qualified] = base
 			}
 		}
@@ -7229,16 +8846,23 @@ fn (mut b Builder) register_type_aliases() {
 }
 
 // source_param_type_name returns the ABI storage type for a parsed parameter.
-fn (b &Builder) source_param_type_name(param flat.Node, fn_name string, module_name string, idx int) u32 {
-	mut name := if flat.source_type_shape(param.typ).has(.pointer) {
+fn (mut b Builder) source_param_type_name(param flat.Node, fn_name string, module_name string, idx int) u32 {
+	param_shape := flat.source_type_shape(param.typ)
+	mut name := if param_shape.has(.pointer) || param_shape.has(.array_type) {
 		param.typ
 	} else {
 		b.checker_param_type_name(fn_name, module_name, idx) or { param.typ }
 	}
+	if param.typ != 0 {
+		ast_type := b.resolve_type_in_module(param.typ, module_name)
+		if b.is_sum_type_id(ast_type) {
+			name = param.typ
+		}
+	}
 	// An explicit `mut p &T` keeps &T in the parsed type and marks the extra
 	// caller slot with op == .amp. The transformed body dereferences that slot.
 	if param.is_mut && param.op == .amp && flat.source_type_shape(name).has(.pointer) {
-		name = flat.source_type_id('&' + flat.source_type_name(name))
+		name = flat.source_type_composition_one(.pointer, name)
 	}
 	return name
 }
@@ -7253,6 +8877,40 @@ fn (b &Builder) checker_param_type_name(fn_name string, module_name string, idx 
 		if params := b.tc.fn_param_types[candidate] {
 			if idx >= 0 && idx < params.len {
 				return params[idx].source_type_id()
+			}
+		}
+	}
+	return none
+}
+
+// checker_param_type returns the checker's concrete parameter type.
+fn (b &Builder) checker_param_type(fn_name string, module_name string, idx int) ?types.Type {
+	if b.tc == unsafe { nil } {
+		return none
+	}
+	candidates := checker_fn_name_candidates(fn_name, module_name)
+	for candidate in candidates {
+		if params := b.tc.fn_param_types[candidate] {
+			if idx >= 0 && idx < params.len {
+				return params[idx]
+			}
+		}
+	}
+	return none
+}
+
+// checker_return_type_name returns the concrete return spelling for a
+// monomorphized function, including generic struct instances like `Box[int]`.
+fn (b &Builder) checker_return_type_name(fn_name string, module_name string) ?u32 {
+	if b.tc == unsafe { nil } {
+		return none
+	}
+	candidates := checker_fn_name_candidates(fn_name, module_name)
+	for candidate in candidates {
+		if ret := b.tc.fn_ret_types[candidate] {
+			name := ret.source_type_id()
+			if name != 0 {
+				return name
 			}
 		}
 	}
@@ -7291,7 +8949,25 @@ fn (mut b Builder) checker_return_type(fn_name string, module_name string) ?Type
 	candidates := checker_fn_name_candidates(fn_name, module_name)
 	for candidate in candidates {
 		if ret := b.tc.fn_ret_types[candidate] {
-			return b.ssa_type_from_checker_type(ret)
+			typ_id := b.ssa_type_from_checker_type(ret)
+			if ret is types.Struct && typ_id > 0 && typ_id < b.m.type_store.types.len
+				&& b.m.type_store.types[typ_id].fields.len == 0 {
+				fields := b.tc.struct_fields_for_type(ret.source_type_id())
+				if fields.len > 0 {
+					mut field_types := []TypeID{cap: fields.len}
+					mut field_names := []string{cap: fields.len}
+					for field in fields {
+						field_types << b.ssa_type_from_checker_type(field.typ)
+						field_names << field.name
+					}
+					b.m.type_store.types[typ_id] = Type{
+						kind:        .struct_t
+						fields:      field_types
+						field_names: field_names
+					}
+				}
+			}
+			return typ_id
 		}
 	}
 	return none
@@ -7428,20 +9104,30 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 	func_id := b.fn_ids[fn_name]
 	b.cur_module = module_name
 	b.cur_func = func_id
-	b.cur_func_ret_type = qualify_type_ref_name(node.typ, module_name)
+	b.cur_func_ret_type = b.checker_return_type_name(node.value, module_name) or {
+		qualify_type_ref_name(node.typ, module_name)
+	}
 	b.reset_function_state()
 
 	entry := b.m.add_block(func_id, 'entry')
 	b.cur_block = entry
 
+	mut param_index := 0
 	for i in 0 .. node.children_count {
 		child := b.a.child_node(&node, i)
 		if child.kind == .param {
 			typ_name_source_id := b.source_param_type_name(child, node.value_text(), module_name,
-				b.m.funcs[func_id].params.len)
+				param_index)
 			typ_name_source_id_2 := typ_name_source_id
 
-			typ := b.resolve_type_in_module(typ_name_source_id, module_name)
+			mut typ := b.resolve_type_in_module(typ_name_source_id, module_name)
+			if checked := b.checker_param_type(node.value_text(), module_name, param_index) {
+				if checked is types.SumType || (checked is types.Struct
+					&& b.source_is_sum_type(flat.source_type_name(checked.source_type_id())))
+					|| checker_type_is_function(checked) {
+					typ = b.ssa_type_from_checker_type(checked)
+				}
+			}
 			param_val := b.m.add_value(.argument, typ, child.value_text(), b.m.funcs[func_id].params.len)
 			mut f := b.m.funcs[func_id]
 			f.params << param_val
@@ -7458,6 +9144,7 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 				&& b.is_pointer_type(typ) {
 				b.mut_pointer_params[child.value_text()] = b.m.type_store.types[typ].elem_type
 			}
+			param_index++
 		}
 	}
 
@@ -7669,11 +9356,30 @@ fn (mut b Builder) bind_loop_var(name string, typ TypeID, typ_name_id u32) Value
 // ssa_pointer_base_source_type retains unchanged spelling identities.
 fn ssa_pointer_base_source_type(type_id u32) u32 {
 	if !flat.source_type_shape(type_id).has(.pointer) { return type_id }
-	return flat.source_type_id(flat.source_type_name(type_id).trim_left('&'))
+	return flat.source_type_syntax(type_id).pointer_raw_base()
 }
 
 // for_in_container_type_name supports for in container type name handling for Builder.
 fn (b &Builder) for_in_container_type_name(container_id flat.NodeId) u32 {
+	if b.tc != unsafe { nil } && b.valid_node_id(container_id) {
+		resolved_type := b.tc.resolve_type(container_id)
+		resolved_id := resolved_type.source_type_id()
+		resolved_name := flat.source_type_name(resolved_id).trim_left('&')
+		if resolved_id != 0 && resolved_id != flat.source_type_unknown && resolved_name.len > 0 {
+			return flat.source_type_id(resolved_name)
+		}
+	}
+	if b.valid_node_id(container_id) {
+		node := b.a.nodes[int(container_id)]
+		if node.kind == .ident {
+			if typ_source_id := b.var_type_names.type_id(node.value) {
+				typ_name := flat.source_type_name(typ_source_id).trim_left('&')
+				if typ_name.len > 0 {
+					return flat.source_type_id(typ_name)
+				}
+			}
+		}
+	}
 	checked_source_id_2 := b.checked_expr_type_name(container_id)
 	if checked_source_id_2 != 0 && checked_source_id_2 != flat.source_type_unknown {
 		return ssa_pointer_base_source_type(checked_source_id_2)
@@ -7699,32 +9405,81 @@ fn (b &Builder) for_in_container_type_name(container_id flat.NodeId) u32 {
 
 // for_in_array_elem_type_name supports for in array elem type name handling for Builder.
 fn (b &Builder) for_in_array_elem_type_name(container_id flat.NodeId, container_type_id u32) u32 {
-	clean_id := ssa_pointer_base_source_type(container_type_id)
-	clean := flat.source_type_name(clean_id)
-	if clean.starts_with('[]') {
-		return flat.source_type_id(clean[2..])
-	}
-	if clean.starts_with('[') {
-		idx := clean.index_u8(`]`)
-		if idx > 0 && idx + 1 < clean.len {
-			return flat.source_type_id(clean[idx + 1..])
-		}
-	}
-	if clean_id == flat.source_type_string {
-		return flat.source_type_u8
-	}
 	if b.valid_node_id(container_id) {
 		node := b.a.nodes[int(container_id)]
 		if node.kind == .array_literal && node.children_count > 0 {
 			first_id := b.a.child(&node, 0)
 			first_type_source_id := b.checked_expr_type_name(first_id)
-
 			if first_type_source_id != 0 && first_type_source_id != flat.source_type_unknown {
 				return first_type_source_id
 			}
 		}
 	}
+	clean_id := ssa_pointer_base_source_type(container_type_id)
+	shape := flat.source_type_shape(clean_id)
+	syntax := flat.source_type_syntax(clean_id)
+	if shape.has(.array_type) { return syntax.raw_base() }
+	if shape.has(.leading_bracket) && syntax.first_bracket_base() != 0 {
+		return syntax.first_bracket_base()
+	}
+	if clean_id == flat.source_type_string {
+		return flat.source_type_u8
+	}
 	return flat.source_type_int
+}
+
+fn (b &Builder) is_result_type_id(typ_id TypeID) bool {
+	if typ_id <= 0 || typ_id >= b.m.type_store.types.len {
+		return false
+	}
+	return b.is_option_type(typ_id) && 'err' in b.m.type_store.types[typ_id].field_names
+}
+
+fn (b &Builder) result_error_type(typ_id TypeID) TypeID {
+	typ := b.m.type_store.types[typ_id]
+	index := typ.field_names.index('err')
+	if index >= 0 && index < typ.fields.len {
+		return typ.fields[index]
+	}
+	return TypeID(0)
+}
+
+fn (b &Builder) is_error_result_expr(id flat.NodeId, value ValueID, result_type TypeID) bool {
+	err_type := b.result_error_type(result_type)
+	if err_type == 0 {
+		return false
+	}
+	if b.is_interface_type_id(err_type) && b.value_type(value) == err_type {
+		return true
+	}
+	if b.tc != unsafe { nil } && flat.source_type_id('IError') in b.tc.interface_names {
+		name_id := b.checked_expr_type_name(id)
+		name := flat.source_type_name(name_id).trim_left('&?!')
+		if name.len > 0 && b.tc.named_type_implements_interface(flat.source_type_id(name),
+			flat.source_type_id('IError')) {
+			return true
+		}
+	}
+	return b.option_value_type(result_type) == b.void_type
+		&& b.a.nodes[int(id)].kind != .none_expr
+}
+
+fn (mut b Builder) build_result_error_value(result_type TypeID, error_value ValueID) ValueID {
+	result_alloca := b.emit0(.alloca, b.m.type_store.get_ptr(result_type))
+	ok_ptr := b.block_struct_field_ptr(b.cur_block, result_alloca, result_type, 0)
+	ok := b.m.get_or_add_const(b.i1_type, '0')
+	b.emit2(.store, b.void_type, ok, ok_ptr)
+	payload_type := b.option_value_type(result_type)
+	if payload_type != b.void_type {
+		value_ptr := b.block_struct_field_ptr(b.cur_block, result_alloca, result_type, 1)
+		b.emit2(.store, b.void_type, b.default_value_for_type(payload_type), value_ptr)
+	}
+	err_index := b.m.type_store.types[result_type].field_names.index('err')
+	if err_index >= 0 {
+		err_ptr := b.block_struct_field_ptr(b.cur_block, result_alloca, result_type, err_index)
+		b.emit2(.store, b.void_type, error_value, err_ptr)
+	}
+	return b.emit1(.load, result_type, result_alloca)
 }
 
 // build_stmt builds stmt data for ssa.
@@ -7762,8 +9517,10 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 			if node.children_count > 0 {
 				expr_id := b.a.child(&node, 0)
 				ret_type := b.m.funcs[b.cur_func].typ
+				is_result := b.is_result_type_id(ret_type)
+				is_option_like := b.is_option_type(ret_type) || is_result
 				mut val := if node.children_count > 1 && b.is_struct_type(ret_type) {
-					payload_type := if b.is_option_type(ret_type) {
+					payload_type := if is_option_like {
 						b.option_value_type(ret_type)
 					} else {
 						ret_type
@@ -7774,9 +9531,25 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 					// duplicated enum-member name is not built as 0 (see build_assign_rhs).
 					b.build_field_value(expr_id, b.cur_func_ret_type)
 				}
-				if b.is_option_type(ret_type) && b.value_type(val) != ret_type {
+				if !is_option_like {
+					if b.is_interface_type_id(ret_type) && b.value_type(val) != ret_type {
+						val = b.box_interface_value(ret_type, b.checked_expr_type_name(expr_id), val)
+					} else {
+						val = b.coerce_value_for_type(val, ret_type)
+					}
+				}
+				if is_option_like && b.value_type(val) != ret_type {
 					expr_node := b.a.nodes[int(expr_id)]
-					val = b.build_option_value(ret_type, expr_node.kind != .none_expr, val)
+					if is_result && b.is_error_result_expr(expr_id, val, ret_type) {
+						err_type := b.result_error_type(ret_type)
+						if b.value_type(val) != err_type {
+							val = b.box_interface_value(err_type,
+								b.checked_expr_type_name(expr_id), val)
+						}
+						val = b.build_result_error_value(ret_type, val)
+					} else {
+						val = b.build_option_value(ret_type, expr_node.kind != .none_expr, val)
+					}
 				}
 				b.emit_deferred_stmts()
 				b.emit1(.ret, b.void_type, val)
@@ -7829,6 +9602,20 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 		.block {
 			b.build_scoped_stmts(node, 0)
 		}
+		.lock_expr {
+			if node.children_count > 0 {
+				body_id := b.a.child(&node, node.children_count - 1)
+				body := b.a.nodes[int(body_id)]
+				if body.kind == .block {
+					b.build_scoped_stmts(body, 0)
+				} else {
+					b.build_stmt(body_id)
+				}
+			}
+		}
+		.select_stmt {
+			b.build_select_placeholder(node)
+		}
 		.assert_stmt {
 			b.build_assert(node)
 		}
@@ -7840,6 +9627,35 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 		else {
 			eprintln('build_stmt: unsupported node kind: ${node.kind}')
 		}
+	}
+}
+
+fn (mut b Builder) build_select_placeholder(node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	mut selected := b.a.nodes[int(b.a.child(&node, 0))]
+	for i in 0 .. node.children_count {
+		branch := b.a.nodes[int(b.a.child(&node, i))]
+		if branch.kind == .select_branch && branch.value == 'else' {
+			selected = branch
+			break
+		}
+	}
+	if selected.kind != .select_branch {
+		return
+	}
+	body_start := if selected.value == 'else' {
+		0
+	} else if selected.children_count > 1
+		&& b.a.nodes[int(b.a.child(&selected, 1))].kind == .prefix
+		&& b.a.nodes[int(b.a.child(&selected, 1))].op == .arrow {
+		2
+	} else {
+		1
+	}
+	for i in body_start .. selected.children_count {
+		b.build_stmt(b.a.child(&selected, i))
 	}
 }
 
@@ -7910,6 +9726,19 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 		lhs := b.a.nodes[int(lhs_id)]
 		mut rhs_val := b.build_expr(rhs_id)
 		mut rhs_type := b.value_type(rhs_val)
+		declared_type_source_id := b.declared_v_type_name(lhs_id, rhs_id)
+		declared_storage_type := if declared_type_source_id != 0 {
+			b.resolve_type(declared_type_source_id)
+		} else {
+			TypeID(0)
+		}
+		if declared_storage_type > 0 {
+			rhs_val = b.coerce_value_for_type(rhs_val, declared_storage_type)
+			if b.is_int_type(declared_storage_type) || b.is_float_type(declared_storage_type)
+				|| b.is_pointer_type(declared_storage_type) {
+				rhs_type = declared_storage_type
+			}
+		}
 		if int(rhs_id) >= 0 && b.a.nodes[int(rhs_id)].kind == .nil_literal && lhs.typ != 0 {
 			declared_type := b.resolve_type(lhs.typ)
 			if b.is_pointer_type(declared_type) && declared_type != rhs_type {
@@ -7923,7 +9752,6 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 		b.emit2(.store, b.void_type, rhs_val, alloca)
 		if lhs.kind == .ident {
 			b.vars[lhs.value_text()] = alloca
-			declared_type_source_id := b.declared_v_type_name(lhs_id, rhs_id)
 			rhs_type_name_source_id := b.checked_expr_type_name(rhs_id)
 			b.var_type_names.set_id(lhs.value_text(), if declared_type_source_id != 0 {
 				declared_type_source_id
@@ -7996,10 +9824,11 @@ fn (mut b Builder) build_assign(node flat.Node) {
 						addr
 					}
 					cur := b.emit1(.load, b.deref_type(target_addr), target_addr)
-					rhs_val := b.coerce_int_value(b.build_assign_rhs(lhs, rhs_id),
+					mut rhs_val := b.coerce_int_value(b.build_assign_rhs(lhs, rhs_id),
 						b.value_type(cur))
-					op := b.compound_to_op(node.op, b.value_type(cur))
-					result := b.emit2(op, b.value_type(cur), cur, rhs_val)
+					rhs_val = b.coerce_flag_enum_assign_rhs(lhs_id, node.op, rhs_id, rhs_val)
+					result := b.build_compound_assign_value(node.op, cur, rhs_val,
+						b.checked_expr_type_name(lhs_id))
 					b.emit2(.store, b.void_type, result, target_addr)
 				}
 				b.sum_guard_variants.delete(addr)
@@ -8024,9 +9853,10 @@ fn (mut b Builder) build_assign(node flat.Node) {
 			} else {
 				field_type := b.deref_type(addr)
 				cur := b.emit1(.load, field_type, addr)
-				rhs_val := b.coerce_int_value(b.build_assign_rhs(lhs, rhs_id), field_type)
-				op := b.compound_to_op(node.op, b.value_type(cur))
-				result := b.emit2(op, field_type, cur, rhs_val)
+				mut rhs_val := b.coerce_int_value(b.build_assign_rhs(lhs, rhs_id), field_type)
+				rhs_val = b.coerce_flag_enum_assign_rhs(lhs_id, node.op, rhs_id, rhs_val)
+				result := b.build_compound_assign_value(node.op, cur, rhs_val,
+					b.checked_expr_type_name(lhs_id))
 				b.emit2(.store, b.void_type, result, addr)
 			}
 			if lhs.kind == .prefix && lhs.op == .mul {
@@ -8056,9 +9886,10 @@ fn (mut b Builder) build_selector_assign(node flat.Node) {
 			} else {
 				field_type := b.deref_type(field_ptr)
 				cur := b.emit1(.load, field_type, field_ptr)
-				rhs_val := b.build_expr(rhs_id)
-				op := b.compound_to_op(node.op, b.value_type(cur))
-				result := b.emit2(op, field_type, cur, rhs_val)
+				mut rhs_val := b.build_expr(rhs_id)
+				rhs_val = b.coerce_flag_enum_assign_rhs(lhs_id, node.op, rhs_id, rhs_val)
+				result := b.build_compound_assign_value(node.op, cur, rhs_val,
+					b.checked_expr_type_name(lhs_id))
 				b.emit2(.store, b.void_type, result, field_ptr)
 			}
 		}
@@ -8080,9 +9911,10 @@ fn (mut b Builder) build_index_assign(node flat.Node) {
 		} else {
 			field_type := b.deref_type(addr)
 			cur := b.emit1(.load, field_type, addr)
-			rhs_val := b.build_expr(rhs_id)
-			op := b.compound_to_op(node.op, b.value_type(cur))
-			result := b.emit2(op, field_type, cur, rhs_val)
+			mut rhs_val := b.build_expr(rhs_id)
+			rhs_val = b.coerce_flag_enum_assign_rhs(lhs_id, node.op, rhs_id, rhs_val)
+			result := b.build_compound_assign_value(node.op, cur, rhs_val,
+				b.checked_expr_type_name(lhs_id))
 			b.emit2(.store, b.void_type, result, addr)
 		}
 		i += 2
@@ -8173,12 +10005,11 @@ fn (mut b Builder) build_for_in(node flat.Node) {
 		return
 	}
 	container_type_source_id := b.for_in_container_type_name(container_id)
-	container_type := flat.source_type_name(container_type_source_id)
 	if container_type_source_id == flat.source_type_string {
 		b.build_string_for_in(node, key_id, val_id, container_id, body_start, label)
 		return
 	}
-	if container_type.starts_with('map[') || container_type_source_id in [
+	if flat.source_type_shape(container_type_source_id).has(.map_type) || container_type_source_id in [
 		ssa_map_source_type,
 		ssa_nominal_map_source_type,
 	] {
@@ -8193,6 +10024,10 @@ fn (mut b Builder) build_for_in(node flat.Node) {
 fn (mut b Builder) build_range_for_in(node flat.Node, key_id flat.NodeId, start_id flat.NodeId, end_id flat.NodeId, body_start int, label string) {
 	start_val := b.build_expr(start_id)
 	end_val := b.build_expr(end_id)
+	if b.value_type(start_val) == b.wide_integer_type()
+		|| b.value_type(end_val) == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer operation: range iteration')
+	}
 	idx_alloca := b.emit0(.alloca, b.m.type_store.get_ptr(b.i64_type))
 	b.emit2(.store, b.void_type, start_val, idx_alloca)
 	key_name := b.ident_name(key_id)
@@ -8248,8 +10083,39 @@ fn (mut b Builder) build_array_for_in(node flat.Node, key_id flat.NodeId, val_id
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	b.emit2(.store, b.void_type, zero, idx_alloca)
 
-	elem_type_name_source_id := b.for_in_array_elem_type_name(container_id, container_type_id)
-	elem_type := b.resolve_type(elem_type_name_source_id)
+	mut elem_type_name_source_id := b.for_in_array_elem_type_name(container_id, container_type_id)
+	mut elem_type := b.resolve_type(elem_type_name_source_id)
+	if b.tc != unsafe { nil } {
+		resolved_container := types.unalias_type(b.tc.resolve_type(container_id))
+		if resolved_container is types.Array {
+			elem_type_name_source_id = resolved_container.elem_type.source_type_id()
+			elem_type = b.ssa_type_from_checker_type(resolved_container.elem_type)
+		}
+	}
+	if b.valid_node_id(container_id) {
+		container_node := b.a.nodes[int(container_id)]
+		if container_node.kind == .ident {
+			if container_var_type := b.var_type_names.type_id(container_node.value) {
+				container_var_name := flat.source_type_name(container_var_type)
+				if container_var_name.contains('u128') {
+					elem_type_name_source_id = flat.source_type_id('u128')
+					elem_type = b.wide_integer_type()
+				}
+			}
+		}
+	}
+	mut fixed_elem_type_name_id := if b.is_fixed_array_type_name(elem_type_name_source_id) {
+		elem_type_name_source_id
+	} else {
+		u32(0)
+	}
+	if fixed_elem_type_name_id == 0 && b.tc != unsafe { nil } {
+		resolved_container_id := b.tc.resolve_type(container_id).source_type_id()
+		resolved_elem_id := indexed_elem_type_name(resolved_container_id)
+		if b.is_fixed_array_type_name(resolved_elem_id) {
+			fixed_elem_type_name_id = resolved_elem_id
+		}
+	}
 	// A single loop variable takes the element, not the index: the parser
 	// leaves an `.empty` placeholder where the value variable would be, and
 	// valid_node_id accepts it, so check the kind explicitly. Without this,
@@ -8284,9 +10150,27 @@ fn (mut b Builder) build_array_for_in(node flat.Node, key_id flat.NodeId, val_id
 		b.emit2(.store, b.void_type, body_idx, key_alloca)
 	}
 	if val_alloca > 0 {
-		elem_ptr := b.build_array_data_index_addr(arr_alloca, body_idx, elem_type)
-		elem_val := b.emit1(.load, elem_type, elem_ptr)
-		b.emit2(.store, b.void_type, elem_val, val_alloca)
+		if elem_type == b.wide_integer_type() {
+			elem_ptr := b.build_array_data_index_addr(arr_alloca, body_idx, elem_type)
+			elem_raw := b.emit1(.bitcast, b.m.type_store.get_ptr(b.i8_type), elem_ptr)
+			val_raw := b.emit1(.bitcast, b.m.type_store.get_ptr(b.i8_type), val_alloca)
+			size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(elem_type)}')
+			memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy',
+				b.runtime_fn_id('memcpy'))
+			b.emit4(.call, b.m.type_store.get_ptr(b.i8_type), memcpy_ref, val_raw, elem_raw,
+				size)
+		} else {
+			elem_kind := b.m.type_store.types[elem_type].kind
+			elem_val := if fixed_elem_type_name_id != 0 && elem_kind != .struct_t {
+				elem_ptr := b.build_array_data_index_addr_sized(arr_alloca, body_idx,
+					elem_type, b.sizeof_type_name(fixed_elem_type_name_id))
+				b.emit1(.bitcast, elem_type, elem_ptr)
+			} else {
+				elem_ptr := b.build_array_data_index_addr(arr_alloca, body_idx, elem_type)
+				b.emit1(.load, elem_type, elem_ptr)
+			}
+			b.emit2(.store, b.void_type, elem_val, val_alloca)
+		}
 	}
 	b.push_loop_targets(label, node, body_start, exit_block, post_block)
 	b.build_for_in_body(node, body_start)
@@ -8417,6 +10301,7 @@ fn (mut b Builder) build_map_for_in(node flat.Node, key_id flat.NodeId, val_id f
 	}
 
 	cond_block := b.m.add_block(b.cur_func, 'for_in_map_cond')
+	check_block := b.m.add_block(b.cur_func, 'for_in_map_check_live')
 	body_block := b.m.add_block(b.cur_func, 'for_in_map_body')
 	post_block := b.m.add_block(b.cur_func, 'for_in_map_post')
 	exit_block := b.m.add_block(b.cur_func, 'for_in_map_exit')
@@ -8424,21 +10309,22 @@ fn (mut b Builder) build_map_for_in(node flat.Node, key_id flat.NodeId, val_id f
 
 	b.cur_block = cond_block
 	idx := b.emit1(.load, b.i64_type, idx_alloca)
-	len_ptr := b.map_state_field_ptr(cond_block, state, 3)
-	len := b.emit1(.load, b.i64_type, len_ptr)
+	len := b.map_state_load_i64(cond_block, state, 3)
 	in_range := b.emit2(.lt, b.i1_type, idx, len)
-	b.emit3(.br, b.void_type, in_range, ValueID(body_block), ValueID(exit_block))
+	b.emit3(.br, b.void_type, in_range, ValueID(check_block), ValueID(exit_block))
+
+	b.cur_block = check_block
+	body_idx := b.emit1(.load, b.i64_type, idx_alloca)
+	live := b.map_entry_is_live(check_block, state, body_idx)
+	b.emit3(.br, b.void_type, live, ValueID(body_block), ValueID(post_block))
 
 	b.cur_block = body_block
-	body_idx := b.emit1(.load, b.i64_type, idx_alloca)
 	keys_ptr := b.map_state_field_ptr(body_block, state, 0)
 	vals_ptr := b.map_state_field_ptr(body_block, state, 1)
-	key_size_ptr := b.map_state_field_ptr(body_block, state, 4)
-	val_size_ptr := b.map_state_field_ptr(body_block, state, 5)
 	keys := b.emit1(.load, b.m.type_store.get_ptr(b.i8_type), keys_ptr)
 	vals := b.emit1(.load, b.m.type_store.get_ptr(b.i8_type), vals_ptr)
-	key_size := b.emit1(.load, b.i64_type, key_size_ptr)
-	val_size := b.emit1(.load, b.i64_type, val_size_ptr)
+	key_size := b.map_state_load_i64(body_block, state, 4)
+	val_size := b.map_state_load_i64(body_block, state, 5)
 	key_off := b.emit2(.mul, b.i64_type, body_idx, key_size)
 	val_off := b.emit2(.mul, b.i64_type, body_idx, val_size)
 	key_raw := b.emit2(.add, b.m.type_store.get_ptr(b.i8_type), keys, key_off)
@@ -8914,6 +10800,10 @@ fn (mut b Builder) build_match_condition(subject ValueID, branch flat.Node) Valu
 	mut result := ValueID(0)
 	for i in 0 .. n_conds {
 		cond_value := b.build_expr(b.a.child(&branch, i))
+		if b.value_type(subject) == b.wide_integer_type()
+			|| b.value_type(cond_value) == b.wide_integer_type() {
+			panic('ssa: unsupported 128-bit integer operation: match comparison')
+		}
 		cmp := b.emit2(.eq, b.i1_type, subject, cond_value)
 		if result == 0 {
 			result = cmp
@@ -8929,6 +10819,31 @@ fn (mut b Builder) build_match_condition(subject ValueID, branch flat.Node) Valu
 
 // if_value_result_type supports if value result type handling for Builder.
 fn (mut b Builder) if_value_result_type(id flat.NodeId, values []ValueID) TypeID {
+	if values.len > 0 {
+		first_type := b.value_type(values[0])
+		if first_type != b.void_type && values.all(b.value_type(it) == first_type) {
+			return first_type
+		}
+		mut integer_width := 0
+		mut saw_unsigned := false
+		for value in values {
+			typ := b.value_type(value)
+			if typ > 0 && typ < b.m.type_store.types.len {
+				type_info := b.m.type_store.types[typ]
+				if type_info.kind == .int_t {
+					integer_width = int_max(integer_width, type_info.width)
+					saw_unsigned = saw_unsigned || type_info.is_unsigned
+				}
+			}
+		}
+		if integer_width > 0 {
+			return if saw_unsigned {
+				b.m.type_store.get_uint(integer_width)
+			} else {
+				b.m.type_store.get_int(integer_width)
+			}
+		}
+	}
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.expr_type(id) {
 			name_id := typ.source_type_id()
@@ -8954,6 +10869,16 @@ fn (mut b Builder) build_assert(node flat.Node) {
 	b.emit3(.br, b.void_type, cond_val, ValueID(ok_block), ValueID(fail_block))
 
 	b.cur_block = fail_block
+	mut location := 'assertion failed'
+	if file := b.a.source_files[int(node.pos.id)] {
+		pos := file.position(node.pos)
+		location = 'assertion failed at ${pos}'
+	}
+	if eprintln_fn := b.runtime_fn_lookup('eprintln') {
+		message := b.m.add_value(.string_literal, b.str_type, location, 0)
+		fn_ref := b.m.add_value(.func_ref, b.void_type, 'eprintln', eprintln_fn)
+		b.emit2(.call, b.void_type, fn_ref, message)
+	}
 	if exit_fn := b.runtime_fn_lookup('exit') {
 		one := b.m.get_or_add_const(b.i64_type, '1')
 		fn_ref := b.m.add_value(.func_ref, b.void_type, 'exit', exit_fn)
@@ -8970,6 +10895,12 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 		return b.m.get_or_add_const(b.i64_type, '0')
 	}
 	node := b.a.nodes[int(id)]
+	if node.kind in [.int_literal, .infix, .prefix, .paren, .cast_expr]
+		&& b.is_wide_integer_expr(id) {
+		if value := b.build_wide_integer_expr(node) {
+			return value
+		}
+	}
 	match node.kind {
 		.empty {
 			return b.m.get_or_add_const(b.i64_type, '0')
@@ -8999,8 +10930,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 				return b.m.add_value(.string_literal, b.m.type_store.get_ptr(b.u8_type),
 					decode_native_c_string(node.value_text()[2..]), 0)
 			}
-			typ := if b.m.target.ptr_size == 4 { b.i32_type } else { b.i8_type }
-			return b.m.get_or_add_const(typ, '${char_literal_value(node.value_text())}')
+			return b.m.get_or_add_const(b.i32_type, '${char_literal_value(node.value_text())}')
 		}
 		.string_interp {
 			return b.build_string_interp(node)
@@ -9026,6 +10956,19 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			}
 			return b.m.get_or_add_const(b.i64_type, '${size}')
 		}
+		.offsetof_expr {
+			typ_id := b.resolve_type(node.source_value_id())
+			field_name := flat.source_type_name(node.typ)
+			mut offset := 0
+			if typ_id > 0 && typ_id < b.m.type_store.types.len {
+				typ := b.m.type_store.types[typ_id]
+				field_index := typ.field_names.index(field_name)
+				if field_index >= 0 {
+					offset = b.m.struct_field_offset(typ_id, field_index)
+				}
+			}
+			return b.m.get_or_add_const(b.i64_type, '${offset}')
+		}
 		.ident {
 			if addr := b.vars[node.value_text()] {
 				addr_val := b.m.values[addr]
@@ -9042,23 +10985,6 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			}
 			if node.value_text() == 'path_separator' {
 				return b.m.add_value(.string_literal, b.str_type, '/', 0)
-			}
-			if expr_id := b.lookup_const_expr(node.value_text()) {
-				return b.build_expr(expr_id)
-			}
-			if !b.enum_member_dupes[node.value_text()] {
-				if enum_value := b.enum_member_values[node.value_text()] {
-					return b.m.get_or_add_const(b.i64_type, enum_value.str())
-				}
-			}
-			if fn_idx := b.fn_ids[node.value_text()] {
-				return b.m.add_value(.func_ref, b.i64_type, node.value_text(), fn_idx)
-			}
-			qualified_fn_name := ssa_fn_name_in_module(b.cur_module, node.value_text())
-			if qualified_fn_name != node.value_text() {
-				if fn_idx := b.fn_ids[qualified_fn_name] {
-					return b.m.add_value(.func_ref, b.i64_type, qualified_fn_name, fn_idx)
-				}
 			}
 			match node.value_text() {
 				'min_i8' {
@@ -9106,7 +11032,20 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			if expr_id := b.lookup_const_expr(node.value_text()) {
 				return b.build_expr(expr_id)
 			}
-
+			if !b.enum_member_dupes[node.value] {
+				if enum_value := b.enum_member_values[node.value] {
+					return b.m.get_or_add_const(b.i64_type, enum_value.str())
+				}
+			}
+			if fn_idx := b.fn_ids[node.value] {
+				return b.m.add_value(.func_ref, b.i64_type, node.value, fn_idx)
+			}
+			qualified_fn_name := ssa_fn_name_in_module(b.cur_module, node.value)
+			if qualified_fn_name != node.value {
+				if fn_idx := b.fn_ids[qualified_fn_name] {
+					return b.m.add_value(.func_ref, b.i64_type, qualified_fn_name, fn_idx)
+				}
+			}
 			return b.m.get_or_add_const(b.i64_type, '0')
 		}
 		.infix {
@@ -9137,7 +11076,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			return b.build_index(id, node)
 		}
 		.struct_init {
-			return b.build_struct_init(node)
+			return b.build_struct_init(id, node)
 		}
 		.array_literal {
 			return b.build_array_literal(id, node)
@@ -9198,8 +11137,28 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 		.range {
 			return b.build_range_expr(node)
 		}
+		.file {
+			// File roots can remain as explicit child placeholders after transform;
+			// they have no runtime expression value.
+			return b.m.get_or_add_const(b.i64_type, '0')
+		}
 		.block {
 			return b.build_block_expr(node)
+		}
+		.lock_expr {
+			if node.children_count > 0 {
+				body_id := b.a.child(&node, node.children_count - 1)
+				body := b.a.nodes[int(body_id)]
+				if body.kind == .block {
+					return b.build_block_expr(body)
+				}
+				b.build_stmt(body_id)
+			}
+			return b.m.get_or_add_const(b.i64_type, '0')
+		}
+		.select_stmt {
+			b.build_select_placeholder(node)
+			return b.m.get_or_add_const(b.i64_type, '0')
 		}
 		else {
 			eprintln('build_expr: unsupported expr kind: ${node.kind}')
@@ -9228,6 +11187,11 @@ fn (mut b Builder) build_in_expr(node flat.Node) ValueID {
 		lhs := b.build_expr(lhs_id)
 		low := b.build_expr(b.a.child(&rhs, 0))
 		high := b.build_expr(b.a.child(&rhs, 1))
+		if b.value_type(lhs) == b.wide_integer_type()
+			|| b.value_type(low) == b.wide_integer_type()
+			|| b.value_type(high) == b.wide_integer_type() {
+			panic('ssa: unsupported 128-bit integer operation: range membership')
+		}
 		ge_low := b.emit2(.ge, b.i1_type, lhs, low)
 		lt_high := b.emit2(.lt, b.i1_type, lhs, high)
 		return b.emit2(.and_, b.i1_type, ge_low, lt_high)
@@ -9322,9 +11286,9 @@ fn (b &Builder) enum_field_value_for_type(type_name_id u32, member string, as_fl
 	member_keys := enum_member_lookup_keys(raw_member)
 	mut names := []string{}
 	names << resolved_enum_name
-	short_type := resolved_enum_name.all_after('.')
-	if short_type != resolved_enum_name {
-		names << short_type
+	short_type := flat.source_type_syntax(resolved_enum_id).first_dot_suffix()
+	if short_type != resolved_enum_id {
+		names << flat.source_type_name(short_type)
 	}
 	for candidate in member_keys {
 		if value := b.enum_values[candidate] {
@@ -9352,40 +11316,27 @@ fn (b &Builder) enum_field_value_for_type(type_name_id u32, member string, as_fl
 
 // is_flag_enum_type_name reports whether is flag enum type name applies in ssa.
 fn (b &Builder) is_flag_enum_type_name(type_name_id u32) bool {
-	type_name := flat.source_type_name(type_name_id)
-	clean := type_name.trim_left('&')
-	if clean in b.flag_enum_types {
-		return true
-	}
-	short_name := clean.all_after('.')
-	if short_name in b.flag_enum_types {
-		return true
-	}
+	clean_id := ssa_pointer_base_source_type(type_name_id)
+	if clean_id in b.flag_enum_types { return true }
+	short_id := flat.source_type_syntax(clean_id).first_dot_suffix()
+	if short_id in b.flag_enum_types { return true }
 	if b.tc != unsafe { nil } {
-		if clean in b.tc.flag_enums {
+		if clean_id in b.tc.flag_enums || short_id in b.tc.flag_enums {
 			return true
 		}
-		if short_name in b.tc.flag_enums {
-			return true
-		}
-		if !clean.contains('.') && 'builtin.${clean}' in b.tc.flag_enums {
-			return true
+		if !flat.source_type_shape(clean_id).has(.dotted) {
+			qualified := flat.source_type_composition_two(.qualified, flat.source_type_id('builtin'), clean_id)
+			if qualified in b.tc.flag_enums { return true }
 		}
 	}
-	return clean == 'ArrayFlags'
+	return clean_id == flat.source_type_id('ArrayFlags')
 }
 
 // checker_has_flag_enum converts checker has flag enum data for ssa.
 fn (b &Builder) checker_has_flag_enum(type_name_id u32) bool {
-	type_name := flat.source_type_name(type_name_id)
-	if b.tc == unsafe { nil } {
-		return false
-	}
-	if type_name in b.tc.flag_enums {
-		return true
-	}
-	short_name := type_name.all_after('.')
-	return short_name in b.tc.flag_enums
+	if b.tc == unsafe { nil } { return false }
+	if type_name_id in b.tc.flag_enums { return true }
+	return flat.source_type_syntax(type_name_id).first_dot_suffix() in b.tc.flag_enums
 }
 
 // build_enum_val_with_type builds enum val with type data for ssa.
@@ -9472,6 +11423,7 @@ fn (mut b Builder) build_array_literal(id flat.NodeId, node flat.Node) ValueID {
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
 	mut values := []ValueID{}
 	mut elem_type := b.i64_type
+	mut fixed_elem_type_name_id := u32(0)
 	for i in 0 .. node.children_count {
 		value := b.build_expr(b.a.child(&node, i))
 		if i == 0 {
@@ -9484,11 +11436,34 @@ fn (mut b Builder) build_array_literal(id flat.NodeId, node flat.Node) ValueID {
 	// checker knows it, or the header stride disagrees with every reader,
 	// which all use the element type, and elements read back shifted.
 	arr_type_id := b.checked_expr_type_name(id)
-	arr_type := flat.source_type_name(arr_type_id)
-	if flat.source_type_shape(arr_type_id).has(.array_type) && arr_type.len > 2 {
-		elem_type = b.resolve_type(indexed_elem_type_name(arr_type_id))
+	if flat.source_type_shape(arr_type_id).has(.array_type)
+		&& flat.source_type_syntax(arr_type_id).raw_base() != 0 {
+		elem_type_name_id := indexed_elem_type_name(arr_type_id)
+		elem_type = b.resolve_type(elem_type_name_id)
+		if b.is_fixed_array_type_name(elem_type_name_id) {
+			fixed_elem_type_name_id = elem_type_name_id
+		}
+	} else if node.children_count > 0 {
+		mut all_int_literals := true
+		for index in 0 .. node.children_count {
+			if !b.is_integer_literal_expr(b.a.child(&node, index)) {
+				all_int_literals = false
+				break
+			}
+		}
+		if all_int_literals {
+			elem_type = b.i32_type
+		}
 	}
-	elem_size := b.m.type_size(elem_type)
+	mut coerced_values := []ValueID{cap: values.len}
+	for value in values {
+		coerced_values << b.coerce_numeric_value(value, elem_type)
+	}
+	elem_size := if fixed_elem_type_name_id != 0 {
+		b.sizeof_type_name(fixed_elem_type_name_id)
+	} else {
+		b.m.type_size(elem_type)
+	}
 	actual_elem_size := if elem_size > 0 { elem_size } else { 8 }
 	elem_size_const := b.m.get_or_add_const(b.i64_type, '${actual_elem_size}')
 	zero := b.m.get_or_add_const(b.i64_type, '0')
@@ -9498,7 +11473,16 @@ fn (mut b Builder) build_array_literal(id flat.NodeId, node flat.Node) ValueID {
 	arr_alloca := b.emit0(.alloca, ptr_array)
 	b.emit2(.store, b.void_type, arr, arr_alloca)
 	push_ref := b.m.add_value(.func_ref, b.void_type, 'array_push', b.runtime_fn_id('array_push'))
-	for value in values {
+	for value in coerced_values {
+		if fixed_elem_type_name_id != 0 {
+			value_arg := if b.value_type(value) == ptr_i8 {
+				value
+			} else {
+				b.emit1(.bitcast, ptr_i8, value)
+			}
+			b.emit3(.call, b.void_type, push_ref, arr_alloca, value_arg)
+			continue
+		}
 		value_type := b.value_type(value)
 		value_alloca := b.emit0(.alloca, b.m.type_store.get_ptr(value_type))
 		b.emit2(.store, b.void_type, value, value_alloca)
@@ -9521,11 +11505,14 @@ fn (mut b Builder) build_array_init(node flat.Node) ValueID {
 	mut cap_val := b.m.get_or_add_const(b.i64_type, '0')
 	mut init_val := ValueID(0)
 	if flat.source_type_shape(elem_type_id).has(.leading_bracket) {
-		type_text := node.value_text()
-		len_text := type_text.all_after('[').all_before(']')
-		len_val = b.fixed_array_len_value(len_text)
+		syntax := flat.source_type_syntax(elem_type_id)
+		len_val = b.fixed_array_len_value(flat.source_type_name(syntax.first_bracket_source_inner()))
 		cap_val = len_val
-		elem_type_id = flat.source_type_id(type_text.all_after(']'))
+		elem_type_id = if syntax.first_bracket_closed() {
+			syntax.first_bracket_base()
+		} else {
+			elem_type_id
+		}
 	} else {
 		mut has_cap := false
 		for i in 0 .. node.children_count {
@@ -9717,48 +11704,45 @@ fn (mut b Builder) build_map_init(node flat.Node) ValueID {
 }
 
 fn (b &Builder) is_fixed_array_type_name(type_name_id u32) bool {
+	shape := flat.source_type_shape(type_name_id)
+	syntax := flat.source_type_syntax(type_name_id)
+	if shape.has(.leading_bracket) {
+		return syntax.first_bracket_raw_inner() != 0 && syntax.first_bracket_base() != 0
+	}
+	if !shape.has(.bracketed) || !flat.source_type_query(type_name_id).has(.bracket_suffix)
+		|| syntax.generic_base() == 0 {
+		return false
+	}
+	// `Foo[N]` is a fixed array only when `N` is a length, not a generic argument.
 	type_name := flat.source_type_name(type_name_id)
-	if type_name.starts_with('[') {
-		idx := type_name.index_u8(`]`)
-		return idx > 1 && idx + 1 < type_name.len
+	idx := type_name.index_u8(`[`)
+	if idx <= 0 || idx >= type_name.len - 1 || !type_name.ends_with(']') {
+		return false
 	}
-	if type_name.contains('[') && type_name.ends_with(']') {
-		idx := type_name.index_u8(`[`)
-		return idx > 0 && idx < type_name.len - 1
-	}
-	return false
+	length_text := type_name[idx + 1..type_name.len - 1].replace('_', '')
+	return b.is_decimal_int_text(length_text) || b.lookup_const_expr(length_text) != none
 }
 
 fn (b &Builder) fixed_array_elem_type_name(type_name_id u32) u32 {
-	type_name := flat.source_type_name(type_name_id)
-	if type_name.starts_with('[') {
-		idx := type_name.index_u8(`]`)
-		if idx > 0 && idx + 1 < type_name.len {
-			return flat.source_type_id(type_name[idx + 1..])
-		}
-	} else if type_name.contains('[') && type_name.ends_with(']') {
-		idx := type_name.index_u8(`[`)
-		if idx > 0 {
-			return flat.source_type_id(type_name[..idx])
-		}
+	shape := flat.source_type_shape(type_name_id)
+	syntax := flat.source_type_syntax(type_name_id)
+	if shape.has(.leading_bracket) {
+		if syntax.first_bracket_base() != 0 { return syntax.first_bracket_base() }
+	} else if shape.has(.bracketed) && flat.source_type_query(type_name_id).has(.bracket_suffix)
+		&& syntax.generic_base() != 0 {
+		return syntax.generic_base()
 	}
 	return flat.source_type_u8
 }
 
 fn (b &Builder) fixed_array_len_text(type_name_id u32) string {
-	type_name := flat.source_type_name(type_name_id)
-	mut raw_len := ''
-	if type_name.starts_with('[') {
-		idx := type_name.index_u8(`]`)
-		if idx > 1 {
-			raw_len = type_name[1..idx]
-		}
-	} else if type_name.contains('[') && type_name.ends_with(']') {
-		idx := type_name.index_u8(`[`)
-		if idx > 0 && idx < type_name.len - 1 {
-			raw_len = type_name[idx + 1..type_name.len - 1]
-		}
+	syntax := flat.source_type_syntax(type_name_id)
+	raw_len_id := if flat.source_type_shape(type_name_id).has(.leading_bracket) {
+		syntax.first_bracket_raw_inner()
+	} else {
+		syntax.receiver_app_inner()
 	}
+	raw_len := flat.source_type_name(raw_len_id)
 	if raw_len.len == 0 {
 		return '1'
 	}
@@ -9802,15 +11786,26 @@ fn (mut b Builder) build_fixed_array_init(node flat.Node) ValueID {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	len_text := b.fixed_array_len_text(node.source_value_id())
 	len_val := b.m.get_or_add_const(b.i64_type, len_text)
-	alloca := b.emit1(.alloca, ptr_elem, len_val)
+	nested_fixed := b.is_fixed_array_type_name(elem_type_name_source_id)
+	elem_size := if nested_fixed {
+		b.sizeof_type_name(elem_type_name_source_id)
+	} else {
+		b.m.type_size(elem_type)
+	}
+	actual_elem_size := if elem_size > 0 { elem_size } else { 8 }
+	alloca_count := if nested_fixed {
+		b.m.get_or_add_const(b.i64_type, '${len_text.int() * actual_elem_size}')
+	} else {
+		len_val
+	}
+	alloca_type := if nested_fixed { ptr_i8 } else { ptr_elem }
+	alloca := b.emit1(.alloca, alloca_type, alloca_count)
 	data := if ptr_elem == ptr_i8 {
 		alloca
 	} else {
 		b.emit1(.bitcast, ptr_i8, alloca)
 	}
 
-	elem_size := b.m.type_size(elem_type)
-	actual_elem_size := if elem_size > 0 { elem_size } else { 8 }
 	byte_count := b.m.get_or_add_const(b.i64_type, '${len_text.int() * actual_elem_size}')
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	memset_ref := b.m.add_value(.func_ref, b.void_type, 'memset', b.runtime_fn_id('memset'))
@@ -9826,13 +11821,28 @@ fn (mut b Builder) build_fixed_array_init(node flat.Node) ValueID {
 		value := b.coerce_numeric_value(b.build_expr(child_id), elem_type)
 		offset := b.m.get_or_add_const(b.i64_type, '${elem_index * actual_elem_size}')
 		slot_i8 := b.emit2(.get_element_ptr, ptr_i8, data, offset)
-		slot := if ptr_elem == ptr_i8 {
-			slot_i8
+		if nested_fixed {
+			source := if b.value_type(value) == ptr_i8 {
+				value
+			} else {
+				b.emit1(.bitcast, ptr_i8, value)
+			}
+			memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy',
+				b.runtime_fn_id('memcpy'))
+			size := b.m.get_or_add_const(b.i64_type, '${actual_elem_size}')
+			b.emit4(.call, ptr_i8, memcpy_ref, slot_i8, source, size)
 		} else {
-			b.emit1(.bitcast, ptr_elem, slot_i8)
+			slot := if ptr_elem == ptr_i8 {
+				slot_i8
+			} else {
+				b.emit1(.bitcast, ptr_elem, slot_i8)
+			}
+			b.emit2(.store, b.void_type, value, slot)
 		}
-		b.emit2(.store, b.void_type, value, slot)
 		elem_index++
+	}
+	if nested_fixed {
+		return b.emit1(.bitcast, b.resolve_type(node.source_value_id()), data)
 	}
 	return alloca
 }
@@ -10081,7 +12091,268 @@ fn (b &Builder) current_block_terminated() bool {
 	return blk.instrs.len > 0 && b.is_terminator(blk.instrs.last())
 }
 
+fn (mut b Builder) wide_integer_type() TypeID {
+	if b.wide_int_type > 0 {
+		return b.wide_int_type
+	}
+	b.wide_int_type = b.m.type_store.register(Type{
+		kind:        .struct_t
+		fields:      [b.u64_type, b.u64_type]
+		field_names: ['low', 'high']
+	})
+	return b.wide_int_type
+}
+
+fn (mut b Builder) is_wide_integer_expr(id flat.NodeId) bool {
+	name := flat.source_type_name(b.checked_expr_type_name(id))
+	if name in ['u128', 'i128'] {
+		return true
+	}
+	node := b.a.nodes[int(id)]
+	node_type := flat.source_type_name(node.typ)
+	if node_type in ['u128', 'i128'] {
+		return true
+	}
+	if b.tc != unsafe { nil } {
+		return b.ssa_type_from_checker_type(b.tc.resolve_type(id)) == b.wide_integer_type()
+	}
+	return false
+}
+
+fn (mut b Builder) is_signed_wide_integer_expr(id flat.NodeId) bool {
+	if b.tc != unsafe { nil } {
+		typ := b.tc.resolve_type(id)
+		return types.unalias_type(&typ).source_type_id() == ssa_i128_source_type
+	}
+	return b.checked_expr_type_name(id) == ssa_i128_source_type
+		|| b.a.nodes[int(id)].typ == ssa_i128_source_type
+}
+
+fn (mut b Builder) make_wide_integer(block BlockID, low ValueID, high ValueID) ValueID {
+	wide_type := b.wide_integer_type()
+	slot := b.block_instr0(.alloca, block, b.m.type_store.get_ptr(wide_type))
+	low_ptr := b.block_struct_field_ptr(block, slot, wide_type, 0)
+	high_ptr := b.block_struct_field_ptr(block, slot, wide_type, 1)
+	b.block_instr2(.store, block, b.void_type, low, low_ptr)
+	b.block_instr2(.store, block, b.void_type, high, high_ptr)
+	return b.block_instr1(.load, block, wide_type, slot)
+}
+
+fn (mut b Builder) wide_integer_limbs(block BlockID, value ValueID) (ValueID, ValueID) {
+	wide_type := b.wide_integer_type()
+	slot := b.block_instr0(.alloca, block, b.m.type_store.get_ptr(wide_type))
+	b.block_instr2(.store, block, b.void_type, value, slot)
+	low_ptr := b.block_struct_field_ptr(block, slot, wide_type, 0)
+	high_ptr := b.block_struct_field_ptr(block, slot, wide_type, 1)
+	low := b.block_instr1(.load, block, b.u64_type, low_ptr)
+	high := b.block_instr1(.load, block, b.u64_type, high_ptr)
+	return low, high
+}
+
+fn (b &Builder) wide_integer_literal_value(id flat.NodeId) ?string {
+	node := b.a.nodes[int(id)]
+	if node.kind == .int_literal {
+		return node.value_text()
+	}
+	if node.children_count > 0 {
+		if node.kind == .paren {
+			return b.wide_integer_literal_value(b.a.child(&node, 0))
+		}
+		if node.kind == .prefix && node.op in [.plus, .minus] {
+			value := b.wide_integer_literal_value(b.a.child(&node, 0)) or { return none }
+			if node.op == .plus {
+				return value
+			}
+			return if value.starts_with('-') { value[1..] } else { '-' + value }
+		}
+	}
+	return none
+}
+
+fn check_wide_integer_literal(value string) u64 {
+	return strconv.parse_uint(value.trim_left('-'), 0, 64) or {
+		panic('ssa: unsupported 128-bit integer literal outside a single 64-bit limb')
+	}
+}
+
+fn (mut b Builder) wide_integer_from_literal(value string) ValueID {
+	magnitude := check_wide_integer_literal(value)
+	negative := value.starts_with('-') && magnitude != 0
+	low := if negative { u64(0) - magnitude } else { magnitude }
+	high := if negative { '18446744073709551615' } else { '0' }
+	return b.make_wide_integer(b.cur_block, b.m.get_or_add_const(b.u64_type, low.str()),
+		b.m.get_or_add_const(b.u64_type, high))
+}
+
+fn (mut b Builder) wide_integer_from_scalar(value ValueID) ValueID {
+	from_type := b.value_type(value)
+	if !b.is_int_type(from_type) {
+		panic('ssa: unsupported 128-bit integer conversion from a non-integer value')
+	}
+	low := b.coerce_numeric_value(value, b.u64_type)
+	// Widen the source integer before interpreting it as either i128 or u128.
+	high := if b.is_unsigned_type(from_type) {
+		b.m.get_or_add_const(b.u64_type, '0')
+	} else {
+		b.block_instr2(.ashr, b.cur_block, b.u64_type, low,
+			b.m.get_or_add_const(b.u64_type, '63'))
+	}
+	return b.make_wide_integer(b.cur_block, low, high)
+}
+
+fn (mut b Builder) wide_integer_operand(id flat.NodeId) ValueID {
+	value := b.build_expr(id)
+	if b.is_wide_integer_expr(id) {
+		return value
+	}
+	return b.wide_integer_from_scalar(value)
+}
+
+fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
+	match node.kind {
+		.int_literal {
+			return b.wide_integer_from_literal(node.value_text())
+		}
+		.cast_expr {
+			if node.children_count == 0 {
+				return none
+			}
+			child_id := b.a.child(&node, 0)
+			if b.is_wide_integer_expr(child_id) {
+				return b.build_expr(child_id)
+			}
+			// A bare positive literal may occupy all 64 bits without becoming
+			// a negative i64. Explicit scalar casts still use scalar widening.
+			if literal := b.wide_integer_literal_value(child_id) {
+				return b.wide_integer_from_literal(literal)
+			}
+			if literal := b.const_int_literal_value(child_id) {
+				check_wide_integer_literal(literal)
+			}
+			return b.wide_integer_from_scalar(b.build_expr(child_id))
+		}
+		.paren {
+			if node.children_count == 0 {
+				return none
+			}
+			return b.build_expr(b.a.child(&node, 0))
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			lhs_id := b.a.child(&node, 0)
+			rhs_id := b.a.child(&node, 1)
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+				shift_text := b.const_int_literal_value(rhs_id) or {
+					panic('ssa: unsupported 128-bit integer operation: variable shift')
+				}
+				shift := shift_text.int()
+				if shift < 0 || shift >= 128 {
+					zero := b.m.get_or_add_const(b.u64_type, '0')
+					return b.make_wide_integer(b.cur_block, zero, zero)
+				}
+				lhs := b.build_expr(lhs_id)
+				low, high := b.wide_integer_limbs(b.cur_block, lhs)
+				zero := b.m.get_or_add_const(b.u64_type, '0')
+				if node.op == .left_shift {
+					if shift >= 64 {
+						next_high := b.block_instr2(.shl, b.cur_block, b.u64_type, low,
+							b.m.get_or_add_const(b.u64_type, '${shift - 64}'))
+						return b.make_wide_integer(b.cur_block, zero, next_high)
+					}
+					next_low := b.block_instr2(.shl, b.cur_block, b.u64_type, low,
+						b.m.get_or_add_const(b.u64_type, '${shift}'))
+					next_high := b.block_instr2(.shl, b.cur_block, b.u64_type, high,
+						b.m.get_or_add_const(b.u64_type, '${shift}'))
+					if shift == 0 {
+						return b.make_wide_integer(b.cur_block, next_low, next_high)
+					}
+					carry := b.block_instr2(.lshr, b.cur_block, b.u64_type, low,
+						b.m.get_or_add_const(b.u64_type, '${64 - shift}'))
+					combined_high := b.block_instr2(.or_, b.cur_block, b.u64_type,
+						next_high, carry)
+					return b.make_wide_integer(b.cur_block, next_low, combined_high)
+				}
+				arithmetic := node.op == .right_shift && b.is_signed_wide_integer_expr(lhs_id)
+				right_op := if arithmetic { OpCode.ashr } else { OpCode.lshr }
+				if shift >= 64 {
+					next_low := b.block_instr2(right_op, b.cur_block, b.u64_type, high,
+						b.m.get_or_add_const(b.u64_type, '${shift - 64}'))
+					next_high := if arithmetic {
+						b.block_instr2(.ashr, b.cur_block, b.u64_type, high,
+							b.m.get_or_add_const(b.u64_type, '63'))
+					} else {
+						zero
+					}
+					return b.make_wide_integer(b.cur_block, next_low, next_high)
+				}
+				next_low := b.block_instr2(.lshr, b.cur_block, b.u64_type, low,
+					b.m.get_or_add_const(b.u64_type, '${shift}'))
+				next_high := b.block_instr2(right_op, b.cur_block, b.u64_type, high,
+					b.m.get_or_add_const(b.u64_type, '${shift}'))
+				if shift == 0 {
+					return b.make_wide_integer(b.cur_block, next_low, next_high)
+				}
+				carry := b.block_instr2(.shl, b.cur_block, b.u64_type, high,
+					b.m.get_or_add_const(b.u64_type, '${64 - shift}'))
+				combined_low := b.block_instr2(.or_, b.cur_block, b.u64_type, next_low,
+					carry)
+				return b.make_wide_integer(b.cur_block, combined_low, next_high)
+			}
+			if node.op !in [.pipe, .amp, .xor, .plus, .minus] {
+				panic('ssa: unsupported 128-bit integer operation: ${node.op}')
+			}
+			lhs := b.wide_integer_operand(lhs_id)
+			rhs := b.wide_integer_operand(rhs_id)
+			lhs_low, lhs_high := b.wide_integer_limbs(b.cur_block, lhs)
+			rhs_low, rhs_high := b.wide_integer_limbs(b.cur_block, rhs)
+			match node.op {
+				.pipe, .amp, .xor {
+					op := match node.op {
+						.pipe { OpCode.or_ }
+						.amp { OpCode.and_ }
+						else { OpCode.xor }
+					}
+					low := b.block_instr2(op, b.cur_block, b.u64_type, lhs_low, rhs_low)
+					high := b.block_instr2(op, b.cur_block, b.u64_type, lhs_high, rhs_high)
+					return b.make_wide_integer(b.cur_block, low, high)
+				}
+				.plus, .minus {
+					op := if node.op == .plus { OpCode.add } else { OpCode.sub }
+					low := b.block_instr2(op, b.cur_block, b.u64_type, lhs_low, rhs_low)
+					carry := if node.op == .plus {
+						b.block_instr2(.ult, b.cur_block, b.i1_type, low, lhs_low)
+					} else {
+						b.block_instr2(.ult, b.cur_block, b.i1_type, lhs_low, rhs_low)
+					}
+					high_base := b.block_instr2(op, b.cur_block, b.u64_type, lhs_high,
+						rhs_high)
+					carry64 := b.block_instr1(.zext, b.cur_block, b.u64_type, carry)
+					carry_op := if node.op == .plus { OpCode.add } else { OpCode.sub }
+					high := b.block_instr2(carry_op, b.cur_block, b.u64_type, high_base,
+						carry64)
+					return b.make_wide_integer(b.cur_block, low, high)
+				}
+				else {
+					return none
+				}
+			}
+		}
+		else {
+			return none
+		}
+	}
+}
+
 fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
+	// Comparisons have a bool result, so the result-type wide dispatch cannot
+	// catch them. Never send either wide operand to a scalar instruction.
+	if node.children_count >= 2
+		&& (b.is_wide_integer_expr(b.a.child(&node, 0))
+			|| b.is_wide_integer_expr(b.a.child(&node, 1))) {
+		panic('ssa: unsupported 128-bit integer operation: ${node.op}')
+	}
 	if node.op == .power {
 		panic('power expression reached the V3 SSA backend')
 	}
@@ -10123,16 +12394,33 @@ fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 	if b.value_type(lhs) == b.str_type || b.value_type(rhs) == b.str_type {
 		return b.build_string_infix(node.op, lhs, rhs)
 	}
-	if b.m.target.ptr_size == 4 && b.tc != unsafe { nil } {
+	lhs_infix_type := b.value_type(lhs)
+	rhs_infix_type := b.value_type(rhs)
+	if node.op in [.plus, .minus] {
+		if b.is_pointer_type(lhs_infix_type) && b.is_int_type(rhs_infix_type) {
+			elem_size := b.m.type_size(b.deref_type(lhs))
+			mut offset := b.coerce_int_value(rhs, b.i64_type)
+			if elem_size > 1 {
+				size := b.m.get_or_add_const(b.i64_type, '${elem_size}')
+				offset = b.emit2(.mul, b.i64_type, offset, size)
+			}
+			op := if node.op == .plus { OpCode.add } else { OpCode.sub }
+			return b.emit2(op, lhs_infix_type, lhs, offset)
+		}
+		if node.op == .plus && b.is_int_type(lhs_infix_type)
+			&& b.is_pointer_type(rhs_infix_type) {
+			elem_size := b.m.type_size(b.deref_type(rhs))
+			mut offset := b.coerce_int_value(lhs, b.i64_type)
+			if elem_size > 1 {
+				size := b.m.get_or_add_const(b.i64_type, '${elem_size}')
+				offset = b.emit2(.mul, b.i64_type, offset, size)
+			}
+			return b.emit2(.add, rhs_infix_type, rhs, offset)
+		}
+	}
+	if b.tc != unsafe { nil } {
 		lhs_literal := b.is_integer_literal_expr(lhs_id)
 		rhs_literal := b.is_integer_literal_expr(rhs_id)
-		// Untyped literals must keep their bits until the operation's type is known.
-		if !lhs_literal {
-			lhs = b.coerce_numeric_value(lhs, b.global_constant_type(lhs_id))
-		}
-		if !rhs_literal {
-			rhs = b.coerce_numeric_value(rhs, b.global_constant_type(rhs_id))
-		}
 		if node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
 			if lhs_literal && !rhs_literal {
 				lhs = b.coerce_comparison_literal(lhs_id, lhs, b.value_type(rhs))
@@ -10141,17 +12429,43 @@ fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 			}
 			if b.is_int_type(b.value_type(lhs)) && b.is_int_type(b.value_type(rhs)) {
 				if b.is_unsigned_type(b.value_type(lhs)) != b.is_unsigned_type(b.value_type(rhs)) {
+					width := int_max(b.scalar_type_width(b.value_type(lhs)), b.scalar_type_width(b.value_type(rhs)))
+					if b.m.target.ptr_size == 8 {
+						common_unsigned := b.m.type_store.get_uint(width)
+						lhs = b.coerce_numeric_value(lhs, common_unsigned)
+						rhs = b.coerce_numeric_value(rhs, common_unsigned)
+					}
+					lhs_value := b.m.values[lhs]
+					rhs_value := b.m.values[rhs]
+					if lhs_value.kind == .constant && !lhs_value.name.starts_with('-')
+						&& !b.is_unsigned_type(b.value_type(lhs)) {
+						lhs = b.coerce_numeric_value(lhs, b.m.type_store.get_uint(width))
+					} else if rhs_value.kind == .constant && !rhs_value.name.starts_with('-')
+						&& !b.is_unsigned_type(b.value_type(rhs)) {
+						rhs = b.coerce_numeric_value(rhs, b.m.type_store.get_uint(width))
+					}
+				}
+				if b.is_unsigned_type(b.value_type(lhs)) != b.is_unsigned_type(b.value_type(rhs)) {
 					return b.build_mixed_integer_comparison(node.op, lhs, rhs)
 				}
-				width := int_max(b.scalar_type_width(b.value_type(lhs)), b.scalar_type_width(b.value_type(rhs)))
 				common := if b.is_unsigned_type(b.value_type(lhs)) {
-					b.m.type_store.get_uint(width)
+					b.m.type_store.get_uint(int_max(b.scalar_type_width(b.value_type(lhs)),
+						b.scalar_type_width(b.value_type(rhs))))
 				} else {
-					b.m.type_store.get_int(width)
+					b.m.type_store.get_int(int_max(b.scalar_type_width(b.value_type(lhs)),
+						b.scalar_type_width(b.value_type(rhs))))
 				}
 				lhs = b.coerce_int_value(lhs, common)
 				rhs = b.coerce_int_value(rhs, common)
 			} else if b.is_float_type(b.value_type(lhs)) || b.is_float_type(b.value_type(rhs)) {
+				lhs_float_literal := b.is_float_literal_expr(lhs_id)
+				rhs_float_literal := b.is_float_literal_expr(rhs_id)
+				if lhs_float_literal && !rhs_float_literal && b.is_float_type(b.value_type(rhs)) {
+					lhs = b.coerce_numeric_value(lhs, b.value_type(rhs))
+				} else if rhs_float_literal && !lhs_float_literal
+					&& b.is_float_type(b.value_type(lhs)) {
+					rhs = b.coerce_numeric_value(rhs, b.value_type(lhs))
+				}
 				common := if b.value_type(lhs) == b.f64_type || b.value_type(rhs) == b.f64_type {
 					b.f64_type
 				} else {
@@ -10160,11 +12474,60 @@ fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 				lhs = b.coerce_numeric_value(lhs, common)
 				rhs = b.coerce_numeric_value(rhs, common)
 			}
-		} else {
+		} else if b.m.target.ptr_size == 4 {
+			// Untyped literals must keep their bits until the operation's type is known.
+			if !lhs_literal {
+				lhs = b.coerce_numeric_value(lhs, b.global_constant_type(lhs_id))
+			}
+			if !rhs_literal {
+				rhs = b.coerce_numeric_value(rhs, b.global_constant_type(rhs_id))
+			}
 			result := b.global_constant_type(id)
 			lhs = b.coerce_numeric_value(lhs, result)
 			if node.op !in [.left_shift, .right_shift, .right_shift_unsigned] {
 				rhs = b.coerce_numeric_value(rhs, result)
+			}
+		} else {
+			// Native scalar operations use a common expression type. In
+			// particular, u8 * i64 must promote the byte before multiplication
+			// instead of truncating the signed result back to u8.
+			mut result := b.global_constant_type(id)
+			if b.is_int_type(result) {
+				lhs_value_type := b.value_type(lhs)
+				rhs_value_type := b.value_type(rhs)
+				if b.is_int_type(lhs_value_type) {
+					mut width := b.scalar_type_width(lhs_value_type)
+					if node.op !in [.left_shift, .right_shift, .right_shift_unsigned]
+						&& b.is_int_type(rhs_value_type) {
+						width = int_max(width, b.scalar_type_width(rhs_value_type))
+					}
+					if width > b.scalar_type_width(result) {
+						unsigned := b.is_unsigned_type(lhs_value_type)
+							&& (node.op in [.left_shift, .right_shift, .right_shift_unsigned]
+								|| b.is_unsigned_type(rhs_value_type))
+						result = if unsigned {
+							b.m.type_store.get_uint(width)
+						} else {
+							b.m.type_store.get_int(width)
+						}
+					}
+				}
+			}
+			if b.is_int_type(result) {
+				if b.is_int_type(b.value_type(lhs)) {
+					lhs = b.coerce_numeric_value(lhs, result)
+				}
+				if node.op !in [.left_shift, .right_shift, .right_shift_unsigned]
+					&& b.is_int_type(b.value_type(rhs)) {
+					rhs = b.coerce_numeric_value(rhs, result)
+				}
+			} else if b.is_float_type(result) {
+				if b.is_float_type(b.value_type(lhs)) || b.is_int_type(b.value_type(lhs)) {
+					lhs = b.coerce_numeric_value(lhs, result)
+				}
+				if b.is_float_type(b.value_type(rhs)) || b.is_int_type(b.value_type(rhs)) {
+					rhs = b.coerce_numeric_value(rhs, result)
+				}
 			}
 		}
 	}
@@ -10297,6 +12660,21 @@ fn (b &Builder) is_integer_literal_expr(id flat.NodeId) bool {
 	return false
 }
 
+fn (b &Builder) is_float_literal_expr(id flat.NodeId) bool {
+	if !b.valid_node_id(id) {
+		return false
+	}
+	node := b.a.nodes[int(id)]
+	if node.kind == .float_literal {
+		return true
+	}
+	if node.children_count > 0 && (node.kind == .paren
+		|| (node.kind == .prefix && node.op in [.plus, .minus])) {
+		return b.is_float_literal_expr(b.a.child(&node, 0))
+	}
+	return false
+}
+
 fn (b &Builder) is_negative_integer_literal_expr(id flat.NodeId) bool {
 	node := b.a.nodes[int(id)]
 	if node.kind == .int_literal {
@@ -10383,7 +12761,14 @@ fn (mut b Builder) build_qualified_infix_call(node flat.Node) ?ValueID {
 }
 
 fn (mut b Builder) build_direct_call(resolved_name string, node flat.Node) ValueID {
-	fn_idx := b.fn_ids[resolved_name] or { panic('ssa: unknown function `${resolved_name}`') }
+	mut fn_idx := b.fn_ids[resolved_name] or {
+		panic('ssa: unknown function `${resolved_name}`')
+	}
+	if resolved_name in native_runtime_override_names {
+		if runtime_idx := b.runtime_fn_ids[resolved_name] {
+			fn_idx = runtime_idx
+		}
+	}
 	fn_ref := b.m.add_value(.func_ref, b.void_type, resolved_name, fn_idx)
 	ret_type := b.m.funcs[fn_idx].typ
 	mut param_types := []TypeID{}
@@ -10565,6 +12950,12 @@ fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 	if target_type == from_type {
 		return value
 	}
+	if b.is_interface_type_id(target_type) {
+		return b.box_interface_value(target_type, checked_name_source_id, value)
+	}
+	if from_type == b.wide_integer_type() || target_type == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer conversion to or from a scalar value')
+	}
 	if b.is_pointer_type(target_type) || b.is_pointer_type(from_type) {
 		return b.emit1(.bitcast, target_type, value)
 	}
@@ -10643,28 +13034,66 @@ fn (mut b Builder) heap_copy_value(value ValueID, value_type TypeID) ValueID {
 	size_const := b.m.get_or_add_const(b.i64_type, '${size}')
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	src := b.emit1(.bitcast, ptr_i8, alloca)
-	memdup_ref := b.m.add_value(.func_ref, ptr_i8, 'memdup', b.runtime_fn_id('memdup'))
+	memdup_ref := b.m.add_value(.func_ref, ptr_i8, '__ssa_memdup',
+		b.fn_ids['__ssa_memdup'])
 	copied := b.emit3(.call, ptr_i8, memdup_ref, src, size_const)
 	return b.emit1(.bitcast, ptr_type, copied)
 }
 
+fn (mut b Builder) box_interface_value(interface_type TypeID, source_type_id u32, value ValueID) ValueID {
+	value_type := b.value_type(value)
+	alloca := b.emit0(.alloca, b.m.type_store.get_ptr(interface_type))
+	object := if b.is_pointer_type(value_type) {
+		b.emit1(.bitcast, b.m.type_store.get_ptr(b.i8_type), value)
+	} else {
+		b.heap_copy_value(value, value_type)
+	}
+	object_ptr := b.get_field_ptr(alloca, '_object')
+	b.emit2(.store, b.void_type, object, object_ptr)
+	type_ptr := b.get_field_ptr(alloca, '_typ')
+	box_type_id := b.interface_dispatch_id(interface_type, source_type_id)
+	type_id := b.m.get_or_add_const(b.i32_type, '${box_type_id}')
+	b.emit2(.store, b.void_type, type_id, type_ptr)
+	boxed_ptr := b.get_field_ptr(alloca, '_object_is_boxed')
+	boxed := b.m.get_or_add_const(b.i1_type, if b.is_pointer_type(value_type) {
+		'0'
+	} else {
+		'1'
+	})
+	b.emit2(.store, b.void_type, boxed, boxed_ptr)
+	interface_info := b.m.type_store.types[interface_type]
+	if value_type == b.map_type && 'len' in interface_info.field_names {
+		map_slot := b.emit0(.alloca, b.m.type_store.get_ptr(b.map_type))
+		b.emit2(.store, b.void_type, value, map_slot)
+		len_ptr := b.get_field_ptr(alloca, 'len')
+		len_value := b.load_map_len(map_slot)
+		b.emit2(.store, b.void_type, len_value, len_ptr)
+	}
+	return b.emit1(.load, interface_type, alloca)
+}
+
+fn (mut b Builder) unbox_interface_value(interface_value ValueID, target_type TypeID) ValueID {
+	interface_type := b.value_type(interface_value)
+	alloca := b.emit0(.alloca, b.m.type_store.get_ptr(interface_type))
+	b.emit2(.store, b.void_type, interface_value, alloca)
+	object_ptr := b.get_field_ptr(alloca, '_object')
+	object := b.emit1(.load, b.m.type_store.get_ptr(b.i8_type), object_ptr)
+	if b.is_pointer_type(target_type) {
+		return b.emit1(.bitcast, target_type, object)
+	}
+	target_ptr := b.emit1(.bitcast, b.m.type_store.get_ptr(target_type), object)
+	return b.emit1(.load, target_type, target_ptr)
+}
+
 fn (b &Builder) canonical_sum_type_name(name_id u32) ?u32 {
-	name := flat.source_type_name(name_id)
-	if !name.contains('.') && b.cur_module.len > 0 && b.cur_module != 'main'
-		&& b.cur_module != 'builtin' {
-		qualified := '${b.cur_module}.${name}'
+	dotted := flat.source_type_shape(name_id).has(.dotted)
+	if !dotted && b.cur_module.len > 0 && b.cur_module !in ['main', 'builtin'] {
+		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), name_id)
 		if canonical_source_id := b.sum_type_canonical.type_id(qualified) {
 			return canonical_source_id
 		}
 	}
-	if canonical_source_id := b.sum_type_canonical.type_id(name) {
-		return canonical_source_id
-	}
-	if name.contains('.') {
-		return none
-	}
-	short_name := name.all_after('.')
-	if canonical_source_id := b.sum_type_canonical.type_id(short_name) {
+	if canonical_source_id := b.sum_type_canonical.type_id(name_id) {
 		return canonical_source_id
 	}
 	return none
@@ -10687,7 +13116,7 @@ fn (mut b Builder) sum_variant_for_expr(sum_name_id u32, expr_id flat.NodeId, va
 		return variant
 	}
 	value_type := b.value_type(value)
-	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} }
+	variants := b.sum_type_variants.type_ids(sum_name_id) or { []u32{} }
 	for variant in variants {
 		if b.resolve_type(variant) == value_type {
 			return variant
@@ -10697,18 +13126,16 @@ fn (mut b Builder) sum_variant_for_expr(sum_name_id u32, expr_id flat.NodeId, va
 }
 
 fn (b &Builder) find_sum_variant(sum_name_id u32, type_name_id u32) ?u32 {
-	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { return none }
+	variants := b.sum_type_variants.type_ids(sum_name_id) or { return none }
 	if type_name_id in variants { return type_name_id }
-	type_name := flat.source_type_name(type_name_id)
-	if type_name_id == 0 || type_name.contains('.') { return none }
-	base := type_name.trim_left('&')
-	pointers := type_name.len - base.len
+	if type_name_id == 0 || flat.source_type_shape(type_name_id).has(.dotted) { return none }
+	base := ssa_pointer_base_source_type(type_name_id)
+	pointers := ssa_raw_pointer_depth(type_name_id)
 	mut found := u32(0)
 	for variant_id in variants {
-		variant := flat.source_type_name(variant_id)
-		variant_base := variant.trim_left('&')
-		if variant.len - variant_base.len != pointers { continue }
-		if variant_base.all_after_last('.') != base { continue }
+		if ssa_raw_pointer_depth(variant_id) != pointers { continue }
+		variant_base := ssa_pointer_base_source_type(variant_id)
+		if flat.source_type_syntax(variant_base).unqualified() != base { continue }
 		if found != 0 { return none }
 		found = variant_id
 	}
@@ -10718,7 +13145,7 @@ fn (b &Builder) find_sum_variant(sum_name_id u32, type_name_id u32) ?u32 {
 
 fn (b &Builder) sum_variant_index(sum_name_id u32, variant_id u32) int {
 	resolved := b.find_sum_variant(sum_name_id, variant_id) or { return 0 }
-	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { return 0 }
+	variants := b.sum_type_variants.type_ids(sum_name_id) or { return 0 }
 	return variants.index(resolved) + 1
 }
 
@@ -10748,8 +13175,9 @@ fn (b &Builder) sum_type_has_field(typ_id TypeID, field_name string) bool {
 				if sum_typ != typ_id {
 					continue
 				}
+				module_name := flat.source_type_name(canonical_source_id).all_before_last('.')
 				for variant in variants_id {
-					if sum_field_name(flat.source_type_name(variant)) == field_name {
+					if sum_variant_field_name(flat.source_type_name(variant), module_name) == field_name {
 						return true
 					}
 				}
@@ -10771,7 +13199,13 @@ fn (mut b Builder) build_array_push_expr(node flat.Node) ValueID {
 	lhs_id := b.a.child(&node, 0)
 	rhs_id := b.a.child(&node, 1)
 	arr_ptr := b.build_lvalue_addr(lhs_id)
-	rhs_val := b.build_expr(rhs_id)
+	mut rhs_val := b.build_expr(rhs_id)
+	arr_type_id := b.checked_expr_type_name(lhs_id)
+	if flat.source_type_shape(arr_type_id).has(.array_type)
+		&& flat.source_type_name(arr_type_id).len > 2 {
+		elem_type := b.resolve_type(indexed_elem_type_name(arr_type_id))
+		rhs_val = b.coerce_numeric_value(rhs_val, elem_type)
+	}
 	if node.value_text() == 'push_many' || b.value_type(rhs_val) == b.array_type {
 		if fn_id := b.runtime_fn_lookup('array_push_many') {
 			fn_ref := b.m.add_value(.func_ref, b.void_type, 'array_push_many', fn_id)
@@ -10828,7 +13262,7 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 		child = b.a.nodes[int(child_id)]
 	}
 	if node.op == .amp && child.kind == .struct_init {
-		return b.build_heap_struct_init(child)
+		return b.build_heap_struct_init(child_id, child)
 	}
 	if node.op == .amp && child.kind == .ident {
 		if addr := b.vars[child.value_text()] {
@@ -10858,6 +13292,9 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 		return b.build_expr(b.a.child(&child, 0))
 	}
 	val := b.build_expr(child_id)
+	if b.value_type(val) == b.wide_integer_type() && node.op !in [.amp, .mul] {
+		panic('ssa: unsupported 128-bit integer operation: unary ${node.op}')
+	}
 	match node.op {
 		.minus {
 			typ := b.value_type(val)
@@ -10888,6 +13325,9 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 			return slot
 		}
 		.mul {
+			if fixed_type_name := b.fixed_array_expr_type_name(child_id) {
+				return b.emit1(.bitcast, b.resolve_type(fixed_type_name), val)
+			}
 			return b.emit1(.load, b.deref_type(val), val)
 		}
 		else {
@@ -10933,9 +13373,16 @@ fn (mut b Builder) build_postfix(node flat.Node) ValueID {
 	if value_type <= 0 {
 		return b.m.get_or_add_const(b.i64_type, '0')
 	}
+	if value_type == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer operation: postfix ${node.op}')
+	}
 	cur := b.emit1(.load, value_type, addr)
 	one := b.m.get_or_add_const(value_type, '1')
-	op := if node.op == .inc { OpCode.add } else { OpCode.sub }
+	op := if b.is_float_type(value_type) {
+		if node.op == .inc { OpCode.fadd } else { OpCode.fsub }
+	} else {
+		if node.op == .inc { OpCode.add } else { OpCode.sub }
+	}
 	result := b.emit2(op, value_type, cur, one)
 	b.emit2(.store, b.void_type, result, addr)
 	return cur
@@ -11258,9 +13705,8 @@ fn (mut b Builder) build_thread_wait(id flat.NodeId, node flat.Node, thread_id f
 	status := b.emit3(.call, b.i32_type, join_ref, thread_handle, result_slot)
 	b.check_thread_status(status)
 	thread_type_id := ssa_pointer_base_source_type(b.receiver_type_name(thread_id))
-	thread_type := flat.source_type_name(thread_type_id)
-	ret_type := if thread_type.starts_with('thread ') {
-		b.resolve_type(flat.source_type_id(thread_type[7..]))
+	ret_type := if flat.source_type_shape(thread_type_id).has(.thread_type) {
+		b.resolve_type(flat.source_type_syntax(thread_type_id).raw_base())
 	} else if thread_type_id == ssa_thread_source_type {
 		b.void_type
 	} else {
@@ -11314,6 +13760,18 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		// A callable struct field takes precedence over method-name fallbacks.
 		return b.build_indirect_call(id, node, fn_node_id)
 	}
+	if fn_node.kind == .index && b.is_function_value_expr(fn_node_id) {
+		return b.build_indirect_call(id, node, fn_node_id)
+	}
+	if fn_node.kind == .selector && fn_node.children_count > 0 {
+		base_id := b.a.child(&fn_node, 0)
+		receiver_type := b.resolve_type(b.receiver_type_name(base_id))
+		if b.is_interface_related_type(receiver_type) {
+			if stub_id := b.register_interface_method_stub('', base_id, fn_node.value) {
+				return b.build_interface_dispatch_call(stub_id, node, base_id)
+			}
+		}
+	}
 	if fn_node.kind == .selector && fn_node.children_count > 0
 		&& fn_node.value_text() in ['set', 'clear', 'has', 'all'] {
 		if result := b.build_flag_enum_method_call(b.a.child(&fn_node, 0), fn_node.value_text(),
@@ -11338,12 +13796,19 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		base_id = b.a.child(&fn_node, 0)
 		base := b.a.nodes[int(base_id)]
 		if b.m.target.ptr_size == 4 && fn_node.value_text() == 'str' {
-			receiver_name := if base.kind == .bool_literal {
-				'bool'
+			receiver_type := if base.kind == .bool_literal {
+				flat.source_type_bool
 			} else {
-				flat.source_type_name(b.receiver_type_name(base_id))
+				b.receiver_type_name(base_id)
 			}
-			if result := b.build_scalar_str_call(node, '${receiver_name}.str', base_id) {
+			dotted_type := flat.source_type_syntax(receiver_type).doubleunderscore_dotted()
+			receiver_syntax := flat.source_type_syntax(dotted_type)
+			primitive_type := if receiver_syntax.builtin_prefix() {
+				receiver_syntax.builtin_base()
+			} else {
+				dotted_type
+			}
+			if result := b.build_scalar_str_call_for_type(node, primitive_type, base_id) {
 				return result
 			}
 		}
@@ -11446,6 +13911,9 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		actual_name = actual_name[2..]
 		is_c_call = true
 	}
+	if actual_name == 'new_map_aligned' && '__ssa_new_map_aligned' in b.fn_ids {
+		actual_name = '__ssa_new_map_aligned'
+	}
 	if b.m.target.ptr_size == 4 && !is_c_call {
 		scalar_base := if fn_node.kind == .selector { base_id } else { flat.empty_node }
 		if result := b.build_scalar_str_call(node, actual_name, scalar_base) {
@@ -11470,6 +13938,9 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	if fn_node.kind == .selector && b.call_base_is_array(base_id) {
 		if fn_node.value_text() == 'pop' {
 			return b.build_array_pop_call(id, base_id)
+		}
+		if fn_node.value_text() == 'pop_left' {
+			return b.build_array_pop_left_call(id, base_id)
 		}
 		if fn_node.value_text() in ['delete_last', 'clear'] {
 			return b.build_array_len_mutator_call(base_id, fn_node.value_text())
@@ -11642,6 +14113,16 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	} else if idx := b.fn_ids[resolved_name] {
 		fn_idx = idx
 	} else {
+		mut callee_var_names := [actual_name, fn_node.value]
+		if b.cur_module.len > 0 {
+			callee_var_names << '${b.cur_module}.${actual_name}'
+		}
+		for var_name in callee_var_names {
+			if addr := b.vars[var_name] {
+				callee := b.emit1(.load, b.deref_type(addr), addr)
+				return b.build_indirect_call_value(id, node, fn_node_id, callee)
+			}
+		}
 		if fn_node.kind == .ident {
 			if _ := b.vars[fn_node.value_text()] {
 				return b.build_indirect_call(id, node, fn_node_id)
@@ -11649,15 +14130,29 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		} else if fn_node.kind == .selector && b.is_function_value_expr(fn_node_id) {
 			return b.build_indirect_call(id, node, fn_node_id)
 		}
-		// Name the caller as well as the callee: when the missing callee is a
-		// skipped runtime function, the interesting half is which body still
-		// mentions it.
-		caller := if b.cur_func >= 0 && b.cur_func < b.m.funcs.len {
-			b.m.funcs[b.cur_func].name
+		if stub_id := b.register_interface_method_stub(actual_name, base_id, fn_node.value) {
+			resolved_name = actual_name
+			fn_idx = stub_id
+			is_method = true
+		} else if stub_id := b.register_builtin_method_stub(actual_name, id, node) {
+			resolved_name = actual_name
+			fn_idx = stub_id
+			is_method = true
+		} else if stub_id := b.register_missing_call_stub(actual_name, id, node, base_id,
+			is_method) {
+			resolved_name = actual_name
+			fn_idx = stub_id
 		} else {
-			'<none>'
+			// Name the caller as well as the callee: when the missing callee is a
+			// skipped runtime function, the interesting half is which body still
+			// mentions it.
+			caller := if b.cur_func >= 0 && b.cur_func < b.m.funcs.len {
+				b.m.funcs[b.cur_func].name
+			} else {
+				'<none>'
+			}
+			panic('ssa: unknown function `${actual_name}` (called from `${caller}` in module `${b.cur_module}`)')
 		}
-		panic('ssa: unknown function `${actual_name}` (called from `${caller}` in module `${b.cur_module}`)')
 	}
 	fn_ref := b.m.add_value(.func_ref, b.void_type, resolved_name, fn_idx)
 	ret_type := b.m.funcs[fn_idx].typ
@@ -11737,6 +14232,11 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			args << b.build_expr(base_id)
 		}
 	}
+	if is_method && args.len > 1 && param_types.len > 0
+		&& b.is_interface_type_id(b.value_type(args[1]))
+		&& !b.is_interface_related_type(param_types[0]) {
+		args[1] = b.unbox_interface_value(args[1], param_types[0])
+	}
 	for i in 1 .. node.children_count {
 		arg_id := b.a.child(&node, i)
 		param_idx := if is_method { i } else { i - 1 }
@@ -11801,6 +14301,16 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		} else {
 			b.build_expr(arg_id)
 		}
+		if param_idx < param_types.len && b.is_interface_type_id(b.value_type(arg))
+			&& !b.is_interface_related_type(param_types[param_idx]) {
+			arg = b.unbox_interface_value(arg, param_types[param_idx])
+		}
+		if is_c_call && resolved_name in b.c_fn_types && param_idx < param_types.len
+			&& b.m.type_store.types[param_types[param_idx]].kind == .func_t
+			&& b.value_type(arg) != param_types[param_idx] {
+			// Preserve the C callback contract through an otherwise untyped V function reference.
+			arg = b.emit1(.bitcast, param_types[param_idx], arg)
+		}
 		if b.m.target.ptr_size == 4 && resolved_name in ['print', 'println', 'eprint', 'eprintln'] {
 			arg = b.stringify_scalar(arg)
 		}
@@ -11813,11 +14323,319 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			args << b.m.get_or_add_const(b.i64_type, '1')
 		}
 	}
+	if resolved_name in ['new_map', 'new_map_aligned'] && args.len >= 7 {
+		args = b.fix_native_map_callback_args(mut args)
+	}
 	result := b.m.add_instr(.call, b.cur_block, ret_type, args)
 	if b.call_never_returns(id, resolved_name, is_c_call) {
 		b.emit0(.unreachable, b.void_type)
 	}
 	return result
+}
+
+// fix_native_map_callback_args keeps the standard integer callbacks in sync
+// with the lowered key size. Some transforms select platform-word callbacks for
+// `int`, while V's `int` storage remains 32-bit on every supported target.
+fn (mut b Builder) fix_native_map_callback_args(mut args []ValueID) []ValueID {
+	key_size_value := b.m.values[args[1]]
+	if key_size_value.kind != .constant {
+		return args
+	}
+	key_size := key_size_value.name.int()
+	if key_size !in [1, 2, 4, 8, 16] {
+		return args
+	}
+	correct_names := [
+		'map_hash_int_${key_size}',
+		'map_eq_int_${key_size}',
+		'map_clone_int_${key_size}',
+	]
+	families := ['map_hash_int_', 'map_eq_int_', 'map_clone_int_']
+	for offset, correct_name in correct_names {
+		arg_index := offset + 3
+		current := b.m.values[args[arg_index]]
+		if current.kind != .func_ref || !current.name.starts_with(families[offset]) {
+			continue
+		}
+		if current.name == correct_name {
+			continue
+		}
+		if fn_id := b.fn_ids[correct_name] {
+			args[arg_index] = b.m.add_value(.func_ref, b.i64_type, correct_name, fn_id)
+		}
+	}
+	return args
+}
+
+// register_interface_method_stub gives a known abstract interface method a
+// callable SSA symbol. The native backends do not yet emit the C backend's
+// type-id dispatch switch, but keeping the method signature lets programs that
+// call through an interface compile and keeps later codegen deterministic.
+fn (mut b Builder) register_interface_method_stub(name string, base_id flat.NodeId, method string) ?int {
+	if b.tc == unsafe { nil } {
+		return none
+	}
+	method_name := method.all_after_last('.')
+	receiver_type := flat.source_type_name(b.receiver_type_name(base_id)).trim_space()
+	mut receiver_interface := receiver_type.trim_left('&').trim_space()
+	if receiver_interface.starts_with('mut ') {
+		receiver_interface = receiver_interface[4..].trim_space()
+	}
+	mut interface_candidates := []string{cap: 3}
+	if receiver_interface.len > 0 {
+		interface_candidates << receiver_interface
+	}
+	if name.contains('.') {
+		named_interface := name.all_before_last('.')
+		interface_candidates << named_interface
+		interface_candidates << named_interface.all_after_last('.')
+	}
+	if receiver_interface.len > 0 {
+		interface_candidates << receiver_interface.all_after_last('.')
+	}
+	mut interface_name := ''
+	mut interface_id := u32(0)
+	for candidate in interface_candidates {
+		if candidate.len == 0 {
+			continue
+		}
+		candidate_id := flat.source_type_id(candidate)
+		has_signature := b.tc.interface_method_signature_key(candidate_id, method_name) != none
+		if method_name in b.tc.interface_abstract_method_names(candidate_id) || has_signature {
+			interface_name = candidate
+			interface_id = candidate_id
+			break
+		}
+	}
+	if interface_id == 0 {
+		return none
+	}
+	if existing := b.fn_ids[name] {
+		return existing
+	}
+	decl_key := b.tc.interface_method_signature_key(interface_id, method_name) or {
+		'${interface_name}.${method_name}'
+	}
+	params, ret := b.tc.specialized_interface_method_signature(interface_id, decl_key)
+	mut ssa_params := []TypeID{cap: params.len}
+	for param in params {
+		ssa_params << b.ssa_type_from_checker_type(param)
+	}
+	if ssa_params.len == 0 {
+		ssa_params << b.resolve_type(flat.source_type_id(receiver_type))
+	}
+	ret_type := b.ssa_type_from_checker_type(ret)
+	stub_name := if name.len > 0 { name } else { '${interface_name}.${method_name}' }
+	stub_id := b.register_synthetic_function(stub_name, ret_type, ssa_params)
+	b.generate_interface_method_dispatch(stub_id, interface_id, stub_name, method_name, ssa_params,
+		ret_type)
+	return stub_id
+}
+
+fn (mut b Builder) generate_interface_method_dispatch(func_id int, interface_id u32, func_name string, method string, param_types []TypeID, ret_type TypeID) {
+	impl_ids := b.tc.interface_impl_names(interface_id)
+	if impl_ids.len == 0 {
+		return
+	}
+	old_func := b.cur_func
+	old_block := b.cur_block
+	old_ret_type := b.cur_func_ret_type
+	b.cur_func = func_id
+	b.cur_func_ret_type = ret_type
+	entry := b.m.add_block(func_id, 'interface_dispatch')
+	mut args := []ValueID{cap: param_types.len}
+	for typ in param_types {
+		args << b.func_add_argument(func_id, typ, 'arg${args.len}')
+	}
+	if args.len == 0 {
+		b.cur_func = old_func
+		b.cur_block = old_block
+		b.cur_func_ret_type = old_ret_type
+		return
+	}
+	param_interface_type := param_types[0]
+	param_type := b.m.type_store.types[param_interface_type]
+	is_interface_pointer := param_type.kind == .ptr_t
+		&& b.is_interface_type_id(param_type.elem_type)
+	interface_type := if is_interface_pointer { param_type.elem_type } else { param_interface_type }
+	interface_ptr := if is_interface_pointer {
+		args[0]
+	} else {
+		interface_alloca := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(interface_type))
+		b.block_instr2(.store, entry, b.void_type, args[0], interface_alloca)
+		interface_alloca
+	}
+	object_ptr := b.block_struct_field_ptr(entry, interface_ptr, interface_type, 0)
+	object := b.block_instr1(.load, entry, b.m.type_store.get_ptr(b.i8_type), object_ptr)
+	type_ptr := b.block_struct_field_ptr(entry, interface_ptr, interface_type, 1)
+	concrete_typ := b.block_instr1(.load, entry, b.i32_type, type_ptr)
+
+	mut cases := []BlockID{}
+	mut checks := []BlockID{}
+	mut methods := []int{}
+	mut concrete_types := []TypeID{}
+	for impl_id in impl_ids {
+		impl_name := flat.source_type_name(impl_id).trim_left('&').trim_space()
+		if impl_name == 'array' || impl_name.starts_with('[]') {
+			// Builtin array high-order methods (`count`, `filter`, ...) are
+			// compiler macros, not callable concrete functions. They are not valid
+			// interface dispatch targets and would otherwise create unresolved
+			// `C.array.<method>` symbols in native backends.
+			continue
+		}
+		method_id := b.interface_concrete_method_id(impl_id, method) or { continue }
+		if method_id == func_id {
+			continue
+		}
+		checks << b.m.add_block(func_id, 'interface_${method}_check_${cases.len}')
+		cases << b.m.add_block(func_id, 'interface_${method}_case_${cases.len}')
+		methods << method_id
+		concrete_types << b.interface_dispatch_id(interface_type, impl_id)
+	}
+	default_block := b.m.add_block(func_id, 'interface_${method}_default')
+	if checks.len == 0 {
+		if ret_type == b.void_type {
+			b.block_instr0(.ret, entry, b.void_type)
+		} else {
+			b.block_instr1(.ret, entry, b.void_type, b.default_value_for_type(ret_type))
+		}
+		b.cur_func = old_func
+		b.cur_block = old_block
+		b.cur_func_ret_type = old_ret_type
+		return
+	}
+	b.block_instr1(.jmp, entry, b.void_type, ValueID(checks[0]))
+	for index, method_id in methods {
+		b.cur_block = checks[index]
+		concrete_type := concrete_types[index]
+		type_const := b.m.get_or_add_const(b.i32_type, '${concrete_type}')
+		matches := b.block_instr2(.eq, checks[index], b.i1_type, concrete_typ, type_const)
+		next := if index + 1 < checks.len {
+			checks[index + 1]
+		} else {
+			default_block
+		}
+		b.block_instr3(.br, checks[index], b.void_type, matches, ValueID(cases[index]),
+			ValueID(next))
+
+		b.cur_block = cases[index]
+		mut method_params := []TypeID{}
+		for name, type_id in b.fn_types {
+			if name == func_name {
+				continue
+			}
+			if b.fn_ids[name] or { -1 } == method_id {
+				method_params = b.m.type_store.types[type_id].params.clone()
+				break
+			}
+		}
+		if method_params.len == 0 {
+			method_params << b.resolve_type(impl_ids[index])
+		}
+		mut call_args := []ValueID{}
+		call_args << b.m.add_value(.func_ref, b.void_type, b.m.funcs[method_id].name, method_id)
+		receiver_type := method_params[0]
+		receiver := if b.is_pointer_type(receiver_type) {
+			b.emit1(.bitcast, receiver_type, object)
+		} else {
+			receiver_ptr := b.emit1(.bitcast, b.m.type_store.get_ptr(receiver_type), object)
+			b.emit1(.load, receiver_type, receiver_ptr)
+		}
+		call_args << receiver
+		for arg_index in 1 .. args.len {
+			if arg_index >= method_params.len {
+				break
+			}
+			call_args << b.coerce_value_for_type(args[arg_index], method_params[arg_index])
+		}
+		result := b.m.add_instr(.call, b.cur_block, ret_type, call_args)
+		if ret_type == b.void_type {
+			b.emit0(.ret, b.void_type)
+		} else {
+			b.emit1(.ret, b.void_type, result)
+		}
+	}
+	b.cur_block = default_block
+	if ret_type == b.void_type {
+		b.emit0(.ret, b.void_type)
+	} else {
+		b.emit1(.ret, b.void_type, b.default_value_for_type(ret_type))
+	}
+	b.cur_func = old_func
+	b.cur_block = old_block
+	b.cur_func_ret_type = old_ret_type
+}
+
+fn (b &Builder) interface_concrete_method_id(impl_id u32, method string) ?int {
+	impl_name := flat.source_type_name(impl_id).trim_left('&')
+	short_name := impl_name.all_after_last('.')
+	for candidate in [
+		'${impl_name}.${method}',
+		'${impl_name.replace('.', '__')}.${method}',
+		'${short_name}.${method}',
+		'${short_name}__${method}',
+	] {
+		if method_id := b.fn_ids[candidate] {
+			return method_id
+		}
+	}
+	return none
+}
+
+// register_builtin_method_stub registers checker-known runtime methods that the
+// SSA backend does not lower yet, notably channel try_push/try_pop. The stub
+// keeps the call ABI and result type so native code generation can complete.
+fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId, node flat.Node) ?int {
+	if !name.contains('.') {
+		return none
+	}
+	receiver_name := name.all_before_last('.')
+	if !receiver_name.starts_with('chan ') {
+		return none
+	}
+	if existing := b.fn_ids[name] {
+		return existing
+	}
+	mut params := []TypeID{cap: node.children_count}
+	params << b.resolve_type(flat.source_type_id(receiver_name))
+	for i in 1 .. node.children_count {
+		arg_id := b.a.child(&node, i)
+		arg_type_name := b.checked_expr_type_name(arg_id)
+		params << if arg_type_name != 0 {
+			b.resolve_type(arg_type_name)
+		} else {
+			b.i64_type
+		}
+	}
+	ret_type := b.call_expr_result_type(call_id, node)
+	return b.register_synthetic_function(name, ret_type, params)
+}
+
+// register_missing_call_stub materializes a checker-validated call whose native
+// lowering is not available yet. This mirrors the ARM64 backend's empty-function
+// stubs and is enabled only for native compile-only builds.
+fn (mut b Builder) register_missing_call_stub(name string, call_id flat.NodeId, node flat.Node, base_id flat.NodeId, is_method bool) ?int {
+	if !b.allow_missing_fn_stubs || name.len == 0 {
+		return none
+	}
+	if existing := b.fn_ids[name] {
+		return existing
+	}
+	mut params := []TypeID{cap: node.children_count + 1}
+	if is_method {
+		params << b.resolve_type(b.receiver_type_name(base_id))
+	}
+	for i in 1 .. node.children_count {
+		arg_id := b.a.child(&node, i)
+		arg_type := b.checked_expr_type_name(arg_id)
+		params << if arg_type != 0 && arg_type != flat.source_type_unknown {
+			b.resolve_type(arg_type)
+		} else {
+			b.i64_type
+		}
+	}
+	ret_type := b.call_expr_result_type(call_id, node)
+	return b.register_synthetic_function(name, ret_type, params)
 }
 
 fn (b &Builder) call_never_returns(id flat.NodeId, name string, is_c_call bool) bool {
@@ -11850,10 +14668,17 @@ fn (mut b Builder) stringify_scalar(value ValueID) ValueID {
 
 fn (mut b Builder) build_scalar_str_call(node flat.Node, resolved_name string, base_id flat.NodeId) ?ValueID {
 	name := resolved_name.replace('__', '.').trim_string_left('builtin.')
-	primitive_name := name.all_before_last('.')
-	if name.all_after_last('.') != 'str'
-		|| primitive_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'bool',
-			'rune', 'isize', 'uint', 'string'] {
+	if name.all_after_last('.') != 'str' {
+		return none
+	}
+	return b.build_scalar_str_call_for_type(node, flat.source_type_id(name.all_before_last('.')), base_id)
+}
+
+fn (mut b Builder) build_scalar_str_call_for_type(node flat.Node, primitive_type u32, base_id flat.NodeId) ?ValueID {
+	if primitive_type !in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
+		flat.source_type_i32, flat.source_type_i64, flat.source_type_u8, flat.source_type_u16,
+		flat.source_type_u32, flat.source_type_u64, flat.source_type_bool, flat.source_type_rune,
+		flat.source_type_isize, flat.source_type_uint, flat.source_type_string] {
 		return none
 	}
 	mut value_id := base_id
@@ -11864,21 +14689,21 @@ fn (mut b Builder) build_scalar_str_call(node flat.Node, resolved_name string, b
 		value_id = b.a.child(&node, 1)
 	} else if node.children_count != 1 {
 		base := b.a.nodes[int(base_id)]
-		if node.children_count != 2 || base.kind != .ident || base.value_text() != primitive_name {
+		if node.children_count != 2 || base.kind != .ident || base.source_value_id() != primitive_type {
 			return none
 		}
 		value_id = b.a.child(&node, 1)
 	}
 	// Default integer literals can exceed int's width before their print conversion.
-	value := if primitive_name == 'int' {
+	value := if primitive_type == flat.source_type_int {
 		b.build_expr(value_id)
 	} else {
-		b.coerce_numeric_value(b.build_expr(value_id), b.resolve_type(flat.source_type_id(primitive_name)))
+		b.coerce_numeric_value(b.build_expr(value_id), b.resolve_type(primitive_type))
 	}
 	// A rune's ordinary str() prints the character, not its code point, so it cannot
 	// share the integer branch: stringify_scalar would hand the codepoint to int_str
 	// and `${r}` would print `90` for `Z`.
-	if primitive_name == 'rune' {
+	if primitive_type == flat.source_type_rune {
 		return b.emit_runtime_call('v3_char_string', b.str_type, [value])
 	}
 	return b.stringify_scalar(value)
@@ -11902,7 +14727,7 @@ fn (mut b Builder) map_array_elem_size_arg(id flat.NodeId, node flat.Node) ?Valu
 	if !flat.source_type_shape(typ_name).has(.array_type) {
 		return none
 	}
-	elem_type := b.resolve_type(flat.source_type_id(flat.source_type_name(typ_name)[2..]))
+	elem_type := b.resolve_type(flat.source_type_syntax(typ_name).raw_base())
 	elem_size := b.m.type_size(elem_type)
 	actual_size := if elem_size > 0 { elem_size } else { 1 }
 	return b.m.get_or_add_const(b.i64_type, actual_size.str())
@@ -11959,15 +14784,46 @@ fn (mut b Builder) coerce_value_for_type(value ValueID, param_type TypeID) Value
 			return b.emit1(.load, param_type, value)
 		}
 	}
-	if b.is_float_type(param_type) {
+	if b.is_int_type(param_type) && b.is_int_type(value_type) {
+		return b.coerce_numeric_value(value, param_type)
+	}
+	if b.is_float_type(param_type)
+		&& (b.is_float_type(value_type) || b.is_int_type(value_type)) {
 		return b.coerce_numeric_value(value, param_type)
 	}
 	return value
 }
 
 fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow_pointer_slot bool) ValueID {
+	if b.is_sum_type_id(param_type) {
+		if target_name := b.ssa_type_names[param_type] {
+			if cast := b.build_sum_type_cast(flat.source_type_id(target_name), id) {
+				return cast
+			}
+		}
+	}
 	value := b.build_expr(id)
 	value_type := b.value_type(value)
+	if b.is_sum_type_id(param_type) && value_type != param_type {
+		mut target_name := b.ssa_type_names[param_type] or { '' }
+		if target_name.len == 0 {
+			for name_id, typ_id in b.struct_types {
+				if typ_id == param_type
+					&& b.canonical_sum_type_name(name_id) != none {
+					target_name = flat.source_type_name(name_id)
+					break
+				}
+			}
+		}
+		if target_name.len > 0 {
+			variants := b.sum_type_variants.type_ids(flat.source_type_id(target_name)) or { []u32{} }
+			for index, variant in variants {
+				if b.resolve_type(variant) == value_type {
+					return b.wrap_sum_value(param_type, variant, index + 1, value)
+				}
+			}
+		}
+	}
 	mut argument := b.a.node(id)
 	for argument.kind == .paren && argument.children_count > 0 {
 		argument = b.a.node(b.a.child(argument, 0))
@@ -11978,6 +14834,14 @@ fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow
 		// of a pointer element passed to array_push or a C memory function.
 		return value
 	}
+	if b.is_pointer_type(param_type) && b.fixed_array_expr_type_name(id) != none {
+		// A fixed array value is represented by the address of its inline storage.
+		// Do not dereference it again when adapting it to a C/pointer parameter.
+		if value_type != param_type {
+			return b.emit1(.bitcast, param_type, value)
+		}
+		return value
+	}
 	if !allow_pointer_slot && b.is_pointer_type(value_type) && b.is_pointer_type(param_type)
 		&& value_type != param_type {
 		// C converts pointer values; a deeper declared pointer type does not borrow
@@ -11986,6 +14850,9 @@ fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow
 	}
 	if allow_pointer_slot && b.is_pointer_type(value_type) && b.is_pointer_type(param_type)
 		&& b.m.type_store.types[param_type].elem_type == value_type {
+		if _ := b.fixed_array_expr_type_name(id) {
+			return value
+		}
 		// `mut &buffer[i]` provides a temporary pointer value. A mutable pointer
 		// parameter still needs a slot holding that value, just as `mut pointer` does.
 		slot := b.emit0(.alloca, param_type)
@@ -12009,7 +14876,8 @@ fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method strin
 	mut flag := if node.children_count > 1 {
 		arg_id := b.a.child(&node, 1)
 		arg_node := b.a.nodes[int(arg_id)]
-		if value := b.enum_const_value_with_type(arg_node, flag_type_name_source_id) {
+		mask := b.flag_enum_mask_for_expr(arg_node, flag_type_name_source_id)
+		if value := mask {
 			b.m.get_or_add_const(flag_type, value.str())
 		} else {
 			b.build_expr(arg_id)
@@ -12036,6 +14904,46 @@ fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method strin
 	}
 	b.emit2(.store, b.void_type, result, base_addr)
 	return b.m.get_or_add_const(b.i64_type, '0')
+}
+
+fn (b &Builder) flag_enum_mask_for_expr(node flat.Node, flag_type_name_id u32) ?int {
+	if node.kind == .enum_val {
+		value := b.enum_field_value_for_type(flag_type_name_id, node.value, false) or {
+			return none
+		}
+		return 1 << value
+	}
+	if node.kind == .infix && node.children_count >= 2 {
+		left_node := b.a.nodes[int(b.a.child(&node, 0))]
+		right_node := b.a.nodes[int(b.a.child(&node, 1))]
+		left := b.flag_enum_mask_for_expr(left_node, flag_type_name_id) or { return none }
+		right := b.flag_enum_mask_for_expr(right_node, flag_type_name_id) or { return none }
+		return match node.op {
+			.pipe { left | right }
+			.amp { left & right }
+			.xor { left ^ right }
+			else { none }
+		}
+	}
+	if node.kind == .prefix && node.op == .bit_not && node.children_count > 0 {
+		value := b.flag_enum_mask_for_expr(b.a.nodes[int(b.a.child(&node, 0))],
+			flag_type_name_id) or { return none }
+		return ~value
+	}
+	return none
+}
+
+fn (mut b Builder) coerce_flag_enum_assign_rhs(lhs_id flat.NodeId, op flat.Op, rhs_id flat.NodeId, value ValueID) ValueID {
+	if op !in [.amp_assign, .pipe_assign, .xor_assign] {
+		return value
+	}
+	flag_type_name_id := b.flag_enum_expr_type_name(lhs_id)
+	if flag_type_name_id == 0 || !b.is_flag_enum_type_name(flag_type_name_id) {
+		return value
+	}
+	rhs_node := b.a.nodes[int(rhs_id)]
+	mask := b.flag_enum_mask_for_expr(rhs_node, flag_type_name_id) or { return value }
+	return b.m.get_or_add_const(b.value_type(value), mask.str())
 }
 
 fn (b &Builder) is_flag_enum_expr(id flat.NodeId) bool {
@@ -12074,7 +14982,7 @@ fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) u32 {
 		if node.value_text() == 'flags' {
 			for _ in 0 .. 32 {
 				if base_type == ssa_array_source_type || base_type == ssa_builtin_array_source_type
-					|| flat.source_type_shape(base_type).has(.array_type) || b.type_aliases[flat.source_type_name(base_type)] == b.array_type {
+					|| flat.source_type_shape(base_type).has(.array_type) || b.type_aliases[base_type] == b.array_type {
 					return ssa_array_flags_source_type
 				}
 				if target_source_id := b.type_alias_target(base_type) {
@@ -12092,6 +15000,9 @@ fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) u32 {
 
 fn (mut b Builder) coerce_int_value(value ValueID, to_type TypeID) ValueID {
 	from_type := b.value_type(value)
+	if (from_type == b.wide_integer_type()) != (to_type == b.wide_integer_type()) {
+		panic('ssa: unsupported 128-bit integer conversion to or from a scalar value')
+	}
 	if !b.is_int_type(from_type) || !b.is_int_type(to_type) {
 		return value
 	}
@@ -12135,6 +15046,35 @@ fn (mut b Builder) build_array_pop_call(id flat.NodeId, base_id flat.NodeId) Val
 	return value
 }
 
+fn (mut b Builder) build_array_pop_left_call(id flat.NodeId, base_id flat.NodeId) ValueID {
+	arr_addr := b.build_lvalue_addr(base_id)
+	elem_type := b.array_method_elem_type(id, base_id)
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	data_ptr := b.get_field_ptr(arr_addr, 'data')
+	elem_size_ptr := b.get_field_ptr(arr_addr, 'element_size')
+	data := b.emit1(.load, ptr_i8, data_ptr)
+	typed_ptr := b.emit1(.bitcast, b.m.type_store.get_ptr(elem_type), data)
+	value := b.emit1(.load, elem_type, typed_ptr)
+	elem_size32 := b.emit1(.load, b.i32_type, elem_size_ptr)
+	elem_size := b.emit1(.zext, b.i64_type, elem_size32)
+	next_data := b.emit2(.add, ptr_i8, data, elem_size)
+	b.emit2(.store, b.void_type, next_data, data_ptr)
+	offset_ptr := b.get_field_ptr(arr_addr, 'offset')
+	offset32 := b.emit1(.load, b.i32_type, offset_ptr)
+	offset64 := b.emit1(.sext, b.i64_type, offset32)
+	next_offset := b.emit2(.add, b.i64_type, offset64, elem_size)
+	b.emit2(.store, b.void_type, b.emit1(.trunc, b.i32_type, next_offset), offset_ptr)
+	for field in ['len', 'cap'] {
+		field_ptr := b.get_field_ptr(arr_addr, field)
+		field32 := b.emit1(.load, b.i32_type, field_ptr)
+		field64 := b.emit1(.sext, b.i64_type, field32)
+		updated64 := b.emit2(.sub, b.i64_type, field64,
+			b.m.get_or_add_const(b.i64_type, '1'))
+		b.emit2(.store, b.void_type, b.emit1(.trunc, b.i32_type, updated64), field_ptr)
+	}
+	return value
+}
+
 fn (mut b Builder) build_array_first_last_call(id flat.NodeId, base_id flat.NodeId, method string) ValueID {
 	base := b.build_expr(base_id)
 	elem_type := b.array_method_elem_type(id, base_id)
@@ -12155,6 +15095,9 @@ fn (mut b Builder) build_array_first_last_call(id flat.NodeId, base_id flat.Node
 fn (mut b Builder) build_array_index_call(base_id flat.NodeId, needle_id flat.NodeId) ValueID {
 	base := b.build_expr(base_id)
 	elem_type := b.array_receiver_elem_type(base_id)
+	if elem_type == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer operation: array index search')
+	}
 	fn_name := if elem_type == b.str_type {
 		'__v3_array_index_string'
 	} else {
@@ -12251,9 +15194,9 @@ fn (mut b Builder) build_array_repeat_call(base_id flat.NodeId, count_id flat.No
 }
 
 fn (mut b Builder) array_receiver_elem_type(base_id flat.NodeId) TypeID {
-	base_name := flat.source_type_name(b.receiver_type_name(base_id))
-	if base_name.starts_with('[]') {
-		return b.resolve_type(flat.source_type_id(base_name[2..]))
+	base_name := b.receiver_type_name(base_id)
+	if flat.source_type_shape(base_name).has(.array_type) {
+		return b.resolve_type(flat.source_type_syntax(base_name).raw_base())
 	}
 	return b.i64_type
 }
@@ -12264,9 +15207,9 @@ fn (mut b Builder) array_method_elem_type(id flat.NodeId, base_id flat.NodeId) T
 	if ret_name_source_id != 0 && ret_name_source_id != flat.source_type_unknown && !ret_name_shape.has(.array_type) {
 		return b.resolve_type(ret_name_source_id)
 	}
-	base_name := flat.source_type_name(b.receiver_type_name(base_id))
-	if base_name.starts_with('[]') {
-		return b.resolve_type(flat.source_type_id(base_name[2..]))
+	base_name := b.receiver_type_name(base_id)
+	if flat.source_type_shape(base_name).has(.array_type) {
+		return b.resolve_type(flat.source_type_syntax(base_name).raw_base())
 	}
 	return b.i64_type
 }
@@ -12322,12 +15265,13 @@ fn (b &Builder) receiver_type_name(base_id flat.NodeId) u32 {
 }
 
 fn (b &Builder) typed_receiver_method_name(base_id flat.NodeId, method string) ?string {
-	receiver_name := flat.source_type_name(b.receiver_type_name(base_id)).trim_left('&')
-	if receiver_name.len == 0 {
+	receiver_id := ssa_pointer_base_source_type(b.receiver_type_name(base_id))
+	if receiver_id == 0 {
 		return none
 	}
+	receiver_name := flat.source_type_name(receiver_id)
 	if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin'
-		&& !receiver_name.contains('.') {
+		&& !flat.source_type_shape(receiver_id).has(.dotted) {
 		module_name := '${b.cur_module}.${receiver_name}.${method}'
 		if module_name in b.fn_ids {
 			return module_name
@@ -12340,8 +15284,9 @@ fn (b &Builder) typed_receiver_method_name(base_id flat.NodeId, method string) ?
 	mut candidates := []string{}
 	candidates << '${receiver_name}.${method}'
 	candidates << '${receiver_name.replace('.', '__')}__${method}'
-	short_name := receiver_name.all_after_last('.')
-	if short_name != receiver_name {
+	short_id := flat.source_type_syntax(receiver_id).unqualified()
+	if short_id != receiver_id {
+		short_name := flat.source_type_name(short_id)
 		candidates << '${short_name}.${method}'
 		candidates << '${short_name}__${method}'
 	}
@@ -12355,6 +15300,10 @@ fn (b &Builder) typed_receiver_method_name(base_id flat.NodeId, method string) ?
 
 fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id flat.NodeId) ValueID {
 	callee := b.build_expr(callee_id)
+	return b.build_indirect_call_value(id, node, callee_id, callee)
+}
+
+fn (mut b Builder) build_indirect_call_value(id flat.NodeId, node flat.Node, callee_id flat.NodeId, callee ValueID) ValueID {
 	mut param_types := []TypeID{}
 	if b.m.target.ptr_size == 4 && b.tc != unsafe { nil } {
 		mut callee_type := types.unalias_type(b.tc.expr_type(callee_id) or {
@@ -12382,10 +15331,30 @@ fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id
 	return b.m.add_instr(.call_indirect, b.cur_block, b.call_expr_result_type(id, node), args)
 }
 
+fn (mut b Builder) build_interface_dispatch_call(stub_id int, node flat.Node, base_id flat.NodeId) ValueID {
+	fn_name := b.m.funcs[stub_id].name
+	ret_type := b.m.funcs[stub_id].typ
+	ft_id := b.fn_types[fn_name] or { return b.m.get_or_add_const(ret_type, '0') }
+	param_types := b.m.type_store.types[ft_id].params
+	fn_ref := b.m.add_value(.func_ref, b.void_type, fn_name, stub_id)
+	mut args := []ValueID{}
+	args << fn_ref
+	args << b.build_typed_call_arg(base_id, param_types[0], false)
+	for i in 1 .. node.children_count {
+		arg_id := b.a.child(&node, i)
+		if i < param_types.len {
+			args << b.build_typed_call_arg(arg_id, param_types[i], false)
+		} else {
+			args << b.build_expr(arg_id)
+		}
+	}
+	return b.m.add_instr(.call, b.cur_block, ret_type, args)
+}
+
 fn (b &Builder) is_function_value_expr(id flat.NodeId) bool {
 	mut typ := b.checked_expr_type_name(id)
 	if flat.source_type_shape(typ).has(.padded) {
-		typ = flat.source_type_id(flat.source_type_name(typ).trim_space())
+		typ = flat.source_type_syntax(typ).trimmed()
 	}
 	return b.is_function_type_name(typ)
 }
@@ -12517,10 +15486,8 @@ fn (mut b Builder) build_const_i32_array_arg(id flat.NodeId) ?ValueID {
 	if node.kind != .ident {
 		return none
 	}
-	if addr := b.vars[node.value_text()] {
-		if b.m.values[addr].kind == .global {
-			return none
-		}
+	if _ := b.vars[node.value_text()] {
+		return none
 	}
 	expr_id := b.lookup_const_expr(node.value_text()) or { return none }
 	expr := b.a.nodes[int(expr_id)]
@@ -12672,10 +15639,27 @@ fn (mut b Builder) build_map_set_call(node flat.Node) ValueID {
 	fn_ref := b.m.add_value(.func_ref, b.void_type, 'v3_map_set_sized', fn_idx)
 	mut args := []ValueID{}
 	args << fn_ref
-	for i in 1 .. node.children_count {
-		args << b.build_expr(b.a.child(&node, i))
-	}
 	key_size, val_size := b.map_set_call_sizes(node)
+	for i in 1 .. node.children_count {
+		arg_id := b.a.child(&node, i)
+		if i == 2 && key_size == 16 {
+			mut key_node := b.a.nodes[int(arg_id)]
+			mut key_id := arg_id
+			for key_node.kind == .paren && key_node.children_count > 0 {
+				key_id = b.a.child(&key_node, 0)
+				key_node = b.a.nodes[int(key_id)]
+			}
+			if key_node.kind == .ident {
+				if addr := b.vars[key_node.value] {
+					if b.deref_type(addr) == b.wide_integer_type() {
+						args << addr
+						continue
+					}
+				}
+			}
+		}
+		args << b.build_expr(arg_id)
+	}
 	args << b.m.get_or_add_const(b.i64_type, '${key_size}')
 	args << b.m.get_or_add_const(b.i64_type, '${val_size}')
 	return b.m.add_instr(.call, b.cur_block, b.void_type, args)
@@ -12760,9 +15744,8 @@ fn (b &Builder) expr_type_name_for_map(id flat.NodeId) u32 {
 	}
 	if node.kind == .prefix && node.children_count > 0 && node.op == .amp {
 		inner_source_id := b.expr_type_name_for_map(b.a.child(&node, 0))
-		inner := flat.source_type_name(inner_source_id)
 		if inner_source_id != 0 {
-			return flat.source_type_id('&' + inner)
+			return flat.source_type_composition_one(.pointer, inner_source_id)
 		}
 	}
 	if node.kind == .selector && node.children_count > 0 {
@@ -12775,55 +15758,37 @@ fn (b &Builder) expr_type_name_for_map(id flat.NodeId) u32 {
 }
 
 fn map_type_parts(map_type_id u32) (u32, u32) {
-	if map_type_id == 0 { return 0, 0 }
-	key, value := map_type_parts_bytes(flat.source_type_name(map_type_id))
-	return flat.source_type_id(key), flat.source_type_id(value)
+	clean := ssa_pointer_base_source_type(map_type_id)
+	if !flat.source_type_shape(clean).has(.map_type) { return 0, 0 }
+	syntax := flat.source_type_syntax(clean)
+	if !syntax.bracket_closed() { return 0, 0 }
+	return syntax.bracket_raw_inner(), syntax.raw_base()
 }
 
-fn map_type_parts_bytes(map_type string) (string, string) {
-	clean := map_type.trim_left('&')
-	if !clean.starts_with('map[') {
-		return '', ''
-	}
+fn ssa_raw_pointer_depth(type_id u32) int {
+	mut current := type_id
 	mut depth := 0
-	for i in 4 .. clean.len {
-		c := clean[i]
-		if c == `[` {
-			depth++
-		} else if c == `]` {
-			if depth == 0 {
-				return clean[4..i], clean[i + 1..]
-			}
-			depth--
-		}
+	for flat.source_type_shape(current).has(.pointer) {
+		depth++
+		current = flat.source_type_syntax(current).raw_base()
 	}
-	return '', ''
+	return depth
 }
 
 fn indexed_elem_type_name(container_type_id u32) u32 {
-	if container_type_id == 0 { return 0 }
-	return flat.source_type_id(indexed_elem_type_name_bytes(flat.source_type_name(container_type_id)))
-}
-
-fn indexed_elem_type_name_bytes(container_type string) string {
-	clean := container_type.trim_left('&')
-	if clean.starts_with('[]') {
-		return clean[2..]
+	clean := ssa_pointer_base_source_type(container_type_id)
+	shape := flat.source_type_shape(clean)
+	syntax := flat.source_type_syntax(clean)
+	if shape.has(.array_type) { return syntax.raw_base() }
+	if shape.has(.leading_bracket) && syntax.first_bracket_base() != 0 {
+		return syntax.first_bracket_base()
 	}
-	if clean.starts_with('[') {
-		idx := clean.index_u8(`]`)
-		if idx > 0 && idx + 1 < clean.len {
-			return clean[idx + 1..]
-		}
+	if shape.has(.map_type) {
+		_, value := map_type_parts(clean)
+		return value
 	}
-	if clean.starts_with('map[') {
-		_, val_type := map_type_parts_bytes(clean)
-		return val_type
-	}
-	if clean == 'string' {
-		return 'u8'
-	}
-	return ''
+	if clean == flat.source_type_string { return flat.source_type_u8 }
+	return 0
 }
 
 fn (mut b Builder) build_join_path_call(node flat.Node) ValueID {
@@ -12880,9 +15845,6 @@ fn (b &Builder) declared_v_type_name(lhs_id flat.NodeId, rhs_id flat.NodeId) u32
 				}
 			}
 		}
-		if rhs.typ != 0 && rhs.typ != flat.source_type_unknown {
-			return rhs.typ
-		}
 	}
 	if int(lhs_id) >= 0 {
 		lhs := b.a.nodes[int(lhs_id)]
@@ -12894,6 +15856,12 @@ fn (b &Builder) declared_v_type_name(lhs_id flat.NodeId, rhs_id flat.NodeId) u32
 
 	if lhs_type_source_id != 0 && lhs_type_source_id != flat.source_type_unknown {
 		return lhs_type_source_id
+	}
+	if int(rhs_id) >= 0 {
+		rhs := b.a.nodes[int(rhs_id)]
+		if rhs.typ != 0 && rhs.typ != flat.source_type_unknown {
+			return rhs.typ
+		}
 	}
 	rhs_type_source_id := b.checked_expr_type_name(rhs_id)
 
@@ -12954,9 +15922,7 @@ fn (b &Builder) selector_type_name(node flat.Node) ?u32 {
 		return none
 	}
 	if sum_name_source_id := b.canonical_sum_type_name(base_type_source_id_2) {
-		sum_name := flat.source_type_name(sum_name_source_id)
-
-		if variants_source_ids := b.sum_type_variants.type_ids(sum_name) {
+		if variants_source_ids := b.sum_type_variants.type_ids(sum_name_source_id) {
 			for variant_source_id in variants_source_ids {
 				variant := flat.source_type_name(variant_source_id)
 
@@ -13092,7 +16058,24 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 			return b.build_expr(expr_id)
 		}
 		if fn_idx := b.fn_ids[name] {
-			return b.m.add_value(.func_ref, b.i64_type, name, fn_idx)
+			// Keep C signatures on function values for native ABI validation.
+			reference_type := if b.m.funcs[fn_idx].is_c_extern {
+				b.fn_types[name] or { b.i64_type }
+			} else {
+				b.i64_type
+			}
+			return b.m.add_value(.func_ref, reference_type, name, fn_idx)
+		}
+	}
+	qualified_name := b.selector_qualified_name(node)
+	if qualified_name.len > 0 {
+		if fn_idx := b.fn_ids[qualified_name] {
+			reference_type := if b.m.funcs[fn_idx].is_c_extern {
+				b.fn_types[qualified_name] or { b.i64_type }
+			} else {
+				b.i64_type
+			}
+			return b.m.add_value(.func_ref, reference_type, qualified_name, fn_idx)
 		}
 	}
 	base_id := b.a.child(&node, 0)
@@ -13146,9 +16129,15 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 			'errno' {
 				return b.emit1(.load, b.i32_type, b.native_errno_addr())
 			}
+			'FLT_EPSILON' {
+				return b.m.get_or_add_const(b.f32_type, '1.1920928955078125e-7')
+			}
+			'DBL_EPSILON' {
+				return b.m.get_or_add_const(b.f64_type, '2.220446049250313e-16')
+			}
 			else {}
 		}
-		if value := native_darwin_constant(field_name) {
+		if value := native_platform_constant(field_name) {
 			typ := if field_name == 'MAP_FAILED' {
 				b.m.type_store.get_ptr(b.i8_type)
 			} else {
@@ -13299,7 +16288,7 @@ fn (b &Builder) sum_name_for_type_id(typ_id TypeID) ?u32 {
 		if canonical_source_id := b.sum_type_canonical.type_id(sum_name) {
 			if sum_typ := b.registered_struct_type(canonical_source_id) {
 				if sum_typ == typ_id {
-					return flat.source_type_id(sum_name)
+					return sum_name
 				}
 			}
 		}
@@ -13363,8 +16352,13 @@ fn (mut b Builder) load_map_len(map_ptr ValueID) ValueID {
 	b.emit3(.br, b.void_type, has_state, ValueID(blk_load), ValueID(blk_empty))
 
 	b.cur_block = blk_load
-	len_ptr := b.map_state_field_ptr(blk_load, state, 3)
-	len := b.emit1(.load, b.i64_type, len_ptr)
+	len := if b.m.target.ptr_size == 8 {
+		count_ptr := b.block_struct_field_ptr(blk_load, state, b.map_state_type, 13)
+		count := b.block_instr1(.load, blk_load, b.i32_type, count_ptr)
+		b.block_instr1(.zext, blk_load, b.i64_type, count)
+	} else {
+		b.map_state_load_i64(blk_load, state, 3)
+	}
 	b.emit2(.store, b.void_type, len, result_slot)
 	b.emit1(.jmp, b.void_type, ValueID(blk_done))
 
@@ -13379,12 +16373,13 @@ fn (mut b Builder) load_map_len(map_ptr ValueID) ValueID {
 
 fn (mut b Builder) native_utsname_field_value(struct_typ_id TypeID, field_ptr ValueID) ?ValueID {
 	if b.m.target.ptr_size == 8 {
+		uname_name_id := flat.source_type_existing_id('C.utsname') or { return none }
 		mut base_type := struct_typ_id
 		if base_type > 0 && base_type < b.m.type_store.types.len
 			&& b.m.type_store.types[base_type].kind == .ptr_t {
 			base_type = b.m.type_store.types[base_type].elem_type
 		}
-		if uname_type := b.struct_types['C.utsname'] {
+		if uname_type := b.struct_types[uname_name_id] {
 			field_type := b.deref_type(field_ptr)
 			if base_type == uname_type && field_type > 0
 				&& field_type < b.m.type_store.types.len
@@ -13446,7 +16441,21 @@ fn (b &Builder) selector_has_addressable_root(node &flat.Node) bool {
 	return false
 }
 
+fn (mut b Builder) check_wide_integer_index(node flat.Node) {
+	base_id := b.a.child(&node, 0)
+	if flat.source_type_shape(b.expr_type_name_for_map(base_id)).has(.map_type) {
+		return
+	}
+	for index in 1 .. node.children_count {
+		id := b.a.child(&node, index)
+		if b.a.nodes[int(id)].kind != .empty && b.is_wide_integer_expr(id) {
+			panic('ssa: unsupported 128-bit integer operation: index or slice bound')
+		}
+	}
+}
+
 fn (mut b Builder) build_index(id flat.NodeId, node flat.Node) ValueID {
+	b.check_wide_integer_index(node)
 	base_id := b.a.child(&node, 0)
 	if node.children_count >= 2 {
 		if base := b.build_const_i32_array_arg(base_id) {
@@ -13457,14 +16466,31 @@ fn (mut b Builder) build_index(id flat.NodeId, node flat.Node) ValueID {
 			return b.emit1(.load, b.i32_type, elem_ptr)
 		}
 		if fixed_type_source_id := b.fixed_array_expr_type_name(base_id) {
+			if node.value == 'range' {
+				return b.build_fixed_array_slice(base_id, node, fixed_type_source_id)
+			}
 			index := b.build_expr(b.a.child(&node, 1))
 			elem_ptr, elem_type := b.build_fixed_array_index_addr(base_id, index, fixed_type_source_id)
 			return b.emit1(.load, elem_type, elem_ptr)
 		}
 	}
-	base := b.build_expr(base_id)
-	base_typ := b.value_type(base)
+	mut base := b.build_expr(base_id)
+	mut base_typ := b.value_type(base)
+	if base_typ > 0 && base_typ < b.m.type_store.types.len {
+		base_type := b.m.type_store.types[base_typ]
+		if base_type.kind == .ptr_t && base_type.elem_type == b.array_type {
+			base = b.emit1(.load, b.array_type, base)
+			base_typ = b.array_type
+		}
+	}
 	if node.value_text() == 'range' {
+		mut container_len := b.m.get_or_add_const(b.i64_type, '0')
+		if base_typ == b.str_type {
+			len32 := b.load_struct_field_from_value(base, b.str_type, 'len')
+			container_len = b.emit1(.zext, b.i64_type, len32)
+		} else {
+			container_len = b.load_struct_field_from_value(base, b.array_type, 'len')
+		}
 		mut start := b.m.get_or_add_const(b.i64_type, '0')
 		if node.children_count > 1 {
 			start_node := b.a.child_node(&node, 1)
@@ -13472,28 +16498,26 @@ fn (mut b Builder) build_index(id flat.NodeId, node flat.Node) ValueID {
 				start = b.m.get_or_add_const(b.i64_type, '0')
 			} else {
 				start = b.build_expr(b.a.child(&node, 1))
+				start = b.normalize_range_bound(start, container_len)
 			}
 		}
 		mut end := b.m.get_or_add_const(b.i64_type, '0')
 		if node.children_count > 2 {
 			end_node := b.a.child_node(&node, 2)
 			if end_node.kind == .empty {
-				if base_typ == b.str_type {
-					len32 := b.load_struct_field_from_value(base, b.str_type, 'len')
-					end = b.emit1(.zext, b.i64_type, len32)
-				} else {
-					end = b.load_struct_field_from_value(base, b.array_type, 'len')
-				}
+				end = container_len
 			} else {
 				end = b.build_expr(b.a.child(&node, 2))
+				end = b.normalize_range_bound(end, container_len)
 			}
 		} else {
-			if base_typ == b.str_type {
-				len32 := b.load_struct_field_from_value(base, b.str_type, 'len')
-				end = b.emit1(.zext, b.i64_type, len32)
-			} else {
-				end = b.load_struct_field_from_value(base, b.array_type, 'len')
-			}
+			end = container_len
+		}
+		if node.op == .gated_index {
+			start = b.clamp_range_bound(start, container_len)
+			end = b.clamp_range_bound(end, container_len)
+			narrower_than_start := b.emit2(.lt, b.i1_type, end, start)
+			end = b.emit3(.select, b.i64_type, narrower_than_start, start, end)
 		}
 		if base_typ == b.str_type {
 			for substr_name in ['string.substr', 'string__substr', 'substr'] {
@@ -13529,6 +16553,11 @@ fn (mut b Builder) build_index(id flat.NodeId, node flat.Node) ValueID {
 			return b.emit1(.load, val_type, typed_value_ptr)
 		}
 	}
+	if fixed_elem_type_name := b.indexed_fixed_array_elem_type_name(base_id) {
+		fn_ref := b.m.add_value(.func_ref, ptr_i8, 'array_get', b.runtime_fn_id('array_get'))
+		elem_ptr := b.emit3(.call, ptr_i8, fn_ref, base, index)
+		return b.emit1(.bitcast, b.resolve_type(fixed_elem_type_name), elem_ptr)
+	}
 	if base_typ > 0 && base_typ < b.m.type_store.types.len {
 		base_type := b.m.type_store.types[base_typ]
 		if base_type.kind == .ptr_t {
@@ -13554,6 +16583,74 @@ fn (mut b Builder) build_index(id flat.NodeId, node flat.Node) ValueID {
 	elem_type := b.index_elem_type(id, node)
 	typed_ptr := b.emit1(.bitcast, b.m.type_store.get_ptr(elem_type), elem_ptr)
 	return b.emit1(.load, elem_type, typed_ptr)
+}
+
+fn (mut b Builder) build_fixed_array_slice(base_id flat.NodeId, node flat.Node, type_name_id u32) ValueID {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	elem_type_name_id := b.fixed_array_elem_type_name(type_name_id)
+	elem_type := b.resolve_type(elem_type_name_id)
+	elem_size := if b.is_fixed_array_type_name(elem_type_name_id) {
+		b.sizeof_type_name(elem_type_name_id)
+	} else {
+		b.m.type_size(elem_type)
+	}
+	actual_elem_size := if elem_size > 0 { elem_size } else { 8 }
+	length := b.fixed_array_len_value(b.fixed_array_len_text(type_name_id))
+	mut start := b.m.get_or_add_const(b.i64_type, '0')
+	if node.children_count > 1 {
+		start_node := b.a.child_node(&node, 1)
+		if start_node.kind != .empty {
+			start = b.build_expr(b.a.child(&node, 1))
+			start = b.normalize_range_bound(start, length)
+		}
+	}
+	mut end := length
+	if node.children_count > 2 {
+		end_node := b.a.child_node(&node, 2)
+		if end_node.kind != .empty {
+			end = b.build_expr(b.a.child(&node, 2))
+			end = b.normalize_range_bound(end, length)
+		}
+	}
+	if node.op == .gated_index {
+		start = b.clamp_range_bound(start, length)
+		end = b.clamp_range_bound(end, length)
+	}
+	count := b.emit2(.sub, b.i64_type, end, start)
+	base_addr := b.build_lvalue_addr(base_id)
+	base_data := b.emit1(.bitcast, ptr_i8, base_addr)
+	offset := b.emit2(.mul, b.i64_type, start,
+		b.m.get_or_add_const(b.i64_type, '${actual_elem_size}'))
+	source := b.emit2(.add, ptr_i8, base_data, offset)
+	elem_size_value := b.m.get_or_add_const(b.i64_type, '${actual_elem_size}')
+	new_ref := b.m.add_value(.func_ref, b.array_type, 'array_new', b.runtime_fn_id('array_new'))
+	result := b.emit4(.call, b.array_type, new_ref, elem_size_value, count, count)
+	result_alloca := b.emit0(.alloca, b.m.type_store.get_ptr(b.array_type))
+	b.emit2(.store, b.void_type, result, result_alloca)
+	dest_data_ptr := b.get_field_ptr(result_alloca, 'data')
+	dest := b.emit1(.load, ptr_i8, dest_data_ptr)
+	copy_size := b.emit2(.mul, b.i64_type, count, elem_size_value)
+	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
+	b.emit4(.call, ptr_i8, memcpy_ref, dest, source, copy_size)
+	return b.emit1(.load, b.array_type, result_alloca)
+}
+
+// normalize_range_bound resolves a negative slice endpoint relative to the
+// container length, matching the C backend's `s[-n..]` and `s[..-n]` behavior.
+fn (mut b Builder) normalize_range_bound(value ValueID, length ValueID) ValueID {
+	bound := b.coerce_int_value(value, b.i64_type)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	negative := b.emit2(.lt, b.i1_type, bound, zero)
+	adjusted := b.emit2(.add, b.i64_type, length, bound)
+	return b.emit3(.select, b.i64_type, negative, adjusted, bound)
+}
+
+fn (mut b Builder) clamp_range_bound(value ValueID, length ValueID) ValueID {
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	below_zero := b.emit2(.lt, b.i1_type, value, zero)
+	nonnegative := b.emit3(.select, b.i64_type, below_zero, zero, value)
+	above_length := b.emit2(.gt, b.i1_type, nonnegative, length)
+	return b.emit3(.select, b.i64_type, above_length, length, nonnegative)
 }
 
 fn (mut b Builder) build_map_index_addr(base_id flat.NodeId, index ValueID, key_type_name_id u32, val_type_name_id u32) ValueID {
@@ -13587,6 +16684,7 @@ fn (mut b Builder) build_index_addr(id flat.NodeId, node flat.Node) ValueID {
 	if node.children_count < 2 {
 		return b.m.get_or_add_const(b.m.type_store.get_ptr(b.i8_type), '0')
 	}
+	b.check_wide_integer_index(node)
 	// `a[lo..hi]` (an index node tagged `range`) is a slice expression producing a fresh
 	// array value, not an addressable element. Its address must point at the materialized
 	// slice value; computing an element pointer would make the slice's fields read as
@@ -13654,7 +16752,7 @@ fn (b &Builder) fixed_array_expr_type_name(id flat.NodeId) ?u32 {
 	// still contains inline elements rather than pointers to those elements.
 	mut type_name := b.checked_expr_type_name(id)
 	if flat.source_type_shape(type_name).has(.pointer) {
-		type_name = flat.source_type_id(flat.source_type_name(type_name)[1..])
+		type_name = flat.source_type_syntax(type_name).raw_base()
 	}
 	if b.is_fixed_array_type_name(type_name) {
 		return type_name
@@ -13662,9 +16760,26 @@ fn (b &Builder) fixed_array_expr_type_name(id flat.NodeId) ?u32 {
 	return none
 }
 
+fn (b &Builder) indexed_fixed_array_elem_type_name(id flat.NodeId) ?u32 {
+	container_type_id := b.checked_expr_type_name(id)
+	if !flat.source_type_shape(container_type_id).has(.array_type) {
+		return none
+	}
+	elem_type_id := indexed_elem_type_name(container_type_id)
+	if b.is_fixed_array_type_name(elem_type_id) {
+		return elem_type_id
+	}
+	return none
+}
+
 fn (mut b Builder) build_fixed_array_index_addr(base_id flat.NodeId, index ValueID, type_name_id u32) (ValueID, TypeID) {
-	elem_type := b.resolve_type(b.fixed_array_elem_type_name(type_name_id))
-	elem_size := b.m.type_size(elem_type)
+	elem_type_name_id := b.fixed_array_elem_type_name(type_name_id)
+	elem_type := b.resolve_type(elem_type_name_id)
+	elem_size := if b.is_fixed_array_type_name(elem_type_name_id) {
+		b.sizeof_type_name(elem_type_name_id)
+	} else {
+		b.m.type_size(elem_type)
+	}
 	offset := if elem_size > 1 {
 		elem_size_const := b.m.get_or_add_const(b.i64_type, '${elem_size}')
 		b.emit2(.mul, b.i64_type, index, elem_size_const)
@@ -13687,10 +16802,14 @@ fn (mut b Builder) build_fixed_array_index_addr(base_id flat.NodeId, index Value
 }
 
 fn (mut b Builder) build_array_data_index_addr(array_ptr ValueID, index ValueID, elem_type TypeID) ValueID {
+	return b.build_array_data_index_addr_sized(array_ptr, index, elem_type,
+		b.m.type_size(elem_type))
+}
+
+fn (mut b Builder) build_array_data_index_addr_sized(array_ptr ValueID, index ValueID, elem_type TypeID, elem_size int) ValueID {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	data_ptr := b.get_field_ptr(array_ptr, 'data')
 	data := b.emit1(.load, ptr_i8, data_ptr)
-	elem_size := b.m.type_size(elem_type)
 	offset := if elem_size > 1 {
 		elem_size_const := b.m.get_or_add_const(b.i64_type, '${elem_size}')
 		b.emit2(.mul, b.i64_type, index, elem_size_const)
@@ -13731,23 +16850,60 @@ fn (mut b Builder) index_elem_type(id flat.NodeId, node flat.Node) TypeID {
 		return b.resolve_type(node.typ)
 	}
 	checked_source_id_6 := b.checked_expr_type_name(id)
-	checked := flat.source_type_name(checked_source_id_6)
-	if checked_source_id_6 != 0 && checked_source_id_6 != flat.source_type_unknown && !checked.starts_with('[]') && checked[0] != `?`
-		&& checked[0] != `!` {
+	checked_shape := flat.source_type_shape(checked_source_id_6)
+	if checked_source_id_6 != 0 && checked_source_id_6 != flat.source_type_unknown
+		&& !checked_shape.has(.array_type) && !checked_shape.has(.option_type)
+		&& !checked_shape.has(.result_type) {
 		return b.resolve_type(checked_source_id_6)
 	}
 	return b.i64_type
 }
 
-fn (mut b Builder) build_struct_init(node flat.Node) ValueID {
+fn (mut b Builder) build_storable_field_value(expr_id flat.NodeId, field_type_name_id u32, field_type TypeID) ValueID {
+	value := b.build_field_value(expr_id, field_type_name_id)
+	if b.is_interface_type_id(field_type) && b.value_type(value) != field_type {
+		source_id := b.checked_expr_type_name(expr_id)
+		source_name := flat.source_type_name(source_id).trim_left('&?!')
+		if source_id != 0 && source_id != flat.source_type_unknown && source_name.len > 0 {
+			source_ssa_type := b.resolve_type(flat.source_type_id(source_name))
+			if source_ssa_type != field_type && !b.is_interface_related_type(source_ssa_type) {
+				return b.box_interface_value(field_type, flat.source_type_id(source_name), value)
+			}
+		}
+	}
+	return b.coerce_store_value(value, field_type)
+}
+
+fn (mut b Builder) build_struct_init(id flat.NodeId, node flat.Node) ValueID {
 	type_id := node.source_value_id()
-	type_text := node.value_text()
-	if type_text.len > 1 && (type_text[0] == `?` || type_text[0] == `!`) {
+	type_shape := flat.source_type_shape(type_id)
+	if flat.source_type_syntax(type_id).raw_base() != 0
+		&& (type_shape.has(.option_type) || type_shape.has(.result_type)) {
 		// Transformed optional literals may be their type's first use. Register
 		// the wrapper before short-name lookup can select its payload struct.
 		b.resolve_type(type_id)
 	}
-	typ_id, struct_name_id := b.struct_literal_type(type_id)
+	initial_typ_id, initial_struct_name_id := b.struct_literal_type(type_id)
+	mut typ_id := initial_typ_id
+	mut struct_name_id := initial_struct_name_id
+	if typ_id == 0 || typ_id >= b.m.type_store.types.len
+		|| b.m.type_store.types[typ_id].kind != .struct_t
+		|| b.m.type_store.types[typ_id].fields.len == 0 {
+		mut checked_source_id := b.checked_expr_type_name(id)
+		checked_name := flat.source_type_name(checked_source_id)
+		if checked_name.starts_with('&') {
+			checked_source_id = flat.source_type_id(checked_name[1..])
+		}
+		if checked_source_id != 0 && checked_source_id != flat.source_type_unknown {
+			checked_typ_id := b.resolve_type(checked_source_id)
+			if checked_typ_id > 0 && checked_typ_id < b.m.type_store.types.len
+				&& b.m.type_store.types[checked_typ_id].kind == .struct_t
+				&& b.m.type_store.types[checked_typ_id].fields.len > 0 {
+				typ_id = checked_typ_id
+				struct_name_id = checked_source_id
+			}
+		}
+	}
 	if b.is_sum_type_id(typ_id) {
 		return b.build_sum_init(node, typ_id, struct_name_id)
 	}
@@ -13765,8 +16921,13 @@ fn (mut b Builder) build_struct_init(node flat.Node) ValueID {
 					field_type := if fi < typ.fields.len { typ.fields[fi] } else { b.i64_type }
 					field_type_name_source_id := b.field_type_name(struct_name_id, fname)
 
-					field_val := b.coerce_store_value(b.build_field_value(field_expr_id,
-						field_type_name_source_id), field_type)
+					mut field_val := b.build_storable_field_value(field_expr_id,
+						field_type_name_source_id, field_type)
+					if b.is_interface_type_id(typ_id) && fname == '_typ' {
+						if concrete_type := b.interface_init_concrete_type(node, typ_id) {
+							field_val = b.m.get_or_add_const(field_type, '${concrete_type}')
+						}
+					}
 					field_ptr := b.emit2(.get_element_ptr, b.m.type_store.get_ptr(field_type),
 						alloca, off_const)
 					b.emit2(.store, b.void_type, field_val, field_ptr)
@@ -13814,6 +16975,14 @@ fn (mut b Builder) coerce_store_value(source ValueID, target_type TypeID) ValueI
 	value := b.coerce_value_for_type(source, target_type)
 	mut result := b.coerce_int_value(value, target_type)
 	value_type := b.value_type(value)
+	if b.is_interface_type_id(target_type) && value_type != target_type {
+		if source_name := b.source_name_for_ssa_type_id(value_type) {
+			source_type := b.resolve_type(flat.source_type_id(source_name))
+			if source_type != target_type && !b.is_interface_related_type(source_type) {
+				return b.box_interface_value(target_type, flat.source_type_id(source_name), value)
+			}
+		}
+	}
 	if b.m.target.ptr_size == 4 {
 		result = b.coerce_numeric_value(value, target_type)
 	}
@@ -13838,11 +17007,38 @@ fn (mut b Builder) coerce_store_value(source ValueID, target_type TypeID) ValueI
 	return result
 }
 
+fn (b &Builder) source_name_for_ssa_type_id(typ_id TypeID) ?string {
+	if name := b.ssa_type_names[typ_id] {
+		if name.len > 0 {
+			return name
+		}
+	}
+	mut short_name := ''
+	for name_id, candidate in b.struct_types {
+		name := flat.source_type_name(name_id)
+		if candidate != typ_id || name.len == 0 || name.starts_with('[') || name.starts_with('[]')
+			|| name.starts_with('map[') || name.starts_with('?') || name.starts_with('!') {
+			continue
+		}
+		if name.contains('.') {
+			return name
+		}
+		short_name = name
+	}
+	if short_name.len > 0 {
+		return short_name
+	}
+	return none
+}
+
 fn (mut b Builder) build_field_value(expr_id flat.NodeId, field_type_name_id u32) ValueID {
 	if int(expr_id) >= 0 {
 		expr := b.a.nodes[int(expr_id)]
 		if expr.kind == .prefix && expr.op == .bit_not && expr.children_count > 0 {
 			value := b.build_field_value(b.a.child(&expr, 0), field_type_name_id)
+			if b.value_type(value) == b.wide_integer_type() {
+				panic('ssa: unsupported 128-bit integer operation: unary bitwise complement')
+			}
 			all_bits := b.m.get_or_add_const(b.value_type(value), '-1')
 			return b.emit2(.xor, b.value_type(value), value, all_bits)
 		}
@@ -13898,11 +17094,10 @@ fn (b &Builder) enum_const_value_with_type(node flat.Node, type_name_id u32) ?in
 }
 
 fn (mut b Builder) default_field_value(struct_name_id u32, field_name string, zero ValueID) ValueID {
-	struct_name := flat.source_type_name(struct_name_id)
 	if value := b.declared_field_default_value(struct_name_id, field_name) {
 		return value
 	}
-	if struct_name.ends_with('SystemError') {
+	if flat.source_type_syntax(struct_name_id).system_error_suffix() {
 		if field_name == 'msg' {
 			return b.m.add_value(.string_literal, b.str_type, '', 0)
 		}
@@ -13911,10 +17106,9 @@ fn (mut b Builder) default_field_value(struct_name_id u32, field_name string, ze
 		}
 	}
 	field_type_source_id_5 := b.field_type_name(struct_name_id, field_name)
-	field_type := flat.source_type_name(field_type_source_id_5)
-	if field_type.starts_with('[]') {
-		elem_name := field_type[2..]
-		elem_type := b.resolve_type(flat.source_type_id(elem_name))
+	field_shape := flat.source_type_shape(field_type_source_id_5)
+	if field_shape.has(.array_type) {
+		elem_type := b.resolve_type(flat.source_type_syntax(field_type_source_id_5).raw_base())
 		elem_size := b.m.type_size(elem_type)
 		elem_size_const := b.m.get_or_add_const(b.i64_type, '${elem_size}')
 		if fn_id := b.runtime_fn_lookup('array_new') {
@@ -13922,7 +17116,7 @@ fn (mut b Builder) default_field_value(struct_name_id u32, field_name string, ze
 			return b.emit4(.call, b.array_type, fn_ref, elem_size_const, zero, zero)
 		}
 	}
-	if field_type.starts_with('map[') {
+	if field_shape.has(.map_type) {
 		key_type, val_type := map_type_parts(field_type_source_id_5)
 		key_size := b.m.type_size(b.resolve_type(key_type))
 		val_size := b.m.type_size(b.resolve_type(val_type))
@@ -13943,7 +17137,7 @@ fn (mut b Builder) default_field_value(struct_name_id u32, field_name string, ze
 			return b.m.add_instr(.call, b.cur_block, b.map_type, args)
 		}
 	}
-	if field_type.len > 0 {
+	if field_type_source_id_5 != 0 {
 		storage_type := b.struct_field_storage_type(struct_name_id, field_name) or { b.resolve_type(field_type_source_id_5) }
 		if value := b.nested_struct_default_value(field_type_source_id_5, storage_type) {
 			return value
@@ -13967,7 +17161,7 @@ fn (b &Builder) registered_field_type(struct_name_id u32, field_name string) ?u3
 	if typ_source_id := b.struct_field_types.type_id(name + '.' + field_name) {
 		return typ_source_id
 	}
-	short_name := name.all_after('.')
+	short_name := flat.source_type_name(flat.source_type_syntax(owner_id).first_dot_suffix())
 	if typ_source_id := b.struct_field_types.type_id(short_name + '.' + field_name) {
 		return typ_source_id
 	}
@@ -13981,25 +17175,104 @@ fn (b &Builder) field_type_name(struct_name_id u32, field_name string) u32 {
 // struct_literal_type resolves a layout and its source owner in declaration lookup order.
 fn (b &Builder) struct_literal_type(name_id u32) (TypeID, u32) {
 	name := flat.source_type_name(name_id)
-	short_name := name.all_after('.')
-	if !name.contains('.') && b.cur_module.len > 0 && b.cur_module != 'main'
-		&& b.cur_module != 'builtin' {
-		qualified_name := b.cur_module + '.' + short_name
-		if typ := b.struct_types[qualified_name] {
-			return typ, flat.source_type_id(qualified_name)
+	if name.contains('[') && b.cur_func_ret_type != 0 {
+		concrete_return := flat.source_type_name(b.cur_func_ret_type)
+		if concrete_return.contains('[') {
+			if typ := b.register_checker_generic_struct(concrete_return) {
+				return typ, b.cur_func_ret_type
+			}
+		}
+	}
+	short_id := flat.source_type_syntax(name_id).first_dot_suffix()
+	if !flat.source_type_shape(name_id).has(.dotted) && b.cur_module.len > 0
+		&& b.cur_module !in ['main', 'builtin'] {
+		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module),
+			short_id)
+		if typ := b.struct_types[qualified_id] {
+			return typ, qualified_id
 		}
 	}
 	if typ := b.registered_struct_type(name_id) {
 		return typ, name_id
 	}
-	if typ := b.struct_types[short_name] {
-		return typ, flat.source_type_id(short_name)
+	if typ := b.struct_types[short_id] {
+		return typ, short_id
+	}
+	if typ := b.register_checker_generic_struct(name) {
+		return typ, name_id
 	}
 	return TypeID(0), name_id
 }
 
-fn (mut b Builder) build_heap_struct_init(node flat.Node) ValueID {
-	typ_id, struct_name_id := b.struct_literal_type(node.source_value_id())
+// register_checker_generic_struct materializes a concrete generic struct layout
+// from the checker, which substitutes fields such as `[]T` with `[]int`.
+fn (mut b Builder) register_checker_generic_struct(name string) ?TypeID {
+	if b.tc == unsafe { nil } || !name.contains('[') || name.starts_with('[]')
+		|| name.starts_with('map[')
+		|| (name.starts_with('[') && b.is_fixed_array_type_name(flat.source_type_id(name))) {
+		return none
+	}
+	name_id := flat.source_type_id(name)
+	canonical_id := qualify_type_name(name_id, b.cur_module)
+	mut fields := b.tc.struct_fields_for_type(canonical_id)
+	if fields.len == 0 && canonical_id != name_id {
+		fields = b.tc.struct_fields_for_type(flat.source_type_id(name))
+	}
+	if fields.len == 0 {
+		return none
+	}
+	existing_id := b.struct_types[canonical_id] or { b.struct_types[name_id] or { TypeID(0) } }
+	if existing_id > 0 && existing_id < b.m.type_store.types.len
+		&& b.m.type_store.types[existing_id].fields.len > 0 {
+		b.struct_types[name_id] = existing_id
+		b.struct_types[canonical_id] = existing_id
+		return existing_id
+	}
+	typ_id := if existing_id > 0 {
+		existing_id
+	} else {
+		b.m.type_store.register(Type{
+			kind: .struct_t
+		})
+	}
+	b.struct_types[name_id] = typ_id
+	b.struct_types[canonical_id] = typ_id
+	mut field_types := []TypeID{cap: fields.len}
+	mut field_names := []string{cap: fields.len}
+	for field in fields {
+		field_types << b.ssa_type_from_checker_type(field.typ)
+		field_names << field.name
+	}
+	b.m.type_store.types[typ_id] = Type{
+		kind:        .struct_t
+		fields:      field_types
+		field_names: field_names
+	}
+	return typ_id
+}
+
+fn (mut b Builder) build_heap_struct_init(id flat.NodeId, node flat.Node) ValueID {
+	initial_typ_id, initial_struct_name_id := b.struct_literal_type(node.source_value_id())
+	mut typ_id := initial_typ_id
+	mut struct_name_id := initial_struct_name_id
+	if typ_id == 0 || typ_id >= b.m.type_store.types.len
+		|| b.m.type_store.types[typ_id].kind != .struct_t
+		|| b.m.type_store.types[typ_id].fields.len == 0 {
+		mut checked_source_id := b.checked_expr_type_name(id)
+		checked_name := flat.source_type_name(checked_source_id)
+		if checked_name.starts_with('&') {
+			checked_source_id = flat.source_type_id(checked_name[1..])
+		}
+		if checked_source_id != 0 && checked_source_id != flat.source_type_unknown {
+			checked_typ_id := b.resolve_type(checked_source_id)
+			if checked_typ_id > 0 && checked_typ_id < b.m.type_store.types.len
+				&& b.m.type_store.types[checked_typ_id].kind == .struct_t
+				&& b.m.type_store.types[checked_typ_id].fields.len > 0 {
+				typ_id = checked_typ_id
+				struct_name_id = checked_source_id
+			}
+		}
+	}
 	if b.is_sum_type_id(typ_id) {
 		value := b.build_sum_init(node, typ_id, struct_name_id)
 		return b.heap_copy_value(value, typ_id)
@@ -14018,8 +17291,13 @@ fn (mut b Builder) build_heap_struct_init(node flat.Node) ValueID {
 					field_type := if fi < typ.fields.len { typ.fields[fi] } else { b.i64_type }
 					field_type_name_source_id := b.field_type_name(struct_name_id, fname)
 
-					field_val := b.coerce_store_value(b.build_field_value(field_expr_id,
-						field_type_name_source_id), field_type)
+					mut field_val := b.build_storable_field_value(field_expr_id,
+						field_type_name_source_id, field_type)
+					if b.is_interface_type_id(typ_id) && fname == '_typ' {
+						if concrete_type := b.interface_init_concrete_type(node, typ_id) {
+							field_val = b.m.get_or_add_const(field_type, '${concrete_type}')
+						}
+					}
 					field_ptr := b.emit2(.get_element_ptr, b.m.type_store.get_ptr(field_type),
 						alloca, off_const)
 					b.emit2(.store, b.void_type, field_val, field_ptr)
@@ -14044,7 +17322,8 @@ fn (mut b Builder) build_heap_struct_init(node flat.Node) ValueID {
 		size_const := b.m.get_or_add_const(b.i64_type, '${size}')
 		ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 		src_cast := b.emit1(.bitcast, ptr_i8, alloca)
-		memdup_ref := b.m.add_value(.func_ref, ptr_i8, 'memdup', b.runtime_fn_id('memdup'))
+		memdup_ref := b.m.add_value(.func_ref, ptr_i8, '__ssa_memdup',
+			b.fn_ids['__ssa_memdup'])
 		result := b.emit3(.call, ptr_i8, memdup_ref, src_cast, size_const)
 		return b.emit1(.bitcast, b.m.type_store.get_ptr(typ_id), result)
 	}
@@ -14098,14 +17377,19 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 		owner = b.deref_type(address)
 	}
 	if owner > 0 && owner < b.m.type_store.types.len {
-		storage_field := if field_name == '__v_sum_type_tag__' && b.is_sum_type_id(owner) {
+		storage_field := if owner == b.map_type && field_name == 'data' {
+			// The SSA map header calls its sole field `state`, while the source
+			// map type exposes the same pointer as `data`.
+			'state'
+		} else if field_name == '__v_sum_type_tag__' && b.is_sum_type_id(owner) {
 			'typ'
 		} else {
 			field_name
 		}
 		if storage_field !in ['typ', '_pointer_variant_is_owned', '_payload'] && b.is_sum_type_id(owner) {
 			payload := b.get_field_ptr(address, '_payload')
-			return b.get_field_ptr(payload, storage_field)
+			canonical_field := b.canonical_sum_field_name(owner, storage_field)
+			return b.get_field_ptr(payload, canonical_field)
 		}
 		typ := b.m.type_store.types[owner]
 		index := typ.field_names.index(storage_field)
@@ -14126,6 +17410,24 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	pointer := b.m.type_store.get_ptr(b.i64_type)
 	return b.emit2(.get_element_ptr, pointer, address, zero)
+}
+
+// canonical_sum_field_name maps both qualified and short smartcast spellings to
+// the short payload field stored in the sum layout.
+fn (b &Builder) canonical_sum_field_name(sum_type TypeID, requested string) string {
+	sum_name_source_id := b.sum_name_for_type_id(sum_type) or { return requested }
+	sum_name := flat.source_type_name(sum_name_source_id)
+	variants := b.sum_type_variants.type_ids(sum_name_source_id) or { return requested }
+	module_name := sum_name.all_before_last('.')
+	for variant in variants {
+		variant_name := flat.source_type_name(variant)
+		short_field := sum_variant_field_name(variant_name, module_name)
+		qualified_field := sum_field_name(variant_name)
+		if requested == short_field || requested == qualified_field {
+			return short_field
+		}
+	}
+	return requested
 }
 
 // embedded_field_path retains each embed so pointer fields are loaded before their members.
@@ -14158,7 +17460,8 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	if typ := b.primitive_type_id(name_id) {
 		return typ
 	}
-	name := flat.source_type_name(name_id)
+	shape := flat.source_type_shape(name_id)
+	syntax := flat.source_type_syntax(name_id)
 	// wasm has no 128-bit integer, and a u128 that falls through the primitive
 	// table below degrades to a narrower type and then answers wrong: `u128 >> 64`
 	// gives 0 and a 128-bit product loses its high limb. Refuse the name here
@@ -14167,21 +17470,36 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	// resolution path, and a 64-bit target either supports u128 or refuses it in
 	// its own backend.
 	if b.m.target.ptr_size == 4 && name_id in [ssa_u128_source_type, ssa_i128_source_type] {
-		panic('wasm: `${name}` is not supported on the wasm target; wasm has no 128-bit integer type')
+		panic('wasm: `${flat.source_type_name(name_id)}` is not supported on the wasm target; wasm has no 128-bit integer type')
 	}
-	if name_id == ssa_thread_source_type || name.starts_with('thread ') {
+	if name_id == ssa_thread_source_type || shape.has(.thread_type) {
 		return b.u64_type
 	}
-	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return b.option_type_id(flat.source_type_id(name[1..]), name[0] == `!`)
+	if name_id in [ssa_c_wchar_source_type, ssa_wchar_character_source_type,
+		ssa_wchar_c_wchar_source_type] {
+		return b.u32_type
 	}
-	if name.starts_with('&') {
-		inner := b.resolve_type(flat.source_type_id(name[1..]))
-		return b.m.type_store.get_ptr(inner)
+	if name_id in [ssa_u128_source_type, ssa_i128_source_type] {
+		return b.wide_integer_type()
 	}
-	clean_name := normalize_primitive_type_name(name)
-	if clean_name != name {
-		return b.resolve_type(flat.source_type_id(clean_name))
+	if syntax.raw_base() != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
+		return b.option_type_id(syntax.raw_base(), shape.has(.result_type))
+	}
+	if shape.has(.pointer) {
+		return b.m.type_store.get_ptr(b.resolve_type(syntax.raw_base()))
+	}
+	clean_name := normalize_primitive_type_id(name_id)
+	if clean_name != name_id {
+		return b.resolve_type(clean_name)
+	}
+	if interface_typ := b.register_checker_interface(name_id) {
+		return interface_typ
+	}
+	name := flat.source_type_name(name_id)
+	if name.contains('[') {
+		if typ := b.register_checker_generic_struct(name) {
+			return typ
+		}
 	}
 	if alias_source_id := b.type_alias_target(name_id) {
 		if alias_source_id != name_id {
@@ -14189,7 +17507,7 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 		}
 	}
 	// SSA-level alias fallback (used when building without a checker).
-	if alias_typ := b.type_aliases[name] {
+	if alias_typ := b.type_aliases[name_id] {
 		if alias_typ > 0 {
 			return alias_typ
 		}
@@ -14198,24 +17516,27 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 		elem_type := b.resolve_type(b.fixed_array_elem_type_name(name_id))
 		return b.m.type_store.get_ptr(elem_type)
 	}
+	if typ := b.register_checker_generic_struct(name) {
+		return typ
+	}
 	// Nominal compiler descriptors can use these names without being runtime containers.
 	if name_id in [ssa_nominal_array_source_type, ssa_nominal_map_source_type] {
 		if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin' {
-			if typ := b.struct_types[b.cur_module + '.' + name] {
+			if typ := b.struct_types[flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), name_id)] {
 				return typ
 			}
 		}
-		if typ := b.struct_types[name] {
+		if typ := b.struct_types[name_id] {
 			return typ
 		}
 	}
-	if name.starts_with('[]') || name_id in [ssa_array_source_type, ssa_nominal_array_source_type] {
+	if shape.has(.array_type) || name_id in [ssa_array_source_type, ssa_nominal_array_source_type] {
 		return b.array_type
 	}
 	if name_id == ssa_strings_builder_source_type {
 		return b.array_type
 	}
-	if name.starts_with('map[') || name_id in [ssa_map_source_type, ssa_nominal_map_source_type] {
+	if shape.has(.map_type) || name_id in [ssa_map_source_type, ssa_nominal_map_source_type] {
 		return b.map_type
 	}
 	if b.is_enum_type_name(name_id) {
@@ -14226,10 +17547,11 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 			return typ
 		}
 	}
-	short_name := name.all_after('.')
-	if !name.contains('.') && b.cur_module.len > 0 && b.cur_module != 'main'
+	short_name := syntax.first_dot_suffix()
+	if !shape.has(.dotted) && b.cur_module.len > 0 && b.cur_module != 'main'
 		&& b.cur_module != 'builtin' {
-		qualified_name := b.cur_module + '.' + short_name
+		qualified_name := flat.source_type_composition_two(.qualified,
+			flat.source_type_id(b.cur_module), short_name)
 		if qualified_name in b.enum_types {
 			return b.i32_type
 		}
@@ -14266,7 +17588,7 @@ fn (mut b Builder) primitive_type_id(name_id u32) ?TypeID {
 		flat.source_type_i16 {
 			b.m.type_store.get_int(16)
 		}
-		flat.source_type_i32, flat.source_type_rune {
+		flat.source_type_i32 {
 			b.i32_type
 		}
 		flat.source_type_i64 {
@@ -14278,7 +17600,7 @@ fn (mut b Builder) primitive_type_id(name_id u32) ?TypeID {
 		flat.source_type_u16 {
 			b.u16_type
 		}
-		flat.source_type_u32 {
+		flat.source_type_u32, flat.source_type_rune {
 			b.u32_type
 		}
 		flat.source_type_u64 {
@@ -14309,15 +17631,19 @@ fn (mut b Builder) primitive_type_id(name_id u32) ?TypeID {
 }
 
 fn normalize_primitive_type_name(name string) string {
-	short_name := name.all_after('.')
-	return match short_name {
-		'int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'bool', 'string', 'void', 'voidptr', '' {
-			short_name
-		}
-		else {
-			name
-		}
+	return flat.source_type_name(normalize_primitive_type_id(flat.source_type_id(name)))
+}
+
+fn normalize_primitive_type_id(name u32) u32 {
+	short := flat.source_type_syntax(name).first_dot_suffix()
+	return if short in [flat.source_type_int, flat.source_type_i8, flat.source_type_char,
+		flat.source_type_i16, flat.source_type_i32, flat.source_type_rune, flat.source_type_i64,
+		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
+		flat.source_type_f32, flat.source_type_f64, flat.source_type_bool, flat.source_type_string,
+		flat.source_type_void, flat.source_type_voidptr, u32(0)] {
+		short
+	} else {
+		name
 	}
 }
 
@@ -14327,9 +17653,7 @@ fn (mut b Builder) option_type_id(base_name_id u32, is_result bool) TypeID {
 }
 
 fn (mut b Builder) option_type_id_with_payload(base_name_id u32, base_typ TypeID, is_result bool) TypeID {
-	base_name := flat.source_type_name(base_name_id)
-	key_text := (if is_result { '!' } else { '?' }) + base_name
-	key := flat.source_type_id(key_text)
+	key := flat.source_type_composition_one(if is_result { .result } else { .option }, base_name_id)
 	if typ := b.option_types[key] {
 		return typ
 	}
@@ -14369,12 +17693,13 @@ fn (b &Builder) option_value_type(typ_id TypeID) TypeID {
 }
 
 fn (b &Builder) option_payload_type_name(id flat.NodeId) u32 {
-	name_source_id := b.checked_expr_type_name(id)
-	name := flat.source_type_name(name_source_id)
-	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return flat.source_type_id(name[1..])
+	name := b.checked_expr_type_name(id)
+	shape := flat.source_type_shape(name)
+	syntax := flat.source_type_syntax(name)
+	if syntax.raw_base() != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
+		return syntax.raw_base()
 	}
-	return name_source_id
+	return name
 }
 
 fn (b &Builder) is_option_type(typ_id TypeID) bool {
@@ -14396,62 +17721,43 @@ fn (b &Builder) is_option_type(typ_id TypeID) bool {
 }
 
 fn (b &Builder) is_enum_type_name(name_id u32) bool {
-	name := flat.source_type_name(name_id)
-	if name.len == 0 {
-		return false
-	}
-	if name in b.enum_types {
-		return true
-	}
-	short_name := name.all_after('.')
-	return short_name in b.enum_types
+	if name_id == 0 { return false }
+	if name_id in b.enum_types { return true }
+	return flat.source_type_syntax(name_id).first_dot_suffix() in b.enum_types
 }
 
 fn (b &Builder) enum_autostr_fn_name(type_name_id u32) ?string {
-	type_name := flat.source_type_name(type_name_id)
-	if type_name_id == 0 {
-		return none
+	if type_name_id == 0 { return none }
+	clean := ssa_pointer_base_source_type(type_name_id)
+	mut candidates := [clean]
+	if !flat.source_type_shape(clean).has(.dotted) && b.cur_module.len > 0
+		&& b.cur_module !in ['main', 'builtin'] {
+		candidates << flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), clean)
 	}
-	clean := type_name.trim_left('&')
-	mut candidates := []string{}
-	candidates << clean
-	if !clean.contains('.') && b.cur_module.len > 0 && b.cur_module != 'main'
-		&& b.cur_module != 'builtin' {
-		candidates << '${b.cur_module}.${clean}'
-	}
-	candidates << clean.all_after_last('.')
+	candidates << flat.source_type_syntax(clean).unqualified()
 	for candidate in candidates {
-		if !b.is_enum_type_name(flat.source_type_id(candidate)) {
-			continue
-		}
-		fn_name := '${ssa_c_name(candidate)}__autostr'
-		if fn_name in b.fn_ids {
-			return fn_name
-		}
+		if !b.is_enum_type_name(candidate) { continue }
+		fn_name := '${ssa_c_name(flat.source_type_name(candidate))}__autostr'
+		if fn_name in b.fn_ids { return fn_name }
 	}
 	return none
 }
 
 // resolve_type_in_module lowers a source spelling in its declaration module.
 fn (mut b Builder) resolve_type_in_module(name_id u32, module_name string) TypeID {
-	name := flat.source_type_name(name_id)
-	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return b.option_type_id(flat.source_type_id(name[1..]), name[0] == `!`)
+	shape := flat.source_type_shape(name_id)
+	syntax := flat.source_type_syntax(name_id)
+	if syntax.raw_base() != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
+		return b.option_type_id(syntax.raw_base(), shape.has(.result_type))
 	}
-	if name.starts_with('&') {
-		inner := b.resolve_type_in_module(flat.source_type_id(name[1..]), module_name)
+	if shape.has(.pointer) {
+		inner := b.resolve_type_in_module(syntax.raw_base(), module_name)
 		return b.m.type_store.get_ptr(inner)
 	}
-	if !name.contains('.') && module_name.len > 0 && module_name != 'main'
-		&& module_name != 'builtin' {
-		qualified_name := module_name + '.' + name
-		qualified_id := flat.source_type_id(qualified_name)
-		if qualified_name in b.enum_types {
-			return b.i32_type
-		}
-		if typ := b.struct_types[qualified_name] {
-			return typ
-		}
+	if !shape.has(.dotted) && module_name.len > 0 && module_name !in ['main', 'builtin'] {
+		qualified_id := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), name_id)
+		if qualified_id in b.enum_types { return b.i32_type }
+		if typ := b.struct_types[qualified_id] { return typ }
 		if alias_source_id := b.type_alias_target(qualified_id) {
 			if alias_source_id != qualified_id {
 				return b.resolve_type_in_module(alias_source_id, module_name)
@@ -14463,28 +17769,22 @@ fn (mut b Builder) resolve_type_in_module(name_id u32, module_name string) TypeI
 
 // resolve_c_decl_type lowers a source spelling using C declaration rules.
 fn (mut b Builder) resolve_c_decl_type(name_id u32) TypeID {
-	name := flat.source_type_name(name_id)
-	if name.starts_with('...') {
-		return b.m.type_store.get_ptr(b.i8_type)
-	}
-	if name.starts_with('C.') {
-		return b.resolve_type(flat.source_type_id(name[2..]))
+	if flat.source_type_shape(name_id).has(.variadic) { return b.m.type_store.get_ptr(b.i8_type) }
+	if flat.source_type_query(name_id).has(.c_prefix) {
+		return b.resolve_type(flat.source_type_syntax(name_id).first_dot_suffix())
 	}
 	return b.resolve_type(name_id)
 }
 
 fn (b &Builder) type_alias_target(name_id u32) ?u32 {
-	name := flat.source_type_name(name_id)
-	if b.tc == unsafe { nil } || name.len == 0 {
-		return none
-	}
-	if target_source_id := b.tc.type_aliases.type_id(name) {
+	if b.tc == unsafe { nil } || name_id == 0 { return none }
+	if target_source_id := b.tc.type_aliases.type_id(name_id) {
 		return target_source_id
 	}
-	if !name.contains('.') && b.cur_module.len > 0 && b.cur_module != 'main'
-		&& b.cur_module != 'builtin' {
-		qualified_name := b.cur_module + '.' + name
-		if target_source_id := b.tc.type_aliases.type_id(qualified_name) {
+	if !flat.source_type_shape(name_id).has(.dotted) && b.cur_module.len > 0
+		&& b.cur_module !in ['main', 'builtin'] {
+		qualified := flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module), name_id)
+		if target_source_id := b.tc.type_aliases.type_id(qualified) {
 			return target_source_id
 		}
 	}
@@ -14590,7 +17890,7 @@ fn (b &Builder) infer_v_type(id flat.NodeId) u32 {
 		.prefix {
 			if node.op == .amp && node.children_count > 0 {
 				inner := b.infer_v_type(b.a.child(&node, 0))
-				return flat.source_type_id('&' + flat.source_type_name(inner))
+				return flat.source_type_composition_one(.pointer, inner)
 			}
 			return flat.source_type_int
 		}
@@ -14688,11 +17988,85 @@ fn (mut b Builder) emit4(op OpCode, typ TypeID, a ValueID, c ValueID, d ValueID,
 	return b.m.add_instr(op, b.cur_block, typ, ops)
 }
 
+fn (mut b Builder) build_compound_assign_value(op flat.Op, current ValueID, rhs ValueID, lhs_type_source_id u32) ValueID {
+	typ := b.value_type(current)
+	if typ == b.wide_integer_type() || b.value_type(rhs) == b.wide_integer_type() {
+		panic('ssa: unsupported 128-bit integer operation: compound ${op}')
+	}
+	if typ == b.str_type && op == .plus_assign {
+		return b.build_string_infix(.plus, current, rhs)
+	}
+	if value := b.build_compound_operator_call(lhs_type_source_id, op, current, rhs) {
+		return value
+	}
+	return b.emit2(b.compound_to_op(op, typ), typ, current, rhs)
+}
+
+// build_compound_operator_call lowers `a += b` on operator-overloaded values
+// through the same method used by `a + b`, instead of emitting integer add/sub
+// instructions on the aggregate representation.
+fn (mut b Builder) build_compound_operator_call(lhs_type_source_id u32, op flat.Op, current ValueID, rhs ValueID) ?ValueID {
+	typ_id := b.value_type(current)
+	if typ_id <= 0 || typ_id >= b.m.type_store.types.len {
+		return none
+	}
+	typ := b.m.type_store.types[typ_id]
+	if typ.kind !in [.struct_t, .array_t] {
+		return none
+	}
+	type_name := flat.source_type_name(lhs_type_source_id).trim_left('&')
+	if type_name.len == 0 || type_name in ['int', 'i64', 'u64', 'array', 'map'] {
+		return none
+	}
+	operator := match op {
+		.plus_assign { '+' }
+		.minus_assign { '-' }
+		.mul_assign { '*' }
+		.div_assign { '/' }
+		.mod_assign { '%' }
+		.amp_assign { '&' }
+		.pipe_assign { '|' }
+		.xor_assign { '^' }
+		else { return none }
+	}
+	short_name := type_name.all_after_last('.')
+	mut candidates := []string{}
+	candidates << '${type_name}.${operator}'
+	candidates << '${short_name}.${operator}'
+	if b.cur_module.len > 0 && b.cur_module !in ['main', 'builtin'] {
+		candidates << '${b.cur_module}.${type_name}.${operator}'
+	}
+	for candidate in candidates {
+		fn_idx := b.fn_ids[candidate] or { continue }
+		ret_type := b.m.funcs[fn_idx].typ
+		if ret_type == 0 {
+			return none
+		}
+		fn_ref := b.m.add_value(.func_ref, b.void_type, candidate, fn_idx)
+		mut args := []ValueID{}
+		args << fn_ref
+		args << current
+		args << rhs
+		return b.m.add_instr(.call, b.cur_block, ret_type, args)
+	}
+	return none
+}
+
 fn (b &Builder) compound_to_op(op flat.Op, typ TypeID) OpCode {
-	if b.m.target.ptr_size == 4 && op == .right_shift_unsigned_assign {
+	if b.is_float_type(typ) {
+		return match op {
+			.plus_assign { .fadd }
+			.minus_assign { .fsub }
+			.mul_assign { .fmul }
+			.div_assign { .fdiv }
+			.mod_assign { .frem }
+			else { .fadd }
+		}
+	}
+	if op == .right_shift_unsigned_assign {
 		return .lshr
 	}
-	if b.m.target.ptr_size == 4 && b.is_unsigned_type(typ) {
+	if b.is_unsigned_type(typ) {
 		match op {
 			.div_assign { return .udiv }
 			.mod_assign { return .urem }

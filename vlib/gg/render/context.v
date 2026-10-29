@@ -125,7 +125,7 @@ pub fn new_context(desc Desc) &Context {
 
 	if gfx.is_valid() {
 		buf_desc := gfx.BufferDesc{
-			size:  usize(max_v) * usize(sizeof(Vertex))
+			size:  uint(max_v) * uint(sizeof(Vertex))
 			type:  .vertexbuffer
 			usage: .stream
 		}

@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import strings
 import v.pref
 import v.scanner
@@ -8,12 +9,12 @@ import v.token
 struct FastcDeclarationBlockProbe {
 mut:
 	has_types           bool
-	declared_types      map[string]bool
-	declared_kinds      map[string]FastcDeclaredTypeKind
-	enum_flags          map[string]bool
+	declared_types      map[u32]bool
+	declared_kinds      map[u32]FastcDeclaredTypeKind
+	enum_flags          map[u32]bool
 	params_structs      map[string]bool
-	declaration_paths   map[string]string
-	declaration_modules map[string]string
+	declaration_paths   map[u32]string
+	declaration_modules map[u32]string
 	type_source         string
 	source_origins      []FastcSourceOrigin
 	body_spans          []int
@@ -166,7 +167,7 @@ fn test_fastc_declaration_block_skip_preserves_matching_close_diagnostics_and_re
 }
 
 // Differential oracle: declaration indexing before the function-body fast path.
-fn fastc_probe_unaccelerated_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string, mut type_source strings.Builder, mut source_origins []FastcSourceOrigin, mut body_spans []int) !bool {
+fn fastc_probe_unaccelerated_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[u32]bool, mut declared_kinds map[u32]FastcDeclaredTypeKind, mut enum_flags map[u32]bool, mut params_structs map[string]bool, mut declaration_paths map[u32]string, mut declaration_modules map[u32]string, mut type_source strings.Builder, mut source_origins []FastcSourceOrigin, mut body_spans []int) !bool {
 	mut scratch_body_spans := []int{}
 	mut pending_fn := false
 	mut fn_body_start := -1
@@ -271,14 +272,14 @@ fn fastc_probe_unaccelerated_declared_types(source string, path string, module_n
 				if name == 'C' && tok == .dot {
 					tok = scan.scan()
 					if tok == .name {
-						key := if next_c_struct_is_typedef {
+						key := if next_c_struct_is_typedef || kind == .alias_ {
 							'#Ctypedef#${scan.lit}'
 						} else {
 							'#Cstruct#${scan.lit}'
 						}
-						declared_types[key] = true
-						declaration_paths[key] = path
-						declaration_modules[key] = module_name
+						declared_types[flat.source_type_id(key)] = true
+						declaration_paths[flat.source_type_id(key)] = path
+						declaration_modules[flat.source_type_id(key)] = module_name
 					}
 					next_c_struct_is_typedef = false
 					next_enum_is_flag = false
@@ -286,15 +287,15 @@ fn fastc_probe_unaccelerated_declared_types(source string, path string, module_n
 					continue
 				}
 				key := fastc_type_key(module_name, name)
-				if key in declared_types {
+				if flat.source_type_id(key) in declared_types {
 					return error('fastc parser does not support duplicate type declaration `${name}` in module `${module_name}` in ${path}')
 				}
-				declared_types[key] = is_public
-				declared_kinds[key] = kind
-				declaration_paths[key] = path
-				declaration_modules[key] = module_name
+				declared_types[flat.source_type_id(key)] = is_public
+				declared_kinds[flat.source_type_id(key)] = kind
+				declaration_paths[flat.source_type_id(key)] = path
+				declaration_modules[flat.source_type_id(key)] = module_name
 				if kind == .enum_ && next_enum_is_flag {
-					enum_flags[key] = true
+					enum_flags[flat.source_type_id(key)] = true
 				}
 				if kind == .struct_ && next_struct_is_params {
 					params_structs[fastc_c_declared_type_name(key)] = true
@@ -371,9 +372,9 @@ fn test_fastc_serial_declaration_index_publishes_recorded_body_spans() {
 	}
 	expected := fastc_collect_declaration_chunk(sources, prefs, 0, sources.len)
 	assert !expected.failed, expected.error_message
-	mut declared_types := map[string]bool{}
-	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
-	mut enum_flags := map[string]bool{}
+	mut declared_types := map[u32]bool{}
+	mut declared_kinds := map[u32]FastcDeclaredTypeKind{}
+	mut enum_flags := map[u32]bool{}
 	mut params_structs := map[string]bool{}
 	mut type_source_paths := map[string]bool{}
 	mut type_sources := map[string]FastcDeclarationSource{}

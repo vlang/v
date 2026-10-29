@@ -5,6 +5,11 @@ See [mozilla SSE][mozilla_sse]
 as well as [whatwg][whatwg html spec]
 for detailed description of the protocol, and a simple web browser client example.
 
+`SSEMessage.encode()` returns the same wire representation used by `send_message`, through
+the shared `net.http.SSEEvent` encoder. It normalizes data line endings and removes CR/LF
+from the ID and event name. Empty fields are omitted, so a message with empty data does
+not dispatch a browser event. Use nonempty data when sending a message to an event listener.
+
 ## Usage
 
 With SSE we want to keep the connection open, so we are able to

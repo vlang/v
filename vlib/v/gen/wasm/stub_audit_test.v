@@ -46,8 +46,10 @@ fn stub_scratch() string {
 
 fn stub_enter_workspace() {
 	root := stub_scratch()
-	os.mkdir_all(root) or { panic(err) }
-	os.setenv('TMPDIR', os.join_path(root, 'vtmp'), true)
+	// See shape_enter_workspace in shapes_test.v: TMPDIR has to exist.
+	tmp_dir := os.join_path(root, 'vtmp')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	os.setenv('TMPDIR', tmp_dir, true)
 	os.setenv('VJOBS', '2', true)
 }
 

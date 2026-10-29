@@ -85,14 +85,14 @@ fn test_collected_declarations_preserve_field_children_and_enum_values() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.collect_types()
-	info := t.structs['model.Record'] or { panic('missing record') }
+	info := t.structs[flat.source_type_id('model.Record')] or { panic('missing record') }
 	assert info.fields.len == 1
 	assert info.fields[0].name == 'value'
 	assert info.fields[0].typ == flat.source_type_int
 	assert info.fields[0].default_expr == default_value
-	assert t.sum_types.type_ids('model.Choice') or { panic('missing choice') } == [flat.source_type_int]
-	assert t.enum_types['model.Kind'] == ['first', 'second']
-	assert t.enum_explicit_first_values['model.Kind']
+	assert t.sum_types.type_ids(flat.source_type_id('model.Choice')) or { panic('missing choice') } == [flat.source_type_int]
+	assert t.enum_types[flat.source_type_id('model.Kind')] == ['first', 'second']
+	assert t.enum_explicit_first_values[flat.source_type_id('model.Kind')]
 	assert t.globals.type_id('model.counter') or { panic('missing global') } == flat.source_type_i64
 }
 
@@ -110,6 +110,6 @@ fn test_collected_generic_sum_preserves_payload_parameter_spelling() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.collect_types()
-	variants := t.sum_types.type_ids('model.GenericChoice') or { panic('missing generic choice') }
+	variants := t.sum_types.type_ids(flat.source_type_id('model.GenericChoice')) or { panic('missing generic choice') }
 	assert variants.map(flat.source_type_name(it)) == ['T', 'model.Item', '&T']
 }

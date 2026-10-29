@@ -178,7 +178,8 @@ Explicit generic arguments retain the types written at the call site.
 Concrete generic instances report incompatible returned names and fields during checking and
 building, including generic closures and methods. For example, `fn flag[T](value T) bool`
 cannot return an `int` instance's `value`. Returns narrowed by type tests retain their normal
-smartcast behavior.
+smartcast behavior. Returned locals initialized by calls, match expressions, or fn literals
+retain their normal checking and lowering behavior.
 
 Concrete generic instances also report incompatible plain call arguments during checking and
 building. For example, passing a concrete `bool` field to a `string` parameter reports the

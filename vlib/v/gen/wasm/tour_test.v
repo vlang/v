@@ -401,3 +401,37 @@ fn test_fold_print_wasm_matches_native_text() {
 	}
 	assert code == 0, 'the host reported a non-zero exit: ${out}'
 }
+
+fn test_shared_array_text_requires_runtime_formatting() {
+	mutations := [
+		'mut view := unsafe { values[..] }; view[0] = 9',
+		'change(values)',
+		'alias := values; change(alias)',
+		'ArrayTextInts(values).change()',
+	]
+	for i, mutation in mutations {
+		for j, print_expr in ['println("\${values}")', 'println(values.str())'] {
+			source := '
+fn change(values []int) {
+	mut view := unsafe { values[..] }
+	view[0] = 9
+}
+type ArrayTextInts = []int
+fn (values ArrayTextInts) change() {
+	change(values)
+}
+fn main() {
+	values := [1, 2]
+	${mutation}
+	${print_expr}
+}
+'
+			tour_compile('shared_array_text_${i}_${j}', source) or {
+				assert err.msg().contains('error: the V wasm backend does not support runtime value formatting yet'), err.msg()
+				assert !err.msg().contains('panic'), err.msg()
+				continue
+			}
+			assert false, 'shared array text unexpectedly compiled; check that runtime formatting supports [9, 2]'
+		}
+	}
+}

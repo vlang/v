@@ -75,6 +75,11 @@ pass `-d use_bundled_libgc` to build GC from source. `-gc none` compiles without
 Generating C or an object file does not require this archive. Missing system `-lgc`
 libraries retain the linker diagnostic and advice to install the development package.
 
+Native library files passed directly in `#flag`, `-cflags`, `CFLAGS`, or `-ldflags` must exist
+when linking a program. A missing archive or shared library is reported before compiling the
+generated program, without downloading or launching the compatibility compiler. Build or
+restore the native dependency first. Generating C or an object file does not require these files.
+
 On Linux amd64, V's TCC fence shim uses a private symbol so it can link alongside
 TCC's atomic runtime helpers. Boehm GC builds use the canonical GC header under
 TCC, avoiding a duplicate compatibility definition of `GC_noop1_ptr`. These builds

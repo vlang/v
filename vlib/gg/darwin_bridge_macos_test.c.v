@@ -61,3 +61,36 @@ fn test_darwin_attribute_bridge_returns_objects() {
 		assert macos.msg_u64(key, 'length') > 0
 	}
 }
+
+fn test_darwin_diagonal_lines_stay_on_the_native_surface() {
+	mut pixels := [4096]u8{}
+	color_space := C.CGColorSpaceCreateDeviceRGB()
+	defer { C.CGColorSpaceRelease(color_space) }
+	context := C.CGBitmapContextCreate(&pixels[0], 32, 32, 8, 128, color_space, 1)
+	assert context != unsafe { nil }
+	defer { C.CGContextRelease(context) }
+	C.CGContextSetLineWidth(context, 7)
+	C.CGContextSetRGBStrokeColor(context, 0, 0, 1, 1)
+	for reversed in [false, true] {
+		for i in 0 .. pixels.len {
+			pixels[i] = 0
+		}
+		if reversed {
+			darwin_stroke_line(context, 24, 24, 4, 4, red)
+		} else {
+			darwin_stroke_line(context, 4, 4, 24, 24, red)
+		}
+		center := ((31 - 14) * 32 + 14) * 4
+		corner := ((31 - 4) * 32 + 24) * 4
+		assert pixels[center..center + 4] != [u8(0), 0, 0, 0]
+		assert pixels[corner..corner + 4] == [u8(0), 0, 0, 0]
+		// A subsequent wide blue stroke checks that both width and color were restored.
+		C.CGContextBeginPath(context)
+		C.CGContextMoveToPoint(context, 4, 28)
+		C.CGContextAddLineToPoint(context, 24, 28)
+		C.CGContextStrokePath(context)
+		restored := ((31 - 25) * 32 + 14) * 4
+		assert pixels[restored + 2] > 0
+		assert pixels[restored] == 0
+	}
+}

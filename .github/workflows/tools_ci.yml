@@ -228,7 +228,7 @@ jobs:
           persist-credentials: false
 
       - name: Start FreeBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
+        uses: cross-platform-actions/action@82668f1fbd89d9c99487604f822cbf6716f124d3 # v1.7.0
         with:
           operating_system: freebsd
           version: '15.1'
@@ -298,7 +298,7 @@ jobs:
           persist-credentials: false
 
       - name: Start OpenBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
+        uses: cross-platform-actions/action@82668f1fbd89d9c99487604f822cbf6716f124d3 # v1.7.0
         with:
           operating_system: openbsd
           version: '7.8'

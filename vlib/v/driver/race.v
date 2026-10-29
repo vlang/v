@@ -135,7 +135,7 @@ fn v3_keep_macos_debug_symbols(staged_binary string, bin_file string) {
 }
 
 // v3_remove_macos_debug_symbols removes the debug symbols of a macOS debug binary that
-// `v run` deletes after running it.
+// a run or test deletes after running it.
 fn v3_remove_macos_debug_symbols(bin_file string) {
 	os.rmdir_all(bin_file + '.dSYM') or {}
 }
