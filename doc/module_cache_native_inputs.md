@@ -50,6 +50,8 @@ archives, resolve through the native owner. Loop conditions containing `or { bre
 Caching is enabled by default. Use `-showcc` to inspect the final TCC invocation and
 `V3_CACHE_TRACE=1` to inspect module reuse. `-nocache`, production builds, and builds requiring
 complete retained C output keep their existing compilation paths.
+Ordinary program builds retain this cache with `-stats`; test statistics still compile
+instrumented test bodies from source.
 
 `-print-watched-files` and `-dump-files` parse source bodies to include every embedded resource,
 including resources omitted from warm declaration headers.

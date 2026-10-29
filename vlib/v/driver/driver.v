@@ -12155,7 +12155,6 @@ pub fn run(args []string) {
 			i += 2
 		} else if args[i] == '-stats' {
 			show_test_stats = true
-			no_cache = true
 			i++
 		} else if args[i] == '-Wimpure-v' {
 			warn_impure_v = true
@@ -12608,6 +12607,12 @@ pub fn run(args []string) {
 	target := pref.target_from(target_os, target_arch) or {
 		eprintln(err.msg())
 		exit(1)
+	}
+	if show_test_stats && (backend != 'c' || is_test_command
+		|| is_v3_test_file(input_file, backend, target)) {
+		// Test timing needs instrumented bodies. Ordinary C builds can keep their
+		// module cache, including the native-code bridge used by macOS TCC.
+		no_cache = true
 	}
 	if backend == 'x64' && (target.os != 'linux' || target.arch != 'amd64') {
 		eprintln('the x64 backend currently supports only linux/amd64')
