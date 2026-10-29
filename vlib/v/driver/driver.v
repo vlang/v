@@ -2519,18 +2519,6 @@ fn input_is_v3_compiler_entry(input_file string) bool {
 	return normalized.ends_with('/vlib/v/v.v')
 }
 
-// v3_compiles_fastc_by_default reports whether a build of `input_file` keeps the
-// FastC backend without `-compile-backend fastc` or `-all-backends`. Only the full
-// `cmd/v` CLI does: it is the V executable that users run `-b fastc` with. Portable
-// `-cross` C (the `vc/v.c` bootstrap snapshots) leaves it out: FastC's libtcc linking
-// and Mach-O signing are host specific, so such a snapshot would not compile and link
-// everywhere. The compiler that `make` and `makev.bat` build from the snapshot
-// rebuilds `cmd/v` through C, which keeps FastC again. Direct ARM64 builds leave
-// it out because their linker does not link the libtcc runtime.
-fn v3_compiles_fastc_by_default(input_file string, output_cross_c bool, backend string) bool {
-	return !output_cross_c && backend !in ['arm64', 'x64'] && input_is_cmd_v(input_file)
-}
-
 // x64_prod_ssa_optimizer_max_values bounds the global optimizer's peak memory.
 // Larger modules retain production register allocation and optimized C inputs.
 const x64_prod_ssa_optimizer_max_values = 1_000_000
@@ -12678,13 +12666,12 @@ pub fn run(args []string) {
 	// imports one of them, directly or through another module, gets it parsed as usual.
 	// `-all-backends` keeps everything; `-compile-backend <name>` opts a specific backend back
 	// in; the active `-b` target backend is always force-included.
-	// The full `cmd/v` CLI (the executable that `make`, `makev.bat`, `v self`, and `v up`
-	// produce) keeps WebAssembly and, through C, FastC. Direct ARM64 builds
-	// omit FastC's libtcc dependency. Explicit skip defines remove optional backends.
-	mut include_fastc := all_backends || v3_compiles_fastc_by_default(input_file, output_cross_c, backend)
+	// `cmd/v` defaults to C too, and builds a cached full compiler on demand when
+	// another backend is requested. Explicit skip defines remove optional backends.
+	mut include_fastc := all_backends
 	mut include_arm64 := all_backends
 	mut include_x64 := all_backends
-	mut include_wasm := all_backends || (cmd_v_build && !output_cross_c)
+	mut include_wasm := all_backends
 	mut include_eval := all_backends
 	for cb in compile_backends {
 		for name in cb.split(',') {
@@ -12991,7 +12978,7 @@ pub fn run(args []string) {
 	if backend == 'fastc' {
 		$if skip_fastc ? {
 			eprintln('fastc support is not compiled into this v3 executable')
-			eprintln('Rebuild V from source with `v self` (or `make`, or `makev.bat` on Windows); builds of `cmd/v` include FastC unless `-d skip_fastc` is passed.')
+			eprintln('Rebuild V from source with `v -compile-backend fastc self` or `v -all-backends self`.')
 			eprintln('A standalone `vlib/v/v.v` compiler needs `-compile-backend fastc` (or `-all-backends`) when it is built.')
 			exit(1)
 		} $else {

@@ -11,8 +11,9 @@ Options:
   All other options are passed to the build command. (e.g. -prod)
   Plain self-builds compile the full `cmd/v` CLI, which embeds and defaults to V3 on macOS,
   Linux, and BSD.
-  Plain self-builds keep the FastC backend, so the new compiler accepts `-b fastc`; pass
-  `-d skip_fastc` to leave it out.
+  Plain self-builds include only the C backend. Requests for an omitted backend automatically
+  build and run a cached full compiler; later requests reuse it while its sources are current.
+  Use `-compile-backend fastc` to include a particular backend, or `-all-backends` for all of them.
   On Apple Silicon, regular self-builds use bundled TCC by default; `CC` or `-cc` overrides it.
   On non-Windows hosts, -prod uses PGO with Clang when llvm-profdata is available.
   It builds an instrumented compiler, trains it on uncached self-compilation, then builds
@@ -25,9 +26,9 @@ Options:
   FastC replacement builds (`xN` without `-o`) reject options that the standalone compiler
   cannot preserve across every generation.
   On macOS ARM64, `-b arm64` builds the full CLI with the native ARM64 backend.
-  First run `v -compile-backend arm64 self` if the current compiler lacks that backend.
+  A C-only compiler automatically delegates this build to the full compiler.
   On Linux AMD64, `-b x64` builds the full CLI with the native AMD64 backend.
-  First enable the x64 backend with `v -compile-backend x64 self`.
+  A C-only compiler automatically delegates this build to the full compiler.
   Native builds retain the C backend and leave out FastC by default.
   `xN` repeats replacement builds, using the newly built compiler for the next build.
   Add `-o v_arm64` or `-o v_x64` to keep the current compiler and write a separate executable.

@@ -10664,10 +10664,15 @@ use `v help`, `v help build` and `v help build-c`.
 
 ### Native Backend binaries
 
-`-b native` has been replaced by `-b arm64` and `-b x64`. Enable the ARM64 backend with
-`v -compile-backend arm64 self`, then compile with `v -b arm64 file.v`. On Linux AMD64,
-first enable the x64 backend with `v -compile-backend x64 self`, then compile with
-`v -b x64 file.v`. The native backends do not link a garbage collector yet, so they always
+`v self` builds the compiler with only the C backend by default. Selecting another backend,
+such as `v -b arm64 file.v`, automatically builds and runs a full compiler in the tool cache.
+Later requests reuse it until its compiler or source dependencies change. `VTOOLS_NO_CACHE=1`
+builds a temporary full compiler for each request instead. To include optional backends in `v`
+itself, use `v -compile-backend arm64 self` or `v -all-backends self`.
+
+`-b native` has been replaced by `-b arm64` and `-b x64`. Use `v -b arm64 file.v` on macOS
+ARM64 or `v -b x64 file.v` on Linux AMD64. The native backends do not link a garbage collector yet,
+so they always
 build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
 allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
