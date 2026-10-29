@@ -58,7 +58,8 @@ const lowered_runtime_seeds = ['new_array_from_c_array_aligned', 'new_array_from
 	'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit']
 
 // float_runtime_seeds format the floats of a program that can have them.
-const float_runtime_seeds = ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l']
+const float_runtime_seeds = ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l',
+	'strconv.f64_to_decimal', 'strconv.f64_to_decimal_exact_int']
 
 const ownership_runtime_seeds = ['array.free', 'array__free', 'map.free', 'map__free', 'free']
 
