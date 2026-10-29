@@ -13087,7 +13087,8 @@ pub fn run(args []string) {
 				unsupported_modes << 'strict/checked C modes'
 			}
 			if c_compiler_explicit {
-				unsupported_modes << 'custom C compilers'
+				eprintln('fastc can only be used with TCC')
+				exit(1)
 			}
 			if no_builtin || no_preludes {
 				unsupported_modes << 'custom builtin/prelude modes'
