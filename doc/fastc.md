@@ -9,6 +9,9 @@ Ordinary `v self` builds include only the C backend. The first `-b fastc` reques
 builds a full compiler in the tool cache and runs it; subsequent requests reuse that compiler.
 Use `v -compile-backend fastc self` to include FastC in the main executable instead.
 
+On Windows, ordinary FastC programs set stdout and stderr to binary mode, preserving `\n`
+without CRT conversion to `\r\n`, as the default C backend does.
+
 Sum types currently use boxed payloads in FastC. Copying a sum containing a value variant can
 therefore share that variant's storage, unlike the independent value copies in the default
 C backend. Programs relying on sum value snapshots should use the default C backend until

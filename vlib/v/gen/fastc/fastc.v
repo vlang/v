@@ -20,6 +20,10 @@ typedef _Bool bool;
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
 
 typedef int8_t i8;
 typedef int16_t i16;
@@ -3898,11 +3902,26 @@ fn fastc_c_main_parameters(prefs &pref.Preferences) string {
 	}
 }
 
+// fastc_c_main_binary_stdio_lines returns the entry statements that switch stdout and
+// stderr out of the CRT's text mode on Windows, so a FastC program prints `\n` like the
+// same source built with cgen instead of `\r\n`. Selfhost builds get this from
+// builtin (`set_stream_binary_mode` in builtin_windows.c.v); header-targeted builds
+// emit no stdio setup at all, matching the `setvbuf` call they also skip.
+fn fastc_c_main_binary_stdio_lines(prefs &pref.Preferences) []string {
+	if prefs.building_v || prefs.target_libc_headers || prefs.normalized_target_os() != 'windows' {
+		return []
+	}
+	return ['_setmode(1, _O_BINARY);', '_setmode(2, _O_BINARY);']
+}
+
 fn fastc_synthesized_main(prefs &pref.Preferences, has_startup_inits bool, has_cleanup_hooks bool) string {
 	mut result := strings.new_builder(256)
 	selfhost := prefs.building_v
 	target_libc_headers := prefs.target_libc_headers
 	result.writeln('int ${fastc_c_main_name(prefs)}(${fastc_c_main_parameters(prefs)}) {')
+	for line in fastc_c_main_binary_stdio_lines(prefs) {
+		result.writeln('\t${line}')
+	}
 	if !target_libc_headers {
 		result.writeln('\tsetvbuf(stdout, NULL, _IONBF, 0);')
 	}

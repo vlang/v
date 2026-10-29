@@ -997,6 +997,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.indent++
 	g.promote_spawn_parameter_storage()
 	if is_main && !g.prefs.target_libc_headers {
+		for line in fastc_c_main_binary_stdio_lines(g.prefs) {
+			g.write_line(line)
+		}
 		g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
 		if g.selfhost {
 			g.write_line('g_main_argc = argc;')
@@ -1443,6 +1446,9 @@ fn (mut g Parser) parse_script() ! {
 	g.write_line('int ${main_name}(void) {')
 	g.indent++
 	if !g.prefs.target_libc_headers {
+		for line in fastc_c_main_binary_stdio_lines(g.prefs) {
+			g.write_line(line)
+		}
 		g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
 		if g.has_startup_inits {
 			g.write_line('v_fastc_init_globals();')
