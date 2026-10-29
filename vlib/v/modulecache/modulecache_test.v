@@ -1006,6 +1006,28 @@ fn header_of_source(root string, name string, source string) string {
 	return module_header(a, &tc, name, '', map[string]string{})
 }
 
+fn test_cached_struct_c_string_default_remains_a_c_string() ! {
+	root := os.join_path(os.vtmp_dir(), 'cached_c_string_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := header_of_source(root, 'selector', "module selector\npub struct Options {\npub:\n selector &char = c'#canvas'\n}\n")
+	assert header.contains('c"#canvas"'), header
+	path := os.join_path(root, 'selector.vh')
+	os.write_file(path, header)!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert a.nodes.any(it.kind == .char_literal && it.value == 'c:#canvas')
+}
+
+fn test_cached_c_string_spelling_keeps_escapes_and_quotes() {
+	assert c_string_expr_text(r'\0') == r'c"\0"'
+	assert c_string_expr_text(r'\\') == r'c"\\"'
+	assert c_string_expr_text("it's") == 'c"it\'s"'
+	assert c_string_expr_text(r"it\'s") == 'c"it\'s"'
+	assert c_string_expr_text('say "hi"') == r'c"say \"hi\""'
+}
+
 fn test_cached_struct_field_attributes_round_trip_without_warnings() ! {
 	root := os.join_path(os.vtmp_dir(), 'v3_cached_field_attrs_${os.getpid()}')
 	os.mkdir_all(root)!

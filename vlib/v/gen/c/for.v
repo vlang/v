@@ -142,6 +142,17 @@ fn (mut g FlatGen) gen_loop_continue_label(label string) {
 	}
 }
 
+fn (g &FlatGen) loop_condition_has_transfer(id flat.NodeId) bool {
+	if int(id) < 0 { return false }
+	node := g.a.nodes[int(id)]
+	if node.kind in [.break_stmt, .continue_stmt] { return true }
+	if node.kind in [.for_stmt, .for_in_stmt, .fn_literal, .lambda_expr] { return false }
+	for i in 0 .. node.children_count {
+		if g.loop_condition_has_transfer(g.a.child(&node, i)) { return true }
+	}
+	return false
+}
+
 // gen_for emits for output for c.
 @[direct_array_access]
 fn (mut g FlatGen) gen_for(node flat.Node) {
@@ -154,6 +165,10 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	cond_node := g.a.nodes[int(cond_id)]
 	post_node := g.a.child_node(&node, 2)
 	wrap_init := init_node.kind != .empty
+	// TCC parses a loop's condition before entering its control-flow scope.
+	// An `or { break }` or `or { continue }` must therefore run inside its body.
+	lower_condition := (g.tcc_program_unit || g.ccompiler == 'tinyc')
+		&& g.loop_condition_has_transfer(cond_id)
 
 	if wrap_init {
 		g.writeln('{')
@@ -170,12 +185,16 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	if init_node.kind == .empty && cond_node.kind == .empty && post_node.kind == .empty {
 		g.writeln('for (;;) {')
 	} else if init_node.kind == .empty && post_node.kind == .empty {
-		g.write('while (')
-		g.gen_expr(cond_id)
-		g.writeln(') {')
+		if lower_condition {
+			g.writeln('for (;;) {')
+		} else {
+			g.write('while (')
+			g.gen_expr(cond_id)
+			g.writeln(') {')
+		}
 	} else {
 		g.write('for (; ')
-		if cond_node.kind != .empty {
+		if cond_node.kind != .empty && !lower_condition {
 			g.gen_expr(cond_id)
 		}
 		g.write('; ')
@@ -187,6 +206,11 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.indent++
 	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
+	if lower_condition {
+		g.write('if (!(')
+		g.gen_expr(cond_id)
+		g.writeln(')) break;')
+	}
 	mut emitted_continue_label := false
 	mut body_reachable := true
 	for i in 3 .. node.children_count {

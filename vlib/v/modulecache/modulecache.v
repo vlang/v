@@ -7594,7 +7594,11 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			node.value_text()
 		}
 		.char_literal {
-			'`${escape_v_char(node.value)}`'
+			if node.value.starts_with('c:') {
+				c_string_expr_text(node.value[2..])
+			} else {
+				'`${escape_v_char(node.value)}`'
+			}
 		}
 		.string_literal {
 			"'${escape_v_string(node.value)}'"
@@ -7854,4 +7858,28 @@ fn escape_v_char(value string) string {
 	// escape sequences. Escaping it again would turn `\\` into `\\\\` in a
 	// cached header and change the rune's value when that header is parsed.
 	return value
+}
+
+// C-string nodes retain escape spellings. Preserve those escapes while using a
+// double-quoted delimiter, including strings originally written with single quotes.
+fn c_string_expr_text(value string) string {
+	mut out := strings.new_builder(value.len + 4)
+	out.write_string('c"')
+	mut escaped := false
+	for ch in value {
+		if escaped {
+			if ch != `\'` { out.write_u8(`\\`) }
+			out.write_u8(ch)
+			escaped = false
+		} else if ch == `\\` {
+			escaped = true
+		} else if ch == `"` {
+			out.write_string('\\"')
+		} else {
+			out.write_u8(ch)
+		}
+	}
+	if escaped { out.write_string('\\\\') }
+	out.write_u8(`"`)
+	return out.str()
 }

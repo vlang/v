@@ -765,6 +765,7 @@ mut:
 	is_shared                      bool
 	interface_exports              []string
 	object_file_mode               bool
+	tcc_program_unit               bool
 	no_builtin                     bool
 	suppress_main                  bool
 	coverage_dir                   string
@@ -1311,6 +1312,11 @@ pub fn (mut g FlatGen) set_c99_mode(enabled bool) {
 // set_ccompiler records the selected C compiler for compiler-specific output constraints.
 pub fn (mut g FlatGen) set_ccompiler(name string) {
 	g.ccompiler = name
+}
+
+// set_tcc_program_unit applies TCC's C constraints when the native owner uses another compiler.
+pub fn (mut g FlatGen) set_tcc_program_unit(enabled bool) {
+	g.tcc_program_unit = enabled
 }
 
 // set_prod controls production-only code generation such as removing assertions.
@@ -2830,6 +2836,31 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 		return 'objective-c'
 	}
 	return 'c'
+}
+
+// cache_native_dependency_directives returns the native preprocessing context for
+// a compiler-generated dependency manifest, including project-owned includes.
+pub fn cache_native_dependency_directives(a &flat.FlatAst, vroot string, flags []string, target pref.Target) string {
+	include_dirs := c_flag_include_dirs(flags)
+	mut current_file := ''
+	mut out := strings.new_builder(4096)
+	for node in a.nodes {
+		if node.kind == .file {
+			current_file = a.cached_header_sources[node.value] or { node.value }
+			continue
+		}
+		if node.kind != .directive { continue }
+		if node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
+			arg := c_include_arg_for_target(node.typ_text(), vroot, current_file, target)
+			if arg.len > 0 && !c_include_arg_is_builtin_abi_helper(arg, vroot) {
+				out.writeln(c_native_source_context_header_include(arg, vroot, current_file, include_dirs))
+			}
+		} else if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif',
+			'pragma', 'error', 'warning'] {
+			out.writeln(c_preprocessor_directive_line(node.value, node.typ_text()))
+		}
+	}
+	return out.str()
 }
 
 // cache_native_inputs_language reports the richest preprocessor language any
@@ -20214,7 +20245,13 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define false 0')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.writeln('#if defined(__TINYC__) || defined(_MSC_VER)')
+	if g.tcc_program_unit {
+		// Native objects share TCC's padded empty structs while retaining their
+		// compiler's SDK and Objective-C macros.
+		g.writeln('#if 1')
+	} else {
+		g.writeln('#if defined(__TINYC__) || defined(_MSC_VER)')
+	}
 	g.writeln('#define E_STRUCT_DECL unsigned char _dummy_pad')
 	g.writeln('#define E_STRUCT 0')
 	g.writeln('#else')
