@@ -7865,6 +7865,10 @@ v env -json
 one of them. For a bug report, use `v doctor` instead: it also shows compiler
 versions, git state and C toolchain details.
 
+On Windows, V disables system loader dialogs for its child processes. A tool with a missing DLL
+can therefore fail without blocking commands such as `v doctor` on a popup. The tool's exit status
+is still reported normally; install or repair its dependencies to make it usable.
+
 Note that `VOSARGS` replaces the whole command line of every `v` invocation, so
 exporting it in a shell makes each later `v` call ignore its own arguments.
 
