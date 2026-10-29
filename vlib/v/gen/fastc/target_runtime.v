@@ -38,7 +38,7 @@ static inline v_fastc_native_pair_u64 v_fastc_native_pair_from_multi(MultiReturn
 
 // fastc_target_collect_native_context tracks qualified C references and header
 // ownership in V source, following only selected compile-time branches. C headers
-// belong to the C compiler and are never opened or parsed by FastC.
+// keep their C signatures; quoted local headers are checked for native facade ownership.
 fn fastc_target_collect_native_context(source string, path string, prefs &pref.Preferences, mut references map[string]bool, mut declarations map[string]bool) bool {
 	return fastc_target_collect_native_facts(source, path, prefs, mut references, mut declarations).has_header
 }
@@ -47,6 +47,8 @@ struct FastcNativeSourceFacts {
 mut:
 	has_header   bool
 	links_native bool
+	// local_headers lists the resolved paths of selected `#include "path"` headers.
+	local_headers []string
 }
 
 // fastc_target_collect_native_facts also records whether the file's selected
@@ -73,6 +75,7 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 						branch := fastc_target_collect_native_facts(selected.source, path, prefs, mut references, mut declarations)
 						facts.has_header = facts.has_header || branch.has_header
 						facts.links_native = facts.links_native || branch.links_native
+						facts.local_headers << branch.local_headers
 					}
 					scan = selected_scan
 					tok = selected.tok
@@ -89,6 +92,11 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 					'dragonfly', 'solaris', 'android'] || pref.comptime_flag_value(prefs, qualifier) {
 					if directive[0] != 'flag' {
 						facts.has_header = true
+						if directive[0] == 'include' {
+							if header := fastc_native_quoted_include_path(scan.lit, path, prefs) {
+								facts.local_headers << header
+							}
+						}
 					} else if directive[1..].any(!it.starts_with('-')
 						&& (it.ends_with('.c') || it.ends_with('.cpp') || it.ends_with('.cc')
 							|| it.ends_with('.m') || it.ends_with('.mm') || it.ends_with('.o')
@@ -128,6 +136,8 @@ mut:
 	files_with_headers           map[string]bool
 	files_linking_native_sources map[string]bool
 	declaration_paths            map[string][]string
+	// local_headers maps a V source path to its selected quoted-include headers.
+	local_headers map[string][]string
 }
 
 fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) FastcNativeSourceContext {
@@ -141,6 +151,9 @@ fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Pref
 		}
 		if facts.links_native {
 			context.files_linking_native_sources[source.path] = true
+		}
+		if facts.local_headers.len > 0 {
+			context.local_headers[source.path] = facts.local_headers
 		}
 		for name, _ in declarations {
 			mut paths := context.declaration_paths[name] or { []string{} }
@@ -163,11 +176,106 @@ fn fastc_merge_native_source_context(mut context FastcNativeSourceContext, chunk
 	for path, _ in chunk.files_linking_native_sources {
 		context.files_linking_native_sources[path] = true
 	}
+	for path, headers in chunk.local_headers {
+		context.local_headers[path] = headers
+	}
 	for name, chunk_paths in chunk.declaration_paths {
 		mut paths := context.declaration_paths[name] or { []string{} }
 		paths << chunk_paths
 		context.declaration_paths[name] = paths
 	}
+}
+
+// fastc_native_quoted_include_path resolves the `"path"` operand of an `#include`
+// directive body the way the C compiler will see it: `@VEXEROOT`/`@VMODROOT`
+// expanded and relative paths taken from the including V file's directory.
+// System (`<...>`) includes return none.
+fn fastc_native_quoted_include_path(directive string, source_path string, prefs &pref.Preferences) ?string {
+	open_quote := directive.index('"') or { return none }
+	close_quote := directive.index_after_('"', open_quote + 1)
+	if close_quote <= open_quote + 1 {
+		return none
+	}
+	mut header := directive[open_quote + 1..close_quote]
+	if header.contains('@VEXEROOT') || header.contains('@VROOT') {
+		header = header.replace('@VEXEROOT', prefs.vroot).replace('@VROOT', prefs.vroot)
+	}
+	if header.contains('@VMODROOT') {
+		header = header.replace('@VMODROOT', fastc_vmod_root_for_file(source_path))
+	}
+	if !os.is_abs_path(header) {
+		header = os.join_path(os.dir(source_path), header)
+	}
+	return header
+}
+
+// fastc_c_header_skip_trivia skips C whitespace and comments without interpreting declarations.
+fn fastc_c_header_skip_trivia(text string, start int) int {
+	mut i := start
+	for i < text.len {
+		if text[i].is_space() {
+			i++
+		} else if i + 1 < text.len && text[i] == `/` && text[i + 1] == `/` {
+			i += 2
+			for i < text.len && text[i] != `\n` {
+				i++
+			}
+		} else if i + 1 < text.len && text[i] == `/` && text[i + 1] == `*` {
+			i += 2
+			for i + 1 < text.len && !(text[i] == `*` && text[i + 1] == `/`) {
+				i++
+			}
+			i = if i + 1 < text.len { i + 2 } else { text.len }
+		} else {
+			break
+		}
+	}
+	return i
+}
+
+// fastc_c_header_declares_function reports whether a header names a function outside
+// comments and quoted literals, allowing whitespace and comments before the argument list.
+fn fastc_c_header_declares_function(text string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut i := 0
+	for i < text.len {
+		i = fastc_c_header_skip_trivia(text, i)
+		if i >= text.len {
+			break
+		}
+		if text[i] in [`'`, `"`] {
+			quote := text[i]
+			i++
+			for i < text.len {
+				if text[i] == `\\` {
+					i += 2
+				} else if text[i] == quote {
+					i++
+					break
+				} else {
+					i++
+				}
+			}
+			continue
+		}
+		if text[i].is_alnum() || text[i] == `_` {
+			start := i
+			for i < text.len && (text[i].is_alnum() || text[i] == `_`) {
+				i++
+			}
+			if text[start..i] == name {
+				next := fastc_c_header_skip_trivia(text, i)
+				if next < text.len && text[next] == `(` {
+					return true
+				}
+			}
+		} else {
+			i++
+		}
+	}
+	return false
 }
 
 // fastc_target_libc_declares leaves the standard headers' exact qualifiers
