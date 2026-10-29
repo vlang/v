@@ -816,6 +816,76 @@ fn main() {
 	}
 }
 
+fn test_instances_keep_the_inferred_types_of_loop_values() {
+	source := "fn take_u8(n u8) u8 {
+	return n
+}
+
+fn sized[T](x T) {
+	lengths := [match typeof(x).name {
+		'u8' { u8(2) }
+		else { 4 }
+	}]
+	for length in lengths {
+		assert take_u8(length) == 2
+	}
+	aliases := lengths
+	for _, length in aliases {
+		copy := length
+		assert take_u8(copy) == 2
+	}
+}
+
+fn main() {
+	sized(u8(1))
+}
+"
+	for res in [check_program('inferred_loop_check', source),
+		build_program('inferred_loop_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+fn test_instances_still_report_incompatible_plain_loop_values() {
+	source := 'fn take_u8(n u8) {}
+
+fn from_param[T](values []T) {
+	for value in values {
+		take_u8(value)
+	}
+}
+
+fn from_alias[T](values []T) {
+	alias := values
+	for value in alias {
+		take_u8(value)
+	}
+}
+
+fn from_literal[T](value T) {
+	for item in [value] {
+		take_u8(item)
+	}
+}
+
+fn main() {
+	from_param([u64(1)])
+	from_alias([u64(1)])
+	from_literal(u64(1))
+}
+'
+	for res in [check_program('plain_loop_check', source), build_program('plain_loop_build', source)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		errors := error_lines(res.output)
+		assert errors.len == 3, res.output
+		for error in errors {
+			assert error.contains('cannot use `u64` as `u8` in argument 1 to `take_u8`'), res.output
+		}
+	}
+}
+
 // A type argument that is an alias with methods of its own, `Octet` for `T`: the
 // clone of `pack` spells its base type, `string`, where the alias's method is
 // the one `el.val.pack()` calls, and the instance is valid in a check and in a

@@ -3392,7 +3392,8 @@ fn (tc &TypeChecker) call_arg_is_judged_in_clone(err TypeError, fn_idx int) bool
 // a plain value whose locals do too. A clone can type a local by another
 // initializer than its instance: `len := match name { 'a' { u8(2) } else { 4 } }`
 // is a `u8`, and an `int` in a clone, and a local holding a fn literal has the
-// type the literal returns there.
+// type the literal returns there. A for-in binding inherits its iterable's
+// inferred type, so its iterable's locals must have plain initializers too.
 fn (tc &TypeChecker) locals_have_plain_initializers(id flat.NodeId, fn_idx int, depth int) bool {
 	name := tc.plain_value_root_name(id)
 	if name.len == 0 {
@@ -3419,6 +3420,14 @@ fn (tc &TypeChecker) locals_have_plain_initializers(id flat.NodeId, fn_idx int, 
 					if i != 1 && tc.plain_value_root_name(tc.a.child(node, i)) == name {
 						return false
 					}
+				}
+			}
+		}
+		if node.kind == .for_in_stmt && node.children_count >= 3 {
+			for i in 0 .. 2 {
+				if tc.plain_value_root_name(tc.a.child(node, i)) == name
+					&& !tc.locals_have_plain_initializers(tc.a.child(node, 2), fn_idx, depth + 1) {
+					return false
 				}
 			}
 		}
