@@ -138,18 +138,24 @@ const compiler_tree_large_cold_cache_source_limit = i64(10_000_000)
 const v3_cache_population_lock_name = 'large_cold_population.lock'
 const v3_large_cold_cache_reason = 'cold source graph is too large for scoped cache population'
 const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
-const scoped_linux_user_job_limit = 4
+const scoped_user_job_count = 4
 const diagnostics_server_job_limit = 8
 
-// scoped_linux_job_limit is how many jobs a compilation with scoped arenas
+// scoped_user_job_limit is how many jobs a compilation with scoped arenas
 // runs at once. A diagnostics server's check keeps no arena past its semantic
 // check, and the editor waits on it: it takes more of the pool.
-fn scoped_linux_job_limit(check_only bool, diagnostics_server bool) int {
+fn scoped_user_job_limit(check_only bool, diagnostics_server bool) int {
 	return if check_only && diagnostics_server {
 		diagnostics_server_job_limit
 	} else {
-		scoped_linux_user_job_limit
+		scoped_user_job_count
 	}
+}
+
+// Explicit macOS worker counts keep their requested parallelism. Automatic
+// user pools use the bounded arena configuration, as Linux pools already do.
+fn should_limit_scoped_user_jobs(building_v bool, scoped bool, host_os string, vjobs string) bool {
+	return !building_v && scoped && (host_os == 'linux' || (host_os == 'macos' && vjobs == ''))
 }
 
 const scoped_transform_signature_headroom = 2048
@@ -12575,17 +12581,14 @@ pub fn run(args []string) {
 	// serial, keep that pool in the compilation arena so close_workers never
 	// observes a pool allocated in a released markused scope.
 	scope_prealloc_markused := scope_prealloc_stages && !current_no_parallel
-	$if linux {
-		// Large preallocated user graphs retain worker-local arenas between phases.
-		// Bound Linux pools to the configuration used for the scoped-memory path;
-		// high VJOBS values otherwise multiply both RSS and shared-cache pressure.
-		if !building_v && scope_prealloc_stages && runtime.nr_jobs() > scoped_linux_user_job_limit {
-			job_limit := scoped_linux_job_limit(check_only, os.getenv('V_DIAGNOSTICS_SERVER') != '')
-			if runtime.nr_jobs() > job_limit {
-				workers.limit_pool_size(job_limit - 1)
-			}
+	if should_limit_scoped_user_jobs(building_v, scope_prealloc_stages, os.user_os(), os.getenv('VJOBS'))
+		&& runtime.nr_jobs() > scoped_user_job_count {
+		job_limit := scoped_user_job_limit(check_only, os.getenv('V_DIAGNOSTICS_SERVER') != '')
+		if runtime.nr_jobs() > job_limit {
+			workers.limit_pool_size(job_limit - 1)
 		}
 	}
+
 	if (building_v || cmd_v_build) && !target_libc_headers {
 		if no_parallel {
 			// This controls the current build only. Keep parallel support in the output
@@ -14667,7 +14670,6 @@ pub fn run(args []string) {
 		library_body_frontiers := skip_library_bodies && effective_c_compiler != 'msvc'
 			&& !ownership_mode && 'ownership' !in prefs.user_defines
 			&& 'autofree' !in prefs.user_defines
-			&& markused.can_check_library_body_frontiers(a, &pre_tc)
 		mut check_was_parallel := false
 		mut check_may_be_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {

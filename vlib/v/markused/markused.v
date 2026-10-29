@@ -203,20 +203,6 @@ pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.
 	return used
 }
 
-// can_check_library_body_frontiers keeps the on-demand checker on the lazy body path.
-pub fn can_check_library_body_frontiers(a &flat.FlatAst, tc &types.TypeChecker) bool {
-	mut body_count := 0
-	for idx in tc.top_level_idx {
-		if a.nodes[idx].kind in [.fn_decl, .c_fn_decl] {
-			body_count++
-			if body_count >= min_eager_markused_bodies {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 // mark_used_checking_library_bodies checks each reached concrete library body before
 // collecting its calls, retaining the current reachability queue between frontiers.
 // The checker and reachability results belong to the caller's compilation arena.
@@ -1022,7 +1008,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	mut body_index := map[int]int{}
 	mut body_results := []BodyCalls{}
-	if body_ids.len >= min_eager_markused_bodies
+	// Frontier checking discovers bodies on demand; eagerly collecting checked bodies
+	// repeats work and retains call lists for declarations the queue never reaches.
+	if library_body_checker == unsafe { nil } && body_ids.len >= min_eager_markused_bodies
 		&& (!use_prepared || markused_can_parallel_precollect(&collector))
 		&& (!tc.skips_library_bodies || a.worker_count() > 0) {
 		mut checked_ids := []int{}
