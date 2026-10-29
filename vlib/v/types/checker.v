@@ -4765,6 +4765,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	}
 	tc.static_associated_signature_count = tc.fn_ret_types.len
 	tc.build_const_suffixes()
+	tc.fold_struct_fixed_array_lens()
 	tc.build_struct_embed_index()
 	if tc.building_v_fast {
 		tc.cache_direct_struct_field_types()
@@ -6280,6 +6281,63 @@ fn (tc &TypeChecker) const_key_for_suffix(name string) ?string {
 		}
 	}
 	return none
+}
+
+// fold_struct_fixed_array_lens evaluates the const lengths of fixed-array fields in their
+// struct's own module. A field is reached from other modules, where its bare `[n]u8` length
+// names that module's `n`, or nothing once two modules declare one; the field types were parsed
+// before the consts could be evaluated.
+fn (mut tc TypeChecker) fold_struct_fixed_array_lens() {
+	for name_id, fields in tc.structs {
+		module_name := tc.struct_modules[name_id] or { continue }
+		if module_name.len == 0 || module_name in ['main', 'builtin'] {
+			continue
+		}
+		base_id := flat.source_type_syntax(name_id).application_base()
+		if (tc.struct_generic_params[name_id] or { []u32{} }).len > 0
+			|| (tc.struct_generic_params[base_id] or { []u32{} }).len > 0 {
+			continue
+		}
+		mut folded := []StructField{}
+		for i, field in fields {
+			typ := tc.fixed_array_with_folded_len(field.typ, module_name) or { continue }
+			if folded.len == 0 {
+				folded = fields.clone()
+			}
+			folded[i] = StructField{
+				...field
+				typ: typ
+			}
+		}
+		if folded.len > 0 {
+			tc.structs[name_id] = folded
+		}
+	}
+}
+
+// fixed_array_with_folded_len is `t` with every const fixed-array length that resolves in
+// `module_name` evaluated, or none when nothing changes.
+fn (tc &TypeChecker) fixed_array_with_folded_len(t Type, module_name string) ?Type {
+	if t !is ArrayFixed {
+		return none
+	}
+	arr := t as ArrayFixed
+	elem := tc.fixed_array_with_folded_len(*arr.elem_type, module_name)
+	mut len := arr.len
+	if len == 0 && arr.len_expr.len > 0 {
+		value := tc.const_int_value_in_module(arr.len_expr, module_name, []string{}) or { 0 }
+		if value > 0 {
+			len = value
+		}
+	}
+	if elem == none && len == arr.len {
+		return none
+	}
+	return Type(ArrayFixed{
+		elem_type: if e := elem { tc.intern_type_reference(e) } else { arr.elem_type }
+		len:       len
+		len_expr:  if len != arr.len { '' } else { arr.len_expr }
+	})
 }
 
 // resolve_const_types resolves resolve const types information for types.
