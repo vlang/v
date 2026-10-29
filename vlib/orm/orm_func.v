@@ -1738,7 +1738,10 @@ fn (qb_ &QueryBuilder[T]) v_sql_upsert_and_last_id(value T, initialized_fields [
 	if count == 0 {
 		qb.conn.insert(qb.config.table, prepared.insert_data)!
 	} else if count == 1 {
-		qb.conn.update(qb.config.table, prepared.insert_data, prepared.where)!
+		update_data := filter_insert_only_update_fields(prepared.insert_data, qb.meta)
+		if update_data.fields.len > 0 {
+			qb.conn.update(qb.config.table, update_data, prepared.where)!
+		}
 	} else {
 		upsert_ambiguous_error(qb.config.table)!
 	}
@@ -1806,7 +1809,7 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	return qb
 }
 
-// save updates all mapped fields in `value` using the struct primary key or `id` field.
+// save updates mapped fields except sql_insert_only fields, using the primary key or `id`.
 pub fn save[T](conn Connection, value T) ! {
 	mut qb := new_query_internal[T](conn)
 	data, where := build_save_query_data[T](qb.meta, qb.config.table.name, value)!
@@ -1831,6 +1834,9 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 			where_data.data << data.data[i]
 			continue
 		}
+		if orm_insert_only_field(meta, field_name) != none {
+			continue
+		}
 		update_data.fields << field_name
 		update_data.data << data.data[i]
 	}
@@ -1841,6 +1847,42 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 		return error('${@FN}(): no updatable fields were found for table `${table_name}`')
 	}
 	return update_data, where_data
+}
+
+fn orm_insert_only_field(meta []TableField, name string) ?TableField {
+	for field in meta {
+		for attr in field.attrs {
+			if attr.name == 'sql_insert_only'
+				&& (field.name == name || field.name.ends_with('.${name}')
+					|| sql_field_name(field).to_lower() == name.to_lower()) {
+				return field
+			}
+		}
+	}
+	return none
+}
+
+fn validate_update_fields[T](meta []TableField, fields []string) ! {
+	for name in fields {
+		if field := orm_insert_only_field(meta, name) {
+			return error('ORM: cannot update insert-only field `${T.name}.${field.name}` (@[sql_insert_only])')
+		}
+	}
+}
+
+fn filter_insert_only_update_fields(data QueryData, meta []TableField) QueryData {
+	mut out := QueryData{}
+	for i, name in data.fields {
+		if orm_insert_only_field(meta, name) != none {
+			continue
+		}
+		out.fields << name
+		out.data << data.data[i]
+		if i < data.types.len {
+			out.types << data.types[i]
+		}
+	}
+	return out
 }
 
 fn find_save_primary_field_name(meta []TableField) ?string {
@@ -2659,7 +2701,7 @@ fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 	return qb
 }
 
-// update update record(s) in the database
+// update updates records, rejecting assignments to sql_insert_only fields.
 pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
@@ -2669,18 +2711,23 @@ pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	if qb.data.fields.len == 0 {
 		return error('${@FN}(): `update` need at least one `set` clause')
 	}
+	validate_update_fields[T](qb.meta, qb.data.fields)!
 	qb.conn.update(qb.config.table, qb.data, qb.where)!
 	return qb
 }
 
 // update_many updates multiple records by a key field, using batch CASE WHEN for efficiency.
 // key_field is the column used to match rows (e.g. 'id').
-// field_names selects which columns to update; if empty, all struct fields except key_field are updated.
+// field_names selects columns to update; sql_insert_only fields are rejected.
+// If empty, all mapped fields except key_field and sql_insert_only fields are updated.
 pub fn update_many[T](mut conn Connection, values []T, key_field string, field_names ...string) ! {
 	if values.len == 0 {
 		return error('${@FN}(): need at least one record')
 	}
 	mut qb := new_query_internal[T](conn)
+	key_name := qb.v_sql_field_name(key_field)
+	selected_fields := field_names.map(qb.v_sql_field_name(it))
+	validate_update_fields[T](qb.meta, selected_fields)!
 
 	// Build the field list from the first value
 	first := fill_data_with_struct[T](values[0], qb.meta)
@@ -2689,9 +2736,10 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	mut value_indexes := []int{}
 
 	for i, field in first.fields {
-		if field == key_field {
+		if field == key_name {
 			key_index = i
-		} else if field_names.len == 0 || field in field_names {
+		} else if (selected_fields.len == 0 || field in selected_fields)
+			&& orm_insert_only_field(qb.meta, field) == none {
 			value_fields << field
 			value_indexes << i
 		}
@@ -2708,7 +2756,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	mut update_data := QueryData{
 		fields:     value_fields
 		batch_rows: values.len
-		batch_key:  key_field
+		batch_key:  key_name
 	}
 
 	// Build data: per value_field, per row: [key_value, value_field_value]
@@ -2734,7 +2782,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	}
 
 	mut where_data := QueryData{
-		fields: [key_field]
+		fields: [key_name]
 		data:   [Primitive(key_values)]
 		kinds:  [.in]
 	}

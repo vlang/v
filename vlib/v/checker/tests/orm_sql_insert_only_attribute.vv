@@ -1,0 +1,13 @@
+@[sql_insert_only]
+module main
+@[sql_insert_only]
+struct InvalidModel {
+	id int
+}
+struct InvalidArgument {
+	id int @[sql_insert_only: true]
+}
+@[sql_insert_only]
+const invalid_constant = 1
+@[sql_insert_only]
+fn main() { println(invalid_constant) }

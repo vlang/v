@@ -13007,28 +13007,115 @@ fn (mut tc TypeChecker) check_sql_update_fields(id flat.NodeId, node flat.Node, 
 		table_name, table_end := sql_checker_table_type_token_from(tokens, update_idx + 1) or {
 			continue
 		}
-		mut set_idx := -1
-		for j in table_end .. tokens.len {
-			if tokens[j] == 'set' {
-				set_idx = j
-				break
-			}
-		}
-		if set_idx < 0 {
+		if table_end >= tokens.len || tokens[table_end] != 'set' {
 			continue
 		}
-		for i := set_idx + 1; i + 1 < tokens.len && tokens[i] != 'where'; i++ {
-			if tokens[i + 1] != '=' {
-				continue
+		mut end := table_end + 1
+		mut depth := 0
+		for end < tokens.len {
+			if depth == 0 && tokens[end] in ['where', ';'] {
+				break
 			}
-			field := tc.sql_orm_source_field(table_name, tokens[i]) or { continue }
-			if !struct_field_has_attr(field, 'fkey') {
-				continue
+			if tokens[end] in ['{', '(', '['] {
+				depth++
+			} else if tokens[end] in ['}', ')', ']'] {
+				depth--
 			}
-			tc.record_sql_error_at(.assignment_mismatch, "ORM: `${field.value}` is a foreign column of `${table_name}`, it can't update here", id, tc.sql_expr_text_pos(node, 'update ${table_name}', 'update '.len, table_name.len))
-			return
+			end++
+		}
+		mut assignments := tokens[table_end + 1..end]
+		mut source_node := node
+		if update_idx > 0 && tokens[update_idx - 1] == 'dynamic' && assignments.len == 1 {
+			if query_id := tc.dynamic_sql_query_data_node(assignments[0], id) {
+				source_node = *tc.a.node(query_id)
+				assignments = source_node.value.split(' ')[1..]
+			}
+		}
+		for name in sql_update_assignment_fields(assignments) {
+			field := tc.sql_orm_update_source_field(table_name, name) or { continue }
+			if struct_field_has_attr(field, 'sql_insert_only') {
+				tc.record_sql_error_at(.assignment_mismatch, 'ORM: cannot update insert-only field `${table_name}.${field.value}` (@[sql_insert_only])', id,
+					tc.sql_expr_text_pos(source_node, name, 0, name.len))
+			} else if struct_field_has_attr(field, 'fkey') {
+				tc.record_sql_error_at(.assignment_mismatch, "ORM: `${field.value}` is a foreign column of `${table_name}`, it can't update here", id, tc.sql_expr_text_pos(node, 'update ${table_name}', 'update '.len, table_name.len))
+				return
+			}
 		}
 	}
+}
+
+// Extract only assignment targets; conditional guards and right-hand sides are reads.
+fn sql_update_assignment_fields(tokens []string) []string {
+	if tokens.len == 0 {
+		return []string{}
+	}
+	if tokens[0] == '{' && tokens.last() == '}' {
+		return sql_update_assignment_fields(tokens[1..tokens.len - 1])
+	}
+	mut fields := []string{}
+	mut start := 0
+	mut depth := 0
+	for i, tok in tokens {
+		if tok in ['{', '(', '['] {
+			depth++
+		} else if tok in ['}', ')', ']'] {
+			depth--
+		} else if tok == ',' && depth == 0 {
+			fields << sql_update_assignment_fields(tokens[start..i])
+			start = i + 1
+		}
+	}
+	if start > 0 {
+		fields << sql_update_assignment_fields(tokens[start..])
+		return fields
+	}
+	if tokens[0] == 'if' {
+		open := tokens.index('{')
+		if open >= 0 && tokens.last() == '}' {
+			return sql_update_assignment_fields(tokens[open + 1..tokens.len - 1])
+		}
+		return fields
+	}
+	for i, tok in tokens {
+		if tok in ['=', '=='] && i > 0 {
+			fields << tokens[..i].join('')
+			break
+		}
+	}
+	return fields
+}
+
+fn (tc &TypeChecker) sql_orm_update_source_field(table_name string, name string) ?flat.Node {
+	decl := tc.source_struct_decl_for_name(flat.source_type_id(table_name)) or { return none }
+	for i in 0 .. decl.children_count {
+		field := tc.a.child_node(&decl, i)
+		if field.kind != .field_decl || orm_field_is_skipped(*field) {
+			continue
+		}
+		if field.value == name {
+			return *field
+		}
+		meta := field.generic_params()
+		if meta.len > 1 {
+			for attr in meta[1..] {
+				if attribute_name_is(attr, 'sql') && attr.contains(':')
+					&& attr.all_after(':').trim_space().trim('\'"') == name {
+					return *field
+				}
+			}
+		}
+		if sql_orm_field_is_embedded(*field) {
+			inner_name := if name.starts_with('${field.value}.') {
+				name.all_after('.')
+			} else {
+				name
+			}
+			if embedded := tc.sql_orm_update_source_field(field.typ_text(), inner_name) {
+				return embedded
+			}
+		}
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.Node, tokens []string) {
@@ -13056,7 +13143,8 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 			continue
 		}
 		has_comparison = true
-		if !sql_like_identifier(tokens[i]) || tokens[i] in field_names {
+		if !sql_like_identifier(tokens[i]) || tokens[i] in field_names
+			|| tc.sql_orm_update_source_field(table_name, tokens[i]) != none {
 			continue
 		}
 		if i > where_idx + 1 && tokens[i - 1] !in ['&&', '||', '('] {
@@ -13907,7 +13995,7 @@ fn (mut tc TypeChecker) check_dynamic_sql_query_data_fields(id flat.NodeId, toke
 	if fields.len == 0 {
 		return false
 	}
-	query_id := tc.dynamic_sql_query_data_node(alias_name) or { return false }
+	query_id := tc.dynamic_sql_query_data_node(alias_name, id) or { return false }
 	query := tc.a.node(query_id)
 	query_tokens := query.value.split(' ')
 	mut field_names := fields.map(it.name)
@@ -13928,22 +14016,43 @@ fn (mut tc TypeChecker) check_dynamic_sql_query_data_fields(id flat.NodeId, toke
 	return false
 }
 
-fn (tc &TypeChecker) dynamic_sql_query_data_node(alias_name string) ?flat.NodeId {
-	for node in tc.a.nodes {
-		if node.kind != .decl_assign || node.children_count < 2 {
+fn (tc &TypeChecker) dynamic_sql_query_data_node(alias_name string, use_id flat.NodeId) ?flat.NodeId {
+	use_node := tc.a.node(use_id)
+	mut found := flat.NodeId(-1)
+	mut found_offset := -1
+	for i, node in tc.a.nodes {
+		if node.kind !in [.decl_assign, .assign] || node.children_count < 2 {
 			continue
 		}
 		lhs := tc.a.child_node(&node, 0)
-		if lhs.kind != .ident || lhs.value != alias_name {
+		if lhs.kind != .ident || lhs.value != alias_name || lhs.pos.id != use_node.pos.id
+			|| lhs.pos.offset >= use_node.pos.offset {
+			continue
+		}
+		parent_id := tc.direct_parent_id(flat.NodeId(i))
+		if !tc.valid_node_id(parent_id) {
+			continue
+		}
+		mut ancestor := tc.direct_parent_id(use_id)
+		for tc.valid_node_id(ancestor) && ancestor != parent_id {
+			ancestor = tc.direct_parent_id(ancestor)
+		}
+		if ancestor != parent_id || lhs.pos.offset <= found_offset {
 			continue
 		}
 		rhs_id := tc.a.child(&node, 1)
 		rhs := tc.a.node(rhs_id)
+		found_offset = lhs.pos.offset
 		if rhs.kind == .sql_expr && rhs.value.starts_with('querydata ') {
-			return rhs_id
+			found = rhs_id
+		} else {
+			found = flat.NodeId(-1)
 		}
 	}
-	return none
+	if int(found) < 0 {
+		return none
+	}
+	return found
 }
 
 fn (tc &TypeChecker) dynamic_sql_field_pos(query_id flat.NodeId, field_name string) token.Pos {
