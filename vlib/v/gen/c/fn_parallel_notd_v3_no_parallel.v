@@ -2884,7 +2884,8 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 		node := unsafe { &a.nodes[idx] }
 		cost += flat_cgen_node_cost(node.kind)
 		if node.kind == .lock_expr || node.kind == .label_stmt
-			|| (node.kind == .defer_stmt && node.value == 'function') {
+			|| (node.kind == .defer_stmt && node.value == 'function')
+			|| c_call_needs_prelude_scan(a, node) {
 			needs_prelude_scan = true
 		}
 		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {

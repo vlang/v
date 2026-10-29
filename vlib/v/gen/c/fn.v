@@ -468,6 +468,25 @@ fn flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId) int {
 	return if span > 0 { span + 64 } else { int(node.children_count) + 65 }
 }
 
+// c_call_needs_prelude_scan keeps C function names available to local-name protection.
+// The prelude collector uses checker metadata to distinguish an implicit C selector
+// from another empty-base selector, so the planner must conservatively retain both.
+@[inline]
+fn c_call_needs_prelude_scan(a &flat.FlatAst, node &flat.Node) bool {
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	callee := a.child_node(node, 0)
+	if callee.kind == .ident {
+		return callee.value.starts_with('C.')
+	}
+	if callee.kind != .selector || callee.children_count == 0 {
+		return false
+	}
+	base := a.child_node(callee, 0)
+	return base.kind == .empty || (base.kind == .ident && base.value == 'C')
+}
+
 fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_target bool, mut c_extern_refs map[string]bool, mut stack []flat.NodeId) (int, bool) {
 	mut cost := 0
 	mut needs_prelude_scan := false
@@ -482,7 +501,8 @@ fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_tar
 		node := unsafe { &a.nodes[idx] }
 		cost += flat_cgen_node_cost(node.kind)
 		if node.kind == .lock_expr || node.kind == .label_stmt
-			|| (node.kind == .defer_stmt && node.value == 'function') {
+			|| (node.kind == .defer_stmt && node.value == 'function')
+			|| c_call_needs_prelude_scan(a, node) {
 			needs_prelude_scan = true
 		}
 		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
