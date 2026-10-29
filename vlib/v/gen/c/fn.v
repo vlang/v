@@ -7732,6 +7732,15 @@ fn (mut g FlatGen) c_call_is_int_out_arg(arg_id flat.NodeId, arg_idx int, param_
 
 fn c_type_is_pointer_to_platform_int(t &types.Type) bool {
 	if t is types.Pointer {
+		// Only V's own platform `int` (not a C typedef alias such as
+		// C.ptrdiff_t / C.intptr_t / C.ssize_t / C.SQLLEN, which are pointer-
+		// width on the C side) needs the 4-byte int-out copy. An alias to int
+		// (e.g. `type C.x = C.ptrdiff_t`) keeps its C width, so passing its
+		// address directly is correct; wrapping it in a C `int` truncates the
+		// value and can corrupt memory (see issue #31429).
+		if t.base_type is types.Alias {
+			return false
+		}
 		base := unalias_type(t.base_type)
 		if base is types.Primitive {
 			return base.size == 0 && base.props.has(.integer) && !base.props.has(.unsigned)
