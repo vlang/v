@@ -4,7 +4,9 @@ import os
 // scalars, and whether or not they come in an Option: `n, err := read(mut &buf)` followed
 // by `return n, err` leaves `buf` on the stack. One that returns a pointer among them
 // still moves it, and so does one that returns a Result, whose error may keep the
-// address; `mut &buf` is then the pointer the local is stored as.
+// address; `mut &buf` is then the pointer the local is stored as. The Result
+// producers retain it in an error branch so storage-borrow analysis cannot prove
+// that their arguments never escape.
 fn test_mut_address_arg_keeps_scalar_result_locals_on_the_stack() {
 	root := os.join_path(os.vtmp_dir(), 'v3_mut_address_arg_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -21,12 +23,20 @@ mut:
 	name [16]u8
 }
 
+struct EntryError {
+	Error
+	entry &Entry
+}
+
 fn fill(mut e Entry) (u64, u64) {
 	e.ino = 7
 	return 0, 0
 }
 
 fn fill_result(mut e Entry) !u64 {
+	if e.ino == 42 {
+		return EntryError{entry: unsafe { e }}
+	}
 	e.ino = 11
 	return 1
 }
@@ -42,6 +52,9 @@ fn fill_option_pair(mut e Entry) ?(u64, u64) {
 }
 
 fn fill_result_pair(mut e Entry) !(u64, u64) {
+	if e.ino == 42 {
+		return EntryError{entry: unsafe { e }}
+	}
 	e.ino = 17
 	return 3, 4
 }
@@ -124,14 +137,14 @@ fn main() {
 		'-o', out_path, main_path])
 	assert result.exit_code == 0, result.output
 	moved := 'allocation (local moved to the heap: '
-	escapes := 'its address escapes)'
-	// `Entry` holds a fixed array, so a returned `&Entry` is reported as escaping
-	// fixed-array storage.
+	escapes := 'its fixed array storage may escape)'
+	// `Entry` holds a fixed array, so returning its pointer directly or inside
+	// an error is reported as escaping fixed-array storage.
 	on_heap := {
 		'result_on_heap':           escapes
 		'forwarded_result_on_heap': escapes
 		'pair_on_heap':             escapes
-		'on_heap':                  'its fixed array storage may escape)'
+		'on_heap':                  escapes
 	}
 	assert result.output.count(moved) == on_heap.len, result.output
 	for name, reason in on_heap {
