@@ -218,7 +218,7 @@ jobs:
               has_hosted=true
               ;;
             macos-arm64)
-              hosted_matrix='{"include":[{"id":"macos-arm64","publish_unlock_variable":"TCCBIN_MACOS_ARM64_PUBLISH_UNLOCKED","os":"macos-latest","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
+              hosted_matrix='{"include":[{"id":"macos-arm64","publish_unlock_variable":"TCCBIN_MACOS_ARM64_PUBLISH_UNLOCKED","os":"macos-15","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
               has_hosted=true
               ;;
             freebsd-amd64)
@@ -230,7 +230,7 @@ jobs:
               has_bsd=true
               ;;
             all)
-              hosted_matrix='{"include":[{"id":"linux-amd64","publish_unlock_variable":"TCCBIN_LINUX_AMD64_PUBLISH_UNLOCKED","os":"ubuntu-latest","branch":"thirdparty-linux-amd64","script":"thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh"},{"id":"macos-amd64","publish_unlock_variable":"TCCBIN_MACOS_AMD64_PUBLISH_UNLOCKED","os":"macos-15-intel","branch":"thirdparty-macos-amd64","script":"thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh"},{"id":"macos-arm64","publish_unlock_variable":"TCCBIN_MACOS_ARM64_PUBLISH_UNLOCKED","os":"macos-latest","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
+              hosted_matrix='{"include":[{"id":"linux-amd64","publish_unlock_variable":"TCCBIN_LINUX_AMD64_PUBLISH_UNLOCKED","os":"ubuntu-latest","branch":"thirdparty-linux-amd64","script":"thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh"},{"id":"macos-amd64","publish_unlock_variable":"TCCBIN_MACOS_AMD64_PUBLISH_UNLOCKED","os":"macos-15-intel","branch":"thirdparty-macos-amd64","script":"thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh"},{"id":"macos-arm64","publish_unlock_variable":"TCCBIN_MACOS_ARM64_PUBLISH_UNLOCKED","os":"macos-15","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
               bsd_matrix='{"include":[{"id":"freebsd-amd64","publish_unlock_variable":"TCCBIN_FREEBSD_AMD64_PUBLISH_UNLOCKED","operating_system":"freebsd","version":"15.1","branch":"thirdparty-freebsd-amd64","script":"thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh","install":"sudo pkg install -y bash git gmake rsync","cc":"cc"},{"id":"openbsd-amd64","publish_unlock_variable":"TCCBIN_OPENBSD_AMD64_PUBLISH_UNLOCKED","operating_system":"openbsd","version":"7.8","branch":"thirdparty-openbsd-amd64","script":"thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh","install":"sudo pkg_add bash git gmake rsync","cc":"clang"}]}'
               has_hosted=true
               has_bsd=true

@@ -1491,10 +1491,8 @@ fn prepare_toolchain_observation_fixture(suffix string) ToolchainObservationFixt
 	profile_path := os.join_path(automation, profile_relative_path)
 	os.mkdir_all(os.dir(profile_path)) or { panic(err) }
 	os.write_file(profile_path, profile_source) or { panic(err) }
-	mut registry_source := os.read_file(os.join_path(automation_root(), 'targets.json')) or {
-		panic(err)
-	}
-	binding_marker := '"toolchain_profile": {\n        "profile_id": null,\n        "profile_path": null,\n        "profile_sha256": null\n      }'
+	mut registry_source := dormant_registry_source(automation_root())
+	binding_marker := dormant_toolchain_binding
 	assert registry_source.count(binding_marker) == 6
 	registry_source = registry_source.replace_once(binding_marker,
 		'"toolchain_profile": {\n        "profile_id": "freebsd-amd64-synthetic-v1",\n        "profile_path": "${profile_relative_path}",\n        "profile_sha256": "${profile_sha256}"\n      }')
