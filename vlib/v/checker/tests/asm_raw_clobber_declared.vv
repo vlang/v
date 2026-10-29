@@ -31,7 +31,33 @@ fn raw_output_binds_rax(x u64) u64 {
 fn raw_reads_only(x u64) u64 {
 	mut y := x
 	asm amd64 raw {
-		"cmpq %[y], %[y]"
+		"cmpq %[y], %%rax"
+		; [y] "+r" (y)
+		;
+		;
+		  cc
+	}
+	return y
+}
+
+fn raw_byte_mul_writes_ax_only(x u64, c u64) u64 {
+	mut y := x
+	mut w := c
+	asm amd64 raw {
+		"mulb %[w]"
+		; [y] "+a" (y)
+		  [w] "r" (w)
+		;
+		;
+		  cc
+	}
+	return y
+}
+
+fn raw_repz_ret_does_not_write_rcx(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"repz ret"
 		; [y] "+r" (y)
 		;
 		;
@@ -44,5 +70,7 @@ fn main() {
 	println(raw_writes_declared(1))
 	println(raw_output_binds_rax(2))
 	println(raw_reads_only(3))
+	println(raw_byte_mul_writes_ax_only(4, 5))
+	println(raw_repz_ret_does_not_write_rcx(6))
 	println(undefined_total)
 }

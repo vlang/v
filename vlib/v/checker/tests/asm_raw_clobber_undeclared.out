@@ -19,3 +19,31 @@ vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:29:4: error: `mulq` writes `r
       |          ~~~~
    30 |         ; [y] "+a" (y)
    31 |           [w] "r" (w)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:41:4: error: `cqo` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   39 |     mut y := x
+   40 |     asm amd64 raw {
+   41 |         "cqo"
+      |          ~~~
+   42 |         ; [y] "+a" (y)
+   43 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:52:4: error: `rep stosb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+   50 |     mut c := n
+   51 |     asm amd64 raw {
+   52 |         "rep stosb"
+      |          ~~~~~~~~~
+   53 |         ; [c] "r" (c)
+   54 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:63:17: error: `movsbq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+   61 |     mut src := x
+   62 |     asm amd64 raw {
+   63 |         "movsbq %%cl, %%rax"
+      |                       ~~~~~
+   64 |         ; [src] "+c" (src)
+   65 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:74:4: error: `testq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+   72 |     mut y := x
+   73 |     asm amd64 raw {
+   74 |         "testq %%rax, %%rax"
+      |          ~~~~~
+   75 |         ; [y] "+r" (y)
+   76 |         ;

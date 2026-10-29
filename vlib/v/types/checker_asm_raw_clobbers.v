@@ -13,6 +13,10 @@ const inline_asm_raw_gp_registers = ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', '
 const inline_asm_raw_writes_dst_families = ['mov', 'add', 'sub', 'and', 'or', 'xor', 'inc', 'dec',
 	'neg', 'not', 'shl', 'shr', 'sar', 'lea', 'pop', 'imul']!
 
+// inline_asm_raw_string_families are the GNU x86 string instructions. Only these use `%%rcx`
+// as the repeat count under a `rep` prefix; `repz ret` does not touch it.
+const inline_asm_raw_string_families = ['movs', 'stos', 'lods', 'cmps', 'scas', 'ins', 'outs']!
+
 // inline_asm_raw_flag_families are the GNU x86 mnemonics that set the condition flags.
 const inline_asm_raw_flag_families = ['add', 'sub', 'and', 'or', 'xor', 'cmp', 'test', 'inc', 'dec',
 	'neg', 'shl', 'shr', 'sar', 'imul', 'mul', 'div', 'idiv']!
@@ -80,6 +84,22 @@ fn inline_asm_raw_fixed_output_registers(block string, section InlineAsmRange) [
 	return registers
 }
 
+// inline_asm_raw_byte_mul_form reports whether a mul, imul, div or idiv works on 8-bit operands:
+// a `b` suffix, or an 8-bit register as the one operand.
+fn inline_asm_raw_byte_mul_form(name string, operands []InlineAsmRawOperand) bool {
+	if name.len > 1 && name[name.len - 1] == `b` && name[..name.len - 1] in ['mul', 'imul', 'div',
+		'idiv'] {
+		return true
+	}
+	if operands.len == 0 || operands[operands.len - 1].kind != .register {
+		return false
+	}
+	register := operands[operands.len - 1].name
+	is_legacy := register.len == 2 && (register[1] == `l` || register[1] == `h`)
+	is_rex := register.len == 3 && register[0] == `r` && register[2] == `b`
+	return is_legacy || is_rex || register in ['sil', 'dil', 'bpl', 'spl']
+}
+
 // check_inline_asm_raw_clobbers reports a GNU x86 raw template that writes a general-purpose
 // register, or sets the flags, without declaring it. It only reports the cases it can prove:
 // a destination register operand, the registers that `mul`, `div`, `cqo` and `rep` write
@@ -114,20 +134,22 @@ fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.
 		mut written_at := map[string]token.Pos{}
 		family := inline_asm_raw_base_mnemonic(name, inline_asm_raw_writes_dst_families)
 		mul_family := inline_asm_raw_base_mnemonic(name, ['mul', 'imul', 'div', 'idiv'])
-		if (mul_family == 'mul' || mul_family == 'imul') && instruction.operands.len == 1 {
+		if mul_family.len > 0 && (mul_family == 'div' || mul_family == 'idiv'
+			|| instruction.operands.len == 1) {
 			written['rax'] = true
-			written['rdx'] = true
-		}
-		if mul_family == 'div' || mul_family == 'idiv' {
-			written['rax'] = true
-			written['rdx'] = true
+			// The 8-bit forms write AX (AL and AH) and leave DX alone.
+			if !inline_asm_raw_byte_mul_form(name, instruction.operands) {
+				written['rdx'] = true
+			}
 		}
 		if name in ['cqo', 'cqto', 'cdq', 'cltd'] {
 			written['rdx'] = true
 		}
-		for word in words {
-			if word in ['rep', 'repe', 'repz', 'repne', 'repnz'] {
-				written['rcx'] = true
+		if inline_asm_raw_base_mnemonic(name, inline_asm_raw_string_families).len > 0 {
+			for word in words {
+				if word in ['rep', 'repe', 'repz', 'repne', 'repnz'] {
+					written['rcx'] = true
+				}
 			}
 		}
 		is_movx := name.len == 6 && (name.starts_with('movz') || name.starts_with('movs'))

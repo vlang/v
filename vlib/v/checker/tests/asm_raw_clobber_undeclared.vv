@@ -35,8 +35,56 @@ fn raw_mul_writes_rdx_undeclared(x u64, z u64) u64 {
 	return y
 }
 
+fn raw_cqo_writes_rdx_undeclared(x i64) i64 {
+	mut y := x
+	asm amd64 raw {
+		"cqo"
+		; [y] "+a" (y)
+		;
+		;
+	}
+	return y
+}
+
+fn raw_rep_writes_rcx_undeclared(n u64) u64 {
+	mut c := n
+	asm amd64 raw {
+		"rep stosb"
+		; [c] "r" (c)
+		;
+		; cc
+	}
+	return c
+}
+
+fn raw_movsx_writes_rax_undeclared(x u64) u64 {
+	mut src := x
+	asm amd64 raw {
+		"movsbq %%cl, %%rax"
+		; [src] "+c" (src)
+		;
+		; cc
+	}
+	return src
+}
+
+fn raw_test_sets_flags_without_cc(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"testq %%rax, %%rax"
+		; [y] "+r" (y)
+		;
+		;
+	}
+	return y
+}
+
 fn main() {
 	println(raw_writes_rax_undeclared(1))
 	println(raw_sets_flags_without_cc(1))
 	println(raw_mul_writes_rdx_undeclared(2, 3))
+	println(raw_cqo_writes_rdx_undeclared(1))
+	println(raw_rep_writes_rcx_undeclared(1))
+	println(raw_movsx_writes_rax_undeclared(1))
+	println(raw_test_sets_flags_without_cc(1))
 }
