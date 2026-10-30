@@ -370,7 +370,8 @@ class BatchExecutionTests(unittest.TestCase):
                 snapshot = workdir / "vc" / "v_win.c"
                 if "--local" in options:
                     snapshot.parent.mkdir()
-                    snapshot.write_text("/* bootstrap fixture */\n", encoding="utf-8")
+                    snapshot.write_text('#include "/generator/vlib/builtin/track_heap_checks.h"\n',
+                                        encoding="utf-8")
                 tcc_dir = workdir / "thirdparty" / "tcc"
                 openlibm = tcc_dir / "lib" / "openlibm.o"
                 openlibm.parent.mkdir(parents=True)
@@ -417,7 +418,7 @@ class BatchExecutionTests(unittest.TestCase):
                     "exit /b 0",
                     ":cloning_vc",
                     'mkdir "%vc_dir%"',
-                    '>"%V_C_FILE%" echo /* bootstrap fixture */',
+                    '>"%V_C_FILE%" echo #include "/generator/vlib/builtin/track_heap_checks.h"',
                     "exit /b 0",
                     ":generate_stage_c",
                     "exit /b 0",
@@ -438,8 +439,9 @@ class BatchExecutionTests(unittest.TestCase):
                     errors="replace", timeout=15, check=False,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertEqual(snapshot.read_bytes(),
-                                 snapshot.with_name("v_win_compat.c").read_bytes())
+                self.assertEqual(snapshot.with_name("v_win_compat.c").read_bytes(),
+                                 snapshot.read_bytes().replace(b'/generator/vlib/',
+                                                              (workdir.as_posix() + '/vlib/').encode()))
                 self.assertEqual((workdir / "download.txt").exists(), "--local" not in options)
                 for stage, present in (("bootstrap", bootstrap_object), ("stage", stage_object)):
                     links = (workdir / (stage + ".args")).read_text(encoding="utf-8").splitlines()

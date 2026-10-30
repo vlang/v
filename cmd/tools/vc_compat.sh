@@ -6,6 +6,7 @@ set -eu
 snapshot=$1
 shift
 script_dir=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+vc_root=$(CDPATH= cd -P "$script_dir/../.." && pwd)
 
 # An optional -- separates linker inputs, which must follow the streamed source
 # for linkers using --as-needed. Reset -x so object files keep their own language.
@@ -35,7 +36,7 @@ trap 'if [ -n "$filter_pid" ]; then kill "$filter_pid" 2>/dev/null || :; fi; exi
 mkfifo "$stream_dir/source"
 
 # Generated string literals can contain bytes that are not valid UTF-8.
-LC_ALL=C awk -f "$script_dir/vc_compat.awk" "$snapshot" > "$stream_dir/source" &
+V_VC_COMPAT_ROOT="$vc_root" LC_ALL=C awk -f "$script_dir/vc_compat.awk" "$snapshot" > "$stream_dir/source" &
 filter_pid=$!
 if "$@" < "$stream_dir/source"; then
 	compiler_status=0

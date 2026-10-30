@@ -40,6 +40,9 @@ byte-identical to the published one, `differs` names the file that is not.
 
 The checkout path is embedded in the snapshot. GitHub's runners build at `/home/runner/work/v/v`,
 so the service uses the same `--v-dir` to produce the same bytes.
+Bootstrap compatibility filters relocate generated includes of V-owned headers to the consuming
+checkout. This also works for snapshots generated on another operating system. The filters leave
+header contents, preprocessing, and nested include resolution to the C compiler.
 
 ## Endpoints
 

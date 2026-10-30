@@ -89,10 +89,11 @@ Use different Windows versions only when the coverage difference is intentional.
 similar workflows use different Windows runner images, document why in the workflow or
 in this README.
 
-The Win32 W3 and W4 runners pin exact test inputs and runner hashes. When changing
+The Win32 W3, W4, and W5 runners pin exact test inputs and runner hashes. When changing
 those inputs, update the ordered manifests, composite hashes, and all three Windows
-workflow callers together. Keep backend-state assertions in V so test helpers use
-the compiler's current symbol names and integer types. Test C headers must include
+workflow callers together. Keep their hashed inputs in `makev_ci.yml`'s path filters
+so the fast integrity checks run when a source changes. Keep backend-state assertions in V
+so helpers use the compiler's current symbol names and integer types. Test C headers must include
 fallback definitions for Windows messages missing from TinyCC's bundled headers.
 
 ### macOS runners

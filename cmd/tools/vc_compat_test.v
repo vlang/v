@@ -1,5 +1,42 @@
 import os
 
+fn test_vc_compat_relocates_snapshot_headers_without_reading_them() ! {
+	root := os.join_path(os.vtmp_dir(), 'vc compat relocated ${os.getpid()}')
+	tools := os.join_path(root, 'cmd', 'tools')
+	os.mkdir_all(tools)!
+	os.mkdir_all(os.join_path(root, 'vlib'))!
+	defer { os.rmdir_all(root) or {} }
+	for name in ['vc_compat.sh', 'vc_compat.awk', 'vc_compat_uint.ps1'] {
+		os.cp(os.join_path(@VEXEROOT, 'cmd', 'tools', name), os.join_path(tools, name))!
+	}
+	// Only the C preprocessor can resolve the guarded include cycle.
+	os.write_file(os.join_path(root, 'vlib', 'relocated.h'),
+		'#ifndef RELOCATED_H\n#define RELOCATED_H\n#include "nested.h"\n#endif\n')!
+	os.write_file(os.join_path(root, 'vlib', 'nested.h'),
+		'#include "relocated.h"\n#define RELOCATED_ANSWER 42\n')!
+	source := os.join_path(root, 'snapshot.c')
+	filtered := os.join_path(root, 'filtered.c')
+	cc := os.getenv_opt('CC') or { 'gcc' }
+	for old_path in ['/missing/generator/vlib/relocated.h', 'C:/missing/generator/vlib/relocated.h',
+		r'C:\missing\generator\vlib\relocated.h', 'vlib/relocated.h'] {
+		original := '#include "${old_path}"\nconst char* literal = "#include does not change";\ntypedef char check_answer[RELOCATED_ANSWER == 42 ? 1 : -1];\n'
+		os.write_file(source, original)!
+		$if windows {
+			result := os.exec(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+				os.join_path(tools, 'vc_compat_uint.ps1'), '-Source', source, '-Destination', filtered])
+			assert result.exit_code == 0, result.output
+			checked := os.exec([cc, '-std=c99', '-fsyntax-only', filtered])
+			assert checked.exit_code == 0, checked.output
+		} $else {
+			_ = filtered
+			result := os.exec(['sh', os.join_path(tools, 'vc_compat.sh'), source, cc, '-std=c99',
+				'-fsyntax-only'])
+			assert result.exit_code == 0, result.output
+		}
+		assert os.read_file(source)! == original
+	}
+}
+
 fn test_vc_compat_preserves_linux_prctl_and_skips_it_elsewhere() {
 	$if windows {
 		return

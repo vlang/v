@@ -58,6 +58,23 @@ jobs:
         if: runner.os == 'Windows'
         run: ./makev.bat
 
+      - name: Create a private Windows tool cache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cache = Join-Path $env:RUNNER_TEMP 'v-wasm-tools'
+          New-Item -ItemType Directory -Path $cache -Force | Out-Null
+          $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+          $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+          $acl.SetOwner($user)
+          $acl.SetAccessRuleProtection($true, $false)
+          $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $user, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'
+          )
+          $acl.AddAccessRule($rule)
+          Set-Acl -LiteralPath $cache -AclObject $acl
+          "VTOOLS_CACHE_DIR=$cache" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Install WABT to get wasm-decompile
         if: runner.os != 'Windows'
         run: ./v retry -- sudo apt install wabt

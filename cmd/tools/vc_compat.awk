@@ -15,6 +15,27 @@ BEGIN {
 	close(ARGV[1])
 }
 
+# Relocate only include directives in generated bootstrap C. Header contents and
+# their nested includes remain entirely with the C preprocessor.
+ENVIRON["V_VC_COMPAT_ROOT"] != "" && /^[ \t]*#[ \t]*include[ \t]+"/ {
+	match($0, /^[ \t]*#[ \t]*include[ \t]+"/)
+	prefix = substr($0, 1, RLENGTH)
+	rest = substr($0, RLENGTH + 1)
+	end_quote = index(rest, "\"")
+	if (end_quote > 0) {
+		header = substr(rest, 1, end_quote - 1)
+		gsub(/\\/, "/", header)
+		if (header ~ /^\// || header ~ /^[A-Za-z]:\//) {
+			if (match(header, /\/(vlib|thirdparty|cmd\/v)\//)) {
+				header = substr(header, RSTART + 1)
+			}
+		}
+		if (header ~ /^(vlib|thirdparty|cmd\/v)\//) {
+			$0 = prefix ENVIRON["V_VC_COMPAT_ROOT"] "/" header substr(rest, end_quote)
+		}
+	}
+}
+
 legacy_uint && !native_uint {
 	gsub(/"usize", 5/, "\"uint\", 4")
 	# The migrated allocator declarations use int. Rewrite their codegen calls

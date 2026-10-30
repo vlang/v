@@ -177,6 +177,77 @@ class W3SourceTests(unittest.TestCase):
                 self.assertRegex(source, r'(?m)^fn ' + re.escape(name) + r'\(\)')
 
 
+class W5SourceTests(unittest.TestCase):
+    def test_pinned_sources_surfaces_and_all_compiler_callers(self):
+        runner = WORKFLOWS / 'run_multiwindow_win32_w5_a1.ps1'
+        script = runner.read_text(encoding='utf-8')
+
+        def value(name):
+            return re.search(r'^\$' + name + r" = '([^']+)'$", script, re.M)[1]
+
+        def records_hash(records):
+            return hashlib.sha256(('\n'.join(records) + '\n').encode()).hexdigest()
+
+        expected = {'Runner': hashlib.sha256(runner.read_bytes()).hexdigest()}
+        inputs = [str(runner.relative_to(ROOT)), 'cmd/tools/windows_ci_test.py']
+        for path_var, hash_var, parameter in (
+            ('testFile', 'knownTestSha256', 'Test'),
+            ('oracle', 'knownOracleSha256', 'Oracle'),
+            ('a0Header', 'knownA0HeaderSha256', 'A0Header'),
+            ('a0Main', 'knownA0MainSha256', 'A0Main'),
+            ('a0Runner', 'knownA0RunnerSha256', 'A0Runner'),
+        ):
+            digest = value(hash_var)
+            validate_file_hash(ROOT / value(path_var), digest)
+            inputs.append(value(path_var))
+            expected[parameter] = digest
+        for name, variable, parameter, schema, state in (
+            ('publicSurface', 'knownPublicRoutingSurfaceSha256', 'PublicRoutingSurface',
+             'package2-win32-w5-a1-public-routing-surface-v1', 'state=frozen'),
+            ('greenProductionSurface', 'knownGreenProductionSurfaceSha256', 'GreenProductionSurface',
+             'package2-win32-w5-a1-production-surface-v1', 'expectation=Green'),
+        ):
+            body = re.search(r'^\$' + name + r' = @\((.*?)^\)', script, re.M | re.S)[1]
+            rows = re.findall(r"Path = '([^']+)'; Known = '([0-9a-f]{64})'; Passed = \$Expected(\w+)Sha256", body)
+            self.assertTrue(rows, name)
+            records = ['schema=' + schema, state]
+            for path, digest, source_parameter in rows:
+                validate_file_hash(ROOT / path, digest)
+                inputs.append(path)
+                expected[source_parameter] = digest
+                records.append(f'file={path}|sha256={digest}')
+            self.assertEqual(records_hash(records), value(variable), name)
+            expected[parameter] = value(variable)
+        test_file, oracle, case = value('testFile'), value('oracle'), value('caseName')
+        records = [
+            'schema=package2-win32-w5-a1-v1',
+            f'selection=target|kind=absolute-explicit|path={test_file}',
+            'selection=exclude|kind=absolute-testdata-wildcard|pattern=vlib/gg/testdata/*.v',
+            f'selection=direct-child|path={test_file}',
+            f"file={test_file}|sha256={expected['Test']}",
+            f"file={oracle}|sha256={expected['Oracle']}",
+            f'case=noflag|define=disabled|run_only={case}|expectation=BehavioralGreen|summary=1_passed_1_total|package_markers=0',
+            f'case=enabled|define=gg_multiwindow|run_only={case}|expectation=BehavioralGreen|summary=1_passed_1_total',
+        ]
+        for state in ('red', 'green'):
+            body = re.search(r'^\$' + state + r'Markers = @\((.*?)^\)', script, re.M | re.S)[1]
+            records += [f'marker={state}|{marker}' for marker in re.findall(r"'([^']+)'", body)]
+        self.assertEqual(records_hash(records), value('knownTupleSha256'))
+        expected['Tuple'] = value('knownTupleSha256')
+        expected['A0Tuple'] = value('knownA0TupleSha256')
+        for cc, workflow in workflow_sources().items():
+            step = re.search(r'^      - name: Win32 W5 raw-input A1 public GREEN\n(.*?)(?=^      - |\Z)',
+                             workflow, re.M | re.S)[1]
+            supplied = dict(re.findall(r"-Expected(\w+)Sha256 '([0-9a-f]{64})'", step))
+            for parameter, digest in expected.items():
+                with self.subTest(compiler=cc, parameter=parameter):
+                    self.assertEqual(supplied.get(parameter), digest)
+        workflow = (WORKFLOWS / 'makev_ci.yml').read_text(encoding='utf-8')
+        push = re.search(r'^  push:\n(.*?)(?=^  \w|\Z)', workflow, re.M | re.S)[1]
+        for path in inputs:
+            self.assertIn(f"      - '{path}'\n", push, path)
+
+
 @unittest.skipUnless(os.name == 'nt', 'requires Windows process execution')
 class WindowsBuildExecutionTests(unittest.TestCase):
     @classmethod

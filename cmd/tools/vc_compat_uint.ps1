@@ -6,6 +6,21 @@ param(
 $ErrorActionPreference = 'Stop'
 $encoding = [Text.Encoding]::GetEncoding(28591)
 $text = [IO.File]::ReadAllText($Source, $encoding)
+# Inspect generated C directives only; the C toolchain owns all header processing.
+$root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..')).Replace('\', '/')
+$text = [regex]::Replace($text, '(?m)^([ \t]*#[ \t]*include[ \t]+")([^"\r\n]+)(")', {
+    param($match)
+    $header = $match.Groups[2].Value.Replace('\', '/')
+    if ($header -match '^(?:/|[A-Za-z]:/)') {
+        if ($header -match '/((?:vlib|thirdparty|cmd/v)/.+)$') {
+            $header = $Matches[1]
+        }
+    }
+    if ($header -match '^(?:vlib|thirdparty|cmd/v)/') {
+        return $match.Groups[1].Value + $root + '/' + $header + $match.Groups[3].Value
+    }
+    return $match.Value
+})
 if ($text -match '(?m)^u32 flat__source_type_usize;\r?$' -and
     $text -notmatch '(?m)^u32 flat__source_type_uint;\r?$') {
     $text = $text.Replace('"usize", 5', '"uint", 4')
