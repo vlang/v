@@ -184,8 +184,9 @@ fn (mut g Gen) reset_value_slots(func &ssa.Function) {
 }
 
 fn (mut g Gen) reset_block_offsets(func &ssa.Function) {
-	for idx in g.block_offset_indices {
-		g.block_offsets[idx] = 0
+	// Clear all entries to avoid stale data from previous functions.
+	for i in 0 .. g.block_offsets.len {
+		g.block_offsets[i] = 0
 	}
 	g.block_offset_indices.clear()
 	if func.blocks.len == 0 {
