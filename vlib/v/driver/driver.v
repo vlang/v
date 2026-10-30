@@ -43,6 +43,9 @@ $if !skip_eval ? {
 $if !skip_arm64 ? {
 	import v.gen.arm64
 }
+$if !skip_arm32 ? {
+	import v.gen.arm32
+}
 
 $if !skip_x64 ? {
 	import v.gen.x64
@@ -10555,7 +10558,7 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := backend in ['arm64', 'riscv64'] && target_os == 'linux' && explicit_output
+	native_linux_object := backend in ['arm64', 'riscv64', 'arm32'] && target_os == 'linux' && explicit_output
 		&& output_file.ends_with('.o')
 	if is_o && !native_linux_object && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
@@ -10735,9 +10738,9 @@ pub fn run(args []string) {
 	if ownership_mode {
 		record_user_define(mut user_defines, mut compile_values, 'ownership')
 	}
-	if backend !in ['c', 'fastc', 'arm64', 'x64', 'riscv64', 'wasm', 'eval']
+	if backend !in ['c', 'fastc', 'arm64', 'x64', 'riscv64', 'arm32', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
-		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, x64, riscv64, wasm, or eval')
+		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, x64, riscv64, arm32, wasm, or eval')
 		exit(1)
 	}
 	if hot_fn != '' && backend != 'arm64' {
@@ -10751,7 +10754,7 @@ pub fn run(args []string) {
 	for requested in compile_backends {
 		for name in requested.split(',') {
 			if name.trim_space() !in ['c', 'fastc', 'arm64', 'aarch64', 'x64', 'amd64', 'x86_64',
-				'x86-64', 'riscv64', 'riscv', 'rv64', 'wasm', 'wasm32', 'eval'] {
+				'x86-64', 'riscv64', 'riscv', 'rv64', 'arm32', 'wasm', 'wasm32', 'eval'] {
 				eprintln('unknown compile backend `${name.trim_space()}`')
 				exit(1)
 			}
@@ -10819,6 +10822,10 @@ pub fn run(args []string) {
 	}
 	if backend == 'riscv64' && (target.os != 'linux' || target.arch != 'riscv64') {
 		eprintln('the riscv64 backend currently supports only linux/riscv64')
+		exit(1)
+	}
+	if backend == 'arm32' && (target.os != 'linux' || target.arch != 'arm32') {
+		eprintln('the arm32 backend currently supports only linux/arm32')
 		exit(1)
 	}
 	if backend == 'x64' {
@@ -10988,6 +10995,7 @@ pub fn run(args []string) {
 	mut include_arm64 := all_backends
 	mut include_x64 := all_backends
 	mut include_riscv64 := all_backends
+	mut include_arm32 := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
 	for cb in compile_backends {
@@ -11004,6 +11012,9 @@ pub fn run(args []string) {
 				}
 				'riscv64', 'riscv', 'rv64' {
 					include_riscv64 = true
+				}
+				'arm32', 'arm', 'aarch32' {
+					include_arm32 = true
 				}
 				'wasm', 'wasm32' {
 					include_wasm = true
@@ -11030,6 +11041,9 @@ pub fn run(args []string) {
 		'riscv64' {
 			include_riscv64 = true
 		}
+		'arm32' {
+			include_arm32 = true
+		}
 		'wasm' {
 			include_wasm = true
 		}
@@ -11050,6 +11064,9 @@ pub fn run(args []string) {
 	}
 	if !include_riscv64 {
 		user_defines << 'skip_riscv64'
+	}
+	if !include_arm32 {
+		user_defines << 'skip_arm32'
 	}
 	if !include_wasm {
 		user_defines << 'skip_wasm'
@@ -12935,7 +12952,7 @@ pub fn run(args []string) {
 		// that only prints literals: the interfaces and the objects it publishes
 		// serve every other program.
 		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused
-			&& backend !in ['arm64', 'x64', 'riscv64'] && test_files.len == 0 && !is_checker_fixture
+			&& backend !in ['arm64', 'x64', 'riscv64', 'arm32'] && test_files.len == 0 && !is_checker_fixture
 			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
 			&& !cache_state.manager.enabled
 			&& is_trivial_literal_output_program_for_target(a, pre_tc.diagnostic_files, target)
@@ -14601,6 +14618,41 @@ pub fn run(args []string) {
 			b.step('link')
 		} $else {
 			eprintln('riscv64 support is not compiled into this executable')
+			exit(1)
+		}
+	} else if backend == 'arm32' {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_arm32 ? {
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses:        false
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
+				exact_used_fns:    true
+			})
+			b.step('ssa build')
+
+			mut g := arm32.Gen.new(m)
+			g.gen()
+			b.step('arm32 gen')
+
+			if !is_o {
+				eprintln('the experimental arm32 backend supports object output only; use -o file.o.')
+				exit(1)
+			}
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_arm32_${os.getpid()}_${tempname.unique_token()}.o')
+			g.write_file(obj_file)
+			b.step('arm32 object')
+			os.mv(obj_file, bin_file) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.step('link')
+		} $else {
+			eprintln('arm32 support is not compiled into this executable')
 			exit(1)
 		}
 	} else if backend == 'arm64' {
