@@ -3,7 +3,7 @@ module brotli
 
 import os
 
-$if linux {
+$if linux || termux {
 	#flag -ldl
 }
 
