@@ -4207,6 +4207,69 @@ fn (mut tc TypeChecker) check_dump_expr(node flat.Node) {
 	}
 }
 
+// assert_side_effect returns the first part of an `assert` condition that changes state. A `-prod`
+// build removes the assert with its condition, so the change does not happen there. A channel
+// receive, an assignment, an increment and a `wait()` are always a change. A call that modifies
+// its receiver, or takes a `mut` argument, is reported only when `certain_only` is false: many
+// methods take a `mut` receiver to read (`load`, `get`, `next`), and `-prod` is the build that
+// drops them.
+fn (mut tc TypeChecker) assert_side_effect(id flat.NodeId, certain_only bool) ?(flat.NodeId, string) {
+	node := tc.a.node(id)
+	match node.kind {
+		.fn_literal, .lambda_expr {
+			return none
+		}
+		.prefix {
+			if node.op == .arrow {
+				return id, 'a channel receive'
+			}
+		}
+		.postfix {
+			if node.op in [.inc, .dec] {
+				return id, 'an increment'
+			}
+		}
+		.assign, .selector_assign, .index_assign {
+			// not `.decl_assign`: `assert if v := f() {` binds, it does not change state
+			return id, 'an assignment'
+		}
+		.call {
+			fn_node := tc.a.child_node(node, 0)
+			if fn_node.kind == .selector && fn_node.children_count > 0 {
+				if fn_node.value == 'wait' {
+					return id, 'a `wait()` call'
+				}
+				recv_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(fn_node, 0)))
+				if !certain_only && ((recv_type is Array
+					&& checker_builtin_array_method_mutates(fn_node.value))
+					|| (recv_type is Map
+						&& fn_node.value in ['clear', 'delete', 'move', 'reserve'])) {
+					return id, 'a call that modifies its receiver'
+				}
+			}
+			if !certain_only {
+				if info := tc.resolve_call_info(id, *node) {
+					if tc.mut_receiver_methods[info.name] {
+						return id, 'a call that modifies its receiver'
+					}
+				}
+				for i in 1 .. node.children_count {
+					if tc.a.node(tc.a.child(node, i)).is_mut {
+						return id, 'a call with a `mut` argument'
+					}
+				}
+			}
+		}
+		else {}
+	}
+	for i in 0 .. node.children_count {
+		if found_id, what := tc.assert_side_effect(tc.a.child(node, i), certain_only) {
+			return found_id, what
+		}
+	}
+	return none
+}
+
 fn (mut tc TypeChecker) check_assert_stmt(node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -4215,6 +4278,9 @@ fn (mut tc TypeChecker) check_assert_stmt(node flat.Node) {
 	condition_id := tc.a.child(&node, 0)
 	tc.check_node(condition_id)
 	tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_state.clone()
+	if effect_id, what := tc.assert_side_effect(condition_id, !tc.is_prod) {
+		tc.record_notice_at(.condition_mismatch, 'assert contains ${what}, which a `-prod` build drops together with the assert; bind the value first (`value := ...`) and assert on `value`', effect_id, tc.a.node(effect_id).pos)
+	}
 	if node.children_count > 1 {
 		message_id := tc.a.child(&node, 1)
 		tc.check_node(message_id)
