@@ -234,7 +234,9 @@ jobs:
             # net.http check: a real HTTPS request, so the TLS path is built and
             # run with tcc. Double quotes only, since this is a single-quoted bash -c string.
             printf "%s\n" "import net.http" "fn main() {" "    resp := http.get(\"https://example.com/\") or { panic(err) }" "    assert resp.status_code == 200" "    println(\"net.http ok\")" "}" > net_http_check.v
-            ./v -cc "$tcc" $tcc_cflags run net_http_check.v 2>&1 | tee /logs/net_http.log
+            # Diagnostic only: the net.http program needs dlopen, which bionic keeps in
+            # libdl.so, and the tcc link line V builds does not add -ldl on termux.
+            ./v -cc "$tcc" $tcc_cflags -ldflags -ldl run net_http_check.v 2>&1 | tee /logs/net_http.log
             if grep -q "falling back" /logs/net_http.log; then
               echo "tcc was not used for net.http: V fell back to cc"
               exit 1
