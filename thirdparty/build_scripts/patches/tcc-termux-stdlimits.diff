@@ -22,10 +22,10 @@ index 00000000..89b26a38
 +#define ULLONG_MAX 0xffffffffffffffffULL
 +#include_next <limits.h>
 diff --git a/include/tccdefs.h b/include/tccdefs.h
-index 2655c1dd..1c5fefaf 100644
+index 2655c1dd..75fc7329 100644
 --- a/include/tccdefs.h
 +++ b/include/tccdefs.h
-@@ -335,4 +335,21 @@
+@@ -335,4 +335,22 @@
      __BUILTIN_EXTERN(parity, unsigned)
      #undef __BUILTIN_EXTERN
  
@@ -46,4 +46,5 @@ index 2655c1dd..1c5fefaf 100644
 +    #define __builtin_bswap16(x) ((unsigned short)((((unsigned)(x) & 0xffu) << 8) | (((unsigned)(x) >> 8) & 0xffu)))
 +    #define __builtin_bswap32(x) ((unsigned)((((unsigned)(x) & 0xffu) << 24) | (((unsigned)(x) & 0xff00u) << 8) | (((unsigned)(x) >> 8) & 0xff00u) | (((unsigned)(x) >> 24) & 0xffu)))
 +    #define __builtin_bswap64(x) ((unsigned long long)((((unsigned long long)(x) & 0xffULL) << 56) | (((unsigned long long)(x) & 0xff00ULL) << 40) | (((unsigned long long)(x) & 0xff0000ULL) << 24) | (((unsigned long long)(x) & 0xff000000ULL) << 8) | (((unsigned long long)(x) >> 8) & 0xff000000ULL) | (((unsigned long long)(x) >> 24) & 0xff0000ULL) | (((unsigned long long)(x) >> 40) & 0xff00ULL) | (((unsigned long long)(x) >> 56) & 0xffULL)))
++    #define __builtin_object_size(p, type) ((__SIZE_TYPE__)-1)
      #endif /* ndef __TCC_PP__ */
