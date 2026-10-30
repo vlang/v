@@ -19,6 +19,7 @@ WORKFLOWS = ROOT / '.github' / 'workflows'
 COMPILERS = ('gcc', 'msvc', 'tcc')
 RUNNER = 'run_multiwindow_win32_w3_green.ps1'
 EXIT_CHECK = 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
+W5_RUNNER = 'run_multiwindow_win32_w5_a1.ps1'
 
 
 def workflow_sources():
@@ -91,6 +92,68 @@ def validate_file_hash(path, expected):
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual != expected:
         raise ValueError(f'{path}: expected={expected} actual={actual}')
+
+
+def w5_metadata(script):
+    def value(name):
+        match = re.search(r'^\$' + name + r" = '([^']+)'$", script, re.M)
+        if match is None:
+            raise ValueError(f'missing W5 {name}')
+        return match[1]
+
+    def digest(records):
+        return hashlib.sha256(('\n'.join(records) + '\n').encode('utf-8')).hexdigest()
+
+    pins = {}
+    files = {}
+    for name, pin in (('testFile', 'Test'), ('oracle', 'Oracle'), ('a0Header', 'A0Header'),
+                      ('a0Main', 'A0Main'), ('a0Runner', 'A0Runner')):
+        path, expected = value(name), value('known' + pin + 'Sha256')
+        files[path] = expected
+        pins['Expected' + pin + 'Sha256'] = expected
+    pins['ExpectedA0TupleSha256'] = value('knownA0TupleSha256')
+    for array, schema, state, composite in (
+        ('publicSurface', 'public-routing-surface', 'state=frozen', 'PublicRoutingSurface'),
+        ('greenProductionSurface', 'production-surface', 'expectation=Green',
+         'GreenProductionSurface'),
+    ):
+        body = re.search(r'^\$' + array + r' = @\(\n(.*?)^\)', script, re.M | re.S)
+        if body is None:
+            raise ValueError(f'missing W5 {array}')
+        entries = re.findall(r"Path = '([^']+)'; Known = '([0-9a-f]{64})'; Passed = \$(\w+)",
+                             body[1])
+        if not entries:
+            raise ValueError(f'empty W5 {array}')
+        records = [f'schema=package2-win32-w5-a1-{schema}-v1', state]
+        for path, expected, parameter in entries:
+            files[path] = expected
+            pins[parameter] = expected
+            records.append(f'file={path}|sha256={expected}')
+        actual = digest(records)
+        if actual != value('known' + composite + 'Sha256'):
+            raise ValueError(f'W5 {array} composite mismatch')
+        pins['Expected' + composite + 'Sha256'] = actual
+
+    test, oracle, case = value('testFile'), value('oracle'), value('caseName')
+    records = [
+        'schema=package2-win32-w5-a1-v1',
+        f'selection=target|kind=absolute-explicit|path={test}',
+        'selection=exclude|kind=absolute-testdata-wildcard|pattern=vlib/gg/testdata/*.v',
+        f'selection=direct-child|path={test}',
+        f'file={test}|sha256={files[test]}',
+        f'file={oracle}|sha256={files[oracle]}',
+        f'case=noflag|define=disabled|run_only={case}|expectation=BehavioralGreen|summary=1_passed_1_total|package_markers=0',
+        f'case=enabled|define=gg_multiwindow|run_only={case}|expectation=BehavioralGreen|summary=1_passed_1_total',
+    ]
+    for state in ('red', 'green'):
+        body = re.search(r'^\$' + state + r'Markers = @\(\n(.*?)^\)', script, re.M | re.S)[1]
+        records += [f'marker={state}|{marker}' for marker in re.findall(r"'([^']+)'", body)]
+    actual = digest(records)
+    if actual != value('knownTupleSha256'):
+        raise ValueError('W5 test tuple mismatch')
+    pins['ExpectedTupleSha256'] = actual
+    pins['ExpectedRunnerSha256'] = hashlib.sha256(script.encode('utf-8')).hexdigest()
+    return files, pins
 
 
 class WorkflowConfigurationTests(unittest.TestCase):
@@ -175,6 +238,36 @@ class W3SourceTests(unittest.TestCase):
             with self.subTest(path=path, case=name):
                 source = (ROOT / path).read_text(encoding='utf-8')
                 self.assertRegex(source, r'(?m)^fn ' + re.escape(name) + r'\(\)')
+
+
+class W5SourceTests(unittest.TestCase):
+    def setUp(self):
+        self.script = (WORKFLOWS / W5_RUNNER).read_text(encoding='utf-8')
+
+    def test_sources_surfaces_and_all_compiler_callers(self):
+        files, pins = w5_metadata(self.script)
+        for path, expected in files.items():
+            with self.subTest(path=path):
+                validate_file_hash(ROOT / path, expected)
+        for cc, workflow in workflow_sources().items():
+            call = re.search(re.escape(W5_RUNNER) + r' -Compiler ' + cc + r' `(.*?)(?=^      -|\Z)',
+                             workflow, re.M | re.S)
+            self.assertIsNotNone(call, cc)
+            supplied = dict(re.findall(r"-(Expected\w+) '([0-9a-f]{64})'", call[1]))
+            self.assertEqual(supplied, pins, cc)
+        workflow = (WORKFLOWS / 'makev_ci.yml').read_text(encoding='utf-8')
+        for path in list(files) + [(WORKFLOWS / W5_RUNNER).relative_to(ROOT).as_posix()]:
+            self.assertIn(f"      - '{path}'\n", workflow, path)
+
+    def test_changed_source_pin_requires_a_new_composite(self):
+        changed = re.sub(r"(Path = '[^']+'; Known = ')[0-9a-f]{64}",
+                         r'\g<1>' + '0' * 64, self.script, count=1)
+        with self.assertRaisesRegex(ValueError, 'composite mismatch'):
+            w5_metadata(changed)
+
+    def test_changed_test_selection_requires_a_new_tuple(self):
+        with self.assertRaisesRegex(ValueError, 'tuple mismatch'):
+            w5_metadata(self.script.replace("$caseName = 'test_", "$caseName = 'test_other_", 1))
 
 
 class ToolCacheVerificationTests(unittest.TestCase):

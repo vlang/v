@@ -526,32 +526,32 @@ jobs:
         run: |
           .\.github\workflows\run_multiwindow_win32_w5_a1.ps1 -Compiler tcc `
             -Expectation Green `
-            -ExpectedTestSha256 '005d3f7c7668bd18d593ba5f42e94cf247058c5f61ca46ce6d6a42bac03b5000' `
+            -ExpectedTestSha256 '6433293aebf40873ce1ff1932d9dfc128cc5ab387f8bd9b5b22dd0e9f1bc7ff2' `
             -ExpectedOracleSha256 '7362f17f06ea6b0ab5a64c74abf2407a0e284cbace2c10809a5235d406d16461' `
-            -ExpectedTupleSha256 '16739d9b8b73d9615ba3037c9e18219d6bf1271ef1d2f7dba4b2f2e53b1efac5' `
+            -ExpectedTupleSha256 'af89fd676dd05fa054fc64d3df1e09cb792f56f2a3ec27f26586d6f2bcfe9698' `
             -ExpectedA0HeaderSha256 '9decdc2e825c91da2b9d2ce0c98cb8ccdad5c4800a690863d166135eb188e916' `
             -ExpectedA0MainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
             -ExpectedA0TupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
             -ExpectedA0RunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68' `
-            -ExpectedGgFacadeSha256 '5823f13606204ce15b8ea41761c4a4fba47261b71666f8280f0023f1e83c4cc2' `
+            -ExpectedGgFacadeSha256 '80be6db64d911cff3e2dd1344c0ec1420ec755b78673e75f824a59e93266d108' `
             -ExpectedGgNoFlagSha256 'ad528c64cf18bce9415dd0e50513fb87d8d0b58c8ac4a99025a5c8955e7d9549' `
             -ExpectedGgServiceTypesSha256 '9f17334ba5e5aff51f26d55476c83878856a8494a890aa64ee6434a52c1ecfeb' `
             -ExpectedAppSha256 'af32eec55c119907a8bbf544842131018d36d3887347e26486e067a79d78a946' `
             -ExpectedTypesSha256 '0a9058ba7928945e24284c867eb6182336ea3b1d41e1337786c71105b1fe93b3' `
-            -ExpectedBackendSha256 'dcd0f088c235ae030f8bbc9ab63082c38d93f6f1194373e74d8dcb454d100a3f' `
+            -ExpectedBackendSha256 '89fd92942d02a2a78d37d4c7698a63813db788a03cced1b80f9c141dc6e373ca' `
             -ExpectedServiceApiSha256 'b7e4bc26e85f897a72387e82f4a7a3d545f21230be5c6b9df4fa40a4c82b701f' `
             -ExpectedServiceTypesSha256 'cd8326b81201727618e758d79970b7a77223fd6418e18afda44a526a3b0b4267' `
             -ExpectedServiceRegistrySha256 'db244497fd23974c1739d6c7a8bc57a2e3137c8765d4bc7f789efd80a59066b7' `
             -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
-            -ExpectedPublicRoutingSurfaceSha256 'a4a03215a80f94584f7c9c11f0e58ecdc80175e959b6d3a9145d36606e0cbcd6' `
+            -ExpectedPublicRoutingSurfaceSha256 '6a091c8b57b3e99ea6efa06aa63a9e50c93ec46eadc7e93953847f9cd063d8db' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDispatchSha256 '7ef6c7cbd34511d6c19c1a3a269b46876db791b9412bb88e3a8d4dcd543bfd4e' `
-            -ExpectedWin32BackendSha256 '1f2bfbd43b20b6d33896fb1c517673b4041d5408f15cde6d014bd2b98ddedc9e' `
+            -ExpectedWin32BackendSha256 'ebcd169ec1c382edf3cb05f3c7036c4cb149ceae34f141419ea01d24bcc948d6' `
             -ExpectedWin32BackendHelpersSha256 '2265a247f626621d69e823c09a79a5611dd187880120ba493636e73858c74a4d' `
-            -ExpectedWin32ServiceBackendSha256 'faaf67be3e0381ea8a0e7a753b477b7965dde6e655f83f220eca036da19c5df6' `
+            -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
-            -ExpectedGreenProductionSurfaceSha256 'f570ae10e0479b4628df305ea51ba44779f528a6767886e2b2fed4dbfa4e4f9e' `
-            -ExpectedRunnerSha256 'f9b63749bad6064f8de48744ef8d828ba6fe31b53c6a224568c6bf10805aae5e'
+            -ExpectedGreenProductionSurfaceSha256 '376c2ed664bb7248dea90efd32c0989d648ea61b719d70d073e797073f98127c' `
+            -ExpectedRunnerSha256 'c6d398c544bbb24aaa417ed9389a894eae0d1e467d671c7ccc2e8f8baf648a8e'
       - name: Public gg Win32 controls/state native diagnostic
         if: ${{ always() }}
         shell: pwsh
