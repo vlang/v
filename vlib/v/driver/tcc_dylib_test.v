@@ -7,6 +7,25 @@ import v.modulecache
 import v.parser
 import v.pref
 
+fn test_native_sdk_function_selection_uses_identifiers() {
+	wanted := {
+		'read': 'int read(void);'
+	}
+	assert v3_tcc_native_mentions_function('int read(void);', wanted)
+	assert !v3_tcc_native_mentions_function('int pread(void);', wanted)
+	assert !v3_tcc_native_mentions_function('// read\n/* read */ "read"', wanted)
+}
+
+fn test_native_bridge_projects_macro_expanded_function_names() ! {
+	prototype := v3_tcc_native_rename_declaration('__attribute__((deprecated("native_v2"))) int native_v2(void);', 'native_v2', 'native')
+	assert prototype == '__attribute__((deprecated("native_v2"))) int native(void);'
+	bindings := v3_tcc_dylib_function_bindings({
+		'native': prototype
+	})!
+	assert bindings.owner == '__typeof__(&native) v3_native_bridge_native = &native;\n'
+	assert bindings.declarations.contains('(*v3_native_bridge_native)(void);')
+}
+
 fn test_native_bridge_binding_uses_function_declarator_after_matching_struct_tag() ! {
 	bindings := v3_tcc_dylib_function_bindings({
 		'record': 'struct record* record(void);'
