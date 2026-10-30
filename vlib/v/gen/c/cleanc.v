@@ -4090,6 +4090,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
 		}
 		if parallel_iface_scan {
+			// Promoted IError methods consult this table during interface discovery.
+			// Freeze it before the worker shares its storage.
+			g.precompute_embedded_fields()
 			$if !v3_no_parallel ? {
 				iface_worker = g.new_parallel_worker(4)
 				iface_worker.interface_boxed_types = map[u64]bool{}
@@ -4114,12 +4117,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.precompute_non_generic_fn_index()
 			g.precompute_generic_fn_key_index()
 		}
-		// In the parallel path the fixed-storage scan runs on a helper thread,
-		// overlapped with the fn-item collection and parallel pre-seeding.
-		// The master emits selectors/inits itself (serial regions, postamble), so
-		// its embedded-fields map must be populated even when the worker-fork prep
-		// runs its own copy; do it before any helper thread can observe `g`.
-		g.precompute_embedded_fields()
+		if !parallel_iface_scan {
+			g.precompute_embedded_fields()
+		}
 		g.timing_profile('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		if parallel_iface_scan {

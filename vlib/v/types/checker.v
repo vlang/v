@@ -8424,10 +8424,10 @@ fn (mut tc TypeChecker) enter_module(name string) {
 		// `module_decl` after this file's marker without an intervening file marker of
 		// their own; without this guard that would rebind `cur_file` to the foreign
 		// module and mis-resolve same-named types (`main.Context` -> `veb.Context`).
-		if existing := tc.file_modules[tc.cur_file] {
-			if existing != name {
-				return
-			}
+		// Collection already fixed this mapping. Even writing the same value would
+		// race with semantic workers and overlapping declaration preparation.
+		if tc.cur_file in tc.file_modules {
+			return
 		}
 		tc.file_modules[tc.cur_file] = name
 	}

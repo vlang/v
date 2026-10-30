@@ -1787,15 +1787,24 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		stats.temporary_objects << uncached_obj
 		return uncached_obj
 	}
-	os.mv(temp_obj, cached_obj) or {
-		os.rm(temp_obj) or {}
-		if !os.exists(cached_obj) {
-			return error('failed to publish cached C object ${cached_obj}: ${err}')
-		}
+	if !publish_native_c_object(temp_obj, cached_obj)! {
 		stats.publish_races++
 	}
 	write_c_object_manifest(manifest_path, cached_obj, dependencies.files, mut stats) or {}
 	return cached_obj
+}
+
+// publish_native_c_object publishes once: GCC's LTO linker reopens the path,
+// so replacing even a complete object can change its internal symbol IDs mid-link.
+fn publish_native_c_object(temporary string, destination string) !bool {
+	defer { os.rm(temporary) or {} }
+	os.link(temporary, destination) or {
+		if !os.is_file(destination) {
+			return error('failed to publish cached C object ${destination}: ${err}')
+		}
+		return false
+	}
+	return true
 }
 
 fn c_object_manifest_path(cache_dir string, obj_path string, compiler string, compile_args []string, target pref.Target, mut stats CObjectCacheStats) string {
@@ -15204,10 +15213,6 @@ pub fn run(args []string) {
 		if prepare_transform_overlap {
 			transform.materialize_inferred_anonymous_structs_before_prepare(mut a, &pre_tc)
 		}
-		mut prepared_transform_threads := []thread &transform.PreparedSelfhostTransform{}
-		if prepare_transform_overlap {
-			prepared_transform_threads << spawn transform.prepare_selfhost_transform(a, &pre_tc, true)
-		}
 		// Mark used functions (dead-code elimination). This is done before transform
 		// so the transformer can skip function bodies that the C backend will prune.
 		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
@@ -15215,6 +15220,11 @@ pub fn run(args []string) {
 		// arena scan for every generated selector base.
 		if !building_v || !pre_tc.reuse_direct_parent_index_for_unchanged_ast(a) {
 			pre_tc.refresh_direct_parent_index(a)
+		}
+		// Freeze parent-index state before the transform helper snapshots the checker.
+		mut prepared_transform_threads := []thread &transform.PreparedSelfhostTransform{}
+		if prepare_transform_overlap {
+			prepared_transform_threads << spawn transform.prepare_selfhost_transform(a, &pre_tc, true)
 		}
 		// A convergence pass below re-runs reachability after checking more
 		// library bodies; it reuses the first pass's declaration indexes when the

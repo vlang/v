@@ -2338,6 +2338,9 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			// Function prototypes only read the frozen selection and declaration
 			// tables, like the body workers. Generate them on private generators
 			// beside the type declaration task, which is otherwise the longest lane.
+			// Slicing writes the shared array header on its first use. Do that on
+			// the master before the prototype lanes take their own batch slices.
+			shared_items := items[..]
 			fwd_bounds := forward_decl_lane_bounds(g.a, items)
 			mut fwd_args := []ForwardDeclLaneArgs{cap: fwd_bounds.len - 1}
 			fwd_scope := cgen_worker_scope_begin(true)
@@ -2346,7 +2349,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				fwd_worker.tc.verbose = g.tc.verbose
 				fwd_args << ForwardDeclLaneArgs{
 					worker:    voidptr(fwd_worker)
-					items_ptr: unsafe { voidptr(&items) }
+					items_ptr: unsafe { voidptr(&shared_items) }
 					start:     fwd_bounds[lane]
 					end:       fwd_bounds[lane + 1]
 				}

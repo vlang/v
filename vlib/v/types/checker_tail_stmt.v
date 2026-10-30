@@ -22697,8 +22697,15 @@ fn (tc &TypeChecker) generic_receiver_method_pattern_match(base_id u32, actual_a
 				continue
 			}
 			mut is_exact := true
-			for i, pattern in patterns {
-				if tc.parse_type(trimmed_source_type_id(pattern)).source_type_id() != tc.parse_type(trimmed_source_type_id(actual_args_ids[i])).source_type_id() {
+			for i, actual_arg in actual_args_ids {
+				pattern_arg := trimmed_source_type_id(patterns[i])
+				actual_arg_id := trimmed_source_type_id(actual_arg)
+				if pattern_arg == actual_arg_id {
+					continue
+				}
+				pattern_id := tc.parse_type(pattern_arg).source_type_id()
+				actual_id := tc.parse_type(actual_arg_id).source_type_id()
+				if pattern_id != actual_id {
 					is_exact = false
 					break
 				}
