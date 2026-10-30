@@ -5485,6 +5485,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.record_uninferred_generic_method_type(id, node, info0)
+		tc.record_uninferable_generic_function_type(id, node, info0)
 		tc.record_chained_bare_generic_struct_method_inference_error(id, node, info)
 		if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
 			tc.remember_resolved_call(id, info.name)
@@ -6188,6 +6189,44 @@ fn (tc &TypeChecker) chained_bare_struct_call_uses_open_param(call flat.Node) bo
 		}
 	}
 	return false
+}
+
+// record_uninferable_generic_function_type rejects parameters with no inference
+// source. Return types and constraints can bind parameters during transformation.
+fn (mut tc TypeChecker) record_uninferable_generic_function_type(id flat.NodeId, node flat.Node, info CallInfo) {
+	if info.has_receiver || tc.call_has_explicit_generic_args(node) || node.children_count == 0 {
+		return
+	}
+	generic_params := tc.fn_generic_params[info.name] or { return }
+	if generic_params.len == 0 {
+		return
+	}
+	param_texts := tc.fn_param_type_texts.type_ids(info.name) or { return }
+	return_text := tc.fn_ret_type_texts.type_id(info.name) or { u32(0) }
+	for param in generic_params {
+		if param in flat.source_type_syntax(return_text).symbols()
+			|| param_texts.any(param in flat.source_type_syntax(it).symbols()) {
+			continue
+		}
+		decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
+		if decl := tc.visible_mutation_fn_decl(info.name, decl_module) {
+			constraints := tc.a.node(flat.NodeId(decl.idx)).generic_constraint_ids()
+			if constraints.any(param in flat.source_type_syntax(it).symbols()) {
+				continue
+			}
+		}
+		callee := tc.a.child_node(&node, 0)
+		if callee.kind !in [.ident, .selector] {
+			return
+		}
+		name_pos := if callee.kind == .selector {
+			tc.method_call_name_pos(node, callee)
+		} else {
+			callee.pos
+		}
+		tc.record_error_at(.unsupported_generic, 'could not infer generic type `${flat.source_type_name(param)}` in call to `${info.name}`', id, token.new_span(name_pos.id, name_pos.offset, node.pos.end))
+		return
+	}
 }
 
 fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, node flat.Node, info CallInfo) {
