@@ -177,6 +177,70 @@ class W3SourceTests(unittest.TestCase):
                 self.assertRegex(source, r'(?m)^fn ' + re.escape(name) + r'\(\)')
 
 
+class ToolCacheVerificationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.pwsh = shutil.which('pwsh')
+        compiler = shutil.which('gcc' if os.name == 'nt' else 'cc')
+        if not cls.pwsh or not compiler:
+            raise unittest.SkipTest('requires PowerShell and a C compiler')
+        cls.temp = tempfile.TemporaryDirectory(prefix='windows tool cache probe ')
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.root = Path(cls.temp.name)
+        source = cls.root / 'probe.c'
+        source.write_text(r'''
+#include <stdio.h>
+#include <stdlib.h>
+int main(void) {
+    FILE *calls = fopen(getenv("VTEST_CI_CALLS"), "a");
+    if (!calls) return 90;
+    fprintf(calls, "%s\n", getenv("VTOOLS_CACHE_VERBOSE"));
+    fclose(calls);
+    puts(getenv("VTEST_TOOL_CACHE_MESSAGE"));
+    return atoi(getenv("VTEST_TOOL_CACHE_EXIT"));
+}
+''', encoding='utf-8')
+        subprocess.run([compiler, '-o', str(cls.root / 'v.exe'), str(source)],
+                       check=True, capture_output=True, text=True, timeout=60)
+
+    def run_probe(self, message, status=0):
+        calls = self.root / 'calls.txt'
+        calls.unlink(missing_ok=True)
+        env = dict(os.environ, VTEST_CI_CALLS=str(calls),
+                   VTEST_TOOL_CACHE_MESSAGE=message, VTEST_TOOL_CACHE_EXIT=str(status),
+                   VTOOLS_CACHE_VERBOSE='original')
+        # Invoke from a wrapper to check that the script returns to its caller
+        # and restores the environment before test-cleancode starts.
+        script = self.root / 'verify.ps1'
+        path = str(WORKFLOWS / 'setup_windows_tool_cache.ps1').replace("'", "''")
+        script.write_text(
+            f"& '{path}' -Verify\n"
+            "if ($env:VTOOLS_CACHE_VERBOSE -ne 'original') { throw 'environment changed' }\n"
+            "Write-Host 'returned to caller'\n", encoding='utf-8')
+        result = subprocess.run([self.pwsh, '-NoProfile', '-NonInteractive', '-File', str(script)],
+                                cwd=self.root, env=env, capture_output=True, text=True, timeout=30)
+        return result, calls.read_text().splitlines()
+
+    def test_cached_tool_is_reused_and_returns_to_the_workflow(self):
+        result, calls = self.run_probe('> reusing the cached `vvet` at probe')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('returned to caller', result.stdout)
+        self.assertEqual(calls, ['1', '1'])
+
+    def test_recompiling_or_uncached_tools_are_rejected(self):
+        for message in ('> recompiling `vvet`', '> running `vvet` from source', ''):
+            with self.subTest(message=message):
+                result, calls = self.run_probe(message)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(calls, ['1', '1'])
+
+    def test_a_failed_probe_stops_before_the_second_invocation(self):
+        result, calls = self.run_probe('controlled vet failure', status=47)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('exit code 47', result.stderr)
+        self.assertEqual(calls, ['1'])
+
+
 @unittest.skipUnless(os.name == 'nt', 'requires Windows process execution')
 class WindowsBuildExecutionTests(unittest.TestCase):
     @classmethod
@@ -254,6 +318,34 @@ int main(int argc, char **argv) {
         result, calls = self.run_build(scripts[0], stats=49)
         self.assertEqual(result.returncode, 49, result.stdout + result.stderr)
         self.assertEqual(len(calls), 2)
+
+    def test_prepared_cache_passes_the_compilers_native_privacy_check(self):
+        source = self.root / 'cache_privacy.c'
+        source.write_text(r'''
+#define V_TOOLCACHE_WINDOWS_SCOPE
+#include "toolcache_windows_helpers.h"
+int wmain(int argc, wchar_t **argv) {
+    return argc != 2 || !v_toolcache_root_is_private((unsigned short *)argv[1]);
+}
+''', encoding='utf-8')
+        checker = self.root / 'cache_privacy.exe'
+        subprocess.run([self.gcc, '-municode', '-I', str(ROOT / 'cmd' / 'v'),
+                        '-o', str(checker), str(source), '-ladvapi32'],
+                       check=True, capture_output=True, text=True, timeout=60)
+        github_env = self.root / 'github_env.txt'
+        github_env.unlink(missing_ok=True)
+        env = dict(os.environ, RUNNER_TEMP=str(self.root), GITHUB_ENV=str(github_env))
+        prepared = subprocess.run(
+            [self.pwsh, '-NoProfile', '-NonInteractive', '-File',
+             str(WORKFLOWS / 'setup_windows_tool_cache.ps1')],
+            env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(prepared.returncode, 0, prepared.stdout + prepared.stderr)
+        assignment = github_env.read_text(encoding='utf-8-sig').strip()
+        self.assertTrue(assignment.startswith('VTOOLS_CACHE_DIR='), assignment)
+        cache = Path(assignment.split('=', 1)[1])
+        self.assertEqual(cache.parent, self.root)
+        checked = subprocess.run([str(checker), str(cache)], capture_output=True, timeout=30)
+        self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
 
 
 if __name__ == '__main__':

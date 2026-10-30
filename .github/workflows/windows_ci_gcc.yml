@@ -41,6 +41,8 @@ jobs:
         id: uses_checkout_v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Show tool versions
         id: show_tool_versions
         if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
@@ -71,7 +73,9 @@ jobs:
       - name: All code is formatted
         id: all_code_is_formatted
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
-        run: v -silent test-cleancode
+        run: |
+          .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
+          v -silent test-cleancode
       - name: Build and run hello world with -b fastc
         id: build_and_run_hello_world_with_b_fastc
         if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
@@ -358,7 +362,7 @@ jobs:
           )
           for test in "${tests[@]}"; do
             ./"$runner" 300 - ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 \
-              -d gg_multiwindow_d3d11_warp test "$test"
+              -d gg_multiwindow_d3d11_warp -subsystem console test "$test"
           done
 
           ./"$runner" 120 \
@@ -390,6 +394,8 @@ jobs:
         id: uses_checkout_v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build
         if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         id: build
@@ -652,12 +658,8 @@ jobs:
             vlib/gg/draw_rect_empty_test.v
           )
           for test in "${tests[@]}"; do
-            diagnostic_subsystem=()
-            if [[ "$test" == vlib/gg/multiwindow_render_runtime_contract_test.v ]]; then
-              diagnostic_subsystem=(-subsystem console)
-            fi
             ./"$runner" 300 - ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 \
-              -d gg_multiwindow_d3d11_warp "${diagnostic_subsystem[@]}" test "$test"
+              -d gg_multiwindow_d3d11_warp -subsystem console test "$test"
           done
 
           for service_test in "${public_services_tests[@]}"; do

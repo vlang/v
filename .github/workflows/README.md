@@ -95,6 +95,11 @@ workflow callers together. Keep backend-state assertions in V so test helpers us
 the compiler's current symbol names and integer types. Test C headers must include
 fallback definitions for Windows messages missing from TinyCC's bundled headers.
 
+Windows compiler jobs create a private tool cache with the runner user as its owner.
+The main jobs verify that a second `v vet` invocation reuses its compiled tool before
+starting `test-cleancode`. A cache rejected because of directory ownership or permissions
+would otherwise rebuild the tool for every input until the job times out.
+
 ### macOS runners
 
 macOS runner names can imply both OS version and CPU architecture. For example, some

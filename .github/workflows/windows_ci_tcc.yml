@@ -43,6 +43,8 @@ jobs:
         id: uses_checkout_v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Install OpenSSL
         id: install_openssl
         if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
@@ -140,7 +142,9 @@ jobs:
       - name: All code is formatted
         id: all_code_is_formatted
         if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
-        run: v -silent test-cleancode
+        run: |
+          .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
+          v -silent test-cleancode
       - name: Build and run hello world with -b fastc
         id: build_and_run_hello_world_with_b_fastc
         if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
@@ -280,6 +284,8 @@ jobs:
         id: uses_checkout_v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build with makev.bat -tcc
         if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         id: build_with_makev_bat_tcc

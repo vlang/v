@@ -7,6 +7,7 @@ on:
       - 'makev.bat'
       - 'cmd/tools/makev_test.py'
       - 'cmd/tools/windows_ci_test.py'
+      - '.github/workflows/setup_windows_tool_cache.ps1'
       - '.github/workflows/windows_ci_gcc.yml'
       - '.github/workflows/windows_ci_msvc.yml'
       - '.github/workflows/windows_ci_tcc.yml'

@@ -41,6 +41,8 @@ jobs:
         id: uses_checkout_v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Install OpenSSL
         id: install_openssl
         if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
@@ -111,7 +113,9 @@ jobs:
       - name: All code is formatted
         id: all_code_is_formatted
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
-        run: v -silent test-cleancode
+        run: |
+          .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
+          v -silent test-cleancode
       - name: Build and run hello world with -b fastc
         id: build_and_run_hello_world_with_b_fastc
         if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
@@ -365,6 +369,8 @@ jobs:
         id: uses_checkout_v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         id: uses_msvc_dev_cmd_0b201ec74fa43914dc39ae48a89fd1d8cb592756_v1_13_0
         if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
@@ -611,11 +617,7 @@ jobs:
             'vlib/gg/draw_rect_empty_test.v'
           )
           foreach ($test in $tests) {
-            $diagnosticSubsystem = @()
-            if ($test -eq 'vlib/gg/multiwindow_render_runtime_contract_test.v') {
-              $diagnosticSubsystem = @('-subsystem', 'console')
-            }
-            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' @diagnosticSubsystem 'test' $test
+            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' '-subsystem' 'console' 'test' $test
             if ($LASTEXITCODE -ne 0) {
               throw "multiwindow D3D11 WARP test '$test' failed with exit code $LASTEXITCODE"
             }
