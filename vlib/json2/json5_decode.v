@@ -223,7 +223,7 @@ fn free_json5_decoder_scratch(mut parser Json5Parser, normalized string) {
 }
 
 @[manualfree]
-fn decode_json5[T](text string, mut buffer DecodeBuffer, params DecoderOptions) !T {
+fn decode_json5_buffer[T](text string, mut buffer DecodeBuffer, params DecoderOptions) !T {
 	mut decoder, mut parser, normalized := new_json5_decoder(text, mut buffer, params)!
 	defer {
 		buffer.values_info = unsafe { decoder.values_info }
