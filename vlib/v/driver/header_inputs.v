@@ -5,11 +5,8 @@ import strings
 import v.modulecache
 import v.tempname
 
-// What a C compiler reads besides the unit that it compiles decides what it makes
-// of the unit: the preprocessed headers that TinyCC is given (tcc_prelude.v) and
-// the executable that is kept of a program (program_compile_inputs.v) both stand
-// for a compilation, and are good for as long as that would read the same. This
-// file works out what a compilation depends on from the files that it read.
+// Native dependencies are compiler-reported paths and opaque file identities.
+// V never reads header contents or preprocessed declarations.
 
 // V3IncludeSearch is where a C compiler looks for an included file: `dirs` in the
 // order of the search, `frameworks` those of them that hold frameworks, where
@@ -26,9 +23,9 @@ mut:
 // command: the `files` that the compiler read, each with the metadata in
 // `identities` that it had when it was read, and the `missing` paths where a file
 // that is not there would be read instead of, or in addition to, one of them.
-// `mentions_time` says that the unit or a header spells `__DATE__`, `__TIME__` or
+// `mentions_time` says that the generated unit spells `__DATE__`, `__TIME__` or
 // `__TIMESTAMP__`, so that the compilation may give another result at another
-// time, and `time_parts` holds the parts of those names that the unit or a header
+// time, and `time_parts` holds the parts of those names that the unit or command
 // has as words of their own: `##` can put a name together of them. `unknown` says
 // why the inputs cannot all be told, or is '' when they can.
 struct V3HeaderInputs {
@@ -287,7 +284,7 @@ fn v3_header_inputs(read []string, unit string, before i64) V3HeaderInputs {
 
 // v3_inputs_of_headers records compiler-reported paths as opaque files. A
 // manifest does not describe missing include candidates or time macros, so it
-// cannot certify executable or prelude reuse when headers were read.
+// cannot certify executable reuse when headers were read.
 fn v3_inputs_of_headers(read []string, unit_asks []string, before i64) V3HeaderInputs {
 	mut inputs := V3HeaderInputs{
 		files: read.clone()

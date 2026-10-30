@@ -36,7 +36,9 @@ TCC invocation and `V3_CACHE_TRACE=1` to inspect module reuse. The consumer's co
 dependency manifest also selects framework link flags for nested C includes.
 
 Parallel C builds outside this explicit owner path keep quoted native includes in one translation
-unit when their ownership is unknown. The preprocessed TCC prelude cache remains removed.
+unit when their ownership is unknown. The preprocessed TCC prelude cache and its readers have
+been removed. Possible date/time dependencies disable executable reuse without preprocessing
+the unit to inspect header output.
 
 C compiler dependency manifests can still name headers for dependency reporting and opaque file
 identity checks. A dependency list alone cannot establish missing include candidates or time macro

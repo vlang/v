@@ -1,7 +1,6 @@
 module driver
 
 import os
-import v.pref
 
 fn test_cached_module_closure_dependencies_outlive_prepare_scope() {
 	mut state := V3ModuleCacheState{
@@ -553,13 +552,6 @@ fn test_cached_native_owner_restores_stripped_implementation_context() {
 	assert include_pos > define_pos
 }
 
-fn test_cache_c_flags_without_forced_inputs_drops_forced_files() {
-	filtered := cache_c_flags_without_forced_inputs(['-DFEATURE=1', '-include', '/tmp/forced.h',
-		'-I/tmp/inc', '-imacros', '/tmp/macros.h', '-include=/tmp/joined.h',
-		'-imacros=/tmp/joined_macros.h', '-DOTHER'])
-	assert filtered == ['-DFEATURE=1', '-I/tmp/inc', '-DOTHER']
-}
-
 fn test_cache_probe_language_unions_input_and_flag_languages() {
 	assert cache_probe_language('c', []string{}) == 'c'
 	assert cache_probe_language('objective-c', []string{}) == 'objective-c'
@@ -594,41 +586,6 @@ fn test_v_c_identifiers_accepts_spaced_and_commented_selectors() {
 	assert v_c_identifiers('// C.fake()\nC.real_value') == [
 		'real_value',
 	]
-}
-
-fn test_cache_compiler_macro_probe_uses_implicit_objective_c_language() {
-	$if macos {
-		macros, complete := cache_c_compiler_predefined_macros([]string{}, 'cc',
-			pref.host_target(), 'objective-c')
-		assert complete
-		assert '__OBJC__' in macros
-		// An Objective-C++ input defines both __OBJC__ and __cplusplus; the probe must
-		// carry __cplusplus so branches guarded by it are not discarded.
-		objc_cpp_macros, objc_cpp_complete := cache_c_compiler_predefined_macros([]string{}, 'cc',
-			pref.host_target(), 'objective-c++')
-		assert objc_cpp_complete
-		assert '__OBJC__' in objc_cpp_macros
-		assert '__cplusplus' in objc_cpp_macros
-	}
-}
-
-fn test_cache_compiler_macro_probe_excludes_forced_headers() {
-	$if macos {
-		dir := os.join_path(os.vtmp_dir(), 'v3_probe_forced_header_${os.getpid()}')
-		os.rmdir_all(dir) or {}
-		os.mkdir_all(dir) or { panic(err) }
-		defer {
-			os.rmdir_all(dir) or {}
-		}
-		forced := os.join_path(dir, 'forced.h')
-		os.write_file(forced, '#define V3_FORCED_PROBE_MACRO 1\n') or { panic(err) }
-		macros, complete := cache_c_compiler_predefined_macros(['-include', forced], 'cc',
-			pref.host_target(), 'c')
-		assert complete
-		// The forced header runs before the empty probe input, so its macros must not
-		// be reported as part of the predefined baseline the input scanner starts from.
-		assert 'V3_FORCED_PROBE_MACRO' !in macros
-	}
 }
 
 fn test_prune_cached_native_function_prototypes_resolves_cache_guards() {

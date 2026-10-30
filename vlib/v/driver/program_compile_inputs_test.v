@@ -173,19 +173,15 @@ fn test_an_executable_is_not_kept_of_a_compilation_that_cannot_be_repeated() {
 		identities:    ['identity']
 		mentions_time: true
 	})
-	// Whether a C that names such a macro asks for the time is a question until
-	// the preprocessor has answered it, and no executable is kept of a question.
+	// Possible time dependencies disable reuse without preprocessing headers.
 	assert timed.unknown == '' && timed.reason().contains('names a macro for the time')
-	timed.settle_time(true)
-	assert timed.reason() == 'the C of the program asks for the time of its compilation'
 	mut named_only := V3ProgramLinkInputs{
 		taken: true
 	}
 	named_only.add_header_inputs(&V3HeaderInputs{
 		mentions_time: true
 	})
-	named_only.settle_time(false)
-	assert named_only.reason() == ''
+	assert named_only.reason().contains('names a macro for the time')
 	// The parts of a name can come from the command and from a header.
 	mut pasted := V3ProgramLinkInputs{
 		taken:      true
@@ -199,16 +195,12 @@ fn test_an_executable_is_not_kept_of_a_compilation_that_cannot_be_repeated() {
 		time_parts: ['ME__']
 	})
 	assert pasted.reason().contains('can put the name of a macro for the time')
-	pasted.settle_time(false)
-	assert pasted.reason() == ''
-	// A preprocessor that did not run tells nothing: no executable is kept then.
+	// An unresolved time dependency always prevents executable reuse.
 	mut untold := V3ProgramLinkInputs{
 		taken:         true
 		time_question: 'the command names a macro for the time of the compilation'
 	}
 	assert untold.inputs_can_be_told() && untold.reason().contains('names a macro')
-	untold.settle_time(none)
-	assert untold.reason().contains('did not tell') && !untold.inputs_can_be_told()
 	mut unknown := V3ProgramLinkInputs{
 		taken: true
 	}
@@ -262,10 +254,4 @@ fn test_parts_of_the_name_of_a_time_macro_are_the_words_that_can_be_pasted_to_it
 		assert read_back.read_line(line)
 	}
 	assert read_back.time_parts == inputs.time_parts && read_back.mentions_time
-}
-
-fn test_a_command_that_compiles_is_turned_into_one_that_preprocesses() {
-	assert v3_time_question_args(['-O2', '-o', 'out', 'src.c', '-MD', '-MF', 'v3_program_unit.d',
-		'/cache/module.o', '-lm']) == ['-O2', 'src.c', '/cache/module.o', '-lm', '-Wno-error',
-		'-w', '-E', '-o', v3_program_time_file]
 }

@@ -5226,80 +5226,9 @@ fn register_headerless_c_types(mut tc types.TypeChecker) {
 	}
 }
 
-fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target, native_inputs_language string) (map[string]string, bool) {
-	if c_compiler_is_msvc(ccompiler) {
-		// `cl` has no `-dM` equivalent.
-		return map[string]string{}, false
-	}
-	path := os.join_path(os.vtmp_dir(), 'v3_compiler_macros_${tempname.unique_token()}.c')
-	defer {
-		os.rm(path) or {}
-	}
-	os.write_file(path, '') or { return map[string]string{}, false }
-	mut args := c_compiler_target_args(target, ccompiler, false, '') or {
-		return map[string]string{}, false
-	}
-	args << c_object_compile_flags(cache_c_flags_without_forced_inputs(flags))
-	args << ['-dM', '-E', '-x', cache_probe_language(native_inputs_language, flags), path]
-	result := cmdexec.run(ccompiler, args)
-	if result.exit_code != 0 {
-		if os.getenv('V3_CACHE_TRACE') != '' {
-			eprintln('  V3 module cache compiler macro probe failed: compiler=${ccompiler}')
-		}
-		return map[string]string{}, false
-	}
-	mut macros := map[string]string{}
-	for line in result.output.split_into_lines() {
-		if !line.starts_with('#define ') {
-			continue
-		}
-		rest := line['#define '.len..]
-		mut end := 0
-		for end < rest.len && (rest[end].is_alnum() || rest[end] == `_`) {
-			end++
-		}
-		if end == 0 {
-			continue
-		}
-		name := rest[..end]
-		// Preserve the whitespace after the name: a function-like macro starts
-		// immediately with `(`, while an object-like replacement starts after a
-		// separating space. CGen uses that distinction when classifying C calls.
-		macros[name] = rest[end..]
-	}
-	return macros, true
-}
-
-// cache_c_flags_without_forced_inputs drops `-include`/`-imacros` and their file
-// operands. The predefined-macro probe compiles an empty translation unit to
-// capture only the compiler/target/`-D` baseline, but forced-input files execute
-// before that empty input, so leaving them in would report their macros as
-// predefined. The dependency scanner would then start with those macros already
-// defined and skip includes guarded by `#if !defined(X)`, dropping the nested
-// files from the cache dependency set and serving stale output after they change.
-fn cache_c_flags_without_forced_inputs(flags []string) []string {
-	mut out := []string{cap: flags.len}
-	mut i := 0
-	for i < flags.len {
-		clean := flags[i].trim_space()
-		if clean in ['-include', '-imacros'] {
-			// Skip the option together with its file operand.
-			i += 2
-			continue
-		}
-		if clean.starts_with('-include=') || clean.starts_with('-imacros=') {
-			i++
-			continue
-		}
-		out << flags[i]
-		i++
-	}
-	return out
-}
-
 // cache_probe_language combines the richest language the native inputs require
-// with any Objective-C request from the command-line flags, so the `-dM` probe
-// captures every language macro the real build defines.
+// with any Objective-C request from the command-line flags, so dependency
+// manifests use the same native language as the real build.
 fn cache_probe_language(native_inputs_language string, flags []string) string {
 	mut need_objc := native_inputs_language in ['objective-c', 'objective-c++']
 	need_cpp := native_inputs_language in ['c++', 'objective-c++']
@@ -16111,17 +16040,10 @@ pub fn run(args []string) {
 				if program_link_inputs.taken && linked.exit_code == 0
 					&& program_link_inputs.inputs_can_be_told() {
 					unit := os.read_file(os.join_path_single(cc_dir, tcc_source)) or { '' }
-					search := v3_tcc_include_search(&cache_state.manager, tcc_path, v3_tcc_preprocess_args(tcc_args,
+					search := v3_tcc_include_search(&cache_state.manager, tcc_path, v3_tcc_compile_input_args(tcc_args,
 						tcc_source), cc_dir)
 					program_link_inputs.add_compiled_headers(&cache_state.manager, cc_dir,
 						unit, search, before_tcc)
-					if program_link_inputs.time_question.len > 0
-						&& program_link_inputs.unknown.len == 0 {
-						mut time_args := v3_tcc_preprocess_args(tcc_args, tcc_source)
-						time_args << ['-E', '-o', v3_program_time_file, tcc_source]
-						program_link_inputs.settle_time(v3_preprocessed_c_asks_for_time(tcc_path,
-							time_args, cc_dir))
-					}
 				}
 				linked
 			}
@@ -16308,11 +16230,6 @@ pub fn run(args []string) {
 							os.read_file(cc_src) or { '' }, search, before_cc)
 					} else {
 						program_link_inputs.unknown = 'the compiler did not tell where it looks for headers'
-					}
-					if program_link_inputs.time_question.len > 0
-						&& program_link_inputs.unknown.len == 0 {
-						program_link_inputs.settle_time(v3_preprocessed_c_asks_for_time(c_compiler,
-							v3_time_question_args(cc_args), cc_dir))
 					}
 				}
 			}
@@ -17258,7 +17175,8 @@ fn checker_fixture_header_exists(target string, source_file string, c_compiler s
 	header := target[1..target.len - 1]
 	probe := os.join_path(os.vtmp_dir(), 'v3_header_probe_${os.getpid()}.c')
 	os.write_file(probe, '') or { return true }
-	result := cmdexec.run(c_compiler, ['-E', '-x', 'c', '-include', header, probe])
+	result := cmdexec.run(c_compiler, ['-M', '-MT', 'v3_header_probe', '-x', 'c', '-include', header,
+		probe])
 	os.rm(probe) or {}
 	return result.exit_code == 0
 }
