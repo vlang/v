@@ -1208,7 +1208,7 @@ int cached_after_branch(void) {
 	assert header.count('#endif') == 1, header
 }
 
-fn test_cached_header_preserves_include_search_path_names() {
+fn test_opaque_headers_preserve_include_search_names_without_cache() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_include_search_${os.getpid()}')
 	defer {
@@ -1237,10 +1237,9 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '42'
-	header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
-	assert header_path.len > 0
-	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains('#include "cached_value.h"'), header
+	// The native compiler resolves the original include through -I. V cannot
+	// infer ownership from that header, so no cached V interface is published.
+	assert module_cache_artifact(cache_dir, 'wrapper_', '.vh') == ''
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
@@ -2521,7 +2520,7 @@ fn test_module_cache_string_symbol_rewrite_rejects_partially_changed_duplicates(
 	}
 }
 
-fn test_module_cache_rebuilds_objects_when_c_flags_change() {
+fn test_opaque_headers_bypass_object_cache_when_c_flags_change() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_c_flags_${os.getpid()}')
 	defer {
@@ -2560,7 +2559,9 @@ fn main() {
 	assert run_module_cache_binary(first_output) == '1'
 	first_wrapper_stamps :=
 		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
-	assert first_wrapper_stamps.len == 1
+	// Unknown header ownership bypasses object reuse; changing flags must
+	// still change the executable produced by the native compiler.
+	assert first_wrapper_stamps.len == 0
 
 	write_module_cache_file(root, 'main.v', 'module main
 
@@ -2577,11 +2578,10 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '2'
 	second_wrapper_stamps :=
 		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
-	assert second_wrapper_stamps.len == 2
-	assert second_wrapper_stamps.any(it !in first_wrapper_stamps)
+	assert second_wrapper_stamps.len == 0
 }
 
-fn test_cgen_cache_tracks_pkgconfig_output() {
+fn test_pkgconfig_output_changes_with_opaque_native_headers() {
 	$if windows {
 		return
 	}
@@ -2631,7 +2631,8 @@ fn main() {
 		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-show-timings',
 			'-enable-globals', '-o', warm_output, main_file])
 	assert warm.exit_code == 0, warm.output
-	assert warm.output.contains('cgen (cached)'), warm.output
+	// Header contents remain C compiler inputs on every build.
+	assert !warm.output.contains('cgen (cached)'), warm.output
 	assert run_module_cache_binary(warm_output) == '41'
 
 	os.setenv('V3_TEST_PKGCONFIG_FLAGS', '-DV3_PKG_VALUE=42', true)
