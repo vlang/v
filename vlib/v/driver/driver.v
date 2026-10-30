@@ -16867,7 +16867,9 @@ pub fn run(args []string) {
 			// V callbacks stored in C structs keep V's parameter types (`const T *` for
 			// immutable `&T`, `i64` for `long long`), which clang 16+ rejects by default.
 			// The V1 driver disabled this for every clang build, not only on macOS.
-			warn_args << '-Wno-incompatible-function-pointer-types'
+			// Newer clang, like gcc 14, also rejects `&listener` passed to a `voidptr`
+			// `fn C.` parameter whose header prototype is `const struct x_listener *`.
+			warn_args << ['-Wno-incompatible-function-pointer-types', '-Wno-incompatible-pointer-types']
 		} else if effective_c_compiler == 'gcc' {
 			// gcc 14 turns the same mismatches into -Wincompatible-pointer-types errors.
 			warn_args << '-Wno-incompatible-pointer-types'
