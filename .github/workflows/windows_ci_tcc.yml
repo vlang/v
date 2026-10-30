@@ -14,6 +14,8 @@ on:
       - '!cmd/tools/builders/**.v'
       - '!cmd/tools/oldv.v'
       - '!cmd/tools/oldv_test.v'
+      - '!cmd/tools/vdoc/**.v'
+      - '!cmd/tools/vvet/**.v'
 
 concurrency:
   group: windows-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
