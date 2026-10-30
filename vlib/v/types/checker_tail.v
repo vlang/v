@@ -11221,14 +11221,6 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		}
 		return none
 	}
-	if is_veb_run_at_call_name(call_name) {
-		return CallInfo{
-			name:         call_name
-			params:       []Type{}
-			return_type:  Type(ResultType{})
-			params_known: false
-		}
-	}
 	if call_name !in tc.fn_ret_types {
 		return none
 	}
@@ -11723,10 +11715,6 @@ fn (tc &TypeChecker) decode_call_info_from_type_arg(node flat.Node, name string,
 	}
 }
 
-fn is_veb_run_at_call_name(name string) bool {
-	return name == 'veb.run_at'
-}
-
 fn (tc &TypeChecker) generic_call_base_name(base_node flat.Node) ?string {
 	if base_node.kind == .ident {
 		if local_name := tc.local_bare_fn_key(base_node.value) {
@@ -11748,9 +11736,6 @@ fn (tc &TypeChecker) generic_call_base_name(base_node flat.Node) ?string {
 			}
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			full_name := '${mod_name}.${base_node.value}'
-			if is_veb_run_at_call_name(full_name) {
-				return full_name
-			}
 			if full_name in tc.fn_ret_types {
 				return full_name
 			}
