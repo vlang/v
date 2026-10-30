@@ -140,14 +140,36 @@ fn test_observation_collection_refuses_unsafe_destinations_before_probing() {
 	}
 	existing := os.join_path(base, 'observation.json')
 	os.write_file(existing, '{}') or { panic(err) }
+	evidence_dir := os.join_path(base, 'evidence')
+	os.mkdir_all(evidence_dir) or { panic(err) }
 	mut message := ''
 	bin.collect_toolchain_observation(automation_root(), 'macos-arm64', 'producer', 'macos-15',
 		os.join_path(base, 'missing'), os.join_path(base, 'fresh.json')) or { message = err.msg() }
 	assert message == 'toolchain evidence directory must be an existing physical directory'
 	bin.collect_toolchain_observation(automation_root(), 'macos-arm64', 'producer', 'macos-15',
-		base, existing) or { message = err.msg() }
+		evidence_dir, existing) or { message = err.msg() }
 	assert message == 'toolchain observation destination must not already exist'
 	assert os.read_file(existing) or { panic(err) } == '{}'
+	// An observation inside the evidence directory could alias an evidence file named by its
+	// SHA-256, so it is refused before probing, also through a symlinked spelling of the directory.
+	evidence_link := os.join_path(base, 'evidence-link')
+	os.symlink(evidence_dir, evidence_link) or { panic(err) }
+	inside_error := 'toolchain observation destination must be outside the evidence directory'
+	for observation_path in [os.join_path(evidence_dir, '6'.repeat(64)),
+		os.join_path(evidence_link, 'observation.json'), evidence_dir] {
+		message = ''
+		bin.collect_toolchain_observation(automation_root(), 'macos-arm64', 'producer', 'macos-15',
+			evidence_dir, observation_path) or { message = err.msg() }
+		assert message == inside_error, observation_path
+	}
+	$if macos {
+		// The default macOS file system is case-insensitive, so this spelling is the same directory.
+		message = ''
+		bin.collect_toolchain_observation(automation_root(), 'macos-arm64', 'producer', 'macos-15',
+			evidence_dir, os.join_path(base, 'EVIDENCE', '6'.repeat(64))) or { message = err.msg() }
+		assert message == inside_error
+	}
+	assert os.ls(evidence_dir) or { panic(err) } == []
 }
 
 // The collector needs a host that satisfies the reviewed profile's exact facts, so its success path
@@ -197,5 +219,15 @@ fn test_observation_collection_writes_authenticated_evidence_on_macos_arm64() {
 		assert message == 'toolchain evidence destination must not already exist'
 		assert !os.exists(second_path)
 		assert os.read_file(os.join_path(evidence_dir, evidence_sha256)) or { panic(err) } == evidence
+		// vlang/v#31426 review: naming the observation after the evidence it will produce, inside a
+		// fresh evidence directory, must not let the observation overwrite that evidence.
+		fresh_dir := os.join_path(base, 'fresh-evidence')
+		os.mkdir_all(fresh_dir) or { panic(err) }
+		aliased_path := os.join_path(fresh_dir, evidence_sha256)
+		message = ''
+		bin.collect_toolchain_observation(automation_root(), 'macos-arm64', 'producer', 'macos-15',
+			fresh_dir, aliased_path) or { message = err.msg() }
+		assert message == 'toolchain observation destination must be outside the evidence directory'
+		assert os.ls(fresh_dir) or { panic(err) } == []
 	}
 }

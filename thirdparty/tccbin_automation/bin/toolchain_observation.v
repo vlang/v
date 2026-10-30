@@ -94,6 +94,13 @@ pub fn collect_toolchain_observation(automation_root string, target_id string, p
 	if !os.is_dir(evidence_dir) || os.is_link(evidence_dir) {
 		return error('toolchain evidence directory must be an existing physical directory')
 	}
+	// Evidence files are named by their SHA-256 directly inside `evidence_dir`, so an observation
+	// written there could replace one of them. Compare directory identity, not spelling, so a
+	// symlinked or differently cased path to the same directory is refused too.
+	if toolchain_paths_identify_same_directory(observation_path, evidence_dir)
+		|| toolchain_paths_identify_same_directory(os.dir(observation_path), evidence_dir) {
+		return error('toolchain observation destination must be outside the evidence directory')
+	}
 	if os.exists(observation_path) || os.is_link(observation_path) {
 		return error('toolchain observation destination must not already exist')
 	}
@@ -127,7 +134,26 @@ pub fn collect_toolchain_observation(automation_root string, target_id string, p
 		os.write_file(evidence_file, evidence)!
 	}
 	os.write_file(observation_path, canonical_json(authenticated.observation))!
+	for evidence_file, evidence in evidence_files {
+		if os.read_file(evidence_file)! != evidence {
+			return error('toolchain evidence changed after it was written')
+		}
+	}
 	return authenticate_toolchain_observation_file(automation_root, target_id, observation_path)!
+}
+
+fn toolchain_paths_identify_same_directory(path string, directory string) bool {
+	if !os.exists(path) || !os.exists(directory) {
+		return false
+	}
+	$if windows {
+		// Windows `stat` reports no inode, so compare case-folded resolved paths instead.
+		return os.real_path(path).to_lower() == os.real_path(directory).to_lower()
+	} $else {
+		first := os.stat(path) or { return false }
+		second := os.stat(directory) or { return false }
+		return first.dev == second.dev && first.inode == second.inode
+	}
 }
 
 fn observe_github_hosted_role(phase string, role_id string, compiler_command string,
