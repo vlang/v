@@ -1,0 +1,42 @@
+name: mips64le Linux CI (experimental)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: mips64le-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mips64le_linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    name: Build on mips64le (QEMU, experimental)
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68 # v3
+        name: Run commands
+        id: runcmd
+        with:
+          arch: mips64le
+          distro: debianbullseye
+          base_image: --platform=linux/mips64le mips64le/debian:bullseye
+          githubToken: ${{ github.token }}
+          shell: /bin/bash
+          install: |
+            apt-get update -q -y
+            apt-get install -q -y make gcc git file coreutils binutils
+          run: |
+            uname -a
+            make --version
+            gcc --version
+            export VFLAGS="-gc none -no-retry-compilation -cc cc"
+            make
+            file ./v
+            export V_MACOS_V3_NO_FALLBACK=1
+            ./v test vlib/builtin vlib/os vlib/encoding/binary
