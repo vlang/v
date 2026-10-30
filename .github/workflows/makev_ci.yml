@@ -27,6 +27,7 @@ on:
       - 'vlib/x/multiwindow/service_native_win32_contract_red_test.v'
       - 'vlib/gg/multiwindow_win32_public_services_contract_windows_test.v'
       - 'vlib/x/multiwindow/event_sequence_exhaustion_test.v'
+      - 'vlib/gg/testdata/multiwindow_sokol_trace/shader_fixture_helpers.h'
       - 'vlib/gg/testdata/multiwindow_win32_raw_input_w5_a1_public_red_test.v'
       - 'vlib/x/multiwindow/testdata/win32_raw_input_w5_a1_oracle.h'
       - 'vlib/x/multiwindow/testdata/win32_raw_input_w5_preflight.h'

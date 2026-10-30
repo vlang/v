@@ -276,7 +276,7 @@ jobs:
             'vlib/gg/draw_rect_empty_test.v'
           )
           foreach ($test in $tests) {
-            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' 'test' $test
+            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' '-subsystem' 'console' 'test' $test
             if ($LASTEXITCODE -ne 0) {
               throw "multiwindow D3D11 WARP test '$test' failed with exit code $LASTEXITCODE"
             }
@@ -465,7 +465,7 @@ jobs:
             -ExpectedA0MainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
             -ExpectedA0TupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
             -ExpectedA0RunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68' `
-            -ExpectedGgFacadeSha256 '45d7d403921a63803167e1a944f42a7f36c2fd4a6ff3b6e961459fb113adbd68' `
+            -ExpectedGgFacadeSha256 'e50d9478b50c9110929a34fa6823249f82be79d675eab8846340eac646b065d8' `
             -ExpectedGgNoFlagSha256 'ad528c64cf18bce9415dd0e50513fb87d8d0b58c8ac4a99025a5c8955e7d9549' `
             -ExpectedGgServiceTypesSha256 '9f17334ba5e5aff51f26d55476c83878856a8494a890aa64ee6434a52c1ecfeb' `
             -ExpectedAppSha256 'af32eec55c119907a8bbf544842131018d36d3887347e26486e067a79d78a946' `
@@ -475,7 +475,7 @@ jobs:
             -ExpectedServiceTypesSha256 'cd8326b81201727618e758d79970b7a77223fd6418e18afda44a526a3b0b4267' `
             -ExpectedServiceRegistrySha256 'db244497fd23974c1739d6c7a8bc57a2e3137c8765d4bc7f789efd80a59066b7' `
             -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
-            -ExpectedPublicRoutingSurfaceSha256 '24b578654949910ce2a54af9796d44404175f186ba85fee57cc7276ab63a6644' `
+            -ExpectedPublicRoutingSurfaceSha256 'da259cec8ee5a0ce2a19948ec8a145393a44efdd3f4f7ae8ebb6d2e0bd896907' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDispatchSha256 '7ef6c7cbd34511d6c19c1a3a269b46876db791b9412bb88e3a8d4dcd543bfd4e' `
             -ExpectedWin32BackendSha256 'ebcd169ec1c382edf3cb05f3c7036c4cb149ceae34f141419ea01d24bcc948d6' `
@@ -483,7 +483,7 @@ jobs:
             -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedGreenProductionSurfaceSha256 '376c2ed664bb7248dea90efd32c0989d648ea61b719d70d073e797073f98127c' `
-            -ExpectedRunnerSha256 '5ccc077b7a473b4d0089d999382e508363b495f2083d022ad8beb3ee6574d5f2'
+            -ExpectedRunnerSha256 '8782bc3444bdaaebfe4ac6ad988daa37a16ce4fafbb8457902372c82036a45ec'
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
         if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}

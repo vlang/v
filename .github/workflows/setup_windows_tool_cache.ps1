@@ -46,4 +46,9 @@ foreach ($sid in @($user, [Security.Principal.SecurityIdentifier]::new('S-1-5-18
 }
 Set-Acl -LiteralPath $cache -AclObject $acl
 Add-Content -LiteralPath $env:GITHUB_ENV -Value "VTOOLS_CACHE_DIR=$cache"
+# Tests create their own module caches beneath VTMP, including nested staging
+# filenames. The runner's default user temp path leaves too little MAX_PATH room.
+$temporary = Join-Path $cache 'tmp'
+$null = New-Item -ItemType Directory -Path $temporary
+Add-Content -LiteralPath $env:GITHUB_ENV -Value "VTMP=$temporary"
 Write-Host "Private tool cache: $cache"

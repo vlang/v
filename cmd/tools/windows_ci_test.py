@@ -314,9 +314,16 @@ int main(void) {
 
     def checksum_with_closed_stdin(self, function):
         script = self.root / 'probe.sh'
-        script.write_bytes((function + '\nsha256_of fixture 0<&-\n').encode('utf-8'))
-        env = dict(os.environ, PATH=str(self.root) + os.pathsep + os.environ.get('PATH', ''))
-        return subprocess.run([self.shell, script.as_posix()], env=env,
+        # Set PATH inside the shell: Git for Windows prepends its coreutils to
+        # the inherited Windows PATH when sh starts. cygpath also converts the
+        # drive prefix before POSIX PATH treats its colon as a separator.
+        fixture_path = "'" + self.root.as_posix().replace("'", "'\\''") + "'"
+        setup = (f'fixture_bin={fixture_path}\n'
+                 'if command -v cygpath >/dev/null 2>&1; then\n'
+                 '    fixture_bin=$(cygpath -u "$fixture_bin")\n'
+                 'fi\nPATH="$fixture_bin:$PATH"\nexport PATH\n')
+        script.write_bytes((setup + function + '\nsha256_of fixture 0<&-\n').encode('utf-8'))
+        return subprocess.run([self.shell, script.as_posix()],
                               capture_output=True, text=True, timeout=30)
 
     def test_checksum_tools_receive_valid_stdin(self):
@@ -328,6 +335,47 @@ int main(void) {
         result = self.checksum_with_closed_stdin(self.function.replace('} < /dev/null', '}'))
         self.assertEqual(result.stdout.strip(), '')
         self.assertIn('closed stdin', result.stderr)
+
+
+class ShaderFixtureTests(unittest.TestCase):
+    def test_d3d11_fixtures_have_complete_dxbc_containers_without_sokol_gl(self):
+        compiler = shutil.which('gcc' if os.name == 'nt' else 'cc')
+        if not compiler:
+            self.skipTest('requires a C compiler')
+        with tempfile.TemporaryDirectory(prefix='multiwindow shader ') as folder:
+            root = Path(folder)
+            source = root / 'shader.c'
+            source.write_text(r'''
+#define SOKOL_D3D11
+#include "shader_fixture_helpers.h"
+#include <string.h>
+static uint32_t read_u32(const uint8_t *data) {
+    uint32_t value;
+    memcpy(&value, data, sizeof(value));
+    return value;
+}
+static int valid_dxbc(const void *blob, size_t size) {
+    const uint8_t *data = blob;
+    if (size < 32 || memcmp(data, "DXBC", 4) || read_u32(data + 24) != size) return 0;
+    uint32_t count = read_u32(data + 28);
+    if (!count || count > (size - 32) / 4) return 0;
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t offset = read_u32(data + 32 + i * 4);
+        if (offset > size - 8 || read_u32(data + offset + 4) > size - offset - 8) return 0;
+    }
+    return 1;
+}
+int main(void) {
+    return !valid_dxbc(v_multiwindow_fixture_hlsl4_vs(), v_multiwindow_fixture_hlsl4_vs_size())
+        || !valid_dxbc(v_multiwindow_fixture_hlsl4_fs(), v_multiwindow_fixture_hlsl4_fs_size());
+}
+''', encoding='utf-8')
+            binary = root / ('shader.exe' if os.name == 'nt' else 'shader')
+            subprocess.run([compiler, '-std=c11', '-Werror', '-I', str(ROOT / 'vlib/gg/testdata/'
+                            'multiwindow_sokol_trace'), '-o', str(binary), str(source)],
+                           check=True, capture_output=True, text=True, timeout=60)
+            result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class ToolCacheVerificationTests(unittest.TestCase):
@@ -493,10 +541,13 @@ int wmain(int argc, wchar_t **argv) {
              str(WORKFLOWS / 'setup_windows_tool_cache.ps1'), '-CacheParent', str(self.root)],
             env=env, capture_output=True, text=True, timeout=30)
         self.assertEqual(prepared.returncode, 0, prepared.stdout + prepared.stderr)
-        assignment = github_env.read_text(encoding='utf-8-sig').strip()
-        self.assertTrue(assignment.startswith('VTOOLS_CACHE_DIR='), assignment)
-        cache = Path(assignment.split('=', 1)[1])
+        assignments = dict(line.split('=', 1) for line in
+                           github_env.read_text(encoding='utf-8-sig').splitlines())
+        cache = Path(assignments['VTOOLS_CACHE_DIR'])
         self.assertEqual(cache.parent, self.root)
+        temporary = Path(assignments['VTMP'])
+        self.assertEqual(temporary.parent, cache)
+        self.assertTrue(temporary.is_dir())
         checked = subprocess.run([str(checker), str(cache)], capture_output=True, timeout=30)
         self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
 

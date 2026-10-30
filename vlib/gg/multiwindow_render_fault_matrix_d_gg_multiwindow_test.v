@@ -3,6 +3,7 @@ module gg
 
 import gg.testdata.multiwindow_sokol_trace
 import gg.testdata.multiwindow_probe_gate
+import gg.render
 import os
 import sokol.gfx
 import time
@@ -182,6 +183,12 @@ struct MultiWindowHealthyCleanupProofState {
 }
 
 @[heap]
+struct MultiWindowContextDestructionProof {
+mut:
+	frames int
+}
+
+@[heap]
 struct MultiWindowCleanupErrorProof {
 mut:
 	trace_generation     u64
@@ -278,6 +285,60 @@ fn test_multiwindow_render_internal_fault_plan_rejects_invalid_configuration() {
 		}
 		assert actual == err_multiwindow_render_fault_config_invalid
 	}
+}
+
+fn test_multiwindow_render_context_destruction_is_idempotent_and_preserves_caller_resources() {
+	if !multiwindow_fault_matrix_runtime_requested() {
+		return
+	}
+	mut app := multiwindow_fault_matrix_new_app()!
+	mut proof := &MultiWindowContextDestructionProof{}
+	app.create_window(
+		title:       'render-context-destruction'
+		width:       96
+		height:      72
+		visible:     true
+		redraw_mode: .continuous
+		frame_fn:    fn [mut proof] (mut context WindowContext) ! {
+			proof.frames++
+			generation := multiwindow_sokol_trace.install_generation()!
+			extra := render.new_context(max_vertices: 32, max_commands: 8)
+			created := multiwindow_sokol_trace.typed_snapshot()
+			assert created.count == 9
+			desc := multiwindow_sokol_trace.shader_descriptor()!
+			shader := gfx.make_shader(&desc)
+			assert gfx.query_shader_state(shader) == .valid
+			pipeline := extra.make_pipeline_with_shader(gfx.PipelineDesc{}, shader)
+			before := multiwindow_sokol_trace.typed_snapshot()
+			extra.destroy()
+			after := multiwindow_sokol_trace.typed_snapshot()
+			assert after.count == before.count + 9
+			for offset, source_index in [0, 4, 5, 6, 7, 8, 1, 2, 3] {
+				record := after.records[int(before.count) + offset]
+				assert record.identity == created.records[source_index].identity
+				assert record.operation == match created.records[source_index].operation {
+					.make_buffer { multiwindow_sokol_trace.Operation.destroy_buffer }
+					.make_image { multiwindow_sokol_trace.Operation.destroy_image }
+					.make_sampler { multiwindow_sokol_trace.Operation.destroy_sampler }
+					.make_shader { multiwindow_sokol_trace.Operation.destroy_shader }
+					else { multiwindow_sokol_trace.Operation.destroy_pipeline }
+				}
+			}
+			extra.destroy()
+			assert multiwindow_sokol_trace.typed_snapshot() == after
+			assert gfx.query_shader_state(shader) == .valid
+			for native_pipeline in pipeline.pips {
+				assert gfx.query_pipeline_state(native_pipeline) == .valid
+			}
+			extra.destroy_pipeline(pipeline)
+			gfx.destroy_shader(shader)
+			multiwindow_sokol_trace.uninstall_generation(generation)!
+			mut facade := context.app
+			facade.stop()!
+		}
+	)!
+	app.run()!
+	assert proof.frames == 1
 }
 
 fn test_multiwindow_real_public_operation_fault_matrix_and_retirement() {
@@ -1845,21 +1906,24 @@ fn multiwindow_assert_postcommit_submission_batches(snapshot multiwindow_sokol_t
 }
 
 fn multiwindow_assert_postcommit_context_bundle(snapshot multiwindow_sokol_trace.TypedSnapshot, start int, end int) int {
-	assert start + 6 <= end
-	buffer := snapshot.records[start]
-	assert buffer.operation == .make_buffer
-	assert buffer.identity != 0
-	multiwindow_assert_postcommit_sequence(snapshot, start)
-	for offset in 1 .. 6 {
-		pipeline := snapshot.records[start + offset]
-		assert pipeline.operation == .make_pipeline
-		assert pipeline.identity != 0
+	// gg.render owns a default image, sampler, and shader per context, followed
+	// by the five primitive pipelines. These were shared by sokol_gl before.
+	operations := [multiwindow_sokol_trace.Operation.make_buffer, .make_image, .make_sampler,
+		.make_shader, .make_pipeline, .make_pipeline, .make_pipeline, .make_pipeline, .make_pipeline]
+	assert start + operations.len <= end
+	for offset, operation in operations {
+		record := snapshot.records[start + offset]
+		assert record.operation == operation
+		assert record.identity != 0
 		multiwindow_assert_postcommit_sequence(snapshot, start + offset)
-		for previous_offset in 1 .. offset {
+	}
+	for offset in 4 .. operations.len {
+		pipeline := snapshot.records[start + offset]
+		for previous_offset in 4 .. offset {
 			assert pipeline.identity != snapshot.records[start + previous_offset].identity
 		}
 	}
-	return start + 6
+	return start + operations.len
 }
 
 fn multiwindow_assert_postcommit_recipe_bundle(snapshot multiwindow_sokol_trace.TypedSnapshot, start int, end int, expected []u32) int {
@@ -2644,6 +2708,21 @@ fn multiwindow_assert_cleanup_error_trace(snapshot multiwindow_sokol_trace.Typed
 	assert context_create.identity != window_buffer
 	context_buffer := context_create.identity
 	cursor++
+	mut context_defaults := []MultiWindowMatrixDestroyExpectation{}
+	for operation, destruction in {
+		multiwindow_sokol_trace.Operation.make_image:   multiwindow_sokol_trace.Operation.destroy_image
+		multiwindow_sokol_trace.Operation.make_sampler: multiwindow_sokol_trace.Operation.destroy_sampler
+		multiwindow_sokol_trace.Operation.make_shader:  multiwindow_sokol_trace.Operation.destroy_shader
+	} {
+		record := snapshot.records[cursor]
+		assert record.operation == operation
+		assert record.identity != 0
+		context_defaults << MultiWindowMatrixDestroyExpectation{
+			operation: destruction
+			identity:  record.identity
+		}
+		cursor++
+	}
 	mut context_pipelines := []u32{cap: 5}
 	for _ in 0 .. 5 {
 		pipeline := snapshot.records[cursor]
@@ -2677,29 +2756,18 @@ fn multiwindow_assert_cleanup_error_trace(snapshot multiwindow_sokol_trace.Typed
 		assert pipeline_destroy.identity == identity
 		cursor++
 	}
+	for expected in context_defaults {
+		record := snapshot.records[cursor]
+		assert record.operation == expected.operation
+		assert record.identity == expected.identity
+		cursor++
+	}
 	cursor = multiwindow_assert_cleanup_error_swapchain_pass(snapshot, cursor, 1, 1)
 	app_destroy := snapshot.records[cursor]
 	assert app_destroy.operation == .destroy_buffer
 	assert app_destroy.identity == app_buffer
 	cursor++
 
-	shutdown_expected := [
-		multiwindow_sokol_trace.Operation.destroy_buffer,
-		.destroy_pipeline,
-		.destroy_pipeline,
-		.destroy_pipeline,
-		.destroy_pipeline,
-		.destroy_pipeline,
-		.destroy_image,
-		.destroy_sampler,
-		.destroy_shader,
-	]
-	for offset, operation in shutdown_expected {
-		record := snapshot.records[cursor + offset]
-		assert record.operation == operation
-		assert record.identity != 0
-	}
-	cursor += shutdown_expected.len
 	assert cursor == snapshot.records.len
 }
 
@@ -2718,19 +2786,11 @@ fn multiwindow_assert_shutdown_destruction_tail(before multiwindow_sokol_trace.T
 		.destroy_pipeline,
 		.destroy_pipeline,
 		.destroy_pipeline,
-	]
-	global_shutdown := [
-		multiwindow_sokol_trace.Operation.destroy_buffer,
-		.destroy_pipeline,
-		.destroy_pipeline,
-		.destroy_pipeline,
-		.destroy_pipeline,
-		.destroy_pipeline,
 		.destroy_image,
 		.destroy_sampler,
 		.destroy_shader,
 	]
-	expected_tail := context_shutdown.len * 2 + global_shutdown.len
+	expected_tail := context_shutdown.len * 2
 	assert after.count == before.count + uint(expected_tail)
 	assert after.records.len == int(after.count)
 	for index, record in before.records {
@@ -2745,18 +2805,12 @@ fn multiwindow_assert_shutdown_destruction_tail(before multiwindow_sokol_trace.T
 			if operation == .begin_swapchain_pass {
 				assert record.width > 0
 				assert record.height > 0
-			} else if operation in [.destroy_buffer, .destroy_pipeline] {
+			} else if operation in [.destroy_buffer, .destroy_pipeline, .destroy_image,
+				.destroy_sampler, .destroy_shader] {
 				assert record.identity != 0
 			}
 			offset++
 		}
-	}
-	for operation in global_shutdown {
-		record := after.records[int(before.count) + offset]
-		assert record.operation == operation
-		assert record.identity != 0
-		assert record.sequence == after.records[int(before.count) + offset - 1].sequence + 1
-		offset++
 	}
 	assert offset == expected_tail
 }

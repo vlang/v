@@ -99,7 +99,8 @@ and all three compiler callers so formatting or type migrations cannot leave sta
 
 Windows compiler jobs create a private tool cache with the runner user as its owner.
 The cache uses a short path on the runner's temporary drive so MSVC's nested helper
-object paths stay below `MAX_PATH`.
+object paths stay below `MAX_PATH`. `VTMP` uses the same short root so test sessions
+and their isolated module caches also fit within the native tools' path limits.
 The main jobs verify that a second `v vet` invocation reuses its compiled tool before
 starting `test-cleancode`. A cache rejected because of directory ownership or permissions
 would otherwise rebuild the tool for every input until the job times out.
@@ -114,6 +115,11 @@ the Windows job's `VFLAGS` must not select MSVC for macOS output.
 Compatibility-compiler installation gives checksum tools a valid null stdin, including
 when the parent compiler launches the installer without an input handle. The bootstrap
 contract exercises that closed-stdin case.
+D3D11 shader fixtures own their SM4 bytecode rather than depending on definitions
+from the retired `sokol_gl` renderer. The bootstrap contract validates their DXBC
+containers without including that renderer.
+The TCC tools step also runs `oldv` shell-command regressions, including native
+Windows quoting, variable expansion, loop syntax, and nonzero exit propagation.
 
 ### macOS runners
 
