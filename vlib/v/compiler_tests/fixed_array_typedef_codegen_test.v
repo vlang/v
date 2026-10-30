@@ -613,3 +613,65 @@ fn second_size() int {
 	assert ambiguous.exit_code != 0, ambiguous.output
 	assert ambiguous.output.contains('non-constant array bound `fx.max_name_size`'), ambiguous.output
 }
+
+fn test_struct_field_const_length_used_from_another_module() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('foreign_field_len', 'module fixture
+
+pub const n = 4
+
+pub struct Holder {
+pub mut:
+	x [n]u8
+}
+', 'module main
+
+import user
+import other
+
+fn main() {
+	mut c := user.Carrier{}
+	c.fill(3)
+	println(c.total())
+	println(other.size())
+}
+')
+	// Another module declares a const of the same bare name, so `n` does not name one const
+	// program-wide; the field must keep the length of its own module's `n`.
+	for name, src in {
+		'other': 'module other
+pub const n = 2
+pub fn size() int {
+	return n
+}
+'
+		'user':  'module user
+import fixture
+pub struct Carrier {
+pub mut:
+	h fixture.Holder
+}
+pub fn (mut c Carrier) fill(v u8) {
+	for k in 0 .. fixture.n {
+		c.h.x[k] = v
+	}
+}
+pub fn (c Carrier) total() int {
+	mut t := 0
+	for v in c.h.x {
+		t += v
+	}
+	return t * 10 + c.h.x.len
+}
+'
+	} {
+		os.mkdir_all(os.join_path(root, name)) or { panic(err) }
+		os.write_file(os.join_path(root, name, '${name}.v'), src) or { panic(err) }
+	}
+	bin := os.join_path(root, 'out')
+	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
+	assert compile.exit_code == 0, compile.output
+	run := os.exec([bin])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '124\n2', run.output
+}
