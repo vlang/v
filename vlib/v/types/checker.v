@@ -18486,6 +18486,8 @@ const builtin_attribute_names = [
 	'heap',
 	'host',
 	'implicit',
+	// Prevents model-aware ORM updates to a struct field.
+	'immutable',
 	'ignore',
 	'ignore_overflow',
 	'index',
@@ -18530,7 +18532,6 @@ const builtin_attribute_names = [
 	'soa',
 	'spawn_stack',
 	'sql',
-	'sql_insert_only',
 	'sql_select',
 	'sql_type',
 	'str',
@@ -18889,12 +18890,12 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 				cur_module = node.value
 				tc.enter_module(node.value)
 				lo, hi := attribute_use_window(node)
-				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
+				tc.check_immutable_attribute_use(flat.NodeId(i), node,
 					tc.declaration_attributes[i], lo, hi)
 			}
 			.const_decl, .global_decl, .c_fn_decl {
 				lo, hi := attribute_use_window(node)
-				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
+				tc.check_immutable_attribute_use(flat.NodeId(i), node,
 					tc.declaration_attributes[i], lo, hi)
 			}
 			.fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
@@ -18966,16 +18967,16 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 	}
 }
 
-fn (mut tc TypeChecker) check_sql_insert_only_attribute_use(node_id flat.NodeId, node flat.Node, pieces []string, lo int, hi int) {
+fn (mut tc TypeChecker) check_immutable_attribute_use(node_id flat.NodeId, node flat.Node, pieces []string, lo int, hi int) {
 	for piece in pieces {
-		if !attribute_name_is(piece, 'sql_insert_only') {
+		if !attribute_name_is(piece, 'immutable') {
 			continue
 		}
-		pos := tc.attribute_use_pos(node, 'sql_insert_only', lo, hi)
+		pos := tc.attribute_use_pos(node, 'immutable', lo, hi)
 		if node.kind != .field_decl {
-			tc.record_error_at(.assignment_mismatch, 'attribute `sql_insert_only` can only be applied to struct fields', node_id, pos)
-		} else if piece != 'sql_insert_only' {
-			tc.record_error_at(.assignment_mismatch, 'attribute `sql_insert_only` does not accept arguments', node_id, pos)
+			tc.record_error_at(.assignment_mismatch, 'attribute `immutable` can only be applied to struct fields', node_id, pos)
+		} else if piece != 'immutable' {
+			tc.record_error_at(.assignment_mismatch, 'attribute `immutable` does not accept arguments', node_id, pos)
 		}
 	}
 }
@@ -18984,7 +18985,7 @@ fn (mut tc TypeChecker) check_sql_insert_only_attribute_use(node_id flat.NodeId,
 // declaration, field, or enum value against the registered schemas. `lo` and
 // `hi` bound the source range the attributes of this node occupy.
 fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int, mut warning_heads map[string][]AttributeWarningHead) {
-	tc.check_sql_insert_only_attribute_use(node_id, node, pieces, lo, hi)
+	tc.check_immutable_attribute_use(node_id, node, pieces, lo, hi)
 	// Schema interpretation needs the parser's no-argument identity: the legacy
 	// strings alone make @['Schema'] indistinguishable from @[Schema].
 	mut kinds_id := node.attribute_kinds_id()
