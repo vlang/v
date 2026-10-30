@@ -65,6 +65,9 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	for _, export_name in a.export_fn_names { v_functions[export_name] = true }
 	mut current_module := 'main'
 	mut current_file := ''
+	vroot := os.real_path(prefs.vroot) + os.path_separator
+	// Bootstrap checkouts can symlink vlib to the original repository.
+	vlib_root := os.real_path(os.join_path(prefs.vroot, 'vlib')) + os.path_separator
 	for node in a.nodes {
 		if node.kind == .file {
 			current_module = 'main'
@@ -81,8 +84,9 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		}
 		if node.kind == .directive && node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
 			arg := node.typ_text().trim_space().trim('"<>')
+			real_file := os.real_path(current_file)
 			if arg.ends_with('.m') || arg.ends_with('.mm')
-				|| !os.real_path(current_file).starts_with(os.real_path(prefs.vroot) + os.path_separator) {
+				|| (!real_file.starts_with(vroot) && !real_file.starts_with(vlib_root)) {
 				bridged_modules[current_module] = true
 			}
 		}

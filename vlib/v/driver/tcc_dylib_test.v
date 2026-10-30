@@ -141,3 +141,32 @@ fn test_native_bridge_program_frameworks_follow_nested_compiler_dependencies() !
 	assert flags.any(it.ends_with('/CoreFoundation.framework/CoreFoundation.tbd')), flags.str()
 	assert !flags.any(it.contains('/Cocoa.framework/')), flags.str()
 }
+
+fn test_native_bridge_keeps_symlinked_vlib_bindings_in_the_consumer() ! {
+	$if windows {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'native_bridge_vlib_link_${os.getpid()}')
+	checkout := os.join_path(root, 'checkout')
+	library := os.join_path(root, 'original', 'vlib')
+	os.mkdir_all(checkout)!
+	os.mkdir_all(os.join_path(library, 'os'))!
+	os.mkdir_all(os.join_path(root, 'external'))!
+	defer { os.rmdir_all(root) or {} }
+	os.symlink(library, os.join_path(checkout, 'vlib'))!
+	standard := os.join_path(library, 'os', 'binding.c.v')
+	os.write_file(standard, 'module os\n#include <sys/select.h>\nfn C.FD_ZERO(set voidptr)\n')!
+	external := os.join_path(root, 'external', 'binding.c.v')
+	os.write_file(os.join_path(root, 'external', 'native.h'), 'static int external_answer(void) { return 42; }\n')!
+	os.write_file(external, 'module external\n#include "@DIR/native.h"\nfn C.external_answer() int\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = checkout
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_files([standard, external])
+	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &cgen.CacheNativeInputs{})
+	assert closure.unassignable == '', closure.unassignable
+	assert 'FD_ZERO' !in closure.functions
+	assert 'external_answer' in closure.functions
+}
