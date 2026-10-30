@@ -2697,7 +2697,6 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 }
 
 fn (g &Parser) validate_parallel_expression_assignment_target(source string, tokens []FastcExpressionToken, typ_source_id u32) !FastcRenderedExpression {
-	typ := flat.source_type_name(typ_source_id)
 	if tokens.len == 1 && tokens[0].tok == .name {
 		mut names := []string{}
 		names << tokens[0].lit

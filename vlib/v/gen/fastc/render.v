@@ -5347,7 +5347,6 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 }
 
 fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressionToken, expected_type_source_id u32) ?string {
-	expected_type := flat.source_type_name(expected_type_source_id)
 	if !g.selfhost || expected_type_source_id in [fastc_type_option, fastc_type_result,
 		flat.source_type_voidptr] {
 		return none

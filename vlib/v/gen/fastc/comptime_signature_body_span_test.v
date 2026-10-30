@@ -50,7 +50,8 @@ fn tail() {}
 		collect_declared_types(source, path, 'main', prefs, mut declared, mut kinds,
 			mut enum_flags, mut params_structs, mut declaration_paths, mut declaration_modules,
 			mut type_source, mut source_origins, mut body_spans) or { panic(err) }
-		type_source.free()
+		// The test keeps the recorded spans, not the generated declaration text.
+		unsafe { type_source.free() }
 		assert body_spans.len == 6
 		header := FastcSourceHeader{
 			module_name:     'main'
