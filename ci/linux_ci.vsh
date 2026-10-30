@@ -18,7 +18,7 @@ fn verify_v_test_works() {
 }
 
 fn test_pure_v_math_module() {
-	exec_args(['v', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
+	exec_args(['v', '-d', 'pure_v_math', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
 }
 
 fn self_tests() {
