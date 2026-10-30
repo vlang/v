@@ -40,3 +40,19 @@ fn test_a_type_declared_after_its_methods_is_documented() {
 	assert any.merge_comments().trim_space() == 'Any is any value.'
 	assert any.children.map(it.name) == ['str']
 }
+
+fn test_the_comments_of_a_symbol_that_is_not_documented_are_not_the_module_comments() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_undocumented_comments_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a.v'), 'module a\n\n// The a module.\n\n// helper is private.\nfn helper() {}\n\n// first comes first.\npub fn first() {}\n\n// second comes second.\npub fn second() {}\n')!
+	// A private symbol is not documented.
+	d := generate(dir, true, true, .auto)!
+	assert d.head.merge_comments().trim_space() == 'The a module.'
+	// Neither is a symbol that a symbol filter leaves out.
+	filtered := generate(dir, true, true, .auto, 'second')!
+	assert filtered.head.merge_comments().trim_space() == 'The a module.'
+	assert filtered.contents['second']!.merge_comments().trim_space() == 'second comes second.'
+	assert 'first' !in filtered.contents
+}
