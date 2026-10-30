@@ -292,7 +292,7 @@ pub fn (mut ctx Context) file(file_path string) Result {
 
 fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	mut file := os.open(file_path) or {
-		eprint('[veb] error while trying to open file: ${err.msg()}')
+		eprintln('[veb] error while trying to open file: ${err.msg()}')
 		ctx.res.set_status(.not_found)
 		return ctx.text('resource does not exist')
 	}
