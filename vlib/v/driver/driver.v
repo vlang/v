@@ -1545,7 +1545,7 @@ fn v3_cached_tcc_executable_path(manager &modulecache.Manager, source_identity s
 // process; Apple's tool still signs a file that the signer here does not handle.
 // A driver that is built without the FastC backend has no signer, and leaves the
 // signing to TinyCC.
-fn run_v3_tcc_executable_link(tcc_path string, tcc_args []string, cc_dir string, output string) os.Result {
+fn run_v3_tcc_executable_link(tcc_path string, tcc_args []string, cc_dir string, output string, trace bool) os.Result {
 	$if !skip_fastc ? {
 		if os.user_os() == 'macos' && os.getenv('V3_TCC_APPLE_CODESIGN') != '1' {
 			shim := fastc.fastc_codesign_shim_dir()
@@ -1554,7 +1554,9 @@ fn run_v3_tcc_executable_link(tcc_path string, tcc_args []string, cc_dir string,
 			if shim.dir == '' || result.exit_code != 0 || !os.is_file(output) {
 				return result
 			}
+			print_post_link_step(trace, macos_in_process_codesign_step(output))
 			fastc.fastc_sign_macho_adhoc(output) or {
+				print_post_link_step(trace, macos_codesign_step(output))
 				signed := cmdexec.run('codesign', ['-f', '-s', '-', output])
 				if signed.exit_code != 0 {
 					return os.Result{
@@ -10977,6 +10979,8 @@ $if !skip_fastc ? {
 		command        string
 		output         string
 		cached_objects map[string]string
+		// post_link_steps are the steps after the link, as post_link_step_line shows them.
+		post_link_steps []string
 	}
 
 	fn publish_v3_fastc_c_source(pieces []string, output_file string, c_to_stdout bool) ! {
@@ -11215,7 +11219,8 @@ $if !skip_fastc ? {
 				}
 			}
 			return V3FastCCompileResult{
-				success: true
+				success:         true
+				post_link_steps: [post_link_move_step(staged_binary, bin_file)]
 			}
 		}
 		mut unit_paths := []string{}
@@ -11350,7 +11355,9 @@ $if !skip_fastc ? {
 				cached_objects: cached_objects
 			}
 		}
+		mut post_link_steps := []string{}
 		if sign_in_process {
+			post_link_steps << macos_in_process_codesign_step(staged_binary)
 			fastc.fastc_sign_macho_adhoc(staged_binary) or {
 				return V3FastCCompileResult{
 					command: command
@@ -11364,6 +11371,7 @@ $if !skip_fastc ? {
 		if bench_phases {
 			eprintln('fastc-phase tcc.signed ${cc_sw.elapsed().microseconds()}us')
 		}
+		post_link_steps << post_link_move_step(staged_binary, bin_file)
 		os.mv(staged_binary, bin_file) or {
 			return V3FastCCompileResult{
 				command: command
@@ -11371,9 +11379,10 @@ $if !skip_fastc ? {
 			}
 		}
 		return V3FastCCompileResult{
-			success: true
-			command: command
-			output:  result.output
+			success:         true
+			command:         command
+			output:          result.output
+			post_link_steps: post_link_steps
 		}
 	}
 }
@@ -13225,6 +13234,15 @@ pub fn run(args []string) {
 					println('  > ${fastc_result.command}')
 				}
 			}
+			if verbose || show_cc {
+				for step in fastc_result.post_link_steps {
+					if c_to_stdout {
+						eprintln(post_link_step_line(step))
+					} else {
+						println(post_link_step_line(step))
+					}
+				}
+			}
 			if show_c_output && fastc_result.output.len > 0 {
 				header := '======== Output of TinyCC fastc ========'
 				if c_to_stdout {
@@ -13433,7 +13451,7 @@ pub fn run(args []string) {
 			bin_file) {
 			$if windows {
 				if target.os == 'windows' {
-					ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc)
+					ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc, verbose || show_cc)
 				}
 			}
 			if os.getenv('V3_CACHE_TRACE') != '' {
@@ -17680,7 +17698,7 @@ pub fn run(args []string) {
 				result = if is_o {
 					cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 				} else {
-					run_v3_tcc_executable_link(tcc_path, tcc_args, cc_dir, cc_out)
+					run_v3_tcc_executable_link(tcc_path, tcc_args, cc_dir, cc_out, verbose || show_cc)
 				}
 				show_v3_c_compiler_output(show_c_output, tcc_path, result)
 				if result.exit_code == 0 {
@@ -17793,7 +17811,7 @@ pub fn run(args []string) {
 				}
 				// Whole seconds, and one to spare for a file system that rounds them.
 				before_tcc := time.utc().unix() - 1
-				mut linked := run_v3_tcc_executable_link(tcc_path, link_args, cc_dir, cc_out)
+				mut linked := run_v3_tcc_executable_link(tcc_path, link_args, cc_dir, cc_out, verbose || show_cc)
 				mut read_preprocessed_headers := generated_unit.len > 0
 				if linked.exit_code != 0 && generated_unit.len > 0
 					&& v3_c_output_reports_source_error(linked.output) {
@@ -17802,7 +17820,7 @@ pub fn run(args []string) {
 					v3_trace_tcc_prelude('not used: ${first_error}')
 					os.write_file(cc_src, generated_unit) or {}
 					read_preprocessed_headers = false
-					linked = run_v3_tcc_executable_link(tcc_path, link_args, cc_dir, cc_out)
+					linked = run_v3_tcc_executable_link(tcc_path, link_args, cc_dir, cc_out, verbose || show_cc)
 					if linked.exit_code == 0 {
 						// The unit compiles as it was generated, and not with the
 						// preprocessed headers: they do not stand for the others.
@@ -18153,6 +18171,7 @@ Please install the corresponding development package/libraries and make sure the
 					cached_checker_diagnostics
 				})
 		}
+		print_post_link_step(verbose || show_cc, post_link_move_step(staged_binary, bin_file))
 		os.mv(staged_binary, bin_file) or {
 			eprintln('failed to finalize ${bin_file}: ${err}')
 			cleanup_c_build_dir(cc_dir)
@@ -18162,12 +18181,12 @@ Please install the corresponding development package/libraries and make sure the
 			// MSVC's startup dbghelp.dll hangs with a long TMP in a longPathAware
 			// process, before V can shorten it, so leave its manifest unchanged.
 			if target.os == 'windows' && !is_o && !is_shared {
-				ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc || cc_dir_moved)
+				ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc || cc_dir_moved, verbose || show_cc)
 			}
 		}
 
 		if (is_debug || race) && target.os == 'macos' {
-			v3_keep_macos_debug_symbols(staged_binary, bin_file)
+			v3_keep_macos_debug_symbols(staged_binary, bin_file, verbose || show_cc)
 		}
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}
