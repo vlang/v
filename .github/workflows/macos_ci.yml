@@ -362,3 +362,17 @@ jobs:
         run: v run ci/macos_ci.vsh install_iconv
       - name: Self tests
         run: v run ci/macos_ci.vsh self_tests
+  fastc-smoke:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: fastc backend smoke
+        run: |
+          ./v -b fastc -o /tmp/hello_fastc examples/hello_world.v
+          /tmp/hello_fastc
+          test "$(/tmp/hello_fastc)" = "Hello, World!"
