@@ -542,7 +542,7 @@ fn mysql_type_from_v(typ int) !string {
 			}
 		}
 		orm.type_idx['u32'], orm.time_ {
-			'INT'
+			'DATETIME'
 		}
 		orm.type_idx['i64'], orm.type_idx['u64'], orm.enum_ {
 			'BIGINT'
@@ -582,7 +582,7 @@ fn (db DB) convert_query_data_to_primitives(table string, data orm.QueryData) ![
 	for i, primitive in data.data {
 		field := data.fields[i % data.fields.len]
 		if primitive.type_name() == 'time.Time' {
-			if column_type_map[field] in ['datetime', 'timestamp'] {
+			if column_type_map[field.to_lower()] in ['datetime', 'timestamp'] {
 				converted_data << orm.Primitive((primitive as time.Time).str())
 			} else {
 				converted_data << primitive
@@ -598,12 +598,12 @@ fn (db DB) convert_query_data_to_primitives(table string, data orm.QueryData) ![
 // get_table_column_type_map returns a map where the key represents the column name,
 // and the value represents its data type.
 fn (db DB) get_table_column_type_map(table string) !map[string]string {
-	data_type_query := "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${table}'"
+	data_type_query := "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE LOWER(TABLE_NAME) = LOWER('${table}')"
 	mut column_type_map := map[string]string{}
 	results := db.query(data_type_query)!
 
 	for row in results.rows() {
-		column_type_map[row.vals[0]] = row.vals[1]
+		column_type_map[row.vals[0].to_lower()] = row.vals[1].to_lower()
 	}
 
 	unsafe { results.free() }
