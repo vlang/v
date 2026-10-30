@@ -5835,6 +5835,9 @@ call, including references stored as map values.
 
 Generic variadic calls in a reflected field loop infer each scalar or array argument as one
 element. Spreading an array with `...` instead infers the variadic element type from its contents.
+For `fn accept[T](items ...T)`, both `accept(1, 2)` and `accept(...[1, 2])` infer `T` as `int`.
+A separate type parameter absent from the parameters, return type, and constraints still needs
+an explicit type argument.
 
 Another example:
 

@@ -6205,7 +6205,9 @@ fn (mut tc TypeChecker) record_uninferable_generic_function_type(id flat.NodeId,
 	return_text := tc.fn_ret_type_texts.type_id(info.name) or { u32(0) }
 	for param in generic_params {
 		if param in flat.source_type_syntax(return_text).symbols()
-			|| param_texts.any(param in flat.source_type_syntax(it).symbols()) {
+			|| param_texts.any(param in flat.source_type_syntax(it).symbols())
+			|| (info.is_variadic && param_texts.len > 0
+				&& param in flat.source_type_syntax(generic_variadic_elem_param_text(param_texts.last())).symbols()) {
 			continue
 		}
 		decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
