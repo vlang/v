@@ -4239,12 +4239,13 @@ fn (mut tc TypeChecker) assert_side_effect(id flat.NodeId, certain_only bool) ?(
 				if fn_node.value == 'wait' {
 					return id, 'a `wait()` call'
 				}
-				recv_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(fn_node, 0)))
-				if !certain_only && ((recv_type is Array
-					&& checker_builtin_array_method_mutates(fn_node.value))
-					|| (recv_type is Map
-						&& fn_node.value in ['clear', 'delete', 'move', 'reserve'])) {
-					return id, 'a call that modifies its receiver'
+				if !certain_only {
+					recv_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(fn_node, 0)))
+					if (recv_type is Array && checker_builtin_array_method_mutates(fn_node.value))
+						|| (recv_type is Map
+							&& fn_node.value in ['clear', 'delete', 'move', 'reserve']) {
+						return id, 'a call that modifies its receiver'
+					}
 				}
 			}
 			if !certain_only {
@@ -4276,10 +4277,15 @@ fn (mut tc TypeChecker) check_assert_stmt(node flat.Node) {
 	}
 	unsafe_alias_state := tc.fn_context.unsafe_reference_alias_owners.clone()
 	condition_id := tc.a.child(&node, 0)
+	errors_before := tc.errors.len
 	tc.check_node(condition_id)
 	tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_state.clone()
-	if effect_id, what := tc.assert_side_effect(condition_id, !tc.is_prod) {
-		tc.record_notice_at(.condition_mismatch, 'assert contains ${what}, which a `-prod` build drops together with the assert; bind the value first (`value := ...`) and assert on `value`', effect_id, tc.a.node(effect_id).pos)
+	// A condition that already has an error is not analysed: resolving its calls again would
+	// change the diagnostics.
+	if tc.errors.len == errors_before {
+		if effect_id, what := tc.assert_side_effect(condition_id, !tc.is_prod) {
+			tc.record_notice_at(.condition_mismatch, 'assert contains ${what}, which a `-prod` build drops together with the assert; bind the value first (`value := ...`) and assert on `value`', effect_id, tc.a.node(effect_id).pos)
+		}
 	}
 	if node.children_count > 1 {
 		message_id := tc.a.child(&node, 1)
