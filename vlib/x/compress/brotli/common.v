@@ -1,7 +1,7 @@
 // Brotli compression and decompression implemented in V.
 module brotli
 
-import hash.huffman
+import compress.huffman
 
 const trivial_block_size = 65536
 

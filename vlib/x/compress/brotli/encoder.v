@@ -1,6 +1,6 @@
 module brotli
 
-import hash.huffman
+import compress.huffman
 
 fn write_window_bits(mut w BitWriter, window_size int, large_window bool) {
 	if window_size == 16 && !large_window {
