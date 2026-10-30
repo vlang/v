@@ -6,6 +6,11 @@ import os
 import sync
 import time
 
+$if clang {
+	// Any's generated type-name dispatch exceeds Clang's default nesting limit.
+	#flag -fbracket-depth=1024
+}
+
 struct Cell[T] {
 mut:
 	v T
