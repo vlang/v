@@ -1,4 +1,4 @@
-param([switch]$Verify)
+param([switch]$Verify, [string]$CacheParent = '')
 
 $ErrorActionPreference = 'Stop'
 
@@ -27,7 +27,12 @@ if ($Verify) {
 # Elevated Windows processes can create directories owned by Administrators.
 # V deliberately requires a cache owned by the current user, with no other
 # unprivileged writers. Set both the owner and an explicit inheritable DACL.
-$cache = Join-Path $env:RUNNER_TEMP ('vtools-' + [guid]::NewGuid().ToString('N'))
+# MSVC also writes helper objects beneath the tool's staging directory. Keep
+# the root short enough that those nested filenames stay below MAX_PATH.
+if ($CacheParent -eq '') {
+    $CacheParent = [IO.Path]::GetPathRoot($env:RUNNER_TEMP)
+}
+$cache = Join-Path $CacheParent ('v' + [guid]::NewGuid().ToString('N').Substring(0, 6))
 $null = New-Item -ItemType Directory -Path $cache
 $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
 $acl = [Security.AccessControl.DirectorySecurity]::new()

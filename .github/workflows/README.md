@@ -96,6 +96,8 @@ the compiler's current symbol names and integer types. Test C headers must inclu
 fallback definitions for Windows messages missing from TinyCC's bundled headers.
 
 Windows compiler jobs create a private tool cache with the runner user as its owner.
+The cache uses a short path on the runner's temporary drive so MSVC's nested helper
+object paths stay below `MAX_PATH`.
 The main jobs verify that a second `v vet` invocation reuses its compiled tool before
 starting `test-cleancode`. A cache rejected because of directory ownership or permissions
 would otherwise rebuild the tool for every input until the job times out.

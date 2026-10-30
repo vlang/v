@@ -337,7 +337,7 @@ int wmain(int argc, wchar_t **argv) {
         env = dict(os.environ, RUNNER_TEMP=str(self.root), GITHUB_ENV=str(github_env))
         prepared = subprocess.run(
             [self.pwsh, '-NoProfile', '-NonInteractive', '-File',
-             str(WORKFLOWS / 'setup_windows_tool_cache.ps1')],
+             str(WORKFLOWS / 'setup_windows_tool_cache.ps1'), '-CacheParent', str(self.root)],
             env=env, capture_output=True, text=True, timeout=30)
         self.assertEqual(prepared.returncode, 0, prepared.stdout + prepared.stderr)
         assignment = github_env.read_text(encoding='utf-8-sig').strip()
