@@ -221,3 +221,7 @@ its native declarations. Use `@[c_extern]` on a V function binding when that hea
 provide a prototype. V does not inspect the header to infer which functions it declares.
 
 With Objective-C ARC enabled, `isnil` compares native pointers directly, preserving their ownership.
+
+Bootstrap C snapshots also retain native includes. The bootstrap compatibility filter relocates
+V-owned include paths from the snapshot generation machine to the current checkout. It does not
+read or expand those headers; the C compiler resolves them while compiling the snapshot.

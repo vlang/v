@@ -35,6 +35,7 @@ trap 'if [ -n "$filter_pid" ]; then kill "$filter_pid" 2>/dev/null || :; fi; exi
 mkfifo "$stream_dir/source"
 
 # Generated string literals can contain bytes that are not valid UTF-8.
+V_BOOTSTRAP_VROOT=$(CDPATH= cd -P "$script_dir/../.." && pwd) \
 LC_ALL=C awk -f "$script_dir/vc_compat.awk" "$snapshot" > "$stream_dir/source" &
 filter_pid=$!
 if "$@" < "$stream_dir/source"; then
