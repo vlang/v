@@ -176,6 +176,11 @@ jobs:
             git log -n1 --format=%H
             echo "HOME=$HOME PWD=$PWD PREFIX=$PREFIX"
             ls -la ~/tinycc
+            # tcc does not predefine the stdint limit macros that bionic stdint.h
+            # expands, so mbedtls base64.c fails with '__SIZE_MAX__' undeclared and
+            # V falls back to cc. Add the 64-bit set to tccdefs.h, the predefines
+            # every tcc compile reads. The values are for an LP64 target like aarch64.
+            printf "%s\n" "#define __SIZE_MAX__ 0xffffffffffffffffUL" "#define __UINTPTR_MAX__ 0xffffffffffffffffUL" "#define __INTPTR_MAX__ 0x7fffffffffffffffL" "#define __PTRDIFF_MAX__ 0x7fffffffffffffffL" "#define __INTMAX_MAX__ 0x7fffffffffffffffL" "#define __UINTMAX_MAX__ 0xffffffffffffffffUL" "#define __INT64_MAX__ 0x7fffffffffffffffL" "#define __UINT64_MAX__ 0xffffffffffffffffUL" "#define __INT32_MAX__ 0x7fffffffL" "#define __UINT32_MAX__ 0xffffffffU" "#define __INT16_MAX__ 0x7fff" "#define __UINT16_MAX__ 0xffff" "#define __INT8_MAX__ 0x7f" "#define __UINT8_MAX__ 0xff" >> include/tccdefs.h
             # Termux has no /bin/sh, so run configure and make with $PREFIX/bin/sh.
             sh ./configure --cc=clang --prefix="$HOME/tcc-install" \
               --crtprefix="$PREFIX/lib" \
