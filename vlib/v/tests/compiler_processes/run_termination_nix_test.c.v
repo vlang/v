@@ -172,7 +172,7 @@ fn test_run_signal_dispositions_restart_and_finish() ! {
 		assert compiled.exit_code == 0, compiled.output
 		for check in ['ignore-hup', 'ignore-term', 'ignore-int', 'ignore-quit', 'ignore-tstp',
 			'ignore-ttin', 'ignore-ttou', 'pending', 'restart', 'finish', 'group-hup', 'group-term',
-			'group-int', 'group-quit', 'debugger-stop', 'setup-failure'] {
+			'group-int', 'group-quit', 'debugger-stop', 'setup-retry', 'setup-rejected', 'setup-failure'] {
 			result := os.exec([binary, check])
 			assert result.exit_code == 0, '${mode} ${check}: ${result.output}'
 		}
@@ -209,6 +209,15 @@ static int test_pipe(int fds[2]) {
     return pipe(fds);
 }
 static int stop_notification = -1;
+static int fail_setpgid;
+static int test_setpgid(pid_t child, pid_t group) {
+    if (child > 0 && fail_setpgid > 0) {
+        fail_setpgid--;
+        errno = EPERM;
+        return -1;
+    }
+    return setpgid(child, group);
+}
 static pid_t test_waitpid(pid_t child, int *status, int options) {
     pid_t result = waitpid(child, status, options);
     if (result > 0 && WIFSTOPPED(*status) && stop_notification >= 0) {
@@ -239,7 +248,7 @@ int test_siginterrupt(int, int) __asm__("siginterrupt");
 #define v3_run_sigprocmask sigprocmask
 #define v3_run_sigemptyset sigemptyset
 #define v3_run_sigaddset sigaddset
-#define v3_run_setpgid setpgid
+#define v3_run_setpgid test_setpgid
 #define v3_run_getpgid getpgid
 #define v3_run_getpgrp getpgrp
 #define v3_run_tcgetpgrp tcgetpgrp
@@ -256,11 +265,13 @@ int test_siginterrupt(int, int) __asm__("siginterrupt");
 #define sigaction(...) test_sigaction(__VA_ARGS__)
 #define waitpid(...) test_waitpid(__VA_ARGS__)
 #define pipe(...) test_pipe(__VA_ARGS__)
+#define setpgid(...) test_setpgid(__VA_ARGS__)
 #endif
 #include "@RUN_SIGNAL_HELPER@"
 #undef sigaction
 #undef waitpid
 #undef pipe
+#undef setpgid
 #ifdef V3_TEST_HEADERLESS
 _Static_assert(sizeof(struct sigaction) <= sizeof(v3_run_action), "sigaction storage too small");
 _Static_assert(__alignof__(struct sigaction) <= __alignof__(v3_run_action), "sigaction alignment");
@@ -424,6 +435,41 @@ static int check_debugger_stop(void) {
     timeout_child = timeout_sender = 0;
     return stopped || waited != worker || !WIFEXITED(status) || WEXITSTATUS(status);
 }
+/* Keep the child in its inherited group until the parent completes setup.
+ * One transient EPERM must retry; a repeated failure must remain unpublished. */
+static int check_setup_retry(int failures) {
+    int gate[2];
+    if (pipe(gate) || v3_run_signals_begin()) return 3;
+    pid_t child = fork();
+    if (child < 0) return 4;
+    if (!child) {
+        close(gate[1]);
+        unsigned char byte;
+        _exit(read_exact(gate[0], &byte, 1) ? 5 : 42);
+    }
+    timeout_child = child;
+    close(gate[0]);
+    fail_setpgid = failures;
+    int result = v3_run_signals_set_pid((int)child);
+    fail_setpgid = 0;
+    if (failures == 1) {
+        if (result || getpgid(child) != child) return 6;
+    } else if (!result || v3_run_child_pid != 0) {
+        return 7;
+    }
+    unsigned char byte = 1;
+    if (write(gate[1], &byte, 1) != 1) return 8;
+    close(gate[1]);
+    int code, child_signal;
+    if (failures == 1) {
+        if (v3_run_signals_wait(&code, &child_signal) || code != 42 || child_signal) return 9;
+    } else {
+        int status;
+        if (reap(child, &status) != child || !WIFEXITED(status) || WEXITSTATUS(status) != 42) return 10;
+    }
+    timeout_child = 0;
+    return v3_run_signals_finish();
+}
 /* Exhaust observer descriptors after the child has forked a descendant. Both
  * retain report[1], so EOF proves that group cleanup removed both processes. */
 static int check_setup_failure(void) {
@@ -549,6 +595,8 @@ int main(int argc, char **argv) {
     if (argc > 1 && !strcmp(argv[1], "group-int")) result = check_group(SIGINT);
     if (argc > 1 && !strcmp(argv[1], "group-quit")) result = check_group(SIGQUIT);
     if (argc > 1 && !strcmp(argv[1], "debugger-stop")) result = check_debugger_stop();
+    if (argc > 1 && !strcmp(argv[1], "setup-retry")) result = check_setup_retry(1);
+    if (argc > 1 && !strcmp(argv[1], "setup-rejected")) result = check_setup_retry(2);
     if (argc > 1 && !strcmp(argv[1], "pending")) result = check_pending();
     if (argc > 1 && !strcmp(argv[1], "setup-failure")) result = check_setup_failure();
     if (argc > 1 && !strcmp(argv[1], "restart")) result = check_restart();
