@@ -406,8 +406,8 @@ jobs:
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler msvc `
-            -ExpectedCompositeSha256 'fbadc42268663be07624cb23373a235a7b2b5f528a76c7166c464a74c362ad42' `
-            -ExpectedRunnerSha256 '0b67bfa4791ea4087821e81b6f0b570a341fd9a87648e1d085c30847854a1843'
+            -ExpectedCompositeSha256 'dc3e1236e7f6a19de0821a0b7211e40a43d04fbc2d5429f920a11d8d0887c518' `
+            -ExpectedRunnerSha256 'dd6d20079a1392eb0738df31a9c95f0c1414a810f15d9879a33a9abffb9e8e5f'
       - name: Package 2 native Win32 RED matrix
         id: package_2_native_win32_red_matrix
         if: ${{ success() && !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
@@ -423,8 +423,8 @@ jobs:
           .\.github\workflows\run_multiwindow_win32_w4.ps1 `
             -Compiler msvc `
             -Expectation Green `
-            -ExpectedOracleSha256 '804e8cbc5f5f7c390e90736d54a60d65d19b649a94afa4915bd9cb4e95c4e04d' `
-            -ExpectedNativeTestSha256 '43a451c95d3e7df849ee795aa22d06ce68fc84a28ca1fb10732339180f33cd21' `
+            -ExpectedOracleSha256 '2884f7b9b9d9b64852dae48718126368c6bfed9026813298505512bbed3b64ab' `
+            -ExpectedNativeTestSha256 'c85dc17d04e6978206babf63bb158d8a97c1e0e43d561c6d228dc9e172378e00' `
             -ExpectedPublicTestSha256 'aae9e07b56175987fb94f794380c1bf0b36c53fb7ef8c7e77efc423879b43234' `
             -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
@@ -434,7 +434,7 @@ jobs:
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
             -ExpectedGreenSurfaceSha256 '12b88570044e1cda2e3c630e4c700e71990dcecfa10a424c0019a996dff4cf8c' `
-            -ExpectedRunnerSha256 '2ec67dd5433d8ed083d42770b0a5045450d4389f41a5e281c5b0b58b725aa675'
+            -ExpectedRunnerSha256 '79126b3b0272d6b2d40fe2d6a47d5d0ba5161cadd000870af7c073fb0a456624'
       - name: Win32 W5 raw-input A0 preflight
         id: win32_w5_raw_input_a0_preflight
         if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
