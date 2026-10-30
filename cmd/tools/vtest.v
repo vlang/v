@@ -26,6 +26,12 @@ fn main() {
 	ctx.fail_fast = extract_flag_bool('-fail-fast', mut args_after, testing.fail_fast)
 	ctx.verbose = extract_flag_bool('-v', mut args_after, false)
 	ctx.run_only = extract_flag_string_array('-run-only', mut args_after, testing.test_only_fn)
+	timeout_text := extract_flag_string_array('-timeout', mut args_after, [''])[0]
+	if timeout_text != '' && (timeout_text.len > 9 || !timeout_text.bytes().all(it.is_digit())) {
+		eprintln('`-timeout` takes a number of seconds, `0` for no limit; got `${timeout_text}`')
+		exit(2)
+	}
+	retry_timeouts := extract_flag_bool('-retry-timeouts', mut args_after, false)
 	os.setenv('VTEST_ONLY_FN', ctx.run_only.join(','), true)
 	if args_after == ['v'] {
 		eprintln('`v test v` has been deprecated.')
@@ -55,6 +61,12 @@ fn main() {
 	mut ts := testing.new_test_session(session_vargs, true)
 	ts.exec_mode = .compile_and_run
 	ts.fail_fast = ctx.fail_fast
+	if timeout_text != '' {
+		ts.timeout_s = timeout_text.int()
+	}
+	if retry_timeouts {
+		ts.retry_timeouts = true
+	}
 	for raw_targ in args_after {
 		targ := os.norm_path(raw_targ)
 		if os.is_dir(targ) {
@@ -117,6 +129,8 @@ fn show_usage() {
 	println('      v test file_test.v : run test functions in a given test file.')
 	println('      v -stats test file_test.v : as above, but with more stats.')
 	println('   Note: you can also give many and mixed folder/ file_test.v arguments after `v test` .')
+	println('   v test -timeout 60 folder/ : kill a test that runs longer than 60 seconds, and report it as failed')
+	println('      (the default is ${testing.default_test_timeout_s} seconds; `0` means no limit; VTEST_TIMEOUT sets it too).')
 	println('')
 }
 
