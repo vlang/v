@@ -24,6 +24,11 @@ fn test_macos_native_bridge_falls_back_when_header_expansion_is_excessive() ! {
 	args := ['-u', 'VFLAGS', '-u', 'VEXE', '-u', 'CFLAGS', '-u', 'LDFLAGS',
 		'V3CACHE=' + os.join_path(root, 'cache'), 'V3_CACHE_TRACE=1', 'V_MACOS_V3_NO_FALLBACK=1',
 		@VEXE, '-gc', 'none', '-o', exe, source]
+	mut strict_args := args.clone()
+	strict_args.insert(strict_args.len - 3, ['-cc', 'tcc', '-no-retry-compilation'])
+	strict := cmdexec.run('env', strict_args)
+	assert strict.exit_code != 0, strict.output
+	assert strict.output.contains('native bridge header expansion exceeds its safe limit'), strict.output
 	build := cmdexec.run('env', args)
 	assert build.exit_code == 0, build.output
 	assert build.output.contains('native bridge header expansion exceeds its safe limit'), build.output
