@@ -4611,9 +4611,18 @@ fn c_executable_bin_file_for_target(path string, target_os string, is_shared boo
 	return with_executable_postfix(path, target_os)
 }
 
-fn c_compiler_output_name_for_target(target_os string, is_shared bool, is_o bool) string {
+// c_compiler_output_name_for_target is the name of the file that the C compiler
+// writes in the build directory, which is moved to `bin_file` afterwards. A
+// Windows DLL is written with its own name, since the linker puts that name in
+// the DLL's export table, and programs linked against the DLL look for it by
+// that name. GNU ld takes the name from the LIBRARY line of a .def file
+// instead, but lld (llvm-mingw) and MSVC always use the name of the file.
+fn c_compiler_output_name_for_target(target_os string, is_shared bool, is_o bool, bin_file string) string {
 	if is_o && pref.normalized_os(target_os) == 'windows' {
 		return 'out.obj'
+	}
+	if is_shared && pref.normalized_os(target_os) == 'windows' {
+		return os.base(bin_file)
 	}
 	if !is_shared && !is_o && pref.normalized_os(target_os) == 'windows' {
 		return 'out.exe'
@@ -11220,7 +11229,7 @@ $if !skip_fastc ? {
 			cleanup_c_build_dir(build_dir)
 		}
 		source_file := os.join_path_single(build_dir, 'src.c')
-		staged_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), false, false)
+		staged_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), false, false, '')
 		staged_binary := os.join_path_single(build_dir, staged_output_name)
 		unit_prefix := os.join_path_single(build_dir, 'src')
 		mut rendering_units := fastc.FastcRenderingCUnits{}
@@ -16468,7 +16477,7 @@ pub fn run(args []string) {
 		mut cc_src := output_file
 		mut cc_out := ''
 		cc_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), is_shared,
-			is_o)
+			is_o, bin_file)
 		if !c_only {
 			cc_dir = os.join_path_single(v3_output_dir(bin_file), '.${os.base(bin_file)}.v3cc.${tempname.unique_token()}')
 			// tcc.exe is not long-path aware, so a build dir near MAX_PATH cannot hold its files.
