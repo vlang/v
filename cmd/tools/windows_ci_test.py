@@ -279,6 +279,57 @@ class W5SourceTests(unittest.TestCase):
             w5_metadata(self.script.replace("$caseName = 'test_", "$caseName = 'test_other_", 1))
 
 
+class FallbackChecksumTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.shell = shutil.which('sh')
+        compiler = shutil.which('gcc' if os.name == 'nt' else 'cc')
+        if not cls.shell or not compiler:
+            raise unittest.SkipTest('requires a POSIX shell and a C compiler')
+        cls.temp = tempfile.TemporaryDirectory(prefix='fallback checksum stdin ')
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.root = Path(cls.temp.name)
+        source = cls.root / 'sha256sum.c'
+        source.write_text(r'''
+#include <stdio.h>
+#include <sys/stat.h>
+int main(void) {
+    struct stat info;
+    /* Model Git for Windows coreutils checking stdin before hashing a file. */
+    if (fstat(0, &info) != 0) {
+        fputs("closed stdin\n", stderr);
+        return 9;
+    }
+    puts("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  fixture");
+    return 0;
+}
+''', encoding='utf-8')
+        binary = cls.root / ('sha256sum.exe' if os.name == 'nt' else 'sha256sum')
+        subprocess.run([compiler, '-o', str(binary), str(source)],
+                       check=True, capture_output=True, text=True, timeout=60)
+        installer = (ROOT / 'cmd/tools/install_v1_fallback.sh').read_text(encoding='utf-8')
+        start = installer.index('sha256_of() {\n')
+        end = installer.index('\ncandidate_has_expected_version()', start)
+        cls.function = installer[start:end]
+
+    def checksum_with_closed_stdin(self, function):
+        script = self.root / 'probe.sh'
+        script.write_bytes((function + '\nsha256_of fixture 0<&-\n').encode('utf-8'))
+        env = dict(os.environ, PATH=str(self.root) + os.pathsep + os.environ.get('PATH', ''))
+        return subprocess.run([self.shell, script.as_posix()], env=env,
+                              capture_output=True, text=True, timeout=30)
+
+    def test_checksum_tools_receive_valid_stdin(self):
+        result = self.checksum_with_closed_stdin(self.function)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.strip(), '0123456789abcdef' * 4)
+
+    def test_closed_stdin_fixture_detects_the_unredirected_regression(self):
+        result = self.checksum_with_closed_stdin(self.function.replace('} < /dev/null', '}'))
+        self.assertEqual(result.stdout.strip(), '')
+        self.assertIn('closed stdin', result.stderr)
+
+
 class ToolCacheVerificationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

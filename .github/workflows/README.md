@@ -109,6 +109,11 @@ tests. The bootstrap contract also checks that explicit source and test paths in
 Windows workflows exist; archived V1 tests under `vlib/v/legacy_tests` are fixtures.
 Direct C compilation checks link V3's native runtime helpers, disable GC and FastC
 dependencies, and run the resulting compiler's version command.
+Cross-platform C-generation probes select a compiler for their target explicitly;
+the Windows job's `VFLAGS` must not select MSVC for macOS output.
+Compatibility-compiler installation gives checksum tools a valid null stdin, including
+when the parent compiler launches the installer without an input handle. The bootstrap
+contract exercises that closed-stdin case.
 
 ### macOS runners
 

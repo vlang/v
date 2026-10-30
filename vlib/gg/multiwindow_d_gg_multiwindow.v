@@ -898,6 +898,24 @@ fn (mut app App) ensure_render_initialized() ! {
 		app.release_render_owner()
 		return error(err_multiwindow_render_backend_unavailable)
 	}
+	if message := app.render_runtime.take_internal_fault(.renderer_sgl_setup) {
+		app.latch_renderer_terminal_failure()
+		mut setup_errors := [message]
+		mut device_available := true
+		app.core.prepare_renderer_shutdown_for_gg() or {
+			setup_errors << err.msg()
+			device_available = false
+		}
+		device_available = device_available && app.core.renderer_device_available_for_gg()
+		if device_available {
+			app.core.shutdown_renderer() or { setup_errors << err.msg() }
+		} else {
+			gg_poison_gfx_render_owner(.multiwindow_app, app.owner_token())
+			app.core.abandon_renderer_for_gg() or { setup_errors << err.msg() }
+		}
+		app.release_render_owner()
+		return error('${err_multiwindow_render_cleanup_failed}: ${setup_errors.join('; ')}')
+	}
 	app.sgl_initialized = true
 	app.gfx_started = true
 }

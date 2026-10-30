@@ -7,6 +7,7 @@ on:
       - 'makev.bat'
       - 'cmd/tools/makev_test.py'
       - 'cmd/tools/windows_ci_test.py'
+      - 'cmd/tools/install_v1_fallback.sh'
       - 'vlib/v/pref/pkgconfig_test.v'
       - 'vlib/v/tests/comptime/comptime_if_pkgconfig_test.v'
       - '.github/workflows/setup_windows_tool_cache.ps1'
