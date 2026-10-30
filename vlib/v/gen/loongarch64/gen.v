@@ -2002,7 +2002,12 @@ fn (mut g Gen) emit_pcrel_addr(reg int, sym_idx int) {
 // emit_global_addr loads the address of a global (or function symbol).
 fn (mut g Gen) emit_global_addr(reg int, name string) {
 	sym_idx := g.elf.add_undefined(libc_name(name))
-	g.emit_pcrel_addr(reg, sym_idx)
+	pcalau_pos := g.text_offset()
+	g.emit32(0x1a000000 | (u32(reg)))  // pcalau12i rd, 0
+	g.elf.add_text_reloc(u64(pcalau_pos), sym_idx, 75, 0)  // R_LARCH_GOT_PC_HI20
+	ld_pos := g.text_offset()
+	g.emit32(0x28c00000 | (u32(0) << 10) | (u32(reg) << 5) | u32(reg))  // ld.d rd, rd, 0
+	g.elf.add_text_reloc(u64(ld_pos), sym_idx, 76, 0)  // R_LARCH_GOT_PC_LO12
 }
 
 // find_global_idx_by_name supports find global idx by name handling for Gen.
