@@ -54,6 +54,8 @@ Then read Top Rules and Agent Rules before making changes.
   (not `./v run file.v -g`); flags after the subcommand are passed
   to that subcommand.
 * Never make the V compiler parse or expand C headers; see C/JS Interop Hygiene.
+* Self-generated compiler C must contain no preprocessor includes. Declare native
+  functions and compiler runtime support in V sources; never inline C headers to achieve this.
 * Rebuild `./v` after compiler or core module changes
   (see Build & Rebuild).
 * Run the smallest relevant tests; see Testing for triggers and
