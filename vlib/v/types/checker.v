@@ -18359,9 +18359,6 @@ fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node fl
 			tc.record_error_at(.assignment_mismatch, 'attribute schema `${display}` cannot embed structs', field_id, tc.struct_field_declaration_pos(*field))
 			continue
 		}
-		if field.children_count > 0 {
-			tc.record_error_at(.assignment_mismatch, 'attribute schema field `${display}.${field.value}` cannot have a default value', field_id, tc.struct_field_declaration_pos(*field))
-		}
 		clean_field_type_id := trimmed_source_type_id(field_type_id)
 		if tc.attribute_field_kind(clean_field_type_id) == .unsupported {
 			tc.record_error_at(.assignment_mismatch, 'attribute schema field `${display}.${field.value}` must be a string, integer, bool, or enum, not `${flat.source_type_name(clean_field_type_id)}`', field_id, tc.struct_field_declaration_pos(*field))
@@ -18381,9 +18378,10 @@ fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node fl
 
 // AttributeSchemaField is one field of a custom attribute schema.
 struct AttributeSchemaField {
-	name string
+	name        string
 	// type_id is a source spelling ID, distinct from semantic TypeId.
-	type_id u32
+	type_id     u32
+	has_default bool
 }
 
 // AttributeSchema is a struct registered with `@[attribute]` whose uses are
@@ -18753,8 +18751,9 @@ fn (mut tc TypeChecker) collect_attribute_schemas() {
 						continue
 					}
 					schema.fields << AttributeSchemaField{
-						name:    field.value
-						type_id: trimmed_source_type_id(type_id)
+						name:        field.value
+						type_id:     trimmed_source_type_id(type_id)
+						has_default: field.children_count > 0
 					}
 				}
 				for raw in tc.declaration_attributes[int(node_id)] {
@@ -19435,7 +19434,7 @@ fn (mut tc TypeChecker) check_attribute_use_args(node_id flat.NodeId, schema Att
 		}
 	}
 	for field in schema.fields {
-		if !bound[field.name] {
+		if !bound[field.name] && !field.has_default {
 			tc.record_error_at(.assignment_mismatch, 'attribute `${base}` is missing field `${field.name}`', node_id, pos)
 		}
 	}
@@ -22666,6 +22665,49 @@ fn (tc &TypeChecker) comptime_attribute_member_type_for_schemas(member string, n
 		return none
 	}
 	return *tc.parse_type(result)
+}
+
+fn (tc &TypeChecker) comptime_attribute_narrowed_method_type(member string) ?Type {
+	if isnil(tc.comptime_attr_narrow_state) {
+		return none
+	}
+	names := tc.comptime_attr_narrow_state.names
+	if names.len == 0 || '' in names {
+		return none
+	}
+	mut result := Type(Unknown{})
+	mut first := true
+	for name in names {
+		mut found := false
+		for schema in tc.attribute_schemas[name.all_after_last('.')] or { []AttributeSchema{} } {
+			if '${schema.module}.${schema.name}' != name {
+				continue
+			}
+			type_name := if schema.module in ['', 'main', 'builtin'] {
+				schema.name
+			} else {
+				'${schema.module}.${schema.name}'
+			}
+			type_id := flat.source_type_id(type_name)
+			if typ := tc.method_value_type(type_id, member) {
+				if first {
+					result = typ
+					first = false
+				} else if typ != result {
+					return none
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return none
+		}
+	}
+	if first {
+		return none
+	}
+	return result
 }
 
 fn (tc &TypeChecker) fn_literal_directly_captures_ident(node flat.Node, var_name string) bool {

@@ -178,10 +178,12 @@ enum AttributeSchemaFieldKind {
 
 // AttributeSchemaFieldInfo is one field of a `@[attribute]` schema struct.
 struct AttributeSchemaFieldInfo {
-	name string
-	kind AttributeSchemaFieldKind
+	name          string
+	kind          AttributeSchemaFieldKind
 	// type_id is the declared field type; for an enum field, the enum itself.
-	type_id u32
+	type_id       u32
+	has_default   bool
+	default_value string
 }
 
 // AttributeSchemaInfo is a struct registered with `@[attribute]`.
@@ -850,6 +852,23 @@ fn (t &Transformer) build_comptime_attribute_schemas() []AttributeSchemaInfo {
 		}
 		type_name := if mod_name in ['', 'main', 'builtin'] { name } else { '${mod_name}.${name}' }
 		struct_fields := t.tc.struct_fields_for_type(flat.source_type_id(type_name))
+		// Collect default value source text per field from the schema's AST.
+		mut default_values := map[string]string{}
+		for i in 0 .. node.children_count {
+			field_node := t.a.child_node(&node, i)
+			if field_node.kind != .field_decl {
+				continue
+			}
+			if field_node.children_count == 0 {
+				continue
+			}
+			default_node := t.a.child_node(field_node, 0)
+			mut dv := default_node.value
+			if default_node.kind == .enum_val {
+				dv = '.' + dv
+			}
+			default_values[field_node.value] = dv
+		}
 		// A lookup miss must not turn a schema with fields into an empty one.
 		mut supported := struct_fields.len > 0 || !t.a.children_of(&node).any(t.a.nodes[int(it)].kind == .field_decl)
 		mut fields := []AttributeSchemaFieldInfo{cap: struct_fields.len}
@@ -866,9 +885,11 @@ fn (t &Transformer) build_comptime_attribute_schemas() []AttributeSchemaInfo {
 				break
 			}
 			fields << AttributeSchemaFieldInfo{
-				name:    field.name
-				kind:    kind
-				type_id: type_id
+				name:          field.name
+				kind:          kind
+				type_id:       type_id
+				has_default:   field.has_default
+				default_value: default_values[field.name]
 			}
 		}
 		schemas << AttributeSchemaInfo{
@@ -1131,6 +1152,15 @@ fn comptime_attribute_schema_instance(base string, schema AttributeSchemaInfo, d
 		}
 		bound_values[field_idx] = named[key][0]
 		bound[field_idx] = true
+	}
+	for i in 0 .. schema.fields.len {
+		if !bound[i] && schema.fields[i].has_default {
+			if !comptime_attribute_value_matches(schema.fields[i].kind, schema.fields[i].default_value, 0) {
+				// leave unbound; checker already validated the default
+			}
+			bound_values[i] = schema.fields[i].default_value
+			bound[i] = true
+		}
 	}
 	for b in bound {
 		if !b {
@@ -1605,6 +1635,9 @@ fn (mut t Transformer) clone_attribute_subst_scoped(id flat.NodeId, var_name str
 				if field_id := t.clone_attribute_schema_field(node.value, attr) {
 					return field_id
 				}
+				if t.attribute_schema_has_method(attr, node.value) {
+					return t.make_attribute_schema_method_selector(node.value, attr)
+				}
 			}
 			return match node.value {
 				'name' { t.make_string_literal(attr.name) }
@@ -1837,6 +1870,68 @@ fn (mut t Transformer) make_attribute_schema_field_literal(field AttributeSchema
 // in a `$if` condition. A field named like a `VAttribute` member (`name`,
 // `arg`, `has_arg`, `kind`) is replaced only where the use is narrowed;
 // elsewhere that name keeps meaning the `VAttribute` member.
+// attribute_schema_has_method reports whether `method` is a method of the
+// schema's underlying struct type.
+fn (t &Transformer) attribute_schema_has_method(attr AttributeMeta, method string) bool {
+	if isnil(attr.schema) {
+		return false
+	}
+	schema := attr.schema
+	type_name := if schema.module in ['', 'main', 'builtin'] {
+		schema.name
+	} else {
+		'${schema.module}.${schema.name}'
+	}
+	type_id := flat.source_type_id(type_name)
+	if typ := t.tc.method_value_type(type_id, method) {
+		return true
+	}
+	return false
+}
+
+// make_attribute_schema_struct_literal emits a schema struct literal populated
+// with the bound values of `attr`, so a method call can use it as receiver.
+fn (mut t Transformer) make_attribute_schema_struct_literal(attr AttributeMeta) flat.NodeId {
+	schema := attr.schema
+	type_name := if schema.module in ['', 'main', 'builtin'] {
+		schema.name
+	} else {
+		'${schema.module}.${schema.name}'
+	}
+	type_id := flat.source_type_id(type_name)
+	mut field_inits := []flat.NodeId{}
+	for i, field in schema.fields {
+		val := if i < schema.values.len { schema.values[i] } else { '' }
+		init := t.make_named_field_init(field.name, t.make_attribute_schema_field_literal(field, val), field.type_id)
+		field_inits << init
+	}
+	start := t.a.children.len
+	for fi in field_inits {
+		t.a.children << fi
+	}
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		source_value:   type_id
+		typ:            type_id
+		children_start: start
+		children_count: flat.child_count(field_inits.len)
+	})
+}
+
+// make_attribute_schema_method_selector emits `Schema{...}.method` so the
+// enclosing call node can invoke it.
+fn (mut t Transformer) make_attribute_schema_method_selector(method string, attr AttributeMeta) flat.NodeId {
+	struct_lit := t.make_attribute_schema_struct_literal(attr)
+	start := t.a.children.len
+	t.a.children << struct_lit
+	return t.a.add_node(flat.Node{
+		kind:           .selector
+		value:          method
+		children_start: start
+		children_count: 1
+	})
+}
+
 fn subst_attribute_schema_field_cond(cond string, var_name string, attr AttributeMeta) string {
 	if isnil(attr.schema) || !cond.contains('${var_name}.') {
 		return cond
@@ -1999,8 +2094,13 @@ fn (mut t Transformer) clone_attribute_subst_children_with_value(node flat.Node,
 			if child.kind == .selector && child.children_count > 0 {
 				receiver := t.a.child_node(&child, 0)
 				if receiver.kind == .ident && receiver.value == var_name {
-					// A method callee keeps the VAttribute receiver even when a
-					// schema field has the same name as the method.
+					// A method callee on a schema uses the schema struct as
+					// receiver when the method exists on the schema; otherwise
+					// it keeps the VAttribute receiver (vlang/rfcs#35).
+					if attr.schema_narrowed && t.attribute_schema_has_method(attr, child.value) {
+						children << t.make_attribute_schema_method_selector(child.value, attr)
+						continue
+					}
 					children << t.clone_attribute_subst_children(child, var_name, attr, child_inner_vars, schemas)
 					continue
 				}
