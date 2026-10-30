@@ -176,21 +176,10 @@ jobs:
             git log -n1 --format=%H
             echo "HOME=$HOME PWD=$PWD PREFIX=$PREFIX"
             ls -la ~/tinycc
-            # tcc does not predefine the stdint limit macros that bionic stdint.h
-            # expands, so mbedtls base64.c fails with the SIZE_MAX macro undeclared and
-            # V falls back to cc. Add the 64-bit set to tccdefs.h, the predefines
-            # every tcc compile reads. The values are for an LP64 target like aarch64.
-            # The lines are indented so c2str turns them into predefine strings, and
-            # they go before the closing endif of the __TCC_PP__ block.
-            defs="$(mktemp)"
-            printf "%s\n" "    #define __SIZE_MAX__ 0xffffffffffffffffUL" "    #define __UINTPTR_MAX__ 0xffffffffffffffffUL" "    #define __INTPTR_MAX__ 0x7fffffffffffffffL" "    #define __PTRDIFF_MAX__ 0x7fffffffffffffffL" "    #define __INTMAX_MAX__ 0x7fffffffffffffffL" "    #define __UINTMAX_MAX__ 0xffffffffffffffffUL" "    #define __INT64_MAX__ 0x7fffffffffffffffL" "    #define __UINT64_MAX__ 0xffffffffffffffffUL" "    #define __INT32_MAX__ 0x7fffffffL" "    #define __UINT32_MAX__ 0xffffffffU" "    #define __INT16_MAX__ 0x7fff" "    #define __UINT16_MAX__ 0xffff" "    #define __INT8_MAX__ 0x7f" "    #define __UINT8_MAX__ 0xff" > "$defs"
-            end_line="$(grep -n "__TCC_PP__" include/tccdefs.h | tail -n 1 | cut -d: -f1)"
-            sed -i "$((end_line - 1))r $defs" include/tccdefs.h
-            # tcc has no limits.h, and bionic limits.h takes INT_MAX and the
-            # other limits from the compiler limits.h. Without it, mbedtls
-            # constant_time.c evaluates INT_MAX as 0 and stops with its 32-bit #error.
-            # Provide the compiler-side macros here, then chain to the bionic limits.h.
-            printf "%s\n" "#define CHAR_BIT 8" "#define SCHAR_MAX 127" "#define SCHAR_MIN (-128)" "#define UCHAR_MAX 255" "#define SHRT_MAX 32767" "#define SHRT_MIN (-32768)" "#define USHRT_MAX 65535" "#define INT_MAX __INT_MAX__" "#define INT_MIN (-INT_MAX - 1)" "#define UINT_MAX 0xffffffffU" "#define LONG_MAX __LONG_MAX__" "#define LONG_MIN (-LONG_MAX - 1L)" "#define ULONG_MAX 0xffffffffffffffffUL" "#define LLONG_MAX 0x7fffffffffffffffLL" "#define LLONG_MIN (-LLONG_MAX - 1LL)" "#define ULLONG_MAX 0xffffffffffffffffULL" "#include_next <limits.h>" > include/limits.h
+            # tcc needs the stdint and limits macros that bionic headers expand, and
+            # the tccdefs and limits.h changes live in one patch, applied the same way
+            # the other tcc build scripts patch tinycc. It comes from the job checkout.
+            git apply ~/vproject/thirdparty/build_scripts/patches/tcc-termux-stdlimits.diff
             # Termux has no /bin/sh, so run configure and make with $PREFIX/bin/sh.
             sh ./configure --cc=clang --prefix="$HOME/tcc-install" \
               --crtprefix="$PREFIX/lib" \

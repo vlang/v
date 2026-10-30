@@ -1,0 +1,46 @@
+diff --git a/include/limits.h b/include/limits.h
+new file mode 100644
+index 00000000..89b26a38
+--- /dev/null
++++ b/include/limits.h
+@@ -0,0 +1,17 @@
++#define CHAR_BIT 8
++#define SCHAR_MAX 127
++#define SCHAR_MIN (-128)
++#define UCHAR_MAX 255
++#define SHRT_MAX 32767
++#define SHRT_MIN (-32768)
++#define USHRT_MAX 65535
++#define INT_MAX __INT_MAX__
++#define INT_MIN (-INT_MAX - 1)
++#define UINT_MAX 0xffffffffU
++#define LONG_MAX __LONG_MAX__
++#define LONG_MIN (-LONG_MAX - 1L)
++#define ULONG_MAX 0xffffffffffffffffUL
++#define LLONG_MAX 0x7fffffffffffffffLL
++#define LLONG_MIN (-LLONG_MAX - 1LL)
++#define ULLONG_MAX 0xffffffffffffffffULL
++#include_next <limits.h>
+diff --git a/include/tccdefs.h b/include/tccdefs.h
+index 2655c1dd..b604dab6 100644
+--- a/include/tccdefs.h
++++ b/include/tccdefs.h
+@@ -335,4 +335,18 @@
+     __BUILTIN_EXTERN(parity, unsigned)
+     #undef __BUILTIN_EXTERN
+ 
++    #define __SIZE_MAX__ 0xffffffffffffffffUL
++    #define __UINTPTR_MAX__ 0xffffffffffffffffUL
++    #define __INTPTR_MAX__ 0x7fffffffffffffffL
++    #define __PTRDIFF_MAX__ 0x7fffffffffffffffL
++    #define __INTMAX_MAX__ 0x7fffffffffffffffL
++    #define __UINTMAX_MAX__ 0xffffffffffffffffUL
++    #define __INT64_MAX__ 0x7fffffffffffffffL
++    #define __UINT64_MAX__ 0xffffffffffffffffUL
++    #define __INT32_MAX__ 0x7fffffffL
++    #define __UINT32_MAX__ 0xffffffffU
++    #define __INT16_MAX__ 0x7fff
++    #define __UINT16_MAX__ 0xffff
++    #define __INT8_MAX__ 0x7f
++    #define __UINT8_MAX__ 0xff
+     #endif /* ndef __TCC_PP__ */
