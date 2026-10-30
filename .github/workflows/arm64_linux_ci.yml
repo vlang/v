@@ -74,4 +74,9 @@ jobs:
       - name: fastc backend smoke
         run: |
           ./v -b fastc -o /tmp/hello_fastc examples/hello_world.v && /tmp/hello_fastc
+      - name: arm64 native backend smoke
+        run: |
+          ./v -compile-backend arm64 self
+          ./v -b arm64 -gc none -o /tmp/hello_arm64 examples/hello_world.v
+          /tmp/hello_arm64
 
