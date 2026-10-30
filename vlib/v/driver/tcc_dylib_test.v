@@ -91,7 +91,7 @@ fn test_native_bridge_declarations_project_angle_headers_from_include_directorie
 	os.write_file(os.join_path(root, 'system.h'), 'int unprojected;\n')!
 	declarations := v3_tcc_dylib_declarations_with_dirs('#include <types.h>\n#include <system.h>\n#include <stdio.h>\n', true, [root], {
 		os.real_path(header): 'typedef double NativeNumber;\n'
-	})
+	})!
 	assert declarations.contains('typedef double NativeNumber;')
 	assert !declarations.contains('typedef int NativeNumber;')
 	assert !declarations.contains('#include <types.h>')
@@ -130,7 +130,7 @@ fn test_native_bridge_declarations_resolve_nested_quoted_headers() ! {
 	os.write_file(os.join_path(root, 'outer.h'), '#include "inner.h"\n#include "inner.h"\nint bridge_value(BridgeValue v) { return v.value; }\n')!
 	os.write_file(os.join_path(root, 'objc.m'), '#include <Foundation/Foundation.h>\n')!
 	source := '#include "outer.h"\n#include "${c_include_path(os.join_path(root, 'objc.m'))}"\n'
-	declarations := v3_tcc_dylib_declarations_with_dirs(source, true, [root], {})
+	declarations := v3_tcc_dylib_declarations_with_dirs(source, true, [root], {})!
 	assert declarations.contains('BridgeValue')
 	assert declarations.contains('bridge_value(BridgeValue v);')
 	assert !declarations.contains('return v.value')
@@ -140,6 +140,44 @@ fn test_native_bridge_declarations_resolve_nested_quoted_headers() ! {
 	cc := os.find_abs_path_of_executable('cc') or { return }
 	checked := cmdexec.run(cc, ['-Werror', '-fsyntax-only', path])
 	assert checked.exit_code == 0, checked.output
+}
+
+fn test_native_bridge_declarations_stop_cycles_through_path_aliases() ! {
+	root := os.join_path(os.vtmp_dir(), 'native bridge aliases ${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'sub'))!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'sub', 'cycle.h')
+	os.write_file(header, '#pragma once\n#include "../sub/cycle.h"\ntypedef int CycleValue;\n')!
+	declarations := v3_tcc_dylib_declarations_with_dirs('#include "sub/cycle.h"\n', true, [root], {})!
+	assert declarations.count('typedef int CycleValue;') == 1
+	assert declarations.len < 1024
+}
+
+fn test_native_bridge_bounds_repeated_header_expansion() ! {
+	root := os.join_path(os.vtmp_dir(), 'native bridge expansion ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'large.h')
+	os.write_file(header, 'typedef int BridgeValue;\n'.repeat(4096))!
+	source := '#include "large.h"\n'.repeat(200)
+	if _ := v3_tcc_dylib_declarations_with_dirs(source, true, [root], {}) {
+		assert false, 'excessive header expansion must use the uncached build'
+	} else {
+		assert err.msg() == v3_native_bridge_expansion_error
+	}
+}
+
+fn test_native_bridge_bounds_repeated_empty_headers() ! {
+	root := os.join_path(os.vtmp_dir(), 'native empty bridge expansion ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'empty.h'), '')!
+	source := '#include "empty.h"\n'.repeat(v3_native_bridge_header_limit + 1)
+	if _ := v3_tcc_dylib_declarations_with_dirs(source, true, [root], {}) {
+		assert false, 'even empty headers must have a bounded expansion count'
+	} else {
+		assert err.msg() == v3_native_bridge_expansion_error
+	}
 }
 
 fn test_native_bridge_dependency_manifest_tracks_project_headers() ! {
@@ -183,7 +221,7 @@ fn test_native_bridge_dependency_manifest_tracks_project_headers() ! {
 	assert public_interface.contains('bridge_header(BridgeValue value, BridgeCallback callback);')
 	assert !public_interface.contains('private_count')
 	assert !public_interface.contains('CoreText')
-	declarations := v3_tcc_dylib_declarations_with_dirs('#include \"${c_include_path(native)}\"\n', true, [root], closure.tcc_headers)
+	declarations := v3_tcc_dylib_declarations_with_dirs('#include \"${c_include_path(native)}\"\n', true, [root], closure.tcc_headers)!
 	assert declarations.contains('typedef void (*BridgeCallback)(void *, int);')
 	assert declarations.contains('bridge_header(BridgeValue value, BridgeCallback callback);')
 	bindings := v3_tcc_dylib_function_bindings(closure.functions)!

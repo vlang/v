@@ -43,6 +43,9 @@ of their owning V modules, so payload edits refresh cached metadata such as `$em
 Enum members omit diagnostic annotations such as deprecation attributes in the TCC interface.
 Mixed Objective-C and Objective-C++ bridge contexts retain the uncached fallback;
 `-no-retry-compilation` reports an unsupported bridge instead of changing C compilers.
+Header expansion is bounded to avoid excessive memory use for deeply nested or repeatedly
+included project headers. Builds that exceed the bound also use the uncached fallback;
+with `-no-retry-compilation` or a forced cache refresh, the compiler reports the limit instead.
 The V program keeps TCC's compile-time conditions. Native calls, including functions from static
 archives, resolve through the native owner. Loop conditions containing `or { break }` or
 `or { continue }` run inside the loop body so TCC preserves their control flow and short circuiting.
