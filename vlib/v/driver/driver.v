@@ -17175,8 +17175,7 @@ fn checker_fixture_header_exists(target string, source_file string, c_compiler s
 	header := target[1..target.len - 1]
 	probe := os.join_path(os.vtmp_dir(), 'v3_header_probe_${os.getpid()}.c')
 	os.write_file(probe, '') or { return true }
-	result := cmdexec.run(c_compiler, ['-M', '-MT', 'v3_header_probe', '-x', 'c', '-include', header,
-		probe])
+	result := cmdexec.run(c_compiler, ['-M', '-x', 'c', '-include', header, probe])
 	os.rm(probe) or {}
 	return result.exit_code == 0
 }

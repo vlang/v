@@ -255,3 +255,17 @@ fn test_parts_of_the_name_of_a_time_macro_are_the_words_that_can_be_pasted_to_it
 	}
 	assert read_back.time_parts == inputs.time_parts && read_back.mentions_time
 }
+
+fn test_header_existence_probe_accepts_clang_and_tcc_dependency_modes() {
+	$if windows {
+		return
+	}
+	mut compilers := []string{}
+	if cc := os.find_abs_path_of_executable('cc') { compilers << cc }
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if os.is_file(tcc) { compilers << tcc }
+	for compiler in compilers {
+		assert checker_fixture_header_exists('<stdio.h>', @FILE, compiler), compiler
+		assert !checker_fixture_header_exists('<v3_header_probe_missing_6811.h>', @FILE, compiler), compiler
+	}
+}
