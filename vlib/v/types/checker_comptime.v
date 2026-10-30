@@ -618,6 +618,9 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.a.child_node(&node, 0)
 		if base.kind == .ident && base.value == var_name {
+			if node.value == 'attrs' {
+				tc.record_warning_at(.assignment_mismatch, 'field `.attrs` (`[]string`) is deprecated; use `.attributes` instead (vlang/rfcs#35)', flat.NodeId(id), node.pos)
+			}
 			return tc.comptime_static_metadata_member_type(node.value, loop_kind)
 		}
 	}
@@ -675,6 +678,11 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 		}
 	}
 	if loop_kind == 'attributes' {
+		// A narrowed schema method takes precedence over fields and the
+		// VAttribute view (vlang/rfcs#35).
+		if typ := tc.comptime_attribute_narrowed_method_type(member) {
+			return typ
+		}
 		// A schema can use the metadata member names too. After narrowing its
 		// declared field type takes precedence over the VAttribute view.
 		if typ := tc.comptime_attribute_union_member_type(member) {
