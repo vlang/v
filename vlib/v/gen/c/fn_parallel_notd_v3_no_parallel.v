@@ -4028,6 +4028,10 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 	if no_parallel {
 		return false
 	}
+	// Support workers read the warm cache while candidate replay memoizes types.
+	// Keep the master's writes in an overlay until every support worker joins.
+	g.tc.freeze_type_cache_for_forks()
+	defer { g.tc.discard_type_cache_overlay_after_forks() }
 	if isnil(g.a.worker_pool) {
 		g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 	}

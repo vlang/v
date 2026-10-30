@@ -21744,26 +21744,21 @@ fn (tc &TypeChecker) method_value_type(receiver_name_id u32, method string) ?Typ
 		if ci := tc.resolve_generic_struct_method(receiver_name_id, method) {
 			signature = ci.name
 			ret_type = ci.return_type
-			params = ci.params.clone()
+			params = ci.params
 		} else if ci := tc.interface_receiver_method_call_info(receiver_name_id, method) {
 			signature = tc.interface_method_signature_key(receiver_name_id, method) or { ci.name }
 			ret_type = ci.return_type
-			params = ci.params.clone()
+			params = ci.params
 		} else {
 			owner_id := tc.embedded_method_value_owner(receiver_name_id, method) or { return none }
 			return tc.method_value_type(owner_id, method)
 		}
 	}
-	mut bound_params := []Type{}
-	mut bound_params_mut := []bool{}
-	if params.len > 1 {
-		bound_params = params[1..].clone()
-		params_mut := tc.declaration_param_mutability[signature] or { []bool{} }
-		if params_mut.len > 1 {
-			bound_params_mut = params_mut[1..].clone()
-		}
-	}
-	return Type(tc.variadic_fn_type(bound_params, tc.intern_type_reference(ret_type), bound_params_mut, tc.fn_variadic[signature] or { false }))
+	// Read the bound signature directly: slicing shared declaration arrays
+	// writes their buffer headers, and intermediate copies are unnecessary.
+	params_mut := tc.declaration_param_mutability[signature] or { []bool{} }
+	start := if params.len > 0 { 1 } else { 0 }
+	return Type(tc.variadic_fn_type_from(params, tc.intern_type_reference(ret_type), params_mut, tc.fn_variadic[signature] or { false }, start))
 }
 
 fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeId, node flat.Node, base_type Type) {

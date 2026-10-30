@@ -17241,7 +17241,10 @@ pub fn run(args []string) {
 			if interface_impl_signature.len == 0 {
 				interface_impl_signature = pre_tc.interface_impl_set_signature()
 			}
-			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, large_prod_c_unit, limit_large_unit_inlining, effective_tcc).join(' ')
+			// Cached module objects can be republished while GCC's LTO linker
+			// reopens their paths. Use the native object flags here too; the final
+			// program unit still receives the whole-program optimization flags.
+			opt_flag := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc).join(' ')
 			warning_flags := warn_args.join(' ')
 			// A plan of the program is kept for the implementers of the whole
 			// program; the object of a module, for those that its code can reach.

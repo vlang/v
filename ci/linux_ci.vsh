@@ -186,7 +186,7 @@ fn test_leak_detector_tcc() {
 fn test_leak_detector_not_active_tcc() {
 	exec_args(['v', '-o', 'testcase_leak', 'vlib/v/tests/testcase_leak.vv'])
 	exec_args(['sh', '-c', './testcase_leak 2>leaks.txt'])
-	exec_args(['[', '\$(stat -c %s leaks.txt)', '=', '0', ']'])
+	assert os.file_size('leaks.txt') == 0, os.read_file('leaks.txt') or { err.msg() }
 }
 
 // GCC job tasks

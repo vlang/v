@@ -17397,8 +17397,7 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	// Most checker contexts have no active dynamic smartcast. Consult the
 	// node-indexed lexical cache first so repeated type queries do not rebuild an
 	// expression key merely to rediscover the same lexical hit or miss.
-	if tc.smartcasts.len == 0 && idx < tc.lexical_smartcast_misses.len
-		&& tc.lexical_smartcast_misses[idx] {
+	if tc.smartcasts.len == 0 && tc.has_lexical_smartcast_miss(idx) {
 		return none
 	}
 	// Lexical smartcasts belong to parsed source nodes. Transform-created nodes
@@ -17439,7 +17438,7 @@ fn (tc &TypeChecker) smartcast_type_miss(id flat.NodeId, parsed bool, state u32)
 	if !parsed {
 		return none
 	}
-	if idx < tc.lexical_smartcast_misses.len && tc.lexical_smartcast_misses[idx] {
+	if tc.has_lexical_smartcast_miss(idx) {
 		return none
 	}
 	if state == 1 {
@@ -17466,8 +17465,7 @@ fn (tc &TypeChecker) smartcast_type_miss(id flat.NodeId, parsed bool, state u32)
 fn (tc &TypeChecker) remember_lexical_smartcast_miss(idx int) {
 	if isnil(tc.storage_query_probe) && !tc.resolution_type_mode && idx < tc.lexical_smartcast_misses.len
 		&& (!tc.parallel_check_sparse || (idx >= tc.check_range_lo && idx <= tc.check_range_hi)) {
-		mut writable := unsafe { tc }
-		writable.lexical_smartcast_misses[idx] = true
+		tc.set_lexical_smartcast_miss(idx)
 	}
 	if !isnil(tc.type_cache) {
 		mut cache := tc.type_cache
