@@ -37,7 +37,9 @@ fn main() { assert mathspare.live_here() + mathremote.selected() == 42 }
 		}
 	}
 	mut units := FastcUnitLayout{}
-	pieces, _, _ := generate_source_pieces(sources, map[string]string{}, prefs, mut units)!
+	mut native_symbols := []string{}
+	mut native_declarations := map[string]string{}
+	pieces, _, _ := generate_source_pieces(sources, map[string]string{}, prefs, [], mut units, mut native_symbols, mut native_declarations)!
 	assert units.unit_ref_starts.len == units.unit_starts.len
 	assert units.unit_starts.len >= 4
 	monolithic := fastc_join_c_pieces(pieces)
