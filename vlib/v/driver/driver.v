@@ -17369,6 +17369,11 @@ pub fn run(args []string) {
 						compile_signature = object_compile_signature + prefix_suffix
 						prepared_cache = prepare_v3_cached_generic_body(generated_source, cached_prefix, cached_declarations, cached_body, object_flags_signature + prefix_suffix, interface_impl_signature, a, mut cache_state) or {
 							message := err.msg()
+							if tcc_dylib && retry_compilation && message == v3_native_bridge_expansion_error
+								&& os.getenv('V3_CACHE_REFRESH') != '1' {
+								trace_v3_cache_fallback(message)
+								restart_v3_without_cache(cc_dir)
+							}
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 								cache_plan_file,
 								published_c_source,
@@ -19137,7 +19142,7 @@ fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string,
 	current_string_definitions := modulecache.static_string_definitions(split.prefix)
 	combined_declarations := cached_declarations + current_string_definitions
 	tcc_declarations := tcc_cached_main_source(if state.native_bridge {
-		v3_tcc_dylib_declarations_with_dirs(combined_declarations, true, state.bridge_include_dirs, state.bridge_tcc_headers)
+		v3_tcc_dylib_declarations_with_dirs(combined_declarations, true, state.bridge_include_dirs, state.bridge_tcc_headers)!
 	} else {
 		combined_declarations
 	}, main_body)
@@ -19197,7 +19202,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		'main',
 	]), cache_used_fns, program_generated_support, tc, state), true)
 	main_prefix := if state.native_bridge {
-		raw_main_prefix.replace(v3_native_bindings_marker, v3_tcc_dylib_declarations_with_dirs(state.bridge_tcc_headers['__v3_objcxx_sources__'], false, state.bridge_include_dirs, state.bridge_tcc_headers) + native_bindings.declarations)
+		raw_main_prefix.replace(v3_native_bindings_marker, v3_tcc_dylib_declarations_with_dirs(state.bridge_tcc_headers['__v3_objcxx_sources__'], false, state.bridge_include_dirs, state.bridge_tcc_headers)! + native_bindings.declarations)
 	} else {
 		raw_main_prefix
 	}
@@ -19219,7 +19224,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			dylib_prefix += native_bindings.owner
 		}
 		tcc_declarations = tcc_cached_main_source(if state.native_bridge {
-			v3_tcc_dylib_declarations_with_dirs(main_declarations, true, state.bridge_include_dirs, state.bridge_tcc_headers)
+			v3_tcc_dylib_declarations_with_dirs(main_declarations, true, state.bridge_include_dirs, state.bridge_tcc_headers)!
 		} else {
 			main_declarations
 		}, main_body)
@@ -19262,7 +19267,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				if state.native_bridge {
-					raw_declarations = v3_tcc_dylib_module_declarations(raw_declarations, state, &native_bindings)
+					raw_declarations = v3_tcc_dylib_module_declarations(raw_declarations, state, &native_bindings)!
 				}
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
 				has_declarations = true
@@ -19347,7 +19352,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				if state.native_bridge {
-					raw_declarations = v3_tcc_dylib_module_declarations(raw_declarations, state, &native_bindings)
+					raw_declarations = v3_tcc_dylib_module_declarations(raw_declarations, state, &native_bindings)!
 				}
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
 				has_declarations = true

@@ -457,7 +457,20 @@ fn v3_tcc_dylib_program_link_flags(flags []string, source string, sdk string) []
 	return tcc_dynamic_link_flags(v3_tcc_macos_framework_flags(program_flags, 'macos', sdk))
 }
 
-fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, include_dirs []string, headers map[string]string, mut active map[string]bool) string {
+const v3_native_bridge_expansion_limit = 16 * 1024 * 1024
+const v3_native_bridge_depth_limit = 64
+const v3_native_bridge_header_limit = 4096
+const v3_native_bridge_expansion_error = 'native bridge header expansion exceeds its safe limit'
+
+struct V3NativeBridgeExpansion {
+mut:
+	active  map[string]bool
+	bytes   i64
+	depth   int
+	headers int
+}
+
+fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, include_dirs []string, headers map[string]string, mut expansion V3NativeBridgeExpansion) !string {
 	mut out := strings.new_builder(source.len)
 	for line in source.split_into_lines() {
 		arg := v3_tcc_dylib_include_argument(line) or {
@@ -489,23 +502,37 @@ fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, inc
 			out.writeln(line)
 			continue
 		}
-		if active[path] { continue }
-		if (path.ends_with('.m') || path.ends_with('.mm')) && os.real_path(path) !in headers {
+		// Include spellings can refer to an active header through `..` or a
+		// symlink. Track the physical file so those cycles cannot expand forever.
+		canonical_path := os.real_path(path)
+		if expansion.active[canonical_path] { continue }
+		if (path.ends_with('.m') || path.ends_with('.mm')) && canonical_path !in headers {
 			continue
 		}
-		text := if os.real_path(path) in headers {
-			(if tinyc { '' } else { headers[os.real_path(path) + ':frameworks'] }) + headers[os.real_path(path)]
+		if expansion.depth >= v3_native_bridge_depth_limit
+			|| expansion.headers >= v3_native_bridge_header_limit
+			|| (canonical_path !in headers
+				&& os.file_size(path) > u64(v3_native_bridge_expansion_limit - expansion.bytes)) {
+			return error(v3_native_bridge_expansion_error)
+		}
+		expansion.headers++
+		text := if canonical_path in headers {
+			(if tinyc { '' } else { headers[canonical_path + ':frameworks'] }) + headers[canonical_path]
 		} else {
 			os.read_file(path) or { '' }
 		}
+		if expansion.bytes + text.len > v3_native_bridge_expansion_limit {
+			return error(v3_native_bridge_expansion_error)
+		}
+		expansion.bytes += text.len
 		if cgen.native_path_is_shipped(path, @VMODROOT)
-			&& os.real_path(path) !in headers
+			&& canonical_path !in headers
 			&& (text.contains('SOKOL_IMPL') || text.contains('_IMPLEMENTATION') || modulecache.c_source_is_replicable(text)) {
 			out.writeln('#include "' + c_include_path(path) + '"')
 			continue
 		}
 
-		if tinyc && os.real_path(path) !in headers && (text.contains('@interface') || text.contains('<Cocoa/') || text.contains('<AppKit/')) {
+		if tinyc && canonical_path !in headers && (text.contains('@interface') || text.contains('<Cocoa/') || text.contains('<AppKit/')) {
 			for declaration in modulecache.c_source_type_declarations(v3_tcc_dylib_c_text(text)).split_into_lines() {
 				if declaration.trim_space().starts_with('typedef ') && declaration.trim_space().ends_with(';') {
 					out.writeln(declaration)
@@ -513,18 +540,20 @@ fn v3_tcc_dylib_declarations_in(source string, tinyc bool, directory string, inc
 			}
 			continue
 		}
-		active[path] = true
+		expansion.active[canonical_path] = true
+		expansion.depth++
 		declarations := v3_tcc_dylib_header_declarations(text)
 		if text.split_into_lines().any(it.trim_space() == '#pragma once')
-			|| os.real_path(path) in headers {
-			guard := 'V3CACHE_NATIVE_HEADER_' + c_hash_bytes(u64(1469598103934665603), os.real_path(path).bytes()).hex()
+			|| canonical_path in headers {
+			guard := 'V3CACHE_NATIVE_HEADER_' + c_hash_bytes(u64(1469598103934665603), canonical_path.bytes()).hex()
 			out.writeln('#ifndef ' + guard + '\n#define ' + guard)
-			out.writeln(v3_tcc_dylib_declarations_in(declarations, tinyc, os.dir(path), include_dirs, headers, mut active))
+			out.writeln(v3_tcc_dylib_declarations_in(declarations, tinyc, os.dir(path), include_dirs, headers, mut expansion)!)
 			out.writeln('#endif')
 		} else {
-			out.writeln(v3_tcc_dylib_declarations_in(declarations, tinyc, os.dir(path), include_dirs, headers, mut active))
+			out.writeln(v3_tcc_dylib_declarations_in(declarations, tinyc, os.dir(path), include_dirs, headers, mut expansion)!)
 		}
-		active.delete(path)
+		expansion.depth--
+		expansion.active.delete(canonical_path)
 	}
 	return out.str()
 }
@@ -708,16 +737,16 @@ fn v3_tcc_dylib_needs_native_sources(state &V3ModuleCacheState, header string) b
 	return text.contains('struct C.') || text.contains('union C.')
 }
 
-fn v3_tcc_dylib_declarations_with_dirs(source string, tinyc bool, dirs []string, headers map[string]string) string {
-	mut active := map[string]bool{}
-	return (if tinyc { headers['__v3_objc_types__'] } else { '' }) + v3_tcc_dylib_declarations_in(source, tinyc, '', dirs, headers, mut active)
+fn v3_tcc_dylib_declarations_with_dirs(source string, tinyc bool, dirs []string, headers map[string]string) !string {
+	mut expansion := V3NativeBridgeExpansion{}
+	return (if tinyc { headers['__v3_objc_types__'] } else { '' }) + v3_tcc_dylib_declarations_in(source, tinyc, '', dirs, headers, mut expansion)!
 }
 
 // Cached V bodies call the owner's native functions too. Preserve projected
 // include positions so native typedefs precede V fields that use them.
-fn v3_tcc_dylib_module_declarations(source string, state &V3ModuleCacheState, bindings &V3TccDylibBindings) string {
+fn v3_tcc_dylib_module_declarations(source string, state &V3ModuleCacheState, bindings &V3TccDylibBindings) !string {
 	positioned := source.replace(v3_native_bindings_marker, state.bridge_tcc_headers['__v3_native_sources__'] + bindings.declarations)
-	return v3_tcc_dylib_declarations_with_dirs(positioned, false, state.bridge_include_dirs, state.bridge_tcc_headers)
+	return v3_tcc_dylib_declarations_with_dirs(positioned, false, state.bridge_include_dirs, state.bridge_tcc_headers)!
 }
 
 fn v3_tcc_dylib_objc_classes(source string) []string {
