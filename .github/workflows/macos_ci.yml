@@ -13,15 +13,6 @@ on:
       - '!**/macos_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
-      # macOS, so changes to it must run this suite; the canary below stays strict.
-      - '**.md'
-      - '**.yml'
-      - '!**/macos_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: macos-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -32,6 +23,7 @@ permissions:
 
 jobs:
   clang-macos:
+    if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
         # V3 (vlib/v, `-new-compiler`) is the default compiler on macOS, so
@@ -329,6 +321,7 @@ jobs:
         run: v run ci/macos_ci.vsh test_readline
 
   clang-macos-self-tests:
+    if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
         os: [macos-14, macos-15, macos-26]

@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   preflight:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -53,7 +54,7 @@ jobs:
 
   reconcile-dark-mode:
     needs: preflight
-    if: needs.preflight.outputs.authorized == 'true'
+    if: github.ref == 'refs/heads/master' && needs.preflight.outputs.authorized == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

@@ -1,10 +1,9 @@
 name: hub_docker_ci
 
-### Publishes the images for a V release tag.
+### Publishes the images for a V release tag when dispatched from master.
 ##
-### This is the only workflow triggered by a tag, and it is the reason a version
-### tag on Docker Hub can be trusted: V_REV is set from github.ref_name, so
-### thevlang/vlang:0.5.2 contains V 0.5.2 rather than whatever master was.
+### V_REV is set from the requested tag, so thevlang/vlang:0.5.2 contains
+### V 0.5.2 rather than whatever master was.
 ### The daily nightly images are published separately, from
 ### vlang/docker/.github/workflows/nightly_builds.yml, and only carry floating
 ### tags (:latest, :alpine, :debian, :nix) because they track V master.
@@ -16,18 +15,13 @@ name: hub_docker_ci
 ### NB: avoid caching things here, since the action is rare (once per release),
 ### and the potential benefits are less than the complexity of debugging
 ### cache invalidation issues...
-## Trigger on both new release tags, and on weekly tags.
-## Allow for manual override too:
+## Dispatch from master for a version or weekly tag:
 on:
   workflow_dispatch:
     inputs:
       tag:
         description: The V tag to build, e.g. 0.5.2
         required: true
-  push:
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
-      - 'weekly.*'
 
 concurrency:
   group: 'hub_docker_ci-${{ github.ref }}'
@@ -42,6 +36,7 @@ env:
 
 jobs:
   resolve-bootstrap:
+    if: github.ref == 'refs/heads/master'
     name: Resolve historical V bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -71,6 +66,7 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
   publish-release-images:
+    if: github.ref == 'refs/heads/master'
     needs: resolve-bootstrap
     name: Publish ${{ matrix.os }} ${{ inputs.tag || github.ref_name }}
     strategy:

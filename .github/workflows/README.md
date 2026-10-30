@@ -9,33 +9,38 @@ early compatibility feedback.
 
 ## CI lanes
 
-V's CI should keep fast contributor feedback while preserving the broad portability
-coverage needed for a compiler and runtime project. Prefer small, focused workflow
-changes, and avoid removing coverage without a replacement lane.
+CI runs only for commits on `master`. Pull requests, merge queues, tags, and pushes
+to other branches do not trigger CI. Existing path filters still select the checks
+needed for each `master` push.
+
+Manual and scheduled workflows keep a job condition requiring
+`github.ref == 'refs/heads/master'`. Select `master` when dispatching a workflow;
+jobs are skipped for any other ref. Workflow completion triggers must also filter
+their upstream runs to `master`. Reusable workflow triggers are disabled so callers
+cannot start these checks from a pull request or another branch.
 
 Use these lanes when adding, moving, or splitting checks:
 
 | Lane | Trigger | Blocking? | Purpose |
 | --- | --- | --- | --- |
-| Fast PR | every PR | yes | Quick build, formatting, docs, and critical smoke checks. |
-| Standard PR | every PR or broad code paths | usually | Main Linux, macOS, and Windows compiler coverage. |
-| Specialized PR | relevant paths | maybe | Domain checks such as docs, db, graphics, wasm, C2V, or VPM. |
-| Slow PR | label, manual, or high-risk paths | usually no | Expensive portability and deep regression checks. |
-| Master push | every merge to `master` | monitoring | Full confidence after merge and early regression detection. |
-| Scheduled | cron | no | Nightly or periodic portability, ecosystem, and performance sweeps. |
+| Master push | push to `master` | monitoring | Compiler, formatting, docs, and portability coverage. |
+| Specialized | relevant paths on `master` | monitoring | Domain checks such as db, graphics, wasm, or VPM. |
+| Scheduled | cron on `master` | no | Periodic portability, ecosystem, and performance sweeps. |
+| Manual | dispatch from `master` | no | Focused reruns, release publishing, and recovery. |
 
 When classifying a workflow:
 
-- Keep every PR covered by a small fast lane with clear failure signal.
-- Keep required branch protection checks stable unless maintainers intentionally change
-  the required check list at the same time.
+- Add only `master` to push branch filters; do not add pull request or merge queue triggers.
+- Guard every job in manual or scheduled workflows with the `master` ref condition,
+  including jobs using `always()`.
 - Prefer `paths` for workflows that only validate a subsystem, and include the workflow
   file itself in the path list so CI changes are self-tested.
 - Keep `workflow_dispatch` on slow or rare-platform workflows so maintainers can rerun
-  them directly.
-- Keep broad post-merge coverage on `master` before moving expensive PR checks to path,
-  label, manual, or scheduled execution.
-- Document exceptions in the workflow when a slow check must block every PR.
+  them directly from `master`.
+- Keep broad coverage on `master`, including slow portability and ecosystem checks.
+
+The issue voting information workflow is administrative automation and retains its
+`issues` trigger.
 
 Current slow-lane candidates include FreeBSD, OpenBSD, Termux, `riscv64`, `s390x`,
 the full sanitizer matrix, and full ecosystem compilation workflows. These checks are
@@ -103,7 +108,7 @@ depend on hosted runner behavior plus containers, VMs, or emulation layers. Trea
 runner image as part of the tested environment.
 
 When changing these workflows, prefer small PRs and keep `workflow_dispatch` available
-so maintainers can rerun the lane directly.
+with the `master` job condition so maintainers can rerun the lane directly.
 
 ### Updating runner images
 
@@ -166,17 +171,25 @@ packages the workflow actually needs.
 
 ## Rebuilding release binaries
 
-`Release CI` normally builds and publishes the ZIPs when a `weekly.*` or `0.*` tag is pushed.
-To recover missing assets for an existing tag, dispatch the workflow from `master` and set
-`release_tag`, for example `weekly.2026.41`. It checks out and verifies that tag, builds all
-five platform archives, and attaches them to the corresponding release. Existing assets with
-the same filenames are replaced; release descriptions, names, and prerelease status are kept.
-The publishing job runs only after every platform build succeeds, and upload errors fail it.
+`Release CI` builds without publishing when its workflow file changes on `master`.
+To publish ZIPs for an existing `weekly.*` or `0.*` tag, dispatch the workflow from `master`
+and set `release_tag`, for example `weekly.2026.41`. It checks out and verifies that tag,
+builds all five platform archives, and attaches them to the corresponding release. Existing
+assets with the same filenames are replaced; release descriptions, names, and prerelease status
+are kept. The publishing job runs only after every platform build succeeds, and upload errors
+fail it. Tag pushes do not start workflows.
 
-Leaving `release_tag` empty keeps manual runs in build-only mode. Pull request runs also build
-without publishing. A branch named like a release cannot substitute for the requested tag.
+Leaving `release_tag` empty keeps manual runs in build-only mode. A branch named like a
+release cannot substitute for the requested tag.
 
 ```sh
-# After the workflow update is merged:
 gh workflow run release_ci.yml --ref master -f release_tag=weekly.2026.41
+```
+
+Docker release publishing and prebuilt binary smoke tests are also manual workflows
+dispatched from `master`:
+
+```sh
+gh workflow run hub_docker_ci.yml --ref master -f tag=weekly.2026.41
+gh workflow run prebuilt.yml --ref master
 ```

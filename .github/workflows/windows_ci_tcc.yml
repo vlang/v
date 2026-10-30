@@ -12,15 +12,6 @@ on:
       - '!**/windows_ci_tcc.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**.bat'
-      - '!**/windows_ci_tcc.yml'
-      - '!**/windows-install-sqlite.bat'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: windows-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -31,6 +22,7 @@ permissions:
 
 jobs:
   tcc-windows:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-2022
     timeout-minutes: 120
     env:
@@ -268,6 +260,7 @@ jobs:
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v
 
   tcc-multiwindow:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-2022
     timeout-minutes: 60
     env:

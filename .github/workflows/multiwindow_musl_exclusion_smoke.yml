@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - smoke/x-multiwindow-windows-20260717
+      - master
     paths:
       - '.github/workflows/multiwindow_musl_exclusion_smoke.yml'
       - 'vlib/gg/multiwindow_render_runtime_contract_test.v'
@@ -27,6 +27,7 @@ permissions:
 
 jobs:
   multiwindow-musl-exclusion:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     env:
       # Stop a failing test session at its first failure instead of

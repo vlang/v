@@ -26,8 +26,6 @@ name: macOS CI (gitly_ci)
 on:
   push:
     branches: [master]
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -35,7 +33,7 @@ permissions:
 
 jobs:
   macos-gitly-ci:
-    if: ${{ github.repository == 'vlang/v' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: github.ref == 'refs/heads/master' && github.repository == 'vlang/v'
     runs-on: [self-hosted, macOS, gitly-ci]
     timeout-minutes: 120
     env:

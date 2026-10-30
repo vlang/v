@@ -51,12 +51,13 @@ fn workflow_index_after(source string, needle string, offset int) int {
 	return offset + relative
 }
 
-fn test_pr_contract_workflow_always_exposes_both_required_checks() {
+fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	source := workflow_source('tccbin_automation_contract.yml')
 	vc_lock := bin.validate_vc_bootstrap_contract(automation_root()) or { panic(err) }
 	tcc_lock := 'ece46f06fbe6eb701d52442f11dd59c48d166cae'
-	assert source.contains('  pull_request:')
-	assert source.contains('  merge_group:')
+	assert source.contains('on:\n  push:\n    branches:\n      - master\n')
+	assert !source.contains('  pull_request:')
+	assert !source.contains('  merge_group:')
 	assert !source.contains('paths:')
 	assert !source.contains('paths-ignore:')
 	assert source.contains('name: tccbin-automation-contract')
