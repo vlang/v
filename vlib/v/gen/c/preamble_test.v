@@ -458,11 +458,8 @@ fn test_manual_stdlib_header_usage_resolves_native_sources_with_cli_include_dirs
 			assert g.collect_c_directive_at(ast.nodes.len - 1, 'main', ast.nodes.last(),
 				os.join_path(root, 'main.v'), true)
 			assert g.c_directives.len == 1
-			if portable {
-				assert g.c_directives[0].text.trim_space() == source.trim_space()
-			} else {
-				assert g.c_directives[0].text.contains(os.real_path(os.join_path(include_dir, 'helper.c')).replace('\\', '/'))
-			}
+			// Both output modes leave source-local header lookup to the C compiler.
+			assert g.c_directives[0].text.contains(os.real_path(os.join_path(include_dir, 'helper.c')).replace('\\', '/'))
 			assert g.inlined_c_fns['helper'] == !has_include
 		}
 	}

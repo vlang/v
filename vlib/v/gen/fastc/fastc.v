@@ -3103,25 +3103,8 @@ fn fastc_vlib_native_helper_has_input(name string, paths []string, inputs []stri
 			&& it.replace('\\', '/').starts_with(vlib))) {
 		return false
 	}
-	// Like cgen's collected header declarations: a facade that a declaring file's
-	// own included header already declares (core_windows.h owns
-	// `v_set_unhandled_exception_filter`) keeps the header's exact C signature
-	// rather than a conflicting redeclaration from its approximate V view.
-	return !fastc_local_header_declares(name, paths, context)
-}
-
-// fastc_local_header_declares reports whether a quoted header included by any
-// of the declaring V files `paths` declares the C function `name`.
-fn fastc_local_header_declares(name string, paths []string, context FastcNativeSourceContext) bool {
-	for path in paths {
-		for header in context.local_headers[path] or { continue } {
-			text := os.read_file(header) or { continue }
-			if fastc_c_header_declares_function(text, name) {
-				return true
-			}
-		}
-	}
-	return false
+	return name !in ['v_set_unhandled_exception_filter', 'v_builtin_windows_stream',
+		'v_builtin_windows_debugbreak']
 }
 
 fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {

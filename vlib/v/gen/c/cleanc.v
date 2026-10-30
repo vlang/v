@@ -765,8 +765,6 @@ mut:
 	is_shared                      bool
 	interface_exports              []string
 	object_file_mode               bool
-	tcc_program_unit               bool
-	native_function_aliases        map[string]string
 	no_builtin                     bool
 	suppress_main                  bool
 	coverage_dir                   string
@@ -1313,16 +1311,6 @@ pub fn (mut g FlatGen) set_c99_mode(enabled bool) {
 // set_ccompiler records the selected C compiler for compiler-specific output constraints.
 pub fn (mut g FlatGen) set_ccompiler(name string) {
 	g.ccompiler = name
-}
-
-// set_tcc_program_unit applies TCC's C constraints when the native owner uses another compiler.
-pub fn (mut g FlatGen) set_tcc_program_unit(enabled bool) {
-	g.tcc_program_unit = enabled
-}
-
-// set_native_function_aliases redirects qualified C function references to owner pointers.
-pub fn (mut g FlatGen) set_native_function_aliases(names []string) {
-	for name in names { g.native_function_aliases[name] = 'v3_native_bridge_' + name }
 }
 
 // set_prod controls production-only code generation such as removing assertions.
@@ -2615,7 +2603,11 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 		}
 		if resolved.len > 0 && c_path_is_within_roots(resolved, shipped_roots) {
 			c_add_cache_external_input(mut inputs, owner_module, resolved)
-			result.native_paths[resolved] = true
+			// This compiler-owned guard contains no native declarations or includes.
+			// Keep its opaque file identity without invoking native dependency analysis.
+			if !c_include_arg_is_heap_guard(include_arg, vroot) {
+				result.native_paths[resolved] = true
+			}
 			continue
 		}
 		// System headers, and anything a V-shipped module leaves to the C compiler's
@@ -2842,31 +2834,6 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 		return 'objective-c'
 	}
 	return 'c'
-}
-
-// cache_native_dependency_directives returns the native preprocessing context for
-// a compiler-generated dependency manifest, including project-owned includes.
-pub fn cache_native_dependency_directives(a &flat.FlatAst, vroot string, flags []string, target pref.Target) string {
-	include_dirs := c_flag_include_dirs(flags)
-	mut current_file := ''
-	mut out := strings.new_builder(4096)
-	for node in a.nodes {
-		if node.kind == .file {
-			current_file = a.cached_header_sources[node.value] or { node.value }
-			continue
-		}
-		if node.kind != .directive { continue }
-		if node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
-			arg := c_include_arg_for_target(node.typ_text(), vroot, current_file, target)
-			if arg.len > 0 && !c_include_arg_is_builtin_abi_helper(arg, vroot) {
-				out.writeln(c_native_source_context_header_include(arg, vroot, current_file, include_dirs))
-			}
-		} else if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif',
-			'pragma', 'error', 'warning'] {
-			out.writeln(c_preprocessor_directive_line(node.value, node.typ_text()))
-		}
-	}
-	return out.str()
 }
 
 // cache_native_inputs_language reports the richest preprocessor language any
@@ -6546,144 +6513,22 @@ fn combined_c_condition(outer string, inner string) string {
 	return '(${outer} && ${inner})'
 }
 
-// c_local_header_directive renders an include of a header shipped with V. Portable
-// output carries the header text, because the absolute path only exists on the
-// machine that generated the C.
+// c_local_header_directive leaves header processing to the C toolchain.
 fn (g &FlatGen) c_local_header_directive(path string) string {
-	if g.output_cross_c {
-		if text := g.cross_embedded_header_text(path, []string{}) {
-			return text
-		}
-	}
 	return '#include "${path}"'
 }
 
-// c_include_directive_text renders an `#include` for the output. Normal builds
-// resolve source-local headers because generated C is compiled outside their module;
-// portable output carries the header text instead of a machine-local absolute path.
+// c_include_directive_text resolves V's include directive without opening the header.
 fn (mut g FlatGen) c_include_directive_text(node_idx int, prefix_condition string, include_arg string, source_file string) string {
 	mut directive := '#include ${include_arg}'
-	clean_include_arg := include_arg.trim_space()
-	quoted_absolute_path := clean_include_arg.len >= 2 && clean_include_arg[0] == `"`
-		&& clean_include_arg[clean_include_arg.len - 1] == `"`
-		&& os.is_abs_path(clean_include_arg[1..clean_include_arg.len - 1])
-	// Preserve already-absolute spellings, including symlink aliases such as macOS `/tmp`.
-	if clean_include_arg.starts_with('"') && (g.output_cross_c || !quoted_absolute_path) {
-		include_dirs := c_flag_include_dirs(g.c_flags)
-		mut paths := []string{}
-		if g.output_cross_c {
-			paths = c_include_file_paths(include_arg, g.compiler_vroot, source_file,
-				include_dirs)
-		} else {
-			// A header supplied through an explicit -I directory already resolves from
-			// the generated C compiler command. Keep its original portable spelling;
-			// only source-local headers need an absolute path after C output moves away
-			// from the V source directory.
-			path := c_include_file_path(include_arg, g.compiler_vroot, source_file)
-			if path.len > 0 {
-				paths << path
-			}
-		}
-		for path in paths {
-			if !os.is_file(path) {
-				continue
-			}
-			if g.output_cross_c {
-				if text := g.cross_embedded_header_text(path, include_dirs) {
-					directive = text
-				}
-			} else {
-				directive = c_native_source_context_include(path)
-			}
-			if directive != '#include ${include_arg}' {
-				break
-			}
+	clean := include_arg.trim_space()
+	if clean.starts_with('"') && !(clean.ends_with('"') && os.is_abs_path(clean.trim('"'))) {
+		path := c_include_file_path(include_arg, g.compiler_vroot, source_file)
+		if path.len > 0 && os.is_file(path) {
+			directive = c_native_source_context_include(path)
 		}
 	}
 	return g.guarded_c_directive(node_idx, prefix_condition, directive)
-}
-
-// cross_embedded_header_text returns a local header's text with the quoted
-// includes *inside* it embedded as well. The generated C is compiled far from the
-// source tree, where a nested `#include "sibling.h"` no longer resolves - for
-// example `thirdparty/fontstash/fontstash.h` includes its sibling
-// `stb_truetype.h` that way.
-fn (g &FlatGen) cross_embedded_header_text(path string, include_dirs []string) ?string {
-	mut embedded := map[string]bool{}
-	return g.cross_embed_header_file(path, include_dirs, mut embedded)
-}
-
-fn (g &FlatGen) cross_embed_header_file(path string, include_dirs []string, mut embedded map[string]bool) ?string {
-	real_path := os.real_path(path)
-	if real_path in embedded {
-		// Already carried by this expansion. C include guards would discard a
-		// second copy anyway, and dropping it here also stops an include cycle.
-		return ''
-	}
-	embedded[real_path] = true
-	text := os.read_file(real_path) or { return none }
-	return g.cross_embed_nested_includes(text, os.dir(real_path), include_dirs, mut embedded)
-}
-
-fn (g &FlatGen) cross_embed_nested_includes(text string, base_dir string, include_dirs []string, mut embedded map[string]bool) string {
-	if !text.contains('#include') {
-		return text
-	}
-	mut lines := []string{cap: 64}
-	for line in text.split_into_lines() {
-		if target := c_quoted_include_target(line) {
-			if resolved := c_resolve_quoted_include(target, base_dir, include_dirs) {
-				if nested := g.cross_embed_header_file(resolved, include_dirs, mut embedded) {
-					lines << nested
-					continue
-				}
-			}
-		}
-		// An unresolvable or angle-bracket include is left alone: it names a
-		// system header, or one the consumer supplies through `-I`.
-		lines << line
-	}
-	return lines.join('\n')
-}
-
-// c_quoted_include_target returns the path named by a `#include "..."` line.
-fn c_quoted_include_target(line string) ?string {
-	clean := line.trim_space()
-	if !clean.starts_with('#') {
-		return none
-	}
-	rest := clean[1..].trim_space()
-	if !rest.starts_with('include') {
-		return none
-	}
-	arg := rest['include'.len..].trim_space()
-	if arg.len < 2 || arg[0] != `"` {
-		return none
-	}
-	end := arg[1..].index_u8(`"`)
-	if end <= 0 {
-		return none
-	}
-	return arg[1..1 + end]
-}
-
-fn c_resolve_quoted_include(target string, base_dir string, include_dirs []string) ?string {
-	if os.is_abs_path(target) {
-		return if os.exists(target) { target } else { none }
-	}
-	if base_dir.len > 0 {
-		beside := os.join_path(base_dir, target)
-		if os.exists(beside) {
-			return beside
-		}
-	}
-	for dir in include_dirs {
-		candidate := os.join_path(dir, target)
-		if os.exists(candidate) {
-			return candidate
-		}
-	}
-	return none
 }
 
 // guarded_c_directive wraps a directive in the preprocessor condition of the
@@ -6752,17 +6597,14 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
 			return true
 		}
-		// Heap-mode checks are preprocessor guards, not a source of C declarations.
-		// Keep them inline without changing header lookup for other #insert files.
-		guard_path := os.join_path(g.compiler_vroot, 'vlib', 'builtin', 'track_heap_checks.h')
-		if node.value == 'insert'
-			&& normalized_c_include_arg_path(include_arg) == guard_path.replace('\\', '/') {
-			if text := os.read_file(guard_path) {
-				g.add_c_directive(module_name, g.guarded_c_directive(node_idx,
-					cross_prefix_condition, text), before_import)
-				return true
-			}
+		// The compiler's heap-mode guard has no native declarations or libc inputs.
+		// Preserve its include without claiming header ownership for builtin V code.
+		if node.value == 'insert' && c_include_arg_is_heap_guard(include_arg, g.compiler_vroot) {
+			g.add_c_directive(module_name, g.c_include_directive_text(node_idx,
+				cross_prefix_condition, include_arg, source_file), before_import)
+			return true
 		}
+
 		if g.target.os == 'android' && g.is_android_asset_binding(source_file)
 			&& include_arg in ['<android/asset_manager.h>', '<android/asset_manager_jni.h>',
 				'<android/native_activity.h>'] {
@@ -6839,14 +6681,7 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 					// prefix; their C declarations retain the bundled source's exact ABI.
 					source_directive = '#if !defined(V_PARALLEL_CC) || defined(V_PARALLEL_CC_OUT_0)\n${source_directive}\n#else\n${c_zstd_cache_header(source_text)}\n#endif'
 				}
-				if g.output_cross_c {
-					// Portable output carries the source text: its path is gone on the
-					// machine that later compiles the generated C. Its own quoted
-					// includes have to travel with it for the same reason.
-					mut embedded := map[string]bool{}
-					embedded[os.real_path(source_path)] = true
-					source_directive = g.cross_embed_nested_includes(source_text, os.dir(source_path), include_dirs, mut embedded)
-				}
+
 				// A native source written inside a target `$if`, or carrying a target
 				// prefix, has to keep that condition too: `$if macos { #include
 				// "impl.m" }` must not place an Objective-C implementation into output
@@ -6884,6 +6719,10 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		return true
 	}
 	return false
+}
+
+fn c_include_arg_is_heap_guard(include_arg string, vroot string) bool {
+	return normalized_c_include_arg_path(include_arg) == os.join_path(vroot, 'vlib', 'builtin', 'track_heap_checks.h').replace('\\', '/')
 }
 
 // c_builtin_abi_helper_header_paths are the superseded helper headers whose
@@ -10804,20 +10643,19 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 }
 
 fn (mut g FlatGen) materialize_objective_cpp_sources() {
-	mut header_texts := map[string]string{}
 	for request in g.objective_cpp_source_requests {
 		context_directives := g.ordered_native_source_context(request.module, request.local_context)
 		if context_directives.len > 0 && c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, request.source_macros_possible) {
 			continue
 		}
-		// The source is compiled on its own, so it declares nothing in the generated
-		// unit, even when its V file includes headers. Like `@[c_extern]`, the V
-		// declarations of the functions it defines need their prototypes, unless an
-		// included header declares them itself.
-		for name in request.defined_fns {
-			if !g.c_quoted_headers_mention(name, mut header_texts) {
-				g.c_extern_forced_decls[name] = true
-			}
+		// A module that supplies a quoted header owns its native declarations.
+		// Otherwise the separately compiled source needs prototypes from V bindings.
+		// @[c_extern] can request an explicit V prototype alongside a header.
+		header_owned := g.c_directives.any(it.module == request.module
+			&& it.text.trim_space().starts_with('#include "')
+			&& !c_include_arg_is_source_file(it.text.trim_space().all_after('#include ')))
+		if !header_owned {
+			for name in request.defined_fns { g.c_extern_forced_decls[name] = true }
 		}
 		if context_directives.len > 0 || c_source_include_has_preprocessor_context(context_directives) {
 			g.add_native_source_context_wrapper(request.source_path, context_directives)
@@ -10825,28 +10663,6 @@ fn (mut g FlatGen) materialize_objective_cpp_sources() {
 			g.c_flags << request.source_path
 		}
 	}
-}
-
-// c_quoted_headers_mention reports whether a quoted header of the generated unit
-// spells `name`. System headers cannot declare a project's own functions.
-fn (g &FlatGen) c_quoted_headers_mention(name string, mut texts map[string]string) bool {
-	for directive in g.c_directives {
-		clean := trimmed_space(directive.text)
-		if !clean.starts_with('#include "') || !clean.ends_with('"') {
-			continue
-		}
-		path := clean['#include "'.len..clean.len - 1]
-		if c_include_arg_is_source_file('"${path}"') {
-			continue
-		}
-		if path !in texts {
-			texts[path] = os.read_file(path) or { '' }
-		}
-		if c_text_has_identifier(texts[path], name) {
-			return true
-		}
-	}
-	return false
 }
 
 fn c_text_has_identifier(text string, name string) bool {
@@ -20251,13 +20067,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define false 0')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	if g.tcc_program_unit {
-		// Native objects share TCC's padded empty structs while retaining their
-		// compiler's SDK and Objective-C macros.
-		g.writeln('#if 1')
-	} else {
-		g.writeln('#if defined(__TINYC__) || defined(_MSC_VER)')
-	}
+	g.writeln('#if defined(__TINYC__) || defined(_MSC_VER)')
 	g.writeln('#define E_STRUCT_DECL unsigned char _dummy_pad')
 	g.writeln('#define E_STRUCT 0')
 	g.writeln('#else')
@@ -20508,7 +20318,8 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 				// A quoted local header can include system headers itself. Emit the
 				// system preamble first so its declarations do not conflict with the
 				// standalone declarations from the headerless preamble.
-				if arg.len > 0 && arg != '<sys/ptrace.h>' {
+				if arg.len > 0 && arg != '<sys/ptrace.h>'
+					&& !c_include_arg_is_heap_guard(arg, g.compiler_vroot) {
 					return true
 				}
 			}
