@@ -61,6 +61,8 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	// Only V declarations describe the bridge. Never open or preprocess native
 	// headers to infer declarations, types, macros or implementation ownership.
 	mut bridged_modules := map[string]bool{}
+	mut v_functions := map[string]bool{}
+	for _, export_name in a.export_fn_names { v_functions[export_name] = true }
 	mut current_module := 'main'
 	mut current_file := ''
 	for node in a.nodes {
@@ -69,6 +71,14 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 			current_file = a.cached_header_sources[node.value] or { node.value }
 		}
 		if node.kind == .module_decl { current_module = node.value }
+		if node.kind == .fn_decl && current_module != 'main' {
+			qualified := if node.value.starts_with(current_module + '.') {
+				node.value
+			} else {
+				current_module + '.' + node.value
+			}
+			v_functions[restored_fn_c_name(qualified)] = true
+		}
 		if node.kind == .directive && node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
 			arg := node.typ_text().trim_space().trim('"<>')
 			if arg.ends_with('.m') || arg.ends_with('.mm')
@@ -84,7 +94,7 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		if node.kind == .module_decl { current_module = node.value }
 		if node.kind == .c_fn_decl && bridged_modules[current_module] {
 			name := node.value.all_after_last('.')
-			if !name.starts_with('__builtin_') && !name.starts_with('__atomic_')
+			if !v_functions[name] && !name.starts_with('__builtin_') && !name.starts_with('__atomic_')
 				&& !name.starts_with('__sync_') && name !in ['va_arg', 'va_start', 'va_end', 'va_copy'] {
 				functions[name] = true
 			}
@@ -139,13 +149,24 @@ fn v3_tcc_dylib_native_flags(flags []string) []string {
 	return native
 }
 
-fn v3_tcc_dylib_program_link_flags(flags []string, source string, sdk string) []string {
+// Ask the C compiler which frameworks the consumer's nested includes use.
+// Only its dependency manifest is read, never preprocessed header contents.
+fn v3_tcc_dylib_program_dependencies(compiler string, flags []string, source_path string, c_standard string) ![]string {
+	mut args := c_object_compile_flags(tcc_cached_main_flags(flags))
+	args << [c_standard, '-w', '-x', 'c', '-D__TINYC__=1', '-D__has_extension(x)=0']
+	deps := c_object_dependencies(compiler, args, source_path)
+	if deps.used_fallback { return error('the TCC program dependency manifest is unavailable') }
+	return deps.files
+}
+
+fn v3_tcc_dylib_program_link_flags(flags []string, dependencies []string, sdk string) []string {
 	mut frameworks := map[string]bool{}
-	for line in source.split_into_lines() {
-		if arg := v3_tcc_dylib_include_argument(line) {
-			if arg.starts_with('<') && arg.contains('/') {
-				frameworks[arg.trim('<>').all_before('/')] = true
-			}
+	for path in dependencies {
+		mut remaining := path
+		for {
+			index := remaining.index('.framework/') or { break }
+			frameworks[os.file_name(remaining[..index])] = true
+			remaining = remaining[index + '.framework/'.len..]
 		}
 	}
 	mut program_flags := []string{}

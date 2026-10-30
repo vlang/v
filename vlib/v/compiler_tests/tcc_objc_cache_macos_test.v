@@ -120,6 +120,19 @@ fn test_macos_tcc_cached_native_interfaces_preserve_native_compiler_abi() ! {
 			expression:   'C.bridge_value()'
 		},
 		NativeInterfaceCase{
+			name:         'guarded_native_header'
+			native:       '#include <native_types.h>\nstatic int bridge_value(void) { NativeAnswerRecord value = {40 + NATIVE_INCREMENT}; return bridge_header_value(value); }\n'
+			type_header:  '#pragma once\ntypedef struct { int value; } NativeAnswerRecord;\n#if !defined(V3CACHE_NATIVE_INTERFACE) || defined(V3CACHE_NATIVE_OWNER)\n#import <Foundation/Foundation.h>\nstatic int bridge_header_value(NativeAnswerRecord value) { return value.value + (int)[@"v" length]; }\n#endif\n'
+			declarations: '#flag darwin -framework Foundation\n@[typedef]\nstruct C.NativeAnswerRecord { value i32 }\nfn C.bridge_value() int\nfn C.bridge_header_value(value C.NativeAnswerRecord) int\n'
+			expression:   'C.bridge_value() + C.bridge_header_value(C.NativeAnswerRecord{value: EXPECTED_ANSWER - 1}) - EXPECTED_ANSWER'
+		},
+		NativeInterfaceCase{
+			name:         'v_callback'
+			native:       'static int bridge_value(int n) { return n + NATIVE_INCREMENT; }\n'
+			declarations: 'fn C.bridge_value(n i32) i32\nfn C.v_callback_entry(n i32) i32\n@[export: "v_callback_entry"]\nfn bridge_callback(n i32) i32 { return C.bridge_value(n) }\n'
+			expression:   'int(C.v_callback_entry(41)) + int(bridge_callback(0)) - (EXPECTED_ANSWER - 41)'
+		},
+		NativeInterfaceCase{
 			name:         'sdk_namespace'
 			native:       '#include <unistd.h>\nint getpid(void);\nstatic int bridge_value(void) { return 41 + NATIVE_INCREMENT; }\n'
 			declarations: 'fn C.getpid() int\nfn C.bridge_value() int\nfn probe_sdk() int { callback := C.getpid; getpid := callback(); assert getpid > 0; assert callback() > 0; return C.bridge_value() }\n'

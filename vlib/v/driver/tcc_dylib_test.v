@@ -59,7 +59,7 @@ fn test_native_bridge_dependency_manifest_tracks_project_headers() ! {
 	native := os.join_path(root, 'native.m')
 	os.write_file(native, '#include "inner.h"\n#include "inner.h"\n#include "binding.h"\nenum NativeAnswer { NATIVE_ANSWER = 42 };\nstatic int bridge_value(void) { return BRIDGE_VALUE; }\n')!
 	source := os.join_path(root, 'main.c.v')
-	os.write_file(source, '#include "@DIR/native.m"\nfn C.bridge_value() int\nfn C.bridge_header(value voidptr) int\nfn main() { assert C.NATIVE_ANSWER == 42 }\n')!
+	os.write_file(source, '#include "@DIR/native.m"\n@[export: "external_callback"]\nfn exported_callback() int { return 42 }\nfn C.external_callback() int\nfn C.bridge_value() int\nfn C.bridge_header(value voidptr) int\nfn main() { assert C.NATIVE_ANSWER == 42 }\n')!
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
@@ -79,6 +79,7 @@ fn test_native_bridge_dependency_manifest_tracks_project_headers() ! {
 	assert 'bridge_value' in closure.functions
 	assert 'bridge_header' in closure.functions
 	assert 'private_count' !in closure.functions
+	assert 'external_callback' !in closure.functions
 	assert closure.inputs['assets'] == [resource]
 	assert closure.native_sources == [os.real_path(native)]
 	assert os.real_path(native) in closure.inputs['__v3_c_flags__']
@@ -111,7 +112,7 @@ fn test_native_bridge_links_only_program_frameworks() ! {
 	os.mkdir_all(directory)!
 	library := os.join_path(directory, 'Example.tbd')
 	os.write_file(library, 'stub')!
-	flags := v3_tcc_dylib_program_link_flags(['-framework', 'Example', '-framework', 'Cocoa', '-lobjc'], '#include <Example/Example.h>\n', root)
+	flags := v3_tcc_dylib_program_link_flags(['-framework', 'Example', '-framework', 'Cocoa', '-lobjc'], [os.join_path(directory, 'Headers', 'Example.h')], root)
 	assert flags == [library, '-lobjc']
 }
 
@@ -119,4 +120,24 @@ fn test_native_bridge_keeps_basic_objc_runtime_types() {
 	text := tcc_cached_main_source('#include <objc/objc.h>\n#include <Foundation/Foundation.h>\n', '')
 	assert text.contains('#include <objc/objc.h>')
 	assert !text.contains('Foundation/Foundation.h')
+}
+
+fn test_native_bridge_program_frameworks_follow_nested_compiler_dependencies() ! {
+	$if !macos {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'native program manifest ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'outer.h'), '#include <CoreFoundation/CoreFoundation.h>\n')!
+	source := os.join_path(root, 'main.c')
+	os.write_file(source, '#include "outer.h"\n')!
+	deps := v3_tcc_dylib_program_dependencies(cc, [], source, '-std=gnu11')!
+	cf := deps.filter(it.contains('/CoreFoundation.framework/'))
+	assert cf.len > 0
+	sdk := cf[0].all_before('/System/Library/Frameworks/')
+	flags := v3_tcc_dylib_program_link_flags(['-framework', 'CoreFoundation', '-framework', 'Cocoa'], deps, sdk)
+	assert flags.any(it.ends_with('/CoreFoundation.framework/CoreFoundation.tbd')), flags.str()
+	assert !flags.any(it.contains('/Cocoa.framework/')), flags.str()
 }

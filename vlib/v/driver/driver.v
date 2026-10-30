@@ -15976,7 +15976,13 @@ pub fn run(args []string) {
 				tcc_args << tcc_native_c_source_flags(resolved_c_flags)
 				tcc_args << cached_dev_dylib
 				tcc_args << if tcc_dylib {
-					v3_tcc_dylib_program_link_flags(resolved_c_flags, os.read_file(tcc_main_file) or { '' }, tcc_sdk_root)
+					dependencies := v3_tcc_dylib_program_dependencies(c_compiler, resolved_c_flags, tcc_main_file, c_standard) or {
+						if retry_compilation { restart_v3_without_cache(cc_dir) }
+						eprintln(err.msg())
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
+					}
+					v3_tcc_dylib_program_link_flags(resolved_c_flags, dependencies, tcc_sdk_root)
 				} else {
 					tcc_dynamic_link_flags(resolved_c_flags)
 				}

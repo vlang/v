@@ -20,14 +20,20 @@ must match the native ABI. C headers remain includes for the selected C compiler
 headers with guarded include cycles. Types and macros private to a native source are not inferred:
 expose them through a C-compatible header or explicit native helpers. Objective-C implementations
 must use `.m` or `.mm` source files. Native source includes belong to the owner; their code is not
-copied into every cached object. Mixed Objective-C and Objective-C++ source contexts retain the
-fallback; `-no-retry-compilation` rejects unsupported contexts instead of changing compilers.
+copied into every cached object. For a header with private implementation code, keep its public C
+types outside a `V3CACHE_NATIVE_INTERFACE` guard and place implementation under
+`!defined(V3CACHE_NATIVE_INTERFACE) || defined(V3CACHE_NATIVE_OWNER)`. The C compiler selects the
+interface or implementation; V does not inspect either branch. Imported and explicitly exported V
+functions retain their ordinary symbols when called through a C binding.
+Mixed Objective-C and Objective-C++ source contexts retain the fallback; `-no-retry-compilation`
+rejects unsupported contexts instead of changing compilers.
 
 The C compiler supplies a fresh dependency manifest before cache reuse. Editing a nested header
-invalidates dependent artifacts. The native compiler rejects date/time macro use before native
-objects are cached. Embedded resources remain dependencies of their owning V modules,
+invalidates dependent artifacts. The native compiler rejects date/time macros before publishing
+the owner and V module objects. Embedded resources remain dependencies of their owning V modules,
 including resources omitted from warm V declaration interfaces. Use `-showcc` to confirm the final
-TCC invocation and `V3_CACHE_TRACE=1` to inspect module reuse.
+TCC invocation and `V3_CACHE_TRACE=1` to inspect module reuse. The consumer's compiler-generated
+dependency manifest also selects framework link flags for nested C includes.
 
 Parallel C builds outside this explicit owner path keep quoted native includes in one translation
 unit when their ownership is unknown. The preprocessed TCC prelude cache remains removed.
