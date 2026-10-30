@@ -879,7 +879,7 @@ fn (mut app App) ensure_render_initialized() ! {
 	if app.gfx_started {
 		return
 	}
-	renderer_info := app.core.start_renderer(multiwindow.RendererConfig{
+	app.core.start_renderer(multiwindow.RendererConfig{
 		image_pool_size:       2048
 		pipeline_pool_size:    512
 		attachments_pool_size: 512
@@ -910,7 +910,9 @@ fn (mut app App) ensure_render_context(key string, target WindowRenderTargetInfo
 		if key !in app.render_context_targets || app.render_context_targets[key] != target {
 			return error(err_multiwindow_render_backend_unavailable)
 		}
-		return app.render_contexts[key]
+		return app.render_contexts[key] or {
+			return error(err_multiwindow_render_backend_unavailable)
+		}
 	}
 	if key !in app.render_contexts {
 		app.note_managed_gpu_work(app.active_batch_epoch)!
@@ -924,7 +926,7 @@ fn (mut app App) ensure_render_context(key string, target WindowRenderTargetInfo
 		app.render_contexts[key] = created
 		app.render_context_targets[key] = target
 	}
-	return app.render_contexts[key]
+	return app.render_contexts[key] or { return error(err_multiwindow_render_backend_unavailable) }
 }
 
 fn (mut app App) ensure_window_render_context(id WindowId, key string, target WindowRenderTargetInfo, batch u64) !&render.Context {
@@ -978,7 +980,7 @@ fn (app &App) managed_render_context(key string) !&render.Context {
 	if key !in app.render_contexts {
 		return error(err_multiwindow_render_backend_unavailable)
 	}
-	return app.render_contexts[key]
+	return app.render_contexts[key] or { return error(err_multiwindow_render_backend_unavailable) }
 }
 
 fn (mut app App) discard_window_render_context(id WindowId) {

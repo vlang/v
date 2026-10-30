@@ -167,6 +167,15 @@ class WorkflowConfigurationTests(unittest.TestCase):
                 with self.subTest(compiler=cc, command=command, script=script):
                     self.assertIn(command + '\n' + EXIT_CHECK + '\n', script)
 
+    def test_explicit_test_and_source_paths_exist(self):
+        pattern = r'(?:vlib|thirdparty|cmd)[/\\][A-Za-z0-9_/\\.-]+\.(?:v|vsh|c)(?=[^A-Za-z0-9_.]|$)'
+        for cc, source in self.workflows.items():
+            paths = set(re.findall(pattern, source))
+            self.assertTrue(paths, cc)
+            for path in paths:
+                with self.subTest(compiler=cc, path=path):
+                    self.assertTrue((ROOT / path.replace('\\', '/')).is_file(), path)
+
     def test_current_w3_manifest_and_all_compiler_pins(self):
         surface, cases = validate_w3_metadata(self.runner, self.workflows)
         self.assertEqual(len(surface), 3)

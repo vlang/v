@@ -135,15 +135,13 @@ jobs:
             throw "unexpected -b fastc hello world output: '$output'"
           }
           Remove-Item hello_fastc.exe, hello_fastc.c -ErrorAction SilentlyContinue
-      - name: Pkg-config regressions (MSVC dynamic isolation)
+      - name: Pkg-config regressions (MSVC)
         id: pkg_config_regressions_msvc_dynamic_isolation
         if: ${{ success() && !cancelled() && steps.build_and_run_hello_world_with_b_fastc.outcome == 'success' }}
         run: |
           $tests = @(
-            'vlib\v\pkgconfig\pkgconfig_static_test.v'
-            'vlib\v\checker\pkgconfig_static_mode_test.v'
-            'vlib\v\checker\pkgconfig_cross_compile_test.v'
-            'vlib\v\builder\pkgconfig_link_segment_test.v'
+            'vlib/v/pref/pkgconfig_test.v'
+            'vlib/v/tests/comptime/comptime_if_pkgconfig_test.v'
           )
           foreach ($test in $tests) {
             .\v.exe -cc msvc -no-retry-compilation test $test
@@ -467,7 +465,7 @@ jobs:
             -ExpectedA0MainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
             -ExpectedA0TupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
             -ExpectedA0RunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68' `
-            -ExpectedGgFacadeSha256 '80be6db64d911cff3e2dd1344c0ec1420ec755b78673e75f824a59e93266d108' `
+            -ExpectedGgFacadeSha256 '93dfd16a78fc7e303391c16830437a259ce303cef4a987292eb2c6bc2e43c2d2' `
             -ExpectedGgNoFlagSha256 'ad528c64cf18bce9415dd0e50513fb87d8d0b58c8ac4a99025a5c8955e7d9549' `
             -ExpectedGgServiceTypesSha256 '9f17334ba5e5aff51f26d55476c83878856a8494a890aa64ee6434a52c1ecfeb' `
             -ExpectedAppSha256 'af32eec55c119907a8bbf544842131018d36d3887347e26486e067a79d78a946' `
@@ -477,7 +475,7 @@ jobs:
             -ExpectedServiceTypesSha256 'cd8326b81201727618e758d79970b7a77223fd6418e18afda44a526a3b0b4267' `
             -ExpectedServiceRegistrySha256 'db244497fd23974c1739d6c7a8bc57a2e3137c8765d4bc7f789efd80a59066b7' `
             -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
-            -ExpectedPublicRoutingSurfaceSha256 '6a091c8b57b3e99ea6efa06aa63a9e50c93ec46eadc7e93953847f9cd063d8db' `
+            -ExpectedPublicRoutingSurfaceSha256 '01c1a05d43d09b109396762f5984cabceeb34f14aa569a098c3a2eff8f376be8' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDispatchSha256 '7ef6c7cbd34511d6c19c1a3a269b46876db791b9412bb88e3a8d4dcd543bfd4e' `
             -ExpectedWin32BackendSha256 'ebcd169ec1c382edf3cb05f3c7036c4cb149ceae34f141419ea01d24bcc948d6' `
@@ -485,7 +483,7 @@ jobs:
             -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedGreenProductionSurfaceSha256 '376c2ed664bb7248dea90efd32c0989d648ea61b719d70d073e797073f98127c' `
-            -ExpectedRunnerSha256 'c6d398c544bbb24aaa417ed9389a894eae0d1e467d671c7ccc2e8f8baf648a8e'
+            -ExpectedRunnerSha256 'e9ce049f903d6a506dd81326998c17d9dc0720b602494e8d9e2449e7878eec93'
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
         if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}

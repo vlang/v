@@ -104,6 +104,12 @@ The main jobs verify that a second `v vet` invocation reuses its compiled tool b
 starting `test-cleancode`. A cache rejected because of directory ownership or permissions
 would otherwise rebuild the tool for every input until the job times out.
 
+Pkg-config steps run the current compiler's argument-query and compile-time detection
+tests. The bootstrap contract also checks that explicit source and test paths in the
+Windows workflows exist; archived V1 tests under `vlib/v/legacy_tests` are fixtures.
+Direct C compilation checks link V3's native runtime helpers, disable GC and FastC
+dependencies, and run the resulting compiler's version command.
+
 ### macOS runners
 
 macOS runner names can imply both OS version and CPU architecture. For example, some

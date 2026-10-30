@@ -241,10 +241,10 @@ struct MultiWindowMatrixTerminalState {
 	legacy_render_mode        bool
 	app_frame_active          bool
 	active_batch_epoch        u64
-	sgl_contexts              int
-	sgl_context_targets       int
+	render_contexts           int
+	render_context_targets    int
 	window_sgl_targets        int
-	deferred_sgl_targets      int
+	deferred_render_targets   int
 	active_render_snapshots   int
 	active_drawn_windows      int
 	failed_init_windows       []string
@@ -2142,7 +2142,7 @@ fn multiwindow_assert_sgl_recipe_retry_slot(before MultiWindowMatrixRegistryStat
 	}
 }
 
-fn multiwindow_assert_sgl_materialization_retry_slot(before MultiWindowMatrixRegistryState, after MultiWindowMatrixRegistryState, id WindowSglPipelineId, target_key string, expected_pipeline u32, native_pipelines []u32) {
+fn multiwindow_assert_sgl_materialization_retry_slot(before MultiWindowMatrixRegistryState, after MultiWindowMatrixRegistryState, id WindowSglPipelineId, target_key string, expected_pipeline int, native_pipelines []u32) {
 	assert target_key != ''
 	assert expected_pipeline != 0
 	assert native_pipelines.len == 5
@@ -2913,10 +2913,10 @@ fn multiwindow_fault_matrix_terminal_state(app &App) MultiWindowMatrixTerminalSt
 		legacy_render_mode:        app.legacy_render_mode
 		app_frame_active:          app.app_frame_active
 		active_batch_epoch:        app.active_batch_epoch
-		sgl_contexts:              app.sgl_contexts.len
-		sgl_context_targets:       app.sgl_context_targets.len
+		render_contexts:           app.render_contexts.len
+		render_context_targets:    app.render_context_targets.len
 		window_sgl_targets:        app.window_sgl_targets.len
-		deferred_sgl_targets:      app.deferred_sgl_targets.len
+		deferred_render_targets:   app.deferred_render_targets.len
 		active_render_snapshots:   app.active_render_snapshots.len
 		active_drawn_windows:      app.active_drawn_windows.len
 		failed_init_windows:       failed_init_windows
