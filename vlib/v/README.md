@@ -708,6 +708,12 @@ outputs. Its key does not yet cover all compile-time environment, module-search,
 inputs, so it can reuse stale output when those inputs change. `-nocache` and
 `V3_DISABLE_UNCHANGED_BUILD_CACHE=1` both disable this shortcut. Missing file metadata also
 prevents publishing or restoring a receipt.
+Large programs are not denied the cache because of their size: an existing module or executable
+cache hit is reused regardless of AST size. Only cold module-cache population is bounded.
+Ordinary programs may publish up to 5,000,000 AST nodes and 100 MB of module sources. Compiler
+tests keep the lower 2,000,000 node and 10 MB limits because their test-runner state also
+contributes to peak memory. Larger cold graphs fall back to a no-cache build rather than risk
+exhausting memory.
 The cache resolves the path of each module source once for a build; the table of resolved paths
 is closed when the imports are resolved, before later stages read it from several threads.
 A build that reads every module from its interface gets all the functions of those modules as

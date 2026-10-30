@@ -126,15 +126,21 @@ const scoped_serial_user_check_node_threshold = 1_000_000
 const scoped_serial_user_transform_node_threshold = 1_000_000
 const scoped_serial_user_cgen_node_threshold = 10_000_000
 const scoped_large_cold_cache_node_limit = 400_000
-// A build of the compiler's own modules populates the cache for a graph up to
-// these sizes, see v3_large_cache_population. A build that has to rebuild the
-// `builtin` object parses all of its modules from source again, so its peak
-// follows the sources of all of its modules, cached or not: with 7.8 MB of them,
-// a `vlib/v/gen/arm64` test peaks at ~3.9 GB and a `vlib/v/gen/c` one (7.2 MB) at
+// A cold build populates the module cache only within these bounds, see
+// v3_large_cache_population. A build that has to rebuild the `builtin` object
+// parses all of its modules from source again, so its peak follows the sources
+// of all of its modules, cached or not: with 7.8 MB of them, a
+// `vlib/v/gen/arm64` test peaks at ~3.9 GB and a `vlib/v/gen/c` one (7.2 MB) at
 // ~5.3 GB; a `vlib/v/driver` test (15.3 MB) reaches ~10 GB, the guard of
-// use_compiler_tree_memory_limit, and keeps the bypass.
+// use_compiler_tree_memory_limit. Compiler tests therefore keep the smaller
+// bounds, which cover their test-runner state as well as the compiler sources.
 const compiler_tree_large_cold_cache_node_limit = 2_000_000
 const compiler_tree_large_cold_cache_source_limit = i64(10_000_000)
+// A large application's own sources can be small while the standard library
+// dominates its AST. Larger projects need the cache most, so ordinary programs
+// keep a bounded population path up to these much larger limits.
+const large_cold_cache_population_node_limit = 5_000_000
+const large_cold_cache_population_source_limit = i64(100_000_000)
 const v3_cache_population_lock_name = 'large_cold_population.lock'
 const v3_large_cold_cache_reason = 'cold source graph is too large for scoped cache population'
 const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
@@ -20133,27 +20139,39 @@ enum V3LargeCachePopulation {
 	populate  // keep the cache
 }
 
-// v3_large_cache_population decides it. Other programs always bypass the cache.
-// The tests of the compiler's own modules (input_is_compiler_tree) import much of
-// the compiler, which a persisted bypass would keep from ever being cached, so
-// each of them would compile all of it again. One whose imported modules all come
-// from their headers publishes none, and retains less than without the cache. One
-// that has modules to publish does so while it holds the population lock of the
-// cache: the builds that start beside it, as the tests of `v test` do, skip the
-// cache this time only, and find those modules cached later.
+// v3_large_cache_population decides it. A graph that fits the bounds may populate
+// the cache even when it is too large for the scoped cold-cache path; otherwise
+// every edit to a program that imports much of the compiler would start another
+// full build. One whose imported modules all come from their headers publishes
+// none, and retains less than without the cache. One that has modules to publish
+// does so while it holds the population lock of the cache: the builds that start
+// beside it, as the tests of `v test` do, skip the cache this time only, and find
+// those modules cached later.
 fn v3_large_cache_population(compiler_tree_input bool, state &V3ModuleCacheState, node_count int) V3LargeCachePopulation {
-	if (!compiler_tree_input || node_count >= compiler_tree_large_cold_cache_node_limit) && !state.native_bridge {
-		trace_v3_cache_fallback(v3_large_cold_cache_reason)
-		return .bypass
-	}
+	// The limits protect cold population. Existing module cache hits are always
+	// usable, however large the final program is.
 	if state.parsed_from_source.len == 0 {
 		return .populate
+	}
+	node_limit := if compiler_tree_input {
+		compiler_tree_large_cold_cache_node_limit
+	} else {
+		large_cold_cache_population_node_limit
+	}
+	if node_count >= node_limit && !state.native_bridge {
+		trace_v3_cache_fallback(v3_large_cold_cache_reason)
+		return .bypass
 	}
 	source_bytes := v3_cache_module_source_bytes(state)
 	if os.getenv('V3_CACHE_TRACE') != '' {
 		eprintln('  V3 module cache population candidate: nodes=${node_count} cold_modules=${state.parsed_from_source.len} module_source_bytes=${source_bytes}')
 	}
-	if source_bytes > compiler_tree_large_cold_cache_source_limit {
+	source_limit := if compiler_tree_input {
+		compiler_tree_large_cold_cache_source_limit
+	} else {
+		large_cold_cache_population_source_limit
+	}
+	if source_bytes > source_limit {
 		trace_v3_cache_fallback(v3_large_cold_cache_reason)
 		return .bypass
 	}
