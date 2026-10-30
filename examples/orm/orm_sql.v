@@ -6,8 +6,8 @@ import time
 @[table: 'sys_users']
 struct User {
 pub:
-	id         string     @[immutable; primary; sql: 'id'; sql_type: 'VARCHAR(255)'; unique]
-	name       ?string    @[immutable; sql: 'name'; sql_type: 'VARCHAR(255)'; unique]
+	id         string     @[primary; sql: 'id'; sql_type: 'VARCHAR(255)'; unique]
+	name       ?string    @[sql: 'name'; sql_type: 'VARCHAR(255)'; unique]
 	created_at ?time.Time @[omitempty; sql_type: 'TIMESTAMP']
 	updated_at time.Time  @[default: new; omitempty; sql_type: 'TIMESTAMP']
 }
