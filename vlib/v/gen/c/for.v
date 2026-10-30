@@ -167,7 +167,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	wrap_init := init_node.kind != .empty
 	// TCC parses a loop's condition before entering its control-flow scope.
 	// An `or { break }` or `or { continue }` must therefore run inside its body.
-	lower_condition := (g.tcc_program_unit || g.ccompiler == 'tinyc')
+	lower_condition := g.ccompiler == 'tinyc'
 		&& g.loop_condition_has_transfer(cond_id)
 
 	if wrap_init {

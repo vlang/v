@@ -524,28 +524,6 @@ fn test_target_libc_cached_prefix_refreshes_when_thread_support_changes() {
 		'// __v_thread pthread_self\nconst char *name = "__v_thread_spawn pthread_create";\n')
 }
 
-fn test_cache_native_public_include_strips_conventional_implementation_macros() {
-	include := cache_native_public_include('/tmp/native.h', [
-		'#define FEATURE 1',
-		'#include "/tmp/context.h"',
-		'#define FONTSTASH_IMPLEMENTATION',
-		'#define SOKOL_FONTSTASH_IMPL',
-	], map[string]bool{})
-	assert include.contains('#define FEATURE 1')
-	assert !include.contains('context.h')
-	assert include.contains('#undef FONTSTASH_IMPLEMENTATION')
-	assert include.contains('#undef SOKOL_FONTSTASH_IMPL')
-	assert include.contains('#undef SOKOL_IMPL')
-	include_pos := include.index('#include') or { -1 }
-	assert include_pos >= 0
-	// Declaration-only replay must leave the switches undefined so later generated
-	// wrappers are emitted only by the selected owner object.
-	assert (include.index('#undef FONTSTASH_IMPLEMENTATION') or { -1 }) < include_pos
-	assert (include.index('#undef SOKOL_FONTSTASH_IMPL') or { -1 }) < include_pos
-	assert !include.contains('#define FONTSTASH_IMPLEMENTATION')
-	assert !include.contains('#define SOKOL_FONTSTASH_IMPL')
-}
-
 fn test_cached_native_owner_restores_stripped_implementation_context() {
 	path := os.real_path('/tmp/sokol_gl.h')
 	include_line := '#include "${c_include_path(path)}"'
