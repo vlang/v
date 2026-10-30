@@ -95,9 +95,9 @@ fn read_v_mod(mut ws Workspace) {
 }
 
 // vmod_from_file reads and decodes a `v.mod`.
-fn vmod_from_file(path string) ?vmod.Manifest {
-	contents := os.read_file(path) or { return none }
-	return vmod.decode(contents) or { return none }
+fn vmod_from_file(path string) !vmod.Manifest {
+	return vmod.from_file(path)
+}
 }
 
 // compiler_exe returns the `v` executable to invoke.
