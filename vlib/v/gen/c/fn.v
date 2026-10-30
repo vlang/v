@@ -13313,7 +13313,7 @@ fn callback_is_nonvoid_pointer_type(typ &types.Type) bool {
 
 fn (mut g FlatGen) callback_c_fn_name(name string) string {
 	if name.starts_with('C.') {
-		return g.cname(name)
+		return g.c_extern_export_name(g.cname(name))
 	}
 	if g.test_files.len > 0 && (name == 'main' || name == 'main.main') {
 		return g.test_user_main_c_name()
@@ -17258,6 +17258,7 @@ fn (mut g FlatGen) emit_c_runtime_declarations(required []string) {
 }
 
 fn (mut g FlatGen) c_extern_forward_decls() {
+	if g.native_function_aliases.len > 0 { g.writeln('#define V3CACHE_NATIVE_BINDINGS 1') }
 	mut cur_module := 'main'
 	mut cur_file := ''
 	mut decls := map[string]CExternForwardDecl{}
@@ -17326,7 +17327,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		}
 		forced_extern := g.c_extern_forced_decls[raw_name] || g.c_extern_forced_decls[raw_cfn]
 			|| g.c_extern_forced_decls[cfn]
-		if !forced_extern && !g.should_emit_c_extern_decl_from_file(cfn, cur_file, cur_module) {
+		if !g.is_native_function_alias(cfn) && !forced_extern && !g.should_emit_c_extern_decl_from_file(cfn, cur_file, cur_module) {
 			continue
 		}
 		if cfn == 'syscall' {
@@ -17358,6 +17359,19 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		g.tc.cur_file = decl.file
 		g.tc.cur_module = decl.module_name
 		node := g.a.nodes[decl.node_idx]
+		if g.is_native_function_alias(name) {
+			original_name := name['v3_native_bridge_'.len..]
+			if g.c_extern_forced_decls[original_name] || g.c_extern_forced_decls['C.' + original_name]
+				|| g.should_emit_c_extern_decl_from_file(original_name, decl.file, decl.module_name) {
+				g.writeln('#ifdef V3CACHE_NATIVE_OWNER')
+				g.writeln(g.c_extern_decl_line(node, original_name))
+				g.writeln('#endif')
+			}
+			g.writeln('#ifndef V3CACHE_NATIVE_OWNER')
+			g.writeln('extern ' + g.c_extern_decl_line(node, '(*' + name + ')'))
+			g.writeln('#endif')
+			continue
+		}
 		line := c_macro_safe_extern_decl(name, g.c_extern_decl_line(node, name))
 		if g.c_extern_decl_is_cached_object_fallback(name) {
 			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
@@ -17636,6 +17650,7 @@ fn c_macro_safe_extern_decl(cfn string, declaration string) string {
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
+	if g.is_native_function_alias(cfn) { return true }
 	if cfn.contains('.') {
 		return false
 	}
@@ -18638,14 +18653,22 @@ fn (g &FlatGen) c_extern_calling_convention(cfn string) string {
 	return ''
 }
 
-// c_extern_export_name returns the symbol that the C name `cfn` is linked as. On a
-// Windows target an unsuffixed Win32 API name stands for its wide export; on any
-// other target the same name belongs to the program and is kept.
+// c_extern_export_name selects native owner pointers for qualified C references
+// and wide Win32 API exports. Other C symbols keep their original names.
 fn (g &FlatGen) c_extern_export_name(cfn string) string {
+	if g.native_function_aliases.len > 0 {
+		if alias := g.native_function_aliases[cfn] { return alias }
+	}
 	if g.target.os == 'windows' {
 		return c_winapi_wide_export_name(cfn)
 	}
 	return cfn
+}
+
+fn (g &FlatGen) is_native_function_alias(cfn string) bool {
+	if g.native_function_aliases.len == 0 { return false }
+	prefix := 'v3_native_bridge_'
+	return cfn.starts_with(prefix) && g.native_function_aliases[cfn[prefix.len..]] == cfn
 }
 
 fn c_winapi_wide_export_name(cfn string) string {

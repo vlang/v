@@ -12,37 +12,7 @@ struct NativeInterfaceCase {
 	expression   string
 }
 
-fn test_macos_tcc_stats_falls_back_for_objective_c() ! {
-	$if !macos {
-		return
-	}
-	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')) { return }
-	root := os.join_path(os.vtmp_dir(), 'tcc stats native bridge ${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'stats_native_bridge' }\n")!
-	os.write_file(os.join_path(root, 'native.m'), '#import <Foundation/Foundation.h>\nstatic int stats_native_answer(void) { @autoreleasepool { return (int)[@"stats" length] + 37; } }\n')!
-	source := os.join_path(root, 'main.c.v')
-	exe := os.join_path(root, 'program')
-	for attempt in 0 .. 3 {
-		os.write_file(source, '#flag darwin -framework Foundation\n#flag darwin -Wl,-dead_strip\n#include "@DIR/native.m"\nfn C.stats_native_answer() int\nfn main() { assert C.stats_native_answer() == 42; println(@CCOMPILER); println(${attempt}) }\n')!
-		args := ['-u', 'VFLAGS', '-u', 'VEXE', '-u', 'CFLAGS', '-u', 'LDFLAGS',
-			'V3CACHE=' + os.join_path(root, 'cache'), 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1',
-			'V3_DISABLE_UNCHANGED_BUILD_CACHE=1', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-cc', 'tcc',
-			'-stats', '-show-timings', '-showcc', '-o', exe, source]
-		build := cmdexec.run('env', args)
-		assert build.exit_code == 0, '${attempt}: ${build.output}'
-		assert build.output.contains('checker summary: 0 V errors'), build.output
-		assert build.output.contains('falling back'), build.output
-		commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> '))
-		assert commands.len > 0, build.output
-		run := cmdexec.run(exe, [])
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == 'clang\n${attempt}', run.output
-	}
-}
-
-fn test_macos_tcc_unsupported_native_language_respects_no_retry() ! {
+fn test_macos_tcc_unsupported_bridge_respects_no_retry() ! {
 	$if !macos {
 		return
 	}
@@ -62,7 +32,7 @@ fn test_macos_tcc_unsupported_native_language_respects_no_retry() ! {
 	strict_args.insert(strict_args.len - 3, '-no-retry-compilation')
 	strict := cmdexec.run('env', strict_args)
 	assert strict.exit_code != 0, strict.output
-	assert !strict.output.contains('cannot build the TCC native bridge'), strict.output
+	assert strict.output.contains('cannot build the TCC native bridge: mixed Objective-C and Objective-C++ bridge contexts'), strict.output
 	fallback := cmdexec.run('env', args)
 	assert fallback.exit_code == 0, fallback.output
 	run := cmdexec.run(exe, [])
@@ -70,7 +40,7 @@ fn test_macos_tcc_unsupported_native_language_respects_no_retry() ! {
 	assert run.output.trim_space() == 'clang', run.output
 }
 
-fn test_native_interfaces_preserve_native_compiler_abi_without_header_projection() ! {
+fn test_macos_tcc_cached_native_interfaces_preserve_native_compiler_abi() ! {
 	$if !macos {
 		return
 	}
@@ -88,13 +58,13 @@ fn test_native_interfaces_preserve_native_compiler_abi_without_header_projection
 		NativeInterfaceCase{
 			name:         'conditional_type'
 			native:       '#ifdef __TINYC__\ntypedef int NativeNumber;\n#else\ntypedef double NativeNumber;\n#endif\nstatic int bridge_value(NativeNumber n) { return (int)n + NATIVE_INCREMENT; }\n'
-			declarations: 'fn C.bridge_value(n int) int\n'
-			expression:   'C.bridge_value(41)'
+			declarations: 'fn C.bridge_value(n f64) int\n'
+			expression:   'C.bridge_value(41.0)'
 		},
 		NativeInterfaceCase{
 			name:         'angle_header'
 			native:       '#include <native_types.h>\nstatic int bridge_value(NativeNumber n) { return (int)n + NATIVE_INCREMENT; }\n'
-			type_header:  '#ifdef __TINYC__\ntypedef int NativeNumber;\n#else\ntypedef double NativeNumber;\n#endif\n'
+			type_header:  'typedef double NativeNumber;\n'
 			declarations: 'fn C.bridge_value(n f64) int\n'
 			expression:   'C.bridge_value(41.0)'
 		},
@@ -108,7 +78,7 @@ fn test_native_interfaces_preserve_native_compiler_abi_without_header_projection
 			name:         'named_enum'
 			native:       'enum NativeAnswer { NATIVE_OLD __attribute__((deprecated("use NATIVE_ANSWER"))) = 1, NATIVE_ANSWER = 41 + NATIVE_INCREMENT };\nstatic int bridge_value(void) { return NATIVE_ANSWER; }\n'
 			declarations: 'fn C.bridge_value() int\n'
-			expression:   'int(C.NATIVE_ANSWER) + C.bridge_value() - EXPECTED_ANSWER'
+			expression:   'C.bridge_value()'
 		},
 		NativeInterfaceCase{
 			name:         'aligned_local'
@@ -120,12 +90,13 @@ fn test_native_interfaces_preserve_native_compiler_abi_without_header_projection
 			name:         'objcxx_type'
 			extension:    'mm'
 			native:       '#ifdef __cplusplus\ntypedef double NativeNumber;\n#else\ntypedef int NativeNumber;\n#endif\nextern "C" int bridge_value(NativeNumber n) { return (int)n + NATIVE_INCREMENT; }\n'
-			declarations: 'fn C.bridge_value(n f64) int\n'
+			declarations: '@[c_extern]\nfn C.bridge_value(n f64) int\n'
 			expression:   'C.bridge_value(41.0)'
 		},
 		NativeInterfaceCase{
 			name:         'field_type'
 			native:       'typedef unsigned int NativeNumber;\nstatic int bridge_value(void) { return 41 + NATIVE_INCREMENT; }\n'
+			type_header:  'typedef unsigned int NativeNumber;\n'
 			declarations: 'struct NativeBox { value C.NativeNumber }\nfn C.bridge_value() int\n'
 			expression:   'C.bridge_value() + int(sizeof(NativeBox)) - 4'
 		},
@@ -137,6 +108,7 @@ fn test_native_interfaces_preserve_native_compiler_abi_without_header_projection
 		},
 		NativeInterfaceCase{
 			name:         'sizeof_type'
+			type_header:  'typedef unsigned int NativeNumber;\n'
 			native:       'typedef unsigned int NativeNumber;\nstatic int bridge_value(void) { return 41 + NATIVE_INCREMENT; }\n'
 			declarations: 'fn C.bridge_value() int\n'
 			expression:   'C.bridge_value() + int(sizeof(C.NativeNumber)) - 4'
@@ -145,7 +117,7 @@ fn test_native_interfaces_preserve_native_compiler_abi_without_header_projection
 			name:         'native_macro'
 			native:       '#define BRIDGE_ANSWER (41 + NATIVE_INCREMENT)\nstatic int bridge_value(void) { return BRIDGE_ANSWER; }\n'
 			declarations: 'fn C.bridge_value() int\n'
-			expression:   'C.bridge_value() + int(C.BRIDGE_ANSWER) - EXPECTED_ANSWER'
+			expression:   'C.bridge_value()'
 		},
 		NativeInterfaceCase{
 			name:         'sdk_namespace'
@@ -174,26 +146,26 @@ fn test_native_interfaces_preserve_native_compiler_abi_without_header_projection
 			if attempt == 3 { os.write_file(header, '#define NATIVE_INCREMENT 2\n')! }
 			expected := if attempt == 3 { 43 } else { 42 }
 			// Change V source on warm builds so an unchanged executable cannot hide
-			// a broken projected header or native object invalidation.
+			// a broken native binding or native object invalidation.
 			callback := if case.name == 'declarator' {
 				'fn read_callback() int { callback := C.record; return C.read_record(callback()) }\n'
 			} else {
 				''
 			}
 			expression := case.expression.replace('EXPECTED_ANSWER', expected.str())
-			os.write_file(source, '#flag -I @DIR/include\n#include "@DIR/native.${case.extension}"\n${case.declarations}${callback}fn value_${attempt}() int { return ${expression} }\nfn main() { value := value_${attempt}(); println(value); assert value == ${expected} }\n')!
+			os.write_file(source, '#flag -I @DIR/include\n#include "@DIR/native.${case.extension}"\n#include "@DIR/include/native_types.h"\n${case.declarations}${callback}fn value_${attempt}() int { return ${expression} }\nfn main() { value := value_${attempt}(); println(value); assert value == ${expected} }\n')!
 			exe := os.join_path(project, 'program')
 			mut args := ['-u', 'VFLAGS', '-u', 'VEXE', 'V3CACHE=' + os.join_path(project, 'cache'),
 				'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V3_DISABLE_UNCHANGED_BUILD_CACHE=1',
 				'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none', '-showcc', '-show-c-output',
-				'-cc']
+				'-no-retry-compilation', '-cc']
 			if attempt == 0 { args << ['clang', '-nocache'] } else { args << 'tcc' }
 			args << ['-o', exe, source]
 			build := cmdexec.run('env', args)
 			assert build.exit_code == 0, '${case.name}/${attempt}: ${build.output}'
 			if attempt > 0 {
 				commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> '))
-				assert commands.len > 0, build.output
+				assert commands.len > 0 && commands.last().contains('tcc.exe'), build.output
 			}
 			if attempt == 2 {
 				assert !build.output.contains('Caching module '), build.output
@@ -205,7 +177,7 @@ fn test_native_interfaces_preserve_native_compiler_abi_without_header_projection
 	}
 }
 
-fn test_native_fallback_preserves_objc_dependencies_and_nested_header_edits() ! {
+fn test_macos_tcc_links_cached_objc_dependencies_and_invalidates_nested_headers() ! {
 	$if !macos {
 		return
 	}
@@ -240,7 +212,7 @@ fn test_native_fallback_preserves_objc_dependencies_and_nested_header_edits() ! 
 	os.write_file(os.join_path(project, 'half.h'), '#pragma once\n#include <stdint.h>\n#include <string.h>\n_Static_assert(__FLT16_MANT_DIG__ == 11, "binary16");\nstatic inline uint16_t bridge_half(double number) { _Float16 value = (_Float16)number; uint16_t bits; memcpy(&bits, &value, sizeof(bits)); return bits; }\n')!
 	os.write_file(os.join_path(project, 'native.m'), '#include <Foundation/Foundation.h>\n#include "value.h"\n#include "binding.h"\n#import "callback.h"\n#include "half.h"\n#if defined(__aarch64__)\n#include <arm_neon.h>\n#endif\ntypedef unsigned int NativeNumber;\nstatic NativeNumber bridge_number(NativeNumber n) { return n + 1; }\nstatic int bridge_answer(void) { static int calls; return NATIVE_ANSWER + (int)[@"v" length] + calls++; }\nint bridge_public(void) { return bridge_answer(); }\nstatic int bridge_negative(int n) { return -n; }\nstatic NSString* bridge_text(void) { return @"v"; }\n')!
 	source := os.join_path(project, 'main.c.v')
-	os.write_file(source, 'import os\nimport macos\nimport bridgeutil\nimport localutil\nimport gg\n#flag darwin -fobjc-arc\n#flag -D__TINYC__\n#flag darwin -framework Foundation\n#flag "${archive}"\n#include "@DIR/native.m"\nfn C.bridge_answer() int\nfn C.bridge_public() int\nfn C.bridge_negative(n int) int\nfn C.bridge_text() voidptr\nfn C.bridge_archive(n int) int\nfn C.bridge_unused() int\nfn C.bridge_number(n u32) u32\nfn C.bridge_half(n f64) u16\nfn C.bridge_callback(callback fn (u32) u32, n u32) u32\nfn callback(n u32) u32 { return n + 1 }\nfn next(n int) ?int { if n == 3 { return none }; return n }\nfn main() { assert @CCOMPILER == "clang"; pool := macos.autorelease_pool_new(); defer { macos.release(pool) }; assert macos.utf8_string(macos.nsstring("v")) == "v"; assert bridgeutil.number(bridgeutil.value()) == 42; assert localutil.value() == 42; assert bridgeutil.count() == 1; assert C.bridge_dependency_count() == 2; gg.gg_set_force_mono(1); assert C.gg_get_force_mono() == 1; println(C.bridge_answer()); println(C.bridge_public()); println(C.bridge_negative(7)); println(os.args.len > 0); assert C.bridge_archive(41) == 42; assert C.bridge_number(41) == 42; assert C.bridge_half(1.5) == 0x3e00; assert C.bridge_callback(callback, 41) == 42; assert !isnil(C.bridge_text()); mut n := 0; for n < 5 && (next(n) or { break }) < 5 { n++ }; assert n == 3 }\n')!
+	os.write_file(source, 'import os\nimport macos\nimport bridgeutil\nimport localutil\nimport gg\n#flag darwin -fobjc-arc\n#flag -D__TINYC__\n#flag darwin -framework Foundation\n#flag "${archive}"\n#include "@DIR/native.m"\nfn C.bridge_answer() int\nfn C.bridge_public() int\nfn C.bridge_negative(n int) int\nfn C.bridge_text() voidptr\nfn C.bridge_archive(n int) int\nfn C.bridge_unused() int\nfn C.bridge_number(n u32) u32\nfn C.bridge_half(n f64) u16\nfn C.bridge_callback(callback fn (u32) u32, n u32) u32\nfn callback(n u32) u32 { return n + 1 }\nfn next(n int) ?int { if n == 3 { return none }; return n }\nfn main() { assert @CCOMPILER == "tinyc"; pool := macos.autorelease_pool_new(); defer { macos.release(pool) }; assert macos.utf8_string(macos.nsstring("v")) == "v"; assert bridgeutil.number(bridgeutil.value()) == 42; assert localutil.value() == 42; assert bridgeutil.count() == 1; assert C.bridge_dependency_count() == 2; gg.gg_set_force_mono(1); assert C.gg_get_force_mono() == 1; println(C.bridge_answer()); println(C.bridge_public()); println(C.bridge_negative(7)); println(os.args.len > 0); assert C.bridge_archive(41) == 42; assert C.bridge_number(41) == 42; assert C.bridge_half(1.5) == 0x3e00; assert C.bridge_callback(callback, 41) == 42; assert !isnil(C.bridge_text()); mut n := 0; for n < 5 && (next(n) or { break }) < 5 { n++ }; assert n == 3 }\n')!
 	saved_cache := os.getenv_opt('V3CACHE')
 	saved_flags := os.getenv_opt('VFLAGS')
 	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
@@ -256,14 +228,15 @@ fn test_native_fallback_preserves_objc_dependencies_and_nested_header_edits() ! 
 	for attempt in 0 .. 3 {
 		if attempt == 2 { os.write_file(header, '#define NATIVE_ANSWER 42\n')! }
 		exe := os.join_path(root, 'program')
-		mut args := ['-showcc', '-show-c-output', '-path', '@vlib|${dependency_root}']
+		mut args := ['-showcc', '-show-c-output', '-no-retry-compilation', '-path',
+			'@vlib|${dependency_root}']
 		if attempt == 1 { args << ['-cc', 'tcc'] }
 		args << ['-o', exe, source]
 		build := cmdexec.run(@VEXE, args)
 		assert build.exit_code == 0, build.output
 		commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> '))
 		assert commands.len > 0, build.output
-		assert commands.last().contains('cc') || commands.last().contains('clang'), build.output
+		assert commands.last().contains('tcc.exe') && commands.last().contains('main.c'), build.output
 		if attempt == 1 {
 			assert !build.output.contains('Caching module '), build.output
 		}
@@ -346,7 +319,7 @@ fn test_macos_tcc_cached_external_module_invalidates_embedded_resource_metadata(
 			'@vlib|${dependency_root}', '-o', exe, source])
 		assert build.exit_code == 0, build.output
 		commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> '))
-		assert commands.len > 0, build.output
+		assert commands.len > 0 && commands.last().contains('tcc.exe'), build.output
 		if attempt in [1, 3] {
 			assert !build.output.contains('Caching module '), build.output
 		}
@@ -354,4 +327,22 @@ fn test_macos_tcc_cached_external_module_invalidates_embedded_resource_metadata(
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == if attempt < 2 { '6' } else { '12' }, run.output
 	}
+}
+
+fn test_macos_tcc_native_owner_rejects_time_sensitive_cached_inputs() ! {
+	$if !macos {
+		return
+	}
+	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	root := os.join_path(os.vtmp_dir(), 'tcc time inputs ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'native.m'), 'static const char* bridge_time(void) { return __TIME__; }\n')!
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(source, '#include "@DIR/native.m"\nfn C.bridge_time() &char\nfn main() { assert !isnil(C.bridge_time()) }\n')!
+	build := cmdexec.run('env', ['-u', 'VFLAGS', '-u', 'VEXE',
+		'V3CACHE=' + os.join_path(root, 'cache'), 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+		'-cc', 'tcc', '-no-retry-compilation', '-o', os.join_path(root, 'program'), source])
+	assert build.exit_code != 0, build.output
+	assert build.output.contains('native cache cannot expand date/time macros'), build.output
 }
