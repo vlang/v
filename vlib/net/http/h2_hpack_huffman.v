@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
-import hash.huffman
+import compress.huffman
 
 // h2_huffman_eos is the index of the EOS (end-of-string) symbol in the
 // HPACK Huffman table (RFC 7541 Appendix B).
@@ -15,7 +15,7 @@ const h2_huffman_eos = 256
 const h2_max_code_bits = 30
 
 // h2_huffman_table holds the canonical HPACK Huffman codes, rebuilt at startup
-// from the per-symbol bit lengths via the shared hash.huffman builder. The
+// from the per-symbol bit lengths via the shared compress.huffman builder. The
 // codes are MSB-first (the order they appear on the wire).
 const h2_huffman_table = build_h2_huffman_table()
 

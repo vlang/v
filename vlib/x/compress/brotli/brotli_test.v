@@ -1,6 +1,6 @@
 module brotli
 
-import hash.huffman
+import compress.huffman
 
 struct WindowBitsCase {
 	bits  u32
