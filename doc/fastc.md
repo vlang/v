@@ -3,6 +3,10 @@
 Select FastC with `v -b fastc run program.v`. It reads scanner tokens and emits C directly,
 without the regular parser, checker, or AST pipeline, then compiles with bundled TinyCC.
 Select `-cc clang` to compile the emitted C with Clang, including Objective-C interop on macOS.
+Default builds and explicit `-cc tcc` builds compile generated V code and link with TinyCC.
+FastC reports TinyCC failures without retrying with another compiler.
+On macOS, Objective-C interop uses a separate cached native library built by the platform compiler;
+generated V bodies remain on TinyCC, including when `-no-retry-compilation` is set.
 Native implementation includes follow generated V types, while ordinary C headers precede them.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.

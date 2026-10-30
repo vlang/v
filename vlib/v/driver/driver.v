@@ -11180,7 +11180,7 @@ $if !skip_fastc ? {
 		cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg,
 			tcc_resources.library_arg]
 		cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
-		cc_args << source_c_flags
+		cc_args << v3_tcc_dylib_native_flags(source_c_flags)
 		// A call without a prototype would silently truncate a pointer result
 		// (the C carries no headers): it is an error, not a warning.
 		if '-Werror=implicit-function-declaration' !in cc_args {
@@ -12961,7 +12961,7 @@ pub fn run(args []string) {
 		eprintln('MSVC requires a Windows target; cannot compile target `${target.os}`')
 		exit(1)
 	}
-	if retry_compilation && use_implicit_tcc_semantics && !check_only && !only_check_syntax
+	if backend == 'c' && retry_compilation && use_implicit_tcc_semantics && !check_only && !only_check_syntax
 		&& !c_only && !is_o {
 		if injected_failure := os.getenv_opt('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE') {
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent, injected_failure)
@@ -13132,7 +13132,7 @@ pub fn run(args []string) {
 			if fastc_test_file {
 				prefs.is_test = true
 			}
-			if is_prod && !c_compiler_explicit && !(c_only && fastc_cross_target) {
+			if is_prod && !(c_compiler_explicit && effective_c_compiler == 'clang') && !(c_only && fastc_cross_target) {
 				unsupported_modes << '`-prod`'
 			}
 			if is_shared || is_livemain || is_liveshared {
@@ -13163,8 +13163,8 @@ pub fn run(args []string) {
 			if c99_explicit || is_strict || check_overflow || check_casts {
 				unsupported_modes << 'strict/checked C modes'
 			}
-			if c_compiler_explicit && effective_c_compiler != 'clang' {
-				unsupported_modes << 'C compilers other than Clang'
+			if c_compiler_explicit && effective_c_compiler !in ['clang', 'tinyc'] {
+				unsupported_modes << 'C compilers other than TinyCC or Clang'
 			}
 			if no_builtin || no_preludes {
 				unsupported_modes << 'custom builtin/prelude modes'
@@ -13287,10 +13287,10 @@ pub fn run(args []string) {
 					exit(1)
 				}
 			}
-			fastc_result := if c_compiler_explicit {
+			fastc_result := if c_compiler_explicit && effective_c_compiler == 'clang' {
 				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug, fastc_generation.uses_threads)
 			} else {
-				compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
+				compile_v3_fastc_tcc_generation(input_file, &fastc_generation, fastc_bin_file, prefs, environment_c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, prefs.building_v && !is_debug && !no_cache && !fastc_bench, keep_c, mut prestarted_fastc_units)
 			}
 
 			if (verbose || show_cc) && fastc_result.command.len > 0 {
@@ -13301,7 +13301,11 @@ pub fn run(args []string) {
 				}
 			}
 			if show_c_output && fastc_result.output.len > 0 {
-				header := '======== Output of ${if c_compiler_explicit { 'Clang' } else { 'TinyCC' }} fastc ========'
+				header := '======== Output of ${if c_compiler_explicit && effective_c_compiler == 'clang' {
+					'Clang'
+				} else {
+					'TinyCC'
+				}} fastc ========'
 				if c_to_stdout {
 					eprintln(header)
 					eprintln(fastc_result.output.trim_space())

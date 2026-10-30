@@ -10,11 +10,7 @@ import v.token
 
 // FastC parses scanner tokens and emits C immediately. It deliberately has no
 // AST, semantic-checker, transformer, mark-used, or conventional cgen path.
-const c_preamble = r'#ifndef __cplusplus
-typedef _Bool bool;
-#define true ((bool)1)
-#define false ((bool)0)
-#endif
+const c_preamble = r'#include <stdbool.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -394,11 +390,7 @@ fn fastc_c_identifier(name string) string {
 	}
 }
 
-const c_selfhost_preamble = r'#ifndef __cplusplus
-typedef _Bool bool;
-#define true ((bool)1)
-#define false ((bool)0)
-#endif
+const c_selfhost_preamble = r'#include <stdbool.h>
 
 #include <stdint.h>
 #include <stddef.h>
@@ -406,7 +398,9 @@ typedef _Bool bool;
 #include <stdlib.h>
 #include <string.h>
 /* V __offsetof(T, field) */
+#ifndef __offsetof
 #define __offsetof(st, m) offsetof(st, m)
+#endif
 #ifndef _WIN32
 #include <pthread.h>
 #include <unistd.h>
@@ -596,7 +590,9 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 /* V __offsetof(T, field) */
+#ifndef __offsetof
 #define __offsetof(st, m) offsetof(st, m)
+#endif
 #ifndef _WIN32
 #include <pthread.h>
 #include <unistd.h>
@@ -1194,6 +1190,10 @@ pub:
 	// units describes how c_pieces split into translation units that the
 	// drivers can compile in parallel (see fastc_write_c_units).
 	units FastcUnitLayout
+	// native_symbols names C functions, types and constants referenced by the source graph.
+	native_symbols []string
+	// native_declarations retains V's declarations for framework functions hidden by Objective-C headers.
+	native_declarations map[string]string
 }
 
 // FastcUnitLayout locates, in a generation's pieces, the shared head (types,
@@ -1727,6 +1727,11 @@ fn (mut timer FastcPhaseTimer) mark(name string) {
 // generate_files_with_source_paths emits C and reports every source read from entry files,
 // entry directories, and their imports.
 pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences) !GenerationResult {
+	return generate_files_with_native_aliases(paths, prefs, [])
+}
+
+// generate_files_with_native_aliases redirects qualified C function references to native owners.
+pub fn generate_files_with_native_aliases(paths []string, prefs &pref.Preferences, native_aliases []string) !GenerationResult {
 	mut timer := fastc_new_phase_timer()
 	// The resolve memo is written while the program is generated and joined
 	// once the C pieces exist.
@@ -1748,8 +1753,10 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	// multi-return component is not carried correctly by the self-hosted
 	// generator yet.
 	mut units := FastcUnitLayout{}
+	mut native_symbols := []string{}
+	mut native_declarations := map[string]string{}
 	c_pieces, uses_threads, c_flags := generate_source_pieces(sources, module_aliases, &scoped_prefs,
-		mut units)!
+		native_aliases, mut units, mut native_symbols, mut native_declarations)!
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
@@ -1759,6 +1766,8 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 		uses_threads:             uses_threads
 		c_flags:                  c_flags
 		units:                    units
+		native_symbols:           native_symbols
+		native_declarations:      native_declarations
 	}
 }
 
@@ -2025,14 +2034,16 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 // single-source API use it. The driver takes the pieces directly.
 fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences) !(string, bool, []string) {
 	mut units := FastcUnitLayout{}
-	pieces, uses_threads, c_flags := generate_source_pieces(input_sources, module_aliases, prefs, mut units)!
+	mut native_symbols := []string{}
+	mut native_declarations := map[string]string{}
+	pieces, uses_threads, c_flags := generate_source_pieces(input_sources, module_aliases, prefs, [], mut units, mut native_symbols, mut native_declarations)!
 	return fastc_join_c_pieces(pieces), uses_threads, c_flags
 }
 
 // generate_source_pieces emits the program as C pieces in output order; the
 // per-file bodies are referenced, not copied, so the multi-megabyte output is
 // never assembled into one buffer here.
-fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[string]string, input_prefs &pref.Preferences, mut units FastcUnitLayout) !([]string, bool, []string) {
+fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[string]string, input_prefs &pref.Preferences, native_aliases []string, mut units FastcUnitLayout, mut native_symbols []string, mut native_declarations map[string]string) !([]string, bool, []string) {
 	scoped_prefs := fastc_target_runtime_preferences(input_prefs)
 	prefs := &scoped_prefs
 	// The `int` C spelling is fixed before any source is generated, so the
@@ -2099,6 +2110,9 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
 	mut function_c_names := fastc_compact_function_c_names(functions,
 		prefs.building_v && !prefs.target_libc_headers)
+	for name in native_aliases {
+		function_c_names['C.' + name] = 'v3_native_bridge_' + name
+	}
 	if prefs.target_libc_headers {
 		for key, signature in functions {
 			if !key.starts_with('C.') {
@@ -2501,7 +2515,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	preamble := if prefs.target_libc_headers {
 		fastc_target_libc_preamble() + c_target_option_runtime
 	} else if header_free {
-		c_selfhost_preamble.replace(c_selfhost_preamble_includes, fastc_c_abi_prelude(prefs.target.os, prefs.target.arch, ''))
+		c_selfhost_preamble.replace('#include <stdbool.h>', '#ifndef __cplusplus\ntypedef _Bool bool;\n#define true ((bool)1)\n#define false ((bool)0)\n#endif').replace(c_selfhost_preamble_includes, fastc_c_abi_prelude(prefs.target.os, prefs.target.arch, ''))
 	} else if prefs.building_v {
 		c_selfhost_preamble
 	} else {
@@ -2755,10 +2769,23 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << include
 	}
 
-	native_context := if prefs.target_libc_headers || c_flags.any(it.ends_with('.c') || it.ends_with('.o')) {
+	native_context := if prefs.target_libc_headers || c_flags.any(it.ends_with('.c') || it.ends_with('.o'))
+		|| (prefs.normalized_target_os() == 'macos' && prefs.ccompiler == 'tinyc'
+			&& c_flags.any(it == '-framework' || it.starts_with('-fobjc-'))) {
 		fastc_native_source_context(sources, prefs)
 	} else {
 		FastcNativeSourceContext{}
+	}
+	if prefs.normalized_target_os() == 'macos' && prefs.ccompiler == 'tinyc' {
+		mut symbols := native_context.references.clone()
+		for key, signature in functions {
+			if key.starts_with('C.') && !signature.is_disabled {
+				name := key[2..]
+				symbols[name] = true
+				native_declarations[name] = fastc_native_function_declaration(name, signature)
+			}
+		}
+		native_symbols = symbols.keys()
 	}
 	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context,
 		prefs.vroot)
@@ -3129,6 +3156,23 @@ fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignat
 		'')
 }
 
+fn fastc_native_function_declaration(name string, signature FastcFunctionSignature) string {
+	mut parameters := []string{cap: signature.parameter_types.ids.len + 1}
+	for i, typ in signature.parameter_types_text() {
+		parameters << if i < signature.parameter_constness.len && signature.parameter_constness[i] {
+			'const ${typ}'
+		} else {
+			typ
+		}
+	}
+	if signature.is_variadic {
+		parameters << '...'
+	} else if parameters.len == 0 {
+		parameters << 'void'
+	}
+	return '${signature.return_type_text()} ${name}(${parameters.join(', ')});'
+}
+
 fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext, vroot string) string {
 	mut keys := functions.keys().filter(it.starts_with('C.'))
 	keys.sort()
@@ -3145,20 +3189,6 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 			&& !fastc_vlib_native_helper_has_input(name, paths, inputs, context, vroot) {
 			continue
 		}
-		mut parameters := []string{cap: signature.parameter_types.ids.len + 1}
-		for i, parameter_type in signature.parameter_types_text() {
-			parameters << if i < signature.parameter_constness.len
-				&& signature.parameter_constness[i] {
-				'const ${parameter_type}'
-			} else {
-				parameter_type
-			}
-		}
-		if signature.is_variadic {
-			parameters << '...'
-		} else if parameters.len == 0 {
-			parameters << 'void'
-		}
 		// The selected pthread helper header owns these native callback signatures.
 		// Keep explicit declarations available when that header is absent.
 		if name in ['v3_pthread_zero', 'v3_pthread_create', 'v3_pthread_is_current'] {
@@ -3166,7 +3196,7 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 		} else {
 			out.writeln('#ifndef ${name}')
 		}
-		out.writeln('extern ${signature.return_type_text()} ${name}(${parameters.join(', ')});')
+		out.writeln('extern ' + fastc_native_function_declaration(name, signature))
 		out.writeln('#endif')
 	}
 	return out.str()

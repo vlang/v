@@ -5421,7 +5421,11 @@ fn (g &Parser) render_function_value_expression(tokens []FastcExpressionToken) ?
 		// the value of that name outside a call.
 		return none
 	}
-	return '&${g.c_function_name_for_key(function_key)}'
+	name := g.c_function_name_for_key(function_key)
+	if function_key.starts_with('C.') && name == 'v3_native_bridge_' + function_key[2..] {
+		return name
+	}
+	return '&${name}'
 }
 
 fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?string {

@@ -78,34 +78,6 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	mut flags := user_flags.clone()
 	flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 	flags = v3_tcc_dylib_native_flags(flags)
-	for flag in flags {
-		clean := flag.trim_space()
-		if clean.starts_with('@') || clean.starts_with('--config') || clean.starts_with('-specs') || clean.starts_with('--specs') || clean.starts_with('-include-pch') || clean.starts_with('-Wp,') {
-			return V3NativeInputClosure{ unassignable: 'opaque native compiler options' }
-		}
-	}
-	path := os.join_path(os.vtmp_dir(), 'v3_native_bridge_${tempname.unique_token()}.m')
-	defer { os.rm(path) or {} }
-	os.write_file(path, cgen.cache_native_dependency_directives(a, prefs.vroot, flags, prefs.target)) or {
-		return V3NativeInputClosure{ unassignable: err.msg() }
-	}
-	mut args := c_object_compile_flags(flags)
-	language := cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot, flags,
-		prefs.c99, prefs.ccompiler, prefs.target), flags)
-	args << ['-x', language]
-	deps := c_object_dependencies(compiler, args, path)
-	if deps.used_fallback {
-		if os.getenv('V3_CACHE_TRACE') != '' {
-			mut probe_args := args.clone()
-			probe_args << ['-M', '-MT', 'v3cache', path]
-			result := cmdexec.run(compiler, probe_args)
-			eprintln(result.output)
-		}
-		return V3NativeInputClosure{ unassignable: 'the native bridge dependency manifest is unavailable' }
-	}
-	if deps.files.any(it.ends_with('.mm')) && deps.files.any(it != path && it.ends_with('.m')) {
-		return V3NativeInputClosure{ unassignable: 'mixed Objective-C and Objective-C++ bridge contexts' }
-	}
 	mut directories := []string{}
 	for input in cgen.native_include_input_files(a, prefs.vroot, prefs.target, flags, prefs.compile_values) {
 		if !cgen.native_path_is_shipped(input, prefs.vroot) {
@@ -118,21 +90,8 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 			}
 		}
 	}
-	mut functions := map[string]string{}
-	mut headers := map[string]string{}
 	mut wanted := map[string]bool{}
 	mut wanted_types := map[string]bool{}
-	mut native_types := map[string]string{}
-	mut native_prototypes := map[string]string{}
-	mut compiler_headers := map[string]bool{}
-	for input in deps.files {
-		if !input.contains('/lib/clang/') || !input.contains('/include/') { continue }
-		name := input.all_after_last('/include/')
-		if name !in ['stdint.h', 'stddef.h', 'stdbool.h', 'stdarg.h', 'stdalign.h', 'stdatomic.h',
-			'float.h', 'limits.h', 'stdnoreturn.h'] {
-			compiler_headers[name] = true
-		}
-	}
 	for node in a.nodes {
 		if node.kind == .c_fn_decl { wanted[node.value.all_after_last('.')] = true }
 		if node.kind == .struct_decl && node.value.starts_with('C.') {
@@ -151,10 +110,69 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 			}
 		}
 	}
+	language := cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot, flags,
+		prefs.c99, prefs.ccompiler, prefs.target), flags)
+	source := cgen.cache_native_dependency_directives(a, prefs.vroot, flags, prefs.target)
+	return v3_tcc_native_source_closure(source, prefs, flags, compiler, language, directories, wanted, wanted_types, native_inputs, {})
+}
+
+fn v3_tcc_native_source_closure(source string, prefs &pref.Preferences, flags []string, compiler string, language string, directories []string, wanted map[string]bool, requested_types map[string]bool, native_inputs &cgen.CacheNativeInputs, sdk_declarations map[string]string) V3NativeInputClosure {
+	mut wanted_types := requested_types.clone()
+	for flag in flags {
+		clean := flag.trim_space()
+		if clean.starts_with('@') || clean.starts_with('--config') || clean.starts_with('-specs') || clean.starts_with('--specs') || clean.starts_with('-include-pch') || clean.starts_with('-Wp,') {
+			return V3NativeInputClosure{ unassignable: 'opaque native compiler options' }
+		}
+	}
+	path := os.join_path(os.vtmp_dir(), 'v3_native_bridge_${tempname.unique_token()}.m')
+	defer { os.rm(path) or {} }
+	mut probe := strings.new_builder(source.len + sdk_declarations.len * 80)
+	probe.write_string(source)
+	for name, _ in sdk_declarations {
+		probe.writeln('\nV3_FASTC_NATIVE_SYMBOL "' + name + '" ' + name)
+	}
+	os.write_file(path, probe.str()) or {
+		return V3NativeInputClosure{ unassignable: err.msg() }
+	}
+	mut args := c_object_compile_flags(flags)
+	args << ['-x', language]
+	deps := c_object_dependencies(compiler, args, path)
+	if deps.used_fallback {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			mut probe_args := args.clone()
+			probe_args << ['-M', '-MT', 'v3cache', path]
+			result := cmdexec.run(compiler, probe_args)
+			eprintln(result.output)
+		}
+		return V3NativeInputClosure{ unassignable: 'the native bridge dependency manifest is unavailable' }
+	}
+	if deps.files.any(it.ends_with('.mm')) && deps.files.any(it != path && it.ends_with('.m')) {
+		return V3NativeInputClosure{ unassignable: 'mixed Objective-C and Objective-C++ bridge contexts' }
+	}
+	mut functions := map[string]string{}
+	mut headers := map[string]string{}
+	mut native_types := map[string]string{}
+	mut native_prototypes := map[string]string{}
+	mut compiler_headers := map[string]bool{}
+	for input in deps.files {
+		if !input.contains('/lib/clang/') || !input.contains('/include/') { continue }
+		name := input.all_after_last('/include/')
+		if name !in ['stdint.h', 'stddef.h', 'stdbool.h', 'stdarg.h', 'stdalign.h', 'stdatomic.h',
+			'float.h', 'limits.h', 'stdnoreturn.h'] {
+			compiler_headers[name] = true
+		}
+	}
 	mut projected_files := map[string]bool{}
+	mut sdk_files := map[string]bool{}
 	for input in deps.files {
 		if input != path && directories.any(input.starts_with(it + os.path_separator)) {
 			projected_files[os.real_path(input)] = true
+		} else if sdk_declarations.len > 0 && input.contains('.framework/') {
+			text := os.read_file(input) or { continue }
+			if v3_tcc_native_mentions_function(text, sdk_declarations) {
+				projected_files[os.real_path(input)] = true
+				sdk_files[os.real_path(input)] = true
+			}
 		}
 	}
 	mut preprocess_args := args.clone()
@@ -164,6 +182,33 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		return V3NativeInputClosure{ unassignable: 'the native bridge interface cannot be preprocessed' }
 	}
 	active_sources := v3_tcc_dylib_preprocessed_files(preprocessed.output, projected_files)
+	mut expanded_names := map[string]string{}
+	if sdk_declarations.len > 0 {
+		for line in preprocessed.output.split_into_lines() {
+			if line.starts_with('V3_FASTC_NATIVE_SYMBOL ') {
+				parts := line.fields()
+				if parts.len == 3 && v3_c_identifier_end(parts[2], 0) == parts[2].len {
+					expanded_names[parts[2]] = parts[1].trim('"')
+				}
+				continue
+			}
+			if !line.starts_with('#define ') { continue }
+			definition := line['#define '.len..].fields()
+			if definition.len == 2 && definition[0] in sdk_declarations
+				&& v3_c_identifier_end(definition[1], 0) == definition[1].len {
+				expanded_names[definition[1]] = definition[0]
+			}
+		}
+	}
+	for input, _ in sdk_files {
+		text := active_sources[input] or { continue }
+		for name, _ in v3_tcc_dylib_prototypes(v3_tcc_dylib_c_text(text)) {
+			original_name := expanded_names[name] or { name }
+			if declaration := sdk_declarations[original_name] {
+				functions[original_name] = declaration
+			}
+		}
+	}
 	for input in deps.files {
 		if input == path || !directories.any(input.starts_with(it + os.path_separator)) { continue }
 		original := os.read_file(input) or { continue }
@@ -172,9 +217,11 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		prototypes := modulecache.declaration_header(v3_tcc_dylib_c_text(text).replace('static ', '').replace('inline ', '').replace('__inline__ ', '').replace('__inline ', ''))
 		mut exposed := strings.new_builder(256)
 		for name, prototype in v3_tcc_dylib_prototypes(prototypes) {
-			if wanted[name] {
-				exposed.writeln(prototype)
-				functions[name] = prototype
+			original_name := expanded_names[name] or { name }
+			if wanted[original_name] {
+				declaration := v3_tcc_native_rename_declaration(prototype, name, original_name)
+				exposed.writeln(declaration)
+				functions[original_name] = declaration
 			}
 		}
 		native_path := os.real_path(input)
@@ -232,6 +279,61 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		include_dirs: v3_parallel_c_include_dirs(flags)
 		tcc_headers:  headers
 	}
+}
+
+fn v3_tcc_native_mentions_function(source string, declarations map[string]string) bool {
+	mut i := 0
+	for i < source.len {
+		if source[i] == `/` {
+			after := v3_c_skip_comment(source, i)
+			if after > i {
+				i = after
+				continue
+			}
+		}
+		if source[i] in [`"`, `'`] {
+			i = v3_c_skip_literal(source, i)
+			continue
+		}
+		if source[i].is_digit() {
+			i = v3_c_skip_number(source, i)
+			continue
+		}
+		end := v3_c_identifier_end(source, i)
+		if end == i {
+			i++
+			continue
+		}
+		if source[i..end] in declarations { return true }
+		i = end
+	}
+	return false
+}
+
+fn v3_tcc_native_rename_declaration(source string, name string, original string) string {
+	if name == original { return source }
+	mut out := strings.new_builder(source.len)
+	mut start := 0
+	mut i := 0
+	for i < source.len {
+		if source[i] in [`"`, `'`] {
+			i = v3_c_skip_literal(source, i)
+			continue
+		}
+		end := v3_c_identifier_end(source, i)
+		if end == i {
+			i++
+			continue
+		}
+		if source[i..end] == name {
+			out.write_string(source[start..i])
+			out.write_string(original)
+			start = end
+		}
+		i = end
+	}
+	out.write_string(source[start..])
+	return out.str()
 }
 
 // Project the native compiler's active branches and expanded macros, retaining
