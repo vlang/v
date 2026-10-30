@@ -37,7 +37,7 @@ fn v3_gc_mode_defines(gc_mode string, disable_gc bool) ![]string {
 // default; an explicit Boehm `-gc` mode links the prebuilt collector with the
 // system linker on macOS.
 fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, target_arch string, backend string, gc_mode string) bool {
-	if building_v || cross_output {
+	if building_v {
 		return true
 	}
 	if backend in ['amd64', 'x64'] {
