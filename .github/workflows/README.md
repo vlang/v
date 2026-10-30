@@ -120,6 +120,9 @@ from the retired `sokol_gl` renderer. The bootstrap contract validates their DXB
 containers without including that renderer.
 The TCC tools step also runs `oldv` shell-command regressions, including native
 Windows quoting, variable expansion, loop syntax, and nonzero exit propagation.
+Pure V math steps use the `pure_v_math` define and a glob with Windows path
+separators. The glob excludes C overrides; the define selects the portable math
+test expectations and keeps that build separate from normal C math caches.
 
 ### macOS runners
 

@@ -316,7 +316,7 @@ jobs:
       - name: Test pure V math module
         id: test_pure_v_math_module
         if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
-        run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
+        run: v -silent -d pure_v_math -exclude '@vlib\math\*.c.v' test vlib/math/
       - name: Test fasthttp module
         id: test_fasthttp_module
         if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
