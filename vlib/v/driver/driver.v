@@ -53,9 +53,6 @@ $if !skip_riscv64 ? {
 $if !skip_loongarch64 ? {
 	import v.gen.loongarch64
 }
-$if !skip_loongarch64 ? {
-	import v.gen.loongarch64
-}
 
 $if !skip_ssa ? {
 	import v.ssa
@@ -25827,3 +25824,4 @@ fn module_subdir_has_v_sources(module_root string, dir string, prefs &pref.Prefe
 	}
 	return false
 }
+
