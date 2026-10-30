@@ -15696,7 +15696,9 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			if int(grandchild_id) < 0 {
 				continue
 			}
-			grandchild := tc.a.nodes[int(grandchild_id)]
+			// Body workers can update call flags while signatures are checked.
+			// Borrow only the type operands instead of copying the mutable flags.
+			grandchild := &tc.a.nodes[int(grandchild_id)]
 			if grandchild.kind in [.comptime_for, .offsetof_expr] {
 				continue
 			}
