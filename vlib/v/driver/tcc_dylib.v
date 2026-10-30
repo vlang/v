@@ -195,9 +195,10 @@ fn v3_tcc_dylib_function_bindings(functions map[string]bool) V3TccDylibBindings 
 	return V3TccDylibBindings{ owner: owner.str() }
 }
 
-fn v3_tcc_dylib_needs_native_sources(state &V3ModuleCacheState, header string) bool {
+fn v3_tcc_dylib_needs_native_sources(state &V3ModuleCacheState, v_interface_path string) bool {
 	if !state.native_bridge { return false }
-	text := os.read_file(header) or { return true }
+	// This is a generated V declaration interface (.vh), never a C header.
+	text := os.read_file(v_interface_path) or { return true }
 	return text.contains('#include') && (text.contains('.m"') || text.contains('.mm"'))
 }
 

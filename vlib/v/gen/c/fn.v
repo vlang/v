@@ -17361,13 +17361,15 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		node := g.a.nodes[decl.node_idx]
 		if g.is_native_function_alias(name) {
 			original_name := name['v3_native_bridge_'.len..]
+			g.writeln('#ifdef V3CACHE_NATIVE_OWNER')
 			if g.c_extern_forced_decls[original_name] || g.c_extern_forced_decls['C.' + original_name]
 				|| g.should_emit_c_extern_decl_from_file(original_name, decl.file, decl.module_name) {
-				g.writeln('#ifdef V3CACHE_NATIVE_OWNER')
 				g.writeln(g.c_extern_decl_line(node, original_name))
-				g.writeln('#endif')
 			}
-			g.writeln('#ifndef V3CACHE_NATIVE_OWNER')
+			// Generic and inline V support in the owner can call the pointer before
+			// its definition. Let the native compiler supply that declaration's type.
+			g.writeln('extern __typeof__(&' + original_name + ') ' + name + ';')
+			g.writeln('#else')
 			g.writeln('extern ' + g.c_extern_decl_line(node, '(*' + name + ')'))
 			g.writeln('#endif')
 			continue
