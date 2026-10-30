@@ -66,11 +66,62 @@ fn raw_repz_ret_does_not_write_rcx(x u64) u64 {
 	return y
 }
 
+asm amd64 raw {
+	".text\n\t"
+	".globl raw_answer_declared\n\t"
+	"raw_answer_declared:\n\t"
+	"xorl %eax, %eax\n\t"
+	"ret"
+}
+
+fn C.raw_answer_declared() u64
+
+fn raw_flag_output_declares_flags(a u64, b u64) bool {
+	mut same := false
+	asm amd64 raw {
+		"cmpq %[a], %[b]"
+		; [same] "=@ccz" (same)
+		; [a] "r" (a)
+		  [b] "r" (b)
+	}
+	return same
+}
+
+fn raw_byte_operand_mul_writes_ax_only(x u16, b u8) u16 {
+	mut acc := x
+	mut byte := b
+	asm amd64 raw {
+		"mul %[byte]"
+		; [acc] "+a" (acc)
+		;
+		  [byte] "q" (byte)
+		;
+		  cc
+	}
+	return acc
+}
+
+fn raw_r10b_mul_writes_ax_only(x u16) u16 {
+	mut acc := x
+	asm amd64 raw {
+		"movb $5, %%r10b\n\t"
+		"mul %%r10b"
+		; [acc] "+a" (acc)
+		;
+		; r10 cc
+	}
+	return acc
+}
+
 fn main() {
 	println(raw_writes_declared(1))
 	println(raw_output_binds_rax(2))
 	println(raw_reads_only(3))
 	println(raw_byte_mul_writes_ax_only(4, 5))
 	println(raw_repz_ret_does_not_write_rcx(6))
+	println(raw_flag_output_declares_flags(1, 1))
+	println(raw_byte_operand_mul_writes_ax_only(7, 5))
+	println(raw_r10b_mul_writes_ax_only(7))
+	println(C.raw_answer_declared())
 	println(undefined_total)
 }

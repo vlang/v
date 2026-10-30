@@ -121,7 +121,10 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 		&& header.arch in inline_asm_raw_x86_arches {
 		types := tc.inline_asm_raw_att_operand_types(node, block, sections)
 		tc.check_inline_asm_raw_att_widths(id, node, block, start, sections[0], header.arch, types)
-		tc.check_inline_asm_raw_clobbers(id, node, block, start, sections, header.arch)
+		// File-scope templates are emitted as basic asm, which takes no operands or clobbers.
+		if tc.fn_context.node_id >= 0 {
+			tc.check_inline_asm_raw_clobbers(id, node, block, start, sections, header.arch, types)
+		}
 	}
 	if registers.len == 0 {
 		// Without a register table for this instruction set every name looks unknown.

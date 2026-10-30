@@ -64,6 +64,9 @@ fn inline_asm_raw_base_mnemonic(name string, families []string) string {
 fn inline_asm_raw_fixed_output_registers(block string, section InlineAsmRange) []string {
 	mut registers := []string{}
 	for io in inline_asm_ios(block, section) {
+		if io.constraint.contains('@') {
+			continue
+		}
 		if io.constraint.contains('{') {
 			name := io.constraint.all_after('{').all_before('}')
 			registers << inline_asm_raw_x86_family(name)
@@ -84,27 +87,21 @@ fn inline_asm_raw_fixed_output_registers(block string, section InlineAsmRange) [
 	return registers
 }
 
-// inline_asm_raw_byte_mul_form reports whether a mul, imul, div or idiv works on 8-bit operands:
-// a `b` suffix, or an 8-bit register as the one operand.
-fn inline_asm_raw_byte_mul_form(name string, operands []InlineAsmRawOperand) bool {
+// inline_asm_raw_byte_mul_form reports whether a mul, imul, div or idiv works on 8-bit operands,
+// which write AX (AL and AH) and never DX: a `b` suffix, or a last operand that is 8 bits wide.
+fn inline_asm_raw_byte_mul_form(name string, width int) bool {
 	if name.len > 1 && name[name.len - 1] == `b` && name[..name.len - 1] in ['mul', 'imul', 'div',
 		'idiv'] {
 		return true
 	}
-	if operands.len == 0 || operands[operands.len - 1].kind != .register {
-		return false
-	}
-	register := operands[operands.len - 1].name
-	is_legacy := register.len == 2 && (register[1] == `l` || register[1] == `h`)
-	is_rex := register.len == 3 && register[0] == `r` && register[2] == `b`
-	return is_legacy || is_rex || register in ['sil', 'dil', 'bpl', 'spl']
+	return width == 8
 }
 
 // check_inline_asm_raw_clobbers reports a GNU x86 raw template that writes a general-purpose
 // register, or sets the flags, without declaring it. It only reports the cases it can prove:
 // a destination register operand, the registers that `mul`, `div`, `cqo` and `rep` write
 // implicitly, and a flag-setting instruction without `cc`. Other mnemonics are not reported.
-fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.Node, block string, base int, sections []InlineAsmRange, arch string) {
+fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.Node, block string, base int, sections []InlineAsmRange, arch string, types map[string]Type) {
 	template := inline_asm_raw_template(block, sections[0], arch)
 	instructions := inline_asm_raw_parse_instructions(&template, [])
 	mut clobbers := map[string]bool{}
@@ -118,10 +115,17 @@ fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.
 		}
 	}
 	if sections.len > 1 {
+		for io in inline_asm_ios(block, sections[1]) {
+			// A flag output such as `"=@ccz"` declares the flags without a `cc` clobber.
+			if io.constraint.contains('@cc') {
+				has_cc = true
+			}
+		}
 		for register in inline_asm_raw_fixed_output_registers(block, sections[1]) {
 			clobbers[register] = true
 		}
 	}
+	arch_bits := inline_asm_att_arch_bits(arch)
 	for instruction in instructions {
 		if instruction.is_directive || instruction.mnemonic.len == 0 {
 			continue
@@ -134,11 +138,13 @@ fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.
 		mut written_at := map[string]token.Pos{}
 		family := inline_asm_raw_base_mnemonic(name, inline_asm_raw_writes_dst_families)
 		mul_family := inline_asm_raw_base_mnemonic(name, ['mul', 'imul', 'div', 'idiv'])
-		if mul_family.len > 0 && (mul_family == 'div' || mul_family == 'idiv'
-			|| instruction.operands.len == 1) {
+		if mul_family.len > 0 && instruction.operands.len > 0 && (mul_family == 'div'
+			|| mul_family == 'idiv' || instruction.operands.len == 1) {
 			written['rax'] = true
 			// The 8-bit forms write AX (AL and AH) and leave DX alone.
-			if !inline_asm_raw_byte_mul_form(name, instruction.operands) {
+			last := instruction.operands[instruction.operands.len - 1]
+			width := tc.inline_asm_att_operand_width(last, types, arch_bits)
+			if !inline_asm_raw_byte_mul_form(name, width) {
 				written['rdx'] = true
 			}
 		}
