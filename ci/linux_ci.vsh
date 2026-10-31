@@ -65,7 +65,7 @@ fn install_dependencies_for_examples_and_tools_tcc() {
 	}
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libssl-dev', 'sqlite3',
-		'libsqlite3-dev', 'valgrind'])
+		'libsqlite3-dev', 'valgrind', 'nodejs'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
 		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev', 'libegl-dev',
 		'libx11-xcb-dev'])
@@ -198,7 +198,7 @@ fn install_dependencies_for_examples_and_tools_gcc() {
 	}
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'postgresql', 'libpq-dev',
-		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind'])
+		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind', 'nodejs'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
 		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev'])
 	// Wayland development libraries for sokol Wayland support
@@ -348,7 +348,7 @@ fn install_dependencies_for_examples_and_tools_clang() {
 	}
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'postgresql', 'libpq-dev',
-		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind'])
+		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind', 'nodejs'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
 		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev'])
 	// Wayland development libraries for sokol Wayland support

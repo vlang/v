@@ -15,6 +15,7 @@ and Debian 13 are supported, with all three C compilers available. Wayland uses
 the runtime package `libwayland-egl1`. The wkhtmltox C interop library uses the
 guest's Debian package architecture, with the Jammy build on Ubuntu and the
 Bookworm build on Debian. Its dependencies are installed through APT.
+The dependency tasks also install Node.js for the WebAssembly runtime tests.
 Native C++ objects use the platform C++ compiler for headers. On Linux, TinyCC
 links also search that compiler's C++ runtime directory, including Debian's
 versioned GCC library directory.
