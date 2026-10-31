@@ -1,0 +1,72 @@
+diff --git a/user/user.v b/user/user.v
+index a9165d5..caa1b7c 100644
+--- a/user/user.v
++++ b/user/user.v
+@@ -157,7 +157,7 @@ pub fn (mut app App) register_user(username string, password string, salt string
+ 
+ 		mut u := app.get_user_by_username(user.username) or {
+ 			app.info('User was not inserted')
+-			return error('user `${username}` was not inserted (lookup after insert failed: ${err})')
++			return error('user `${username}` was not inserted (lookup after insert failed)')
+ 		}
+ 
+ 		if u.password != user.password {
+diff --git a/user_registration_d_sqlite_test.v b/user_registration_d_sqlite_test.v
+new file mode 100644
+index 0000000..837f9dd
+--- /dev/null
++++ b/user_registration_d_sqlite_test.v
+@@ -0,0 +1,53 @@
++module main
++
++import config
++import db.sqlite
++import os
++
++fn test_registration_reports_a_missing_post_insert_user() {
++	root := os.join_path(os.temp_dir(), 'gitly_registration_lookup_${os.getpid()}')
++	os.mkdir_all(root)!
++	defer {
++		os.rmdir_all(root) or {}
++	}
++	mut app := App{
++		db:     sqlite.connect(':memory:')!
++		config: config.Config{
++			repo_storage_path: root
++		}
++	}
++	defer {
++		app.db.close() or {}
++	}
++	sql app.db {
++		create table User
++		create table Email
++		create table Activity
++	}!
++	// Make the INSERT succeed while its follow-up Option lookup returns none.
++	// This reaches the registration diagnostic without inventing a database error.
++	app.db.exec('create trigger remove_inserted_user after insert on User begin delete from User where id = new.id; end;')!
++	if registered := app.register_user('lookup_missing', 'stored-password', 'salt', ['lookup@example.com'], false,
++		false)
++	{
++		assert false, 'registration must fail when the inserted user cannot be found, got ${registered}'
++	} else {
++		assert err.msg() == 'user `lookup_missing` was not inserted (lookup after insert failed)'
++	}
++	assert app.get_user_by_username('lookup_missing') == none
++	assert app.db.q_int('select count(*) from Email')! == 0
++	assert app.db.q_int('select count(*) from Activity')! == 0
++	assert !os.exists(os.join_path(root, 'lookup_missing'))
++
++	// The normal lookup still completes registration, including dependent rows.
++	app.db.exec('drop trigger remove_inserted_user')!
++	assert app.register_user('lookup_present', 'stored-password', 'salt', ['present@example.com'],
++		false, false)!
++	user := app.get_user_by_username('lookup_present') or { panic('inserted user was not found') }
++	assert user.username == 'lookup_present'
++	assert user.password == 'stored-password'
++	assert user.emails.len == 1
++	assert user.emails[0].email == 'present@example.com'
++	assert app.db.q_int('select count(*) from Activity')! == 1
++	assert os.is_dir(os.join_path(root, 'lookup_present'))
++}

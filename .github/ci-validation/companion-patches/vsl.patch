@@ -1,0 +1,73 @@
+diff --git a/inout/h5/hdf5_nix.c.v b/inout/h5/hdf5_nix.c.v
+index 22cbdca..3b49656 100644
+--- a/inout/h5/hdf5_nix.c.v
++++ b/inout/h5/hdf5_nix.c.v
+@@ -438,6 +438,15 @@ fn (f &Hdf5File) checktype(dset_name string, attr_name string, type_class Hdf5Cl
+ 	}
+ }
+ 
++// string_attribute_buffer_size validates native size metadata before converting
++// it to the signed byte count required by vcalloc.
++fn string_attribute_buffer_size(type_size Hdf5SizeT) !int {
++	if type_size == 0 || u64(type_size) > u64(max_int) {
++		return error('invalid HDF5 string attribute buffer size: ${type_size}')
++	}
++	return int(type_size)
++}
++
+ // getstringattr gets a variable-length string attribute.
+ // This is a helper function to check existance of and process string copies.
+ // Strings are a special case since the length varies.
+@@ -464,7 +473,9 @@ fn (f &Hdf5File) getstringattr(dset_name string, attr_name string) !string {
+ 	assert type_class == C.H5T_STRING
+ 
+ 	if type_class == C.H5T_STRING {
+-		mut buffer := vcalloc(type_size)
++		// H5LTset_attribute_string includes the terminating zero in this size.
++		buffer_size := string_attribute_buffer_size(type_size)!
++		mut buffer := vcalloc(buffer_size)
+ 		errc = C.H5LTget_attribute_string(f.filedesc, dset_name.str, attr_name.str, buffer)
+ 		assert errc >= 0
+ 		vs := unsafe { cstring_to_vstring(buffer) }
+diff --git a/inout/h5/string_attribute_test.v b/inout/h5/string_attribute_test.v
+new file mode 100644
+index 0000000..8e2acf4
+--- /dev/null
++++ b/inout/h5/string_attribute_test.v
+@@ -0,0 +1,36 @@
++module h5
++
++import os
++
++fn test_string_attribute_buffer_size_bounds() ! {
++	assert string_attribute_buffer_size(Hdf5SizeT(1))! == 1
++	assert string_attribute_buffer_size(Hdf5SizeT(64))! == 64
++	// Exercise the conversion boundary without allocating an enormous buffer.
++	assert string_attribute_buffer_size(Hdf5SizeT(max_int))! == max_int
++	for invalid in [Hdf5SizeT(0), Hdf5SizeT(u64(max_int) + 1), Hdf5SizeT(max_u64)] {
++		if size := string_attribute_buffer_size(invalid) {
++			assert false, 'invalid native size ${invalid} was accepted as ${size}'
++		} else {
++			assert err.msg().contains('invalid HDF5 string attribute buffer size')
++		}
++	}
++}
++
++fn test_string_attributes_round_trip() ! {
++	path := os.join_path(os.vtmp_dir(), 'vsl_hdf5_string_attribute_${os.getpid()}.h5')
++	f := Hdf5File.new(path)!
++	defer {
++		f.close()
++		os.rm(path) or {}
++	}
++	f.write_dataset1d('values', [f64(1.0)])!
++	for name, expected in {
++		'empty':   ''
++		'message': 'HDF5 string attribute'
++	} {
++		f.write_attribute('values', name, expected)!
++		mut actual := 'unchanged'
++		assert f.read_attribute('values', name, mut actual)!
++		assert actual == expected
++	}
++}

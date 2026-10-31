@@ -1,0 +1,89 @@
+diff --git a/main.v b/main.v
+index 9c83b60..6637d0c 100644
+--- a/main.v
++++ b/main.v
+@@ -4,7 +4,7 @@ import os
+ import net.http
+ import markdown
+ import time
+-import json
++import json2
+ 
+ const v_doc_path = 'https://raw.githubusercontent.com/vlang/v/master/doc/docs.md'
+ const output_path = 'output'
+@@ -42,8 +42,8 @@ mut:
+ fn (mut ctx Context) write_mapping() ! {
+ 	js_file_index := '
+ 	// Lookups of sections to files
+-	vdocs.titles_to_fnames = ${json.encode_pretty(ctx.titles_to_fnames)};
+-	vdocs.fnames = ${json.encode_pretty(ctx.pages)};'
++	vdocs.titles_to_fnames = ${json2.encode(ctx.titles_to_fnames, prettify: true)};
++	vdocs.fnames = ${json2.encode(ctx.pages, prettify: true)};'
+ 
+ 	js_src := os.read_file('templates/assets/scripts/v-docs.js') or {
+ 		eprintln('Failed to read file: ${err}')
+diff --git a/markdown.v b/markdown.v
+index 1417d56..20a8aac 100644
+--- a/markdown.v
++++ b/markdown.v
+@@ -56,7 +56,9 @@ fn extract_topics_from_markdown_parts(parts []Section, skip_first bool) []Topic
+ 			continue
+ 		}
+ 
+-		topic_title := extract_title_from_markdown_topic(part.text) or { panic(err) }
++		topic_title := extract_title_from_markdown_topic(part.text) or {
++			panic('missing title in markdown section at line ${part.start_line}')
++		}
+ 		title := topic_title.title
+ 
+ 		filename := if index == 0 { 'index' } else { title_to_filename(title) }
+diff --git a/generator_test.v b/generator_test.v
+new file mode 100644
+index 0000000..02f0d7e
+--- /dev/null
++++ b/generator_test.v
+@@ -0,0 +1,44 @@
++module main
++
++import os
++import json2
++
++fn test_topic_titles_and_missing_titles() {
++	title := extract_title_from_markdown_topic('## A section\nBody') or {
++		panic('expected a section title')
++	}
++	assert title.title == 'A section'
++	assert title.level == 2
++	assert extract_title_from_markdown_topic('') == none
++	parts := split_source_by_topics('# V\n## Introduction\nText\n## Next\nMore', 2)
++	topics := extract_topics_from_markdown_parts(parts, false)
++	assert topics.map(it.title) == ['V', 'Introduction', 'Next']
++}
++
++fn test_mapping_serializes_titles_and_filenames_as_json() {
++	previous := os.getwd()
++	tmp := os.join_path(os.vtmp_dir(), 'docs_generator_mapping_${os.getpid()}')
++	os.mkdir_all(os.join_path(tmp, 'templates', 'assets', 'scripts'))!
++	os.mkdir_all(os.join_path(tmp, 'output', 'assets', 'scripts'))!
++	defer {
++		os.chdir(previous) or {}
++		os.rmdir_all(tmp) or {}
++	}
++	os.chdir(tmp)!
++	os.write_file('templates/assets/scripts/v-docs.js', 'const vdocs = {};\n')!
++	mut ctx := Context{
++		titles_to_fnames: {
++			'Quotes " and \\ and\nUnicode λ': 'quoted.html#part'
++		}
++		pages:            {
++			'quoted.html': 'quoted.html'
++		}
++	}
++	ctx.write_mapping()!
++	script := os.read_file('output/assets/scripts/v-docs.js')!
++	assert script.starts_with('const vdocs = {};\n')
++	titles_json := script.all_after('vdocs.titles_to_fnames = ').all_before(';\n\tvdocs.fnames = ')
++	pages_json := script.all_after('vdocs.fnames = ').trim_right(';')
++	assert json2.decode[map[string]string](titles_json)! == ctx.titles_to_fnames
++	assert json2.decode[map[string]string](pages_json)! == ctx.pages
++}

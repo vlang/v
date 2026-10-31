@@ -1,0 +1,494 @@
+diff --git a/button.v b/button.v
+index f44cbd9..1d9f10b 100644
+--- a/button.v
++++ b/button.v
+@@ -300,7 +300,7 @@ fn btn_mouse_down(mut b Button, e &MouseEvent, _ &Window) {
+ 	if b.point_inside(e.x, e.y) {
+ 		b.focus() // IMPORTANT to not propagate event at the same position of removed widget
+ 		if b.movable {
+-			b.just_dragged = drag_register(b, e)
++			b.just_dragged = drag_register(mut b.ui.window, b, e)
+ 		}
+ 		if !b.just_dragged {
+ 			b.state = .pressed
+diff --git a/extra_draw.v b/extra_draw.v
+index 7021e64..81c10a9 100644
+--- a/extra_draw.v
++++ b/extra_draw.v
+@@ -2,7 +2,6 @@ module ui
+ 
+ import gg
+ import math
+-import sokol.sgl
+ import sokol.gfx
+ 
+ // const (
+@@ -387,16 +386,16 @@ pub fn (c &CanvasLayout) draw_texture(simg gfx.Image, sampler gfx.Sampler) {
+ 		y0 := f32(cy * ctx.scale)
+ 		x1 := f32((cx + c.width) * ctx.scale)
+ 		y1 := f32((cy + c.height) * ctx.scale)
+-		sgl.load_pipeline(ctx.pipeline.alpha)
+-		sgl.enable_texture()
+-		sgl.texture(simg, sampler)
+-		sgl.begin_quads()
+-		sgl.c4b(255, 255, 255, 255)
+-		sgl.v2f_t2f(x0, y0, u0, v0)
+-		sgl.v2f_t2f(x1, y0, u1, v0)
+-		sgl.v2f_t2f(x1, y1, u1, v1)
+-		sgl.v2f_t2f(x0, y1, u0, v1)
+-		sgl.end()
+-		sgl.disable_texture()
++		ctx.r.load_pipeline(ctx.pipeline.alpha)
++		ctx.r.enable_texture()
++		ctx.r.texture(simg, sampler)
++		ctx.r.begin_quads()
++		ctx.r.c4b(255, 255, 255, 255)
++		ctx.r.v2f_t2f(x0, y0, u0, v0)
++		ctx.r.v2f_t2f(x1, y0, u1, v0)
++		ctx.r.v2f_t2f(x1, y1, u1, v1)
++		ctx.r.v2f_t2f(x0, y1, u0, v1)
++		ctx.r.end()
++		ctx.r.disable_texture()
+ 	}
+ }
+diff --git a/interface_drag_drop.v b/interface_drag_drop.v
+index 2a22410..21d9b24 100644
+--- a/interface_drag_drop.v
++++ b/interface_drag_drop.v
+@@ -69,12 +69,11 @@ NB: would like external mechanism only depending on point_inside methods of Widg
+ shift key (or other) to activate possible dragging
+ */
+ 
+-fn drag_register(d &Draggable, e &MouseEvent) bool {
++fn drag_register(mut window Window, d &Draggable, e &MouseEvent) bool {
+ 	if shift_key(e.mods) {
+ 		$if drag ? {
+ 			println('drag ${typeof(w).name}')
+ 		}
+-		mut window := d.get_window()
+ 		if window.dragger.activated {
+ 			if d.z_index > window.dragger.widget.z_index {
+ 				window.dragger.widget = unsafe { d }
+diff --git a/interface_drawtextwidget.v b/interface_drawtextwidget.v
+index 7da49e0..23be6e1 100644
+--- a/interface_drawtextwidget.v
++++ b/interface_drawtextwidget.v
+@@ -1,8 +1,5 @@
+ module ui
+ 
+-import sokol.sgl
+-import sokol.sfons
+-
+ // Rmk: Some sort of replacement of text stuff inside ui_extra_draw.v
+ pub interface DrawTextWidget {
+ 	id string
+@@ -153,9 +150,9 @@ pub fn (mut w DrawTextWidget) load_style_(d DrawDevice, ts TextStyle) {
+ 			size := if ts.mono { ts.size - 2 } else { ts.size }
+ 			fons.set_size(scale * f32(size))
+ 			gg_.ft.fons.set_align(int(ts.align) | int(ts.vertical_align))
+-			color := sfons.rgba(ts.color.r, ts.color.g, ts.color.b, ts.color.a)
++			color := u32(ts.color.abgr8())
+ 			if ts.color.a != 255 {
+-				sgl.load_pipeline(gg_.pipeline.alpha)
++				gg_.r.load_pipeline(gg_.pipeline.alpha)
+ 			}
+ 			gg_.ft.fons.set_color(color)
+ 			ascender := f32(0.0)
+diff --git a/interface_widget.v b/interface_widget.v
+index ebbe3e4..7845c8d 100644
+--- a/interface_widget.v
++++ b/interface_widget.v
+@@ -67,14 +67,14 @@ pub fn (child &Widget) id() string {
+ // Find if there is recursively a parent deactivated (i.e. z_index <= ui.z_index_hidden)
+ // used in accordion component
+ pub fn (w &Widget) has_parent_deactivated() bool {
+-	p := w.parent
+-	if p is Stack {
++	mut p := w.parent
++	if mut p is Stack {
+ 		// println("hpd $w.id: $p.z_index")
+ 		return p.deactivated || p.z_index <= z_index_hidden || Widget(p).has_parent_deactivated()
+-	} else if p is CanvasLayout {
++	} else if mut p is CanvasLayout {
+ 		// println("hpd $w.id: $p.z_index")
+ 		return p.deactivated || p.z_index <= z_index_hidden || Widget(p).has_parent_deactivated()
+-	} else if p is Group {
++	} else if mut p is Group {
+ 		// println("hpd $w.id: $p.z_index")
+ 		return p.z_index <= z_index_hidden || Widget(p).has_parent_deactivated()
+ 	}
+diff --git a/listbox.v b/listbox.v
+index 21dc3bd..3f5900a 100644
+--- a/listbox.v
++++ b/listbox.v
+@@ -669,7 +669,7 @@ fn lb_mouse_down(mut lb ListBox, e &MouseEvent, _ &Window) {
+ 			dragged_item := lb.get_selected_item(e.y)
+ 			if dragged_item >= 0 {
+ 				mut di := lb.items[dragged_item]
+-				lb.just_dragged = drag_register(di, e)
++				lb.just_dragged = drag_register(mut lb.ui.window, di, e)
+ 				if lb.just_dragged {
+ 					lb.ui.window.dragger.extra_int = dragged_item
+ 				}
+diff --git a/picture.v b/picture.v
+index 82f5fd8..2862e3b 100644
+--- a/picture.v
++++ b/picture.v
+@@ -101,7 +101,7 @@ fn (mut pic Picture) init(parent Layout) {
+ 			mut dd := pic.ui.dd
+ 			if img := dd.create_image(pic.path) {
+ 				pic.image = img
+-				u.resource_cache[pic.path] = pic.image
++				pic.ui.resource_cache[pic.path] = pic.image
+ 			}
+ 		}
+ 	}
+@@ -169,7 +169,7 @@ fn pic_mouse_down(mut pic Picture, e &MouseEvent, _ &Window) {
+ 	}
+ 	if pic.point_inside(e.x, e.y) {
+ 		if pic.movable {
+-			drag_register(pic, e)
++			drag_register(mut pic.ui.window, pic, e)
+ 		}
+ 	}
+ }
+diff --git a/tool_event_mngr.v b/tool_event_mngr.v
+index c9aef87..f3bcd48 100644
+--- a/tool_event_mngr.v
++++ b/tool_event_mngr.v
+@@ -104,13 +104,14 @@ pub fn (mut em EventMngr) point_inside_receivers_scroll_event(e ScrollEvent) {
+ 			println('point_inside_receivers: ${w.id} ${w.is_visible()} && (${e.mouse_x}, ${e.mouse_y}) ${w.point_inside(e.mouse_x,
+ 				e.mouse_y)} ${w.has_parent_deactivated()}')
+ 		}
++		widget := w
+ 		if w is ScrollableWidget {
+ 			sw := w as ScrollableWidget
+-			if w.is_visible() && has_scrollview(sw)
++			if widget.is_visible() && has_scrollview(sw)
+ 				&& sw.scrollview.point_inside(e.mouse_x, e.mouse_y, .view)
+-				&& !has_child_with_active_scrollview(w, e.mouse_x, e.mouse_y)
+-				&& !w.has_parent_deactivated() {
+-				em.point_inside[evt_type] << w
++				&& !has_child_with_active_scrollview(widget, e.mouse_x, e.mouse_y)
++				&& !widget.has_parent_deactivated() {
++				em.point_inside[evt_type] << widget
+ 			}
+ 		} else {
+ 			if w.is_visible() && w.is_parent_visible(true) && w.point_inside(e.mouse_x, e.mouse_y)
+diff --git a/renderer_context_test.v b/renderer_context_test.v
+new file mode 100644
+index 0000000..75da926
+--- /dev/null
++++ b/renderer_context_test.v
+@@ -0,0 +1,149 @@
++module ui
++
++import fontstash
++import gg
++import gg.render
++import sokol.gfx
++
++fn test_canvas_texture_records_vertices_in_its_gg_context() {
++	r := render.new_context(max_vertices: 32, max_commands: 8)
++	reference_r := render.new_context(max_vertices: 32, max_commands: 8)
++	defer {
++		r.destroy()
++		reference_r.destroy()
++	}
++	alpha := render.Pipeline{
++		id:         17
++		blend_mode: .alpha
++	}
++	mut device := &DrawDeviceContext{
++		Context: gg.Context{
++			r:        r
++			scale:    2
++			pipeline: &gg.PipelineContainer{ alpha: alpha }
++		}
++	}
++	canvas := CanvasLayout{
++		x:        2
++		y:        3
++		offset_x: 1
++		offset_y: 2
++		width:    3
++		height:   2
++		ui:       &UI{ dd: device }
++	}
++	r.matrix_mode_projection()
++	r.ortho(0, 16, 20, 0, -1, 1)
++	pixel := [u8(200), 30, 40, 255]
++	r.register_image(71, pixel.data, 1, 1, 4, 0)
++	mut reference := gg.Context{
++		r:        reference_r
++		scale:    2
++		pipeline: &gg.PipelineContainer{ alpha: alpha }
++	}
++	reference_r.matrix_mode_projection()
++	reference_r.ortho(0, 16, 20, 0, -1, 1)
++	image_id := reference.cache_image(gg.Image{
++		width:          1
++		height:         1
++		nr_channels:    4
++		data:           pixel.data
++		simg_ok:        true
++		simg:           gfx.Image{ id: 71 }
++		ssmp:           gfx.Sampler{ id: 72 }
++		texture_filter: .nearest
++	})
++	// Compare with gg's public image API, including scale, offsets and texture state.
++	reference.draw_image_with_config(img_id: image_id, img_rect: gg.Rect{3, 5, 3, 2})
++	canvas.draw_texture(gfx.Image{ id: 71 }, gfx.Sampler{ id: 72 })
++	assert r.num_vertices() == 6
++	assert r.num_commands() == 1
++	assert r.current_pipeline() == alpha
++	assert r.error() == .no_error
++	frame := r.render_cpu(16, 20, 0xff010203)
++	assert frame.pixels == reference_r.render_cpu(16, 20, 0xff010203).pixels
++	assert frame.pixels[11 * 16 + 7] == 0xff281ec8
++	assert frame.pixels[11 * 16 + 5] == 0xff010203
++	assert frame.pixels[14 * 16 + 7] == 0xff010203
++
++	// Texture state must not leak into the following untextured batch.
++	r.begin_triangles()
++	r.c4b(0, 255, 0, 255)
++	r.v2f(0, 0)
++	r.v2f(4, 0)
++	r.v2f(0, 4)
++	r.end()
++	reference.draw_triangle_filled(0, 0, 2, 0, 0, 2, gg.Color{ g: 255, a: 255 })
++	assert r.num_commands() == 2
++	assert r.render_cpu(16, 20, 0xff010203).pixels == reference_r.render_cpu(16, 20, 0xff010203).pixels
++	assert r.render_cpu(16, 20, 0xff010203).pixels[1 * 16 + 1] == 0xff00ff00
++}
++
++struct TextColorCapture {
++mut:
++	colors []u32
++}
++
++fn capture_text_colors(user_data voidptr, _ &f32, _ &f32, colors &u32, count i32) {
++	mut capture := unsafe { &TextColorCapture(user_data) }
++	for i in 0 .. count {
++		capture.colors << unsafe { colors[i] }
++	}
++}
++
++fn test_translucent_text_style_uses_context_pipeline_and_fontstash_color() {
++	mut capture := &TextColorCapture{}
++	fons := fontstash.create_internal(&C.FONSparams{
++		width:      64
++		height:     64
++		userPtr:    capture
++		renderDraw: capture_text_colors
++	})
++	assert fons != unsafe { nil }
++	defer {
++		fontstash.delete_internal(fons)
++	}
++	font := $embed_file('@VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf')
++	font_id := fons.add_font_mem('style-test', font.to_bytes().clone(), true)
++	assert font_id != fontstash.invalid
++	r := render.new_context(max_vertices: 32, max_commands: 8)
++	defer {
++		r.destroy()
++	}
++	alpha := render.Pipeline{ id: 19, blend_mode: .alpha }
++	mut device := &DrawDeviceContext{
++		Context: gg.Context{
++			r:        r
++			pipeline: &gg.PipelineContainer{ alpha: alpha }
++			ft:       &gg.FT{ fons: fons }
++		}
++	}
++	mut widget := CanvasLayout{
++		ui: &UI{
++			dd:    device
++			fonts: FontSet{
++				hash: {
++					'style-test': font_id
++				}
++			}
++		}
++	}
++	mut text_widget := DrawTextWidget(&widget)
++	for opacity in [u8(127), 255] {
++		capture.colors.clear()
++		r.load_default_pipeline()
++		text_widget.load_style_(device, TextStyle{
++			font_name: 'style-test'
++			color:     gg.Color{ r: 11, g: 22, b: 33, a: opacity }
++		})
++		fons.draw_text(0, 20, 'X')
++		assert capture.colors.len > 0
++		expected := u32(11) | (u32(22) << 8) | (u32(33) << 16) | (u32(opacity) << 24)
++		assert capture.colors.all(it == expected)
++		if opacity < 255 {
++			assert r.current_pipeline() == alpha
++		} else {
++			assert r.current_pipeline() != alpha
++		}
++	}
++}
+diff --git a/widget_ownership_test.v b/widget_ownership_test.v
+new file mode 100644
+index 0000000..e67c929
+--- /dev/null
++++ b/widget_ownership_test.v
+@@ -0,0 +1,156 @@
++module ui
++
++import gg
++import os
++
++fn ownership_test_window() &Window {
++	mut window := &Window{}
++	window.ui = &UI{ window: window }
++	window.mouse.window = window
++	// Keep the existing cursor selection, so this test does not need a display.
++	window.mouse.states = ['blue']
++	return window
++}
++
++fn test_drag_registration_updates_the_owning_window_and_original_widget() {
++	mut window := ownership_test_window()
++	mut low := &Button{
++		id:       'low'
++		ui:       window.ui
++		z_index:  1
++		offset_x: 3
++		offset_y: 5
++	}
++	mut high := &Button{
++		id:       'high'
++		ui:       window.ui
++		z_index:  2
++		offset_x: 7
++		offset_y: 11
++	}
++	low_drag := Draggable(low)
++	high_drag := Draggable(high)
++	assert !drag_register(mut window, &low_drag, &MouseEvent{ x: 20, y: 30 })
++	assert !window.dragger.activated
++	assert drag_register(mut window, &low_drag, &MouseEvent{ x: 20, y: 30, mods: .shift })
++	assert window.dragger.activated
++	assert window.dragger.widget.id == 'low'
++	assert window.dragger.start_x == 17
++	assert window.dragger.start_y == 25
++	assert window.dragger.pos_x == 20
++	assert window.dragger.pos_y == 30
++	assert window.dragger.time.unix() > 0
++	assert drag_register(mut window, &high_drag, &MouseEvent{ x: 40, y: 60, mods: .shift })
++	assert window.dragger.widget.id == 'high'
++	assert window.dragger.start_x == 33
++	assert window.dragger.start_y == 49
++	assert drag_register(mut window, &low_drag, &MouseEvent{ x: 90, y: 90, mods: .shift })
++	assert window.dragger.widget.id == 'high'
++	assert window.dragger.pos_x == 40
++	assert window.dragger.pos_y == 60
++	drag_child(mut window, 50, 70)
++	assert high.offset_x == 17
++	assert high.offset_y == 21
++	assert low.offset_x == 3
++	assert low.offset_y == 5
++}
++
++fn test_parent_deactivation_follows_stack_canvas_and_group() {
++	window := ownership_test_window()
++	mut stack := &Stack{ parent: window }
++	mut canvas := &CanvasLayout{ parent: stack }
++	mut group := &Group{ parent: canvas }
++	mut button := &Button{ parent: group }
++	widget := Widget(button)
++	assert !widget.has_parent_deactivated()
++	stack.deactivated = true
++	assert widget.has_parent_deactivated()
++	stack.deactivated = false
++	canvas.deactivated = true
++	assert widget.has_parent_deactivated()
++	canvas.deactivated = false
++	group.z_index = z_index_hidden
++	assert widget.has_parent_deactivated()
++	group.z_index = 0
++	assert !widget.has_parent_deactivated()
++	assert stack.z_index == 0
++	assert canvas.z_index == 0
++}
++
++fn test_scroll_receiver_keeps_widget_identity_and_visibility_rules() {
++	window := ownership_test_window()
++	mut parent := &Stack{ parent: window }
++	mut canvas := &CanvasLayout{
++		id:             'scroll'
++		parent:         parent
++		x:              10
++		y:              10
++		width:          20
++		height:         20
++		has_scrollview: true
++	}
++	canvas_widget := Widget(canvas)
++	canvas.scrollview = &ScrollView{
++		widget: &canvas_widget
++		orig_x: 10
++		orig_y: 10
++		width:  20
++		height: 20
++	}
++	mut button := &Button{
++		id:     'plain'
++		parent: window
++		x:      10
++		y:      10
++		width:  20
++		height: 20
++	}
++	mut manager := EventMngr{}
++	manager.add_receiver(canvas, [events.on_scroll])
++	manager.add_receiver(button, [events.on_scroll])
++	inside := ScrollEvent{ mouse_x: 15, mouse_y: 15 }
++	manager.point_inside_receivers_scroll_event(inside)
++	assert manager.point_inside[events.on_scroll].map(it.id).sorted() == ['plain', 'scroll']
++	canvas.hidden = true
++	manager.point_inside_receivers_scroll_event(inside)
++	assert manager.point_inside[events.on_scroll].map(it.id) == ['plain']
++	canvas.hidden = false
++	parent.deactivated = true
++	manager.point_inside_receivers_scroll_event(inside)
++	assert manager.point_inside[events.on_scroll].map(it.id) == ['plain']
++	parent.deactivated = false
++	manager.point_inside_receivers_scroll_event(ScrollEvent{ mouse_x: 40, mouse_y: 40 })
++	assert manager.point_inside[events.on_scroll].len == 0
++	manager.point_inside_receivers_scroll_event(inside)
++	for mut receiver in manager.point_inside[events.on_scroll] {
++		if receiver.id == 'scroll' {
++			receiver.offset_x = 6
++		}
++	}
++	assert canvas.offset_x == 6
++}
++
++fn test_picture_cache_is_shared_by_pictures_with_the_same_ui() {
++	path := os.join_path(os.vtmp_dir(), 'ui-picture-cache-${os.getpid()}.ppm')
++	os.write_file(path, 'P6\n2 1\n255\n' + [u8(255), 0, 0, 0, 255, 0].bytestr()) or { panic(err) }
++	defer {
++		os.rm(path) or {}
++	}
++	mut window := ownership_test_window()
++	mut device := &DrawDeviceContext{ Context: gg.Context{} }
++	window.ui.dd = device
++	mut first := picture(id: 'first', path: path)
++	first.init(window)
++	assert first.width == 2
++	assert first.height == 1
++	assert path in window.ui.resource_cache
++	mut second := picture(id: 'second', path: path)
++	second.init(window)
++	assert second.width == 2
++	assert second.height == 1
++	assert second.image.data == first.image.data
++	assert second.image.id == first.image.id
++	assert window.ui.resource_cache.len == 1
++	cached := window.ui.resource_cache[path] or { panic('missing shared image') }
++	assert cached.data == first.image.data
++}

@@ -1,0 +1,45 @@
+diff --git a/src/mkfifo/mkfifo_nix.c.v b/src/mkfifo/mkfifo_nix.c.v
+index 7b14f35..e7d28d6 100644
+--- a/src/mkfifo/mkfifo_nix.c.v
++++ b/src/mkfifo/mkfifo_nix.c.v
+@@ -1,13 +1,5 @@
+-$if macos {
+-	fn C.mkfifo(const_ &char, u16) int
+-} $else {
+-	fn C.mkfifo(const_ &char, u32) int
+-}
++fn C.mkfifo(path &char, mode u32) i32
+ 
+ fn do_mkfifo(pathname string, mode u32) int {
+-	$if macos {
+-		return C.mkfifo(pathname.str, u16(mode))
+-	} $else {
+-		return C.mkfifo(pathname.str, mode)
+-	}
++	return C.mkfifo(&char(pathname.str), mode)
+ }
+diff --git a/src/mkfifo/mkfifo_nix_test.v b/src/mkfifo/mkfifo_nix_test.v
+index e321056..102c23f 100644
+--- a/src/mkfifo/mkfifo_nix_test.v
++++ b/src/mkfifo/mkfifo_nix_test.v
+@@ -53,3 +53,20 @@ fn test_default_create_multiple_pipes() {
+ 		assert st.get_filetype() == os.FileType.fifo
+ 	}
+ }
++
++fn test_create_pipe_with_explicit_mode() {
++	target := 'no_permissions'
++	res := os.exec([executable_under_test, '-m', '0', target])
++	assert res.exit_code == 0
++	st := os.stat(target)!
++	assert st.get_filetype() == os.FileType.fifo
++	assert st.mode & 0o777 == 0
++}
++
++fn test_existing_file_is_not_replaced() {
++	target := 'existing_file'
++	os.write_file(target, 'keep this content')!
++	res := os.exec([executable_under_test, target])
++	assert res.exit_code != 0
++	assert os.read_file(target)! == 'keep this content'
++}

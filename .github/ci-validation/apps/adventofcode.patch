@@ -1,0 +1,93 @@
+diff --git a/2023/02/JalonSolov.v b/2023/02/JalonSolov.v
+index 246855c..1f83397 100644
+--- a/2023/02/JalonSolov.v
++++ b/2023/02/JalonSolov.v
+@@ -11,7 +11,8 @@ mut sum_of_powers := 0
+ 
+ for l in lines {
+ 	game_num := l[5..].int()
+-	draws := l[l.index(':')! + 1..].split(';').map(it.trim_space())
++	separator := l.index(':') or { panic('missing game separator: ${l}') }
++	draws := l[separator + 1..].split(';').map(it.trim_space())
+ 	mut possible := true
+ 	mut min_red := 0
+ 	mut min_green := 0
+@@ -22,7 +23,8 @@ for l in lines {
+ 
+ 		for cube in cubes {
+ 			num_cubes := cube.int()
+-			cube_color := cube[cube.index(' ')! + 1..]
++			color_separator := cube.index(' ') or { panic('missing cube color: ${cube}') }
++			cube_color := cube[color_separator + 1..]
+ 
+ 			match cube_color {
+ 				'red' {
+diff --git a/2023/02/jacksonmowry.v b/2023/02/jacksonmowry.v
+index c056f08..b52caa4 100644
+--- a/2023/02/jacksonmowry.v
++++ b/2023/02/jacksonmowry.v
+@@ -17,10 +17,10 @@ fn main() {
+ }
+ 
+ fn part_2(input []string) !int {
+-	return arrays.sum[int](input.map(it.split(': ')[1]).map(it.split_any(',;').map(it.trim_space().split(' '))).map(it.power()))
++	return arrays.sum[int](input.map(it.split(': ')[1]).map(it.split_any(',;').map(it.trim_space().split(' '))).map(power(it)))
+ }
+ 
+-fn (s [][]string) power() int {
++fn power(s [][]string) int {
+ 	mut arr := [1, 1, 1]
+ 	for hand in s {
+ 		num := hand[0].int()
+diff --git a/2024/03/leodev.v b/2024/03/leodev.v
+index a8a021c..a34b389 100644
+--- a/2024/03/leodev.v
++++ b/2024/03/leodev.v
+@@ -7,7 +7,7 @@ fn main() {
+ 	mut re := regex.regex_opt(r'mul\(\d{1,3},\d{1,3}\)')!
+ 	mut total := 0
+ 	for value in re.find_all_str(content) {
+-		a, b := value[4..value.len - 1].split_once(',') or { panic(err) }
++		a, b := value[4..value.len - 1].split_once(',') or { panic('invalid multiplication: ${value}') }
+ 		total += a.int() * b.int()
+ 	}
+ 
+@@ -28,7 +28,9 @@ fn main() {
+ 			continue
+ 		}
+ 
+-		a, b := content2[start + 4..end - 1].split_once(',') or { panic(err) }
++		a, b := content2[start + 4..end - 1].split_once(',') or {
++			panic('invalid multiplication: ${content2[start..end]}')
++		}
+ 		total2 += a.int() * b.int()
+ 	}
+ 
+diff --git a/2024/05/leodev.v b/2024/05/leodev.v
+index 2638d69..a388771 100644
+--- a/2024/05/leodev.v
++++ b/2024/05/leodev.v
+@@ -12,7 +12,7 @@ fn main() {
+ 			break
+ 		}
+ 
+-		a, b := line.split_once('|') or { panic(err) }
++		a, b := line.split_once('|') or { panic('invalid ordering rule: ${line}') }
+ 		rules[a.int()] << b.int()
+ 		rules2[b.int()] << a.int()
+ 	}
+diff --git a/2024/07/leodev.v b/2024/07/leodev.v
+index 3025da3..ac36cd9 100644
+--- a/2024/07/leodev.v
++++ b/2024/07/leodev.v
+@@ -6,7 +6,9 @@ fn main() {
+ 	mut total1 := i64(0)
+ 	mut total2 := i64(0)
+ 	for line in lines {
+-		expected_str, value_str := line.split_once(': ') or { panic(err) }
++		expected_str, value_str := line.split_once(': ') or {
++			panic('invalid calibration equation: ${line}')
++		}
+ 		expected := expected_str.i64()
+ 		values := value_str.split(' ').map(it.i64())
+ 

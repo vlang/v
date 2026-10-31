@@ -1,0 +1,486 @@
+diff --git a/ast.v b/ast.v
+index 836df9b..6f2d003 100644
+--- a/ast.v
++++ b/ast.v
+@@ -1,6 +1,6 @@
+ // Copyright (c) 2024 Alexander Medvednikov. All rights reserved.
+ // Use of this source code is governed by a GPL license that can be found in the LICENSE file.
+-import json
++import json2
+ import os
+ 
+ type Decls = FuncDecl | GenDecl
+@@ -60,6 +60,12 @@
+ 
+ struct InvalidStmt {}
+ 
++// from_json_null keeps the sentinel for an absent Go expression.
++pub fn (mut value InvalidExpr) from_json_null() {}
++
++// from_json_null keeps the sentinel for an absent Go statement.
++pub fn (mut value InvalidStmt) from_json_null() {}
++
+ type Specs = ImportSpec | TypeSpec | ValueSpec
+ 
+ type Type = InvalidExpr
+@@ -75,9 +81,9 @@
+ 	| StructType
+ 
+ struct ArrayType {
+-	node_type string @[json: '_type']
+-	len       Expr   @[json: 'Len']
+-	elt       Expr   @[json: 'Elt']
++	node_type string                       @[json: '_type']
++	len       &Expr = &Expr(InvalidExpr{}) @[json: 'Len']
++	elt       &Expr = &Expr(InvalidExpr{}) @[json: 'Elt']
+ }
+ 
+ struct AssignStmt {
+@@ -94,10 +100,10 @@
+ }
+ 
+ struct BinaryExpr {
+-	node_type string @[json: '_type']
+-	x         Expr   @[json: 'X']
+-	op        string @[json: 'Op']
+-	y         Expr   @[json: 'Y']
++	node_type string                       @[json: '_type']
++	x         &Expr = &Expr(InvalidExpr{}) @[json: 'X']
++	op        string                       @[json: 'Op']
++	y         &Expr = &Expr(InvalidExpr{}) @[json: 'Y']
+ }
+ 
+ struct BlockStmt {
+@@ -112,9 +118,9 @@
+ }
+ 
+ struct CallExpr {
+-	node_type string @[json: '_type']
+-	fun       Expr   @[json: 'Fun']
+-	args      []Expr @[json: 'Args']
++	node_type string                       @[json: '_type']
++	fun       &Expr = &Expr(InvalidExpr{}) @[json: 'Fun']
++	args      []Expr                       @[json: 'Args']
+ }
+ 
+ struct CaseClause {
+@@ -124,15 +130,15 @@
+ }
+ 
+ struct ChanType {
+-	node_type string @[json: '_type']
+-	dir       string @[json: 'Dir']
+-	value     Expr   @[json: 'Value']
++	node_type string                       @[json: '_type']
++	dir       string                       @[json: 'Dir']
++	value     &Expr = &Expr(InvalidExpr{}) @[json: 'Value']
+ }
+ 
+ struct CompositeLit {
+-	node_type string @[json: '_type']
+-	typ       Expr   @[json: 'Type']
+-	elts      []Expr @[json: 'Elts']
++	node_type string                       @[json: '_type']
++	typ       &Expr = &Expr(InvalidExpr{}) @[json: 'Type']
++	elts      []Expr                       @[json: 'Elts']
+ }
+ 
+ struct DeclStmt {
+@@ -173,11 +179,11 @@
+ }
+ 
+ struct ForStmt {
+-	node_type string     @[json: '_type']
+-	init      AssignStmt @[json: 'Init']
+-	cond      Expr       @[json: 'Cond']
+-	post      Stmt       @[json: 'Post']
+-	body      BlockStmt  @[json: 'Body']
++	node_type string                       @[json: '_type']
++	init      AssignStmt                   @[json: 'Init']
++	cond      Expr                         @[json: 'Cond']
++	post      &Stmt = &Stmt(InvalidStmt{}) @[json: 'Post']
++	body      BlockStmt                    @[json: 'Body']
+ }
+ 
+ struct FuncDecl {
+@@ -224,11 +230,11 @@
+ }
+ 
+ struct IfStmt {
+-	node_type string     @[json: '_type']
+-	cond      Expr       @[json: 'Cond']
+-	init      AssignStmt @[json: 'Init']
+-	body      BlockStmt  @[json: 'Body']
+-	else_     Stmt       @[json: 'Else']
++	node_type string                       @[json: '_type']
++	cond      Expr                         @[json: 'Cond']
++	init      AssignStmt                   @[json: 'Init']
++	body      BlockStmt                    @[json: 'Body']
++	else_     &Stmt = &Stmt(InvalidStmt{}) @[json: 'Else']
+ }
+ 
+ struct ImportSpec {
+@@ -244,9 +250,9 @@
+ }
+ 
+ struct IndexExpr {
+-	node_type string @[json: '_type']
+-	x         Expr   @[json: 'X']
+-	index     Expr   @[json: 'Index']
++	node_type string                       @[json: '_type']
++	x         &Expr = &Expr(InvalidExpr{}) @[json: 'X']
++	index     &Expr = &Expr(InvalidExpr{}) @[json: 'Index']
+ }
+ 
+ struct InterfaceType {
+@@ -255,26 +261,26 @@
+ }
+ 
+ struct KeyValueExpr {
+-	key       Expr   @[json: 'Key']
+-	value     Expr   @[json: 'Value']
+-	node_type string @[json: '_type']
++	key       &Expr = &Expr(InvalidExpr{}) @[json: 'Key']
++	value     &Expr = &Expr(InvalidExpr{}) @[json: 'Value']
++	node_type string                       @[json: '_type']
+ }
+ 
+ struct LabeledStmt {
+-	node_type string @[json: '_type']
+-	label     Ident  @[json: 'Label']
+-	stmt      Stmt   @[json: 'Stmt']
++	node_type string                       @[json: '_type']
++	label     Ident                        @[json: 'Label']
++	stmt      &Stmt = &Stmt(InvalidStmt{}) @[json: 'Stmt']
+ }
+ 
+ struct MapType {
+-	node_type string @[json: '_type']
+-	key       Expr   @[json: 'Key']
+-	val       MapVal @[json: 'Value']
++	node_type string                         @[json: '_type']
++	key       &Expr   = &Expr(InvalidExpr{}) @[json: 'Key']
++	val       &MapVal = &MapVal(ArrayType{}) @[json: 'Value']
+ }
+ 
+ struct ParenExpr {
+-	node_type string @[json: '_type']
+-	x         Expr   @[json: 'X']
++	node_type string                       @[json: '_type']
++	x         &Expr = &Expr(InvalidExpr{}) @[json: 'X']
+ }
+ 
+ // `for ... := range` loop
+@@ -293,9 +299,9 @@
+ }
+ 
+ struct SelectorExpr {
+-	node_type string @[json: '_type']
+-	sel       Ident  @[json: 'Sel']
+-	x         Expr   @[json: 'X']
++	node_type string                       @[json: '_type']
++	sel       Ident                        @[json: 'Sel']
++	x         &Expr = &Expr(InvalidExpr{}) @[json: 'X']
+ }
+ 
+ struct SendStmt {
+@@ -305,15 +311,15 @@
+ }
+ 
+ struct SliceExpr {
+-	node_type string @[json: '_type']
+-	x         Expr   @[json: 'X']
+-	low       Expr   @[json: 'Low']
+-	high      Expr   @[json: 'High']
++	node_type string                       @[json: '_type']
++	x         &Expr = &Expr(InvalidExpr{}) @[json: 'X']
++	low       &Expr = &Expr(InvalidExpr{}) @[json: 'Low']
++	high      &Expr = &Expr(InvalidExpr{}) @[json: 'High']
+ }
+ 
+ struct StarExpr {
+-	node_type string @[json: '_type']
+-	x         Expr   @[json: 'X']
++	node_type string                       @[json: '_type']
++	x         &Expr = &Expr(InvalidExpr{}) @[json: 'X']
+ }
+ 
+ struct StructType {
+@@ -330,9 +336,9 @@
+ }
+ 
+ struct TypeAssertExpr {
+-	node_type string @[json: '_type']
+-	x         Expr   @[json: 'X']
+-	typ       Type   @[json: 'Type']
++	node_type string                       @[json: '_type']
++	x         &Expr = &Expr(InvalidExpr{}) @[json: 'X']
++	typ       Type                         @[json: 'Type']
+ }
+ 
+ struct TypeSpec {
+@@ -343,16 +349,16 @@
+ }
+ 
+ struct TypeSwitchStmt {
+-	node_type string @[json: '_type']
+-	assign    Stmt   @[json: 'Assign'] // Can be AssignStmt or ExprStmt
++	node_type string                       @[json: '_type']
++	assign    &Stmt = &Stmt(InvalidStmt{}) @[json: 'Assign'] // Can be AssignStmt or ExprStmt
+ 	// tag       Expr       @[json: 'Tag']
+ 	body BlockStmt @[json: 'Body']
+ }
+ 
+ struct UnaryExpr {
+-	node_type string @[json: '_type']
+-	x         Expr   @[json: 'X']
+-	op        string @[json: 'Op']
++	node_type string                       @[json: '_type']
++	x         &Expr = &Expr(InvalidExpr{}) @[json: 'X']
++	op        string                       @[json: 'Op']
+ }
+ 
+ struct ValueSpec {
+@@ -364,7 +370,46 @@
+ 
+ fn parse_go_ast(file_path string) !GoFile {
+ 	data := os.read_file(file_path)!
+-	return json.decode(GoFile, data)!
++	return restore_ast_defaults(json2.decode[GoFile](data)!)
++}
++
++// restore_ast_defaults gives decoded recursive edges the same sentinel values as
++// ordinary AST construction. json2 sets pointer fields to nil for explicit null.
++// The freshly decoded tree has not escaped, so its child storage can be updated.
++fn restore_ast_defaults[T](value T) T {
++	mut node := value
++	$if T is &Expr {
++		if isnil(node) {
++			return &Expr(InvalidExpr{})
++		}
++		unsafe { *node = restore_ast_defaults(*node) }
++	} $else $if T is &Stmt {
++		if isnil(node) {
++			return &Stmt(InvalidStmt{})
++		}
++		unsafe { *node = restore_ast_defaults(*node) }
++	} $else $if T is &MapVal {
++		if isnil(node) {
++			return &MapVal(ArrayType{})
++		}
++		unsafe { *node = restore_ast_defaults(*node) }
++	} $else $if T is $array_dynamic {
++		for i, child in node {
++			node[i] = restore_ast_defaults(child)
++		}
++	} $else $if T is $sumtype {
++		$for variant in T.variants {
++			if node is variant {
++				return T(restore_ast_defaults(node))
++			}
++		}
++	} $else $if T is $struct {
++		$for field in T.fields {
++			ptr := unsafe { &node.$(field.name) }
++			unsafe { *ptr = restore_ast_defaults(*ptr) }
++		}
++	}
++	return node
+ }
+ 
+ fn (e Expr) node_type() string {
+diff --git a/array_map.v b/array_map.v
+index 0cb569f..3d88ec3 100644
+--- a/array_map.v
++++ b/array_map.v
+@@ -146,7 +146,7 @@
+ 							elt_is_selector = true
+ 						}
+ 						else {
+-							app.gen('>> unhandled array type "${x.node_type}"')
++							app.gen('>> unhandled array type "${x.node_type()}"')
+ 						}
+ 					}
+ 				}
+diff --git a/main.v b/main.v
+index c77d6d0..ab79da8 100644
+--- a/main.v
++++ b/main.v
+@@ -323,7 +323,7 @@
+ 
+ 	v_path := '${tmpdir}/${test_name}.v'
+ 	os.write_file(v_path, generated_v_code) or { panic(err) }
+-	res := os.execute('v -translated-go fmt -w ${v_path}')
++	res := os.execute('v fmt -w ${v_path}')
+ 	if res.exit_code != 0 {
+ 		println(res)
+ 		app.tests_ok = false
+diff --git a/ast_json_test.v b/ast_json_test.v
+new file mode 100644
+index 0000000..6a6a947
+--- /dev/null
++++ b/ast_json_test.v
+@@ -0,0 +1,163 @@
++module main
++
++import json2
++import os
++import strings
++
++fn test_recursive_json_types_preserve_discriminators_and_null_defaults() {
++	source := '{
++		"_type": "MapType",
++		"Key": {"_type": "Ident", "Name": "string"},
++		"Value": {
++			"_type": "MapType",
++			"Key": {"_type": "Ident", "Name": "int"},
++			"Value": {
++				"_type": "ArrayType",
++				"Len": null,
++				"Elt": {"_type": "Ident", "Name": "byte"}
++			}
++		}
++	}'
++	decoded := restore_ast_defaults(json2.decode[MapVal](source)!)
++	assert decoded is MapType
++	if decoded is MapType {
++		assert decoded.key is Ident
++		inner := decoded.val
++		assert inner is MapType
++		if inner is MapType {
++			assert inner.key is Ident
++			array := inner.val
++			assert array is ArrayType
++			if array is ArrayType {
++				assert array.len is InvalidExpr
++				kind := array.elt.node_type()
++				assert array.elt is Ident
++				assert kind == 'Ident'
++			}
++		}
++	}
++	// Omitted fields and ordinary V construction retain the same sentinel.
++	missing := restore_ast_defaults(json2.decode[Expr]('{"_type":"ArrayType"}')!)
++	assert missing is ArrayType
++	if missing is ArrayType {
++		assert missing.len is InvalidExpr
++		assert missing.elt is InvalidExpr
++	}
++	plain := ArrayType{}
++	assert plain.len is InvalidExpr
++	assert plain.elt is InvalidExpr
++	// MapVal historically starts with ArrayType, including for missing/null values.
++	for text in ['{"_type":"MapType"}', '{"_type":"MapType","Key":null,"Value":null}'] {
++		map_node := restore_ast_defaults(json2.decode[MapVal](text)!)
++		assert map_node is MapType
++		if map_node is MapType {
++			assert map_node.key is InvalidExpr
++			value := map_node.val
++			assert value is ArrayType
++			if value is ArrayType {
++				assert value.len is InvalidExpr
++				assert value.elt is InvalidExpr
++			}
++		}
++	}
++}
++
++fn test_recursive_json_statements_preserve_absent_nodes() {
++	source := '{
++		"_type": "IfStmt", "Init": null,
++		"Cond": {"_type": "Ident", "Name": "true"},
++		"Body": {"List": [{
++			"_type": "LabeledStmt", "Label": {"Name": "again"},
++			"Stmt": {
++				"_type": "ForStmt", "Init": null, "Cond": null, "Post": null,
++				"Body": {"List": []}
++			}
++		}]},
++		"Else": {
++			"_type": "IfStmt", "Init": null,
++			"Cond": {"_type": "Ident", "Name": "false"},
++			"Body": {"List": []}, "Else": null
++		}
++	}'
++	decoded := restore_ast_defaults(json2.decode[Stmt](source)!)
++	assert decoded is IfStmt
++	if decoded is IfStmt {
++		assert decoded.init.lhs.len == 0
++		label := decoded.body.list[0]
++		assert label is LabeledStmt
++		if label is LabeledStmt {
++			loop := label.stmt
++			assert loop is ForStmt
++			if loop is ForStmt {
++				assert loop.cond is InvalidExpr
++				assert loop.post is InvalidStmt
++			}
++		}
++		other := decoded.else_
++		assert other is IfStmt
++		if other is IfStmt {
++			assert other.else_ is InvalidStmt
++		}
++	}
++	missing := restore_ast_defaults(json2.decode[Stmt]('{"_type":"IfStmt"}')!)
++	assert missing is IfStmt
++	if missing is IfStmt {
++		assert missing.cond is InvalidExpr
++		assert missing.else_ is InvalidStmt
++	}
++}
++
++fn test_json_ast_generates_executable_v_without_go_tools() {
++	root := os.join_path(os.vtmp_dir(), 'go2v_json_ast_${os.getpid()}')
++	os.mkdir_all(root)!
++	defer { os.rmdir_all(root) or {} }
++	source := '{
++		"Name": {"Name": "main"},
++		"Decls": [{
++			"_type": "FuncDecl", "Doc": null, "Recv": null,
++			"Name": {"Name": "main"},
++			"Type": {"Params": {"List": []}, "Results": null},
++			"Body": {"List": [{
++				"_type": "AssignStmt", "Tok": ":=",
++				"Lhs": [{"_type": "Ident", "Name": "answer"}],
++				"Rhs": [{
++					"_type": "BinaryExpr", "Op": "+",
++					"X": {"_type": "BasicLit", "Kind": "INT", "Value": "1"},
++					"Y": {"_type": "ParenExpr", "X": {
++						"_type": "BinaryExpr", "Op": "*",
++						"X": {"_type": "BasicLit", "Kind": "INT", "Value": "2"},
++						"Y": {"_type": "BasicLit", "Kind": "INT", "Value": "3"}
++					}}
++				}]
++			}, {
++				"_type": "IfStmt", "Init": null,
++				"Cond": {
++					"_type": "BinaryExpr", "Op": "==",
++					"X": {"_type": "Ident", "Name": "answer"},
++					"Y": {"_type": "BasicLit", "Kind": "INT", "Value": "7"}
++				},
++				"Body": {"List": [{"_type": "ExprStmt", "X": {
++					"_type": "CallExpr", "Fun": {"_type": "Ident", "Name": "println"},
++					"Args": [{"_type": "Ident", "Name": "answer"}]
++				}}]},
++				"Else": null
++			}]}
++		}]
++	}'
++	json_path := os.join_path(root, 'input.json')
++	os.write_file(json_path, source)!
++	file := parse_go_ast(json_path)!
++	mut app := App{ sb: strings.new_builder(256), running_test: true }
++	output := app.generate_v_code(file)
++	v_path := os.join_path(root, 'main.v')
++	os.write_file(v_path, output)!
++	formatted := os.exec([@VEXE, 'fmt', '-w', v_path])
++	assert formatted.exit_code == 0, formatted.output
++	code := os.read_file(v_path)!
++	assert code.contains('answer := 1 + (2 * 3)'), code
++	assert code.contains('if answer == 7 {'), code
++	assert code.contains('println(answer)'), code
++	run := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', 'run', v_path])
++	assert run.exit_code == 0, run.output
++	assert run.output.trim_space() == '7'
++}

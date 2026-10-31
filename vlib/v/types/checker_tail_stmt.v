@@ -5237,7 +5237,9 @@ fn (tc &TypeChecker) struct_init_has_positional_fields(node flat.Node) bool {
 
 fn (tc &TypeChecker) distinct_alias_primitive_mismatch(actual &Type, expected &Type) bool {
 	if actual is Alias && unalias_type(expected) is Primitive {
-		return actual.base_type.source_type_id() != unalias_type(expected).source_type_id()
+		// Compare the primitive at the end of both alias chains, not an
+		// intermediate alias name against the expected primitive.
+		return unalias_type(actual).source_type_id() != unalias_type(expected).source_type_id()
 	}
 	return false
 }
@@ -7279,6 +7281,11 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		display_type_name := '${display_module_name}.${node.value}'
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
+			// An explicit binding owns its type even when its name looks like a macro.
+			if typ := tc.c_globals[qname] {
+				tc.register_synth_type(id, typ)
+				return
+			}
 			if tc.c_identifier_is_undeclared(node.value) {
 				// C enum members may use lowercase names. Their integer type comes
 				// from the enum initializer, including nested arithmetic expressions.
@@ -8949,6 +8956,10 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 		module_name := tc.resolve_import_alias(base.value) or { base.value }
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
+			if typ := tc.c_globals[qname] {
+				tc.register_synth_type(id, typ)
+				return
+			}
 			if tc.c_identifier_is_undeclared(node.value) {
 				// C enum members may use lowercase names. Their integer type comes
 				// from the enum initializer, including nested arithmetic expressions.
@@ -21403,14 +21414,14 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				resolved := tc.resolve_import_alias(base_node.value) or { base_node.value }
 				qname := '${resolved}.${node.value}'
 				if qname.starts_with('C.') {
+					if gt := tc.c_globals[qname] {
+						return gt
+					}
 					if c_int_selector_name(node.value) {
 						return builtin_int_type
 					}
 					if c_upper_constant_is_pointer(qname) {
 						return builtin_voidptr_type
-					}
-					if gt := tc.c_globals[qname] {
-						return gt
 					}
 					if node.value.len > 0 && node.value[0].is_capital() {
 						return builtin_int_type
@@ -21759,7 +21770,7 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		return generic_fn_type
 	}
 	base_id := tc.a.child(&node, 0)
-	base_type0 := tc.resolve_type(base_id)
+	mut base_type0 := tc.resolve_type(base_id)
 	if node.value == 'range' {
 		if sliced_alias := range_slice_alias_type(base_type0) {
 			return sliced_alias
@@ -21771,7 +21782,10 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		// and indexing it indexes that value: `word[0]` is a byte of the string.
 		if mut_base := tc.mut_param_expr_base(base_id, base_type0) {
 			if unalias_type(mut_base) !is Pointer {
-				base_type = unalias_type(mut_base)
+				// unalias_type can return its argument; retain the value outside
+				// this optional-binding scope before keeping a reference to it.
+				base_type0 = mut_base
+				base_type = unalias_type(base_type0)
 			}
 		}
 	}

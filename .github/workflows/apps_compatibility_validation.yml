@@ -1,0 +1,203 @@
+name: Apps compatibility validation
+
+on:
+  push:
+    branches: [ci/verify-apps-compatibility-20261031]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apps:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      VJOBS: '2'
+      VTEST_FAIL_FAST: '1'
+      V_MACOS_V3_NO_FALLBACK: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build the combined V source
+        id: build
+        run: make && sudo ./v symlink
+
+      - name: Install original Apps dependencies
+        id: deps
+        run: |
+          if [ "$RUNNER_OS" == 'Linux' ]; then
+            .github/workflows/disable_azure_mirror.sh
+            v retry -- sudo apt -qq update
+            v retry -- sudo apt -qq install libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
+            v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev libharfbuzz-dev libfribidi-dev libfontconfig1-dev libpango1.0-dev libglib2.0-dev libdbus-1-dev
+            v retry -- sudo apt -qq install sassc libgit2-dev
+            v retry -- sudo apt -qq install libunwind-18-dev
+          else
+            v retry brew install sassc libgit2 libsodium pango fribidi pkg-config
+          fi
+          mkdir -p "$HOME/.vmodules" "$RUNNER_TEMP/apps"
+          printf '%s\n' "APP_PATCH_DIR=$GITHUB_WORKSPACE/.github/ci-validation/apps" >> "$GITHUB_ENV"
+
+      - name: Build and test docs generator
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.deps.outcome == 'success' }}
+        run: |
+          v retry -- v install markdown
+          v retry -- git clone --branch generator https://github.com/vlang/docs "$RUNNER_TEMP/apps/docs_generator"
+          cd "$RUNNER_TEMP/apps/docs_generator"
+          git checkout --detach 66235f20a6857f72b0694f602b46e5e1ef64972a
+          git apply --check "$APP_PATCH_DIR/docs.patch"
+          git apply "$APP_PATCH_DIR/docs.patch"
+          v .
+          v test .
+
+      - name: Check, test and compile GUI examples
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.deps.outcome == 'success' }}
+        run: |
+          export VJOBS=1
+          v retry -- git clone --filter=blob:none https://github.com/vlang/vglyph "$HOME/.vmodules/vglyph"
+          git -C "$HOME/.vmodules/vglyph" checkout --detach 43def320b291414d515f16e4d50a5d4ece8e28ac
+          v retry -- git clone --filter=blob:none https://github.com/vlang/gui "$HOME/.vmodules/gui"
+          git -C "$HOME/.vmodules/gui" checkout --detach 438aecf05295c68f49d7e6347abc344f7e4ce0cd
+          git -C "$HOME/.vmodules/vglyph" log -1 --oneline
+          if [ "$RUNNER_OS" == 'macOS' ]; then export VFLAGS="${VFLAGS:-} -cc clang"; fi
+          v -shared -check "$HOME/.vmodules/gui"
+          v test "$HOME/.vmodules/gui"
+          v should-compile-all -no-parallel "$HOME/.vmodules/gui/examples"
+
+      - name: Build and test Ved
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.deps.outcome == 'success' }}
+        run: |
+          v retry -- git clone https://github.com/vlang/ved "$RUNNER_TEMP/apps/ved"
+          cd "$RUNNER_TEMP/apps/ved"
+          git checkout --detach 961a3133018ba34b5465933a1914c7e3c655411b
+          v -o ved .
+          v .
+          v -prod .
+          v test .
+
+      - name: Test libsodium
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.deps.outcome == 'success' }}
+        run: |
+          v retry -- git clone https://github.com/vlang/libsodium "$HOME/.vmodules/libsodium"
+          cd "$HOME/.vmodules/libsodium"
+          git checkout --detach 1c52706f1de338a14127eac86fcf6da4c6f9db41
+          git apply --check "$APP_PATCH_DIR/libsodium.patch"
+          git apply "$APP_PATCH_DIR/libsodium.patch"
+          VJOBS=1 v test .
+
+      - name: Build Coreutils and test mkfifo
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.deps.outcome == 'success' }}
+        run: |
+          v retry -- git clone https://github.com/vlang/coreutils "$RUNNER_TEMP/apps/coreutils"
+          cd "$RUNNER_TEMP/apps/coreutils"
+          git checkout --detach 51bc434e802f5febbb1153f50172d046dc59b7e3
+          git apply --check "$APP_PATCH_DIR/coreutils.patch"
+          git apply "$APP_PATCH_DIR/coreutils.patch"
+          make
+          v test src/mkfifo
+
+      - name: Build UI examples and test rendering and ownership
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.deps.outcome == 'success' }}
+        run: |
+          v retry -- git clone https://github.com/vlang/ui "$HOME/.vmodules/ui"
+          git -C "$HOME/.vmodules/ui" checkout --detach 2f6fd14e67cf3da8cae1dff162493b762ffc8289
+          git -C "$HOME/.vmodules/ui" apply --check "$APP_PATCH_DIR/ui.patch"
+          git -C "$HOME/.vmodules/ui" apply "$APP_PATCH_DIR/ui.patch"
+          v -no-parallel "$HOME/.vmodules/ui/examples/rectangles.v"
+          v -no-parallel "$HOME/.vmodules/ui/examples/users.v"
+          ui_test_cc=tcc
+          if [ "$RUNNER_OS" == 'macOS' ]; then ui_test_cc=clang; fi
+          VJOBS=1 v -new-compiler -no-retry-compilation -no-parallel -cc "$ui_test_cc" test "$HOME/.vmodules/ui/renderer_context_test.v" "$HOME/.vmodules/ui/widget_ownership_test.v"
+
+      - name: Build and test Go2V
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.deps.outcome == 'success' && runner.os == 'Linux' }}
+        run: |
+          v retry -- git clone https://github.com/vlang/go2v "$RUNNER_TEMP/apps/go2v"
+          git -C "$RUNNER_TEMP/apps/go2v" checkout --detach 20f11cd28b737104da10a7be0506f1b95eda7c3a
+          git -C "$RUNNER_TEMP/apps/go2v" apply --check "$APP_PATCH_DIR/go2v.patch"
+          git -C "$RUNNER_TEMP/apps/go2v" apply "$APP_PATCH_DIR/go2v.patch"
+          cd "$RUNNER_TEMP/apps/go2v"
+          go version
+          go install github.com/asty-org/asty@latest
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          v .
+          VJOBS=1 v test .
+
+      - name: Run the complete AdventOfCode verifier
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.deps.outcome == 'success' }}
+        run: |
+          v retry -- v install pcre
+          v retry -- git clone https://github.com/vlang/adventofcode "$RUNNER_TEMP/apps/adventofcode"
+          cd "$RUNNER_TEMP/apps/adventofcode"
+          git checkout --detach 5d3c20df8179433b8be8021ce01bf40f027b26e5
+          git apply --check "$APP_PATCH_DIR/adventofcode.patch"
+          git apply "$APP_PATCH_DIR/adventofcode.patch"
+          v run verify.v
+
+      - name: Retain generated compiler diagnostics on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: apps-compatibility-${{ runner.os }}
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/v_*/**/*.c
+            ${{ runner.temp }}/v_*/**/*.out
+            ${{ runner.temp }}/v_*/**/*.log
+
+  gitly-windows:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      VFLAGS: -cc gcc
+      GITLY_REPO: https://github.com/vlang/gitly
+      GITLY_BRANCH: ci/windows-first-run
+      GITLY_TEST_SKIP_REMOTE_REPO: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the combined V source
+        run: |
+          .\makev.bat -gcc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe symlink
+      - name: Install sqlite
+        run: .\.github\workflows\windows-install-sqlite.bat
+      - name: Install gitly module dependencies
+        run: |
+          v retry -- v install markdown
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          v retry -- v install pcre
+      - name: Check out the repaired Windows smoke branch
+        run: |
+          v retry -- git clone -b $env:GITLY_BRANCH $env:GITLY_REPO gitly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C gitly checkout --detach 8d5b688277946f2cd409d82e79a4289ec33e045b
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C gitly apply --check "$env:GITHUB_WORKSPACE/.github/ci-validation/apps/gitly.patch"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C gitly apply "$env:GITHUB_WORKSPACE/.github/ci-validation/apps/gitly.patch"
+      - name: Compile gitly CSS
+        uses: gha-utilities/sass-build@c15aba209f1cfe51f43e319f2724558112cd9336
+        with:
+          source: gitly/static/css/gitly.scss
+          destination: gitly/static/css/gitly.css
+      - name: Test the post-insert SQLite lookup
+        run: |
+          cd gitly
+          v -new-compiler -no-retry-compilation -d sqlite user_registration_d_sqlite_test.v
+      - name: Compile and run gitly and check the expected HTML
+        run: |
+          cd gitly
+          v -g run tests/first_run.v

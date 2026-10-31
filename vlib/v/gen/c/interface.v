@@ -1000,7 +1000,7 @@ fn (mut g FlatGen) gen_ierror_from_expr(id flat.NodeId) bool {
 fn (mut g FlatGen) ierror_none_literal_string() string {
 	type_id := g.ierror_type_id_for_pattern(flat.source_type_id('None__'))
 	if g.ccompiler == 'cplusplus' {
-		return '(IError){._object = memdup(&(None__){E_STRUCT}, sizeof(None__)), ._typ = ${type_id}, ._object_is_boxed = true}'
+		return g.cpp_ierror_initializer('memdup(&(None__){E_STRUCT}, sizeof(None__))', type_id, true)
 	}
 	return '(IError){._typ = ${type_id}, ._object = memdup(&(None__){E_STRUCT}, sizeof(None__)), ._object_is_boxed = true}'
 }
@@ -1047,7 +1047,7 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 	}
 	boxed := pointer_object_is_owned || object.starts_with('memdup(')
 	if g.ccompiler == 'cplusplus' {
-		return '(IError){._object = ${object}, ._typ = ${type_id}, ._object_is_boxed = ${boxed}}'
+		return g.cpp_ierror_initializer(object, type_id, boxed)
 	}
 	return '(IError){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}}'
 }
@@ -2479,9 +2479,10 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			}
 			if name_id in [cgen_u128_source_type, cgen_i128_source_type] {
 				// The 128-bit types have no `(u)64` spelling that can carry them, so
-				// they render through their own str method.
+				// they render through their own str method. Pass the value directly:
+				// a C cast to its own type is invalid for the portable struct form.
 				name := flat.source_type_name(name_id)
-				return '${name}__str((${name})(${expr}))'
+				return '${name}__str(${expr})'
 			}
 			return none
 		}

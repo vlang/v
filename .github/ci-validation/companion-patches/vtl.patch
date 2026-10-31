@@ -1,0 +1,13 @@
+diff --git a/autograd_tests/indexing_test.v b/autograd_tests/indexing_test.v
+index 03f6e27..3263f77 100644
+--- a/autograd_tests/indexing_test.v
++++ b/autograd_tests/indexing_test.v
+@@ -149,7 +149,7 @@ fn test_take_along_axis_backward_reduces_broadcast_dimensions() ! {
+ 
+ fn test_take_along_axis_backward_supports_negative_axis_and_indices() ! {
+ 	mut ctx := autograd.ctx[f32]()
+-	input := ctx.variable(vtl.from_array([1.0, 2.0, 3.0], [1, 3])!)
++	input := ctx.variable(vtl.from_array([f32(1.0), 2.0, 3.0], [1, 3])!)
+ 	indices := vtl.from_array[int]([-1, 0], [1, 2])!
+ 
+ 	mut selected := input.take_along_axis(indices, -1)!

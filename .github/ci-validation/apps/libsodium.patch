@@ -1,0 +1,14 @@
+diff --git a/common.v b/common.v
+index eba0d25..be0759b 100644
+--- a/common.v
++++ b/common.v
+@@ -17,7 +17,8 @@ pub:
+ 	salt_array []u8
+ }
+ 
+-fn build_random_salt_argon2id13() !SaltForArgon2id13 {
++// build_random_salt_argon2id13 creates a salt for the password-hashing APIs.
++pub fn build_random_salt_argon2id13() !SaltForArgon2id13 {
+ 	if int(libsodium.crypto_pwhash_argon2id_saltbytes) <= 0 {
+ 		return error('salt len must be positive')
+ 	}

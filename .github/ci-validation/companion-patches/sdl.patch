@@ -1,0 +1,218 @@
+diff --git a/log.c.v b/log.c.v
+index 4d55ff6..d36eb85 100644
+--- a/log.c.v
++++ b/log.c.v
+@@ -11,7 +11,7 @@ pub const max_log_message = C.SDL_MAX_LOG_MESSAGE // 4096
+ // LogOutputFunction is the prototype for the log output function
+ // C.SDL_LogOutputFunction
+ // `typedef void (SDLCALL *SDL_LogOutputFunction)(void *userdata, int category, SDL_LogPriority priority, const char *message);`
+-pub type LogOutputFunction = fn (userdata voidptr, category int, priority LogPriority, const_message &char)
++pub type LogOutputFunction = fn (userdata voidptr, category i32, priority LogPriority, const_message &char)
+ 
+ // LogCategory is the predefined log categories
+ //
+diff --git a/metal.c.v b/metal.c.v
+index 70fbf03..fe5fb63 100644
+--- a/metal.c.v
++++ b/metal.c.v
+@@ -35,7 +35,7 @@ pub fn metal_create_view(window &Window) MetalView {
+ 	return MetalView(voidptr(C.SDL_Metal_CreateView(window)))
+ }
+ 
+-fn C.SDL_Metal_DestroyView(view C.SDL_MetalView)
++fn C.SDL_Metal_DestroyView(view MetalView)
+ 
+ // metal_destroy_view destroys an existing SDL_MetalView object.
+ //
+@@ -46,10 +46,10 @@ fn C.SDL_Metal_DestroyView(view C.SDL_MetalView)
+ //
+ // See also: SDL_Metal_CreateView
+ pub fn metal_destroy_view(view MetalView) {
+-	C.SDL_Metal_DestroyView(voidptr(view))
++	C.SDL_Metal_DestroyView(view)
+ }
+ 
+-fn C.SDL_Metal_GetLayer(view C.SDL_MetalView) voidptr
++fn C.SDL_Metal_GetLayer(view MetalView) voidptr
+ 
+ // metal_get_layer gets a pointer to the backing CAMetalLayer for the given view.
+ //
+@@ -57,7 +57,7 @@ fn C.SDL_Metal_GetLayer(view C.SDL_MetalView) voidptr
+ //
+ // See also: SDL_MetalCreateView
+ pub fn metal_get_layer(view MetalView) voidptr {
+-	return C.SDL_Metal_GetLayer(voidptr(view))
++	return C.SDL_Metal_GetLayer(view)
+ }
+ 
+ fn C.SDL_Metal_GetDrawableSize(window &C.SDL_Window, w &int, h &int)
+diff --git a/stdinc.c.v b/stdinc.c.v
+index a2f46ff..1d10bdb 100644
+--- a/stdinc.c.v
++++ b/stdinc.c.v
+@@ -165,7 +165,7 @@ pub fn setenv(const_name &char, const_value &char, overwrite int) int {
+ }
+ 
+ // int (*compare) (const void *, const void *)
+-pub type QSortCompare = fn (const_a voidptr, const_b voidptr) int
++pub type QSortCompare = fn (const_a voidptr, const_b voidptr) i32
+ 
+ fn C.SDL_qsort(base voidptr, nmemb usize, size usize, compare QSortCompare)
+ pub fn qsort(base voidptr, nmemb usize, size usize, compare QSortCompare) {
+diff --git a/thread.c.v b/thread.c.v
+index 00ef552..0b4b26f 100644
+--- a/thread.c.v
++++ b/thread.c.v
+@@ -46,7 +46,7 @@ pub enum ThreadPriority {
+ // returns a value that can be reported through SDL_WaitThread().
+ //
+ // `typedef int (SDLCALL * SDL_ThreadFunction) (void *data);`
+-pub type ThreadFunction = fn (data voidptr) int
++pub type ThreadFunction = fn (data voidptr) i32
+ 
+ /*
+ // TODO win32 & OS2 ???
+@@ -223,7 +223,7 @@ pub fn set_thread_priority(priority ThreadPriority) int {
+ 	return C.SDL_SetThreadPriority(C.SDL_ThreadPriority(priority))
+ }
+ 
+-fn C.SDL_WaitThread(thrd &C.SDL_Thread, status &int)
++fn C.SDL_WaitThread(thrd &C.SDL_Thread, status &i32)
+ 
+ // wait_thread waits for a thread to finish.
+ //
+@@ -257,7 +257,14 @@ fn C.SDL_WaitThread(thrd &C.SDL_Thread, status &int)
+ // See also: SDL_CreateThread
+ // See also: SDL_DetachThread
+ pub fn wait_thread(thrd &Thread, status &int) {
+-	C.SDL_WaitThread(thrd, status)
++	if thrd == unsafe { nil } || status == unsafe { nil } {
++		C.SDL_WaitThread(thrd, unsafe { nil })
++		return
++	}
++	// SDL writes a C int; widen it before storing in V's int output.
++	mut native_status := i32(0)
++	C.SDL_WaitThread(thrd, &native_status)
++	unsafe { *status = int(native_status) }
+ }
+ 
+ fn C.SDL_DetachThread(thrd &C.SDL_Thread)
+diff --git a/timer.c.v b/timer.c.v
+index 90f6b8f..1a9c0a2 100644
+--- a/timer.c.v
++++ b/timer.c.v
+@@ -15,9 +15,6 @@ module sdl
+ // scheduled.  If the callback returns 0, the periodic alarm is cancelled.
+ pub type TimerCallback = fn (interval u32, param voidptr) u32
+ 
+-// `typedef Uint32 (SDLCALL * SDL_TimerCallback) (Uint32 interval, void *param);`
+-fn C.SDL_TimerCallback(interval u32, param voidptr) u32
+-
+ // Definition of the timer ID type.
+ // typedef int SDL_TimerID;
+ pub type TimerID = int
+@@ -145,7 +142,7 @@ pub fn delay(ms u32) {
+ 	C.SDL_Delay(ms)
+ }
+ 
+-fn C.SDL_AddTimer(interval u32, callback C.SDL_TimerCallback, param voidptr) TimerID
++fn C.SDL_AddTimer(interval u32, callback TimerCallback, param voidptr) TimerID
+ 
+ // add_timer calls a callback function at a future time.
+ //
+@@ -178,7 +175,7 @@ fn C.SDL_AddTimer(interval u32, callback C.SDL_TimerCallback, param voidptr) Tim
+ //
+ // See also: SDL_RemoveTimer
+ pub fn add_timer(interval u32, callback TimerCallback, param voidptr) TimerID {
+-	return int(C.SDL_AddTimer(interval, C.SDL_TimerCallback(callback), param))
++	return int(C.SDL_AddTimer(interval, callback, param))
+ }
+ 
+ fn C.SDL_RemoveTimer(id C.SDL_TimerID) bool
+diff --git a/video.c.v b/video.c.v
+index fc18ccd..6f84958 100644
+--- a/video.c.v
++++ b/video.c.v
+@@ -1817,7 +1817,7 @@ pub fn get_window_gamma_ramp(window &Window, red &u16, green &u16, blue &u16) in
+ 	return C.SDL_GetWindowGammaRamp(window, red, green, blue)
+ }
+ 
+-fn C.SDL_SetWindowHitTest(window &C.SDL_Window, callback C.SDL_HitTest, callback_data voidptr) int
++fn C.SDL_SetWindowHitTest(window &C.SDL_Window, callback HitTest, callback_data voidptr) int
+ 
+ // set_window_hit_test provides a callback that decides if a window region has special properties.
+ //
+@@ -1858,7 +1858,7 @@ fn C.SDL_SetWindowHitTest(window &C.SDL_Window, callback C.SDL_HitTest, callback
+ //
+ // NOTE This function is available since SDL 2.0.4.
+ pub fn set_window_hit_test(window &Window, callback HitTest, callback_data voidptr) int {
+-	return C.SDL_SetWindowHitTest(window, C.SDL_HitTest(callback), callback_data)
++	return C.SDL_SetWindowHitTest(window, callback, callback_data)
+ }
+ 
+ fn C.SDL_FlashWindow(window &C.SDL_Window, operation C.SDL_FlashOperation) int
+@@ -2134,7 +2134,7 @@ pub fn gl_create_context(window &Window) GLContext {
+ 	return GLContext(voidptr(C.SDL_GL_CreateContext(window)))
+ }
+ 
+-fn C.SDL_GL_MakeCurrent(window &C.SDL_Window, context C.SDL_GLContext) int
++fn C.SDL_GL_MakeCurrent(window &C.SDL_Window, context GLContext) int
+ 
+ // gl_make_current sets up an OpenGL context for rendering into an OpenGL window.
+ //
+@@ -2149,7 +2149,7 @@ fn C.SDL_GL_MakeCurrent(window &C.SDL_Window, context C.SDL_GLContext) int
+ //
+ // See also: SDL_GL_CreateContext
+ pub fn gl_make_current(window &Window, context GLContext) int {
+-	return C.SDL_GL_MakeCurrent(window, voidptr(context))
++	return C.SDL_GL_MakeCurrent(window, context)
+ }
+ 
+ fn C.SDL_GL_GetCurrentWindow() &C.SDL_Window
+@@ -2270,7 +2270,7 @@ pub fn gl_swap_window(window &Window) {
+ 	C.SDL_GL_SwapWindow(window)
+ }
+ 
+-fn C.SDL_GL_DeleteContext(context C.SDL_GLContext)
++fn C.SDL_GL_DeleteContext(context GLContext)
+ 
+ // gl_delete_context deletes an OpenGL context.
+ //
+@@ -2280,5 +2280,5 @@ fn C.SDL_GL_DeleteContext(context C.SDL_GLContext)
+ //
+ // See also: SDL_GL_CreateContext
+ pub fn gl_delete_context(context GLContext) {
+-	C.SDL_GL_DeleteContext(voidptr(context))
++	C.SDL_GL_DeleteContext(context)
+ }
+diff --git a/thread_test.v b/thread_test.v
+new file mode 100644
+index 0000000..c9d16f8
+--- /dev/null
++++ b/thread_test.v
+@@ -0,0 +1,25 @@
++module sdl
++
++fn thread_negative_status(_ voidptr) i32 {
++	return -37
++}
++
++fn test_wait_thread_widens_negative_c_int_status() {
++	worker := create_thread(thread_negative_status, c'negative_status', unsafe { nil })
++	assert worker != unsafe { nil }
++	mut status := 0
++	wait_thread(worker, &status)
++	assert status == -37
++}
++
++fn test_wait_thread_with_nil_thread_preserves_status() {
++	mut status := 91
++	wait_thread(unsafe { nil }, &status)
++	assert status == 91
++}
++
++fn test_wait_thread_with_nil_status_joins_thread() {
++	worker := create_thread(thread_negative_status, c'nil_status', unsafe { nil })
++	assert worker != unsafe { nil }
++	wait_thread(worker, unsafe { nil })
++}

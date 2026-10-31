@@ -825,10 +825,8 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
 	g.writeln('\t_v3_no_main_initialized = true;')
-	if g.has_builtins {
-		g.writeln('\tg_main_argc = 0;')
-		g.writeln('\tg_main_argv = NULL;')
-	}
+	// The argument globals are already zero-initialized for library callers.
+	// A script main can reach this helper after setting its process arguments.
 	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
@@ -7952,10 +7950,22 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	}
 	if fn_node.kind == .selector && node.children_count == 2 && target_name.starts_with('C.') {
 		if target_type_id := flat.source_type_existing_id(target_name) {
-			if g.tc.type_aliases.contains(target_type_id) {
-				g.write('(${g.direct_call_name(target_name)})(')
-				g.gen_expr(g.a.child(node, 1))
-				g.write(')')
+			if g.tc.c_type_cast_name_known(target_type_id) {
+				arg_id := g.a.child(node, 1)
+				arg_type := unalias_type(g.usable_expr_type(arg_id))
+				if target_type_id in g.tc.c_fn_referenced_types && target_type_id !in g.tc.structs
+					&& arg_type is types.Struct && flat.source_type_query(arg_type.source_type_id()).has(.c_prefix) {
+					// The header may make both native names aliases of one struct.
+					// Initialization is valid for that case and still converts scalar
+					// typedefs; a C cast to a struct is a nonportable extension.
+					g.write('((${g.direct_call_name(target_name)}[1]){')
+					g.gen_expr(arg_id)
+					g.write('})[0]')
+				} else {
+					g.write('(${g.direct_call_name(target_name)})(')
+					g.gen_expr(arg_id)
+					g.write(')')
+				}
 				return
 			}
 		}

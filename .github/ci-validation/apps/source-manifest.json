@@ -1,0 +1,397 @@
+{
+  "repository": "vlang/v",
+  "base_commit": "39bab25455f0597b7dd2c836fcf307700aeebb0b",
+  "source_file_count": 72,
+  "source_files": [
+    {
+      "path": "cmd/tools/vgit/vgit.v",
+      "blob_sha": "f57c44aea5a3c9f00e5a9b67dac2dbbbff2941c9",
+      "sha256": "17355d39e9ab732c46ae5cf69a8043a1913560f1bd0137357c529e91f2f109e0"
+    },
+    {
+      "path": "cmd/tools/vgit/vgit_test.v",
+      "blob_sha": "cce241343864b3a183921d6e8b8d82ff962c5c99",
+      "sha256": "eb52bb48f7484601ec6aef912fb9d47bd06907c8ce3ccea9492dd610818f0a87"
+    },
+    {
+      "path": "cmd/tools/vmcp/README.md",
+      "blob_sha": "d7de7a953b8be887855e5ed742db2f7e90a7bdda",
+      "sha256": "498a9e7ecebc7749bfe9a2f3a6adcea32def74bed30c5a605c7584b92c970a3e"
+    },
+    {
+      "path": "cmd/tools/vmcp/args.v",
+      "blob_sha": "6bf8296909eba7cb17ce4abb2fa21a27cf6e667e",
+      "sha256": "f87f242ce8351dad081999859300d39a9374c47d895a5e5af8529ae65fa04633"
+    },
+    {
+      "path": "cmd/tools/vmcp/vmcp_test.v",
+      "blob_sha": "f751e83b7089fee728007095503fa72597d57949",
+      "sha256": "b7328a57314e33fbda6caf39cb5b3382f77d5b023aed2943da1ca8052eabc04a"
+    },
+    {
+      "path": "cmd/tools/vtest-self.v",
+      "blob_sha": "0a4b0fa7a2137488a65d7513dcddaee9299e7b8d",
+      "sha256": "b4bc732449b12b72007b18a44d1d8e92d58c4bfc6913349e06c9320d3c31ebc3"
+    },
+    {
+      "path": "thirdparty/tccbin_automation/tests/provenance_test.v",
+      "blob_sha": "862ff12e2b4daecdb81301627b7a40c232d95e57",
+      "sha256": "951b35a9b6dbf055c2c729967642d9613b9fa2bbec46257478e30f601604505a"
+    },
+    {
+      "path": "thirdparty/tccbin_automation/tests/workflow_contract_test.v",
+      "blob_sha": "24eb1a2e9611c3cd4e03f4cc50342125d883d23d",
+      "sha256": "22c8abdc2fda8755a8e230d9a47019794951465ce091d9b8ea926c48cc11d61b"
+    },
+    {
+      "path": "vlib/builtin/stack_overflow_test.v",
+      "blob_sha": "65c5e684d05dd9070d778e5420c8aabdc2d13cfc",
+      "sha256": "eba2868d6f6987a996ec553f484d54b197db728436a2ffa3f862469967222112"
+    },
+    {
+      "path": "vlib/builtin/stack_overflow_windows_test.v",
+      "blob_sha": "91d036ccee529d1fcfad6f5b3ee6f651b6f2b1a4",
+      "sha256": "7cdfd1686a8174f70452ca04734490c47bc546e4445180c5d0f21114af6c3357"
+    },
+    {
+      "path": "vlib/db/sqlite/sqlite_orm_test.v",
+      "blob_sha": "981a4a87f85faec742232f85bed464a2c36daf52",
+      "sha256": "496702128310ee62eb3a110fcb81e3a4437366bae25fde7839073f06986c656e"
+    },
+    {
+      "path": "vlib/gg/render/cpu.v",
+      "blob_sha": "6956c1f70d774f6f9e21ba1eecceeaae23064f11",
+      "sha256": "f1e0d299b35cb13974ac002922e5855e15ad197d898358478fe4d87ee620d657"
+    },
+    {
+      "path": "vlib/gg/render/cpu_triangle_test.v",
+      "blob_sha": "32d3abbb4947916a65e8bdd836c25293fe073634",
+      "sha256": "44f67bf8f3d1a77ef77fd98b2c69f96559c05e89102a47bace1e3021457e999a"
+    },
+    {
+      "path": "vlib/gg/render/rewind_test.v",
+      "blob_sha": "ac70875f5136eed541dec500d93fcfd7bec802c2",
+      "sha256": "27ce62c63d20c0fe7e6ec67c0c877eb6d8b4977142621e1a3f58b786344d7956"
+    },
+    {
+      "path": "vlib/os/execute_lock_alignment_nix_test.c.v",
+      "blob_sha": "648e896532d6fe224a798826a04756fafac77394",
+      "sha256": "3fcfc4a7c75e4a6b2b3354f683e89104a3513fd43613cbf66931565f6e5b7d08"
+    },
+    {
+      "path": "vlib/os/execute_lock_nix.c.v",
+      "blob_sha": "a1b43ac079c07731cdce3aa331a6994c15351c1f",
+      "sha256": "5484cd06c75bfcbc165eb486cf3b15a460649aba2693bc0f59617d4985a00b99"
+    },
+    {
+      "path": "vlib/os/rm_readonly_test.v",
+      "blob_sha": "64e9cd69d0f213386173ef5e297c9372f355cc3a",
+      "sha256": "03682f5d4a25f3d9443b0979684409d1aa0da105e675e435cc67f0873bdfa68b"
+    },
+    {
+      "path": "vlib/v/checker/tests/nested_alias_struct_primitive_mismatch.out",
+      "blob_sha": "15e95cc45ffaec0e54754981e20c9c9f038b5f02",
+      "sha256": "fb6ea5297f9e16b27d4749ffbf9874c204e44c790b25738af7d2c99adccdd26b"
+    },
+    {
+      "path": "vlib/v/checker/tests/nested_alias_struct_primitive_mismatch.vv",
+      "blob_sha": "fca05393aa9ed5b160f003f781fe5bab3634fbfd",
+      "sha256": "242ac00386e25d141cf8a3fc844aaa8296ef5c2647eccbdb3a7fefa9cdaf0364"
+    },
+    {
+      "path": "vlib/v/compiler_tests/c_signature_typedef_cast_test.v",
+      "blob_sha": "bc9b7a239832fbfb71bd015a5d4bc8f2164a6616",
+      "sha256": "f87c8c207de550b4c13a404b26cdcfaf23d5def1a4d05c5159a152b7c901287d"
+    },
+    {
+      "path": "vlib/v/compiler_tests/explicit_callback_cast_test.v",
+      "blob_sha": "5046c0efe06aed3b1eb867700a0c435789987f7a",
+      "sha256": "57068a5ba3de7c07e3b4a7c701643d6f9ce59c4e5a75067cde4de5c01c4c8a22"
+    },
+    {
+      "path": "vlib/v/compiler_tests/imported_embed_smartcast_test.v",
+      "blob_sha": "8e95a4df7e1589066e4e39257f34c9ca0b7c1708",
+      "sha256": "b699c7fbb2b74b0cfbb57b4a32c45ae81f85a77abc1b27492d44922e8808e5a7"
+    },
+    {
+      "path": "vlib/v/compiler_tests/vinix_hosted_headers_test.v",
+      "blob_sha": "a145921fd2dd6e0773f160a534b4c659d0445b45",
+      "sha256": "d4dbe78f0732df3a66263caaac8170c1645d49e50d9cd713912c7dd941431443"
+    },
+    {
+      "path": "vlib/v/compiler_tests/vinix_selector_codegen_test.v",
+      "blob_sha": "297fbbf7ecd38cec9b6dfa2b5694b14bd92b0064",
+      "sha256": "822d390185ccb63f7bab37105c2842050a2a800c572562315792cef1a33a855a"
+    },
+    {
+      "path": "vlib/v/driver/driver.v",
+      "blob_sha": "2a6226c8fb2e363bc48d00f6d5147b5633773998",
+      "sha256": "e9f237689e0bbb606b408bcfb35e6ac5887830600645fbb22bff1268a5e490ad"
+    },
+    {
+      "path": "vlib/v/driver/tcc_cached_main_flags_test.v",
+      "blob_sha": "971408461d3fd5d5c90302d698193f6dc9aa5e9e",
+      "sha256": "8d3f89772c39c7a7861bbfafe7a8966a3f9424b0a95161712f26447968362fe8"
+    },
+    {
+      "path": "vlib/v/gen/c/array.v",
+      "blob_sha": "616122f5f0ad628709f254f564aaa504733aec31",
+      "sha256": "48a69aa539b334b0fe7d6ddb4dc6fad428e4e0082410135eb7ec3f8e447d9dfb"
+    },
+    {
+      "path": "vlib/v/gen/c/cached_c_struct_source_test.v",
+      "blob_sha": "59bf4d2800e5a0bbce6ebf1082cddf82e04c8b09",
+      "sha256": "bbf6436919834ac8deb648fb66238d169a02df71a2e9bebc0ce7f166fc02484f"
+    },
+    {
+      "path": "vlib/v/gen/c/cached_startup_import_order_test.v",
+      "blob_sha": "29efeca80cd53334e0c0a2288914dfa63e88f2fc",
+      "sha256": "ec665db7066a9064eb947c885d289a40104812062da4ae5a321ad4c971012ec3"
+    },
+    {
+      "path": "vlib/v/gen/c/cleanc.v",
+      "blob_sha": "40d470e42fd3536ccdeb762df12ad3fe5c4ca4aa",
+      "sha256": "1b3601faab68dc0471660fb5f64f2e9950e3447815ea6a3417467a7ca3fc6b2e"
+    },
+    {
+      "path": "vlib/v/gen/c/cpp_compat.v",
+      "blob_sha": "ef0ff4d6a65e15feb9865f5bb869124690579a28",
+      "sha256": "7a5b148e69b7ef0f5a841b98ef51017f582ac9623264921a66b251aa3277fffa"
+    },
+    {
+      "path": "vlib/v/gen/c/cpp_compat_test.v",
+      "blob_sha": "6feaf3052c9c443af761031620a4653a83ec22cd",
+      "sha256": "4cd6123b1034d7b62aadd33df9b82dc3b1c5fc9aa88c0dd4b2266b9adb80ca95"
+    },
+    {
+      "path": "vlib/v/gen/c/fn.v",
+      "blob_sha": "8ec2bbe31d3d3e5f175fb746109c0c00b9c19616",
+      "sha256": "c8c4073c6a87eea3944ee7778f3f5df7254167962f2d4cac3f2899ca55e8adde"
+    },
+    {
+      "path": "vlib/v/gen/c/fn_parallel_notd_v3_no_parallel.v",
+      "blob_sha": "6d9c00dfcf2e8e4750f45b194bd0e137c536083a",
+      "sha256": "81f1d9d9d909c058faed84bcce03e39d48e699811e06dd1c67af1ac72f4bd99c"
+    },
+    {
+      "path": "vlib/v/gen/c/int128.v",
+      "blob_sha": "4063372156c852e952ae8748fef06ce2acc1b661",
+      "sha256": "5cb86a0b230c0ef663a4c984be0eb409acaa976520e671d5d6841cedaf5fc37b"
+    },
+    {
+      "path": "vlib/v/gen/c/interface.v",
+      "blob_sha": "a1ccb9a45f7559ba2743d88095ab49716891f7ce",
+      "sha256": "8c90523ee161038ff06f8bbe40a4627782b116cb46135713c9013a9b605217ad"
+    },
+    {
+      "path": "vlib/v/gen/c/manual_stdlib_c_headers.h",
+      "blob_sha": "557daf0ddbc3d946b51f8a2ea42357b04dda93cd",
+      "sha256": "62481f22834b780bf730a90afa93321b9e5b49e0dd88fb121dca70abe3669c84"
+    },
+    {
+      "path": "vlib/v/gen/c/names_test.v",
+      "blob_sha": "59ea87f40d611a39be89cd3c862610986dfdcdd1",
+      "sha256": "6687d7e7fa5f11a2fcd31c829eff76ae14c46cbf2b19dcd7f193d76182a7d6fa"
+    },
+    {
+      "path": "vlib/v/gen/c/naming/cpp_naming_test.v",
+      "blob_sha": "15f30e503561a0779f42dd086e9bfdb5d6200c4f",
+      "sha256": "343394f3ac8b9c5aeb5807611a599e314a2143a9010e376b8ea87f64b1bd6707"
+    },
+    {
+      "path": "vlib/v/gen/c/naming/naming.v",
+      "blob_sha": "7f10774bd140c8acf7f8027286b0362150af3076",
+      "sha256": "a8614860a8318634cda6edaabbb6251f4973c52f82918edce2dde0cfa3df183e"
+    },
+    {
+      "path": "vlib/v/gen/c/no_main_cache_init_test.v",
+      "blob_sha": "8192a9966fed88ced5dc9b9cd75b865c555bc887",
+      "sha256": "66ac413031a81906b09992850b9aa9cb4a006ceb0b786b99081e9281e50c028a"
+    },
+    {
+      "path": "vlib/v/gen/c/object_global_export_test.v",
+      "blob_sha": "efa7336a42b8ccf187bc35f26500942d5c544774",
+      "sha256": "d32f12aa27f8aefe19199cf7cf39db024a34006468a54b8449301c024d29d80d"
+    },
+    {
+      "path": "vlib/v/gen/c/owned_result_error_clone_test.v",
+      "blob_sha": "46a2586f916a835c0a3cf0fc02f643a33f6a9d0b",
+      "sha256": "4c7f07d55c8decac3ba44643c9e777f2dc44017984b5625af818cef95fdad63d"
+    },
+    {
+      "path": "vlib/v/gen/c/stmt.v",
+      "blob_sha": "b1aa82fdf7531e27ccf915054a8e74b0107b9170",
+      "sha256": "d92772cddfedbdc99e8ad5c9744d0148c77a4b4b6b1e9ded3c38070f238fd001"
+    },
+    {
+      "path": "vlib/v/gen/c/stmt_test.v",
+      "blob_sha": "6625654b2606fddbb5f3e95ff8de21a8bad57489",
+      "sha256": "500dcb8babfcaeb227d9f1f27396cf851eaa87b27953fbeba04215634d5d858e"
+    },
+    {
+      "path": "vlib/v/gen/c/str_intp.v",
+      "blob_sha": "f9f8acce707a67b48d9598c5d2429d65c3855ff6",
+      "sha256": "5ac2d06cc4a4d10f88ab49584f68bd56faaa5e884f6b7d2b73cab9a661668f8d"
+    },
+    {
+      "path": "vlib/v/gen/c/struct.v",
+      "blob_sha": "0e9c17324b7ed331466c66488767485f2c52a015",
+      "sha256": "71a9e3a89e519041dcb512d3c2ac6054c26623f8d50856e4ca1f420972628c47"
+    },
+    {
+      "path": "vlib/v/gen/c/sumtype_cleanup_module_test.v",
+      "blob_sha": "92fd049360c4e82360020e7d182e282e55249650",
+      "sha256": "643352dff9e41fe990c49862ce9a5cab587af2eed14b8ec84b0762d2859fc6c5"
+    },
+    {
+      "path": "vlib/v/gen/c/tcc_native_headers_test.v",
+      "blob_sha": "094448e70adbe7add3115c8d1d250987b9485f25",
+      "sha256": "65d7db5cad249ccfb23be96d2f8e2e5389a355cb3329ee8b905c56d00aeffe20"
+    },
+    {
+      "path": "vlib/v/gen/c/testdata/cpp_compat_runtime.vv",
+      "blob_sha": "426262d3886b0f0e84823f00a06573694ddc7bf3",
+      "sha256": "76c4a473dde4f22522e2fae714e17266ec50ed5248df14009c83733059e8d0f4"
+    },
+    {
+      "path": "vlib/v/gen/c/types_test.v",
+      "blob_sha": "ed4a9b87096bf675ccf6c47a9913608cf9b229b2",
+      "sha256": "b1cab2f7e6c10801f98411580ca0d82b9a2e743fded8485944945f92d0a7d410"
+    },
+    {
+      "path": "vlib/v/gen/v/gen.v",
+      "blob_sha": "9e27e0ce29f1dd7b1a1d61c3b9657193bfd96fec",
+      "sha256": "fca68b506a5f320642e4d84f3f456f802ff2247bf6b5998dfd8c758272475f1d"
+    },
+    {
+      "path": "vlib/v/gen/v/gen_test.v",
+      "blob_sha": "abb15a3be86ba0127458d37015b8604d80afad2b",
+      "sha256": "476c97b96885b6c4ecb3b094baee6bbd48600f823aba60b8115c943cb3a4f050"
+    },
+    {
+      "path": "vlib/v/markused/markused.v",
+      "blob_sha": "6e19cb6a6fb3d015471f8fb71fab3f1fef4ff9a0",
+      "sha256": "33567919f61e668f8f8a59668d3b115df5e7cfe665504c0a7a0efc5d4d82e07e"
+    },
+    {
+      "path": "vlib/v/modulecache/c_struct_source_test.v",
+      "blob_sha": "a39cbde77457543cbdc0ca3426cebaad046d68cc",
+      "sha256": "7f08dfaba2f45c9b744f87c0710395abcd2b8547cf6917ae3f41512103a736af"
+    },
+    {
+      "path": "vlib/v/modulecache/modulecache.v",
+      "blob_sha": "5dcb3d55f1dcb3bd7d426c2bfaf51601d006925a",
+      "sha256": "9349f5b9068ddc5bddccdb77aa289e69e95e1aab291839f9b2cb146b9b193e29"
+    },
+    {
+      "path": "vlib/v/tests/aliases/nested_alias_struct_init_test.v",
+      "blob_sha": "415be9188588249cd25d35af6fa7c5e873980839",
+      "sha256": "9bfa4e898dc89bea0aad94eeb63e377e040b076152197da3faccd75754996a17"
+    },
+    {
+      "path": "vlib/v/tests/compiler_processes/testdata/run_terminal_nix.py",
+      "blob_sha": "4635a6f7c7c22788d203f85648887f424989ec6d",
+      "sha256": "415dfdcb37dea969e5f2ad3210d2270ddb2c8600ca81bf0e94a3efeb80e2d2d6"
+    },
+    {
+      "path": "vlib/v/tests/int128/map_key_test.v",
+      "blob_sha": "cfa0043ed37f52d39c3dd59430d7bdd92821816c",
+      "sha256": "c37f92f1547ad57d8c6ebdae3985d0063be7321b6a59428c212b6b325cfba22f"
+    },
+    {
+      "path": "vlib/v/tests/int128/mixed_width_test.v",
+      "blob_sha": "a9c54db14e528f2ba82f68047fb9415914979c19",
+      "sha256": "ab89529535eb904c048a78ba3987c284d4bd52b52a568ac7352e85782ae18b8d"
+    },
+    {
+      "path": "vlib/v/tests/interfaces/interface_smartcast_interpolation_test.v",
+      "blob_sha": "9f2608bf23a234266d0fd77a3c385c67ccf08975",
+      "sha256": "bf74a6bc3a8cbcb86a25cd5d27944459381729b5218fb2fc5e386b1e2e9a63a2"
+    },
+    {
+      "path": "vlib/v/transform/expr.v",
+      "blob_sha": "82f6a1d8aafcebea50fe5a81f4c69a81071c744f",
+      "sha256": "4c9afd8219f9de43d0e9fe1a9fac454342d8f4cd57678bac36491f204d03c26d"
+    },
+    {
+      "path": "vlib/v/transform/fn.v",
+      "blob_sha": "ccf0e4f29cddab8e1c67032f5c990370d52fb3af",
+      "sha256": "662e6da1216e54a74fc79f4a68da84cb1de95188a3825f4c44a5e48639eae653"
+    },
+    {
+      "path": "vlib/v/transform/sum_reference_rvalue_test.v",
+      "blob_sha": "b419606b1dee1faec54c640dcb98b08352a132d1",
+      "sha256": "4e0894f3ddf92551a553cbe68d4f220833e07ab01d7c1144f40ba5452fdf1dca"
+    },
+    {
+      "path": "vlib/v/transform/transform.v",
+      "blob_sha": "05374038d3432d7cb6d0eb2859636f39017a2c15",
+      "sha256": "d03464605b2f5c9fb0e8bbb111648d2692431a23b62a17b20ff3e737a68bf877"
+    },
+    {
+      "path": "vlib/v/types/c_global_selector_test.v",
+      "blob_sha": "946b1992fa518f31725360d946fd2da833f71a5c",
+      "sha256": "957361302c901a78d4106e8b4f93be8ed99c3ce4fd89c178b422995e3003f20a"
+    },
+    {
+      "path": "vlib/v/types/checker.v",
+      "blob_sha": "33ccd69c6b61848bda1b1c3d8ae57f2fc5bc4c60",
+      "sha256": "fbaf81e8e615ffff0872c786a2900c2a4f8ab10c8ededc41a73197ba3aa33e5e"
+    },
+    {
+      "path": "vlib/v/types/checker_comptime.v",
+      "blob_sha": "427168bec955fa28b53d71feb1f5c2b4b31cc2cb",
+      "sha256": "02f165c9289c3330403e72be870057b6f45888c99a95c63b9ddf27473c1fecf9"
+    },
+    {
+      "path": "vlib/v/types/checker_tail.v",
+      "blob_sha": "56d19038a2bf98525cfcf789237ba19d22a49b7e",
+      "sha256": "2bb8512e4e68d2478a0581e0e0cd1dce4e7712fa982410ab12cd680806b39715"
+    },
+    {
+      "path": "vlib/v/types/checker_tail_stmt.v",
+      "blob_sha": "1f0a1700d370836dd24af712d6202f5fe3490d55",
+      "sha256": "eae16d4b9b17c0103bb5ce0a1c84b0bdee5cc9d628f5cb959d32c507f8fddc77"
+    },
+    {
+      "path": "vlib/v/types/mut_index_lifetime_test.v",
+      "blob_sha": "f7c49ae302675b2357ad224549e270f09d548d33",
+      "sha256": "ab49c8734a2e1467984e267bff543af51ef1967213c722a3a06a297e32b4bc29"
+    },
+    {
+      "path": "vlib/x/multiwindow/win32_backend.c.v",
+      "blob_sha": "5d4d2830e05562f6055044daf4cf4eef520a1654",
+      "sha256": "ccec71a1438683523cdd4d3583426b3477af2f36206733c74c77eda682bb2128"
+    }
+  ],
+  "local_validation": {
+    "compiler_sha256": "4e6139bc7203d787498aab5cca76cabe85dca753593aae0af8879fa0e9c582cb",
+    "checks": [
+      {
+        "name": "self",
+        "exit_code": 0
+      },
+      {
+        "name": "render-suite",
+        "exit_code": 0
+      },
+      {
+        "name": "embedded-field-tcc",
+        "exit_code": 0
+      },
+      {
+        "name": "embedded-field-clang",
+        "exit_code": 0
+      }
+    ],
+    "integration": {
+      "prior_files": 67,
+      "new_files": 72,
+      "unchanged_prior_hashes": 67,
+      "overlapping_paths": [],
+      "frozen67_source_unmodified": true,
+      "frozen67_compiler_unchanged": true
+    }
+  },
+  "hosted_validation": "Linux and macOS original affected Apps commands; Windows original pinned Gitly smoke plus SQLite regression. Exact companion patches only in validation checkouts."
+}

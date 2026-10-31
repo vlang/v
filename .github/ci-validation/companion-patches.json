@@ -1,0 +1,90 @@
+[
+  {
+    "repository": "vlang/sdl",
+    "base_branch": "master",
+    "base_commit": "c7b4a451e4aec2dd7538258065c8ad1c8b9df466",
+    "patch": ".github/ci-validation/companion-patches/sdl.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Correct SDL native callback and C integer signatures; GCC/TCC native callback tests passed."
+  },
+  {
+    "repository": "vlang/vtl",
+    "base_branch": "main",
+    "base_commit": "094667f06261d3b20ded6ea84ba5d6686a72cd5e",
+    "patch": ".github/ci-validation/companion-patches/vtl.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Use the intended f32 indexing input; all 25 existing fixture functions pass."
+  },
+  {
+    "repository": "vlang/vsl",
+    "base_branch": "main",
+    "base_commit": "608ff6adb438ddfc67c539acffeb356d73876160",
+    "patch": ".github/ci-validation/companion-patches/vsl.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Check and convert the HDF5 attribute buffer size; native HDF5 regressions and roundtrip pass."
+  },
+  {
+    "repository": "vlang/doom",
+    "base_branch": "master",
+    "base_commit": "74995f7b83d3969a23266f81a555959b508a4f22",
+    "patch": ".github/ci-validation/companion-patches/doom.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Link the active V compiler's Boehm GC archive after object files; reduced native link/runtime passed; full Doom run queued."
+  },
+  {
+    "repository": "vlang/docs",
+    "base_branch": "generator",
+    "base_commit": "66235f20a6857f72b0694f602b46e5e1ef64972a",
+    "patch": ".github/ci-validation/apps/docs.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Migrate JSON/Option calls; full executable builds and generator tests pass."
+  },
+  {
+    "repository": "vlang/libsodium",
+    "base_branch": "master",
+    "base_commit": "1c52706f1de338a14127eac86fcf6da4c6f9db41",
+    "patch": ".github/ci-validation/apps/libsodium.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Expose the shared salt helper used by child modules; strict checks pass; native library validation is pending."
+  },
+  {
+    "repository": "vlang/coreutils",
+    "base_branch": "master",
+    "base_commit": "51bc434e802f5febbb1153f50172d046dc59b7e3",
+    "patch": ".github/ci-validation/apps/coreutils.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Match the native mkfifo declaration; GCC/Clang runtime and macOS checker tests pass."
+  },
+  {
+    "repository": "vlang/adventofcode",
+    "base_branch": "main",
+    "base_commit": "5d3c20df8179433b8be8021ce01bf40f027b26e5",
+    "patch": ".github/ci-validation/apps/adventofcode.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Update five Option/helper API uses; all 18 affected and neighboring solutions pass."
+  },
+  {
+    "repository": "vlang/gitly",
+    "base_branch": "ci/windows-first-run",
+    "base_commit": "8d5b688277946f2cd409d82e79a4289ec33e045b",
+    "patch": ".github/ci-validation/apps/gitly.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Follow-up to #291 on the deliberately pinned Windows branch; application build and SQLite behavior test pass on Linux."
+  },
+  {
+    "repository": "vlang/go2v",
+    "base_branch": "master",
+    "base_commit": "20f11cd28b737104da10a7be0506f1b95eda7c3a",
+    "patch": ".github/ci-validation/apps/go2v.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Migrate json2 and recursive AST layout; default build and three JSON/native regressions pass; Go/asty suite pending."
+  },
+  {
+    "repository": "vlang/ui",
+    "base_branch": "master",
+    "base_commit": "2f6fd14e67cf3da8cae1dff162493b762ffc8289",
+    "patch": ".github/ci-validation/apps/ui.patch",
+    "publication": "Blocked on first blob upload: HTTP403 Resource not accessible by integration; no remote PR/branch/commit created.",
+    "validation": "Fix renderer ownership and widget references; six native regression functions and both original examples pass with V #31562 and #31563."
+  }
+]
