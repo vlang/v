@@ -277,6 +277,7 @@ fn test_h1_stale_pooled_connection_is_retried() {
 	stop_ka_srv(mut listener, th)
 }
 
+@[unsafe]
 fn test_h1_server_closed_idle_connection_is_discarded_before_post() {
 	mut srv := &KaSrv{
 		close_after_each: true

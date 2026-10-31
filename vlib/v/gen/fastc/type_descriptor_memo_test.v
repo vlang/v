@@ -4,6 +4,7 @@ import v.flat
 import v.pref
 import v.scanner
 
+@[unsafe]
 fn fastc_descriptor_memo_test_parser(names flat.TypeTextBindings, aliases flat.TypeTextBindings, finalized bool) Parser {
 	prefs := pref.new_preferences()
 	return Parser{

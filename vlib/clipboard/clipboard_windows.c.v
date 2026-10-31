@@ -85,6 +85,7 @@ fn (cb &Clipboard) get_clipboard_lock() bool {
 	return false
 }
 
+@[unsafe]
 fn new_clipboard() &Clipboard {
 	mut cb := &Clipboard{
 		max_retries: 5
@@ -113,6 +114,7 @@ fn new_clipboard() &Clipboard {
 }
 
 // check_availability returns true if the clipboard is ready to be used.
+@[unsafe]
 pub fn (cb &Clipboard) check_availability() bool {
 	return cb.hwnd != unsafe { nil }
 }
@@ -141,6 +143,7 @@ pub fn (mut cb Clipboard) free() {
 const cp_utf8 = 65001
 
 // the string.to_wide doesn't work with SetClipboardData, don't know why
+@[unsafe]
 fn to_wide(text string) C.HGLOBAL {
 	len_required := C.MultiByteToWideChar(cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str),
 
@@ -160,6 +163,7 @@ fn to_wide(text string) C.HGLOBAL {
 
 // set_text transfers `text` to the system clipboard.
 // This is often associated with a *copy* action (`Ctrl` + `C`).
+@[unsafe]
 pub fn (mut cb Clipboard) set_text(text string) bool {
 	cb.foo = 0
 	buf := to_wide(text)
@@ -183,6 +187,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 
 // get_text retrieves the contents of the system clipboard.
 // This is often associated with a *paste* action (`Ctrl` + `V`).
+@[unsafe]
 pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
 	if !cb.get_clipboard_lock() {

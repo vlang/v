@@ -59,6 +59,7 @@ fn test_generic_channel_try_push_and_try_pop() {
 	assert box.take()? == 'hello'
 }
 
+@[unsafe]
 fn test_generic_channel_try_alias_and_pointer_storage() {
 	ch := chan ChannelNumber{cap: 1}
 	assert put(ch, ChannelNumber(12))

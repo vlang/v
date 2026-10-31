@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_escape_key_and_ansi_strings_keep_escape_bytes() {
 	$if !macos && !linux {
 		return

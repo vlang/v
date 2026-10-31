@@ -9,6 +9,7 @@ $if macos && arm64 {
 	import v.types
 }
 
+@[unsafe]
 fn test_native_c_opaque_pointer_locals_and_explicit_pointer_addresses() {
 	$if macos && arm64 {
 		for building_v in [false, true] {
@@ -62,6 +63,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_native_pointer_elements_and_nil_terminators_keep_their_storage_addresses() {
 	$if macos && arm64 {
 		source := 'module main

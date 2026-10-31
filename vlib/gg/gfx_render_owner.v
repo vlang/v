@@ -35,6 +35,7 @@ fn gg_claim_gfx_render_owner(owner GfxRenderOwner, token voidptr) ! {
 	}
 }
 
+@[unsafe]
 fn gg_release_gfx_render_owner(owner GfxRenderOwner, token voidptr) {
 	if owner == .none {
 		return

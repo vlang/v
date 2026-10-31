@@ -268,6 +268,7 @@ pub fn (pv PrivateKey) sign_with_options(message []u8, opt SignerOpts) ![]u8 {
 }
 
 // bytes represent private key as bytes.
+@[unsafe]
 pub fn (pv PrivateKey) bytes() ![]u8 {
 	mut d := C.mbedtls_mpi{}
 	C.mbedtls_mpi_init(&d)
@@ -295,6 +296,7 @@ pub fn (pv PrivateKey) seed() ![]u8 {
 }
 
 // public_key gets the PublicKey from private key.
+@[unsafe]
 pub fn (pv PrivateKey) public_key() !PublicKey {
 	mut q := C.mbedtls_ecp_point{}
 	C.mbedtls_ecp_point_init(&q)
@@ -327,6 +329,7 @@ pub fn (pv PrivateKey) public_key() !PublicKey {
 // mbedtls_ecdh_compute_shared already returns, and is exactly what TLS 1.3's
 // key schedule expects as ECDHE input; it is NOT the full uncompressed point).
 // Both keys must use the same curve.
+@[unsafe]
 pub fn (pv PrivateKey) derive_shared_secret(peer PublicKey) ![]u8 {
 	if pv.nid != peer.nid {
 		return error('crypto.ecdsa: derive_shared_secret requires both keys to use the same curve')
@@ -422,6 +425,7 @@ pub fn (pb PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
 }
 
 // equal compares two public keys was equal.
+@[unsafe]
 pub fn (pub_key PublicKey) equal(other PublicKey) bool {
 	mut qa := C.mbedtls_ecp_point{}
 	mut qb := C.mbedtls_ecp_point{}
@@ -451,6 +455,7 @@ pub fn (pb &PublicKey) free() {
 // uncompressed_bytes returns the public key as an uncompressed EC point,
 // `0x04 || X || Y` (SEC1 §2.3.3) — the wire format TLS 1.3's key_share
 // extension uses for the secp256r1 (P-256) group (RFC 8446 §4.2.8.2).
+@[unsafe]
 pub fn (pb PublicKey) uncompressed_bytes() ![]u8 {
 	mut grp := C.mbedtls_ecp_group{}
 	mut q := C.mbedtls_ecp_point{}
@@ -531,6 +536,7 @@ pub fn PublicKey.from_uncompressed_bytes(bytes []u8, opt CurveOptions) !PublicKe
 // Mirrors net.mbedtls's own ssl_connection.c.v init_rng/free_rng exactly;
 // duplicated locally rather than imported since crypto.* never imports
 // net.* in this repo.
+@[unsafe]
 fn init_rng(mut ctr_drbg C.mbedtls_ctr_drbg_context, mut entropy C.mbedtls_entropy_context) ! {
 	C.mbedtls_ctr_drbg_init(&ctr_drbg)
 	C.mbedtls_entropy_init(&entropy)
@@ -555,6 +561,7 @@ fn free_rng(mut ctr_drbg C.mbedtls_ctr_drbg_context, mut entropy C.mbedtls_entro
 // this file's C surface stays limited to the EC primitives themselves.
 // Returns the mbedtls_md_type_t the digest corresponds to (needed by
 // mbedtls_ecdsa_write_signature/read_signature) alongside the digest bytes.
+@[unsafe]
 fn calc_digest(nid Nid, message []u8, opt SignerOpts) !(int, []u8) {
 	if message.len == 0 {
 		return error('null-length messages')

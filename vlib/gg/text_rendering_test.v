@@ -11,6 +11,7 @@ fn new_test_text_context() (&Context, &fontstash.Context) {
 	return new_test_text_context_with_atlas(512, 512)
 }
 
+@[unsafe]
 fn new_test_text_context_with_atlas(width int, height int) (&Context, &fontstash.Context) {
 	mut fons := fontstash.create_internal(&C.FONSparams{
 		width:  i32(width)
@@ -38,6 +39,7 @@ fn text_advance_and_bounds_width(fons &fontstash.Context, text string) (f32, f32
 	return advance, bounds[2] - bounds[0]
 }
 
+@[unsafe]
 fn test_fontstash_c_int_output_buffers() {
 	_, fons := new_test_text_context_with_atlas(64, 64)
 	defer {

@@ -88,6 +88,7 @@ fn test_archive_helpers_report_filesystem_errors() {
 	assert write_rejected
 }
 
+@[unsafe]
 fn test_chunked_writes_duplicates_names_and_append_preserve_entries() {
 	root := validation_root('chunks')
 	defer { os.rmdir_all(root) or {} }

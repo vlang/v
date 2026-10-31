@@ -522,6 +522,7 @@ pub fn fastc_run_command(program string, args []string) os.Result {
 
 // fastc_start_capture starts the program of the argument vector with its
 // stdout and stderr merged into a pipe, and reports whether it started.
+@[unsafe]
 fn fastc_start_capture(argv []string, pid &int, read_fd &int) bool {
 	mut cargs := []&char{cap: argv.len + 1}
 	for arg in argv {
@@ -531,6 +532,7 @@ fn fastc_start_capture(argv []string, pid &int, read_fd &int) bool {
 	return C.v_os_exec_capture_start(cargs.data, pid, read_fd) == 0
 }
 
+@[unsafe]
 fn fastc_start_capture_input(argv []string, pid &int, read_fd &int, write_fd &int) bool {
 	$if macos {
 		mut cargs := []&char{cap: argv.len + 1}

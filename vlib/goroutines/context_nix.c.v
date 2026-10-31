@@ -26,6 +26,7 @@ pub mut:
 
 // context_init initializes a context for a new goroutine.
 // Sets up the context to run `entry_fn` with `arg` on the given stack.
+@[unsafe]
 pub fn context_init(mut ctx Context, stack voidptr, stack_size int, entry_fn fn (voidptr), arg voidptr) {
 	if ctx.uctx == unsafe { nil } {
 		ctx.uctx = C.goroutines_context_alloc()
@@ -34,6 +35,7 @@ pub fn context_init(mut ctx Context, stack voidptr, stack_size int, entry_fn fn 
 }
 
 // context_switch saves the current context into `from` and switches to `to`.
+@[unsafe]
 pub fn context_switch(mut from Context, to &Context) {
 	if from.uctx == unsafe { nil } {
 		from.uctx = C.goroutines_context_alloc()
@@ -48,6 +50,7 @@ pub fn context_set(to &Context) {
 
 // context_detach_dead returns nil: the ucontext buffer of an exiting goroutine stays with it
 // and is reused by context_init, so the scheduler has nothing to release.
+@[unsafe]
 fn context_detach_dead(mut ctx Context) voidptr {
 	return unsafe { nil }
 }

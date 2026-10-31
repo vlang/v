@@ -49,6 +49,7 @@ fn receive_all_data_progress_body_cb(request &Request, chunk []u8, body_so_far u
 	capture.statuses << status_code
 }
 
+@[unsafe]
 fn test_receive_all_data_from_cb_in_builder_propagates_non_eof_errors() {
 	mut req := Request{}
 	mut content := strings.new_builder(64)
@@ -60,6 +61,7 @@ fn test_receive_all_data_from_cb_in_builder_propagates_non_eof_errors() {
 	panic('expected a timeout error')
 }
 
+@[unsafe]
 fn test_receive_all_data_from_cb_in_builder_stops_on_eof() {
 	mut req := Request{}
 	mut content := strings.new_builder(64)

@@ -3,6 +3,7 @@ module builtin
 // backtrace_exec_capture avoids a shell while keeping builtin independent of os.
 // It does not reuse os' C capture helpers: every program links builtin, and the
 // module cache can not split a static C helper between builtin and os objects.
+@[unsafe]
 fn backtrace_exec_capture(args []string) (string, int) {
 	mut cargs := []&char{cap: args.len + 1}
 	for arg in args {
@@ -143,7 +144,7 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 
 // bsd_backtrace_resolve_atos uses macOS `atos` to resolve addresses to file:line info.
 // Returns an array of file:line strings (one per frame). Empty string if unresolved.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn bsd_backtrace_resolve_atos(buffer &voidptr, nr_frames int) []string {
 	$if macos {
 		exe_name := backtrace_current_executable_name()

@@ -99,6 +99,7 @@ pub fn (mut ctx Context) create_image(file string, cfg ImageConfig) !Image {
 // returned pointer after `gfx.make_image()` returns: sokol uploads (copies)
 // the pixel data synchronously during `gfx.make_image()` on every backend,
 // so the buffer is no longer needed afterwards.
+@[unsafe]
 fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) voidptr {
 	mut levels := 0
 	mut size := 0
@@ -165,6 +166,7 @@ fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) voidptr {
 
 // init_sokol_image initializes this `Image` for use with the
 // sokol graphical backend system.
+@[unsafe]
 pub fn (mut img Image) init_sokol_image() &Image {
 	// println('\n init sokol image ${img.path} ok=${img.simg_ok}')
 	if img.data == unsafe { nil } {
@@ -280,6 +282,7 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 
 // update_pixel_data is a helper for working with image streams (i.e. images,
 // that are updated dynamically by the CPU on each frame)
+@[unsafe]
 pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 	mut image := ctx.get_cached_image_by_idx(cached_image_idx)
 	image.update_pixel_data(buf)
@@ -292,6 +295,7 @@ pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 
 // update_pixel_data updates the sokol specific pixel data associated
 // with this `Image`.
+@[unsafe]
 pub fn (mut img Image) update_pixel_data(buf &u8) {
 	if buf == unsafe { nil } {
 		return
@@ -415,6 +419,7 @@ fn (ctx &Context) image_from_draw_config(config DrawImageConfig) ?&Image {
 
 // draw_image_with_config takes in a config that details how the
 // provided image should be drawn onto the screen
+@[unsafe]
 pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	$if macos {
 		if ctx.native_rendering {

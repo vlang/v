@@ -40,6 +40,7 @@ fn test_voidptr_and_casts() {
 	assert read_u64(unsafe { &u64(voidptr(&words[0])) }) == 5
 }
 
+@[unsafe]
 fn test_unsafe_block() {
 	wide := [u64(7), 0]!
 	mut p := &u8(unsafe { nil })

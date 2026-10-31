@@ -6,6 +6,7 @@ struct NoallocCase {
 	source   string
 }
 
+@[unsafe]
 fn test_noalloc_contracts_in_build_and_check() {
 	root := os.join_path(os.vtmp_dir(), 'noalloc_contracts_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }

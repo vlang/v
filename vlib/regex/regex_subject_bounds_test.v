@@ -61,6 +61,7 @@ fn test_match_base_uses_the_explicit_length_without_a_terminator() {
 	assert utf8_start == 0 && utf8_end == 1
 }
 
+@[unsafe]
 fn test_nul_bytes_inside_the_subject_are_still_matchable() {
 	mut re := regex.regex_opt(r'\W') or { panic(err) }
 	text := '\x00'

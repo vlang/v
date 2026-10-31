@@ -201,6 +201,7 @@ fn (mut c H2Conn) handshake() ! {
 // response and servicing connection-level frames along the way. The streaming
 // options on `req` (on_data callback and the two stop limits) are honored
 // while reading DATA frames, matching the HTTP/1.1 streaming semantics.
+@[unsafe]
 fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientResponse {
 	mut resp := H2ClientResponse{}
 	mut got_headers := false

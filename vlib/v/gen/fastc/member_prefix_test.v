@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_qualified_call_and_cast_member_roots_preserve_types_and_storage() {
 	$if !macos && !linux {
 		return

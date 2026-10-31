@@ -1,3 +1,4 @@
+@[unsafe]
 fn encode[T](values T) string {
 	$if T is $pointer {
 		if voidptr(values) == unsafe { nil } {
@@ -22,6 +23,7 @@ struct Node {
 	children []&Node
 }
 
+@[unsafe]
 fn test_main() {
 	assert encode('string') == 'other'
 	assert encode(&Node(unsafe { nil })) == 'nil'

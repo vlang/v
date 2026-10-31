@@ -9,6 +9,7 @@ import sync
 // avoid deadlock. Inline calls still require open admission; an inline error is
 // stored as the executor's first job error even if the outer callback catches it.
 // That inline execution is outside FIFO queue ordering.
+@[unsafe]
 pub fn (mut e Executor) run_sync(f JobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)

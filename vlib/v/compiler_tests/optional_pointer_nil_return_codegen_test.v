@@ -18,6 +18,7 @@ fn test_optional_pointer_nil_return_is_success_payload() {
 	x int
 }
 
+@[unsafe]
 fn maybe(flag bool) ?&T {
 	if flag {
 		return unsafe { nil }
@@ -25,6 +26,7 @@ fn maybe(flag bool) ?&T {
 	return none
 }
 
+@[unsafe]
 fn maybe_defer(flag bool) ?&T {
 	defer {}
 	if flag {
@@ -33,6 +35,7 @@ fn maybe_defer(flag bool) ?&T {
 	return none
 }
 
+@[unsafe]
 fn result_maybe(flag bool) !&T {
 	if flag {
 		return unsafe { nil }
@@ -40,6 +43,7 @@ fn result_maybe(flag bool) !&T {
 	return error('no value')
 }
 
+@[unsafe]
 fn result_maybe_defer(flag bool) !&T {
 	defer {}
 	if flag {
@@ -48,6 +52,7 @@ fn result_maybe_defer(flag bool) !&T {
 	return error('no value')
 }
 
+@[unsafe]
 fn check_question_unwrap() ? {
 	a := maybe(true)?
 	assert a == unsafe { nil }
@@ -55,6 +60,7 @@ fn check_question_unwrap() ? {
 	assert c == unsafe { nil }
 }
 
+@[unsafe]
 fn check_result_unwrap() ! {
 	r := result_maybe(true)!
 	assert r == unsafe { nil }
@@ -62,6 +68,7 @@ fn check_result_unwrap() ! {
 	assert rd == unsafe { nil }
 }
 
+@[unsafe]
 fn main() {
 	check_question_unwrap() or { panic('missing value') }
 	check_result_unwrap() or { panic(err) }

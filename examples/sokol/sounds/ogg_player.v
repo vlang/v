@@ -14,6 +14,7 @@ fn main() {
 	play_sounds(os.args[1..])!
 }
 
+@[unsafe]
 fn play_sounds(files []string) ! {
 	mut player := Player{
 		decoder: unsafe { nil }

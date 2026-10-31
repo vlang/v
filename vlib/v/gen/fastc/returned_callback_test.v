@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_returned_callbacks_preserve_arguments_and_optional_results() {
 	$if !macos && !linux {
 		return

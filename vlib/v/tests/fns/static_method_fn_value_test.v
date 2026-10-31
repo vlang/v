@@ -36,6 +36,7 @@ fn is_remove(f fn (int) int) bool {
 	return voidptr(f) == Picker.on_remove
 }
 
+@[unsafe]
 fn test_static_method_value_as_voidptr() {
 	assert is_remove(Picker.on_remove)
 	assert !is_remove(Picker.on_add)
@@ -78,6 +79,7 @@ fn (mut r Registry[T]) init() {
 	r.cb = Picker.on_add
 }
 
+@[unsafe]
 fn test_static_method_value_in_generic_bodies() {
 	mut t := &ClipTransform{}
 	setup_transform[int](mut t)

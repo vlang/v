@@ -13,6 +13,7 @@ pub const rtld_local = C.RTLD_LOCAL
 pub const rtld_nodelete = C.RTLD_NODELETE
 pub const rtld_noload = C.RTLD_NOLOAD
 
+@[unsafe]
 fn C.dlopen(filename &char, flags i32) voidptr
 
 fn C.dlsym(handle voidptr, symbol &char) voidptr
@@ -45,6 +46,7 @@ pub fn sym(handle voidptr, symbol string) voidptr {
 // It returns a human-readable string, describing the most recent error
 // that occurred from a call to one of the `dl` functions, since the last
 // call to dlerror().
+@[unsafe]
 pub fn dlerror() string {
 	sptr := C.dlerror()
 	if sptr == unsafe { nil } {

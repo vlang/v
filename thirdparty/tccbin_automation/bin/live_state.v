@@ -39,6 +39,7 @@ $if linux {
 }
 
 $if freebsd || openbsd {
+	@[unsafe]
 	fn C.closefrom(first int)
 }
 
@@ -1198,6 +1199,7 @@ fn validate_live_state_bare_repository(state_git_dir string, expected_state_head
 
 // T2c3c1 deliberately owns one child-reaping lease. The pointer is both the CAS token and the
 // private session reached by nested authenticated readers; no public API exposes it.
+@[unsafe]
 fn durable_git_runner_session() !&DurableGitRunnerSession {
 	token := durable_git_runner_lease_load()
 	if token == unsafe { nil } {
@@ -1361,10 +1363,12 @@ fn durable_git_control_lease_releasable(poisoned bool) bool {
 	return !poisoned
 }
 
+@[unsafe]
 fn durable_git_lease_try_acquire(mut slot stdatomic.AtomicVal[voidptr], token voidptr) bool {
 	return slot.compare_and_swap(voidptr(unsafe { nil }), token)
 }
 
+@[unsafe]
 fn durable_git_lease_try_release(mut slot stdatomic.AtomicVal[voidptr], token voidptr) bool {
 	return slot.compare_and_swap(token, voidptr(unsafe { nil }))
 }
@@ -1389,6 +1393,7 @@ fn durable_git_resource_preflight() !DurableGitResourceSnapshot {
 	}
 }
 
+@[unsafe]
 fn durable_git_raw_environment() ![]string {
 	$if linux || macos || freebsd || openbsd {
 		start := unsafe { &&char(voidptr(C.environ)) }
@@ -2284,6 +2289,7 @@ fn durable_git_write_release_gate(fd int, deadline u64) ! {
 	}
 }
 
+@[unsafe]
 fn durable_git_capture_inner(mut session DurableGitRunnerSession, command []string,
 	class DurableGitReadClass, repository bool) !DurableGitCapturedResult {
 	$if linux || macos || freebsd || openbsd {
@@ -2825,6 +2831,7 @@ fn durable_git_run_args(state_git_dir string, command []string,
 	return durable_git_capture(mut session, command, class, true)
 }
 
+@[unsafe]
 fn live_git_args(state_git_dir string, command []string, class DurableGitReadClass) os.Result {
 	if durable_git_runner_lease_load() != unsafe { nil } {
 		result := durable_git_run_args(state_git_dir, command, class) or {
@@ -2858,6 +2865,7 @@ fn live_git_args(state_git_dir string, command []string, class DurableGitReadCla
 // accepts only the exact target ls-tree argv; arbitrary argv cannot cross the new runner.
 // Without a lease, `arguments` goes to git as separate argv elements. On Windows a `.cmd` git is run
 // by cmd.exe, so live_git_fallback refuses a command line that cmd.exe would interpret.
+@[unsafe]
 fn live_git(state_git_dir string, arguments []string) os.Result {
 	if durable_git_runner_lease_load() != unsafe { nil } {
 		if arguments.len != 7 || arguments[0] != 'ls-tree' || arguments[1] != '-l'
@@ -3055,6 +3063,7 @@ fn cmd_percent_is_unsafe(text string) bool {
 	return !(first == `(` || (first >= `a` && first <= `z`) || (first >= `A` && first <= `Z`))
 }
 
+@[unsafe]
 fn validate_live_git_preflight(state_git_dir string) ! {
 	if durable_git_runner_lease_load() != unsafe { nil } {
 		session := durable_git_runner_session()!
@@ -4143,6 +4152,7 @@ $if test {
 	// This closed seam accepts no argv, executable, path, callback, or process handle. It drives
 	// the same post-fork routing, action authorization, post-EOF, and atomic lease transitions used
 	// by the real runner.
+	@[unsafe]
 	pub fn durable_git_control_machine_for_test(scenario string) !DurableGitControlTraceForTest {
 		mut test_slot := stdatomic.new_atomic(voidptr(unsafe { nil }))
 		mut first_token_byte := u8(1)

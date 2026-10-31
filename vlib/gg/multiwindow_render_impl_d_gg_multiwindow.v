@@ -41,6 +41,7 @@ mut:
 	flushed bool
 }
 
+@[unsafe]
 fn (context &WindowInitContext) validate_managed_or_panic() {
 	if context.app == unsafe { nil } || context.app_instance != context.app.app_instance {
 		panic(err_multiwindow_render_stale_lease)
@@ -55,6 +56,7 @@ fn (context &WindowContext) validate_managed_or_panic() {
 	context.validate_managed_frame() or { panic(err.msg()) }
 }
 
+@[unsafe]
 fn (context &WindowContext) validate_managed_frame() ! {
 	if context.app == unsafe { nil } || context.app_instance != context.app.app_instance {
 		return error(err_multiwindow_render_stale_lease)
@@ -63,6 +65,7 @@ fn (context &WindowContext) validate_managed_frame() ! {
 	context.app.render_runtime.validate_frame_lease(context.info.window, context.lease_epoch)!
 }
 
+@[unsafe]
 fn (context &WindowCleanupContext) validate_managed_or_panic() {
 	if context.app == unsafe { nil } || context.app_instance != context.app.app_instance {
 		panic(err_multiwindow_render_stale_lease)
@@ -520,6 +523,7 @@ fn (mut app App) discard_window_capture_requests(id WindowId) {
 	app.pending_image_readbacks = app.pending_image_readbacks.filter(it.window != id)
 }
 
+@[unsafe]
 fn (mut context WindowInitContext) with_resources_managed(phase MultiWindowRenderPhase, f WindowResourceFn) ! {
 	if f == unsafe { nil } {
 		return error(err_multiwindow_render_nil_callback)
@@ -541,6 +545,7 @@ fn (mut context WindowInitContext) with_resources_managed(phase MultiWindowRende
 	}
 }
 
+@[unsafe]
 fn (mut context WindowCleanupContext) with_resources_managed(phase MultiWindowRenderPhase, f WindowResourceFn) ! {
 	if f == unsafe { nil } {
 		return error(err_multiwindow_render_nil_callback)
@@ -562,6 +567,7 @@ fn (mut context WindowCleanupContext) with_resources_managed(phase MultiWindowRe
 	}
 }
 
+@[unsafe]
 fn (mut context WindowContext) with_resources_managed(f WindowResourceFn) ! {
 	if f == unsafe { nil } {
 		return error(err_multiwindow_render_nil_callback)
@@ -583,6 +589,7 @@ fn (mut context WindowContext) with_resources_managed(f WindowResourceFn) ! {
 	}
 }
 
+@[unsafe]
 fn (mut context WindowContext) with_offscreen_managed(config WindowOffscreenPassConfig, f WindowPassFn) ! {
 	if f == unsafe { nil } {
 		return error(err_multiwindow_render_nil_callback)
@@ -634,6 +641,7 @@ fn (mut context WindowContext) with_offscreen_managed(config WindowOffscreenPass
 	}, errors)!
 }
 
+@[unsafe]
 fn (mut context WindowContext) with_swapchain_managed(action gfx.PassAction, f WindowPassFn) ! {
 	if f == unsafe { nil } {
 		return error(err_multiwindow_render_nil_callback)
@@ -672,6 +680,7 @@ fn (mut context WindowContext) with_swapchain_managed(action gfx.PassAction, f W
 	}, errors)!
 }
 
+@[unsafe]
 fn (mut context WindowContext) with_offscreen_sgl_managed(config WindowOffscreenPassConfig, f WindowSglFn) ! {
 	if f == unsafe { nil } {
 		return error(err_multiwindow_render_nil_callback)
@@ -687,6 +696,7 @@ fn (mut context WindowContext) with_offscreen_sgl_managed(config WindowOffscreen
 	context.with_sgl_pass(false, config.action, attachments, target_key, f)!
 }
 
+@[unsafe]
 fn (mut context WindowContext) with_swapchain_sgl_managed(action gfx.PassAction, f WindowSglFn) ! {
 	if f == unsafe { nil } {
 		return error(err_multiwindow_render_nil_callback)
@@ -696,6 +706,7 @@ fn (mut context WindowContext) with_swapchain_sgl_managed(action gfx.PassAction,
 	context.with_sgl_pass(true, action, gfx.Attachments{}, target_key, f)!
 }
 
+@[unsafe]
 fn (mut context WindowContext) with_sgl_pass(swapchain bool, action gfx.PassAction, attachments gfx.Attachments, target_key string, f WindowSglFn) ! {
 	if f == unsafe { nil } {
 		return error(err_multiwindow_render_nil_callback)
@@ -908,6 +919,7 @@ fn (mut context WindowContext) submit_appkit_image_readback_pass(native_image gf
 	}
 }
 
+@[unsafe]
 fn (mut context WindowCleanupContext) with_native_window_managed(f NativeWindowBorrowFn) ! {
 	if f == unsafe { nil } {
 		return error(err_multiwindow_render_nil_callback)
@@ -922,6 +934,7 @@ fn (mut context WindowCleanupContext) with_native_window_managed(f NativeWindowB
 	app.with_native_window(context.info.window, f)!
 }
 
+@[unsafe]
 fn (mut context WindowSglContext) activate_sgl_managed() !&render.Context {
 	if context.app == unsafe { nil } || context.app_instance != context.app.app_instance {
 		return error(err_multiwindow_render_stale_lease)
@@ -1086,6 +1099,7 @@ fn (mut pass WindowPassContext) apply_scissor_managed(rect WindowPixelRect) ! {
 	gfx.apply_scissor_rect(rect.x, rect.y, rect.width, rect.height, true)
 }
 
+@[unsafe]
 fn (pass &WindowPassContext) validate_managed_pass() ! {
 	if pass.app == unsafe { nil } || pass.app_instance != pass.app.app_instance {
 		return error(err_multiwindow_render_stale_lease)

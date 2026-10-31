@@ -202,6 +202,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 }
 
 // decompress decompresses a Brotli stream and returns the decompressed bytes.
+@[unsafe]
 pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 	dec := open_decoder_library()!
 	defer {

@@ -4,6 +4,7 @@ import os
 import v.parser
 import v.pref
 
+@[unsafe]
 fn test_integer_queries_preserve_call_types_and_diagnostics() {
 	cases := [
 		'fn accept(a int, b int, c string) {}\nfn main() { accept(1, 2, "ok") }',

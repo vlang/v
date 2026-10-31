@@ -4,6 +4,7 @@ import sokol.gfx
 import time
 import x.multiwindow
 
+@[unsafe]
 fn (mut app App) run_managed(config RunConfig) ! {
 	app.ensure_initialized()!
 	app.assert_owner_thread() or { return error(err_multiwindow_render_owner_thread) }
@@ -60,6 +61,7 @@ fn (app &App) refresh_has_window_frames(has_app_frame bool) !bool {
 	return has_window_frames
 }
 
+@[unsafe]
 fn (mut app App) run_accepted_managed(config RunConfig, has_app_frame bool, initial_has_window_frames bool, initial_has_window_initializers bool, has_events bool, has_input bool, has_services bool, has_readback bool, has_app_resources bool) ! {
 	mut has_window_frames := initial_has_window_frames
 	mut has_window_initializers := initial_has_window_initializers
@@ -174,6 +176,7 @@ fn (mut app App) dispatch_managed_events(event_fn AppEventFn, input_fn AppInputF
 	return dispatched
 }
 
+@[unsafe]
 fn (mut app App) dispatch_one_managed_event(event multiwindow.QueuedEvent, event_fn AppEventFn, input_fn AppInputFn, service_fn WindowServiceFn, readback_fn WindowReadbackFn) ! {
 	match event.kind {
 		.lifecycle {
@@ -322,6 +325,7 @@ fn (mut app App) run_render_batch(legacy bool, frame_fn AppFrameFn) !int {
 	return outcome.finalized_submissions
 }
 
+@[unsafe]
 fn (mut app App) execute_render_batch(batch multiwindow.RenderBatchLease, candidates []multiwindow.RenderWindowSnapshot, legacy bool, frame_fn AppFrameFn) ! {
 	app.render_runtime.begin_batch(candidates_batch_epoch(batch, candidates))!
 	app.active_batch_epoch = candidates_batch_epoch(batch, candidates)
@@ -404,6 +408,7 @@ fn (mut app App) execute_render_batch(batch multiwindow.RenderBatchLease, candid
 	}
 }
 
+@[unsafe]
 fn (mut app App) ensure_app_resources_initialized() ! {
 	started, completed, terminal := app.render_runtime.app_initialization_state()
 	if completed {
@@ -432,6 +437,7 @@ fn (mut app App) ensure_app_resources_initialized() ! {
 	}
 }
 
+@[unsafe]
 fn (mut app App) invoke_app_resource_frame() ! {
 	_, frame_fn, _ := app.render_runtime.app_callbacks()
 	if frame_fn == unsafe { nil } {
@@ -449,6 +455,7 @@ fn (mut app App) invoke_app_resource_frame() ! {
 	}
 }
 
+@[unsafe]
 fn (mut app App) ensure_window_initialized(id WindowId, candidate multiwindow.RenderWindowSnapshot) ! {
 	if app.render_runtime.window_initialized(id)! {
 		return
@@ -512,6 +519,7 @@ fn (mut app App) invoke_window_frame(id WindowId, snapshot multiwindow.RenderWin
 		info.metrics.framebuffer_size.height)!
 }
 
+@[unsafe]
 fn (mut app App) draw_window_managed(id WindowId, draw WindowDrawFn) ! {
 	if draw == unsafe { nil } {
 		return error(err_multiwindow_nil_draw_fn)
@@ -897,6 +905,7 @@ fn (mut app App) stop_now() ! {
 	}
 }
 
+@[unsafe]
 fn (mut app App) run_app_resource_cleanup_batch() ! {
 	app.record_multiwindow_lifecycle_milestone(.resource_cleanup_enter)
 	if !app.gfx_started {
@@ -982,6 +991,7 @@ fn (mut app App) run_app_resource_cleanup_batch() ! {
 	app.record_multiwindow_lifecycle_milestone(.resource_cleanup_batch_complete)
 }
 
+@[unsafe]
 fn (mut app App) run_app_resource_cleanup_terminal() ! {
 	mut errors := []string{}
 	started, completed, init_terminal := app.render_runtime.app_initialization_state()

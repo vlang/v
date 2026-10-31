@@ -215,6 +215,7 @@ fn check_new_block(blocks []Block, idx int, b Block, align uint) {
 	}
 }
 
+@[unsafe]
 fn stress(mut dl Dlmalloc, rounds int, seed u32, max_huge uint) {
 	mut rng := Rng{seed}
 	mut blocks := []Block{len: 256}
@@ -316,6 +317,7 @@ fn (mut a TestArena) release() {
 	unsafe { a.buf.free() }
 }
 
+@[unsafe]
 fn arena_alloc(data voidptr, size uint) (voidptr, uint, u32) {
 	mut a := unsafe { &TestArena(data) }
 	a.calls++

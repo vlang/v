@@ -17,6 +17,7 @@ fn c_pointer_null_build_v3() string {
 	return v3_bin
 }
 
+@[unsafe]
 fn c_pointer_null_write_source() string {
 	src := os.join_path(os.temp_dir(), 'v3_c_pointer_null_${os.getpid()}.v')
 	os.write_file(src, 'module main

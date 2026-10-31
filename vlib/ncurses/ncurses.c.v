@@ -149,6 +149,7 @@ pub fn is_supported() bool {
 }
 
 // initscr initializes the curses screen and returns the default window handle.
+@[unsafe]
 pub fn initscr() Window {
 	$if windows {
 		unsupported_panic()
@@ -159,6 +160,7 @@ pub fn initscr() Window {
 }
 
 // stdscr returns the current default screen window handle.
+@[unsafe]
 pub fn stdscr() Window {
 	$if windows {
 		unsupported_panic()
@@ -349,6 +351,7 @@ pub fn mvaddstr(y int, x int, text string) int {
 }
 
 // newwin creates a new curses window.
+@[unsafe]
 pub fn newwin(lines int, cols int, begin_y int, begin_x int) Window {
 	$if windows {
 		_ = lines
