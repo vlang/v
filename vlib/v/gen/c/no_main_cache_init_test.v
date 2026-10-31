@@ -4,6 +4,27 @@ import os
 import v.flat
 import v.types
 
+fn test_exported_script_preserves_process_arguments() {
+	root := os.join_path(os.vtmp_dir(), 'exported_script_args_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	script := os.join_path(root, 'script.v')
+	executable := os.join_path(root, 'script')
+	os.write_file(script, "import os\n
+@[export: 'script_callback']
+fn script_callback() int { return os.args.len }
+assert os.args.len == 3
+assert script_callback() == 3
+assert os.args[1..] == ['alpha', 'beta']
+println(os.args[1..].join(','))\n")!
+	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-cc',
+		@CCOMPILER, '-o', executable, script])
+	assert compiled.exit_code == 0, compiled.output
+	run := os.exec([executable, 'alpha', 'beta'])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'alpha,beta'
+}
+
 fn test_no_main_initializer_linkage_matches_module_split() {
 	for split in [false, true] {
 		mut a := flat.FlatAst.new()

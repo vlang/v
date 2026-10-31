@@ -14,8 +14,9 @@ import v.astjson
 // genuinely requires a value checks it and reports the problem itself.
 pub struct Args {
 mut:
-	raw   json.Any
-	inner map[string]json.Any = {}
+	raw             json.Any
+	inner           map[string]json.Any = {}
+	number_literals map[string]string
 }
 
 // decode_args reads the JSON object a tool call carries.
@@ -31,7 +32,50 @@ pub fn decode_args(payload string) Args {
 	parsed := json.decode[json.Any](payload) or { return args }
 	args.raw = parsed
 	args.inner = parsed.as_map()
+	args.number_literals = argument_number_literals(payload)
 	return args
+}
+
+// Any chooses f64 for JSON numbers, which loses integer precision above 2^53.
+// Keep the original top-level number tokens for the integer accessor instead.
+fn argument_number_literals(payload string) map[string]string {
+	mut numbers := map[string]string{}
+	mut scanner := json.new_scanner(payload)
+	first := scanner.next() or { return numbers }
+	if first.kind != .lcbr {
+		return numbers
+	}
+	mut depth := 1
+	mut key := ''
+	mut expect_key := true
+	for depth > 0 {
+		token := scanner.next() or { return map[string]string{} }
+		match token.kind {
+			.lcbr, .lsbr { depth++ }
+			.rcbr, .rsbr { depth-- }
+			.comma {
+				if depth == 1 {
+					expect_key = true
+				}
+			}
+			.str {
+				if depth == 1 && expect_key {
+					key = token.literal()
+					// A later nonnumeric value must also replace a duplicate key.
+					numbers.delete(key)
+					expect_key = false
+				}
+			}
+			.int, .float {
+				if depth == 1 {
+					numbers[key] = token.literal()
+				}
+			}
+			.eof { break }
+			else {}
+		}
+	}
+	return numbers
 }
 
 // str reads a string property, or `fallback` when it is absent.
@@ -55,9 +99,25 @@ pub fn (a &Args) has(key string) bool {
 	return key in a.inner
 }
 
-// int reads an integer property, or `fallback` when it is absent.
+// int reads an integer property without rounding it through f64.
+// Absent properties and numbers that cannot decode as int use `fallback`.
 pub fn (a &Args) int(key string, fallback int) int {
 	value := a.inner[key] or { return fallback }
+	if literal := a.number_literals[key] {
+		// The integer decoder truncates scientific decimals toward zero. Use
+		// the equivalent exponent form to retain that behavior for plain ones.
+		integer_literal := if literal.contains('.') && !literal.contains_any('eE') {
+			literal + 'e0'
+		} else {
+			literal
+		}
+		decoded := json.decode[i64](integer_literal) or { return fallback }
+		integer := int(decoded)
+		if i64(integer) != decoded {
+			return fallback
+		}
+		return integer
+	}
 	return value.int()
 }
 

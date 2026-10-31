@@ -825,10 +825,8 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
 	g.writeln('\t_v3_no_main_initialized = true;')
-	if g.has_builtins {
-		g.writeln('\tg_main_argc = 0;')
-		g.writeln('\tg_main_argv = NULL;')
-	}
+	// The argument globals are already zero-initialized for library callers.
+	// A script main can reach this helper after setting its process arguments.
 	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
@@ -2550,14 +2548,14 @@ fn (mut g FlatGen) gen_channel_close_errors(node flat.Node) {
 	}
 	count := node.children_count - 1
 	ierror_type := g.tc.parse_type(flat.source_type_id('IError'))
-	g.write('new_array_from_c_array(${count}, ${count}, sizeof(IError), (IError[]){')
+	g.write('new_array_from_c_array(${count}, ${count}, sizeof(IError), ${g.cpp_copy_source_prefix()}(IError[]){')
 	for i in 1 .. node.children_count {
 		if i > 1 {
 			g.write(', ')
 		}
 		g.gen_expr_with_expected_type(g.a.child(&node, i), ierror_type)
 	}
-	g.write('})')
+	g.write('}${g.cpp_copy_source_suffix()})')
 }
 
 fn (mut g FlatGen) gen_channel_try_call(node flat.Node, fn_node flat.Node) bool {
@@ -7201,6 +7199,7 @@ fn (mut g FlatGen) trim_defers(start int) {
 
 // gen_ierror_from_error_call converts gen ierror from error call data for c.
 fn (mut g FlatGen) gen_ierror_from_error_call(node flat.Node) {
+	cpp_start := g.sb.len
 	fn_node := g.a.child_node(&node, 0)
 	type_id := g.ierror_type_id_for_pattern(flat.source_type_id('MessageError'))
 	g.write('(IError){._typ = ${type_id}, ._object = (MessageError*)memdup(&(MessageError){.msg = ')
@@ -7218,6 +7217,7 @@ fn (mut g FlatGen) gen_ierror_from_error_call(node flat.Node) {
 	// The boxed MessageError owns the payload; semantic consumers use dynamic dispatch.
 	g.write('}, sizeof(MessageError)), ._object_is_boxed = true')
 	g.write('}')
+	g.cpp_order_struct_initializer(cpp_start, 'IError', flat.source_type_id('IError'))
 }
 
 // gen_optional_error_from_call converts gen optional error from call data for c.
@@ -7950,10 +7950,22 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	}
 	if fn_node.kind == .selector && node.children_count == 2 && target_name.starts_with('C.') {
 		if target_type_id := flat.source_type_existing_id(target_name) {
-			if g.tc.type_aliases.contains(target_type_id) {
-				g.write('(${g.direct_call_name(target_name)})(')
-				g.gen_expr(g.a.child(node, 1))
-				g.write(')')
+			if g.tc.c_type_cast_name_known(target_type_id) {
+				arg_id := g.a.child(node, 1)
+				arg_type := unalias_type(g.usable_expr_type(arg_id))
+				if target_type_id in g.tc.c_fn_referenced_types && target_type_id !in g.tc.structs
+					&& arg_type is types.Struct && flat.source_type_query(arg_type.source_type_id()).has(.c_prefix) {
+					// The header may make both native names aliases of one struct.
+					// Initialization is valid for that case and still converts scalar
+					// typedefs; a C cast to a struct is a nonportable extension.
+					g.write('((${g.direct_call_name(target_name)}[1]){')
+					g.gen_expr(arg_id)
+					g.write('})[0]')
+				} else {
+					g.write('(${g.direct_call_name(target_name)})(')
+					g.gen_expr(arg_id)
+					g.write(')')
+				}
 				return
 			}
 		}
@@ -9269,9 +9281,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 					if variadic_type is types.Array {
 						if variadic_type.elem_type is types.Struct {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
-							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
+							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), ${g.cpp_copy_source_prefix()}(${c_elem}[]){')
 							g.gen_params_struct_arg(variadic_type.elem_type, node, i)
-							g.write('})')
+							g.write('}${g.cpp_copy_source_suffix()})')
 							break
 						}
 					}
@@ -9410,13 +9422,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						arg_type := cgen_unalias_type(g.body_resolve_type(arg_id))
 						if arg_type !is types.Array || arg_node.kind == .struct_init {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
-							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
+							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), ${g.cpp_copy_source_prefix()}(${c_elem}[]){')
 							if variadic_elem_is_voidptr(variadic_type.elem_type) {
 								g.gen_voidptr_variadic_arg(arg_id)
 							} else {
 								g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
 							}
-							g.write('})')
+							g.write('}${g.cpp_copy_source_suffix()})')
 							continue
 						}
 					}
@@ -12751,7 +12763,14 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, 
 	actual_fn := fn_type_from(g.usable_expr_type(arg_id)) or { return false }
 	if g.callback_fn_types_direct_compatible(actual_fn, expected_fn, expected_c_abi) {
 		if actual_name.len > 0 {
-			g.write(g.callback_c_fn_name(actual_name))
+			// A cast's result can match the slot while its named function has a
+			// different signature. Keep the conversion in that case.
+			source_fn := g.callback_fn_value_type(actual_name) or { return false }
+			if g.callback_fn_types_direct_compatible(source_fn, expected_fn, expected_c_abi) {
+				g.write(g.callback_c_fn_name(actual_name))
+			} else {
+				g.gen_expr(arg_id)
+			}
 		} else {
 			g.gen_expr(arg_id)
 		}
@@ -15205,9 +15224,9 @@ fn (mut g FlatGen) gen_call_args_for_callee(fn_name string, node &flat.Node, sta
 			if variadic_type is types.Array {
 				if variadic_type.elem_type is types.Struct {
 					c_elem := g.tc.c_type(variadic_type.elem_type)
-					g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
+					g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), ${g.cpp_copy_source_prefix()}(${c_elem}[]){')
 					g.gen_params_struct_arg(variadic_type.elem_type, node, i)
-					g.write('})')
+					g.write('}${g.cpp_copy_source_suffix()})')
 					break
 				}
 			}
@@ -15469,13 +15488,13 @@ fn (mut g FlatGen) gen_call_args_for_callee(fn_name string, node &flat.Node, sta
 				variadic_type := param_types[variadic_idx]
 				if variadic_type is types.Array {
 					c_elem := g.tc.c_type(variadic_type.elem_type)
-					g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
+					g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), ${g.cpp_copy_source_prefix()}(${c_elem}[]){')
 					if variadic_elem_is_voidptr(variadic_type.elem_type) {
 						g.gen_voidptr_variadic_arg(arg_id)
 					} else {
 						g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
 					}
-					g.write('})')
+					g.write('}${g.cpp_copy_source_suffix()})')
 					continue
 				}
 			}
@@ -15611,7 +15630,7 @@ fn (mut g FlatGen) gen_call_args_for_callee(fn_name string, node &flat.Node, sta
 			variadic_type := param_types[variadic_idx]
 			if variadic_type is types.Array {
 				c_elem := g.tc.c_type(variadic_type.elem_type)
-				g.write('new_array_from_c_array(0, 0, sizeof(${c_elem}), (${c_elem}[]){0})')
+				g.write('new_array_from_c_array(0, 0, sizeof(${c_elem}), ${g.cpp_copy_source_prefix()}(${c_elem}[]){0}${g.cpp_copy_source_suffix()})')
 			}
 		}
 	}
@@ -15704,7 +15723,7 @@ fn (mut g FlatGen) gen_variadic_array_args(node flat.Node, start int, elem_type 
 		}
 	}
 	c_elem := g.tc.c_type(elem_type)
-	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), (${c_elem}[]){')
+	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), ${g.cpp_copy_source_prefix()}(${c_elem}[]){')
 	mut emitted := 0
 	for i in start .. node.children_count {
 		arg_id := g.a.child(&node, i)
@@ -15728,7 +15747,7 @@ fn (mut g FlatGen) gen_variadic_array_args(node flat.Node, start int, elem_type 
 		}
 		emitted++
 	}
-	g.write('})')
+	g.write('}${g.cpp_copy_source_suffix()})')
 }
 
 fn (g &FlatGen) call_callee_is_module_selector(node &flat.Node) bool {
@@ -16464,7 +16483,11 @@ fn (mut g FlatGen) gen_flag_enum_from_call(id flat.NodeId, fn_node flat.Node, no
 	g.write('${ok_tmp} ? (${ct}){.ok = true, ')
 	g.write('.value = (${value_ct})(${storage_ct})${value_tmp}} : ')
 	g.write('(${ct}){.ok = false, .err = (IError){')
-	g.write('._typ = ${error_type_id}, ._object = &_enum_error}}; })')
+	if g.ccompiler == 'cplusplus' {
+		g.write('._object = &_enum_error, ._typ = ${error_type_id}}}; })')
+	} else {
+		g.write('._typ = ${error_type_id}, ._object = &_enum_error}}; })')
+	}
 
 	return true
 }
@@ -17252,7 +17275,7 @@ fn (mut g FlatGen) emit_c_runtime_declarations(required []string) {
 		decl := decls[name]
 		g.tc.cur_file = decl.file
 		g.tc.cur_module = decl.module_name
-		g.writeln(g.c_extern_decl_line(g.a.nodes[decl.node_idx], name))
+		g.writeln(g.cpp_c_linkage(g.c_extern_decl_line(g.a.nodes[decl.node_idx], name)))
 		g.inlined_c_declared_fns[name] = true
 	}
 }
@@ -17364,17 +17387,17 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			g.writeln('#ifdef V3CACHE_NATIVE_OWNER')
 			if g.c_extern_forced_decls[original_name] || g.c_extern_forced_decls['C.' + original_name]
 				|| g.should_emit_c_extern_decl_from_file(original_name, decl.file, decl.module_name) {
-				g.writeln(g.c_extern_decl_line(node, original_name))
+				g.writeln(g.cpp_c_linkage(g.c_extern_decl_line(node, original_name)))
 			}
 			// Generic and inline V support in the owner can call the pointer before
 			// its definition. Let the native compiler supply that declaration's type.
 			g.writeln('extern __typeof__(&' + original_name + ') ' + name + ';')
 			g.writeln('#else')
-			g.writeln('extern ' + g.c_extern_decl_line(node, '(*' + name + ')'))
+			g.writeln(g.cpp_c_linkage('extern ' + g.c_extern_decl_line(node, '(*' + name + ')')))
 			g.writeln('#endif')
 			continue
 		}
-		line := c_macro_safe_extern_decl(name, g.c_extern_decl_line(node, name))
+		line := g.cpp_c_linkage(c_macro_safe_extern_decl(name, g.c_extern_decl_line(node, name)))
 		if g.c_extern_decl_is_cached_object_fallback(name) {
 			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
 			g.writeln(line)

@@ -1,9 +1,14 @@
-name: Vinix native width validation
+name: Build Vinix
 
 on:
   push:
     branches:
-      - ci/verify-vinix-native-width-20261031
+      - master
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/vinix_ci.yml'
+      - 'cmd/tools/vrepl.v'
 
 concurrency:
   group: vinix-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -15,7 +20,7 @@ permissions:
 jobs:
   vinix-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -27,13 +32,10 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           v retry -- sudo apt update
-          v retry -- sudo apt install build-essential libarchive-dev -y
+          v retry -- sudo apt install build-essential -y
 
-      - name: Clone the reviewed Vinix revision
-        run: |
-          v retry -- git clone --filter=blob:none https://github.com/vlang/vinix.git
-          git -C vinix checkout --detach e7f06122f51b711707d47b3cda245bfa00d0afa4
-          test "$(git -C vinix rev-parse HEAD)" = e7f06122f51b711707d47b3cda245bfa00d0afa4
+      - name: Clone current Vinix
+        run: v retry -- git clone --depth=1 --branch master https://github.com/vlang/vinix.git
 
       - name: Download Vinix kernel dependencies
         run: cd vinix/kernel && v retry -- ./get-deps

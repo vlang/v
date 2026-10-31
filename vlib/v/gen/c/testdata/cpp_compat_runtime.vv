@@ -1,0 +1,164 @@
+struct CppPair {
+	first  int
+	second int
+}
+
+struct CppPacket {
+	stamp  int
+	values &[2]int
+}
+
+struct CppFixedFields {
+	stamp  int
+	values [2]int
+	zero   [3]int
+}
+
+type CppValue = CppPair | int
+
+interface CppReader {
+	read() int
+}
+
+struct CppReading {
+	value int
+}
+
+fn (reading CppReading) read() int {
+	return reading.value
+}
+
+fn make_reader(value int) CppReader {
+	return CppReading{value}
+}
+
+fn next(mut trace []int, value int) int {
+	trace << value
+	return value
+}
+
+fn checked(value int) !int {
+	if value < 0 {
+		return error('negative')
+	}
+	return value
+}
+
+fn keyword_args(operator int, template int, namespace int, explicit bool, v_operator int) int {
+	if explicit {
+		return operator + template + namespace + v_operator
+	}
+	return 0
+}
+
+fn retained(mut trace []int) &CppPair {
+	return &CppPair{
+		second: next(mut trace, 4)
+		first:  next(mut trace, 3)
+	}
+}
+
+fn copy_value(value CppValue) []CppValue {
+	return [value]
+}
+
+fn make_value(id int) CppValue {
+	return CppPair{id, id + 1}
+}
+
+fn borrow_value(value &CppValue) &CppValue {
+	return value
+}
+
+fn borrowed_id(value &CppValue) int {
+	return (value as CppPair).first
+}
+
+fn copied_arrays() [][]int {
+	return [[1, 2], [3, 4]]
+}
+
+fn worker(seed int) int {
+	mut result := 0
+	for i in 0 .. 100 {
+		values := [seed, i, 3]
+		result += values[0] + values[1] + values[2]
+	}
+	return result
+}
+
+fn main() {
+	mut trace := []int{}
+	pair := CppPair{
+		second: next(mut trace, 2)
+		first:  next(mut trace, 1)
+	}
+	$if cplusplus {
+		assert trace == [2, 1]
+	}
+	assert pair == CppPair{1, 2}
+	mut branch_trace := []int{}
+	branched := CppPair{
+		second: next(mut branch_trace, 2)
+		first:  checked(next(mut branch_trace, -1)) or { 1 }
+	}
+	assert branch_trace == [2, -1]
+	assert branched == pair
+	retained_pair := retained(mut trace)
+	values := [CppPair{ first: next(mut trace, 5), second: 6 }, CppPair{7, 8}]
+	$if cplusplus {
+		assert trace == [2, 1, 4, 3, 5]
+	}
+	assert retained_pair.first == 3
+	assert retained_pair.second == 4
+	assert values[0].first == 5
+	assert values[1].second == 8
+	assert keyword_args(1, 2, 3, true, 4) == 10
+	reader := make_reader(67)
+	assert reader.read() == 67
+	reading := CppReading{71}
+	borrowed_reader := CppReader(&reading)
+	assert borrowed_reader.read() == 71
+	fixed := [3, 4, 5]!
+	mut copied := [3]int{}
+	copied = fixed
+	assert copied == [3, 4, 5]!
+	copied = [3]int{}
+	assert copied == [0, 0, 0]!
+	fields := CppFixedFields{
+		values: [10, 11]!
+		stamp:  12
+	}
+	assert fields.stamp == 12
+	assert fields.values == [10, 11]!
+	assert fields.zero == [0, 0, 0]!
+	mut storage := [7, 8]!
+	packet := CppPacket{
+		values: unsafe { &storage }
+		stamp:  9
+	}
+	assert (*packet.values)[0] == 7
+	assert (*packet.values)[1] == 8
+	assert packet.stamp == 9
+	first_borrow := borrow_value(make_value(17))
+	second_borrow := borrow_value(make_value(29))
+	assert (first_borrow as CppPair).first == 17
+	assert (second_borrow as CppPair).first == 29
+	local := make_value(51)
+	unsafe { assert voidptr(borrow_value(&local)) == voidptr(&local) }
+	boxed := copy_value(CppPair{13, 14})
+	assert (boxed[0] as CppPair).second == 14
+	arrays := copied_arrays()
+	for i in 0 .. 100 {
+		assert worker(i) > 0
+	}
+	assert arrays == [[1, 2], [3, 4]]
+	t1 := spawn worker(1)
+	t2 := spawn worker(2)
+	assert t1.wait() == 5350
+	assert t2.wait() == 5450
+	sum_thread1 := spawn borrowed_id(make_value(101))
+	sum_thread2 := spawn borrowed_id(make_value(202))
+	assert sum_thread1.wait() == 101
+	assert sum_thread2.wait() == 202
+}

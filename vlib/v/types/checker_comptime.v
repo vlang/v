@@ -5477,18 +5477,22 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		|| clean_actual.source_type_id() == clean_target.source_type_id()) {
 		return
 	}
-	if target is Alias && clean_target is Struct && flat.source_type_syntax(clean_target.source_type_id()).c_qualified()
-		&& clean_target.source_type_id() !in tc.structs && infix_power_type_is_numeric(clean_actual) {
-		// An undeclared C type can be a scalar typedef supplied by an included
-		// header. Keep the V alias for source diagnostics and let C validate the
-		// underlying scalar conversion.
+	if (target is Alias || clean_target.source_type_id() in tc.c_fn_referenced_types)
+		&& clean_target is Struct && flat.source_type_syntax(clean_target.source_type_id()).c_qualified()
+		&& clean_target.source_type_id() !in tc.structs
+		&& (infix_power_type_is_numeric(clean_actual) || clean_actual is Enum || clean_actual is Rune
+			|| (clean_actual is Struct && flat.source_type_syntax(clean_actual.source_type_id()).c_qualified())) {
+		// A V alias or C signature can name a typedef supplied only by its header.
+		// C validates scalar conversions and aliases of the same native struct.
 		return
 	}
-	if clean_actual is Struct && clean_actual.source_type_id() in tc.c_typedef_structs
+	if clean_actual is Struct
+		&& (clean_actual.source_type_id() in tc.c_typedef_structs
+			|| clean_actual.source_type_id() in tc.c_fn_referenced_types)
 		&& (tc.structs[clean_actual.source_type_id()] or { []StructField{} }).len == 0
 		&& (infix_power_type_is_numeric(clean_target) || clean_target is Rune) {
-		// Empty C typedef declarations can describe scalars such as wchar_t. Their
-		// headers define the representation, so let C validate numeric conversions.
+		// Empty typedef declarations and opaque types from C signatures can describe
+		// scalars. Their headers define the representation; C validates conversion.
 		return
 	}
 	if clean_actual is ArrayFixed && clean_target is Pointer && tc.unsafe_depth == 0

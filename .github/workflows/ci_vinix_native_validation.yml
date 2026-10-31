@@ -1,0 +1,79 @@
+name: Vinix native width validation
+
+on:
+  push:
+    branches:
+      - ci/verify-vinix-native-width-20261031
+
+concurrency:
+  group: vinix-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  vinix-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      V_MACOS_V3_NO_FALLBACK: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make -j4 && ./v symlink
+
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          v retry -- sudo apt update
+          v retry -- sudo apt install build-essential libarchive-dev -y
+
+      - name: Clone the reviewed Vinix revision
+        run: |
+          v retry -- git clone --filter=blob:none https://github.com/vlang/vinix.git
+          git -C vinix checkout --detach e7f06122f51b711707d47b3cda245bfa00d0afa4
+          test "$(git -C vinix rev-parse HEAD)" = e7f06122f51b711707d47b3cda245bfa00d0afa4
+
+      - name: Download Vinix kernel dependencies
+        run: cd vinix/kernel && v retry -- ./get-deps
+
+      - name: Attempt to build the Vinix kernel (debug)
+        run: |
+          set -e
+          cd vinix/kernel
+          make PROD=false \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
+
+      - name: Attempt to build the Vinix kernel (prod)
+        run: |
+          set -e
+          cd vinix/kernel
+          make PROD=true \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
+
+      - name: Attempt to build the util-vinix (debug)
+        run: |
+          set -e
+          cd vinix/util-vinix
+          make PROD=false \
+            VFLAGS="-os vinix -gc none" \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
+
+      - name: Attempt to build the util-vinix (prod)
+        run: |
+          set -e
+          cd vinix/util-vinix
+          make PROD=true \
+            VFLAGS="-os vinix -gc none" \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
