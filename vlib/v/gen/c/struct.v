@@ -5906,6 +5906,11 @@ fn (g &FlatGen) embedded_field_for_promoted_field(type_name_id u32, field_name s
 // which resolves unambiguously) as set, so the flattened-defaults pass does not
 // re-emit them after the whole embed was initialized via `Embed: value`.
 fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name_id u32, owner_type_id u32, mut set_fields map[string]bool) {
+	mut seen := map[u32]bool{}
+	g.mark_embedded_promoted_fields_set_inner(embed_type_name_id, owner_type_id, mut set_fields, mut seen)
+}
+
+fn (g &FlatGen) mark_embedded_promoted_fields_set_inner(embed_type_name_id u32, owner_type_id u32, mut set_fields map[string]bool, mut seen map[u32]bool) {
 	embed_type_name := flat.source_type_name(embed_type_name_id)
 
 	if embed_type_name_id == 0 {
@@ -5914,6 +5919,8 @@ fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name_id u32, owner_
 	set_fields[embed_type_name] = true
 	set_fields[c_field_name(embed_type_name)] = true
 	info := g.find_struct_decl(embed_type_name_id) or { return }
+	if seen[info.full_name] { return }
+	seen[info.full_name] = true
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind != .field_decl || field.value.len == 0 {
@@ -5931,7 +5938,10 @@ fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name_id u32, owner_
 		// A nested embedded field_decl has value == typ; recurse into it, keeping the
 		// original owner so its direct fields still win over deeper promoted names.
 		if field.source_value_id() == field.typ {
-			g.mark_embedded_promoted_fields_set(field.source_value_id(), owner_type_id, mut set_fields)
+			// A raw embedded name is relative to this declaration, not the caller.
+			embedded := g.canonical_import_alias_type_in_file(field.typ, info.file)
+			g.mark_embedded_promoted_fields_set_inner(embedded.source_type_id(), owner_type_id,
+				mut set_fields, mut seen)
 		}
 	}
 }
