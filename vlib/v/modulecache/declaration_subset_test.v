@@ -153,4 +153,9 @@ fn test_subset_agrees_with_the_unit_by_unit_version() {
 	first_goes := new_declaration_index('int first(void);\nint keep_me;\nint last_one(void);\n')
 	assert first_goes.subset('') == naive_subset(first_goes, '')
 	assert first_goes.subset('first last_one') == naive_subset(first_goes, 'first last_one')
+	// a header that ends with a blank line after a unit that goes (the blank line must stay)
+	blank_tail := new_declaration_index('int keep_me;\nint drop_me(void);\n\n')
+	assert blank_tail.subset('') == naive_subset(blank_tail, '')
+	assert blank_tail.subset('') == 'int keep_me;\n\n'
+	assert blank_tail.subset('drop_me') == 'int keep_me;\nint drop_me(void);\n\n'
 }

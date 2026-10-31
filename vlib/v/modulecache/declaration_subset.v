@@ -89,7 +89,8 @@ pub fn new_declaration_index(header string) DeclarationIndex {
 			collect_identifiers(line, mut kept)
 		}
 	}
-	joined := units.join('\n')
+	// every unit followed by its newline, so that a unit that goes takes its newline with it
+	joined := if units.len == 0 { '' } else { units.join('\n') + '\n' }
 	mut starts := []int{len: units.len}
 	mut drop_at := []int{}
 	mut offset := 0
@@ -118,7 +119,7 @@ pub fn new_declaration_index(header string) DeclarationIndex {
 // header's.
 pub fn (idx &DeclarationIndex) subset(code string) string {
 	if idx.drop_at.len == 0 {
-		return idx.joined + '\n'
+		return idx.joined
 	}
 	mut used := map[string]bool{}
 	collect_identifiers(code, mut used)
@@ -137,7 +138,6 @@ pub fn (idx &DeclarationIndex) subset(code string) string {
 	}
 	if run_start < idx.joined.len {
 		out.write_string(idx.joined[run_start..])
-		out.write_u8(`\n`)
 	}
 	return out.str()
 }
