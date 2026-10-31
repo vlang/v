@@ -7253,26 +7253,30 @@ pub fn (tc &TypeChecker) parse_resolution_type_in_file(source_id u32, file strin
 	if context_independent_type(source_id) {
 		return *tc.parse_type(source_id)
 	}
+	return tc.type_parse_view_in_file(file).parse_resolution_type(source_id)
+}
+
+// Reuse a lookup-only view without inheriting the caller's local bindings.
+fn (tc &TypeChecker) type_parse_view_in_file(file string) &TypeChecker {
 	if !isnil(tc.resolution_type_views) {
 		mut views := unsafe { tc.resolution_type_views }
 		if !isnil(views.recent_scoped) && views.recent_scoped_file == file {
-			return views.recent_scoped.parse_resolution_type(source_id)
+			return views.recent_scoped
 		}
 		if cached := views.scoped_by_file[file] {
 			views.recent_scoped_file = file
 			views.recent_scoped = cached
-			return cached.parse_resolution_type(source_id)
+			return cached
 		}
 		module_name := tc.file_modules[file] or { '' }
 		mut scoped := tc.fork_type_parse_view(file, module_name)
 		views.scoped_by_file[file] = scoped
 		views.recent_scoped_file = file
 		views.recent_scoped = scoped
-		return scoped.parse_resolution_type(source_id)
+		return scoped
 	}
 	module_name := tc.file_modules[file] or { '' }
-	mut scoped := tc.fork_type_parse_view(file, module_name)
-	return scoped.parse_resolution_type(source_id)
+	return tc.fork_type_parse_view(file, module_name)
 }
 
 // Primitive payloads and their exact wrappers cannot refer to declaration imports.

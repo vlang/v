@@ -6403,6 +6403,7 @@ fn (mut tc TypeChecker) remember_nongeneric_call(call flat.Node, info CallInfo) 
 
 struct GenericCompileErrorInstantiation {
 	decl_id        flat.NodeId
+	decl_file      string
 	generic_params []u32
 	concrete_args  flat.TypeTextList
 	symbol_types   flat.TypeTextBindings
@@ -6561,7 +6562,7 @@ fn (mut tc TypeChecker) resolve_generic_compile_error_instantiation(call flat.No
 				actual := tc.resolve_type(receiver_id)
 				tc.infer_generic_type_text_from_type(param.typ, actual, generic_params, mut inferred)
 				if param.value.len > 0 {
-					symbol_types[param.value] = actual.source_type_id()
+					symbol_types[param.value] = tc.generic_diagnostic_symbol_type(actual.source_type_id())
 				}
 			}
 			source_param_index++
@@ -6574,7 +6575,7 @@ fn (mut tc TypeChecker) resolve_generic_compile_error_instantiation(call flat.No
 		actual := tc.resolve_type(arg_id)
 		tc.infer_generic_type_text_from_type(param.typ, actual, generic_params, mut inferred)
 		if param.value.len > 0 {
-			symbol_types[param.value] = actual.source_type_id()
+			symbol_types[param.value] = tc.generic_diagnostic_symbol_type(actual.source_type_id())
 		}
 		arg_index++
 		source_param_index++
@@ -6587,15 +6588,25 @@ fn (mut tc TypeChecker) resolve_generic_compile_error_instantiation(call flat.No
 			arg_source_id := inferred[param] or { return none }
 
 			concrete_args << arg_source_id
-			symbol_types[flat.source_type_name(param)] = arg_source_id
+			symbol_types[flat.source_type_name(param)] = tc.generic_diagnostic_symbol_type(arg_source_id)
 		}
 	}
 	return GenericCompileErrorInstantiation{
 		decl_id:        decl_id
+		decl_file:      tc.generic_decl_file
 		generic_params: generic_params
 		concrete_args:  flat.TypeTextList{ ids: concrete_args.clone() }
 		symbol_types:   flat.TypeTextBindings{ ids: symbol_types }
 	}
+}
+
+fn (tc &TypeChecker) generic_diagnostic_symbol_type(source_id u32) u32 {
+	if context_independent_type(source_id) {
+		return source_id
+	}
+	// Inferred names are canonical, but a bare program-owned type still needs
+	// `main.` before the condition is resolved in the generic declaration.
+	return tc.type_parse_view_in_file('').explicit_generic_concrete_arg_text(source_id)
 }
 
 fn (tc &TypeChecker) generic_method_call_receiver_id(call flat.Node) ?flat.NodeId {
@@ -6703,7 +6714,8 @@ fn (mut tc TypeChecker) collect_instantiated_compile_warnings(id flat.NodeId, in
 	node := tc.a.node(id)
 	if node.kind == .comptime_if {
 		substituted := substitute_comptime_condition_symbols(node.value, instantiation.symbol_types)
-		take_then := tc.comptime_type_condition_value(substituted) or { return }
+		declaration := tc.type_parse_view_in_file(instantiation.decl_file)
+		take_then := declaration.comptime_type_condition_value(substituted) or { return }
 		branch_index := if take_then { 0 } else { 1 }
 		if branch_index < node.children_count {
 			tc.collect_instantiated_compile_warnings(tc.a.child(node, branch_index), instantiation, mut warnings)
@@ -6740,7 +6752,8 @@ fn (mut tc TypeChecker) collect_instantiated_compile_errors(id flat.NodeId, inst
 	node := tc.a.node(id)
 	if node.kind == .comptime_if {
 		substituted := substitute_comptime_condition_symbols(node.value, instantiation.symbol_types)
-		take_then := tc.comptime_type_condition_value(substituted) or { return }
+		declaration := tc.type_parse_view_in_file(instantiation.decl_file)
+		take_then := declaration.comptime_type_condition_value(substituted) or { return }
 		branch_index := if take_then { 0 } else { 1 }
 		if branch_index < node.children_count {
 			tc.collect_instantiated_compile_errors(tc.a.child(node, branch_index), instantiation, mut messages)
