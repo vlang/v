@@ -1,6 +1,6 @@
 import os
 
-// These stateless helpers can be included in every parallel C compilation unit.
+// Leave these native helper definitions to the C compiler.
 const windows_overflow_header = r'
 #include <windows.h>
 
@@ -9,9 +9,12 @@ static inline LONG CALLBACK v_test_exception_handler(EXCEPTION_POINTERS* excepti
 		? EXCEPTION_CONTINUE_EXECUTION : EXCEPTION_CONTINUE_SEARCH;
 }
 
-static inline void v_test_first_chance_exception(void) {
+static inline void v_test_add_exception_handler(void) {
 	// This child exits immediately afterwards; TCC imports omit the remove API.
-	AddVectoredExceptionHandler(0, v_test_exception_handler);
+	AddVectoredExceptionHandler(1, v_test_exception_handler);
+}
+
+static inline void v_test_first_chance_exception(void) {
 	RaiseException(0xE0123456, 0, 0, NULL);
 }
 
@@ -35,7 +38,9 @@ import os
 
 #include <@DIR/windows_overflow.h>
 
+fn C.v_test_add_exception_handler()
 fn C.v_test_first_chance_exception()
+fn C.v_install_windows_stack_overflow_handler()
 fn C.v_test_stack_guarantee() int
 fn C.v_test_disable_error_dialog()
 
@@ -63,6 +68,10 @@ fn main() {
 			println(p.value)
 		}
 		"first_chance" {
+			// Order the handlers as V overflow -> test catcher -> TCC backtrace.
+			// TCC otherwise treats this handled first-chance exception as fatal.
+			C.v_test_add_exception_handler()
+			C.v_install_windows_stack_overflow_handler()
 			C.v_test_first_chance_exception()
 			println("handled first-chance exception")
 		}
@@ -94,7 +103,10 @@ fn test_windows_stack_overflow_in_main_and_spawned_threads() ! {
 		compile := os.exec(flags)
 		assert compile.exit_code == 0, '${build_mode}: ${compile.output}'
 		if build_mode == 'parallel' {
-			assert compile.output.contains('unit_1.c'), compile.output
+			// The opaque helper header cannot prove split safety, so -parallel-cc
+			// falls back to one C unit while preserving runtime exception handling.
+			assert compile.output.contains('src.c'), compile.output
+			assert !compile.output.contains('unit_1.c'), compile.output
 		}
 		for mode in ['main', 'thread'] {
 			result := os.exec([binary, mode])
@@ -107,7 +119,12 @@ fn test_windows_stack_overflow_in_main_and_spawned_threads() ! {
 		if build_mode == 'normal' {
 			fault := os.exec([binary, 'nil'])
 			assert fault.exit_code != 0, fault.output
-			assert fault.output.contains('Unhandled Exception'), fault.output
+			$if tinyc {
+				// TCC's first-chance backtrace handler reports this before V's filter.
+				assert fault.output.contains('RUNTIME ERROR: invalid memory access'), fault.output
+			} $else {
+				assert fault.output.contains('Unhandled Exception'), fault.output
+			}
 			assert !fault.output.contains('stack overflow'), fault.output
 		}
 	}

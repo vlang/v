@@ -1,0 +1,132 @@
+name: Validate master CI fixes
+
+on:
+  push:
+    branches: [ci/verify-master-fixes-20261031]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-fix-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    if: github.ref == 'refs/heads/ci/verify-master-fixes-20261031'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [tcc, gcc, msvc]
+    env:
+      VJOBS: '2'
+      VFLAGS: -new-compiler -no-retry-compilation -cc ${{ matrix.compiler }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up MinGW GCC, Clang, and D3D11 headers
+        if: matrix.compiler == 'gcc'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: UCRT64
+          update: true
+          cache: false
+          path-type: minimal
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-clang
+      - name: Expose MinGW tools to PowerShell
+        if: matrix.compiler == 'gcc'
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          cygpath -w /ucrt64/bin >> "$GITHUB_PATH"
+          gcc --version
+          clang --version
+          test -f /ucrt64/include/d3d11.h
+          test -f /ucrt64/lib/libd3d11.a
+          test -f /ucrt64/lib/libdxgi.a
+      - name: Set up MSVC and the Windows SDK
+        if: matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Build compiler from the combined branch
+        id: build
+        env:
+          VFLAGS: ''
+        run: |
+          .\makev.bat -${{ matrix.compiler }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows runtime and C typedef regressions
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          .\v.exe test `
+            vlib/builtin/stack_overflow_windows_test.v `
+            vlib/v/tests/int128/ `
+            vlib/context/ `
+            vlib/v/tests/interfaces/interface_smartcast_interpolation_test.v `
+            vlib/v/compiler_tests/c_signature_typedef_cast_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: GCC portable int128 representation
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.compiler == 'gcc' }}
+        # TCC and MSVC already use the portable representation by default.
+        run: |
+          .\v.exe -d v3_no_native_int128 test vlib/v/tests/int128/
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile the D3D11 regression fixture
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          # TinyCC's bundle lacks D3D11 headers; cover its C generation only.
+          # Explicit -o compiles test files without running their GUI tests.
+          $output = if ('${{ matrix.compiler }}' -eq 'tcc') { 'ci_d3d11.c' } else { 'ci_d3d11.exe' }
+          .\v.exe -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp `
+            -o $output vlib/x/multiwindow/service_native_win32_readback_d3d11_contract_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Reproduce the original Clang D3D11 compile check
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.compiler == 'gcc' }}
+        env:
+          VFLAGS: -new-compiler -no-retry-compilation -cc clang
+        run: |
+          .\v.exe -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp `
+            -o ci_d3d11_clang.exe vlib/x/multiwindow/service_native_win32_readback_d3d11_contract_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  # websocket_test.v requires this job ID to enable its network tests.
+  websocket_tests:
+    if: github.ref == 'refs/heads/ci/verify-master-fixes-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VJOBS: '2'
+      VFLAGS: -new-compiler -no-retry-compilation -cc tcc
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install WebSocket build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libssl-dev
+      - name: Build compiler from the combined branch
+        id: build
+        env:
+          VFLAGS: ''
+        run: make -j4
+      - name: Run the WebSocket suite
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -g test vlib/net/websocket/
+      - name: Native-header and preamble regressions
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ./v test vlib/v/gen/c/tcc_native_headers_test.v \
+            vlib/v/gen/c/preamble_test.v \
+            vlib/v/gen/c/source_directive_test.v \
+            vlib/v/gen/c/windows_stack_overflow_test.v
