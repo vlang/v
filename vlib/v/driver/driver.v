@@ -19483,9 +19483,36 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 	}
 	append_v3_c_compile_mode_flags(mut args, c_standard, opt_flag, pic_flag)
 	args << cgen.tokenize_c_flag(warning_flags)
-	args << ['-Wno-int-conversion', '-c', '-o', tmp_object, tmp_source]
-	args << flags
-	result := cmdexec.run(compiler.path, args)
+	args << '-Wno-int-conversion'
+	// A Windows Clang build parses the SDK headers once per flag set, not once
+	// per module: the unit's prelude is replaced by its precompiled form.
+	mut pch := ''
+	if !objective_c && v3_windows_pch_applies(c_source) {
+		mut pch_args := args.clone()
+		pch_args << flags
+		pch = v3_windows_pch(compiler, pch_args, os.dir(entry.object)) or { '' }
+	}
+	mut compile_args := args.clone()
+	if pch != '' {
+		compile_args << ['-include-pch', pch]
+	}
+	compile_args << ['-c', '-o', tmp_object, tmp_source]
+	compile_args << flags
+	mut result := cmdexec.run(compiler.path, compile_args)
+	if result.exit_code != 0 && pch != '' {
+		// The compiler rejected the precompiled header (the SDK or the compiler
+		// changed under it, or this unit does not fit it after all): the unit
+		// compiles the headers itself, and the next compile rebuilds the header.
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 module cache: compiling ${os.file_name(entry.c_source)} without the Windows SDK precompiled header:\n${result.output}')
+		}
+		v3_windows_pch_discard(pch)
+		os.rm(tmp_object) or {}
+		compile_args = args.clone()
+		compile_args << ['-c', '-o', tmp_object, tmp_source]
+		compile_args << flags
+		result = cmdexec.run(compiler.path, compile_args)
+	}
 	if result.exit_code != 0 {
 		os.rm(tmp_object) or {}
 		return error('failed to build cached module object ${entry.object}:\n${result.output}')
