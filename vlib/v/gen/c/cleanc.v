@@ -14092,6 +14092,11 @@ fn (g &FlatGen) cast_alias_matches_expected_storage(alias_name_id u32, expected 
 	}
 	target := unalias_type(g.tc.parse_type(target_name))
 	expected_base := unalias_type(expected)
+	// A function alias cast can change the operand's signature even when its
+	// result already has the destination's storage type.
+	if target is types.FnType {
+		return false
+	}
 	return g.type_names_match(target, expected_base) || g.tc.c_type(target) == g.tc.c_type(expected_base)
 }
 

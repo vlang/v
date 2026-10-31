@@ -12751,7 +12751,14 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, 
 	actual_fn := fn_type_from(g.usable_expr_type(arg_id)) or { return false }
 	if g.callback_fn_types_direct_compatible(actual_fn, expected_fn, expected_c_abi) {
 		if actual_name.len > 0 {
-			g.write(g.callback_c_fn_name(actual_name))
+			// A cast's result can match the slot while its named function has a
+			// different signature. Keep the conversion in that case.
+			source_fn := g.callback_fn_value_type(actual_name) or { return false }
+			if g.callback_fn_types_direct_compatible(source_fn, expected_fn, expected_c_abi) {
+				g.write(g.callback_c_fn_name(actual_name))
+			} else {
+				g.gen_expr(arg_id)
+			}
 		} else {
 			g.gen_expr(arg_id)
 		}
