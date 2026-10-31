@@ -59,6 +59,16 @@ fn test_windows_pch_applies_to_the_generated_prelude() {
 	assert v3_windows_pch_applies(generated_windows_prelude)
 	// Where the unit is cut short of the last header, nothing is known about the rest.
 	assert !v3_windows_pch_applies(generated_windows_prelude.all_before('#include <stdint.h>'))
+	// A real unit runs to megabytes; only its first kilobytes are read.
+	body := 'int x;\n'.repeat(100_000)
+	assert v3_windows_pch_applies(generated_windows_prelude + body)
+	assert v3_windows_pch_applies((generated_windows_prelude + body)[..v3_windows_pch_prelude_limit])
+	// A prelude whose last header lies past what is read is not known to complete.
+	padded := generated_windows_prelude.replace('#include <stdint.h>', '// pad\n'.repeat(3000) +
+		'#include <stdint.h>')
+	assert padded.index('#include <stddef.h>') or { 0 } > v3_windows_pch_prelude_limit
+	assert !v3_windows_pch_applies(padded + body)
+	assert !v3_windows_pch_applies('')
 }
 
 fn test_windows_pch_does_not_apply_to_a_prelude_that_configures_the_headers_differently() {
@@ -82,6 +92,9 @@ fn test_windows_pch_does_not_apply_to_a_prelude_that_configures_the_headers_diff
 	assert !v3_windows_pch_applies(prelude.replace('#ifndef UNICODE\n', '#ifndef V_ANSI\n#ifndef UNICODE\n').replace('#define UNICODE\n#endif\n', '#define UNICODE\n#endif\n#endif\n'))
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#ifndef V_NO_SDK\n#include <io.h>'))
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#endif\n#include <io.h>'))
+	// Or one of the generator's own guards around a header once the includes started.
+	assert !v3_windows_pch_applies(prelude.replace('#include <windows.h>\n', '#ifndef V_NO_WINDOWS\n#include <windows.h>\n#endif\n'))
+	assert !v3_windows_pch_applies(prelude.replace('#include <windows.h>\n', '#if defined(_WIN32)\n#include <windows.h>\n#endif\n'))
 	// Only a directive may precede the headers.
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', 'int early;\n#include <io.h>'))
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#pragma once\n#include <io.h>'))
@@ -127,6 +140,13 @@ fn test_windows_pch_flags_configure_sdk() {
 	assert v3_windows_pch_flags_configure_sdk(['-DWIN32_FULL'])
 	assert v3_windows_pch_flags_configure_sdk(['-O2', '-D', 'WIN32_FULL'])
 	assert v3_windows_pch_flags_configure_sdk(['-UUNICODE'])
+	// A macro Clang does not check against the precompiled header.
+	assert v3_windows_pch_flags_configure_sdk(['-include', 'full.h'])
+	assert v3_windows_pch_flags_configure_sdk(['-imacros', 'full.h'])
+	assert v3_windows_pch_flags_configure_sdk(['-Wp,-DWIN32_FULL'])
+	assert v3_windows_pch_flags_configure_sdk(['-Xpreprocessor', '-DWIN32_FULL'])
+	assert v3_windows_pch_flags_configure_sdk(['-Xclang', '-DWIN32_FULL'])
+	assert v3_windows_pch_flags_configure_sdk(['@flags.rsp'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DWIN32_FULLER'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DGC_THREADS=1', '-I', 'x', '-D'])
 }
@@ -174,6 +194,15 @@ fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
 	assert os.is_file(entry.object)
 	os.write_file(header, v3_windows_pch_header)!
 	assert compile_v3_cached_object(compiler, entry, unit(6), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample')!
+	assert os.is_file(pch)
+	// A build of the header that failed just now is not tried again.
+	failed := pch.all_before_last('.pch') + '.failed'
+	os.rm(pch)!
+	os.write_file(failed, 'out of disk space')!
+	assert compile_v3_cached_object(compiler, entry, unit(8), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample')!
+	assert !os.is_file(pch)
+	os.rm(failed)!
+	assert compile_v3_cached_object(compiler, entry, unit(9), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample')!
 	assert os.is_file(pch)
 	// A unit with an error of its own fails with that error, not the header's,
 	// and the header stays for the other units.
