@@ -1,0 +1,50 @@
+diff --git a/include/limits.h b/include/limits.h
+new file mode 100644
+index 00000000..89b26a38
+--- /dev/null
++++ b/include/limits.h
+@@ -0,0 +1,17 @@
++#define CHAR_BIT 8
++#define SCHAR_MAX 127
++#define SCHAR_MIN (-128)
++#define UCHAR_MAX 255
++#define SHRT_MAX 32767
++#define SHRT_MIN (-32768)
++#define USHRT_MAX 65535
++#define INT_MAX __INT_MAX__
++#define INT_MIN (-INT_MAX - 1)
++#define UINT_MAX 0xffffffffU
++#define LONG_MAX __LONG_MAX__
++#define LONG_MIN (-LONG_MAX - 1L)
++#define ULONG_MAX 0xffffffffffffffffUL
++#define LLONG_MAX 0x7fffffffffffffffLL
++#define LLONG_MIN (-LLONG_MAX - 1LL)
++#define ULLONG_MAX 0xffffffffffffffffULL
++#include_next <limits.h>
+diff --git a/include/tccdefs.h b/include/tccdefs.h
+index 2655c1dd..75fc7329 100644
+--- a/include/tccdefs.h
++++ b/include/tccdefs.h
+@@ -335,4 +335,22 @@
+     __BUILTIN_EXTERN(parity, unsigned)
+     #undef __BUILTIN_EXTERN
+ 
++    #define __SIZE_MAX__ 0xffffffffffffffffUL
++    #define __UINTPTR_MAX__ 0xffffffffffffffffUL
++    #define __INTPTR_MAX__ 0x7fffffffffffffffL
++    #define __PTRDIFF_MAX__ 0x7fffffffffffffffL
++    #define __INTMAX_MAX__ 0x7fffffffffffffffL
++    #define __UINTMAX_MAX__ 0xffffffffffffffffUL
++    #define __INT64_MAX__ 0x7fffffffffffffffL
++    #define __UINT64_MAX__ 0xffffffffffffffffUL
++    #define __INT32_MAX__ 0x7fffffffL
++    #define __UINT32_MAX__ 0xffffffffU
++    #define __INT16_MAX__ 0x7fff
++    #define __UINT16_MAX__ 0xffff
++    #define __INT8_MAX__ 0x7f
++    #define __UINT8_MAX__ 0xff
++    #define __builtin_bswap16(x) ((unsigned short)((((unsigned)(x) & 0xffu) << 8) | (((unsigned)(x) >> 8) & 0xffu)))
++    #define __builtin_bswap32(x) ((unsigned)((((unsigned)(x) & 0xffu) << 24) | (((unsigned)(x) & 0xff00u) << 8) | (((unsigned)(x) >> 8) & 0xff00u) | (((unsigned)(x) >> 24) & 0xffu)))
++    #define __builtin_bswap64(x) ((unsigned long long)((((unsigned long long)(x) & 0xffULL) << 56) | (((unsigned long long)(x) & 0xff00ULL) << 40) | (((unsigned long long)(x) & 0xff0000ULL) << 24) | (((unsigned long long)(x) & 0xff000000ULL) << 8) | (((unsigned long long)(x) >> 8) & 0xff000000ULL) | (((unsigned long long)(x) >> 24) & 0xff0000ULL) | (((unsigned long long)(x) >> 40) & 0xff00ULL) | (((unsigned long long)(x) >> 56) & 0xffULL)))
++    #define __builtin_object_size(p, type) ((__SIZE_TYPE__)-1)
+     #endif /* ndef __TCC_PP__ */

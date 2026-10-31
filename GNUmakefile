@@ -232,11 +232,14 @@ endif
 ifdef ANDROID
 ifneq ($(BOOTSTRAP_TCC_REQUESTED),)
 ifneq ($(CC),tcc)
+ifneq ($(V_ANDROID_TCC),1)
 	# There is no Android TCC bundle yet. If `-cc tcc` was requested anyway,
-	# keep both bootstrap stages on the system compiler.
+	# keep both bootstrap stages on the system compiler. V_ANDROID_TCC=1 opts out
+	# so the Termux tcc diagnostic (.github/workflows/termux_ci.yml) really runs tcc.
 	BOOTSTRAP_VC_CCOMPILER_VFLAG := -cc "$(CC)"
 	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
 	POST_BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
+endif
 endif
 endif
 endif
