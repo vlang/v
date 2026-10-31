@@ -1,10 +1,19 @@
 import json2 as json
 
+// Non-JSON metadata must be valid while exercising the decoder's attribute filter.
+@[attribute]
+struct Badattr {
+	value string
+}
+
+@[attribute]
+struct Foobar {}
+
 enum Bar {
 	a
 	b  @[json: 'BBB']
 	c = 10
-	e  @[badattr: 'bad'; foobar]
+	e  @[Badattr: 'bad'; Foobar]
 }
 
 type BarAlias = Bar
@@ -54,7 +63,7 @@ fn test_string_decode() {
 fn test_string_decode_uses_only_json_attr() {
 	assert json.decode[Bar]('"e"')! == Bar.e
 	assert json.decode[BarAlias]('"e"')! == Bar.e
-	for badval in ['"badattr: bad"', '"bad"', '"foobar"'] {
+	for badval in ['"Badattr: bad"', '"bad"', '"Foobar"', '"badattr: bad"', '"foobar"'] {
 		if _ := json.decode[Bar](badval) {
 			assert false, '${badval} must not be decoded to Bar'
 		} else {
