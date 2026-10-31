@@ -139,7 +139,7 @@ fn test_packed_sum_cleanup_preserves_alignment_and_updates_storage() ! {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	g.register_struct_decl_info_at(int(node), 'Packed', 'Packed', 'main', 'main.v', a.nodes[int(node)])
+	g.register_struct_decl_info_at(int(node), 'Packed', 'Packed', 'main', 'main.v', 'main.v', a.nodes[int(node)])
 	g.decl_attrs[int(node)] = ['packed']
 	sum_id := flat.source_type_id('Choice')
 	g.recursive_drop_helpers[ownership_drop_expansion_key(tc.parse_type(sum_id))] = sum_id

@@ -17,6 +17,66 @@ const overloadable_operators = ['+', '-', '*', '/', '%', '**', '==', '!=', '<', 
 	'|', '^', '[]', '[]=']
 const max_c_collision_name_len = 8
 
+// Additional C++ keywords use the internal partition so source names such as
+// `operator` and `v_operator` remain distinct. Native C names bypass this map.
+const cpp_reserved_words = {
+	'alignas':          true
+	'alignof':          true
+	'and':              true
+	'and_eq':           true
+	'bitand':           true
+	'bitor':            true
+	'catch':            true
+	'char8_t':          true
+	'char16_t':         true
+	'char32_t':         true
+	'class':            true
+	'compl':            true
+	'concept':          true
+	'const_cast':       true
+	'consteval':        true
+	'constexpr':        true
+	'constinit':        true
+	'co_await':         true
+	'co_return':        true
+	'co_yield':         true
+	'decltype':         true
+	'delete':           true
+	'dynamic_cast':     true
+	'explicit':         true
+	'export':           true
+	'friend':           true
+	'mutable':          true
+	'namespace':        true
+	'new':              true
+	'noexcept':         true
+	'not':              true
+	'not_eq':           true
+	'nullptr':          true
+	'operator':         true
+	'or':               true
+	'or_eq':            true
+	'private':          true
+	'protected':        true
+	'public':           true
+	'reinterpret_cast': true
+	'requires':         true
+	'static_assert':    true
+	'static_cast':      true
+	'template':         true
+	'this':             true
+	'thread_local':     true
+	'throw':            true
+	'try':              true
+	'typeid':           true
+	'typename':         true
+	'using':            true
+	'virtual':          true
+	'wchar_t':          true
+	'xor':              true
+	'xor_eq':           true
+}
+
 // reserved_words is a set (not a list) so `name in reserved_words` is an O(1)
 // hash lookup. c_name() runs on every emitted identifier, so a linear scan here
 // is costly.
@@ -177,6 +237,9 @@ pub fn c_name(name string) string {
 		return 'v_exit'
 	}
 	n := sanitize(name)
+	if n in cpp_reserved_words {
+		return '${internal_symbol_c_prefix}cpp_${n}'
+	}
 	if n == 'complex' || name == '@complex' {
 		return '${internal_symbol_c_prefix}macro_complex'
 	}
@@ -476,7 +539,7 @@ pub fn global_rename(cname string) string {
 
 // is_reserved_word reports whether name needs a prefix to avoid a C reserved word.
 pub fn is_reserved_word(name string) bool {
-	return name in reserved_words
+	return name in reserved_words || name in cpp_reserved_words
 }
 
 // is_libc_collision reports whether name needs a prefix to avoid a libc symbol.

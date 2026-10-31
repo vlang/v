@@ -14654,7 +14654,11 @@ pub fn run(args []string) {
 			&& a.nodes.len >= scoped_serial_user_cgen_node_threshold {
 			cache_no_parallel_cgen = true
 		}
-		c_standard := c_standard_flag(prefs.c99, no_std)
+		c_standard := if effective_c_compiler == 'cplusplus' {
+			cxx_standard_flag(prefs.c99, no_std)
+		} else {
+			c_standard_flag(prefs.c99, no_std)
+		}
 		// Long `$embed_file` payloads go into objects assembled from the bytes with
 		// `.incbin` when the link allows it and an assembler is at hand; cgen then
 		// refers to those objects instead of spelling out the bytes, see
@@ -15071,6 +15075,11 @@ pub fn run(args []string) {
 				'-Wno-unused-parameter', '-Wno-int-conversion', '-Wno-missing-braces']
 		} else {
 			['-w']
+		}
+		if effective_c_compiler == 'cplusplus' {
+			// The V1 g++ driver accepted GNU C aggregate addresses and C-style
+			// pointer conversions. Preserve that existing GNU C++ contract.
+			warn_args << '-fpermissive'
 		}
 		// Match the normal V driver's macOS compatibility flags. Apple SDK and
 		// third-party headers commonly add const qualifiers to callback typedefs,

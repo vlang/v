@@ -33,6 +33,14 @@ jobs:
         run: |
           ./v -new-compiler -no-retry-compilation test \
             vlib/v/types/mut_index_lifetime_test.v \
+            vlib/v/types/c_global_selector_test.v \
+            vlib/v/compiler_tests/explicit_callback_cast_test.v \
+            vlib/v/compiler_tests/vinix_hosted_headers_test.v \
+            vlib/v/transform/sum_reference_rvalue_test.v \
+            vlib/v/gen/v/gen_test.v \
+            vlib/os/execute_lock_alignment_nix_test.c.v \
+            vlib/os/rm_readonly_test.v \
+            vlib/builtin/stack_overflow_test.v \
             vlib/v/modulecache/c_struct_source_test.v \
             vlib/v/driver/tcc_cached_main_flags_test.v \
             vlib/v/compiler_tests/vinix_selector_codegen_test.v \
@@ -56,3 +64,34 @@ jobs:
           ./v -new-compiler -no-retry-compilation test cmd/tools/vgit/vgit_test.v cmd/tools/vmcp/vmcp_test.v thirdparty/tccbin_automation/tests/provenance_test.v thirdparty/tccbin_automation/tests/workflow_contract_test.v
           V_CI_UBUNTU_MUSL=1 ./v -new-compiler -no-retry-compilation test cmd/tools/vtest_self_selection_test.v
           ./v -W -cc gcc vlib/db/sqlite/sqlite_orm_test.v
+
+  misc-tooling-post-cpp:
+    if: github.ref == 'refs/heads/ci/verify-expanded-fixes-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 10
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build v
+        run: make -j4 && ./v symlink
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev
+          ./v retry -- sudo apt install --quiet -y g++-9 g++-10
+      - name: Ensure V can be compiled with -no-closures
+        run: ./v -no-closures cmd/v
+      - name: Shader examples can be built
+        run: |
+          .github/workflows/compile_shaders_in_examples.sh
+          ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
